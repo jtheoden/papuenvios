@@ -10,7 +10,7 @@ import { getHeadingStyle } from '@/lib/styleUtils';
 
 const LoginPage = ({ onNavigate }) => {
   const { t } = useLanguage();
-  const { login, signInWithGoogle } = useAuth();
+  const { login, signInWithGoogle, userRole } = useAuth();
   const { visualSettings } = useBusiness();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,28 +20,25 @@ const LoginPage = ({ onNavigate }) => {
       console.log('Attempting login with:', { email });
       const success = await login(email, password);
       console.log('Login attempt result:', success);
-      
+
       if (success) {
-        console.log('Login successful, checking session...');
-        const { data: { session } } = await supabase.auth.getSession();
-        console.log('Current session:', session);
-        
-        if (session?.user) {
-          console.log('User profile:', await getUserProfile(session.user.id));
-          toast({ 
-            title: "Login Successful",
-            description: "Welcome back!",
-            variant: "default"
-          });
-          onNavigate('dashboard');
-        } else {
-          console.error('Session not established after successful login');
-          toast({
-            title: "Login Error",
-            description: "Session could not be established",
-            variant: "destructive"
-          });
-        }
+        console.log('Login successful');
+        toast({
+          title: "Login Successful",
+          description: "Welcome back!",
+          variant: "default"
+        });
+
+        // Redirect based on user role
+        // userRole is updated by AuthContext after login
+        // Wait a bit for the role to be set
+        setTimeout(() => {
+          if (userRole === 'admin' || userRole === 'super_admin') {
+            onNavigate('dashboard');
+          } else {
+            onNavigate('products');
+          }
+        }, 100);
       }
     } catch (error) {
       console.error('Login error:', error);

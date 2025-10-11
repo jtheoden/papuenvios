@@ -1,6 +1,6 @@
 // src/components/AuthCallback.jsx
 import React, { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase, getUserRole } from '@/lib/supabase';
 import { toast } from '@/components/ui/use-toast';
 
 const SUPABASE_AUTH_HANDLED_KEY = 'papuenvios_supabase_auth_handled';
@@ -21,7 +21,15 @@ const AuthCallback = ({ onNavigate }) => {
           console.warn('[AuthCallback] already handled in this session');
           if (mounted) setIsProcessing(false);
           const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user && onNavigate) onNavigate('dashboard');
+          if (session?.user && onNavigate) {
+            // Redirect based on role
+            const role = await getUserRole(session.user.id);
+            if (role === 'admin' || role === 'super_admin') {
+              onNavigate('dashboard');
+            } else {
+              onNavigate('products');
+            }
+          }
           return;
         }
         sessionStorage.setItem(SUPABASE_AUTH_HANDLED_KEY, '1');
@@ -67,7 +75,18 @@ const AuthCallback = ({ onNavigate }) => {
         try { window.history.replaceState({}, document.title, window.location.pathname); } catch (e) {}
 
         toast({ title: '¡Bienvenido!', description: `Has iniciado sesión como ${session.user.email}` });
-        if (onNavigate) setTimeout(() => onNavigate('dashboard'), 150);
+
+        // Redirect based on role
+        if (onNavigate) {
+          const role = await getUserRole(session.user.id);
+          setTimeout(() => {
+            if (role === 'admin' || role === 'super_admin') {
+              onNavigate('dashboard');
+            } else {
+              onNavigate('products');
+            }
+          }, 150);
+        }
       } catch (err) {
         console.error('[AuthCallback] error:', err);
         const msg = err?.message || String(err);

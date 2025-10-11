@@ -191,6 +191,32 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
+  const login = async (email, password) => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) throw error;
+
+      if (data?.session) {
+        await updateUserState(data.session);
+        return true;
+      }
+
+      return false;
+    } catch (err) {
+      console.error('[Auth] login error', err);
+      toast({
+        title: 'Error de inicio de sesión',
+        description: err.message || String(err),
+        variant: 'destructive'
+      });
+      return false;
+    }
+  };
+
   const signInWithGoogle = async () => {
     try {
       await supabase.auth.signOut();
@@ -246,6 +272,7 @@ export const AuthProvider = ({ children }) => {
     isSuperAdmin: userRole === 'super_admin' || isSuperAdminEmail,
     isAdmin: userRole === 'admin' || userRole === 'super_admin' || isSuperAdminEmail,
     checkRole,
+    login,
     signInWithGoogle,
     logout,
     supabaseClient: supabase

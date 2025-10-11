@@ -7,36 +7,33 @@ import { supabase } from './supabase';
 
 /**
  * Generate unique order number
- * Format: ORD-YYYYMMDD-XXXXX (e.g., ORD-20251007-00001)
+ * Format: ORD-YYYYMMDD-XXXXX (e.g., ORD-20251007-12345)
+ * Uses timestamp + random to avoid race conditions
  */
 export const generateOrderNumber = async () => {
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
-  // Get count of orders created today
-  const { data, error } = await supabase
+  // Use timestamp (last 5 digits) + random (2 digits) for uniqueness
+  const timestamp = Date.now().toString().slice(-5);
+  const random = Math.floor(Math.random() * 100).toString().padStart(2, '0');
+  const uniqueId = `${timestamp}${random}`.slice(0, 5);
+
+  const orderNumber = `ORD-${today}-${uniqueId}`;
+
+  // Verify uniqueness (unlikely collision, but safety check)
+  const { data } = await supabase
     .from('orders')
     .select('order_number')
-    .like('order_number', `ORD-${today}-%`)
-    .order('created_at', { ascending: false })
-    .limit(1);
+    .eq('order_number', orderNumber)
+    .maybeSingle();
 
-  if (error) {
-    console.error('Error generating order number:', error);
-    // Fallback to timestamp if query fails
-    return `ORD-${today}-${Date.now().toString().slice(-5)}`;
+  // If collision (extremely rare), add microseconds
+  if (data) {
+    const microseconds = (Date.now() % 1000).toString().padStart(3, '0');
+    return `ORD-${today}-${timestamp.slice(-2)}${microseconds}`;
   }
 
-  // Extract sequence number from last order
-  let sequence = 1;
-  if (data && data.length > 0) {
-    const lastNumber = data[0].order_number;
-    const lastSequence = parseInt(lastNumber.split('-')[2]);
-    sequence = lastSequence + 1;
-  }
-
-  // Pad sequence to 5 digits
-  const paddedSequence = sequence.toString().padStart(5, '0');
-  return `ORD-${today}-${paddedSequence}`;
+  return orderNumber;
 };
 
 /**
@@ -319,26 +316,35 @@ export const getUserOrders = async (userId, filters = {}) => {
  */
 export const getOrderById = async (orderId) => {
   try {
-    const { data, error } = await supabase
+    const { data: order, error } = await supabase
       .from('orders')
       .select(`
         *,
         order_items (*),
         currencies (code, symbol),
-        shipping_zones (province_name, shipping_cost),
-        validated_by_user:validated_by (
-          email,
-          user_profiles (full_name)
-        )
+        shipping_zones (province_name, shipping_cost)
       `)
       .eq('id', orderId)
       .single();
 
     if (error) throw error;
 
+    // Fetch user profile
+    if (order && order.user_id) {
+      const { data: profile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('user_id, full_name, email')
+        .eq('user_id', order.user_id)
+        .single();
+
+      if (!profileError && profile) {
+        order.user_profiles = profile;
+      }
+    }
+
     return {
       success: true,
-      order: data
+      order: order
     };
   } catch (error) {
     console.error('Error fetching order:', error);
@@ -362,8 +368,7 @@ export const getAllOrders = async (filters = {}) => {
         *,
         order_items (*),
         currencies (code, symbol),
-        shipping_zones (province_name, shipping_cost),
-        user_profiles!orders_user_id_fkey (full_name, email)
+        shipping_zones (province_name, shipping_cost)
       `)
       .order('created_at', { ascending: false });
 
@@ -378,13 +383,36 @@ export const getAllOrders = async (filters = {}) => {
       query = query.eq('order_type', filters.order_type);
     }
 
-    const { data, error } = await query;
+    const { data: orders, error } = await query;
 
     if (error) throw error;
 
+    // Fetch user profiles for all orders
+    if (orders && orders.length > 0) {
+      const userIds = [...new Set(orders.map(order => order.user_id))];
+
+      const { data: profiles, error: profilesError } = await supabase
+        .from('user_profiles')
+        .select('user_id, full_name, email')
+        .in('user_id', userIds);
+
+      if (!profilesError && profiles) {
+        // Create a map of user_id to profile
+        const profileMap = {};
+        profiles.forEach(profile => {
+          profileMap[profile.user_id] = profile;
+        });
+
+        // Attach profiles to orders
+        orders.forEach(order => {
+          order.user_profiles = profileMap[order.user_id] || null;
+        });
+      }
+    }
+
     return {
       success: true,
-      orders: data || []
+      orders: orders || []
     };
   } catch (error) {
     console.error('Error fetching all orders:', error);
@@ -452,10 +480,33 @@ export const validatePayment = async (orderId, adminId) => {
 
     if (updateError) throw updateError;
 
-    // Reduce inventory for product items
+    // Reduce inventory for product items and combo items
     for (const item of order.order_items) {
       if (item.item_type === 'product' && item.inventory_id) {
+        // Direct product
         await reduceInventory(item.inventory_id, item.quantity);
+      } else if (item.item_type === 'combo' && item.item_id) {
+        // Get combo items (products within the combo)
+        const { data: comboItems } = await supabase
+          .from('combo_items')
+          .select('product_id, quantity')
+          .eq('combo_id', item.item_id);
+
+        if (comboItems) {
+          for (const comboItem of comboItems) {
+            // Get inventory_id for each product in combo
+            const { data: product } = await supabase
+              .from('products')
+              .select('inventory_id')
+              .eq('id', comboItem.product_id)
+              .single();
+
+            if (product?.inventory_id) {
+              // Reduce inventory: combo quantity * item quantity in combo
+              await reduceInventory(product.inventory_id, item.quantity * comboItem.quantity);
+            }
+          }
+        }
       }
     }
 
@@ -609,7 +660,23 @@ export const updateOrderStatus = async (orderId, newStatus, adminId, notes = '')
  */
 export const uploadPaymentProof = async (file, orderId) => {
   try {
-    const fileExt = file.name.split('.').pop();
+    // Handle both File and Blob objects
+    let fileExt = 'jpg'; // Default extension
+    if (file.name) {
+      // File object - has name property
+      fileExt = file.name.split('.').pop();
+    } else if (file.type) {
+      // Blob object - extract extension from MIME type
+      const mimeToExt = {
+        'image/jpeg': 'jpg',
+        'image/jpg': 'jpg',
+        'image/png': 'png',
+        'image/webp': 'webp',
+        'image/gif': 'gif'
+      };
+      fileExt = mimeToExt[file.type] || 'jpg';
+    }
+
     const fileName = `payment-proof-${orderId}-${Date.now()}.${fileExt}`;
     const filePath = `payment-proofs/${fileName}`;
 

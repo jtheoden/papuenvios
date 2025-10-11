@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, ShoppingBag, Globe, DollarSign, BarChart3, Settings, ShoppingCart, User as UserIcon, LogIn, LogOut, ShieldCheck, Users, LayoutDashboard, ChevronDown } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/user-avatar';
@@ -7,13 +7,15 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/use-toast';
+import { getPendingOrdersCount } from '@/lib/orderService';
 
 const Header = ({ currentPage, onNavigate }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
+  const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
   const { language, setLanguage, t } = useLanguage();
   const { cart, visualSettings } = useBusiness();
-  const { user, isAdmin, logout } = useAuth();
+  const { user, isAdmin, userRole } = useAuth();
 
   // Public menu items
   const publicMenuItems = [
@@ -30,6 +32,8 @@ const Header = ({ currentPage, onNavigate }) => {
     { id: 'settings', icon: Settings, label: t('nav.settings') },
   ];
 
+  const { logout } = useAuth();
+
   const handleLogout = () => {
     logout();
     toast({ title: t('auth.logoutSuccess') });
@@ -44,6 +48,27 @@ const Header = ({ currentPage, onNavigate }) => {
     onNavigate(id);
     setIsAdminMenuOpen(false);
     setIsMenuOpen(false);
+  };
+
+  // Load pending orders count for admin
+  useEffect(() => {
+    if (userRole === 'admin' || userRole === 'super_admin') {
+      loadPendingOrders();
+      // Refresh every 30 seconds
+      const interval = setInterval(loadPendingOrders, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [userRole]);
+
+  const loadPendingOrders = async () => {
+    try {
+      const result = await getPendingOrdersCount();
+      if (result.success) {
+        setPendingOrdersCount(result.count || 0);
+      }
+    } catch (error) {
+      console.error('Error loading pending orders:', error);
+    }
   };
 
   return (
@@ -219,26 +244,35 @@ const Header = ({ currentPage, onNavigate }) => {
               <span>{language.toUpperCase()}</span>
             </Button>
 
-            <Button variant="ghost" size="icon" onClick={() => onNavigate('cart')}>
-              <div className="relative">
-                <ShoppingCart className="w-5 h-5" />
-                {cart.length > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
-                    {cart.reduce((acc, item) => acc + item.quantity, 0)}
-                  </span>
-                )}
-              </div>
-            </Button>
+            {userRole !== 'admin' && userRole !== 'super_admin' && (
+              <Button variant="ghost" size="icon" onClick={() => onNavigate('cart')}>
+                <div className="relative">
+                  <ShoppingCart className="w-5 h-5" />
+                  {cart.length > 0 && (
+                    <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                      {cart.reduce((acc, item) => acc + item.quantity, 0)}
+                    </span>
+                  )}
+                </div>
+              </Button>
+            )}
 
             {user ? (
               <>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={() => onNavigate('user-panel')}
                   className="relative"
                 >
-                  <UserAvatar user={user} />
+                  <div className="relative">
+                    <UserAvatar user={user} />
+                    {(userRole === 'admin' || userRole === 'super_admin') && pendingOrdersCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold shadow-lg">
+                        {pendingOrdersCount}
+                      </span>
+                    )}
+                  </div>
                 </Button>
                 <Button variant="ghost" size="icon" onClick={handleLogout}>
                   <LogOut className="w-5 h-5" />
