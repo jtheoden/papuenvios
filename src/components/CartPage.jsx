@@ -16,7 +16,7 @@ import { createOrder, uploadPaymentProof } from '@/lib/orderService';
 
 const CartPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
-  const { cart, updateCartQuantity, removeFromCart, clearCart, financialSettings, zelleAccounts, visualSettings, businessInfo } = useBusiness();
+  const { cart, updateCartQuantity, removeFromCart, clearCart, financialSettings, zelleAccounts, visualSettings, businessInfo, notificationSettings } = useBusiness();
   const { isAuthenticated, user } = useAuth();
   const [view, setView] = useState('cart'); // cart, recipient, payment
   const [recipientDetails, setRecipientDetails] = useState({
@@ -41,6 +41,12 @@ const CartPage = ({ onNavigate }) => {
 
   // Calculate item price based on type (product or combo)
   const getItemPrice = (item) => {
+    // Use pre-calculated USD price if available
+    if (item.calculated_price_usd) {
+      return parseFloat(item.calculated_price_usd);
+    }
+
+    // Fallback to old calculation (for legacy items in cart)
     if (item.products) {
       // It's a combo - use baseTotalPrice with combo profit margin
       const basePrice = parseFloat(item.baseTotalPrice || 0);
@@ -94,12 +100,11 @@ const CartPage = ({ onNavigate }) => {
   const loadShippingZones = async () => {
     try {
       const result = await getActiveShippingZones();
+      console.log('Shipping zones loaded:', result);
       if (result.success) {
-        // Filter out zones with zero cost (no shipping available)
-        const availableZones = result.zones.filter(zone =>
-          zone.free_shipping || parseFloat(zone.shipping_cost) > 0
-        );
-        setShippingZones(availableZones);
+        // Use all active zones - let backend/admin control which zones are available
+        setShippingZones(result.zones || []);
+        console.log('Zones set:', result.zones?.length || 0);
       }
     } catch (error) {
       console.error('Error loading shipping zones:', error);
@@ -290,6 +295,14 @@ const CartPage = ({ onNavigate }) => {
       // Get shipping zone ID
       const shippingZone = shippingZones.find(z => z.province_name === recipientDetails.province);
 
+      // Debug logs
+      console.log('Creating order with:', {
+        userId: user.id,
+        currencyId: currency.id,
+        shippingZoneId: shippingZone?.id,
+        zelleAccountId: zelleAccounts?.[0]?.id
+      });
+
       // Prepare order items
       const orderItems = cart.map(item => ({
         itemType: item.type || 'product',
@@ -313,7 +326,8 @@ const CartPage = ({ onNavigate }) => {
         recipientInfo: JSON.stringify(recipientDetails),
         paymentMethod: 'zelle',
         shippingZoneId: shippingZone?.id || null,
-        zelleAccountId: zelleAccounts?.[0]?.id || null
+        // TODO: Fix zelle_accounts table to use UUID instead of integer IDs
+        zelleAccountId: null
       };
 
       // Create order
@@ -333,24 +347,28 @@ const CartPage = ({ onNavigate }) => {
         // Continue anyway - order is created
       }
 
-      // Notify admins via WhatsApp (open in new window)
-      if (businessInfo?.whatsapp) {
-        const whatsappUrl = notifyAdminNewPayment(
-          {
-            ...createdOrder,
-            currency: currency,
-            user_profile: {
-              full_name: recipientDetails.fullName,
-              email: user.email
-            },
-            shipping_zone: shippingZone,
-            payment_proof_url: uploadResult.url
-          },
-          language
-        );
+      // Notify admins via WhatsApp and Group
+      if (businessInfo?.whatsapp || notificationSettings?.whatsappGroup) {
+        const totalAmount = subtotal + shippingCost;
+        const message = `🔔 *${language === 'es' ? 'Nuevo Pedido' : 'New Order'}*\n\n` +
+          `${language === 'es' ? 'Pedido' : 'Order'}: ${createdOrder.order_number}\n` +
+          `${language === 'es' ? 'Cliente' : 'Customer'}: ${recipientDetails.fullName}\n` +
+          `${language === 'es' ? 'Total' : 'Total'}: $${totalAmount.toFixed(2)} ${selectedCurrency}\n` +
+          `${language === 'es' ? 'Provincia' : 'Province'}: ${recipientDetails.province}\n\n` +
+          `${language === 'es' ? 'Comprobante de pago subido' : 'Payment proof uploaded'}`;
 
-        // Open WhatsApp notification (optional - admin will get notified)
-        // window.open(whatsappUrl, '_blank');
+        // Send to individual WhatsApp
+        if (businessInfo?.whatsapp) {
+          const whatsappURL = generateWhatsAppURL(businessInfo.whatsapp, message);
+          window.open(whatsappURL, '_blank', 'noopener,noreferrer');
+        }
+
+        // Send to WhatsApp Group
+        if (notificationSettings?.whatsappGroup) {
+          setTimeout(() => {
+            window.open(notificationSettings.whatsappGroup, '_blank', 'noopener,noreferrer');
+          }, 1000); // Delay to avoid popup blocker
+        }
       }
 
       // Success
@@ -435,7 +453,7 @@ const CartPage = ({ onNavigate }) => {
                 {shippingZones.map(zone => (
                   <option key={zone.id} value={zone.province_name}>
                     {zone.province_name}
-                    {zone.free_shipping
+                    {zone.free_shipping || parseFloat(zone.shipping_cost) === 0
                       ? ` - ${language === 'es' ? 'Envío Gratis' : 'Free Shipping'}`
                       : ` - $${parseFloat(zone.shipping_cost).toFixed(2)}`
                     }
@@ -705,6 +723,12 @@ const CartPage = ({ onNavigate }) => {
                 const displayImage = item.image_url || item.image || "https://images.unsplash.com/photo-1635865165118-917ed9e20936";
                 const isCombo = !!item.products;
 
+                // Calculate converted prices for display
+                const exchangeRate = selectedCurrency === 'USD' ? 1 : (convertedSubtotal !== null ? convertedSubtotal / subtotal : 1);
+                const convertedItemPrice = itemPrice * exchangeRate;
+                const convertedItemTotal = itemTotal * exchangeRate;
+                const currencySymbol = currencies.find(c => c.code === selectedCurrency)?.symbol || '$';
+
                 return (
                   <motion.div key={item.id} layout className="glass-effect p-4 rounded-2xl">
                     <div className="flex items-start gap-4">
@@ -724,11 +748,11 @@ const CartPage = ({ onNavigate }) => {
                         <p className="text-sm text-gray-500 mb-2">
                           {language === 'es' ? 'Precio unitario: ' : 'Unit price: '}
                           <span className="font-semibold" style={{ color: visualSettings.accentColor || '#9333ea' }}>
-                            ${itemPrice.toFixed(2)}
+                            {currencySymbol}{convertedItemPrice.toFixed(2)} {selectedCurrency}
                           </span>
                         </p>
                         <p className="text-base font-bold text-gray-900">
-                          {language === 'es' ? 'Subtotal: ' : 'Subtotal: '}${itemTotal.toFixed(2)}
+                          {language === 'es' ? 'Subtotal: ' : 'Subtotal: '}{currencySymbol}{convertedItemTotal.toFixed(2)} {selectedCurrency}
                         </p>
                       </div>
 

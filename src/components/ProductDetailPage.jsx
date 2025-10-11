@@ -272,7 +272,34 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
   };
 
   const handleAddToCart = () => {
-    addToCart(currentItem);
+    // Calculate final price in USD before adding to cart
+    const usdCurrency = currencies.find(c => c.code === 'USD');
+    let finalPriceUSD = 0;
+
+    if (isProduct) {
+      const basePrice = parseFloat(currentItem.final_price || currentItem.base_price || 0);
+      const productCurrencyId = currentItem.base_currency_id;
+
+      if (productCurrencyId && productCurrencyId !== usdCurrency?.id) {
+        // Convert to USD
+        finalPriceUSD = convertPrice(basePrice, productCurrencyId, usdCurrency?.id);
+      } else {
+        finalPriceUSD = basePrice;
+      }
+    } else {
+      // For combos, use baseTotalPrice with combo profit margin
+      const basePrice = parseFloat(currentItem.baseTotalPrice || 0);
+      const profitMargin = parseFloat(currentItem.profitMargin || financialSettings.comboProfit || 35) / 100;
+      finalPriceUSD = basePrice * (1 + profitMargin);
+    }
+
+    // Add calculated price to item
+    const itemWithPrice = {
+      ...currentItem,
+      calculated_price_usd: finalPriceUSD
+    };
+
+    addToCart(itemWithPrice);
     toast({
       title: t('products.addedToCart'),
       description: `${currentItem.name_es || currentItem.name} ${t('products.addedToCartDesc')}`,

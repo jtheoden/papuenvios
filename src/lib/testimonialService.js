@@ -23,10 +23,35 @@ export const getTestimonials = async (adminView = false) => {
       query = query.eq('is_visible', true);
     }
 
-    const { data, error } = await query;
+    const { data: testimonials, error } = await query;
 
     if (error) throw error;
-    return { data, error: null };
+
+    // Fetch user profiles for all testimonials
+    if (testimonials && testimonials.length > 0) {
+      const userIds = [...new Set(testimonials.map(t => t.user_id))];
+
+      const { data: profiles } = await supabase
+        .from('user_profiles')
+        .select('user_id, full_name, avatar_url')
+        .in('user_id', userIds);
+
+      // Create a map and attach profiles to testimonials
+      const profileMap = {};
+      if (profiles) {
+        profiles.forEach(profile => {
+          profileMap[profile.user_id] = profile;
+        });
+      }
+
+      testimonials.forEach(testimonial => {
+        const profile = profileMap[testimonial.user_id];
+        testimonial.user_name = profile?.full_name || 'Usuario';
+        testimonial.user_avatar = profile?.avatar_url || testimonial.user_photo;
+      });
+    }
+
+    return { data: testimonials, error: null };
   } catch (error) {
     console.error('Error fetching testimonials:', error);
     return { data: null, error };
@@ -233,6 +258,25 @@ export const getFeaturedTestimonials = async () => {
     return { data, error: null };
   } catch (error) {
     console.error('Error fetching featured testimonials:', error);
+    return { data: null, error };
+  }
+};
+
+/**
+ * Get user's own testimonial
+ */
+export const getUserTestimonial = async (userId) => {
+  try {
+    const { data, error } = await supabase
+      .from('testimonials')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) throw error;
+    return { data, error: null };
+  } catch (error) {
+    console.error('Error fetching user testimonial:', error);
     return { data: null, error };
   }
 };

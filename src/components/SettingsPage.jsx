@@ -25,6 +25,9 @@ const SettingsPage = () => {
   } = useBusiness();
   const { user, isAdmin } = useAuth();
 
+  // Tab management
+  const [activeTab, setActiveTab] = useState('financiero');
+
   const [localFinancial, setLocalFinancial] = useState(financialSettings);
   const [localNotifications, setLocalNotifications] = useState(notificationSettings);
   const [localVisual, setLocalVisual] = useState(visualSettings);
@@ -771,17 +774,75 @@ const SettingsPage = () => {
     }
   };
 
+  const tabs = [
+    {
+      id: 'financiero',
+      label: language === 'es' ? 'Financiero' : 'Financial',
+      icon: DollarSign,
+      color: '#2563eb'
+    },
+    {
+      id: 'envios',
+      label: language === 'es' ? 'Envíos' : 'Shipping',
+      icon: Truck,
+      color: '#f59e0b'
+    },
+    {
+      id: 'remesas',
+      label: language === 'es' ? 'Remesas' : 'Remittances',
+      icon: Banknote,
+      color: '#06b6d4'
+    },
+    {
+      id: 'visual',
+      label: language === 'es' ? 'Visual' : 'Visual',
+      icon: Palette,
+      color: '#9333ea'
+    },
+    {
+      id: 'contenido',
+      label: language === 'es' ? 'Contenido' : 'Content',
+      icon: Bell,
+      color: '#10b981'
+    }
+  ];
+
   return (
     <div className="min-h-screen py-8 px-4">
-      <div className="container mx-auto">
+      <div className="container mx-auto max-w-7xl">
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-12">
           <h1 className="text-4xl font-bold mb-4" style={getHeadingStyle(visualSettings)}>{t('settings.title')}</h1>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">{t('settings.subtitle')}</p>
         </motion.div>
 
+        {/* Tabs Navigation */}
+        <div className="flex gap-2 mb-8 border-b pb-2">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-6 py-3 rounded-t-lg font-medium transition-all ${
+                activeTab === tab.id
+                  ? 'bg-white shadow-md border-b-2'
+                  : 'bg-gray-50 hover:bg-gray-100 text-gray-600'
+              }`}
+              style={activeTab === tab.id ? {
+                borderBottomColor: tab.color,
+                color: tab.color
+              } : {}}
+            >
+              <tab.icon className="h-5 w-5" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         <div className="space-y-12">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="glass-effect p-8 rounded-2xl">
-            <h2 className="text-2xl font-semibold mb-6 flex items-center"><DollarSign className="mr-3 text-blue-600" />{t('settings.financial.title')}</h2>
+          {/* FINANCIERO TAB */}
+          {activeTab === 'financiero' && (
+            <>
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-effect p-8 rounded-2xl">
+                <h2 className="text-2xl font-semibold mb-6 flex items-center"><DollarSign className="mr-3 text-blue-600" />{t('settings.financial.title')}</h2>
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
               <input type="number" value={localFinancial.usdToLocal} onChange={e => setLocalFinancial({...localFinancial, usdToLocal: parseFloat(e.target.value)})} placeholder={t('settings.financial.usdToLocal')} className="input-style" />
               <input type="number" value={localFinancial.productProfit} onChange={e => setLocalFinancial({...localFinancial, productProfit: parseFloat(e.target.value)})} placeholder={t('settings.financial.productProfit')} className="input-style" />
@@ -1250,9 +1311,14 @@ const SettingsPage = () => {
               </div>
             )}
           </motion.div>
+            </>
+          )}
 
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="glass-effect p-8 rounded-2xl">
-            <h2 className="text-2xl font-semibold mb-6 flex items-center"><ImageIcon className="mr-3 text-purple-600" />{t('settings.visual.title')}</h2>
+          {/* VISUAL TAB */}
+          {activeTab === 'visual' && (
+            <>
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-effect p-8 rounded-2xl">
+                <h2 className="text-2xl font-semibold mb-6 flex items-center"><Palette className="mr-3 text-purple-600" />{t('settings.visual.title')}</h2>
 
             {/* Appearance Customization Section */}
             <div className="mb-8 pb-8 border-b">
@@ -2025,12 +2091,17 @@ const SettingsPage = () => {
             </div>
           </motion.div>
 
-          {/* Shipping Zones Configuration */}
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} className="glass-effect p-8 rounded-2xl">
-            <h2 className="text-2xl font-semibold mb-6 flex items-center">
-              <Truck className="mr-3" style={{ color: visualSettings.primaryColor || '#2563eb' }} />
-              {language === 'es' ? 'Zonas de Envío' : 'Shipping Zones'}
-            </h2>
+          </>
+          )}
+
+          {/* ENVÍOS TAB */}
+          {activeTab === 'envios' && (
+            <>
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-effect p-8 rounded-2xl">
+                <h2 className="text-2xl font-semibold mb-6 flex items-center">
+                  <Truck className="mr-3" style={{ color: visualSettings.primaryColor || '#2563eb' }} />
+                  {language === 'es' ? 'Zonas de Envío' : 'Shipping Zones'}
+                </h2>
 
             <p className="text-sm text-gray-600 mb-6">
               {language === 'es'
@@ -2143,19 +2214,15 @@ const SettingsPage = () => {
               </div>
             )}
           </motion.div>
+            </>
+          )}
 
-          {/* Remittance Configuration Section */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.7 }}
-            className="glass-effect p-8 rounded-2xl"
-          >
-            <h2 className="text-2xl font-semibold mb-6 flex items-center">
-              <Banknote
-                className="mr-3"
-                style={{ color: visualSettings.primaryColor || '#2563eb' }}
-              />
+          {/* REMESAS TAB */}
+          {activeTab === 'remesas' && (
+            <>
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-effect p-8 rounded-2xl">
+                <h2 className="text-2xl font-semibold mb-6 flex items-center">
+                  <Banknote className="mr-3" style={{ color: visualSettings.primaryColor || '#2563eb' }} />
               {language === 'es' ? 'Configuración de Remesas' : 'Remittance Configuration'}
             </h2>
 
@@ -2280,21 +2347,35 @@ const SettingsPage = () => {
               </div>
             )}
           </motion.div>
+            </>
+          )}
 
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }} className="glass-effect p-8 rounded-2xl">
-            <h2 className="text-2xl font-semibold mb-6 flex items-center"><Bell className="mr-3 text-green-600" />{t('settings.notifications.title')}</h2>
+          {/* CONTENIDO TAB */}
+          {activeTab === 'contenido' && (
+            <>
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-effect p-8 rounded-2xl">
+                <h2 className="text-2xl font-semibold mb-6 flex items-center"><Bell className="mr-3 text-green-600" />{t('settings.notifications.title')}</h2>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">{t('settings.notifications.whatsapp')}</label>
                 <input type="tel" value={localNotifications.whatsapp} onChange={e => setLocalNotifications({...localNotifications, whatsapp: e.target.value})} placeholder="+1234567890" className="w-full input-style" />
+                <p className="text-xs text-gray-500 mt-1">{language === 'es' ? 'Número de WhatsApp para soporte individual' : 'WhatsApp number for individual support'}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">{language === 'es' ? 'Grupo de WhatsApp' : 'WhatsApp Group'}</label>
+                <input type="text" value={localNotifications.whatsappGroup} onChange={e => setLocalNotifications({...localNotifications, whatsappGroup: e.target.value})} placeholder="https://chat.whatsapp.com/xxxxx" className="w-full input-style" />
+                <p className="text-xs text-gray-500 mt-1">{language === 'es' ? 'URL del grupo de WhatsApp para notificaciones de pedidos' : 'WhatsApp group URL for order notifications'}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">{t('settings.notifications.adminEmail')}</label>
                 <input type="email" value={localNotifications.adminEmail} onChange={e => setLocalNotifications({...localNotifications, adminEmail: e.target.value})} placeholder="admin@example.com" className="w-full input-style" />
+                <p className="text-xs text-gray-500 mt-1">{language === 'es' ? 'Email para recibir notificaciones de nuevos pedidos' : 'Email to receive new order notifications'}</p>
               </div>
             </div>
             <div className="mt-6 text-right"><Button onClick={handleNotificationSave} style={getPrimaryButtonStyle(visualSettings)}><Save className="mr-2 h-4 w-4" />{t('settings.notifications.save')}</Button></div>
           </motion.div>
+            </>
+          )}
         </div>
       </div>
     </div>

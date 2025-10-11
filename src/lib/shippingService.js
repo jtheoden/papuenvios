@@ -222,6 +222,16 @@ export const updateShippingZone = async (zoneId, updates) => {
     if (updates.freeShipping !== undefined) {
       updateData.free_shipping = updates.freeShipping;
     }
+    // NEW: Phase 2 fields
+    if (updates.deliveryDays !== undefined) {
+      updateData.delivery_days = parseInt(updates.deliveryDays);
+    }
+    if (updates.transportCost !== undefined) {
+      updateData.transport_cost = parseFloat(updates.transportCost);
+    }
+    if (updates.deliveryNote !== undefined) {
+      updateData.delivery_note = updates.deliveryNote;
+    }
 
     updateData.updated_at = new Date().toISOString();
 

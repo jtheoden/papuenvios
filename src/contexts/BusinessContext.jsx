@@ -63,6 +63,7 @@ export const BusinessProvider = ({ children }) => {
   });
   const [notificationSettings, setNotificationSettings] = useLocalStorage('notificationSettings', {
     whatsapp: '',
+    whatsappGroup: '',
     adminEmail: '',
   });
   const [visualSettings, setVisualSettings] = useLocalStorage('visualSettings', {

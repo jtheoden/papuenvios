@@ -6,13 +6,15 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { getActiveCarouselSlides } from '@/lib/carouselService';
+import { getTestimonials } from '@/lib/testimonialService';
 import { getHeadingStyle } from '@/lib/styleUtils';
 
 const HomePage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
-  const { visualSettings, testimonials } = useBusiness();
+  const { visualSettings } = useBusiness();
   const { isAdmin } = useAuth();
   const [carouselSlides, setCarouselSlides] = useState([]);
+  const [dbTestimonials, setDbTestimonials] = useState([]);
 
   const features = [
     {
@@ -44,6 +46,17 @@ const HomePage = ({ onNavigate }) => {
   ].filter(f => !f.admin || isAdmin);
 
   const [currentSlide, setCurrentSlide] = useState(0);
+
+  // Load testimonials from database
+  useEffect(() => {
+    const loadTestimonials = async () => {
+      const result = await getTestimonials(false);
+      if (result.data) {
+        setDbTestimonials(result.data);
+      }
+    };
+    loadTestimonials();
+  }, []);
 
   // Load carousel slides from database
   useEffect(() => {
@@ -254,31 +267,41 @@ const HomePage = ({ onNavigate }) => {
             </p>
           </motion.div>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {testimonials.filter(t => t.show).map((testimonial) => (
-              <motion.div
-                key={testimonial.id}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="glass-effect p-6 rounded-2xl"
-              >
-                <div className="flex items-center mb-4">
-                  <img className="w-12 h-12 rounded-full mr-4 object-cover" alt={testimonial.author} src="https://images.unsplash.com/photo-1578390432942-d323db577792" />
-                  <div>
-                    <p className="font-semibold">{testimonial.author}</p>
-                    <div className="flex">
-                      {[...Array(testimonial.rating)].map((_, i) => (
-                        <Star key={i} className="w-4 h-4 text-yellow-400 fill-current" />
-                      ))}
-                      {[...Array(5 - testimonial.rating)].map((_, i) => (
-                        <Star key={i} className="w-4 h-4 text-gray-300" />
-                      ))}
+            {dbTestimonials.length > 0 ? (
+              dbTestimonials.map((testimonial) => (
+                <motion.div
+                  key={testimonial.id}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5 }}
+                  className="glass-effect p-6 rounded-2xl"
+                >
+                  <div className="flex items-center mb-4">
+                    <img
+                      className="w-12 h-12 rounded-full mr-4 object-cover"
+                      alt={testimonial.user_name || 'User'}
+                      src={testimonial.user_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(testimonial.user_name || 'U')}&background=random`}
+                    />
+                    <div>
+                      <p className="font-semibold">{testimonial.user_name}</p>
+                      <div className="flex">
+                        {[...Array(testimonial.rating)].map((_, i) => (
+                          <Star key={i} className="w-4 h-4 text-yellow-400 fill-current" />
+                        ))}
+                        {[...Array(5 - testimonial.rating)].map((_, i) => (
+                          <Star key={i} className="w-4 h-4 text-gray-300" />
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-                <p className="text-gray-600 italic">"{testimonial.text}"</p>
-              </motion.div>
-            ))}
+                  <p className="text-gray-600 italic">"{testimonial.comment}"</p>
+                </motion.div>
+              ))
+            ) : (
+              <p className="text-gray-500 col-span-full text-center">
+                {language === 'es' ? 'Aún no hay testimonios disponibles' : 'No testimonials available yet'}
+              </p>
+            )}
           </div>
         </div>
       </section>
