@@ -3,12 +3,9 @@ import React, { createContext, useContext, useEffect, useState, useRef } from 'r
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/components/ui/use-toast';
 import AuthLoadingScreen from '@/components/AuthLoadingScreen';
+import { SUPER_ADMIN_EMAILS, TIMEOUTS } from '@/lib/constants';
 
 const AuthContext = createContext();
-
-// Reduced timeouts for better UX
-const PROFILE_TIMEOUT_MS = 5000;
-const INIT_TIMEOUT_MS = 10000;
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -27,7 +24,7 @@ export const AuthProvider = ({ children }) => {
           .eq('id', uid)
           .single(),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Profile fetch timeout')), PROFILE_TIMEOUT_MS)
+          setTimeout(() => reject(new Error('Profile fetch timeout')), TIMEOUTS.PROFILE_FETCH)
         )
       ]);
 
@@ -134,7 +131,7 @@ export const AuthProvider = ({ children }) => {
         console.warn('[Auth] Init timeout - clearing loading state');
         setLoading(false);
       }
-    }, INIT_TIMEOUT_MS);
+    }, TIMEOUTS.INIT_AUTH);
 
     const initialize = async () => {
       console.log('[Auth] Initializing...');
@@ -259,9 +256,8 @@ export const AuthProvider = ({ children }) => {
     return userRole === requiredRole;
   };
 
-  // Support both @gmail.com and @googlemail.com for super admin
-  const superAdminEmails = ['jtheoden@gmail.com', 'jtheoden@googlemail.com'];
-  const isSuperAdminEmail = superAdminEmails.includes(user?.email);
+  // Check if user email is in super admin list (for UI convenience only, not security)
+  const isSuperAdminEmail = SUPER_ADMIN_EMAILS.includes(user?.email);
 
   const value = {
     user,

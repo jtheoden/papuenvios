@@ -10,6 +10,9 @@ import { supabase } from './supabase';
  * Get all testimonials (public + admin)
  * Public: only visible and verified testimonials
  * Admin: all testimonials
+ *
+ * REVERTED: Back to 2-query approach due to FK relationship issue
+ * testimonials.user_id → auth.users(id), not user_profiles directly
  */
 export const getTestimonials = async (adminView = false) => {
   try {

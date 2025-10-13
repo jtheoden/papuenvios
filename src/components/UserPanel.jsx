@@ -324,22 +324,42 @@ const UserPanel = ({ onNavigate }) => {
           transition={{ delay: 0.2 }}
           className="p-8 rounded-2xl bg-white shadow-lg border border-gray-200"
         >
-          <h2 className="text-2xl font-semibold mb-6 flex items-center" style={getTextStyle(visualSettings, 'primary')}>
-            <div
-              className="p-2 rounded-lg mr-3"
-              style={{
-                background: visualSettings.useGradient
-                  ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
-                  : visualSettings.primaryColor || '#2563eb'
-              }}
-            >
-              <ShoppingBag className="h-5 w-5 text-white" />
-            </div>
-            {(userRole === 'admin' || userRole === 'super_admin')
-              ? (language === 'es' ? 'Pedidos Pendientes' : 'Pending Orders')
-              : t('userPanel.myOrders')
-            }
-          </h2>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-semibold flex items-center" style={getTextStyle(visualSettings, 'primary')}>
+              <div
+                className="p-2 rounded-lg mr-3"
+                style={{
+                  background: visualSettings.useGradient
+                    ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
+                    : visualSettings.primaryColor || '#2563eb'
+                }}
+              >
+                <ShoppingBag className="h-5 w-5 text-white" />
+              </div>
+              {(userRole === 'admin' || userRole === 'super_admin')
+                ? (language === 'es' ? 'Pedidos Pendientes' : 'Pending Orders')
+                : t('userPanel.myOrders')
+              }
+            </h2>
+
+            {/* WhatsApp Contact Button (Regular users only) - Top Right */}
+            {userRole !== 'admin' && userRole !== 'super_admin' && businessInfo?.whatsapp && (
+              <Button
+                size="default"
+                className="bg-green-600 hover:bg-green-700 text-white"
+                onClick={() => {
+                  const message = language === 'es'
+                    ? `Hola! Soy ${displayName}. Necesito ayuda con mis pedidos.`
+                    : `Hello! I'm ${displayName}. I need help with my orders.`;
+                  window.open(generateWhatsAppURL(businessInfo.whatsapp, message), '_blank', 'noopener,noreferrer');
+                }}
+                title={language === 'es' ? 'Contactar por WhatsApp' : 'Contact via WhatsApp'}
+              >
+                <MessageCircle className="h-4 w-4 mr-2" />
+                {language === 'es' ? 'Contactar' : 'Contact'}
+              </Button>
+            )}
+          </div>
 
           {loading ? (
             <div className="flex justify-center items-center py-12">
@@ -398,6 +418,27 @@ const UserPanel = ({ onNavigate }) => {
                         {getStatusIcon(order.status, order.payment_status)}
                         <span>{getStatusText(order.status, order.payment_status)}</span>
                       </div>
+
+                      {/* WhatsApp contact button for pending/processing orders (Regular users only) */}
+                      {userRole !== 'admin' && userRole !== 'super_admin' && businessInfo?.whatsapp &&
+                       (order.payment_status === 'pending' || order.status === 'processing' || order.status === 'pending') && (
+                        <Button
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const orderStatus = getStatusText(order.status, order.payment_status);
+                            const message = language === 'es'
+                              ? `Hola! Soy ${displayName}. Tengo una consulta sobre mi pedido ${order.order_number} (Estado: ${orderStatus}, Total: $${parseFloat(order.total_amount).toFixed(2)} ${order.currencies?.code || 'USD'}).`
+                              : `Hello! I'm ${displayName}. I have a question about my order ${order.order_number} (Status: ${orderStatus}, Total: $${parseFloat(order.total_amount).toFixed(2)} ${order.currencies?.code || 'USD'}).`;
+                            window.open(generateWhatsAppURL(businessInfo.whatsapp, message), '_blank', 'noopener,noreferrer');
+                          }}
+                          title={language === 'es' ? 'Consultar sobre este pedido' : 'Ask about this order'}
+                        >
+                          <MessageCircle className="h-3 w-3" />
+                        </Button>
+                      )}
+
                       <Button size="sm" variant="ghost">
                         <Eye className="h-4 w-4" />
                       </Button>

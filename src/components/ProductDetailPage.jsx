@@ -272,31 +272,19 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
   };
 
   const handleAddToCart = () => {
-    // Calculate final price in USD before adding to cart
-    const usdCurrency = currencies.find(c => c.code === 'USD');
-    let finalPriceUSD = 0;
+    // For display consistency, use the price already shown in the current selected currency
+    // This ensures what user sees is what gets added to cart
+    const displayedPrice = parseFloat(getDisplayPrice(currentItem, isProduct));
 
-    if (isProduct) {
-      const basePrice = parseFloat(currentItem.final_price || currentItem.base_price || 0);
-      const productCurrencyId = currentItem.base_currency_id;
+    // Get current currency code
+    const currentCurrency = currencies.find(c => c.id === selectedCurrency);
 
-      if (productCurrencyId && productCurrencyId !== usdCurrency?.id) {
-        // Convert to USD
-        finalPriceUSD = convertPrice(basePrice, productCurrencyId, usdCurrency?.id);
-      } else {
-        finalPriceUSD = basePrice;
-      }
-    } else {
-      // For combos, use baseTotalPrice with combo profit margin
-      const basePrice = parseFloat(currentItem.baseTotalPrice || 0);
-      const profitMargin = parseFloat(currentItem.profitMargin || financialSettings.comboProfit || 35) / 100;
-      finalPriceUSD = basePrice * (1 + profitMargin);
-    }
-
-    // Add calculated price to item
+    // Add to cart with price and currency info
     const itemWithPrice = {
       ...currentItem,
-      calculated_price_usd: finalPriceUSD
+      displayed_price: displayedPrice,
+      displayed_currency_code: currentCurrency?.code || 'USD',
+      displayed_currency_id: selectedCurrency
     };
 
     addToCart(itemWithPrice);

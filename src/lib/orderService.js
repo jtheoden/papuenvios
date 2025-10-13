@@ -715,3 +715,304 @@ export const uploadPaymentProof = async (file, orderId) => {
     };
   }
 };
+
+/**
+ * Start processing an order (Payment Validated → Processing)
+ * @param {string} orderId - Order ID
+ * @param {string} adminId - Admin user ID
+ * @returns {Promise<{success: boolean, order?: Object, error?: string}>}
+ */
+export const startProcessingOrder = async (orderId, adminId) => {
+  try {
+    // Verify order exists and payment is validated
+    const { data: order, error: fetchError } = await supabase
+      .from('orders')
+      .select('id, order_number, status, payment_status')
+      .eq('id', orderId)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    if (order.payment_status !== 'validated') {
+      return {
+        success: false,
+        error: 'Payment must be validated before processing'
+      };
+    }
+
+    // Update order status
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from('orders')
+      .update({
+        status: 'processing',
+        processing_started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    return {
+      success: true,
+      order: updatedOrder
+    };
+  } catch (error) {
+    console.error('Error starting order processing:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+/**
+ * Mark order as shipped (Processing → Shipped)
+ * @param {string} orderId - Order ID
+ * @param {string} adminId - Admin user ID
+ * @param {string} trackingInfo - Optional tracking information
+ * @returns {Promise<{success: boolean, order?: Object, error?: string}>}
+ */
+export const markOrderAsShipped = async (orderId, adminId, trackingInfo = '') => {
+  try {
+    // Verify order exists and is in processing
+    const { data: order, error: fetchError } = await supabase
+      .from('orders')
+      .select('id, order_number, status')
+      .eq('id', orderId)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    if (order.status !== 'processing') {
+      return {
+        success: false,
+        error: 'Order must be in processing status'
+      };
+    }
+
+    // Update order status
+    const updateData = {
+      status: 'shipped',
+      shipped_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    if (trackingInfo) {
+      updateData.notes = order.notes ?
+        `${order.notes}\n\nTracking: ${trackingInfo}` :
+        `Tracking: ${trackingInfo}`;
+    }
+
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from('orders')
+      .update(updateData)
+      .eq('id', orderId)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    return {
+      success: true,
+      order: updatedOrder
+    };
+  } catch (error) {
+    console.error('Error marking order as shipped:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+/**
+ * Mark order as delivered with proof (Shipped → Delivered)
+ * @param {string} orderId - Order ID
+ * @param {File} proofFile - Delivery proof image file
+ * @param {string} adminId - Admin user ID
+ * @returns {Promise<{success: boolean, order?: Object, error?: string}>}
+ */
+export const markOrderAsDelivered = async (orderId, proofFile, adminId) => {
+  try {
+    // Verify order exists and is shipped
+    const { data: order, error: fetchError } = await supabase
+      .from('orders')
+      .select('id, order_number, status')
+      .eq('id', orderId)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    if (order.status !== 'shipped') {
+      return {
+        success: false,
+        error: 'Order must be in shipped status'
+      };
+    }
+
+    // Upload delivery proof
+    const fileName = `delivery-proof-${orderId}-${Date.now()}.jpg`;
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('payment-proofs') // Reusing same bucket
+      .upload(fileName, proofFile, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (uploadError) throw uploadError;
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('payment-proofs')
+      .getPublicUrl(fileName);
+
+    // Update order status
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from('orders')
+      .update({
+        status: 'delivered',
+        delivered_at: new Date().toISOString(),
+        delivery_proof_url: urlData.publicUrl,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    return {
+      success: true,
+      order: updatedOrder
+    };
+  } catch (error) {
+    console.error('Error marking order as delivered:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+/**
+ * Complete an order (Delivered → Completed)
+ * Can be called automatically or manually
+ * @param {string} orderId - Order ID
+ * @returns {Promise<{success: boolean, order?: Object, error?: string}>}
+ */
+export const completeOrder = async (orderId) => {
+  try {
+    // Verify order exists and is delivered
+    const { data: order, error: fetchError } = await supabase
+      .from('orders')
+      .select('id, order_number, status')
+      .eq('id', orderId)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    if (order.status !== 'delivered') {
+      return {
+        success: false,
+        error: 'Order must be in delivered status'
+      };
+    }
+
+    // Update order status
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from('orders')
+      .update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    return {
+      success: true,
+      order: updatedOrder
+    };
+  } catch (error) {
+    console.error('Error completing order:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+/**
+ * Calculate days an order has been in processing
+ * @param {Object} order - Order object with processing_started_at
+ * @returns {number|null} Number of days or null if not in processing
+ */
+export const getDaysInProcessing = (order) => {
+  if (!order || order.status !== 'processing' || !order.processing_started_at) {
+    return null;
+  }
+
+  const now = new Date();
+  const started = new Date(order.processing_started_at);
+  const diffTime = Math.abs(now - started);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  return diffDays;
+};
+
+/**
+ * Cancel an order
+ * @param {string} orderId - Order ID
+ * @param {string} adminId - Admin user ID
+ * @param {string} reason - Cancellation reason
+ * @returns {Promise<{success: boolean, order?: Object, error?: string}>}
+ */
+export const cancelOrder = async (orderId, adminId, reason) => {
+  try {
+    // Get order with items
+    const { data: order, error: fetchError } = await supabase
+      .from('orders')
+      .select('*, order_items(*)')
+      .eq('id', orderId)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    // Release reserved inventory
+    for (const item of order.order_items) {
+      if (item.inventory_id) {
+        await releaseInventory(item.inventory_id, item.quantity);
+      }
+    }
+
+    // Update order status
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from('orders')
+      .update({
+        status: 'cancelled',
+        rejection_reason: reason,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    return {
+      success: true,
+      order: updatedOrder
+    };
+  } catch (error) {
+    console.error('Error cancelling order:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};

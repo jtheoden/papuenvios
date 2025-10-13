@@ -4,6 +4,8 @@
  */
 
 import { supabase } from './supabase';
+import { generateSlug, getCurrentTimestamp } from './queryHelpers';
+import { DEFAULTS } from './constants';
 
 /**
  * Get all active products with their categories
@@ -77,8 +79,8 @@ export const createProduct = async (productData) => {
         category_id: productData.category_id,
         base_price: parseFloat(productData.basePrice),
         base_currency_id: productData.base_currency_id,
-        profit_margin: parseFloat(productData.profitMargin || 40),
-        min_stock_alert: productData.min_stock_alert ? parseInt(productData.min_stock_alert) : 10,
+        profit_margin: parseFloat(productData.profitMargin || DEFAULTS.PRODUCT_PROFIT_MARGIN),
+        min_stock_alert: productData.min_stock_alert ? parseInt(productData.min_stock_alert) : DEFAULTS.MIN_STOCK_ALERT,
         image_url: productData.image || null,
         image_file: productData.image || null,
         is_active: true
@@ -139,9 +141,9 @@ export const updateProduct = async (productId, productData) => {
       description_en: productData.description_en || '',
       category_id: productData.category_id,
       base_price: parseFloat(productData.basePrice),
-      profit_margin: parseFloat(productData.profitMargin || 40),
-      min_stock_alert: productData.min_stock_alert !== undefined ? parseInt(productData.min_stock_alert) : 10,
-      updated_at: new Date().toISOString()
+      profit_margin: parseFloat(productData.profitMargin || DEFAULTS.PRODUCT_PROFIT_MARGIN),
+      min_stock_alert: productData.min_stock_alert !== undefined ? parseInt(productData.min_stock_alert) : DEFAULTS.MIN_STOCK_ALERT,
+      updated_at: getCurrentTimestamp()
     };
 
     if (productData.image) {
@@ -177,7 +179,7 @@ export const updateProduct = async (productId, productData) => {
       if (existingInventory) {
         // Update existing inventory record
         const inventoryUpdate = {
-          updated_at: new Date().toISOString()
+          updated_at: getCurrentTimestamp()
         };
 
         // Update stock if provided
@@ -273,14 +275,6 @@ export const getCategories = async () => {
  */
 export const createCategory = async (categoryData) => {
   try {
-    // Generate slug from name_es
-    const slug = categoryData.es
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '') // Remove accents
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
-
     const { data, error } = await supabase
       .from('product_categories')
       .insert([{
@@ -288,9 +282,9 @@ export const createCategory = async (categoryData) => {
         name_en: categoryData.en,
         description_es: categoryData.description_es || '',
         description_en: categoryData.description_en || '',
-        slug: slug,
+        slug: generateSlug(categoryData.es),
         is_active: true,
-        display_order: 0
+        display_order: DEFAULTS.DISPLAY_ORDER
       }])
       .select()
       .single();
@@ -308,14 +302,6 @@ export const createCategory = async (categoryData) => {
  */
 export const updateCategory = async (categoryId, categoryData) => {
   try {
-    // Generate new slug from name_es
-    const slug = categoryData.es
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-
     const { data, error } = await supabase
       .from('product_categories')
       .update({
@@ -323,8 +309,8 @@ export const updateCategory = async (categoryId, categoryData) => {
         name_en: categoryData.en,
         description_es: categoryData.description_es || '',
         description_en: categoryData.description_en || '',
-        slug: slug,
-        updated_at: new Date().toISOString()
+        slug: generateSlug(categoryData.es),
+        updated_at: getCurrentTimestamp()
       })
       .eq('id', categoryId)
       .select()

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { ShoppingCart, X, Plus, Minus, Copy, Upload, CheckCircle, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
 import { getCurrencies, convertCurrency } from '@/lib/currencyService';
 import { generateWhatsAppURL, notifyAdminNewPayment } from '@/lib/whatsappService';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
+import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
 
 const CartPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
@@ -39,14 +40,25 @@ const CartPage = ({ onNavigate }) => {
   const [convertedShipping, setConvertedShipping] = useState(null);
   const [convertedTotal, setConvertedTotal] = useState(null);
 
-  // Calculate item price based on type (product or combo)
-  const getItemPrice = (item) => {
-    // Use pre-calculated USD price if available
+  // Calculate item price based on type (product or combo) - memoized with useCallback
+  const getItemPrice = useCallback((item) => {
+    // Use displayed price if available (price shown when added to cart)
+    if (item.displayed_price && item.displayed_currency_code) {
+      // If displayed currency matches selected currency, use as-is
+      if (item.displayed_currency_code === selectedCurrency) {
+        return parseFloat(item.displayed_price);
+      }
+      // Otherwise need conversion - for now return displayed price
+      // TODO: Implement cross-currency conversion in cart
+      return parseFloat(item.displayed_price);
+    }
+
+    // Fallback: use calculated_price_usd if available
     if (item.calculated_price_usd) {
       return parseFloat(item.calculated_price_usd);
     }
 
-    // Fallback to old calculation (for legacy items in cart)
+    // Legacy fallback (for old items in cart)
     if (item.products) {
       // It's a combo - use baseTotalPrice with combo profit margin
       const basePrice = parseFloat(item.baseTotalPrice || 0);
@@ -58,12 +70,14 @@ const CartPage = ({ onNavigate }) => {
       const profitMargin = parseFloat(financialSettings.productProfit || 40) / 100;
       return basePrice * (1 + profitMargin);
     }
-  };
+  }, [selectedCurrency, financialSettings.comboProfit, financialSettings.productProfit]);
 
-  // Calculate subtotal
-  const subtotal = cart.reduce((acc, item) => {
-    return acc + getItemPrice(item) * item.quantity;
-  }, 0);
+  // Calculate subtotal - memoized to avoid recalculation on every render
+  const subtotal = useMemo(() => {
+    return cart.reduce((acc, item) => {
+      return acc + getItemPrice(item) * item.quantity;
+    }, 0);
+  }, [cart, getItemPrice]);
 
   // Load shipping zones and currencies
   useEffect(() => {
@@ -102,9 +116,14 @@ const CartPage = ({ onNavigate }) => {
       const result = await getActiveShippingZones();
       console.log('Shipping zones loaded:', result);
       if (result.success) {
-        // Use all active zones - let backend/admin control which zones are available
-        setShippingZones(result.zones || []);
-        console.log('Zones set:', result.zones?.length || 0);
+        // Filter zones: exclude zones with shipping_cost = 0 UNLESS they are marked as free_shipping
+        const availableZones = (result.zones || []).filter(zone => {
+          const cost = parseFloat(zone.shipping_cost || 0);
+          // Show if: free_shipping is true OR shipping_cost > 0
+          return zone.free_shipping === true || cost > 0;
+        });
+        setShippingZones(availableZones);
+        console.log('Zones set:', availableZones.length);
       }
     } catch (error) {
       console.error('Error loading shipping zones:', error);
@@ -204,8 +223,7 @@ const CartPage = ({ onNavigate }) => {
     if (!file) return;
 
     // Validate file type
-    const validTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
-    if (!validTypes.includes(file.type)) {
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
       toast({
         title: language === 'es' ? 'Tipo de archivo inválido' : 'Invalid file type',
         description: language === 'es'
@@ -216,8 +234,8 @@ const CartPage = ({ onNavigate }) => {
       return;
     }
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
+    // Validate file size
+    if (file.size > FILE_SIZE_LIMITS.PAYMENT_PROOF) {
       toast({
         title: language === 'es' ? 'Archivo muy grande' : 'File too large',
         description: language === 'es'
@@ -347,28 +365,21 @@ const CartPage = ({ onNavigate }) => {
         // Continue anyway - order is created
       }
 
-      // Notify admins via WhatsApp and Group
-      if (businessInfo?.whatsapp || notificationSettings?.whatsappGroup) {
-        const totalAmount = subtotal + shippingCost;
-        const message = `🔔 *${language === 'es' ? 'Nuevo Pedido' : 'New Order'}*\n\n` +
-          `${language === 'es' ? 'Pedido' : 'Order'}: ${createdOrder.order_number}\n` +
-          `${language === 'es' ? 'Cliente' : 'Customer'}: ${recipientDetails.fullName}\n` +
-          `${language === 'es' ? 'Total' : 'Total'}: $${totalAmount.toFixed(2)} ${selectedCurrency}\n` +
-          `${language === 'es' ? 'Provincia' : 'Province'}: ${recipientDetails.province}\n\n` +
-          `${language === 'es' ? 'Comprobante de pago subido' : 'Payment proof uploaded'}`;
+      // Notify admin via WhatsApp using optimized function
+      if (businessInfo?.whatsapp) {
+        // Prepare order data for notification
+        const orderForNotification = {
+          ...createdOrder,
+          order_items: orderItems.map(item => ({
+            item_name_es: language === 'es' ? item.name : item.nameEn || item.name,
+            item_name_en: item.nameEn || item.name,
+            quantity: item.quantity
+          })),
+          user_name: recipientDetails.fullName
+        };
 
-        // Send to individual WhatsApp
-        if (businessInfo?.whatsapp) {
-          const whatsappURL = generateWhatsAppURL(businessInfo.whatsapp, message);
-          window.open(whatsappURL, '_blank', 'noopener,noreferrer');
-        }
-
-        // Send to WhatsApp Group
-        if (notificationSettings?.whatsappGroup) {
-          setTimeout(() => {
-            window.open(notificationSettings.whatsappGroup, '_blank', 'noopener,noreferrer');
-          }, 1000); // Delay to avoid popup blocker
-        }
+        // Use the optimized notification function
+        notifyAdminNewPayment(orderForNotification, businessInfo.whatsapp, language);
       }
 
       // Success
