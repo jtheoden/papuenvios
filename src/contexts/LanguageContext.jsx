@@ -208,6 +208,17 @@ const translations = {
       orderSummary: 'Resumen de Pedidos',
       pending: 'Pendientes',
       completed: 'Completados',
+      overviewTab: 'Resumen General',
+      ordersTab: 'Historial de Órdenes',
+      orderStatus: {
+        paymentPending: 'Pago Pendiente',
+        paymentValidated: 'Pago Validado',
+        processing: 'En Procesamiento',
+        shipped: 'Enviado',
+        delivered: 'Entregado',
+        cancelled: 'Cancelado',
+        totalActive: 'Total Activas'
+      },
       analyticsTitle: 'Análisis y Estadísticas',
       selectCurrency: 'Seleccionar Moneda',
       expirationWarning: {
@@ -332,6 +343,119 @@ const translations = {
         pending: 'Pendiente',
         validated: 'Validado',
         rejected: 'Rechazado'
+      }
+    },
+    adminOrders: {
+      title: 'Historial de Órdenes',
+      subtitle: 'Gestión completa de todas las órdenes del sistema',
+      stats: {
+        total: 'Total',
+        pending: 'Pendientes',
+        validated: 'Validadas',
+        rejected: 'Rechazadas',
+        completed: 'Completadas',
+        revenue: 'Ingresos'
+      },
+      filters: {
+        title: 'Filtros de Búsqueda',
+        clear: 'Limpiar Filtros',
+        search: 'Buscar',
+        searchPlaceholder: 'Orden, usuario, email o producto...',
+        status: 'Estado de la Orden',
+        allStatuses: 'Todos los Estados',
+        orderType: 'Tipo de Orden',
+        allTypes: 'Todos',
+        startDate: 'Fecha Inicio',
+        endDate: 'Fecha Fin',
+        apply: 'Aplicar Filtros'
+      },
+      table: {
+        order: 'Orden',
+        user: 'Usuario',
+        date: 'Fecha',
+        type: 'Tipo',
+        items: 'Items',
+        total: 'Total',
+        paymentStatus: {
+          label: 'Estado Pago',
+          pending: 'Pago Pendiente',
+          validated: 'Pago Validado (Listo para Procesar)',
+          rejected: 'Pago Rechazado'
+        },
+        orderStatus: {
+          label: 'Estado Orden',
+          pending: 'Pendiente',
+          processing: 'En Procesamiento',
+          shipped: 'Enviado',
+          delivered: 'Entregado',
+          completed: 'Completado',
+          cancelled: 'Cancelado'
+        },
+        actions: 'Acciones'
+      },
+      types: {
+        products: 'Productos',
+        remittance: 'Remesa',
+        mixed: 'Mixto'
+      },
+      actions: {
+        view: 'Ver',
+        start: 'Iniciar',
+        ship: 'Enviar',
+        proof: 'Evidencia',
+        complete: 'Completar',
+        cancel: 'Cancelar',
+        processing: 'Procesando...',
+        loading: 'Cargando...',
+        completing: 'Completando...'
+      },
+      messages: {
+        noOrders: 'No se encontraron órdenes',
+        retry: 'Reintentar',
+        confirmStart: '¿Iniciar procesamiento de la orden {orderNumber}?',
+        confirmComplete: '¿Marcar la orden {orderNumber} como completada?',
+        confirmCancel: '¿Está seguro de cancelar esta orden? Esta acción liberará el inventario reservado.',
+        enterTracking: 'Ingrese número de tracking (opcional) para la orden {orderNumber}:',
+        enterCancelReason: 'Ingrese razón de cancelación para la orden {orderNumber}:',
+        cancelReasonRequired: 'Debe especificar una razón para cancelar',
+        startSuccess: 'Orden movida a estado "En Procesamiento"',
+        shipSuccess: 'Orden marcada como "Enviada"',
+        deliverSuccess: 'Evidencia de entrega subida exitosamente. Orden marcada como "Entregada"',
+        completeSuccess: 'Orden completada exitosamente',
+        cancelSuccess: 'Orden cancelada exitosamente',
+        error: 'Error',
+        selectImage: 'Seleccione una imagen de evidencia',
+        invalidImage: 'Por favor seleccione una imagen válida',
+        imageTooLarge: 'El archivo es muy grande. Máximo 5MB'
+      },
+      deliveryModal: {
+        title: 'Subir Evidencia de Entrega',
+        orderLabel: 'Orden:',
+        customerLabel: 'Cliente:',
+        selectPhoto: 'Seleccionar Foto de Evidencia',
+        clickToUpload: 'Click para subir',
+        dragHere: 'o arrastra aquí',
+        fileTypes: 'PNG, JPG, JPEG (MAX. 5MB)',
+        imageLoaded: 'Imagen cargada. Haga click en "Subir Evidencia" para confirmar.',
+        note: 'Nota:',
+        noteText: 'Al subir la evidencia, la orden se marcará automáticamente como "Entregada". El cliente podrá ver la foto de evidencia.',
+        cancel: 'Cancelar',
+        submit: 'Subir Evidencia',
+        uploading: 'Subiendo...'
+      },
+      days: {
+        singular: 'día',
+        plural: 'días'
+      },
+      modals: {
+        confirm: 'Confirmar',
+        cancel: 'Cancelar',
+        submit: 'Enviar',
+        startTitle: 'Iniciar Procesamiento',
+        completeTitle: 'Completar Orden',
+        cancelTitle: 'Cancelar Orden',
+        trackingTitle: 'Número de Tracking',
+        cancelReasonTitle: 'Razón de Cancelación'
       }
     },
     users: {
@@ -595,6 +719,17 @@ const translations = {
       orderSummary: 'Order Summary',
       pending: 'Pending',
       completed: 'Completed',
+      overviewTab: 'Overview',
+      ordersTab: 'Order History',
+      orderStatus: {
+        paymentPending: 'Payment Pending',
+        paymentValidated: 'Payment Validated',
+        processing: 'Processing',
+        shipped: 'Shipped',
+        delivered: 'Delivered',
+        cancelled: 'Cancelled',
+        totalActive: 'Total Active'
+      },
       analyticsTitle: 'Analytics & Statistics',
       selectCurrency: 'Select Currency',
       expirationWarning: {
@@ -717,6 +852,119 @@ const translations = {
         pending: 'Pending',
         validated: 'Validated',
         rejected: 'Rejected'
+      }
+    },
+    adminOrders: {
+      title: 'Order History',
+      subtitle: 'Complete management of all system orders',
+      stats: {
+        total: 'Total',
+        pending: 'Pending',
+        validated: 'Validated',
+        rejected: 'Rejected',
+        completed: 'Completed',
+        revenue: 'Revenue'
+      },
+      filters: {
+        title: 'Search Filters',
+        clear: 'Clear Filters',
+        search: 'Search',
+        searchPlaceholder: 'Order, user, email or product...',
+        status: 'Order Status',
+        allStatuses: 'All Statuses',
+        orderType: 'Order Type',
+        allTypes: 'All',
+        startDate: 'Start Date',
+        endDate: 'End Date',
+        apply: 'Apply Filters'
+      },
+      table: {
+        order: 'Order',
+        user: 'User',
+        date: 'Date',
+        type: 'Type',
+        items: 'Items',
+        total: 'Total',
+        paymentStatus: {
+          label: 'Payment Status',
+          pending: 'Payment Pending',
+          validated: 'Payment Validated (Ready to Process)',
+          rejected: 'Payment Rejected'
+        },
+        orderStatus: {
+          label: 'Order Status',
+          pending: 'Pending',
+          processing: 'Processing',
+          shipped: 'Shipped',
+          delivered: 'Delivered',
+          completed: 'Completed',
+          cancelled: 'Cancelled'
+        },
+        actions: 'Actions'
+      },
+      types: {
+        products: 'Products',
+        remittance: 'Remittance',
+        mixed: 'Mixed'
+      },
+      actions: {
+        view: 'View',
+        start: 'Start',
+        ship: 'Ship',
+        proof: 'Proof',
+        complete: 'Complete',
+        cancel: 'Cancel',
+        processing: 'Processing...',
+        loading: 'Loading...',
+        completing: 'Completing...'
+      },
+      messages: {
+        noOrders: 'No orders found',
+        retry: 'Retry',
+        confirmStart: 'Start processing order {orderNumber}?',
+        confirmComplete: 'Mark order {orderNumber} as completed?',
+        confirmCancel: 'Are you sure you want to cancel this order? This action will release reserved inventory.',
+        enterTracking: 'Enter tracking number (optional) for order {orderNumber}:',
+        enterCancelReason: 'Enter cancellation reason for order {orderNumber}:',
+        cancelReasonRequired: 'You must specify a reason for cancellation',
+        startSuccess: 'Order moved to "Processing" status',
+        shipSuccess: 'Order marked as "Shipped"',
+        deliverSuccess: 'Delivery proof uploaded successfully. Order marked as "Delivered"',
+        completeSuccess: 'Order completed successfully',
+        cancelSuccess: 'Order cancelled successfully',
+        error: 'Error',
+        selectImage: 'Select proof image',
+        invalidImage: 'Please select a valid image',
+        imageTooLarge: 'File is too large. Maximum 5MB'
+      },
+      deliveryModal: {
+        title: 'Upload Delivery Proof',
+        orderLabel: 'Order:',
+        customerLabel: 'Customer:',
+        selectPhoto: 'Select Proof Photo',
+        clickToUpload: 'Click to upload',
+        dragHere: 'or drag here',
+        fileTypes: 'PNG, JPG, JPEG (MAX. 5MB)',
+        imageLoaded: 'Image loaded. Click "Upload Proof" to confirm.',
+        note: 'Note:',
+        noteText: 'When uploading proof, the order will be automatically marked as "Delivered". The customer will be able to see the proof photo.',
+        cancel: 'Cancel',
+        submit: 'Upload Proof',
+        uploading: 'Uploading...'
+      },
+      days: {
+        singular: 'day',
+        plural: 'days'
+      },
+      modals: {
+        confirm: 'Confirm',
+        cancel: 'Cancel',
+        submit: 'Submit',
+        startTitle: 'Start Processing',
+        completeTitle: 'Complete Order',
+        cancelTitle: 'Cancel Order',
+        trackingTitle: 'Tracking Number',
+        cancelReasonTitle: 'Cancellation Reason'
       }
     },
     users: {

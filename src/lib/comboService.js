@@ -4,36 +4,35 @@
  */
 
 import { supabase } from './supabase';
+import { executeQuery, getCurrentTimestamp } from './queryHelpers';
+import { DEFAULTS } from './constants';
 
 /**
  * Get all combos with their products
  * @param {boolean} includeInactive - If true, returns all combos (active and inactive). Default: false
  */
 export const getCombos = async (includeInactive = false) => {
-  try {
-    let query = supabase
-      .from('combo_products')
-      .select(`
-        *,
-        items:combo_items(
-          quantity,
-          product:products(id, name_es, name_en, base_price)
-        )
-      `);
+  return executeQuery(
+    async () => {
+      let query = supabase
+        .from('combo_products')
+        .select(`
+          *,
+          items:combo_items(
+            quantity,
+            product:products(id, name_es, name_en, base_price)
+          )
+        `);
 
-    // Only filter by is_active if we don't want inactive combos
-    if (!includeInactive) {
-      query = query.eq('is_active', true);
-    }
+      // Only filter by is_active if we don't want inactive combos
+      if (!includeInactive) {
+        query = query.eq('is_active', true);
+      }
 
-    const { data, error } = await query.order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return { data, error: null };
-  } catch (error) {
-    console.error('Error fetching combos:', error);
-    return { data: null, error };
-  }
+      return await query.order('created_at', { ascending: false });
+    },
+    'Get combos'
+  );
 };
 
 /**
@@ -71,7 +70,7 @@ export const createCombo = async (comboData) => {
         description_en: comboData.description || '',
         image_url: comboData.image || null,
         base_total_price: baseTotalPrice,
-        profit_margin: parseFloat(comboData.profitMargin || 40),
+        profit_margin: parseFloat(comboData.profitMargin || DEFAULTS.COMBO_PROFIT_MARGIN),
         is_active: true
       }])
       .select()
@@ -132,8 +131,8 @@ export const updateCombo = async (comboId, comboData) => {
       name_en: comboData.name,
       description_es: comboData.description || '',
       description_en: comboData.description || '',
-      profit_margin: parseFloat(comboData.profitMargin || 40),
-      updated_at: new Date().toISOString()
+      profit_margin: parseFloat(comboData.profitMargin || DEFAULTS.COMBO_PROFIT_MARGIN),
+      updated_at: getCurrentTimestamp()
     };
 
     if (comboData.image) {

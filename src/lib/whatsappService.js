@@ -69,38 +69,51 @@ export const openWhatsAppChat = (phone, message = '') => {
 
 /**
  * Notify admin about new payment submission
+ * Opens WhatsApp directly from user's device
  * @param {Object} order - Order details
+ * @param {string} adminPhone - Admin phone from settings
  * @param {string} language - Language for message ('es' or 'en')
- * @returns {string} WhatsApp URL
  */
-export const notifyAdminNewPayment = (order, language = 'es') => {
+export const notifyAdminNewPayment = (order, adminPhone, language = 'es') => {
+  if (!adminPhone) {
+    console.error('Admin WhatsApp number not configured');
+    alert('Número de WhatsApp del administrador no configurado. Contacte al soporte.');
+    return;
+  }
+
   const config = getWhatsAppConfig();
 
-  const messages = {
-    es: `🔔 *Nuevo Pago Recibido - ${config.businessName}*\n\n` +
-        `📋 Pedido: ${order.order_number}\n` +
-        `💰 Total: ${order.total_amount} ${order.currency?.code || 'USD'}\n` +
-        `👤 Cliente: ${order.user_profile?.full_name || 'N/A'}\n` +
-        `📧 Email: ${order.user_profile?.email || 'N/A'}\n` +
-        `📍 Provincia: ${order.shipping_zone?.province_name || 'N/A'}\n` +
-        `💳 Método: ${order.payment_method}\n` +
-        `📸 Comprobante: ${order.payment_proof_url ? 'Adjunto' : 'No adjunto'}\n\n` +
-        `⏰ Fecha: ${new Date(order.created_at).toLocaleString('es-CU')}\n\n` +
-        `Por favor, revisa y valida el pago en el panel de administración.`,
+  // Build items list
+  const itemsList = order.order_items?.map((item, i) =>
+    `${i + 1}. ${item.item_name_es || item.item_name_en} (x${item.quantity})`
+  ).join('\n   ') || 'Sin items';
 
-    en: `🔔 *New Payment Received - ${config.businessName}*\n\n` +
-        `📋 Order: ${order.order_number}\n` +
-        `💰 Total: ${order.total_amount} ${order.currency?.code || 'USD'}\n` +
-        `👤 Customer: ${order.user_profile?.full_name || 'N/A'}\n` +
-        `📧 Email: ${order.user_profile?.email || 'N/A'}\n` +
-        `📍 Province: ${order.shipping_zone?.province_name || 'N/A'}\n` +
-        `💳 Method: ${order.payment_method}\n` +
-        `📸 Proof: ${order.payment_proof_url ? 'Attached' : 'Not attached'}\n\n` +
-        `⏰ Date: ${new Date(order.created_at).toLocaleString('en-US')}\n\n` +
-        `Please review and validate the payment in the admin panel.`
+  const messages = {
+    es: `🆕 *Nueva Orden Registrada*\n\n` +
+        `📋 *Orden:* ${order.order_number}\n` +
+        `👤 *Cliente:* ${order.user_name || order.user_profile?.full_name || 'N/A'}\n` +
+        `📧 *Email:* ${order.user_email || order.user_profile?.email || 'N/A'}\n\n` +
+        `📦 *Items:*\n   ${itemsList}\n\n` +
+        `💰 *Total:* ${order.total_amount} ${order.currency?.code || order.currencies?.code || 'USD'}\n` +
+        `💳 *Método de Pago:* ${order.payment_method || 'N/A'}\n` +
+        `📍 *Provincia:* ${order.shipping_zone?.province_name || order.shipping_address || 'N/A'}\n\n` +
+        `🔗 *Ver en sistema:*\n${window.location.origin}/dashboard?tab=orders\n\n` +
+        `_Mensaje desde PapuEnvíos_`,
+
+    en: `🆕 *New Order Registered*\n\n` +
+        `📋 *Order:* ${order.order_number}\n` +
+        `👤 *Customer:* ${order.user_name || order.user_profile?.full_name || 'N/A'}\n` +
+        `📧 *Email:* ${order.user_email || order.user_profile?.email || 'N/A'}\n\n` +
+        `📦 *Items:*\n   ${itemsList}\n\n` +
+        `💰 *Total:* ${order.total_amount} ${order.currency?.code || order.currencies?.code || 'USD'}\n` +
+        `💳 *Payment Method:* ${order.payment_method || 'N/A'}\n` +
+        `📍 *Province:* ${order.shipping_zone?.province_name || order.shipping_address || 'N/A'}\n\n` +
+        `🔗 *View in system:*\n${window.location.origin}/dashboard?tab=orders\n\n` +
+        `_Message from PapuEnvíos_`
   };
 
-  return generateWhatsAppURL(config.adminPhone, messages[language] || messages.es);
+  const url = generateWhatsAppURL(adminPhone, messages[language] || messages.es);
+  window.open(url, '_blank');
 };
 
 /**

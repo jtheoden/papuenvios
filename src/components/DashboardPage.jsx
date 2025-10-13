@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart3, TrendingUp, DollarSign, Package, Users, AlertTriangle, Eye, Users2, RefreshCw } from 'lucide-react';
+import { BarChart3, TrendingUp, DollarSign, Package, Users, AlertTriangle, Eye, Users2, RefreshCw, FileText, List } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { getHeadingStyle } from '@/lib/styleUtils';
+import AdminOrdersTab from './AdminOrdersTab';
 
 const DashboardPage = ({ onNavigate }) => {
   const { t } = useLanguage();
   const { products, combos, financialSettings, visualSettings } = useBusiness();
   const { user, isAdmin, isSuperAdmin } = useAuth();
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' or 'orders'
 
   const [stats, setStats] = useState({
     totalProducts: 0,
@@ -138,17 +142,26 @@ const DashboardPage = ({ onNavigate }) => {
         supabase.from('products').select('id', { count: 'exact', head: true }),
         supabase.from('combo_products').select('id', { count: 'exact', head: true }),
         supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
-        supabase.from('orders').select('id, status, total_amount, created_at')
+        supabase.from('orders').select('id, status, payment_status, total_amount, created_at')
       ]);
 
       const totalProducts = productsRes.count || 0;
       const totalCombos = combosRes.count || 0;
       const totalUsers = usersRes.count || 0;
 
-      // Calculate order stats
+      // Calculate order stats by status
       const orders = ordersRes.data || [];
-      const pendingOrders = orders.filter(o => o.status === 'pending').length;
-      const completedOrders = orders.filter(o => ['delivered', 'completed'].includes(o.status)).length;
+      const paymentPending = orders.filter(o => o.payment_status === 'pending').length;
+      const paymentValidated = orders.filter(o => o.payment_status === 'validated' && o.status === 'pending').length;
+      const processing = orders.filter(o => o.status === 'processing').length;
+      const shipped = orders.filter(o => o.status === 'shipped').length;
+      const delivered = orders.filter(o => o.status === 'delivered').length;
+      const completedOrders = orders.filter(o => o.status === 'completed').length;
+      const cancelled = orders.filter(o => o.status === 'cancelled').length;
+      const totalActive = paymentPending + paymentValidated + processing + shipped + delivered;
+
+      // Legacy field for compatibility
+      const pendingOrders = paymentPending + paymentValidated;
 
       // Calculate revenue (last 24 hours and last 30 days)
       const now = new Date();
@@ -169,6 +182,13 @@ const DashboardPage = ({ onNavigate }) => {
         totalUsers,
         pendingOrders,
         completedOrders,
+        paymentPending,
+        paymentValidated,
+        processing,
+        shipped,
+        delivered,
+        cancelled,
+        totalActive,
         dailyRevenue,
         monthlyRevenue,
         loading: false
@@ -227,7 +247,7 @@ const DashboardPage = ({ onNavigate }) => {
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex justify-between items-start mb-12"
+          className="flex justify-between items-start mb-8"
         >
           <div>
             <h1 className="text-4xl font-bold mb-2" style={getHeadingStyle(visualSettings)}>
@@ -237,56 +257,92 @@ const DashboardPage = ({ onNavigate }) => {
               {t('dashboard.subtitle')}
             </p>
           </div>
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-700">
-                {t('dashboard.selectCurrency')}:
-              </label>
-              <select
-                value={selectedCurrency || ''}
-                onChange={(e) => setSelectedCurrency(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          {activeTab === 'overview' && (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700">
+                  {t('dashboard.selectCurrency')}:
+                </label>
+                <select
+                  value={selectedCurrency || ''}
+                  onChange={(e) => setSelectedCurrency(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  {currencies.map(currency => (
+                    <option key={currency.id} value={currency.id}>
+                      {currency.code} ({currency.symbol})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={() => {
+                  fetchStats();
+                  fetchVisitStats();
+                }}
+                disabled={stats.loading}
+                className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl shadow hover:shadow-md transition-shadow"
               >
-                {currencies.map(currency => (
-                  <option key={currency.id} value={currency.id}>
-                    {currency.code} ({currency.symbol})
-                  </option>
-                ))}
-              </select>
+                <RefreshCw className={`w-4 h-4 ${stats.loading ? 'animate-spin' : ''}`} />
+                <span className="text-sm font-medium">{t('dashboard.refresh')}</span>
+              </button>
             </div>
-            <button
-              onClick={() => {
-                fetchStats();
-                fetchVisitStats();
-              }}
-              disabled={stats.loading}
-              className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl shadow hover:shadow-md transition-shadow"
-            >
-              <RefreshCw className={`w-4 h-4 ${stats.loading ? 'animate-spin' : ''}`} />
-              <span className="text-sm font-medium">{t('dashboard.refresh')}</span>
-            </button>
-          </div>
+          )}
         </motion.div>
 
-        {expiringProducts.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded-lg mb-8"
-            role="alert"
+        {/* Tabs Navigation */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="flex items-center gap-4 mb-8 border-b border-gray-200"
+        >
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`flex items-center gap-2 px-6 py-3 font-medium transition-all ${
+              activeTab === 'overview'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
           >
-            <div className="flex">
-              <div className="py-1"><AlertTriangle className="h-6 w-6 text-yellow-500 mr-4" /></div>
-              <div>
-                <p className="font-bold">{t('dashboard.expirationWarning.title')}</p>
-                <p className="text-sm">{t('dashboard.expirationWarning.description', { count: expiringProducts.length })}</p>
-              </div>
-            </div>
-          </motion.div>
-        )}
+            <BarChart3 className="h-5 w-5" />
+            {t('dashboard.overviewTab')}
+          </button>
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`flex items-center gap-2 px-6 py-3 font-medium transition-all ${
+              activeTab === 'orders'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <List className="h-5 w-5" />
+            {t('dashboard.ordersTab')}
+          </button>
+        </motion.div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+        {/* Tab Content */}
+        {activeTab === 'overview' && (
+          <>
+            {expiringProducts.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded-lg mb-8"
+                role="alert"
+              >
+                <div className="flex">
+                  <div className="py-1"><AlertTriangle className="h-6 w-6 text-yellow-500 mr-4" /></div>
+                  <div>
+                    <p className="font-bold">{t('dashboard.expirationWarning.title')}</p>
+                    <p className="text-sm">{t('dashboard.expirationWarning.description', { count: expiringProducts.length })}</p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
           {[
             { title: t('dashboard.stats.dailyRevenue'), value: stats.dailyRevenue, icon: DollarSign, color: 'from-green-500 to-emerald-600' },
             { title: t('dashboard.stats.monthlyRevenue'), value: stats.monthlyRevenue, icon: TrendingUp, color: 'from-blue-500 to-cyan-600' },
@@ -399,23 +455,39 @@ const DashboardPage = ({ onNavigate }) => {
               transition={{ delay: 0.9 }}
               className="glass-effect p-8 rounded-2xl"
             >
-              <h3 className="text-2xl font-semibold mb-6">{t('dashboard.orderSummary')}</h3>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center bg-yellow-50 p-3 rounded-lg">
-                  <span className="font-semibold">{t('dashboard.pending')}</span>
-                  <span className="text-lg font-bold text-yellow-600">{stats.pendingOrders}</span>
+              <h3 className="text-2xl font-semibold mb-6">📦 {t('dashboard.orderSummary')}</h3>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center bg-yellow-50 p-3 rounded-lg border-l-4 border-yellow-500">
+                  <span className="font-semibold">🟡 {t('dashboard.orderStatus.paymentPending')}</span>
+                  <span className="text-lg font-bold text-yellow-600">{stats.paymentPending || 0}</span>
                 </div>
-                <div className="flex justify-between items-center bg-green-50 p-3 rounded-lg">
-                  <span className="font-semibold">{t('dashboard.completed')}</span>
-                  <span className="text-lg font-bold text-green-600">{stats.completedOrders}</span>
+                <div className="flex justify-between items-center bg-green-50 p-3 rounded-lg border-l-4 border-green-500">
+                  <span className="font-semibold">✅ {t('dashboard.orderStatus.paymentValidated')}</span>
+                  <span className="text-lg font-bold text-green-600">{stats.paymentValidated || 0}</span>
                 </div>
-                <div className="flex justify-between items-center bg-blue-50 p-3 rounded-lg border-t-2 border-blue-500">
-                  <span className="font-semibold">{t('dashboard.stats.totalUsers')}</span>
-                  <span className="text-lg font-bold text-blue-600">{stats.totalUsers}</span>
+                <div className="flex justify-between items-center bg-blue-50 p-3 rounded-lg border-l-4 border-blue-500">
+                  <span className="font-semibold">🔵 {t('dashboard.orderStatus.processing')}</span>
+                  <span className="text-lg font-bold text-blue-600">{stats.processing || 0}</span>
                 </div>
-                <div className="flex justify-between items-center bg-purple-50 p-3 rounded-lg">
-                  <span className="font-semibold">{t('dashboard.stats.activeProducts')}</span>
-                  <span className="text-lg font-bold text-purple-600">{stats.totalProducts}</span>
+                <div className="flex justify-between items-center bg-purple-50 p-3 rounded-lg border-l-4 border-purple-500">
+                  <span className="font-semibold">🟣 {t('dashboard.orderStatus.shipped')}</span>
+                  <span className="text-lg font-bold text-purple-600">{stats.shipped || 0}</span>
+                </div>
+                <div className="flex justify-between items-center bg-teal-50 p-3 rounded-lg border-l-4 border-teal-500">
+                  <span className="font-semibold">🟢 {t('dashboard.orderStatus.delivered')}</span>
+                  <span className="text-lg font-bold text-teal-600">{stats.delivered || 0}</span>
+                </div>
+                <div className="flex justify-between items-center bg-green-100 p-3 rounded-lg border-l-4 border-green-600">
+                  <span className="font-semibold">✅ {t('dashboard.completed')}</span>
+                  <span className="text-lg font-bold text-green-700">{stats.completedOrders || 0}</span>
+                </div>
+                <div className="flex justify-between items-center bg-red-50 p-3 rounded-lg border-l-4 border-red-500">
+                  <span className="font-semibold">❌ {t('dashboard.orderStatus.cancelled')}</span>
+                  <span className="text-lg font-bold text-red-600">{stats.cancelled || 0}</span>
+                </div>
+                <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg border-t-2 border-gray-300 mt-2">
+                  <span className="font-bold">📊 {t('dashboard.orderStatus.totalActive')}</span>
+                  <span className="text-xl font-bold text-gray-800">{stats.totalActive || 0}</span>
                 </div>
               </div>
             </motion.div>
@@ -489,6 +561,19 @@ const DashboardPage = ({ onNavigate }) => {
             </div>
           </div>
         </motion.div>
+          </>
+        )}
+
+        {/* Orders Tab */}
+        {activeTab === 'orders' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <AdminOrdersTab />
+          </motion.div>
+        )}
       </div>
     </div>
   );
