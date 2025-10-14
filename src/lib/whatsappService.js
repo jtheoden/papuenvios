@@ -363,3 +363,220 @@ export const isValidPhoneNumber = (phone) => {
   // Allow 8-15 digits for international flexibility
   return cleaned.length >= 8 && cleaned.length <= 15;
 };
+
+// ============================================================================
+// REMITTANCE NOTIFICATIONS
+// ============================================================================
+
+/**
+ * Notify admin about new payment proof upload (Remittance)
+ * @param {Object} remittance - Remittance details with remittance_types
+ * @param {string} adminPhone - Admin phone from settings
+ * @param {string} language - Language for message ('es' or 'en')
+ */
+export const notifyAdminNewPaymentProof = (remittance, adminPhone, language = 'es') => {
+  if (!adminPhone) {
+    console.error('Admin WhatsApp number not configured');
+    alert('Número de WhatsApp del administrador no configurado. Contacte al soporte.');
+    return;
+  }
+
+  const config = getWhatsAppConfig();
+  const type = remittance.remittance_types || remittance.remittance_type;
+
+  const messages = {
+    es: `💸 *Nuevo Comprobante de Remesa - ${config.businessName}*\n\n` +
+        `📋 *Remesa:* ${remittance.remittance_number}\n` +
+        `💰 *Monto:* ${remittance.amount} ${remittance.currency}\n` +
+        `🔄 *Tipo:* ${type?.name || 'N/A'}\n` +
+        `💵 *A entregar:* ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.delivery_currency}\n\n` +
+        `👤 *Destinatario:*\n` +
+        `   Nombre: ${remittance.recipient_name}\n` +
+        `   Teléfono: ${remittance.recipient_phone}\n` +
+        `   Ciudad: ${remittance.recipient_city || 'N/A'}\n\n` +
+        `📝 *Referencia:* ${remittance.payment_reference || 'N/A'}\n` +
+        `📎 *Comprobante:* ${remittance.payment_proof_url ? 'Adjunto' : 'No disponible'}\n\n` +
+        `🔗 *Ver en sistema:*\n${window.location.origin}/dashboard?tab=remittances\n\n` +
+        `_Mensaje desde PapuEnvíos_`,
+
+    en: `💸 *New Remittance Payment Proof - ${config.businessName}*\n\n` +
+        `📋 *Remittance:* ${remittance.remittance_number}\n` +
+        `💰 *Amount:* ${remittance.amount} ${remittance.currency}\n` +
+        `🔄 *Type:* ${type?.name || 'N/A'}\n` +
+        `💵 *To deliver:* ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.delivery_currency}\n\n` +
+        `👤 *Recipient:*\n` +
+        `   Name: ${remittance.recipient_name}\n` +
+        `   Phone: ${remittance.recipient_phone}\n` +
+        `   City: ${remittance.recipient_city || 'N/A'}\n\n` +
+        `📝 *Reference:* ${remittance.payment_reference || 'N/A'}\n` +
+        `📎 *Proof:* ${remittance.payment_proof_url ? 'Attached' : 'Not available'}\n\n` +
+        `🔗 *View in system:*\n${window.location.origin}/dashboard?tab=remittances\n\n` +
+        `_Message from PapuEnvíos_`
+  };
+
+  const url = generateWhatsAppURL(adminPhone, messages[language] || messages.es);
+  window.open(url, '_blank');
+};
+
+/**
+ * Notify user about payment validation (Remittance)
+ * @param {Object} remittance - Remittance details
+ * @param {string} language - Language for message ('es' or 'en')
+ * @returns {string} WhatsApp URL
+ */
+export const notifyUserPaymentValidated = (remittance, language = 'es') => {
+  const config = getWhatsAppConfig();
+  const type = remittance.remittance_types || remittance.remittance_type;
+
+  const messages = {
+    es: `✅ *Pago Validado - Remesa ${remittance.remittance_number}*\n\n` +
+        `Hola! Tu pago ha sido validado exitosamente.\n\n` +
+        `📋 Remesa: ${remittance.remittance_number}\n` +
+        `💰 Monto enviado: ${remittance.amount} ${remittance.currency}\n` +
+        `💵 A entregar: ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.delivery_currency}\n` +
+        `👤 Destinatario: ${remittance.recipient_name}\n\n` +
+        `📦 Tu remesa está siendo procesada.\n` +
+        `⏰ Tiempo máximo de entrega: ${type?.max_delivery_days || 3} días\n\n` +
+        `Te notificaremos cuando la remesa sea entregada.\n\n` +
+        `Gracias por confiar en ${config.businessName}! 🎉`,
+
+    en: `✅ *Payment Validated - Remittance ${remittance.remittance_number}*\n\n` +
+        `Hello! Your payment has been successfully validated.\n\n` +
+        `📋 Remittance: ${remittance.remittance_number}\n` +
+        `💰 Amount sent: ${remittance.amount} ${remittance.currency}\n` +
+        `💵 To deliver: ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.delivery_currency}\n` +
+        `👤 Recipient: ${remittance.recipient_name}\n\n` +
+        `📦 Your remittance is being processed.\n` +
+        `⏰ Maximum delivery time: ${type?.max_delivery_days || 3} days\n\n` +
+        `We'll notify you when the remittance is delivered.\n\n` +
+        `Thank you for trusting ${config.businessName}! 🎉`
+  };
+
+  // Note: This should be sent to the user who created the remittance
+  // The phone would need to be retrieved from user_profiles
+  return messages[language] || messages.es;
+};
+
+/**
+ * Notify user about payment rejection (Remittance)
+ * @param {Object} remittance - Remittance details
+ * @param {string} language - Language for message ('es' or 'en')
+ * @returns {string} WhatsApp message text
+ */
+export const notifyUserPaymentRejected = (remittance, language = 'es') => {
+  const config = getWhatsAppConfig();
+
+  const messages = {
+    es: `❌ *Pago No Validado - Remesa ${remittance.remittance_number}*\n\n` +
+        `Hola, lamentablemente no pudimos validar tu pago.\n\n` +
+        `📋 Remesa: ${remittance.remittance_number}\n` +
+        `💰 Monto: ${remittance.amount} ${remittance.currency}\n\n` +
+        `📝 *Motivo:* ${remittance.payment_rejection_reason || 'No especificado'}\n\n` +
+        `Por favor:\n` +
+        `1️⃣ Verifica los datos del pago\n` +
+        `2️⃣ Sube un nuevo comprobante\n` +
+        `3️⃣ Contacta soporte si necesitas ayuda\n\n` +
+        `Estamos aquí para ayudarte.`,
+
+    en: `❌ *Payment Not Validated - Remittance ${remittance.remittance_number}*\n\n` +
+        `Hello, unfortunately we couldn't validate your payment.\n\n` +
+        `📋 Remittance: ${remittance.remittance_number}\n` +
+        `💰 Amount: ${remittance.amount} ${remittance.currency}\n\n` +
+        `📝 *Reason:* ${remittance.payment_rejection_reason || 'Not specified'}\n\n` +
+        `Please:\n` +
+        `1️⃣ Check payment details\n` +
+        `2️⃣ Upload a new proof\n` +
+        `3️⃣ Contact support if you need help\n\n` +
+        `We're here to help.`
+  };
+
+  return messages[language] || messages.es;
+};
+
+/**
+ * Notify user about remittance delivery
+ * @param {Object} remittance - Remittance details
+ * @param {string} language - Language for message ('es' or 'en')
+ * @returns {string} WhatsApp message text
+ */
+export const notifyUserRemittanceDelivered = (remittance, language = 'es') => {
+  const config = getWhatsAppConfig();
+
+  const messages = {
+    es: `🎉 *Remesa Entregada - ${remittance.remittance_number}*\n\n` +
+        `Tu remesa ha sido entregada exitosamente!\n\n` +
+        `📋 Remesa: ${remittance.remittance_number}\n` +
+        `💵 Monto entregado: ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.delivery_currency}\n` +
+        `👤 Destinatario: ${remittance.recipient_name}\n` +
+        `📅 Fecha de entrega: ${new Date(remittance.delivered_at).toLocaleDateString('es-CU')}\n\n` +
+        `${remittance.delivery_proof_url ? '📎 Comprobante de entrega disponible en el sistema\n\n' : ''}` +
+        `Gracias por usar ${config.businessName}! 💙\n\n` +
+        `¿Te gustaría enviarnos tu opinión? Tu feedback es muy valioso.`,
+
+    en: `🎉 *Remittance Delivered - ${remittance.remittance_number}*\n\n` +
+        `Your remittance has been successfully delivered!\n\n` +
+        `📋 Remittance: ${remittance.remittance_number}\n` +
+        `💵 Amount delivered: ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.delivery_currency}\n` +
+        `👤 Recipient: ${remittance.recipient_name}\n` +
+        `📅 Delivery date: ${new Date(remittance.delivered_at).toLocaleDateString('en-US')}\n\n` +
+        `${remittance.delivery_proof_url ? '📎 Delivery proof available in the system\n\n' : ''}` +
+        `Thank you for using ${config.businessName}! 💙\n\n` +
+        `Would you like to share your feedback? Your opinion is very valuable.`
+  };
+
+  return messages[language] || messages.es;
+};
+
+/**
+ * Notify admin about remittances approaching delivery deadline
+ * @param {Array} remittances - List of remittances needing attention
+ * @param {string} adminPhone - Admin phone from settings
+ * @param {string} language - Language for message ('es' or 'en')
+ */
+export const notifyAdminDeliveryAlert = (remittances, adminPhone, language = 'es') => {
+  if (!adminPhone) {
+    console.error('Admin WhatsApp number not configured');
+    return;
+  }
+
+  const config = getWhatsAppConfig();
+
+  const remittanceList = remittances.map(r => {
+    const hoursRemaining = (new Date(r.max_delivery_date) - new Date()) / (1000 * 60 * 60);
+    return `   • ${r.remittance_number} - ${r.recipient_name} (${Math.round(hoursRemaining)}h restantes)`;
+  }).join('\n');
+
+  const messages = {
+    es: `⚠️ *Alerta de Entregas Pendientes - ${config.businessName}*\n\n` +
+        `${remittances.length} remesa${remittances.length > 1 ? 's' : ''} requiere${remittances.length > 1 ? 'n' : ''} atención:\n\n` +
+        `${remittanceList}\n\n` +
+        `🔗 *Ver en sistema:*\n${window.location.origin}/dashboard?tab=remittances&filter=urgent\n\n` +
+        `_Mensaje desde PapuEnvíos_`,
+
+    en: `⚠️ *Pending Deliveries Alert - ${config.businessName}*\n\n` +
+        `${remittances.length} remittance${remittances.length > 1 ? 's' : ''} require${remittances.length > 1 ? '' : 's'} attention:\n\n` +
+        `${remittanceList}\n\n` +
+        `🔗 *View in system:*\n${window.location.origin}/dashboard?tab=remittances&filter=urgent\n\n` +
+        `_Message from PapuEnvíos_`
+  };
+
+  const url = generateWhatsAppURL(adminPhone, messages[language] || messages.es);
+  window.open(url, '_blank');
+};
+
+/**
+ * Generate remittance support message for customer
+ * @param {Object} remittance - Remittance context
+ * @param {string} language - Language for message ('es' or 'en')
+ * @returns {string} WhatsApp URL
+ */
+export const openRemittanceSupport = (remittance, language = 'es') => {
+  const config = getWhatsAppConfig();
+
+  const messages = {
+    es: `Hola! Necesito ayuda con mi remesa ${remittance.remittance_number}.\n\n`,
+    en: `Hello! I need help with my remittance ${remittance.remittance_number}.\n\n`
+  };
+
+  return generateWhatsAppURL(config.supportPhone, messages[language] || messages.es);
+};
