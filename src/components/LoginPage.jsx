@@ -165,10 +165,7 @@ const LoginPage = ({ onNavigate }) => {
               {t('auth.loginWithGoogle')}
             </Button>
           </div>
-          <p className="text-xs text-gray-500 text-center">
-            Admin: admin@test.com / test123 <br/>
-            User: user@test.com / test123
-          </p>
+          
         </div>
       </motion.div>
     </div>

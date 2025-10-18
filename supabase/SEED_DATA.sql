@@ -8,8 +8,8 @@ INSERT INTO public.currencies (code, name_es, name_en, symbol, is_base, is_activ
 VALUES
   ('USD', 'Dólar Estadounidense', 'US Dollar', '$', true, true, 1.00, now()),
   ('EUR', 'Euro', 'Euro', '€', false, true, 0.92, now()),
-  ('DOP', 'Peso Dominicano', 'Dominican Peso', 'RD$', false, true, 58.50, now()),
-  ('COP', 'Peso Colombiano', 'Colombian Peso', '$', false, true, 4100.00, now()),
+  ('MXN', 'Peso Dominicano', 'Dominican Peso', 'RD$', false, true, 58.50, now()),
+  ('CUP', 'Peso Cubano', 'Cuban Peso', '$', false, true, 410.00, now()),
   ('VES', 'Bolívar', 'Venezuelan Bolívar', 'Bs.', false, true, 36.50, now())
 ON CONFLICT (code) DO UPDATE SET
   name_es = EXCLUDED.name_es,

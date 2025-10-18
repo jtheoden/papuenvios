@@ -18,11 +18,13 @@ const Header = ({ currentPage, onNavigate }) => {
   const { user, isAdmin, userRole } = useAuth();
 
   // Public menu items
-  const publicMenuItems = [
+  let publicMenuItems = [
     { id: 'home', icon: ShoppingBag, label: t('nav.home') },
     { id: 'products', icon: ShoppingBag, label: t('nav.products') },
     { id: 'remittances', icon: DollarSign, label: t('nav.remittances') },
   ];
+
+  
 
   // Admin menu items (grouped)
   const adminMenuItems = [
@@ -55,7 +57,7 @@ const Header = ({ currentPage, onNavigate }) => {
     if (userRole === 'admin' || userRole === 'super_admin') {
       loadPendingOrders();
       // Refresh every 30 seconds
-      const interval = setInterval(loadPendingOrders, 30000);
+      const interval = setInterval(loadPendingOrders, 30000);      
       return () => clearInterval(interval);
     }
   }, [userRole]);
@@ -119,7 +121,7 @@ const Header = ({ currentPage, onNavigate }) => {
                 backgroundClip: 'text'
               }}
             >
-              {visualSettings.companyName || 'PapuEnvíos'}
+              {visualSettings?.logoName || 'PapuEnvíos'}
             </span>
           </motion.div>
 
