@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { DollarSign, Image as ImageIcon, Bell, Save, Plus, Trash2, Upload, Link, Edit, RefreshCw, Check, Palette, ShoppingBag, MapPin, Truck, Banknote, CreditCard } from 'lucide-react';
+import { DollarSign, Image as ImageIcon, Bell, Save, Plus, Trash2, Upload, Link, Edit, RefreshCw, Check, Palette, ShoppingBag, MapPin, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -79,11 +79,6 @@ const SettingsPage = () => {
   const [loadingZones, setLoadingZones] = useState(false);
   const [savingZone, setSavingZone] = useState(null);
 
-  // Remittance configurations state
-  const [remittanceConfigs, setRemittanceConfigs] = useState([]);
-  const [loadingRemittances, setLoadingRemittances] = useState(false);
-  const [savingRemittance, setSavingRemittance] = useState(null);
-
   // Exchange rates state
   const [exchangeRates, setExchangeRates] = useState([]);
   const [loadingRates2, setLoadingRates2] = useState(false);
@@ -101,7 +96,6 @@ const SettingsPage = () => {
     loadOfficialRates();
     loadCarouselSlides();
     loadShippingZones();
-    loadRemittanceConfigs();
     loadExchangeRates();
   }, []);
 
@@ -360,63 +354,6 @@ const SettingsPage = () => {
     } finally {
       setSavingZone(null);
     }
-  };
-
-  // Remittance configuration functions
-  const loadRemittanceConfigs = async () => {
-    setLoadingRemittances(true);
-    try {
-      const result = await getRemittanceConfigs();
-      if (result.success) {
-        setRemittanceConfigs(result.configs);
-      }
-    } catch (error) {
-      console.error('Error loading remittance configs:', error);
-      toast({
-        title: language === 'es' ? 'Error al cargar configuración' : 'Error loading config',
-        description: error.message,
-        variant: 'destructive'
-      });
-    } finally {
-      setLoadingRemittances(false);
-    }
-  };
-
-  const handleRemittanceConfigUpdate = async (configId, updates) => {
-    setSavingRemittance(configId);
-    try {
-      const config = remittanceConfigs.find(c => c.id === configId);
-      const updatedConfig = { ...config, ...updates };
-
-      const result = await saveRemittanceConfig(updatedConfig);
-
-      if (result.success) {
-        await loadRemittanceConfigs();
-        toast({
-          title: language === 'es' ? '✅ Configuración guardada' : '✅ Configuration saved'
-        });
-      }
-    } catch (error) {
-      console.error('Error updating remittance config:', error);
-      toast({
-        title: language === 'es' ? 'Error al guardar' : 'Save error',
-        description: error.message,
-        variant: 'destructive'
-      });
-    } finally {
-      setSavingRemittance(null);
-    }
-  };
-
-  const togglePaymentMethod = async (configId, methodId) => {
-    const config = remittanceConfigs.find(c => c.id === configId);
-    const updatedMethods = config.paymentMethods.map(m =>
-      m.id === methodId ? { ...m, enabled: !m.enabled } : m
-    );
-
-    await handleRemittanceConfigUpdate(configId, {
-      paymentMethods: updatedMethods
-    });
   };
 
   // Exchange Rates functions
@@ -785,12 +722,6 @@ const SettingsPage = () => {
       label: language === 'es' ? 'Envíos' : 'Shipping',
       icon: Truck,
       color: '#f59e0b'
-    },
-    {
-      id: 'remesas',
-      label: language === 'es' ? 'Remesas' : 'Remittances',
-      icon: Banknote,
-      color: '#06b6d4'
     },
     {
       id: 'visual',
@@ -2206,139 +2137,6 @@ const SettingsPage = () => {
                             {language === 'es' ? 'No disponible' : 'Not available'}
                           </span>
                         )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </motion.div>
-            </>
-          )}
-
-          {/* REMESAS TAB */}
-          {activeTab === 'remesas' && (
-            <>
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-effect p-8 rounded-2xl">
-                <h2 className="text-2xl font-semibold mb-6 flex items-center">
-                  <Banknote className="mr-3" style={{ color: visualSettings.primaryColor || '#2563eb' }} />
-              {language === 'es' ? 'Configuración de Remesas' : 'Remittance Configuration'}
-            </h2>
-
-            <p className="text-sm text-gray-600 mb-6">
-              {language === 'es'
-                ? 'Configure las monedas y métodos de pago disponibles para las remesas.'
-                : 'Configure available currencies and payment methods for remittances.'}
-            </p>
-
-            {loadingRemittances ? (
-              <div className="flex items-center justify-center py-8">
-                <RefreshCw className="animate-spin h-6 w-6 text-gray-400" />
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {remittanceConfigs.map(config => (
-                  <div
-                    key={config.id}
-                    className="border rounded-lg p-6"
-                    style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}
-                  >
-                    {/* Currency Header */}
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="w-10 h-10 rounded-full flex items-center justify-center"
-                          style={{
-                            background: visualSettings.useGradient
-                              ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
-                              : visualSettings.primaryColor || '#2563eb'
-                          }}
-                        >
-                          <span className="text-white font-bold text-sm">{config.currency}</span>
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-lg">{config.name}</h3>
-                          <p className="text-xs text-gray-500">
-                            {config.currency === 'MN' && (language === 'es' ? 'Moneda Nacional' : 'National Currency')}
-                            {config.currency === 'USD' && (language === 'es' ? 'Dólar Estadounidense' : 'US Dollar')}
-                            {config.currency === 'MLC' && (language === 'es' ? 'Moneda Libremente Convertible' : 'Freely Convertible Currency')}
-                          </p>
-                        </div>
-                      </div>
-
-                      {savingRemittance === config.id && (
-                        <RefreshCw className="animate-spin h-5 w-5 text-gray-400" />
-                      )}
-                    </div>
-
-                    {/* Enable/Disable Currency */}
-                    <label className="flex items-center gap-2 mb-4 p-3 bg-gray-50 rounded-lg cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={config.enabled !== false}
-                        onChange={e => handleRemittanceConfigUpdate(config.id, {
-                          enabled: e.target.checked
-                        })}
-                        className="rounded"
-                      />
-                      <span className="text-sm font-medium">
-                        {language === 'es' ? 'Habilitar esta moneda' : 'Enable this currency'}
-                      </span>
-                    </label>
-
-                    {/* Payment Methods */}
-                    {config.enabled !== false && (
-                      <div>
-                        <label className="block text-sm font-semibold mb-3">
-                          {language === 'es' ? 'Métodos de Pago Disponibles:' : 'Available Payment Methods:'}
-                        </label>
-                        <div className="space-y-2">
-                          {config.paymentMethods?.map(method => (
-                            <label
-                              key={method.id}
-                              className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-                              style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}
-                            >
-                              <div className="flex items-center gap-3">
-                                <input
-                                  type="checkbox"
-                                  checked={method.enabled !== false}
-                                  onChange={() => togglePaymentMethod(config.id, method.id)}
-                                  className="rounded"
-                                />
-                                <CreditCard className="h-4 w-4 text-gray-400" />
-                                <span className="text-sm font-medium">{method.name}</span>
-                              </div>
-                              {method.enabled !== false ? (
-                                <span
-                                  className="text-xs px-2 py-1 rounded"
-                                  style={{
-                                    backgroundColor: `${visualSettings.successColor || '#10b981'}20`,
-                                    color: visualSettings.successColor || '#10b981'
-                                  }}
-                                >
-                                  {language === 'es' ? '✓ Activo' : '✓ Active'}
-                                </span>
-                              ) : (
-                                <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-500">
-                                  {language === 'es' ? 'Desactivado' : 'Disabled'}
-                                </span>
-                              )}
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Status Summary */}
-                    <div className="mt-4 pt-4 border-t" style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}>
-                      <div className="flex items-center justify-between text-xs text-gray-600">
-                        <span>
-                          {language === 'es' ? 'Métodos activos:' : 'Active methods:'}
-                        </span>
-                        <span className="font-semibold">
-                          {config.paymentMethods?.filter(m => m.enabled !== false).length || 0} / {config.paymentMethods?.length || 0}
-                        </span>
                       </div>
                     </div>
                   </div>

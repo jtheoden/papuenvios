@@ -117,7 +117,7 @@ const RemittanceTypesConfig = () => {
     if (!formData.name || !formData.exchange_rate || !formData.min_amount) {
       toast({
         title: t('common.error'),
-        description: 'Por favor complete todos los campos requeridos',
+        description: t('remittances.admin.requiredFields'),
         variant: 'destructive'
       });
       return;
@@ -151,7 +151,7 @@ const RemittanceTypesConfig = () => {
     if (result.success) {
       toast({
         title: t('common.success'),
-        description: editingType ? 'Tipo de remesa actualizado' : 'Tipo de remesa creado'
+        description: editingType ? t('remittances.admin.typeUpdated') : t('remittances.admin.typeCreated')
       });
       loadTypes();
       handleCancel();
@@ -165,9 +165,13 @@ const RemittanceTypesConfig = () => {
   };
 
   const handleDelete = async (type) => {
-    const confirmed = window.confirm(
-      `¿Está seguro que desea eliminar "${type.name}"? Esta acción no se puede deshacer.`
-    );
+    const confirmed = await showModal({
+      type: 'danger',
+      title: t('remittances.admin.confirmDelete'),
+      message: `${type.name}\n\n${t('remittances.admin.deleteWarning')}`,
+      confirmText: t('remittances.admin.delete'),
+      cancelText: t('remittances.admin.cancel')
+    });
 
     if (!confirmed) return;
 
@@ -176,7 +180,7 @@ const RemittanceTypesConfig = () => {
     if (result.success) {
       toast({
         title: t('common.success'),
-        description: 'Tipo de remesa eliminado'
+        description: t('remittances.admin.typeDeleted')
       });
       loadTypes();
     } else {
@@ -194,7 +198,7 @@ const RemittanceTypesConfig = () => {
     if (result.success) {
       toast({
         title: t('common.success'),
-        description: type.is_active ? 'Tipo desactivado' : 'Tipo activado'
+        description: type.is_active ? t('remittances.admin.typeDeactivated') : t('remittances.admin.typeActivated')
       });
       loadTypes();
     } else {
@@ -220,10 +224,10 @@ const RemittanceTypesConfig = () => {
       <div className="flex justify-between items-center">
         <div>
           <h2 className={`${getHeadingStyle()} text-2xl mb-2`}>
-            Configuración de Tipos de Remesas
+            {t('remittances.admin.types')}
           </h2>
           <p className="text-gray-600">
-            Administre los tipos de remesas disponibles para sus clientes
+            {t('remittances.admin.title')}
           </p>
         </div>
         <button
@@ -231,7 +235,7 @@ const RemittanceTypesConfig = () => {
           className={`${getPrimaryButtonStyle()} flex items-center gap-2`}
         >
           <Plus className="h-5 w-5" />
-          Nuevo Tipo
+          {t('remittances.admin.newType')}
         </button>
       </div>
 
@@ -243,21 +247,21 @@ const RemittanceTypesConfig = () => {
           className="glass-effect p-6 rounded-xl mb-6 border-2 border-blue-200"
         >
           <h3 className="text-xl font-bold mb-4 gradient-text">
-            {editingType ? 'Editar Tipo de Remesa' : 'Nuevo Tipo de Remesa'}
+            {editingType ? t('remittances.admin.editRemittanceType') : t('remittances.admin.newRemittanceType')}
           </h3>
 
           <form onSubmit={handleSave} className="grid md:grid-cols-2 gap-6">
             {/* Nombre */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Nombre *
+                {t('remittances.admin.typeName')} *
               </label>
               <input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Ej: Dólares a CUP (Efectivo)"
+                placeholder={t('remittances.admin.typeNamePlaceholder')}
                 required
               />
             </div>
@@ -265,7 +269,7 @@ const RemittanceTypesConfig = () => {
             {/* Monedas */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Moneda de Origen *
+                {t('remittances.admin.originCurrency')} *
               </label>
               <select
                 value={formData.currency_code}
@@ -282,7 +286,7 @@ const RemittanceTypesConfig = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Moneda de Entrega *
+                {t('remittances.admin.deliveryCurrency')} *
               </label>
               <select
                 value={formData.delivery_currency}
@@ -299,7 +303,7 @@ const RemittanceTypesConfig = () => {
             {/* Tasa de Cambio */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Tasa de Cambio *
+                {t('remittances.admin.exchangeRate')} *
               </label>
               <div className="relative">
                 <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -318,7 +322,7 @@ const RemittanceTypesConfig = () => {
             {/* Comisiones */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Comisión (%)
+                {t('remittances.admin.commissionPercent')}
               </label>
               <input
                 type="number"
@@ -332,7 +336,7 @@ const RemittanceTypesConfig = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Comisión Fija
+                {t('remittances.admin.commissionFixed')}
               </label>
               <input
                 type="number"
@@ -347,7 +351,7 @@ const RemittanceTypesConfig = () => {
             {/* Límites */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Monto Mínimo *
+                {t('remittances.admin.minAmount')} *
               </label>
               <input
                 type="number"
@@ -362,7 +366,7 @@ const RemittanceTypesConfig = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Monto Máximo
+                {t('remittances.admin.maxAmount')}
               </label>
               <input
                 type="number"
@@ -377,7 +381,7 @@ const RemittanceTypesConfig = () => {
             {/* Método de Entrega */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Método de Entrega *
+                {t('remittances.admin.deliveryMethod')} *
               </label>
               <select
                 value={formData.delivery_method}
@@ -385,8 +389,8 @@ const RemittanceTypesConfig = () => {
                 className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
               >
-                <option value={DELIVERY_METHODS.CASH}>Efectivo</option>
-                <option value={DELIVERY_METHODS.TRANSFER}>Transferencia</option>
+                <option value={DELIVERY_METHODS.CASH}>{t('remittances.recipient.cash')}</option>
+                <option value={DELIVERY_METHODS.TRANSFER}>{t('remittances.recipient.transfer')}</option>
                 <option value={DELIVERY_METHODS.CARD}>Tarjeta</option>
               </select>
             </div>
@@ -394,7 +398,7 @@ const RemittanceTypesConfig = () => {
             {/* Tiempos */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Días Máximos de Entrega *
+                {t('remittances.admin.maxDeliveryDays')} *
               </label>
               <input
                 type="number"
@@ -408,7 +412,7 @@ const RemittanceTypesConfig = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Días para Alerta *
+                {t('remittances.admin.warningDays')} *
               </label>
               <input
                 type="number"
@@ -423,14 +427,14 @@ const RemittanceTypesConfig = () => {
             {/* Descripción */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Descripción
+                {t('remittances.admin.description')}
               </label>
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 rows="3"
-                placeholder="Descripción del tipo de remesa..."
+                placeholder={t('remittances.admin.descriptionPlaceholder')}
               />
             </div>
 
@@ -444,7 +448,7 @@ const RemittanceTypesConfig = () => {
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm font-medium text-gray-700">
-                  Tipo activo y disponible para clientes
+                  {t('remittances.admin.active')}
                 </span>
               </label>
             </div>
@@ -475,13 +479,13 @@ const RemittanceTypesConfig = () => {
       {types.length === 0 ? (
         <div className="text-center py-12 glass-effect rounded-xl">
           <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-600 mb-4">No hay tipos de remesas configurados</p>
+          <p className="text-gray-600 mb-4">{t('remittances.admin.noTypes')}</p>
           <button
             onClick={handleCreate}
             className={`${getPrimaryButtonStyle()} inline-flex items-center gap-2`}
           >
             <Plus className="h-5 w-5" />
-            Crear Primer Tipo
+            {t('remittances.admin.newType')}
           </button>
         </div>
       ) : (
@@ -499,7 +503,7 @@ const RemittanceTypesConfig = () => {
                     <h3 className="text-lg font-bold gradient-text">{type.name}</h3>
                     {!type.is_active && (
                       <span className="px-2 py-1 bg-gray-200 text-gray-600 text-xs rounded-full">
-                        Inactivo
+                        {t('remittances.admin.inactive')}
                       </span>
                     )}
                   </div>
@@ -533,12 +537,12 @@ const RemittanceTypesConfig = () => {
 
                     <div>
                       <p className="text-xs text-gray-500 mb-1">Tiempo Máximo</p>
-                      <p className="font-semibold">{type.max_delivery_days} días</p>
+                      <p className="font-semibold">{type.max_delivery_days} {type.max_delivery_days === 1 ? t('adminOrders.days.singular') : t('adminOrders.days.plural')}</p>
                     </div>
 
                     <div>
                       <p className="text-xs text-gray-500 mb-1">Alerta</p>
-                      <p className="font-semibold">{type.warning_days} días</p>
+                      <p className="font-semibold">{type.warning_days} {type.warning_days === 1 ? t('adminOrders.days.singular') : t('adminOrders.days.plural')}</p>
                     </div>
                   </div>
 
@@ -551,7 +555,7 @@ const RemittanceTypesConfig = () => {
                   <button
                     onClick={() => toggleActive(type)}
                     className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                    title={type.is_active ? 'Desactivar' : 'Activar'}
+                    title={type.is_active ? t('remittances.admin.deactivate') : t('remittances.admin.activate')}
                   >
                     {type.is_active ? (
                       <Eye className="h-5 w-5 text-green-600" />
@@ -563,7 +567,7 @@ const RemittanceTypesConfig = () => {
                   <button
                     onClick={() => handleEdit(type)}
                     className="p-2 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors"
-                    title="Editar"
+                    title={t('remittances.admin.edit')}
                   >
                     <Edit className="h-5 w-5" />
                   </button>
@@ -572,7 +576,7 @@ const RemittanceTypesConfig = () => {
                     <button
                       onClick={() => handleDelete(type)}
                       className="p-2 hover:bg-red-50 text-red-600 rounded-lg transition-colors"
-                      title="Eliminar"
+                      title={t('remittances.admin.delete')}
                     >
                       <Trash2 className="h-5 w-5" />
                     </button>
