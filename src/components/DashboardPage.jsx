@@ -330,7 +330,7 @@ const DashboardPage = ({ onNavigate }) => {
             }`}
           >
             <Send className="h-5 w-5" />
-            Remesas
+             {t('dashboard.remittancesTab')}
           </button>
           <button
             onClick={() => setActiveTab('remittance-types')}
@@ -341,7 +341,7 @@ const DashboardPage = ({ onNavigate }) => {
             }`}
           >
             <Settings className="h-5 w-5" />
-            Tipos de Remesas
+             {t('dashboard.remittancesKindTab')}
           </button>
         </motion.div>
 

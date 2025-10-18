@@ -486,7 +486,7 @@ const ProductsPage = ({ onNavigate }) => {
                   <div className="p-4">
                     <h3 className="font-bold text-lg mb-2">{combo.name}</h3>
                     <p className="text-sm text-gray-600 mb-3">
-                      {combo.products?.length || 0} productos incluidos
+                      {combo.products?.length || 0} {t('vendor.combos.includedProducts')}
                     </p>
 
                     <div className="flex items-center justify-between mb-4">

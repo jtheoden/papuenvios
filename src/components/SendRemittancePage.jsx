@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useModal } from '@/contexts/ModalContext';
 import {
   getActiveRemittanceTypes,
   calculateRemittance,
@@ -17,7 +18,8 @@ import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 
 const SendRemittancePage = ({ onNavigate }) => {
   const { t } = useLanguage();
-  const { user } = useAuth();
+  const { user, isAdmin, isSuperAdmin } = useAuth();
+  const { showModal } = useModal();
 
   const [step, setStep] = useState(1);
   const [types, setTypes] = useState([]);
@@ -50,6 +52,19 @@ const SendRemittancePage = ({ onNavigate }) => {
     loadTypes();
   }, []);
 
+  useEffect(() => {
+    if (isAdmin || isSuperAdmin) {
+      showModal({
+        type: 'info',
+        title: t('common.accessDenied'),
+        message: t('remittances.admin.adminCannotSendRemittance'),
+        confirmText: t('common.ok')
+      }).then(() => {
+        onNavigate('dashboard');
+      });
+    }
+  }, [isAdmin, isSuperAdmin]);
+
   const loadTypes = async () => {
     setLoading(true);
     const result = await getActiveRemittanceTypes();
@@ -75,7 +90,7 @@ const SendRemittancePage = ({ onNavigate }) => {
     if (!selectedType || !amount) {
       toast({
         title: t('common.error'),
-        description: 'Por favor seleccione un tipo y monto',
+        description: t('remittances.wizard.selectTypeAndAmount'),
         variant: 'destructive'
       });
       return;
@@ -101,7 +116,7 @@ const SendRemittancePage = ({ onNavigate }) => {
     if (!recipientData.name || !recipientData.phone) {
       toast({
         title: t('common.error'),
-        description: 'Por favor complete nombre y teléfono del destinatario',
+        description: t('remittances.wizard.fillRecipientInfo'),
         variant: 'destructive'
       });
       return;
@@ -129,7 +144,7 @@ const SendRemittancePage = ({ onNavigate }) => {
       setCreatedRemittance(result.remittance);
       toast({
         title: t('common.success'),
-        description: 'Remesa creada exitosamente'
+        description: t('remittances.wizard.remittanceCreatedSuccess')
       });
       setStep(4);
     } else {
@@ -149,7 +164,7 @@ const SendRemittancePage = ({ onNavigate }) => {
     if (!paymentData.file || !paymentData.reference) {
       toast({
         title: t('common.error'),
-        description: 'Por favor suba el comprobante y la referencia de pago',
+        description: t('remittances.wizard.uploadProofAndReference'),
         variant: 'destructive'
       });
       return;
@@ -167,7 +182,7 @@ const SendRemittancePage = ({ onNavigate }) => {
     if (result.success) {
       toast({
         title: t('common.success'),
-        description: 'Comprobante enviado. Recibirá notificación cuando se valide el pago.'
+        description: t('remittances.wizard.proofSentSuccess')
       });
 
       // Redirect to my remittances
@@ -227,10 +242,10 @@ const SendRemittancePage = ({ onNavigate }) => {
   return (
     <div className="max-w-4xl mx-auto py-8 px-4">
       <h1 className={`${getHeadingStyle()} text-3xl mb-2 text-center`}>
-        Enviar Remesa
+        {t('remittances.wizard.pageTitle')}
       </h1>
       <p className="text-gray-600 text-center mb-8">
-        Envía dinero de forma rápida y segura
+        {t('remittances.wizard.pageSubtitle')}
       </p>
 
       {renderStepIndicator()}
@@ -248,13 +263,13 @@ const SendRemittancePage = ({ onNavigate }) => {
             <div className="glass-effect p-6 rounded-xl">
               <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
                 <DollarSign className="h-6 w-6 text-blue-600" />
-                Tipo y Monto de Remesa
+                {t('remittances.wizard.step1Title')}
               </h2>
 
               {/* Type Selection */}
               <div className="space-y-3 mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Seleccione el tipo de remesa *
+                  {t('remittances.wizard.selectTypeRequired')}
                 </label>
                 {types.map((type) => (
                   <div
@@ -273,14 +288,14 @@ const SendRemittancePage = ({ onNavigate }) => {
                           <p className="text-sm text-gray-600 mt-1">{type.description}</p>
                         )}
                         <div className="mt-2 text-sm">
-                          <span className="text-gray-600">Tasa: </span>
+                          <span className="text-gray-600">{t('remittances.wizard.rate')}: </span>
                           <span className="font-semibold">
                             1 {type.currency_code} = {type.exchange_rate} {type.delivery_currency}
                           </span>
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-xs text-gray-500">Límites</p>
+                        <p className="text-xs text-gray-500">{t('remittances.wizard.limits')}</p>
                         <p className="text-sm font-semibold">
                           {type.min_amount} - {type.max_amount || '∞'}
                         </p>
@@ -295,7 +310,7 @@ const SendRemittancePage = ({ onNavigate }) => {
               {selectedType && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Monto a enviar ({selectedType.currency_code}) *
+                    {t('remittances.wizard.amountToSend')} ({selectedType.currency_code}) *
                   </label>
                   <div className="relative">
                     <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -309,8 +324,8 @@ const SendRemittancePage = ({ onNavigate }) => {
                     />
                   </div>
                   <p className="text-xs text-gray-500 mt-2">
-                    Monto mínimo: {selectedType.min_amount} {selectedType.currency_code}
-                    {selectedType.max_amount && ` • Máximo: ${selectedType.max_amount} ${selectedType.currency_code}`}
+                    {t('remittances.wizard.minAmount')}: {selectedType.min_amount} {selectedType.currency_code}
+                    {selectedType.max_amount && ` • ${t('remittances.wizard.maxAmount')}: ${selectedType.max_amount} ${selectedType.currency_code}`}
                   </p>
                 </div>
               )}
@@ -322,7 +337,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                 disabled={!selectedType || !amount || calculating}
                 className={`${getPrimaryButtonStyle()} flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed`}
               >
-                {calculating ? 'Calculando...' : 'Continuar'}
+                {calculating ? t('remittances.wizard.calculating') : t('remittances.wizard.continue')}
                 <ArrowRight className="h-5 w-5" />
               </button>
             </div>
@@ -342,21 +357,21 @@ const SendRemittancePage = ({ onNavigate }) => {
             <div className="glass-effect p-6 rounded-xl bg-gradient-to-r from-blue-50 to-purple-50">
               <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                 <Calculator className="h-5 w-5 text-blue-600" />
-                Resumen del Cálculo
+                {t('remittances.wizard.calculationSummary')}
               </h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-gray-600">Monto a enviar</p>
+                  <p className="text-sm text-gray-600">{t('remittances.wizard.youSend')}</p>
                   <p className="text-2xl font-bold">{calculation.amount} {calculation.currency}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Comisión</p>
+                  <p className="text-sm text-gray-600">{t('remittances.wizard.commission')}</p>
                   <p className="text-xl font-semibold text-red-600">
                     -{calculation.totalCommission.toFixed(2)} {calculation.currency}
                   </p>
                 </div>
                 <div className="col-span-2 pt-4 border-t-2 border-blue-200">
-                  <p className="text-sm text-gray-600 mb-1">Destinatario recibirá</p>
+                  <p className="text-sm text-gray-600 mb-1">{t('remittances.wizard.recipientReceives')}</p>
                   <p className="text-3xl font-bold text-green-600">
                     {calculation.amountToDeliver.toFixed(2)} {calculation.deliveryCurrency}
                   </p>
@@ -368,13 +383,13 @@ const SendRemittancePage = ({ onNavigate }) => {
             <div className="glass-effect p-6 rounded-xl">
               <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
                 <User className="h-6 w-6 text-blue-600" />
-                Datos del Destinatario
+                {t('remittances.wizard.step2Title')}
               </h2>
 
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Nombre completo *
+                    {t('remittances.recipient.fullName')} *
                   </label>
                   <input
                     type="text"
@@ -388,7 +403,7 @@ const SendRemittancePage = ({ onNavigate }) => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Teléfono *
+                    {t('remittances.recipient.phone')} *
                   </label>
                   <input
                     type="tel"
@@ -402,7 +417,7 @@ const SendRemittancePage = ({ onNavigate }) => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Ciudad
+                    {t('remittances.recipient.city')}
                   </label>
                   <input
                     type="text"
@@ -415,7 +430,7 @@ const SendRemittancePage = ({ onNavigate }) => {
 
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Dirección
+                    {t('remittances.recipient.address')}
                   </label>
                   <input
                     type="text"
@@ -428,7 +443,7 @@ const SendRemittancePage = ({ onNavigate }) => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Carnet de Identidad
+                    {t('remittances.recipient.idNumber')}
                   </label>
                   <input
                     type="text"
@@ -441,7 +456,7 @@ const SendRemittancePage = ({ onNavigate }) => {
 
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Notas adicionales
+                    {t('remittances.recipient.notes')}
                   </label>
                   <textarea
                     value={recipientData.notes}
@@ -460,13 +475,13 @@ const SendRemittancePage = ({ onNavigate }) => {
                 className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
               >
                 <ArrowLeft className="h-5 w-5" />
-                Atrás
+                {t('remittances.wizard.back')}
               </button>
               <button
                 onClick={handleRecipientSubmit}
                 className={`${getPrimaryButtonStyle()} flex items-center gap-2`}
               >
-                Continuar
+                {t('remittances.wizard.continue')}
                 <ArrowRight className="h-5 w-5" />
               </button>
             </div>
@@ -485,39 +500,39 @@ const SendRemittancePage = ({ onNavigate }) => {
             <div className="glass-effect p-6 rounded-xl">
               <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
                 <FileText className="h-6 w-6 text-blue-600" />
-                Confirmar Remesa
+                {t('remittances.wizard.step3Title')}
               </h2>
 
               <div className="space-y-6">
                 <div>
-                  <h3 className="font-semibold mb-2">Tipo de Remesa</h3>
+                  <h3 className="font-semibold mb-2">{t('common.type')} {t('nav.remittances')}</h3>
                   <p className="text-gray-700">{selectedType.name}</p>
                 </div>
 
                 <div>
-                  <h3 className="font-semibold mb-2">Monto a Enviar</h3>
+                  <h3 className="font-semibold mb-2">{t('remittances.wizard.youSend')}</h3>
                   <p className="text-2xl font-bold text-blue-600">
                     {calculation.amount} {calculation.currency}
                   </p>
                 </div>
 
                 <div>
-                  <h3 className="font-semibold mb-2">Destinatario Recibirá</h3>
+                  <h3 className="font-semibold mb-2">{t('remittances.wizard.recipientReceives')}</h3>
                   <p className="text-2xl font-bold text-green-600">
                     {calculation.amountToDeliver.toFixed(2)} {calculation.deliveryCurrency}
                   </p>
                 </div>
 
                 <div className="pt-4 border-t">
-                  <h3 className="font-semibold mb-2">Datos del Destinatario</h3>
+                  <h3 className="font-semibold mb-2">{t('remittances.wizard.step2Title')}</h3>
                   <div className="space-y-1 text-gray-700">
-                    <p><span className="font-medium">Nombre:</span> {recipientData.name}</p>
-                    <p><span className="font-medium">Teléfono:</span> {recipientData.phone}</p>
+                    <p><span className="font-medium">{t('common.name')}:</span> {recipientData.name}</p>
+                    <p><span className="font-medium">{t('common.phone')}:</span> {recipientData.phone}</p>
                     {recipientData.city && (
-                      <p><span className="font-medium">Ciudad:</span> {recipientData.city}</p>
+                      <p><span className="font-medium">{t('common.city')}:</span> {recipientData.city}</p>
                     )}
                     {recipientData.address && (
-                      <p><span className="font-medium">Dirección:</span> {recipientData.address}</p>
+                      <p><span className="font-medium">{t('common.address')}:</span> {recipientData.address}</p>
                     )}
                   </div>
                 </div>
@@ -530,14 +545,14 @@ const SendRemittancePage = ({ onNavigate }) => {
                 className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
               >
                 <ArrowLeft className="h-5 w-5" />
-                Atrás
+                {t('remittances.wizard.back')}
               </button>
               <button
                 onClick={handleConfirmRemittance}
                 disabled={submitting}
                 className={`${getPrimaryButtonStyle()} flex items-center gap-2 disabled:opacity-50`}
               >
-                {submitting ? 'Creando...' : 'Confirmar Remesa'}
+                {submitting ? t('remittances.wizard.creating') : t('remittances.wizard.confirmAndCreate')}
                 <CheckCircle className="h-5 w-5" />
               </button>
             </div>
@@ -555,22 +570,22 @@ const SendRemittancePage = ({ onNavigate }) => {
           >
             <div className="glass-effect p-6 rounded-xl text-center">
               <CheckCircle className="h-16 w-16 text-green-600 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold mb-2">Remesa Creada</h2>
+              <h2 className="text-2xl font-bold mb-2">{t('remittances.wizard.remittanceCreated')}</h2>
               <p className="text-gray-600 mb-4">
-                Número de remesa: <span className="font-bold">{createdRemittance.remittance_number}</span>
+                {t('remittances.wizard.remittanceNumber')}: <span className="font-bold">{createdRemittance.remittance_number}</span>
               </p>
             </div>
 
             <form onSubmit={handlePaymentProofSubmit} className="glass-effect p-6 rounded-xl">
               <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
                 <Upload className="h-6 w-6 text-blue-600" />
-                Subir Comprobante de Pago
+                {t('remittances.wizard.step4Title')}
               </h3>
 
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Comprobante de pago *
+                    {t('remittances.user.paymentProof')} *
                   </label>
                   <input
                     type="file"
@@ -583,7 +598,7 @@ const SendRemittancePage = ({ onNavigate }) => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Referencia de pago *
+                    {t('remittances.user.paymentReference')} *
                   </label>
                   <input
                     type="text"
@@ -597,7 +612,7 @@ const SendRemittancePage = ({ onNavigate }) => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Notas adicionales
+                    {t('remittances.user.additionalNotes')}
                   </label>
                   <textarea
                     value={paymentData.notes}
@@ -613,8 +628,8 @@ const SendRemittancePage = ({ onNavigate }) => {
                 <div className="flex items-start gap-3">
                   <AlertCircle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
                   <div className="text-sm text-blue-800">
-                    <p className="font-semibold mb-1">Importante:</p>
-                    <p>Su remesa será procesada una vez validemos el comprobante de pago. Recibirá una notificación cuando esto ocurra.</p>
+                    <p className="font-semibold mb-1">{t('remittances.wizard.importantNote')}:</p>
+                    <p>{t('remittances.wizard.proofNote')}</p>
                   </div>
                 </div>
               </div>
@@ -629,14 +644,14 @@ const SendRemittancePage = ({ onNavigate }) => {
                   }}
                   className="flex-1 px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  Subir Después
+                  {t('remittances.wizard.uploadLater')}
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
                   className={`flex-1 ${getPrimaryButtonStyle()} disabled:opacity-50`}
                 >
-                  {submitting ? 'Enviando...' : 'Enviar Comprobante'}
+                  {submitting ? t('remittances.wizard.sending') : t('remittances.wizard.sendProof')}
                 </button>
               </div>
             </form>

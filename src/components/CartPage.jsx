@@ -14,6 +14,7 @@ import { getCurrencies, convertCurrency } from '@/lib/currencyService';
 import { generateWhatsAppURL, notifyAdminNewPayment } from '@/lib/whatsappService';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
+import { supabase } from '@/lib/supabase';
 
 const CartPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
@@ -366,7 +367,7 @@ const CartPage = ({ onNavigate }) => {
       }
 
       // Notify admin via WhatsApp using optimized function
-      if (businessInfo?.whatsapp) {
+      if (notificationSettings?.whatsapp) {
         // Prepare order data for notification
         const orderForNotification = {
           ...createdOrder,
@@ -379,7 +380,27 @@ const CartPage = ({ onNavigate }) => {
         };
 
         // Use the optimized notification function
-        notifyAdminNewPayment(orderForNotification, businessInfo.whatsapp, language);
+        notifyAdminNewPayment(orderForNotification, notificationSettings.whatsapp, language);
+      }
+
+      // Trigger server-side email/WhatsApp notification via Supabase Edge Function (if configured)
+      try {
+        if (notificationSettings?.adminEmail || notificationSettings?.whatsapp) {
+          await supabase.functions.invoke('notify-order', {
+            body: {
+              orderData: {
+                orderNumber: createdOrder.order_number,
+                customerName: recipientDetails.fullName,
+                total: (subtotal + shippingCost).toFixed(2),
+                currency: selectedCurrency,
+                paymentProofUrl: uploadResult?.url || createdOrder.payment_proof_url || null
+              },
+              notificationSettings
+            }
+          });
+        }
+      } catch (fnErr) {
+        console.warn('notify-order function error (non-blocking):', fnErr?.message || fnErr);
       }
 
       // Success
@@ -657,7 +678,7 @@ const CartPage = ({ onNavigate }) => {
           </div>
 
           {/* WhatsApp Contact Button */}
-          {businessInfo?.whatsapp && (
+          {notificationSettings?.whatsapp && (
             <div className="mb-6">
               <div className="p-4 bg-green-50 rounded-lg border border-green-200">
                 <p className="text-sm text-gray-700 mb-3">
@@ -672,7 +693,7 @@ const CartPage = ({ onNavigate }) => {
                     const message = language === 'es'
                       ? `Hola! Tengo una consulta sobre mi pago. Total: ${currencies.find(c => c.code === selectedCurrency)?.symbol || '$'}${convertedTotal !== null ? convertedTotal.toFixed(2) : (subtotal + shippingCost).toFixed(2)} ${selectedCurrency}`
                       : `Hello! I have a question about my payment. Total: ${currencies.find(c => c.code === selectedCurrency)?.symbol || '$'}${convertedTotal !== null ? convertedTotal.toFixed(2) : (subtotal + shippingCost).toFixed(2)} ${selectedCurrency}`;
-                    window.open(generateWhatsAppURL(businessInfo.whatsapp, message), '_blank');
+                    window.open(generateWhatsAppURL(notificationSettings.whatsapp, message), '_blank');
                   }}
                 >
                   <MessageCircle className="mr-2 h-5 w-5" />
