@@ -88,12 +88,12 @@ const AdminRemittancesTab = () => {
 
   const handleValidatePayment = async (remittance) => {
     const notes = await showModal({
-      title: 'Validar Pago',
-      message: `¿Confirma que el pago de ${remittance.amount} ${remittance.currency} es válido?`,
+      title: t('remittances.admin.validate'),
+      message: t('remittances.admin.confirmValidateMessage', { amount: remittance.amount, currency: remittance.currency }),
       input: true,
-      inputLabel: 'Notas (opcional)',
-      inputPlaceholder: 'Añadir notas sobre la validación...',
-      confirmText: 'Validar Pago',
+      inputLabel: t('remittances.admin.validationNotes') + ' (opcional)',
+      inputPlaceholder: t('remittances.admin.validationNotesPlaceholder'),
+      confirmText: t('remittances.admin.validate'),
       cancelText: t('common.cancel'),
       type: 'success'
     });
@@ -105,7 +105,7 @@ const AdminRemittancesTab = () => {
     if (result.success) {
       toast({
         title: t('common.success'),
-        description: 'Pago validado correctamente'
+        description: t('remittances.admin.paymentValidated')
       });
       loadRemittances();
       setSelectedRemittance(null);
@@ -120,12 +120,12 @@ const AdminRemittancesTab = () => {
 
   const handleRejectPayment = async (remittance) => {
     const reason = await showModal({
-      title: 'Rechazar Pago',
-      message: `¿Por qué se rechaza el pago de ${remittance.remittance_number}?`,
+      title: t('remittances.admin.reject'),
+      message: t('remittances.admin.confirmRejectMessage', { number: remittance.remittance_number }),
       input: true,
-      inputLabel: 'Razón del rechazo *',
-      inputPlaceholder: 'Ej: Comprobante ilegible, datos incorrectos...',
-      confirmText: 'Rechazar',
+      inputLabel: t('remittances.admin.rejectReason') + ' *',
+      inputPlaceholder: t('remittances.admin.rejectReasonPlaceholder'),
+      confirmText: t('remittances.admin.reject'),
       cancelText: t('common.cancel'),
       type: 'danger',
       required: true
@@ -138,7 +138,7 @@ const AdminRemittancesTab = () => {
     if (result.success) {
       toast({
         title: t('common.success'),
-        description: 'Pago rechazado'
+        description: t('remittances.admin.paymentRejected')
       });
       loadRemittances();
       setSelectedRemittance(null);
@@ -153,9 +153,9 @@ const AdminRemittancesTab = () => {
 
   const handleStartProcessing = async (remittance) => {
     const confirmed = await showModal({
-      title: 'Iniciar Procesamiento',
-      message: `Iniciar procesamiento de remesa ${remittance.remittance_number}?`,
-      confirmText: 'Iniciar',
+      title: t('remittances.admin.process'),
+      message: t('remittances.admin.confirmProcessMessage', { number: remittance.remittance_number }),
+      confirmText: t('remittances.admin.process'),
       cancelText: t('common.cancel')
     });
 
@@ -166,7 +166,7 @@ const AdminRemittancesTab = () => {
     if (result.success) {
       toast({
         title: t('common.success'),
-        description: 'Procesamiento iniciado'
+        description: t('remittances.admin.processingStarted')
       });
       loadRemittances();
       setSelectedRemittance(null);
@@ -181,12 +181,16 @@ const AdminRemittancesTab = () => {
 
   const handleConfirmDelivery = async (remittance) => {
     const notes = await showModal({
-      title: 'Confirmar Entrega',
-      message: `Confirmar entrega de ${remittance.amount_to_deliver} ${remittance.delivery_currency} a ${remittance.recipient_name}?`,
+      title: t('remittances.admin.confirmDelivery'),
+      message: t('remittances.admin.confirmDeliveryMessage', {
+        amount: remittance.amount_to_deliver,
+        currency: remittance.delivery_currency,
+        recipient: remittance.recipient_name
+      }),
       input: true,
-      inputLabel: 'Notas de entrega',
-      inputPlaceholder: 'Detalles de la entrega...',
-      confirmText: 'Confirmar Entrega',
+      inputLabel: t('remittances.admin.deliveryNotes'),
+      inputPlaceholder: t('remittances.admin.deliveryNotesPlaceholder'),
+      confirmText: t('remittances.admin.confirmDelivery'),
       cancelText: t('common.cancel'),
       type: 'success'
     });
@@ -198,7 +202,7 @@ const AdminRemittancesTab = () => {
     if (result.success) {
       toast({
         title: t('common.success'),
-        description: 'Entrega confirmada'
+        description: t('remittances.admin.deliveryConfirmed')
       });
       loadRemittances();
       setSelectedRemittance(null);
@@ -213,9 +217,9 @@ const AdminRemittancesTab = () => {
 
   const handleComplete = async (remittance) => {
     const confirmed = await showModal({
-      title: 'Completar Remesa',
-      message: `¿Marcar remesa ${remittance.remittance_number} como completada?`,
-      confirmText: 'Completar',
+      title: t('remittances.admin.complete'),
+      message: t('remittances.admin.confirmCompleteMessage', { number: remittance.remittance_number }),
+      confirmText: t('remittances.admin.complete'),
       cancelText: t('common.cancel'),
       type: 'success'
     });
@@ -227,7 +231,7 @@ const AdminRemittancesTab = () => {
     if (result.success) {
       toast({
         title: t('common.success'),
-        description: 'Remesa completada'
+        description: t('remittances.admin.remittanceCompleted')
       });
       loadRemittances();
       setSelectedRemittance(null);
@@ -245,42 +249,42 @@ const AdminRemittancesTab = () => {
       [REMITTANCE_STATUS.PAYMENT_PENDING]: {
         bg: 'bg-gray-100',
         text: 'text-gray-700',
-        label: 'Pendiente de Pago'
+        label: t('remittances.status.paymentPending')
       },
       [REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED]: {
         bg: 'bg-yellow-100',
         text: 'text-yellow-700',
-        label: 'Revisar Comprobante'
+        label: t('remittances.status.paymentProofUploaded')
       },
       [REMITTANCE_STATUS.PAYMENT_VALIDATED]: {
         bg: 'bg-blue-100',
         text: 'text-blue-700',
-        label: 'Pago Validado'
+        label: t('remittances.status.paymentValidated')
       },
       [REMITTANCE_STATUS.PAYMENT_REJECTED]: {
         bg: 'bg-red-100',
         text: 'text-red-700',
-        label: 'Pago Rechazado'
+        label: t('remittances.status.paymentRejected')
       },
       [REMITTANCE_STATUS.PROCESSING]: {
         bg: 'bg-purple-100',
         text: 'text-purple-700',
-        label: 'En Proceso'
+        label: t('remittances.status.processing')
       },
       [REMITTANCE_STATUS.DELIVERED]: {
         bg: 'bg-green-100',
         text: 'text-green-700',
-        label: 'Entregado'
+        label: t('remittances.status.delivered')
       },
       [REMITTANCE_STATUS.COMPLETED]: {
         bg: 'bg-emerald-100',
         text: 'text-emerald-700',
-        label: 'Completado'
+        label: t('remittances.status.completed')
       },
       [REMITTANCE_STATUS.CANCELLED]: {
         bg: 'bg-gray-100',
         text: 'text-gray-500',
-        label: 'Cancelado'
+        label: t('remittances.status.cancelled')
       }
     };
 
@@ -320,14 +324,14 @@ const AdminRemittancesTab = () => {
               className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
             >
               <CheckCircle className="h-4 w-4" />
-              Validar
+              {t('remittances.admin.validate')}
             </button>
             <button
               onClick={() => handleRejectPayment(remittance)}
               className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
             >
               <XCircle className="h-4 w-4" />
-              Rechazar
+              {t('remittances.admin.reject')}
             </button>
           </div>
         );
@@ -339,7 +343,7 @@ const AdminRemittancesTab = () => {
             className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
           >
             <Package className="h-4 w-4" />
-            Procesar
+            {t('remittances.admin.process')}
           </button>
         );
 
@@ -350,7 +354,7 @@ const AdminRemittancesTab = () => {
             className="flex items-center gap-1 px-3 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
           >
             <Truck className="h-4 w-4" />
-            Confirmar Entrega
+            {t('remittances.admin.confirmDelivery')}
           </button>
         );
 
@@ -361,7 +365,7 @@ const AdminRemittancesTab = () => {
             className="flex items-center gap-1 px-3 py-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm"
           >
             <CheckCircle className="h-4 w-4" />
-            Completar
+            {t('remittances.admin.complete')}
           </button>
         );
 
@@ -390,7 +394,7 @@ const AdminRemittancesTab = () => {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar por número, destinatario o teléfono..."
+              placeholder={t('remittances.admin.searchPlaceholder')}
               className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
@@ -403,12 +407,12 @@ const AdminRemittancesTab = () => {
               onChange={(e) => setStatusFilter(e.target.value)}
               className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
             >
-              <option value="all">Todos los estados</option>
-              <option value="pending_validation">Pendientes de Validación</option>
-              <option value="in_progress">En Progreso</option>
-              <option value="urgent">Urgentes</option>
-              <option value={REMITTANCE_STATUS.COMPLETED}>Completadas</option>
-              <option value={REMITTANCE_STATUS.CANCELLED}>Canceladas</option>
+              <option value="all">{t('remittances.admin.allStatuses')}</option>
+              <option value="pending_validation">{t('remittances.admin.pendingValidation')}</option>
+              <option value="in_progress">{t('remittances.admin.inProgress')}</option>
+              <option value="urgent">{t('remittances.admin.urgent')}</option>
+              <option value={REMITTANCE_STATUS.COMPLETED}>{t('remittances.status.completed')}</option>
+              <option value={REMITTANCE_STATUS.CANCELLED}>{t('remittances.status.cancelled')}</option>
             </select>
           </div>
         </div>
@@ -418,24 +422,24 @@ const AdminRemittancesTab = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           {
-            label: 'Pendientes Validación',
+            label: t('remittances.admin.pendingValidation'),
             value: remittances.filter(r => r.status === REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED).length,
             color: 'bg-yellow-100 text-yellow-700'
           },
           {
-            label: 'En Proceso',
+            label: t('remittances.admin.inProgress'),
             value: remittances.filter(r =>
               [REMITTANCE_STATUS.PAYMENT_VALIDATED, REMITTANCE_STATUS.PROCESSING].includes(r.status)
             ).length,
             color: 'bg-blue-100 text-blue-700'
           },
           {
-            label: 'Completadas',
+            label: t('remittances.status.completed'),
             value: remittances.filter(r => r.status === REMITTANCE_STATUS.COMPLETED).length,
             color: 'bg-green-100 text-green-700'
           },
           {
-            label: 'Total',
+            label: t('remittances.admin.total'),
             value: remittances.length,
             color: 'bg-gray-100 text-gray-700'
           }
@@ -451,7 +455,7 @@ const AdminRemittancesTab = () => {
       {filteredRemittances.length === 0 ? (
         <div className="text-center py-12 glass-effect rounded-xl">
           <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-600">No se encontraron remesas</p>
+          <p className="text-gray-600">{t('remittances.user.noRemittances')}</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -481,36 +485,36 @@ const AdminRemittancesTab = () => {
 
               <div className="grid md:grid-cols-3 gap-4 mb-4">
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Monto Enviado</p>
+                  <p className="text-xs text-gray-500 mb-1">{t('remittances.user.amountSent')}</p>
                   <p className="font-semibold">
                     {remittance.amount} {remittance.currency}
                   </p>
                 </div>
 
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">A Entregar</p>
+                  <p className="text-xs text-gray-500 mb-1">{t('remittances.user.toDeliver')}</p>
                   <p className="font-semibold">
                     {remittance.amount_to_deliver?.toFixed(2)} {remittance.delivery_currency}
                   </p>
                 </div>
 
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Método</p>
+                  <p className="text-xs text-gray-500 mb-1">{t('remittances.user.method')}</p>
                   <p className="font-semibold capitalize">{remittance.delivery_method}</p>
                 </div>
 
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Destinatario</p>
+                  <p className="text-xs text-gray-500 mb-1">{t('remittances.recipient.fullName')}</p>
                   <p className="font-semibold">{remittance.recipient_name}</p>
                 </div>
 
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Teléfono</p>
+                  <p className="text-xs text-gray-500 mb-1">{t('remittances.recipient.phone')}</p>
                   <p className="font-semibold">{remittance.recipient_phone}</p>
                 </div>
 
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Ciudad</p>
+                  <p className="text-xs text-gray-500 mb-1">{t('remittances.recipient.city')}</p>
                   <p className="font-semibold">{remittance.recipient_city || 'N/A'}</p>
                 </div>
               </div>
@@ -529,7 +533,7 @@ const AdminRemittancesTab = () => {
                       className="flex items-center gap-1 text-blue-600 hover:underline"
                     >
                       <FileText className="h-4 w-4" />
-                      Ver Comprobante
+                      {t('remittances.user.viewProof')}
                     </a>
                   )}
                 </div>
@@ -540,7 +544,7 @@ const AdminRemittancesTab = () => {
                     className="flex items-center gap-1 px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm"
                   >
                     <Eye className="h-4 w-4" />
-                    Ver Detalles
+                    {t('remittances.admin.viewDetails')}
                   </button>
                   {renderActionButtons(remittance)}
                 </div>
@@ -563,25 +567,25 @@ const AdminRemittancesTab = () => {
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-2xl font-bold gradient-text mb-4">
-              Detalles de Remesa
+              {t('remittances.admin.viewDetails')}
             </h2>
 
             <div className="space-y-4">
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-gray-500">Número</p>
+                  <p className="text-sm text-gray-500">{t('common.number')}</p>
                   <p className="font-semibold">{selectedRemittance.remittance_number}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Estado</p>
+                  <p className="text-sm text-gray-500">{t('common.status')}</p>
                   {getStatusBadge(selectedRemittance.status)}
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Tipo</p>
+                  <p className="text-sm text-gray-500">{t('common.type')}</p>
                   <p className="font-semibold">{selectedRemittance.remittance_types?.name}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Fecha de Creación</p>
+                  <p className="text-sm text-gray-500">{t('common.createdAt')}</p>
                   <p className="font-semibold">
                     {new Date(selectedRemittance.created_at).toLocaleString('es-CU')}
                   </p>
@@ -593,7 +597,7 @@ const AdminRemittancesTab = () => {
                   onClick={() => setSelectedRemittance(null)}
                   className="w-full py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  Cerrar
+                  {t('remittances.admin.cancel')}
                 </button>
               </div>
             </div>
