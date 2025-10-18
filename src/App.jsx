@@ -9,6 +9,8 @@ import HomePage from '@/components/HomePage';
 import ProductsPage from '@/components/ProductsPage';
 import ProductDetailPage from '@/components/ProductDetailPage';
 import RemittancesPage from '@/components/RemittancesPage';
+import SendRemittancePage from '@/components/SendRemittancePage';
+import MyRemittancesPage from '@/components/MyRemittancesPage';
 import DashboardPage from '@/components/DashboardPage';
 import AdminPage from '@/components/AdminPage';
 import SettingsPage from '@/components/SettingsPage';
@@ -44,6 +46,8 @@ const ProtectedDashboard = withProtectedRoute(DashboardPage, 'admin');
 const ProtectedAdmin = withProtectedRoute(AdminPage, 'admin');
 const ProtectedSettings = withProtectedRoute(SettingsPage, 'admin');
 const ProtectedUserPanel = withProtectedRoute(UserPanel, 'user');
+const ProtectedSendRemittance = withProtectedRoute(SendRemittancePage, 'user');
+const ProtectedMyRemittances = withProtectedRoute(MyRemittancesPage, 'user');
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -110,6 +114,10 @@ function App() {
         return <ProductDetailPage onNavigate={handleNavigate} itemId={detailParams.itemId} itemType={detailParams.itemType} />;
       case 'remittances':
         return <RemittancesPage onNavigate={handleNavigate} />;
+      case 'send-remittance':
+        return <ProtectedSendRemittance onNavigate={handleNavigate} />;
+      case 'my-remittances':
+        return <ProtectedMyRemittances onNavigate={handleNavigate} />;
       case 'dashboard':
         return <ProtectedDashboard onNavigate={handleNavigate} />;
       case 'admin':
