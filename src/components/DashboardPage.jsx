@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart3, TrendingUp, DollarSign, Package, Users, AlertTriangle, Eye, Users2, RefreshCw, FileText, List } from 'lucide-react';
+import { BarChart3, TrendingUp, DollarSign, Package, Users, AlertTriangle, Eye, Users2, RefreshCw, FileText, List, Send, Settings } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { getHeadingStyle } from '@/lib/styleUtils';
 import AdminOrdersTab from './AdminOrdersTab';
+import AdminRemittancesTab from './AdminRemittancesTab';
+import RemittanceTypesConfig from './RemittanceTypesConfig';
 
 const DashboardPage = ({ onNavigate }) => {
   const { t } = useLanguage();
@@ -319,6 +321,28 @@ const DashboardPage = ({ onNavigate }) => {
             <List className="h-5 w-5" />
             {t('dashboard.ordersTab')}
           </button>
+          <button
+            onClick={() => setActiveTab('remittances')}
+            className={`flex items-center gap-2 px-6 py-3 font-medium transition-all ${
+              activeTab === 'remittances'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Send className="h-5 w-5" />
+            Remesas
+          </button>
+          <button
+            onClick={() => setActiveTab('remittance-types')}
+            className={`flex items-center gap-2 px-6 py-3 font-medium transition-all ${
+              activeTab === 'remittance-types'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Settings className="h-5 w-5" />
+            Tipos de Remesas
+          </button>
         </motion.div>
 
         {/* Tab Content */}
@@ -572,6 +596,28 @@ const DashboardPage = ({ onNavigate }) => {
             transition={{ delay: 0.2 }}
           >
             <AdminOrdersTab />
+          </motion.div>
+        )}
+
+        {/* Remittances Tab */}
+        {activeTab === 'remittances' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <AdminRemittancesTab />
+          </motion.div>
+        )}
+
+        {/* Remittance Types Tab */}
+        {activeTab === 'remittance-types' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <RemittanceTypesConfig />
           </motion.div>
         )}
       </div>
