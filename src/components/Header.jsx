@@ -353,7 +353,7 @@ const Header = ({ currentPage, onNavigate }) => {
                           color: visualSettings.buttonTextColor || '#ffffff',
                           border: 'none'
                         } : {
-                          color: visualSettings.headerTextColor || '#1f2937'
+                          color: visualSettings.useGradient || '#1f2937'
                         }}
                       >
                         <item.icon className="w-4 h-4" />
@@ -362,6 +362,18 @@ const Header = ({ currentPage, onNavigate }) => {
                     ))}
                   </>
                 )}
+                <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setLanguage(language === 'es' ? 'en' : 'es')}
+              className="flex items-center space-x-2 justify-start"
+               style={{background: `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`,
+                border: 'none', color: visualSettings.buttonTextColor || '#ffffff'}}
+            >
+              <Globe className="w-4 h-4" />
+              <span>{language.toUpperCase()}</span>
+            </Button>
+   
               </div>
             </motion.nav>
           )}
