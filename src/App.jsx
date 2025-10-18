@@ -23,6 +23,7 @@ import { withProtectedRoute } from '@/components/withProtectedRoute';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { BusinessProvider, useBusiness } from '@/contexts/BusinessContext';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { ModalProvider } from '@/contexts/ModalContext';
 
 // Component to dynamically update page title
 function DynamicTitle() {
@@ -145,8 +146,9 @@ function App() {
         <LanguageProvider>
           <AuthProvider>
             <BusinessProvider>
-              <div className="min-h-screen">
-                <DynamicTitle />
+              <ModalProvider>
+                <div className="min-h-screen">
+                  <DynamicTitle />
 
                 <AnimatePresence mode="wait">
                   {isLoading ? (
@@ -181,6 +183,7 @@ function App() {
 
                 <Toaster />
               </div>
+              </ModalProvider>
             </BusinessProvider>
           </AuthProvider>
         </LanguageProvider>

@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Plus, Edit, Trash2, Save, X, DollarSign, TrendingUp, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useModal } from '@/contexts/ModalContext';
 import {
   getAllRemittanceTypes,
   createRemittanceType,
@@ -12,10 +13,9 @@ import {
 } from '@/lib/remittanceService';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
-import { useModal } from '@/contexts/ModalContext';
 
 const RemittanceTypesConfig = () => {
-  const { t, language } = useLanguage();
+  const { t } = useLanguage();
   const { isSuperAdmin } = useAuth();
   const { showModal } = useModal();
 
@@ -165,13 +165,9 @@ const RemittanceTypesConfig = () => {
   };
 
   const handleDelete = async (type) => {
-    const confirmed = await showModal({
-      title: '¿Eliminar tipo de remesa?',
-      message: `¿Está seguro que desea eliminar "${type.name}"? Esta acción no se puede deshacer.`,
-      confirmText: t('common.delete'),
-      cancelText: t('common.cancel'),
-      type: 'danger'
-    });
+    const confirmed = window.confirm(
+      `¿Está seguro que desea eliminar "${type.name}"? Esta acción no se puede deshacer.`
+    );
 
     if (!confirmed) return;
 

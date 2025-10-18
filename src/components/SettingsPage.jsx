@@ -12,7 +12,6 @@ import { getCurrencies, createCurrency, updateCurrency, deleteCurrency, fetchOff
 import { getCarouselSlides, createCarouselSlide, updateCarouselSlide, hardDeleteCarouselSlide, reorderSlides } from '@/lib/carouselService';
 import { getAllShippingZones, updateShippingZone, createShippingZone } from '@/lib/shippingService';
 import { getProvinceNames } from '@/lib/cubanLocations';
-import { getRemittanceConfigs, saveRemittanceConfig } from '@/lib/remittanceService';
 import { supabase } from '@/lib/supabase';
 
 const SettingsPage = () => {

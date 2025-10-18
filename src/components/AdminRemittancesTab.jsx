@@ -5,6 +5,7 @@ import {
   AlertTriangle, Download, FileText, Image as ImageIcon, Calendar
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useModal } from '@/contexts/ModalContext';
 import {
   getAllRemittances,
   validatePayment,
@@ -17,7 +18,6 @@ import {
 } from '@/lib/remittanceService';
 import { toast } from '@/components/ui/use-toast';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
-import { useModal } from '@/contexts/ModalContext';
 
 const AdminRemittancesTab = () => {
   const { t } = useLanguage();
