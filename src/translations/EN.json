@@ -47,10 +47,22 @@
     "features": {
       "title": "Key Features",
       "subtitle": "Everything you need to grow your digital business",
-      "products": { "title": "Product Sales", "description": "Complete platform for independent sellers with automatic price calculation" },
-      "remittances": { "title": "Remittances to Cuba", "description": "Send money to Cuba from USA and Spain quickly and securely" },
-      "analytics": { "title": "Profit Dashboard", "description": "View your daily and monthly profits in real time" },
-      "vendors": { "title": "Vendor Management", "description": "Complete tools for independent vendors to manage inventory" }
+      "products": {
+        "title": "Product Sales",
+        "description": "Complete platform for independent sellers with automatic price calculation"
+      },
+      "remittances": {
+        "title": "Remittances to Cuba",
+        "description": "Send money to Cuba from USA and Spain quickly and securely"
+      },
+      "analytics": {
+        "title": "Profit Dashboard",
+        "description": "View your daily and monthly profits in real time"
+      },
+      "vendors": {
+        "title": "Vendor Management",
+        "description": "Complete tools for independent vendors to manage inventory"
+      }
     },
     "testimonials": {
       "title": "What our customers say",
@@ -61,7 +73,9 @@
     "title": "Product Catalog",
     "subtitle": "Discover products and combos to send to Cuba at competitive prices",
     "searchPlaceholder": "Search products...",
-    "categories": { "all": "All Categories" },
+    "categories": {
+      "all": "All Categories"
+    },
     "exchangeRate": "Current Exchange Rate",
     "addToCart": "Add to Cart",
     "vendor": "Vendor",
@@ -110,9 +124,18 @@
     "sendNew": "New Remittance",
     "myRemittances": "My Remittances",
     "howItWorks": "How It Works",
-    "step1": { "title": "Select Country", "description": "Choose the destination country and amount to send" },
-    "step2": { "title": "Confirm Details", "description": "Verify recipient information" },
-    "step3": { "title": "Receive Confirmation", "description": "Money arrives within the estimated time" },
+    "step1": {
+      "title": "Select Country",
+      "description": "Choose the destination country and amount to send"
+    },
+    "step2": {
+      "title": "Confirm Details",
+      "description": "Verify recipient information"
+    },
+    "step3": {
+      "title": "Receive Confirmation",
+      "description": "Money arrives within the estimated time"
+    },
     "recipient": {
       "title": "Recipient Details",
       "deliveryMethod": "Delivery Method",
@@ -234,7 +257,9 @@
       "paymentReference": "Payment reference",
       "uploadFile": "Upload file",
       "additionalNotes": "Additional notes",
-      "viewProof": "View Proof"
+      "viewProof": "View Proof",
+      "proofUploaded": "Proof uploaded successfully",
+      "remittanceCancelled": "Remittance cancelled"
     },
     "wizard": {
       "step1Title": "Remittance Type and Amount",
@@ -345,7 +370,10 @@
       "deactivate": "Deactivate",
       "delete": "Delete"
     },
-    "validation": { "error": "Validation Error", "fillFields": "Please fill all required fields" },
+    "validation": {
+      "error": "Validation Error",
+      "fillFields": "Please fill all required fields"
+    },
     "productAdded": "Product added successfully",
     "productUpdated": "Product updated successfully",
     "categoryAdded": "Category added",
@@ -619,7 +647,10 @@
       "submit": "Upload Evidence",
       "uploading": "Uploading..."
     },
-    "days": { "singular": "day", "plural": "days" },
+    "days": {
+      "singular": "day",
+      "plural": "days"
+    },
     "modals": {
       "confirm": "Confirm",
       "cancel": "Cancel",
@@ -672,7 +703,11 @@
       "onlySuperAdminManage": "Only Super Admins can manage roles and delete users",
       "deletionPermanent": "User deletion is permanent and cannot be undone"
     },
-    "roles": { "user": "User", "admin": "Admin", "super_admin": "Super Admin" },
+    "roles": {
+      "user": "User",
+      "admin": "Admin",
+      "super_admin": "Super Admin"
+    },
     "table": {
       "email": "Email",
       "name": "Name",

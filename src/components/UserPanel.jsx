@@ -3,9 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
-import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText } from 'lucide-react';
+import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send } from 'lucide-react';
 import { getUserOrders, getOrderById, getAllOrders, validatePayment, rejectPayment } from '@/lib/orderService';
 import { getUserTestimonial, createTestimonial, updateTestimonial } from '@/lib/testimonialService';
+import { getMyRemittances } from '@/lib/remittanceService';
 import { getHeadingStyle, getTextStyle, getPillStyle, getStatusStyle } from '@/lib/styleUtils';
 import { generateWhatsAppURL } from '@/lib/whatsappService';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,7 @@ const UserPanel = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { visualSettings, businessInfo } = useBusiness();
   const [orders, setOrders] = useState([]);
+  const [remittances, setRemittances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showOrderDetails, setShowOrderDetails] = useState(false);
@@ -35,6 +37,7 @@ const UserPanel = ({ onNavigate }) => {
     }
 
     loadUserOrders();
+    loadUserRemittances();
 
     // Load user testimonial only for regular users
     if (userRole !== 'admin' && userRole !== 'super_admin') {
@@ -83,6 +86,19 @@ const UserPanel = ({ onNavigate }) => {
       console.error('Error loading orders:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadUserRemittances = async () => {
+    if (!user?.id) return;
+
+    try {
+      const result = await getMyRemittances();
+      if (result.success) {
+        setRemittances(result.remittances || []);
+      }
+    } catch (error) {
+      console.error('Error loading remittances:', error);
     }
   };
 
@@ -314,6 +330,56 @@ const UserPanel = ({ onNavigate }) => {
                 <MessageCircle className="h-4 w-4 mr-2" />
                 {language === 'es' ? 'Contactar' : 'Contact'}
               </Button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Remittances Summary Card - Only for regular users */}
+        {userRole !== 'admin' && userRole !== 'super_admin' && remittances.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4"
+          >
+            <div className="p-6 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-blue-100 text-sm font-medium">{t('remittances.user.remittanceNumber')}</p>
+                  <p className="text-3xl font-bold mt-1">{remittances.length}</p>
+                </div>
+                <div className="p-3 bg-white/20 rounded-lg">
+                  <Send className="h-6 w-6" />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 rounded-xl bg-gradient-to-br from-green-500 to-green-600 text-white shadow-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-green-100 text-sm font-medium">{t('remittances.status.completed')}</p>
+                  <p className="text-3xl font-bold mt-1">
+                    {remittances.filter(r => r.status === 'completed').length}
+                  </p>
+                </div>
+                <div className="p-3 bg-white/20 rounded-lg">
+                  <CheckCircle className="h-6 w-6" />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 text-white shadow-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-yellow-100 text-sm font-medium">{t('remittances.status.processing')}</p>
+                  <p className="text-3xl font-bold mt-1">
+                    {remittances.filter(r => ['payment_validated', 'processing', 'delivered'].includes(r.status)).length}
+                  </p>
+                </div>
+                <div className="p-3 bg-white/20 rounded-lg">
+                  <Clock className="h-6 w-6" />
+                </div>
+              </div>
             </div>
           </motion.div>
         )}

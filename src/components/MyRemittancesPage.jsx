@@ -77,7 +77,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
     if (!uploadData.file || !uploadData.reference) {
       toast({
         title: t('common.error'),
-        description: 'Por favor complete todos los campos requeridos',
+        description: t('remittances.admin.requiredFields'),
         variant: 'destructive'
       });
       return;
@@ -93,7 +93,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
     if (result.success) {
       toast({
         title: t('common.success'),
-        description: 'Comprobante subido exitosamente'
+        description: t('remittances.user.proofUploaded')
       });
       setShowUploadModal(false);
       loadRemittances();
@@ -125,7 +125,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
     if (result.success) {
       toast({
         title: t('common.success'),
-        description: 'Remesa cancelada'
+        description: t('remittances.user.remittanceCancelled')
       });
       loadRemittances();
     } else {
@@ -169,14 +169,14 @@ const MyRemittancesPage = ({ onNavigate }) => {
 
   const getStatusLabel = (status) => {
     const labels = {
-      [REMITTANCE_STATUS.PAYMENT_PENDING]: 'Pendiente de Pago',
-      [REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED]: 'Comprobante Enviado',
-      [REMITTANCE_STATUS.PAYMENT_VALIDATED]: 'Pago Validado',
-      [REMITTANCE_STATUS.PAYMENT_REJECTED]: 'Pago Rechazado',
-      [REMITTANCE_STATUS.PROCESSING]: 'En Proceso',
-      [REMITTANCE_STATUS.DELIVERED]: 'Entregado',
-      [REMITTANCE_STATUS.COMPLETED]: 'Completado',
-      [REMITTANCE_STATUS.CANCELLED]: 'Cancelado'
+      [REMITTANCE_STATUS.PAYMENT_PENDING]: t('remittances.status.paymentPending'),
+      [REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED]: t('remittances.status.paymentProofUploaded'),
+      [REMITTANCE_STATUS.PAYMENT_VALIDATED]: t('remittances.status.paymentValidated'),
+      [REMITTANCE_STATUS.PAYMENT_REJECTED]: t('remittances.status.paymentRejected'),
+      [REMITTANCE_STATUS.PROCESSING]: t('remittances.status.processing'),
+      [REMITTANCE_STATUS.DELIVERED]: t('remittances.status.delivered'),
+      [REMITTANCE_STATUS.COMPLETED]: t('remittances.status.completed'),
+      [REMITTANCE_STATUS.CANCELLED]: t('remittances.status.cancelled')
     };
 
     return labels[status] || status;

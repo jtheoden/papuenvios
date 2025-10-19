@@ -47,10 +47,22 @@
     "features": {
       "title": "Funcionalidades Principales",
       "subtitle": "Todo lo que necesitas para hacer crecer tu negocio digital",
-      "products": { "title": "Venta de Productos", "description": "Plataforma completa para vendedores independientes con cálculo automático de precios" },
-      "remittances": { "title": "Remesas a Cuba", "description": "Envía dinero a Cuba desde USA y España de forma rápida y segura" },
-      "analytics": { "title": "Panel de Ganancias", "description": "Visualiza tus ganancias diarias y mensuales en tiempo real" },
-      "vendors": { "title": "Gestión de Vendedores", "description": "Herramientas completas para que vendedores independientes gestionen su inventario" }
+      "products": {
+        "title": "Venta de Productos",
+        "description": "Plataforma completa para vendedores independientes con cálculo automático de precios"
+      },
+      "remittances": {
+        "title": "Remesas a Cuba",
+        "description": "Envía dinero a Cuba desde USA y España de forma rápida y segura"
+      },
+      "analytics": {
+        "title": "Panel de Ganancias",
+        "description": "Visualiza tus ganancias diarias y mensuales en tiempo real"
+      },
+      "vendors": {
+        "title": "Gestión de Vendedores",
+        "description": "Herramientas completas para que vendedores independientes gestionen su inventario"
+      }
     },
     "testimonials": {
       "title": "Lo que dicen nuestros clientes",
@@ -61,7 +73,9 @@
     "title": "Catálogo de Productos",
     "subtitle": "Descubre productos y combos para enviar a Cuba con precios competitivos",
     "searchPlaceholder": "Buscar productos...",
-    "categories": { "all": "Todas las Categorías" },
+    "categories": {
+      "all": "Todas las Categorías"
+    },
     "exchangeRate": "Tasa de Cambio Actual",
     "addToCart": "Agregar al Carrito",
     "vendor": "Vendedor",
@@ -110,9 +124,18 @@
     "sendNew": "Nueva Remesa",
     "myRemittances": "Mis Remesas",
     "howItWorks": "¿Cómo Funciona?",
-    "step1": { "title": "Selecciona el País", "description": "Elige el país de destino y la cantidad a enviar" },
-    "step2": { "title": "Confirma los Datos", "description": "Verifica la información del destinatario" },
-    "step3": { "title": "Recibe Confirmación", "description": "El dinero llega en el tiempo estimado" },
+    "step1": {
+      "title": "Selecciona el País",
+      "description": "Elige el país de destino y la cantidad a enviar"
+    },
+    "step2": {
+      "title": "Confirma los Datos",
+      "description": "Verifica la información del destinatario"
+    },
+    "step3": {
+      "title": "Recibe Confirmación",
+      "description": "El dinero llega en el tiempo estimado"
+    },
     "recipient": {
       "title": "Datos del Destinatario",
       "deliveryMethod": "Método de Entrega",
@@ -234,7 +257,9 @@
       "paymentReference": "Referencia de pago",
       "uploadFile": "Subir archivo",
       "additionalNotes": "Notas adicionales",
-      "viewProof": "Ver Comprobante"
+      "viewProof": "Ver Comprobante",
+      "proofUploaded": "Comprobante subido exitosamente",
+      "remittanceCancelled": "Remesa cancelada"
     },
     "wizard": {
       "step1Title": "Tipo y Monto de Remesa",
@@ -345,7 +370,10 @@
       "deactivate": "Desactivar",
       "delete": "Eliminar"
     },
-    "validation": { "error": "Error de Validación", "fillFields": "Por favor completa todos los campos requeridos" },
+    "validation": {
+      "error": "Error de Validación",
+      "fillFields": "Por favor completa todos los campos requeridos"
+    },
     "productAdded": "Producto agregado exitosamente",
     "productUpdated": "Producto actualizado exitosamente",
     "categoryAdded": "Categoría agregada",
@@ -619,7 +647,10 @@
       "submit": "Subir Evidencia",
       "uploading": "Subiendo..."
     },
-    "days": { "singular": "día", "plural": "días" },
+    "days": {
+      "singular": "día",
+      "plural": "días"
+    },
     "modals": {
       "confirm": "Confirmar",
       "cancel": "Cancelar",
@@ -672,7 +703,11 @@
       "onlySuperAdminManage": "Solo Super Admins pueden gestionar roles y eliminar usuarios",
       "deletionPermanent": "La eliminación de usuarios es permanente y no se puede deshacer"
     },
-    "roles": { "user": "Usuario", "admin": "Administrador", "super_admin": "Super Administrador" },
+    "roles": {
+      "user": "Usuario",
+      "admin": "Administrador",
+      "super_admin": "Super Administrador"
+    },
     "table": {
       "email": "Correo Electrónico",
       "name": "Nombre",
