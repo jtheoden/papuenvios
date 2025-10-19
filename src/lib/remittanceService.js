@@ -5,6 +5,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { notifyAdminNewPaymentProof } from '@/lib/whatsappService';
+import { getAvailableZelleAccount, registerZelleTransaction } from '@/lib/zelleService';
 
 // ============================================================================
 // CONSTANTES
@@ -321,32 +322,48 @@ export const createRemittance = async (remittanceData) => {
     const commissionTotal = (amount * commissionPercentage / 100) + commissionFixed;
     const amountToDeliver = (amount * type.exchange_rate) - (commissionTotal * type.exchange_rate);
 
+    // Obtener cuenta Zelle disponible
+    const zelleResult = await getAvailableZelleAccount('remittance', amount);
+    if (!zelleResult.success) {
+      throw new Error('No hay cuentas Zelle disponibles. Por favor intente más tarde.');
+    }
+
     // Crear remesa con los nombres de columnas correctos según el esquema
     const { data, error } = await supabase
       .from('remittances')
       .insert([{
         user_id: user.id,
         remittance_type_id,
-        amount_sent: amount,  // ← Columna correcta: amount_sent (no amount)
+        amount_sent: amount,
         exchange_rate: type.exchange_rate,
-        commission_percentage: commissionPercentage,  // ← Columna correcta
-        commission_fixed: commissionFixed,  // ← Columna correcta
-        commission_total: commissionTotal,  // ← Columna correcta
+        commission_percentage: commissionPercentage,
+        commission_fixed: commissionFixed,
+        commission_total: commissionTotal,
         amount_to_deliver: amountToDeliver,
-        currency_sent: type.currency_code,  // ← Columna correcta: currency_sent
-        currency_delivered: type.delivery_currency,  // ← Columna correcta: currency_delivered
+        currency_sent: type.currency_code,
+        currency_delivered: type.delivery_currency,
         recipient_name,
         recipient_phone,
         recipient_address,
-        recipient_province: recipient_city,  // ← Se mapea city a province
+        recipient_province: recipient_city,
         recipient_id_number,
-        delivery_notes: notes,  // ← Columna correcta: delivery_notes
-        status: REMITTANCE_STATUS.PAYMENT_PENDING
+        delivery_notes: notes,
+        status: REMITTANCE_STATUS.PAYMENT_PENDING,
+        zelle_account_id: zelleResult.account.id  // ← Asignar cuenta Zelle
       }])
-      .select()
+      .select('*, zelle_accounts(*)')  // ← Incluir info de cuenta Zelle
       .single();
 
     if (error) throw error;
+
+    // Registrar transacción en historial de Zelle
+    await registerZelleTransaction({
+      zelle_account_id: zelleResult.account.id,
+      transaction_type: 'remittance',
+      reference_id: data.id,
+      amount: amount,
+      notes: `Remesa ${data.remittance_number}`
+    });
 
     return { success: true, remittance: data };
   } catch (error) {
@@ -408,7 +425,7 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
       .from('remittance-proofs')
       .getPublicUrl(filePath);
 
-    // Actualizar remesa
+    // Actualizar remesa (solo campos que existen en la tabla)
     const { data: updatedRemittance, error: updateError } = await supabase
       .from('remittances')
       .update({
@@ -416,7 +433,8 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
         payment_reference: reference,
         payment_proof_notes: notes,
         payment_proof_uploaded_at: new Date().toISOString(),
-        status: REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED
+        status: 'payment_proof_uploaded',  // String literal para evitar problemas
+        updated_at: new Date().toISOString()
       })
       .eq('id', remittanceId)
       .select('*, remittance_types(*)')
