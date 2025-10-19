@@ -315,27 +315,33 @@ export const createRemittance = async (remittanceData) => {
     if (userError) throw userError;
     if (!user) throw new Error('Usuario no autenticado');
 
-    // Crear remesa
+    // Calcular comisiones según el esquema de la DB
+    const commissionPercentage = type.commission_percentage || 0;
+    const commissionFixed = type.commission_fixed || 0;
+    const commissionTotal = (amount * commissionPercentage / 100) + commissionFixed;
+    const amountToDeliver = (amount * type.exchange_rate) - (commissionTotal * type.exchange_rate);
+
+    // Crear remesa con los nombres de columnas correctos según el esquema
     const { data, error } = await supabase
       .from('remittances')
       .insert([{
         user_id: user.id,
         remittance_type_id,
-        amount,
+        amount_sent: amount,  // ← Columna correcta: amount_sent (no amount)
         exchange_rate: type.exchange_rate,
-        commission: calculation.calculation.totalCommission,
-        amount_to_deliver: calculation.calculation.amountToDeliver,
-        currency: type.currency_code,
-        delivery_currency: type.delivery_currency,
-        delivery_method: type.delivery_method,
+        commission_percentage: commissionPercentage,  // ← Columna correcta
+        commission_fixed: commissionFixed,  // ← Columna correcta
+        commission_total: commissionTotal,  // ← Columna correcta
+        amount_to_deliver: amountToDeliver,
+        currency_sent: type.currency_code,  // ← Columna correcta: currency_sent
+        currency_delivered: type.delivery_currency,  // ← Columna correcta: currency_delivered
         recipient_name,
         recipient_phone,
         recipient_address,
-        recipient_city,
+        recipient_province: recipient_city,  // ← Se mapea city a province
         recipient_id_number,
-        notes,
-        status: REMITTANCE_STATUS.PAYMENT_PENDING,
-        max_delivery_date: new Date(Date.now() + (type.max_delivery_days * 24 * 60 * 60 * 1000)).toISOString()
+        delivery_notes: notes,  // ← Columna correcta: delivery_notes
+        status: REMITTANCE_STATUS.PAYMENT_PENDING
       }])
       .select()
       .single();
