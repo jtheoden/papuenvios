@@ -14,22 +14,52 @@ import { DEFAULTS } from './constants';
 export const getCombos = async (includeInactive = false) => {
   return executeQuery(
     async () => {
-      let query = supabase
+      // Get combos
+      let comboQuery = supabase
         .from('combo_products')
-        .select(`
-          *,
-          items:combo_items(
-            quantity,
-            product:products(id, name_es, name_en, base_price)
-          )
-        `);
+        .select('*');
 
-      // Only filter by is_active if we don't want inactive combos
       if (!includeInactive) {
-        query = query.eq('is_active', true);
+        comboQuery = comboQuery.eq('is_active', true);
       }
 
-      return await query.order('created_at', { ascending: false });
+      const combosResult = await comboQuery.order('created_at', { ascending: false });
+
+      if (combosResult.error) throw combosResult.error;
+      if (!combosResult.data || combosResult.data.length === 0) {
+        return combosResult;
+      }
+
+      // Get combo IDs to fetch their items
+      const comboIds = combosResult.data.map(c => c.id);
+
+      // Get combo items with product details
+      const { data: itemsData, error: itemsError } = await supabase
+        .from('combo_items')
+        .select('combo_id, quantity, products(id, name_es, name_en, base_price)')
+        .in('combo_id', comboIds);
+
+      if (itemsError) throw itemsError;
+
+      // Create items map: combo_id -> array of items
+      const itemsMap = {};
+      (itemsData || []).forEach(item => {
+        if (!itemsMap[item.combo_id]) {
+          itemsMap[item.combo_id] = [];
+        }
+        itemsMap[item.combo_id].push({
+          quantity: item.quantity,
+          product: item.products
+        });
+      });
+
+      // Attach items to combos
+      const combosWithItems = combosResult.data.map(combo => ({
+        ...combo,
+        items: itemsMap[combo.id] || []
+      }));
+
+      return { data: combosWithItems, error: null };
     },
     'Get combos'
   );

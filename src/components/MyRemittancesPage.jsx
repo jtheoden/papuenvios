@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Calendar, DollarSign, User, FileText, AlertCircle, CheckCircle,
-  Clock, XCircle, Upload, Eye, Package, Truck, RefreshCw
+  Clock, XCircle, Upload, Eye, Package, Truck, RefreshCw, X
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import SEO from '@/components/SEO';
 import {
   getMyRemittances,
   getRemittanceDetails,
@@ -32,6 +33,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
     reference: '',
     notes: ''
   });
+  const [previewUrl, setPreviewUrl] = useState(null);
 
   useEffect(() => {
     loadRemittances();
@@ -69,6 +71,41 @@ const MyRemittancesPage = ({ onNavigate }) => {
     setSelectedRemittance(remittance);
     setShowUploadModal(true);
     setUploadData({ file: null, reference: '', notes: '' });
+    setPreviewUrl(null);
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: t('common.error'),
+        description: 'Solo se permiten imágenes',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: t('common.error'),
+        description: 'El archivo no puede superar 5MB',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setUploadData({ ...uploadData, file });
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPreviewUrl(reader.result);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSubmitProof = async (e) => {
@@ -192,6 +229,13 @@ const MyRemittancesPage = ({ onNavigate }) => {
 
   return (
     <div className="max-w-6xl mx-auto py-8 px-4">
+      <SEO
+        titleKey="seo.myRemittances.title"
+        descriptionKey="seo.myRemittances.description"
+        path="/my-remittances"
+        type="website"
+        keywords={['mis remesas', 'my remittances', 'track remittances', 'estado remesa']}
+      />
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className={`${getHeadingStyle()} text-3xl mb-2`}>
@@ -258,7 +302,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                 </div>
 
                 {/* Amount Display */}
-                <div className="grid md:grid-cols-3 gap-4 mb-4">
+                <div className="grid md:grid-cols-4 gap-4 mb-4">
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Enviado</p>
                     <p className="text-lg font-bold text-blue-600">
@@ -276,6 +320,22 @@ const MyRemittancesPage = ({ onNavigate }) => {
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Destinatario</p>
                     <p className="font-semibold">{remittance.recipient_name}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Ciudad</p>
+                    <p className="font-semibold">{remittance.recipient_city || 'N/A'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Método de Entrega</p>
+                    <p className="font-semibold capitalize">
+                      {remittance.delivery_method === 'cash' ? 'Efectivo' :
+                       remittance.delivery_method === 'transfer' ? 'Transferencia' :
+                       remittance.delivery_method === 'card' ? 'Tarjeta' :
+                       remittance.delivery_method === 'pickup' ? 'Recogida' :
+                       remittance.delivery_method || 'N/A'}
+                    </p>
                   </div>
                 </div>
 
@@ -385,68 +445,109 @@ const MyRemittancesPage = ({ onNavigate }) => {
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl p-6 max-w-md w-full"
+            className={`bg-white rounded-2xl p-6 w-full ${previewUrl ? 'max-w-4xl' : 'max-w-md'}`}
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-2xl font-bold gradient-text mb-4">
               Subir Comprobante de Pago
             </h2>
 
-            <form onSubmit={handleSubmitProof} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Remesa
-                </label>
-                <p className="font-semibold">{selectedRemittance.remittance_number}</p>
-                <p className="text-sm text-gray-600">
-                  {selectedRemittance.amount} {selectedRemittance.currency}
-                </p>
+            <form onSubmit={handleSubmitProof}>
+              <div className={`${previewUrl ? 'grid grid-cols-2 gap-6' : 'space-y-4'}`}>
+                {/* Columna Izquierda: Formulario */}
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Remesa
+                    </label>
+                    <p className="font-semibold">{selectedRemittance.remittance_number}</p>
+                    <p className="text-sm text-gray-600">
+                      {selectedRemittance.amount} {selectedRemittance.currency}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Comprobante de pago *
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                    />
+                    {!previewUrl && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Formatos: JPG, PNG. Máximo 5MB
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Referencia de pago *
+                    </label>
+                    <input
+                      type="text"
+                      value={uploadData.reference}
+                      onChange={(e) => setUploadData({ ...uploadData, reference: e.target.value })}
+                      className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Ej: ZELLE123456"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Notas adicionales
+                    </label>
+                    <textarea
+                      value={uploadData.notes}
+                      onChange={(e) => setUploadData({ ...uploadData, notes: e.target.value })}
+                      className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      rows="3"
+                      placeholder="Detalles adicionales..."
+                    />
+                  </div>
+                </div>
+
+                {/* Columna Derecha: Preview */}
+                {previewUrl && (
+                  <div className="flex flex-col">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Vista Previa
+                    </label>
+                    <div className="relative flex-1 min-h-[300px] bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 overflow-hidden">
+                      <img
+                        src={previewUrl}
+                        alt="Preview"
+                        className="w-full h-full object-contain"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPreviewUrl(null);
+                          setUploadData({ ...uploadData, file: null });
+                        }}
+                        className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors shadow-lg"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Comprobante de pago *
-                </label>
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={(e) => setUploadData({ ...uploadData, file: e.target.files[0] })}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Referencia de pago *
-                </label>
-                <input
-                  type="text"
-                  value={uploadData.reference}
-                  onChange={(e) => setUploadData({ ...uploadData, reference: e.target.value })}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Ej: ZELLE123456"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Notas adicionales
-                </label>
-                <textarea
-                  value={uploadData.notes}
-                  onChange={(e) => setUploadData({ ...uploadData, notes: e.target.value })}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  rows="3"
-                  placeholder="Detalles adicionales..."
-                />
-              </div>
-
-              <div className="flex gap-3 pt-4">
+              {/* Botones */}
+              <div className="flex gap-3 pt-6 mt-6 border-t">
                 <button
                   type="button"
-                  onClick={() => setShowUploadModal(false)}
+                  onClick={() => {
+                    setShowUploadModal(false);
+                    setPreviewUrl(null);
+                    setUploadData({ file: null, reference: '', notes: '' });
+                  }}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   {t('common.cancel')}
