@@ -276,10 +276,14 @@ export const createRemittance = async (remittanceData) => {
       amount,
       recipient_name,
       recipient_phone,
+      recipient_email,
       recipient_address,
       recipient_city,
+      recipient_province,
       recipient_id_number,
-      notes
+      notes,
+      zelle_account_id,
+      recipient_id
     } = remittanceData;
 
     // Validaciones básicas
@@ -322,10 +326,18 @@ export const createRemittance = async (remittanceData) => {
     const commissionTotal = (amount * commissionPercentage / 100) + commissionFixed;
     const amountToDeliver = (amount * type.exchange_rate) - (commissionTotal * type.exchange_rate);
 
-    // Obtener cuenta Zelle disponible
-    const zelleResult = await getAvailableZelleAccount('remittance', amount);
-    if (!zelleResult.success) {
-      throw new Error('No hay cuentas Zelle disponibles. Por favor intente más tarde.');
+    // Obtener cuenta Zelle
+    let zelleAccountId;
+    if (zelle_account_id) {
+      // Usuario seleccionó cuenta Zelle específica desde RecipientSelector
+      zelleAccountId = zelle_account_id;
+    } else {
+      // Fallback: obtener cuenta Zelle disponible automáticamente (compatibilidad)
+      const zelleResult = await getAvailableZelleAccount('remittance', amount);
+      if (!zelleResult.success) {
+        throw new Error('No hay cuentas Zelle disponibles. Por favor intente más tarde.');
+      }
+      zelleAccountId = zelleResult.account.id;
     }
 
     // Crear remesa con los nombres de columnas correctos según el esquema
@@ -342,14 +354,16 @@ export const createRemittance = async (remittanceData) => {
         amount_to_deliver: amountToDeliver,
         currency_sent: type.currency_code,
         currency_delivered: type.delivery_currency,
+        recipient_id: recipient_id || null,
         recipient_name,
         recipient_phone,
+        recipient_email: recipient_email || null,
         recipient_address,
-        recipient_province: recipient_city,
+        recipient_province: recipient_province || recipient_city,
         recipient_id_number,
         delivery_notes: notes,
         status: REMITTANCE_STATUS.PAYMENT_PENDING,
-        zelle_account_id: zelleResult.account.id  // ← Asignar cuenta Zelle
+        zelle_account_id: zelleAccountId
       }])
       .select('*, zelle_accounts(*)')  // ← Incluir info de cuenta Zelle
       .single();
@@ -358,7 +372,7 @@ export const createRemittance = async (remittanceData) => {
 
     // Registrar transacción en historial de Zelle
     await registerZelleTransaction({
-      zelle_account_id: zelleResult.account.id,
+      zelle_account_id: zelleAccountId,
       transaction_type: 'remittance',
       reference_id: data.id,
       amount: amount,
@@ -420,16 +434,19 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
 
     if (uploadError) throw uploadError;
 
-    // Obtener URL pública
-    const { data: { publicUrl } } = supabase.storage
+    // Obtener URL firmada (válida por 24 horas para bucket privado)
+    const { data, error: signError } = await supabase.storage
       .from('remittance-proofs')
-      .getPublicUrl(filePath);
+      .createSignedUrl(filePath, 86400); // 24 horas en segundos
+
+    if (signError) throw signError;
+    const signedUrl = data.signedUrl;
 
     // Actualizar remesa (solo campos que existen en la tabla)
     const { data: updatedRemittance, error: updateError } = await supabase
       .from('remittances')
       .update({
-        payment_proof_url: publicUrl,
+        payment_proof_url: signedUrl,
         payment_reference: reference,
         payment_proof_notes: notes,
         payment_proof_uploaded_at: new Date().toISOString(),
@@ -529,7 +546,7 @@ export const getRemittanceDetails = async (remittanceId) => {
       .from('remittance_status_history')
       .select('*')
       .eq('remittance_id', remittanceId)
-      .order('changed_at', { ascending: true });
+      .order('created_at', { ascending: true });
 
     if (historyError) console.error('Error fetching history:', historyError);
 
@@ -616,7 +633,10 @@ export const getAllRemittances = async (filters = {}) => {
   try {
     let query = supabase
       .from('remittances')
-      .select('*, remittance_types(*), user_profiles!remittances_user_id_fkey(*)');
+      .select(`
+        *,
+        remittance_types(*)
+      `);
 
     // Aplicar filtros
     if (filters.status) {
@@ -680,7 +700,7 @@ export const validatePayment = async (remittanceId, notes = '') => {
       .update({
         status: REMITTANCE_STATUS.PAYMENT_VALIDATED,
         payment_validated_at: new Date().toISOString(),
-        payment_validation_notes: notes
+        payment_proof_notes: notes
       })
       .eq('id', remittanceId)
       .select('*, remittance_types(*)')
@@ -728,7 +748,6 @@ export const rejectPayment = async (remittanceId, reason) => {
       .from('remittances')
       .update({
         status: REMITTANCE_STATUS.PAYMENT_REJECTED,
-        payment_rejected_at: new Date().toISOString(),
         payment_rejection_reason: reason
       })
       .eq('id', remittanceId)
@@ -776,7 +795,7 @@ export const startProcessing = async (remittanceId, notes = '') => {
       .update({
         status: REMITTANCE_STATUS.PROCESSING,
         processing_started_at: new Date().toISOString(),
-        processing_notes: notes
+        delivery_notes_admin: notes
       })
       .eq('id', remittanceId)
       .select('*, remittance_types(*)')
@@ -893,7 +912,7 @@ export const completeRemittance = async (remittanceId, notes = '') => {
       .update({
         status: REMITTANCE_STATUS.COMPLETED,
         completed_at: new Date().toISOString(),
-        completion_notes: notes
+        delivery_notes_admin: notes
       })
       .eq('id', remittanceId)
       .select('*, remittance_types(*)')
