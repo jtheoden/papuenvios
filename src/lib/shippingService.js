@@ -469,6 +469,38 @@ export const getShippingStatistics = async () => {
 };
 
 /**
+ * Get list of provinces that have active shipping zones
+ * Used to populate province selector in recipients/orders
+ * @returns {Object} Object with success flag and provinces array
+ */
+export const getAvailableProvinces = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('shipping_zones')
+      .select('province_name')
+      .eq('is_active', true)
+      .order('province_name', { ascending: true });
+
+    if (error) throw error;
+
+    // Extract unique province names
+    const provinces = [...new Set((data || []).map(z => z.province_name))];
+
+    return {
+      success: true,
+      provinces: provinces
+    };
+  } catch (error) {
+    console.error('Error fetching available provinces:', error);
+    return {
+      success: false,
+      provinces: [],
+      error: error.message
+    };
+  }
+};
+
+/**
  * Validate province name exists in shipping zones
  * @param {string} provinceName - Province name to validate
  * @returns {boolean} Whether province exists
