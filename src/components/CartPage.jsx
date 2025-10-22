@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { ShoppingCart, X, Plus, Minus, Copy, Upload, CheckCircle, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -13,14 +13,18 @@ import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
 import { getCurrencies, convertCurrency } from '@/lib/currencyService';
 import { generateWhatsAppURL, notifyAdminNewPayment } from '@/lib/whatsappService';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
+import { createRecipient, addRecipientAddress } from '@/lib/recipientService';
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
+import RecipientSelector from '@/components/RecipientSelector';
 
 const CartPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
-  const { cart, updateCartQuantity, removeFromCart, clearCart, financialSettings, zelleAccounts, visualSettings, businessInfo, notificationSettings } = useBusiness();
+  const { cart, updateCartQuantity, removeFromCart, clearCart, financialSettings, zelleAccounts, visualSettings, notificationSettings } = useBusiness();
   const { isAuthenticated, user } = useAuth();
+  const recipientSelectorRef = useRef(null);
   const [view, setView] = useState('cart'); // cart, recipient, payment
+  const [recipientSelection, setRecipientSelection] = useState(null);
   const [recipientDetails, setRecipientDetails] = useState({
     fullName: '',
     phone: '',
@@ -200,7 +204,10 @@ const CartPage = ({ onNavigate }) => {
   const total = (subtotal + shippingCost).toFixed(2);
   const purchaseId = `PO-${Date.now()}`;
 
-  const activeZelleAccount = zelleAccounts.find(acc => acc.forProducts && acc.active);
+  // Get the first active Zelle account marked for product processing (loaded from BD via BusinessContext)
+  const activeZelleAccount = (zelleAccounts || [])
+    .filter(acc => acc.for_products === true && acc.is_active === true)
+    .sort((a, b) => (a.priority_order || 999) - (b.priority_order || 999))[0];
 
   const handleCheckout = () => {
     if (!isAuthenticated) {
@@ -210,8 +217,111 @@ const CartPage = ({ onNavigate }) => {
     setView('recipient');
   };
 
-  const handleRecipientSubmit = () => {
-    setView('payment');
+  /**
+   * Handle recipient selection from RecipientSelector
+   * Auto-registers new recipient with address if isNew flag is true
+   */
+  const handleRecipientSelection = async (selection) => {
+    try {
+      setRecipientSelection(selection);
+
+      if (selection.isNew) {
+        // Auto-register new recipient with address
+        const newRecipientData = {
+          full_name: selection.formData.full_name,
+          phone: selection.formData.phone,
+          email: selection.formData.email || '',
+          is_favorite: false
+        };
+
+        const recipientResult = await createRecipient(newRecipientData);
+        if (!recipientResult.success) {
+          toast({
+            title: t('common.error'),
+            description: recipientResult.error,
+            variant: 'destructive'
+          });
+          return;
+        }
+
+        const newRecipientId = recipientResult.recipient.id;
+
+        // Create address record for the new recipient
+        const addressData = {
+          recipient_id: newRecipientId,
+          address_line_1: selection.formData.address_line_1,
+          address_line_2: selection.formData.address_line_2 || '',
+          province: selection.formData.province,
+          municipality: selection.formData.municipality,
+          is_default: true
+        };
+
+        const addressResult = await addRecipientAddress(addressData);
+        if (!addressResult.success) {
+          toast({
+            title: t('common.error'),
+            description: addressResult.error,
+            variant: 'destructive'
+          });
+          return;
+        }
+
+        toast({
+          title: t('common.success'),
+          description: t('recipients.createdSuccessfully')
+        });
+
+        // Update selection with new recipient ID and address ID
+        const newAddressId = addressResult.address.id;
+        setRecipientSelection({
+          ...selection,
+          recipientId: newRecipientId,
+          addressId: newAddressId
+        });
+
+        // Reload recipients list in RecipientSelector so new recipient appears in list
+        if (recipientSelectorRef.current?.loadRecipients) {
+          await recipientSelectorRef.current.loadRecipients();
+        }
+      }
+
+      // Populate recipientData from selection
+      let recipientInfo = selection.recipientData || selection.formData;
+      let selectedAddress = null;
+
+      if (!selection.isNew && selection.recipientData?.addresses && selection.addressId) {
+        selectedAddress = selection.recipientData.addresses.find(a => a.id === selection.addressId);
+      }
+
+      const newRecipientDetails = {
+        fullName: recipientInfo.full_name || recipientInfo.name || '',
+        phone: recipientInfo.phone || '',
+        email: recipientInfo.email || '',
+        address: selectedAddress?.address_line_1 || recipientInfo.address_line_1 || '',
+        province: selectedAddress?.province || recipientInfo.province || '',
+        municipality: selectedAddress?.municipality || recipientInfo.municipality || ''
+      };
+
+      console.log('[CartPage] Setting recipient details:', {
+        isNew: selection.isNew,
+        recipientDetails: newRecipientDetails,
+        shippingZonesLoaded: shippingZones.length,
+        selectedAddress: selectedAddress,
+        recipientInfo: recipientInfo
+      });
+
+      setRecipientDetails(newRecipientDetails);
+
+      // Auto-move to payment after selection
+      setView('payment');
+    } catch (error) {
+      console.error('Error handling recipient selection:', error);
+      toast({
+        title: t('common.error'),
+        description: error.message,
+        variant: 'destructive'
+      });
+    }
   };
 
   const copyToClipboard = (text) => {
@@ -302,6 +412,31 @@ const CartPage = ({ onNavigate }) => {
       return;
     }
 
+    // CRITICAL: Verify recipient details are properly set
+    if (!recipientDetails.province || !recipientDetails.province.trim()) {
+      toast({
+        title: language === 'es' ? 'Datos faltantes' : 'Missing information',
+        description: language === 'es'
+          ? 'Por favor selecciona una provincia válida antes de confirmar el pago.'
+          : 'Please select a valid province before confirming payment.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // CRITICAL: Check if shipping zones are loaded
+    if (!shippingZones || shippingZones.length === 0) {
+      toast({
+        title: language === 'es' ? 'Error de configuración' : 'Configuration error',
+        description: language === 'es'
+          ? 'Las zonas de envío no se han cargado. Por favor recarga la página e intenta de nuevo.'
+          : 'Shipping zones are not loaded. Please refresh the page and try again.',
+        variant: 'destructive'
+      });
+      console.error('[CartPage] Shipping zones not loaded:', { shippingZones });
+      return;
+    }
+
     setProcessingPayment(true);
 
     try {
@@ -311,15 +446,76 @@ const CartPage = ({ onNavigate }) => {
         throw new Error('Currency not found');
       }
 
-      // Get shipping zone ID
-      const shippingZone = shippingZones.find(z => z.province_name === recipientDetails.province);
+      // Get shipping zone ID - try exact match first, then case-insensitive
+      console.log('[CartPage] Searching for shipping zone:', {
+        recipientProvince: recipientDetails.province,
+        shippingZonesCount: shippingZones.length,
+        availableZones: shippingZones.map(z => ({ id: z.id, province: z.province_name }))
+      });
 
-      // Debug logs
+      // Trim and normalize province string
+      const provinceToFind = (recipientDetails.province || '').trim();
+
+      // Try exact match first
+      let shippingZone = shippingZones.find(z =>
+        (z.province_name || '').trim() === provinceToFind
+      );
+
+      // If exact match not found, try case-insensitive match with trimming
+      if (!shippingZone) {
+        shippingZone = shippingZones.find(z =>
+          (z.province_name || '').trim().toLowerCase() === provinceToFind.toLowerCase()
+        );
+      }
+
+      // If still not found, log detailed debug info
+      if (!shippingZone) {
+        const debugInfo = {
+          searchingFor: provinceToFind,
+          availableZones: shippingZones.map(z => ({
+            id: z.id,
+            name: z.province_name,
+            trimmed: (z.province_name || '').trim(),
+            lowercase: (z.province_name || '').trim().toLowerCase()
+          }))
+        };
+        console.error('[CartPage] Shipping zone lookup failed:', debugInfo);
+        throw new Error(language === 'es'
+          ? `Provincia no encontrada en zonas de envío: "${provinceToFind}". Zonas disponibles: ${shippingZones.map(z => z.province_name).join(', ')}`
+          : `Shipping zone not found for province: "${provinceToFind}". Available zones: ${shippingZones.map(z => z.province_name).join(', ')}`);
+      }
+
+      // Get active Zelle account for product orders
+      // Support both camelCase (legacy) and snake_case (current DB format) field names
+      const activeProductAccounts = (zelleAccounts || []).filter(acc => {
+        const forProducts = acc.for_products !== undefined ? acc.for_products : acc.forProducts;
+        const isActive = acc.is_active !== undefined ? acc.is_active : acc.active;
+        return forProducts === true && isActive === true;
+      });
+
+      if (activeProductAccounts.length === 0) {
+        console.warn('No Zelle accounts available. Accounts:', zelleAccounts);
+        throw new Error(language === 'es'
+          ? 'No hay cuentas Zelle disponibles para procesar órdenes. Por favor configura al menos una cuenta Zelle marcada para procesar órdenes de productos.'
+          : 'No Zelle accounts available for processing orders. Please configure at least one Zelle account marked for product orders.');
+      }
+
+      // Sort by priority_order and get the first one
+      const selectedZelleAccount = activeProductAccounts.sort(
+        (a, b) => (a.priority_order || 999) - (b.priority_order || 999)
+      )[0];
+
+      // Debug logs - CRITICAL information for troubleshooting
       console.log('Creating order with:', {
         userId: user.id,
         currencyId: currency.id,
         shippingZoneId: shippingZone?.id,
-        zelleAccountId: zelleAccounts?.[0]?.id
+        shippingZoneName: shippingZone?.province_name,
+        zelleAccountId: selectedZelleAccount?.id,
+        zelleAccountName: selectedZelleAccount?.account_name,
+        recipientDetailsProvince: recipientDetails.province,
+        recipientDetailsFullName: recipientDetails.fullName,
+        recipientDetailsAddress: recipientDetails.address
       });
 
       // Prepare order items
@@ -345,8 +541,7 @@ const CartPage = ({ onNavigate }) => {
         recipientInfo: JSON.stringify(recipientDetails),
         paymentMethod: 'zelle',
         shippingZoneId: shippingZone?.id || null,
-        // TODO: Fix zelle_accounts table to use UUID instead of integer IDs
-        zelleAccountId: null
+        zelleAccountId: selectedZelleAccount?.id || null
       };
 
       // Create order
@@ -434,131 +629,35 @@ const CartPage = ({ onNavigate }) => {
       <div className="container mx-auto max-w-2xl py-8 px-4">
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="glass-effect p-8 rounded-2xl">
           <h1 className="text-3xl font-bold mb-6" style={getHeadingStyle(visualSettings)}>
-            {language === 'es' ? 'Datos de Entrega' : 'Delivery Information'}
+            {language === 'es' ? 'Selecciona tu Destinatario' : 'Select Your Recipient'}
           </h1>
 
-          <div className="space-y-4">
-            {/* Nombre completo */}
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                {language === 'es' ? 'Nombre completo' : 'Full name'} <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                placeholder={language === 'es' ? 'Ingrese el nombre completo del destinatario' : 'Enter recipient full name'}
-                value={recipientDetails.fullName}
-                onChange={e => setRecipientDetails({...recipientDetails, fullName: e.target.value})}
-                className="input-style w-full"
-                required
-              />
-            </div>
-
-            {/* Teléfono */}
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                {language === 'es' ? 'Teléfono' : 'Phone'} <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="tel"
-                placeholder={language === 'es' ? 'Ej: +53 5 234 5678' : 'Ex: +53 5 234 5678'}
-                value={recipientDetails.phone}
-                onChange={e => setRecipientDetails({...recipientDetails, phone: e.target.value})}
-                className="input-style w-full"
-                required
-              />
-            </div>
-
-            {/* Provincia */}
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                {language === 'es' ? 'Provincia' : 'Province'} <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={recipientDetails.province}
-                onChange={e => setRecipientDetails({...recipientDetails, province: e.target.value})}
-                className="input-style w-full"
-                required
-              >
-                <option value="">
-                  {language === 'es' ? 'Seleccione una provincia' : 'Select a province'}
-                </option>
-                {shippingZones.map(zone => (
-                  <option key={zone.id} value={zone.province_name}>
-                    {zone.province_name}
-                    {zone.free_shipping || parseFloat(zone.shipping_cost) === 0
-                      ? ` - ${language === 'es' ? 'Envío Gratis' : 'Free Shipping'}`
-                      : ` - $${parseFloat(zone.shipping_cost).toFixed(2)}`
-                    }
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Municipio */}
-            {recipientDetails.province && (
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  {language === 'es' ? 'Municipio' : 'Municipality'} <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={recipientDetails.municipality}
-                  onChange={e => setRecipientDetails({...recipientDetails, municipality: e.target.value})}
-                  className="input-style w-full"
-                  required
-                >
-                  <option value="">
-                    {language === 'es' ? 'Seleccione un municipio' : 'Select a municipality'}
-                  </option>
-                  {municipalities.map(mun => (
-                    <option key={mun} value={mun}>
-                      {mun}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Dirección */}
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                {language === 'es' ? 'Dirección completa' : 'Full address'} <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                placeholder={language === 'es' ? 'Calle, número, entre calles, edificio, apartamento, etc.' : 'Street, number, between streets, building, apartment, etc.'}
-                value={recipientDetails.address}
-                onChange={e => setRecipientDetails({...recipientDetails, address: e.target.value})}
-                className="input-style w-full min-h-[100px]"
-                required
-              />
-            </div>
-
-            {/* Resumen de envío */}
-            {recipientDetails.province && (
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm font-medium mb-1">
-                  {language === 'es' ? 'Costo de envío' : 'Shipping cost'}
-                </p>
-                <p className="text-lg font-bold" style={{ color: visualSettings.primaryColor }}>
-                  {shippingCost === 0
-                    ? (language === 'es' ? '¡Envío Gratis!' : 'Free Shipping!')
-                    : `$${shippingCost.toFixed(2)}`
-                  }
-                </p>
-              </div>
-            )}
+          <div className="mb-6">
+            <RecipientSelector
+              ref={recipientSelectorRef}
+              onSelect={handleRecipientSelection}
+              showAddressSelection={true}
+            />
           </div>
 
-          <div className="flex gap-3 mt-6">
+          {/* Shipping Summary */}
+          {recipientDetails.province && (
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-6">
+              <p className="text-sm font-medium mb-1">
+                {language === 'es' ? 'Costo de envío' : 'Shipping cost'}
+              </p>
+              <p className="text-lg font-bold" style={{ color: visualSettings.primaryColor }}>
+                {shippingCost === 0
+                  ? (language === 'es' ? '¡Envío Gratis!' : 'Free Shipping!')
+                  : `$${shippingCost.toFixed(2)}`
+                }
+              </p>
+            </div>
+          )}
+
+          <div className="flex gap-3">
             <Button variant="outline" onClick={() => setView('cart')} className="flex-1">
               {language === 'es' ? 'Atrás' : 'Back'}
-            </Button>
-            <Button
-              onClick={handleRecipientSubmit}
-              style={getPrimaryButtonStyle(visualSettings)}
-              className="flex-1"
-              disabled={!recipientDetails.fullName || !recipientDetails.phone || !recipientDetails.province || !recipientDetails.municipality || !recipientDetails.address}
-            >
-              {language === 'es' ? 'Continuar al Pago' : 'Continue to Payment'}
             </Button>
           </div>
         </motion.div>
@@ -584,10 +683,23 @@ const CartPage = ({ onNavigate }) => {
             <div className="mb-6 space-y-2">
               <h3 className="font-semibold">{t('cart.payment.accountInfo')}</h3>
               <p><strong>Email:</strong> {activeZelleAccount.email}</p>
-              <p><strong>{t('settings.zelle.name')}:</strong> {activeZelleAccount.name}</p>
+              <p>
+                <strong>{t('settings.zelle.name')}:</strong>{' '}
+                {activeZelleAccount.account_name || activeZelleAccount.name}
+              </p>
+              {(activeZelleAccount.phone || activeZelleAccount.phone_number) && (
+                <p>
+                  <strong>{t('common.phone')}:</strong>{' '}
+                  {activeZelleAccount.phone || activeZelleAccount.phone_number}
+                </p>
+              )}
             </div>
           ) : (
-            <p className="text-red-500">No Zelle account available.</p>
+            <p className="text-red-500">
+              {language === 'es'
+                ? 'No hay cuentas Zelle disponibles para procesar órdenes. Configura al menos una cuenta en Administración.'
+                : 'No Zelle accounts available. Please configure at least one in Administration.'}
+            </p>
           )}
 
           <div className="mb-6 space-y-4">
