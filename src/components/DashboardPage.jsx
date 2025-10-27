@@ -25,13 +25,25 @@ const DashboardPage = ({ onNavigate }) => {
     pendingOrders: 0,
     completedOrders: 0,
     dailyRevenue: 0,
+    weeklyRevenue: 0,
     monthlyRevenue: 0,
+    dailyOrderProfit: 0,
+    weeklyOrderProfit: 0,
+    monthlyOrderProfit: 0,
     // Remittance metrics
     totalRemittances: 0,
     pendingRemittances: 0,
     completedRemittances: 0,
     dailyRemittanceIncome: 0,
+    weeklyRemittanceIncome: 0,
     monthlyRemittanceIncome: 0,
+    dailyRemittanceProfit: 0,
+    weeklyRemittanceProfit: 0,
+    monthlyRemittanceProfit: 0,
+    // Combined totals for percentage calculation
+    totalDailyIncome: 0,
+    totalWeeklyIncome: 0,
+    totalMonthlyIncome: 0,
     loading: true
   });
 
@@ -175,18 +187,29 @@ const DashboardPage = ({ onNavigate }) => {
       // Legacy field for compatibility
       const pendingOrders = paymentPending + paymentValidated;
 
-      // Calculate revenue (last 24 hours and last 30 days)
+      // Calculate revenue (last 24 hours, 7 days, and 30 days)
       const now = new Date();
       const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
+      const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
       const oneMonthAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
 
+      // Orders revenue calculations
       const dailyRevenue = orders
         .filter(o => new Date(o.created_at) >= oneDayAgo && ['delivered', 'completed', 'processing'].includes(o.status))
+        .reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
+
+      const weeklyRevenue = orders
+        .filter(o => new Date(o.created_at) >= sevenDaysAgo && ['delivered', 'completed', 'processing'].includes(o.status))
         .reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
 
       const monthlyRevenue = orders
         .filter(o => new Date(o.created_at) >= oneMonthAgo && ['delivered', 'completed', 'processing'].includes(o.status))
         .reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
+
+      // Orders profit calculations
+      const dailyOrderProfit = dailyRevenue * (financialSettings.productProfit / 100);
+      const weeklyOrderProfit = weeklyRevenue * (financialSettings.productProfit / 100);
+      const monthlyOrderProfit = monthlyRevenue * (financialSettings.productProfit / 100);
 
       // Calculate remittance stats
       const totalRemittances = remittances.length;
@@ -200,9 +223,23 @@ const DashboardPage = ({ onNavigate }) => {
         .filter(r => new Date(r.created_at) >= oneDayAgo && r.status === 'completed')
         .reduce((sum, r) => sum + (parseFloat(r.commission_total) || 0), 0);
 
+      const weeklyRemittanceIncome = remittances
+        .filter(r => new Date(r.created_at) >= sevenDaysAgo && r.status === 'completed')
+        .reduce((sum, r) => sum + (parseFloat(r.commission_total) || 0), 0);
+
       const monthlyRemittanceIncome = remittances
         .filter(r => new Date(r.created_at) >= oneMonthAgo && r.status === 'completed')
         .reduce((sum, r) => sum + (parseFloat(r.commission_total) || 0), 0);
+
+      // Remittance profit = income (no additional profit margin for remittances)
+      const dailyRemittanceProfit = dailyRemittanceIncome;
+      const weeklyRemittanceProfit = weeklyRemittanceIncome;
+      const monthlyRemittanceProfit = monthlyRemittanceIncome;
+
+      // Calculate combined totals for percentage
+      const totalDailyIncome = dailyRevenue + dailyRemittanceIncome;
+      const totalWeeklyIncome = weeklyRevenue + weeklyRemittanceIncome;
+      const totalMonthlyIncome = monthlyRevenue + monthlyRemittanceIncome;
 
       setStats({
         totalProducts,
@@ -217,14 +254,28 @@ const DashboardPage = ({ onNavigate }) => {
         delivered,
         cancelled,
         totalActive,
+        // Orders metrics (revenue & profit)
+        totalOrders: orders.length,
         dailyRevenue,
+        weeklyRevenue,
         monthlyRevenue,
-        // Remittance metrics
+        dailyOrderProfit,
+        weeklyOrderProfit,
+        monthlyOrderProfit,
+        // Remittance metrics (income & profit)
         totalRemittances,
         pendingRemittances,
         completedRemittances,
         dailyRemittanceIncome,
+        weeklyRemittanceIncome,
         monthlyRemittanceIncome,
+        dailyRemittanceProfit,
+        weeklyRemittanceProfit,
+        monthlyRemittanceProfit,
+        // Combined totals
+        totalDailyIncome,
+        totalWeeklyIncome,
+        totalMonthlyIncome,
         loading: false
       });
     } catch (error) {
@@ -240,9 +291,10 @@ const DashboardPage = ({ onNavigate }) => {
     }
   }, [user, isAdmin, isSuperAdmin]);
 
-  // Calculate profits and apply exchange rate
-  const dailyProfit = stats.dailyRevenue * (financialSettings.productProfit / 100);
-  const monthlyProfit = stats.monthlyRevenue * (financialSettings.productProfit / 100);
+  // Note: Profits are now calculated in fetchStats() and stored in stats
+  // These are kept for backward compatibility and easy access
+  const dailyProfit = stats.dailyOrderProfit || 0;
+  const monthlyProfit = stats.monthlyOrderProfit || 0;
 
   // Get current currency symbol and code
   const currentCurrency = currencies.find(c => c.id === selectedCurrency);
@@ -463,41 +515,72 @@ const DashboardPage = ({ onNavigate }) => {
             {t('dashboard.remittancesMetrics')} 📤
           </h2>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-6">
+          <div className="grid grid-cols-3 gap-3">
             {[
               {
-                title: t('dashboard.stats.totalRemittances'),
+                title: `${t('dashboard.stats.totalRemittances')}`,
                 value: stats.totalRemittances,
                 icon: Send,
                 color: 'from-indigo-500 to-blue-600',
-                type: 'count'
+                type: 'count',
+                percentage: stats.totalRemittances > 0 ? 100 : 0
               },
               {
-                title: t('dashboard.stats.pendingRemittances'),
+                title: `${t('dashboard.stats.pendingRemittances')}`,
                 value: stats.pendingRemittances,
                 icon: Clock,
                 color: 'from-yellow-500 to-orange-600',
-                type: 'count'
+                type: 'count',
+                percentage: stats.totalRemittances > 0 ? ((stats.pendingRemittances / stats.totalRemittances) * 100).toFixed(1) : 0
               },
               {
-                title: t('dashboard.stats.completedRemittances'),
+                title: `${t('dashboard.stats.completedRemittances')}`,
                 value: stats.completedRemittances,
                 icon: CheckCircle,
                 color: 'from-green-500 to-emerald-600',
-                type: 'count'
+                type: 'count',
+                percentage: stats.totalRemittances > 0 ? ((stats.completedRemittances / stats.totalRemittances) * 100).toFixed(1) : 0
               },
               {
-                title: t('dashboard.stats.dailyRemittanceIncome'),
+                title: `Ingresos (Hoy)`,
                 value: stats.dailyRemittanceIncome,
                 icon: DollarSign,
                 color: 'from-purple-500 to-pink-600',
                 type: 'currency'
               },
               {
-                title: t('dashboard.stats.monthlyRemittanceIncome'),
+                title: `Ingresos (Semana)`,
+                value: stats.weeklyRemittanceIncome,
+                icon: DollarSign,
+                color: 'from-blue-500 to-cyan-600',
+                type: 'currency'
+              },
+              {
+                title: `Ingresos (Mes)`,
                 value: stats.monthlyRemittanceIncome,
                 icon: TrendingUp,
-                color: 'from-cyan-500 to-teal-600',
+                color: 'from-teal-500 to-emerald-600',
+                type: 'currency'
+              },
+              {
+                title: `Ganancias (Hoy)`,
+                value: stats.dailyRemittanceProfit,
+                icon: DollarSign,
+                color: 'from-pink-500 to-red-600',
+                type: 'currency'
+              },
+              {
+                title: `Ganancias (Semana)`,
+                value: stats.weeklyRemittanceProfit,
+                icon: DollarSign,
+                color: 'from-orange-500 to-yellow-600',
+                type: 'currency'
+              },
+              {
+                title: `Ganancias (Mes)`,
+                value: stats.monthlyRemittanceProfit,
+                icon: TrendingUp,
+                color: 'from-red-500 to-pink-600',
                 type: 'currency'
               }
             ].map((stat, index) => (
@@ -505,21 +588,135 @@ const DashboardPage = ({ onNavigate }) => {
                 key={index}
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.6 + index * 0.08 }}
-                className="glass-effect p-6 rounded-2xl hover-lift"
+                transition={{ delay: 0.6 + index * 0.05 }}
+                className="glass-effect bg-white/80 backdrop-blur-sm p-5 rounded-2xl hover-lift border border-white/20 shadow-lg hover:shadow-xl transition-all"
               >
-                <div className="flex items-center justify-between mb-4">
-                  <div className={`w-12 h-12 bg-gradient-to-r ${stat.color} rounded-xl flex items-center justify-center`}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className={`w-12 h-12 bg-gradient-to-r ${stat.color} rounded-xl flex items-center justify-center shadow-md`}>
                     <stat.icon className="w-6 h-6 text-white" />
                   </div>
+                  {stat.percentage !== undefined && (
+                    <span className="text-sm font-bold bg-gradient-to-r from-gray-700 to-gray-900 text-white px-2.5 py-1 rounded-full">
+                      {stat.percentage}%
+                    </span>
+                  )}
                 </div>
-                <h3 className="text-2xl font-bold mb-1">
+                <h3 className="text-2xl font-black mb-1.5 text-gray-900">
                   {stat.type === 'currency'
-                    ? `${currencySymbol}${formatCurrency(stat.value)} ${currencyCode}`
+                    ? `${currencySymbol}${formatCurrency(stat.value)}`
                     : stat.value
                   }
                 </h3>
-                <p className="text-gray-600 text-sm">{stat.title}</p>
+                <p className="text-gray-700 text-sm font-semibold">{stat.title}</p>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* Orders Metrics Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="mb-12"
+        >
+          <h2 className="text-2xl font-bold mb-6" style={getHeadingStyle(visualSettings)}>
+            {t('dashboard.ordersMetrics')} 📦
+          </h2>
+
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              {
+                title: `${t('dashboard.stats.totalOrders')}`,
+                value: stats.totalOrders || 0,
+                icon: Package,
+                color: 'from-indigo-500 to-blue-600',
+                type: 'count',
+                percentage: 100
+              },
+              {
+                title: `${t('dashboard.stats.pendingOrders')}`,
+                value: stats.pendingOrders,
+                icon: Clock,
+                color: 'from-yellow-500 to-orange-600',
+                type: 'count',
+                percentage: stats.totalOrders > 0 ? ((stats.pendingOrders / stats.totalOrders) * 100).toFixed(1) : 0
+              },
+              {
+                title: `${t('dashboard.stats.completedOrders')}`,
+                value: stats.completedOrders,
+                icon: CheckCircle,
+                color: 'from-green-500 to-emerald-600',
+                type: 'count',
+                percentage: stats.totalOrders > 0 ? ((stats.completedOrders / stats.totalOrders) * 100).toFixed(1) : 0
+              },
+              {
+                title: `Ingresos (Hoy)`,
+                value: stats.dailyRevenue,
+                icon: DollarSign,
+                color: 'from-green-500 to-emerald-600',
+                type: 'currency'
+              },
+              {
+                title: `Ingresos (Semana)`,
+                value: stats.weeklyRevenue,
+                icon: DollarSign,
+                color: 'from-blue-500 to-cyan-600',
+                type: 'currency'
+              },
+              {
+                title: `Ingresos (Mes)`,
+                value: stats.monthlyRevenue,
+                icon: TrendingUp,
+                color: 'from-teal-500 to-emerald-600',
+                type: 'currency'
+              },
+              {
+                title: `Ganancias (Hoy)`,
+                value: stats.dailyOrderProfit,
+                icon: DollarSign,
+                color: 'from-pink-500 to-red-600',
+                type: 'currency'
+              },
+              {
+                title: `Ganancias (Semana)`,
+                value: stats.weeklyOrderProfit,
+                icon: DollarSign,
+                color: 'from-orange-500 to-yellow-600',
+                type: 'currency'
+              },
+              {
+                title: `Ganancias (Mes)`,
+                value: stats.monthlyOrderProfit,
+                icon: TrendingUp,
+                color: 'from-red-500 to-pink-600',
+                type: 'currency'
+              }
+            ].map((stat, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 + index * 0.05 }}
+                className="glass-effect bg-white/80 backdrop-blur-sm p-5 rounded-2xl hover-lift border border-white/20 shadow-lg hover:shadow-xl transition-all"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className={`w-12 h-12 bg-gradient-to-r ${stat.color} rounded-xl flex items-center justify-center shadow-md`}>
+                    <stat.icon className="w-6 h-6 text-white" />
+                  </div>
+                  {stat.percentage !== undefined && (
+                    <span className="text-sm font-bold bg-gradient-to-r from-gray-700 to-gray-900 text-white px-2.5 py-1 rounded-full">
+                      {stat.percentage}%
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-2xl font-black mb-1.5 text-gray-900">
+                  {stat.type === 'currency'
+                    ? `${currencySymbol}${formatCurrency(stat.value)}`
+                    : stat.value
+                  }
+                </h3>
+                <p className="text-gray-700 text-sm font-semibold">{stat.title}</p>
               </motion.div>
             ))}
           </div>
@@ -532,47 +729,81 @@ const DashboardPage = ({ onNavigate }) => {
               transition={{ delay: 0.8 }}
               className="glass-effect p-8 rounded-2xl"
             >
-              <h3 className="text-2xl font-semibold mb-6">{t('dashboard.profitBreakdown')}</h3>
+              <h3 className="text-2xl font-semibold mb-6">{t('dashboard.profitBreakdown')} {t('dashboard.bySource')}</h3>
               <div className="space-y-4">
                 <div>
                   <h4 className="text-lg font-semibold mb-2">{t('dashboard.dailyBreakdown')}</h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span>{t('dashboard.grossRevenue')}:</span>
-                      <span className="font-semibold">{currencySymbol}{formatCurrency(stats.dailyRevenue)} {currencyCode}</span>
+                  <div className="space-y-3 text-sm">
+                    {/* Orders Section */}
+                    <div className="bg-blue-50 p-3 rounded-lg">
+                      <p className="font-semibold text-blue-900 mb-2">📦 {t('dashboard.ordersIncome')}</p>
+                      <div className="space-y-1 ml-2">
+                        <div className="flex justify-between">
+                          <span>{t('dashboard.grossRevenue')}:</span>
+                          <span className="font-semibold">{currencySymbol}{formatCurrency(stats.dailyRevenue)} {currencyCode}</span>
+                        </div>
+                        <div className="flex justify-between text-blue-700">
+                          <span>{t('dashboard.netProfit')}:</span>
+                          <span className="font-bold">{currencySymbol}{formatCurrency(dailyProfit)} {currencyCode}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span>{t('dashboard.costs')}:</span>
-                      <span className="font-semibold text-red-600">-{currencySymbol}{formatCurrency(stats.dailyRevenue - dailyProfit)} {currencyCode}</span>
+                    {/* Remittances Section */}
+                    <div className="bg-purple-50 p-3 rounded-lg">
+                      <p className="font-semibold text-purple-900 mb-2">📤 {t('dashboard.remittancesIncome')}</p>
+                      <div className="space-y-1 ml-2">
+                        <div className="flex justify-between">
+                          <span>{t('dashboard.grossRevenue')}:</span>
+                          <span className="font-semibold">{currencySymbol}{formatCurrency(stats.dailyRemittanceIncome)} {currencyCode}</span>
+                        </div>
+                        <div className="flex justify-between text-purple-700">
+                          <span>{t('dashboard.netProfit')}:</span>
+                          <span className="font-bold">{currencySymbol}{formatCurrency(stats.dailyRemittanceIncome)} {currencyCode}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex justify-between border-t pt-2 mt-1">
-                      <span>{t('dashboard.netProfit')}:</span>
-                      <span className="font-bold text-green-600">{currencySymbol}{formatCurrency(dailyProfit)} {currencyCode}</span>
-                    </div>
-                    <div className="flex justify-between text-xs text-gray-500">
-                      <span>{t('dashboard.profitMargin')}:</span>
-                      <span>{financialSettings.productProfit}%</span>
+                    {/* Total */}
+                    <div className="flex justify-between border-t pt-2 mt-2">
+                      <span className="font-bold">{t('dashboard.totalIncome')}:</span>
+                      <span className="font-bold text-green-600">{currencySymbol}{formatCurrency(stats.dailyRevenue + stats.dailyRemittanceIncome)} {currencyCode}</span>
                     </div>
                   </div>
                 </div>
-                 <div>
+                <div>
                   <h4 className="text-lg font-semibold mb-2">{t('dashboard.monthlyBreakdown')}</h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span>{t('dashboard.grossRevenue')}:</span>
-                      <span className="font-semibold">{currencySymbol}{formatCurrency(stats.monthlyRevenue)} {currencyCode}</span>
+                  <div className="space-y-3 text-sm">
+                    {/* Orders Section */}
+                    <div className="bg-blue-50 p-3 rounded-lg">
+                      <p className="font-semibold text-blue-900 mb-2">📦 {t('dashboard.ordersIncome')}</p>
+                      <div className="space-y-1 ml-2">
+                        <div className="flex justify-between">
+                          <span>{t('dashboard.grossRevenue')}:</span>
+                          <span className="font-semibold">{currencySymbol}{formatCurrency(stats.monthlyRevenue)} {currencyCode}</span>
+                        </div>
+                        <div className="flex justify-between text-blue-700">
+                          <span>{t('dashboard.netProfit')}:</span>
+                          <span className="font-bold">{currencySymbol}{formatCurrency(monthlyProfit)} {currencyCode}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span>{t('dashboard.costs')}:</span>
-                      <span className="font-semibold text-red-600">-{currencySymbol}{formatCurrency(stats.monthlyRevenue - monthlyProfit)} {currencyCode}</span>
+                    {/* Remittances Section */}
+                    <div className="bg-purple-50 p-3 rounded-lg">
+                      <p className="font-semibold text-purple-900 mb-2">📤 {t('dashboard.remittancesIncome')}</p>
+                      <div className="space-y-1 ml-2">
+                        <div className="flex justify-between">
+                          <span>{t('dashboard.grossRevenue')}:</span>
+                          <span className="font-semibold">{currencySymbol}{formatCurrency(stats.monthlyRemittanceIncome)} {currencyCode}</span>
+                        </div>
+                        <div className="flex justify-between text-purple-700">
+                          <span>{t('dashboard.netProfit')}:</span>
+                          <span className="font-bold">{currencySymbol}{formatCurrency(stats.monthlyRemittanceIncome)} {currencyCode}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex justify-between border-t pt-2 mt-1">
-                      <span>{t('dashboard.netProfit')}:</span>
-                      <span className="font-bold text-green-600">{currencySymbol}{formatCurrency(monthlyProfit)} {currencyCode}</span>
-                    </div>
-                    <div className="flex justify-between text-xs text-gray-500">
-                      <span>{t('dashboard.profitMargin')}:</span>
-                      <span>{financialSettings.productProfit}%</span>
+                    {/* Total */}
+                    <div className="flex justify-between border-t pt-2 mt-2">
+                      <span className="font-bold">{t('dashboard.totalIncome')}:</span>
+                      <span className="font-bold text-green-600">{currencySymbol}{formatCurrency(stats.monthlyRevenue + stats.monthlyRemittanceIncome)} {currencyCode}</span>
                     </div>
                   </div>
                 </div>
