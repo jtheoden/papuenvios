@@ -16,8 +16,11 @@ import { getAvailableZelleAccount, registerZelleTransaction } from '@/lib/zelleS
 export const generateProofSignedUrl = async (proofFilePath) => {
   try {
     if (!proofFilePath) {
+      console.warn('[generateProofSignedUrl] No file path provided');
       return { success: false, error: 'Ruta de comprobante no proporcionada' };
     }
+
+    console.log('[generateProofSignedUrl] Generating signed URL for:', proofFilePath);
 
     // Generar URL firmada válida por 1 hora
     const { data, error } = await supabase.storage
@@ -25,13 +28,36 @@ export const generateProofSignedUrl = async (proofFilePath) => {
       .createSignedUrl(proofFilePath, 3600); // 3600 segundos = 1 hora
 
     if (error) {
-      console.error('Error generating signed URL:', error);
+      console.error('[generateProofSignedUrl] Supabase error:', {
+        message: error.message,
+        name: error.name,
+        status: error.status,
+        filePath: proofFilePath
+      });
+
+      // Check if it's a permission issue
+      if (error.message?.includes('permission') || error.message?.includes('Policy')) {
+        return {
+          success: false,
+          error: 'No tiene permisos para acceder a este comprobante. Verifique que la ruta sea correcta.'
+        };
+      }
+
       return { success: false, error: error.message };
     }
 
+    if (!data?.signedUrl) {
+      console.error('[generateProofSignedUrl] No signed URL returned:', data);
+      return { success: false, error: 'No se pudo generar URL firmada' };
+    }
+
+    console.log('[generateProofSignedUrl] Successfully generated signed URL');
     return { success: true, signedUrl: data.signedUrl };
   } catch (error) {
-    console.error('Error in generateProofSignedUrl:', error);
+    console.error('[generateProofSignedUrl] Exception:', {
+      message: error.message,
+      stack: error.stack
+    });
     return { success: false, error: error.message };
   }
 };
@@ -874,11 +900,9 @@ export const confirmDelivery = async (remittanceId, proofFile = null, notes = ''
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('remittance-proofs')
-        .getPublicUrl(filePath);
-
-      deliveryProofUrl = publicUrl;
+      // Store file path instead of URL for private buckets
+      // Signed URLs will be generated on-demand when needed
+      deliveryProofUrl = filePath;
     }
 
     // Actualizar estado
