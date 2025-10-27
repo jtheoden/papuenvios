@@ -13,6 +13,7 @@ import {
   uploadPaymentProof,
   cancelRemittance,
   calculateDeliveryAlert,
+  generateProofSignedUrl,
   REMITTANCE_STATUS
 } from '@/lib/remittanceService';
 import { toast } from '@/components/ui/use-toast';
@@ -28,6 +29,9 @@ const MyRemittancesPage = ({ onNavigate }) => {
   const [loading, setLoading] = useState(true);
   const [selectedRemittance, setSelectedRemittance] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showProofModal, setShowProofModal] = useState(false);
+  const [proofImageUrl, setProofImageUrl] = useState(null);
+  const [proofImageLoading, setProofImageLoading] = useState(false);
   const [uploadData, setUploadData] = useState({
     file: null,
     reference: '',
@@ -72,6 +76,36 @@ const MyRemittancesPage = ({ onNavigate }) => {
     setShowUploadModal(true);
     setUploadData({ file: null, reference: '', notes: '' });
     setPreviewUrl(null);
+  };
+
+  const handleViewProof = async (remittance) => {
+    setSelectedRemittance(remittance);
+    setShowProofModal(true);
+    setProofImageLoading(true);
+
+    const proofPath = remittance.payment_proof_url;
+
+    // Check if it's already a URL (old format)
+    if (proofPath.startsWith('http://') || proofPath.startsWith('https://')) {
+      setProofImageUrl(proofPath);
+      setProofImageLoading(false);
+    } else {
+      // It's a file path, generate a signed URL
+      const result = await generateProofSignedUrl(proofPath);
+
+      if (result.success) {
+        setProofImageUrl(result.signedUrl);
+      } else {
+        console.error('Failed to generate signed URL:', result.error);
+        toast({
+          title: t('common.error'),
+          description: 'No se pudo cargar el comprobante',
+          variant: 'destructive'
+        });
+        setProofImageUrl(null);
+      }
+      setProofImageLoading(false);
+    }
   };
 
   const handleFileChange = (e) => {
@@ -400,6 +434,16 @@ const MyRemittancesPage = ({ onNavigate }) => {
                       Ver Detalles
                     </button>
 
+                    {remittance.payment_proof_url && (
+                      <button
+                        onClick={() => handleViewProof(remittance)}
+                        className="flex items-center gap-1 px-3 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
+                      >
+                        <FileText className="h-4 w-4" />
+                        Ver Comprobante
+                      </button>
+                    )}
+
                     {remittance.status === REMITTANCE_STATUS.PAYMENT_PENDING && (
                       <>
                         <button
@@ -637,6 +681,78 @@ const MyRemittancesPage = ({ onNavigate }) => {
                   Cerrar
                 </button>
               </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Payment Proof Modal */}
+      {showProofModal && selectedRemittance?.payment_proof_url && (
+        <div
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowProofModal(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className="bg-white rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold">{t('remittances.user.paymentProof')}</h2>
+              <button
+                onClick={() => setShowProofModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <XCircle className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="bg-gray-50 rounded-xl p-4">
+              {selectedRemittance.payment_proof_url ? (
+                selectedRemittance.payment_proof_url.toLowerCase().endsWith('.pdf') ? (
+                  <div className="text-center py-8">
+                    <FileText className="h-16 w-16 text-blue-600 mx-auto mb-4" />
+                    <p className="text-gray-600 mb-4">{t('remittances.wizard.pdfFile')}</p>
+                    <a
+                      href={proofImageUrl || selectedRemittance.payment_proof_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      Descargar PDF
+                    </a>
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    {proofImageLoading ? (
+                      <div className="flex items-center justify-center py-12">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                      </div>
+                    ) : proofImageUrl ? (
+                      <img
+                        src={proofImageUrl}
+                        alt="Payment proof"
+                        className="w-full h-auto max-h-[70vh] object-contain rounded-lg"
+                        onError={(e) => {
+                          console.error('Error loading proof image:', proofImageUrl);
+                          e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect fill="%23f3f4f6" width="400" height="300"/><text x="50%" y="50%" font-family="Arial" font-size="14" fill="%236b7280" text-anchor="middle">Error al cargar imagen</text></svg>';
+                        }}
+                      />
+                    ) : (
+                      <div className="text-center py-12">
+                        <p className="text-gray-600">No se pudo cargar el comprobante</p>
+                      </div>
+                    )}
+                  </div>
+                )
+              ) : (
+                <div className="text-center py-12">
+                  <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600">{t('remittances.user.viewProof')}</p>
+                </div>
+              )}
             </div>
           </motion.div>
         </div>
