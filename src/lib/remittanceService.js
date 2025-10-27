@@ -8,38 +8,31 @@ import { notifyAdminNewPaymentProof } from '@/lib/whatsappService';
 import { getAvailableZelleAccount, registerZelleTransaction } from '@/lib/zelleService';
 
 /**
- * Load proof image from Supabase storage
- * Attempts to fetch with authentication headers to bypass RLS restrictions
- * @param {string} proofUrl - Public URL of the proof image
- * @returns {Promise<string>} Data URL of the image or original URL as fallback
+ * Generate a signed URL for accessing a payment proof from private storage
+ * Signed URLs are valid for 1 hour and work with private buckets
+ * @param {string} proofFilePath - File path in the remittance-proofs bucket (e.g., "user-id/REM-2025-0001.jpg")
+ * @returns {Promise<{success: boolean, signedUrl?: string, error?: string}>}
  */
-export const loadProofImage = async (proofUrl) => {
+export const generateProofSignedUrl = async (proofFilePath) => {
   try {
-    if (!proofUrl) return null;
-
-    // Try to get authenticated session to fetch with proper headers
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-    if (!sessionError && session?.access_token) {
-      // Fetch with authentication headers
-      const response = await fetch(proofUrl, {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'apikey': supabase.supabaseKey || ''
-        }
-      });
-
-      if (response.ok) {
-        const blob = await response.blob();
-        return URL.createObjectURL(blob);
-      }
+    if (!proofFilePath) {
+      return { success: false, error: 'Ruta de comprobante no proporcionada' };
     }
 
-    // Fallback: return original URL
-    return proofUrl;
+    // Generar URL firmada válida por 1 hora
+    const { data, error } = await supabase.storage
+      .from('remittance-proofs')
+      .createSignedUrl(proofFilePath, 3600); // 3600 segundos = 1 hora
+
+    if (error) {
+      console.error('Error generating signed URL:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, signedUrl: data.signedUrl };
   } catch (error) {
-    console.error('Error loading proof image:', error);
-    return proofUrl; // Return original URL as fallback
+    console.error('Error in generateProofSignedUrl:', error);
+    return { success: false, error: error.message };
   }
 };
 
@@ -458,31 +451,30 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
       throw new Error('No tiene permisos para modificar esta remesa');
     }
 
-    // Subir archivo a Supabase Storage
+    // Subir archivo a Supabase Storage (bucket privado)
     const fileExt = file.name.split('.').pop();
     const fileName = `${remittance.remittance_number}.${fileExt}`;
     const filePath = `${user.id}/${fileName}`;
 
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from('remittance-proofs')
       .upload(filePath, file, { upsert: true });
 
     if (uploadError) throw uploadError;
 
-    // Obtener URL pública
-    const { data: { publicUrl } } = supabase.storage
-      .from('remittance-proofs')
-      .getPublicUrl(filePath);
+    // Guardar la ruta del archivo (no una URL)
+    // Las URLs firmadas se generarán on-demand cuando sea necesario ver el comprobante
+    // Esto asegura que siempre tengamos URLs válidas incluso para comprobantes antiguos
 
-    // Actualizar remesa (solo campos que existen en la tabla)
+    // Actualizar remesa con la ruta del archivo
     const { data: updatedRemittance, error: updateError } = await supabase
       .from('remittances')
       .update({
-        payment_proof_url: publicUrl,
+        payment_proof_url: filePath,  // Guardar ruta del archivo para generar URLs firmadas on-demand
         payment_reference: reference,
         payment_proof_notes: notes,
         payment_proof_uploaded_at: new Date().toISOString(),
-        status: 'payment_proof_uploaded',  // String literal para evitar problemas
+        status: 'payment_proof_uploaded',
         updated_at: new Date().toISOString()
       })
       .eq('id', remittanceId)

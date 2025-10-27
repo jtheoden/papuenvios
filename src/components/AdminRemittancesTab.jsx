@@ -14,7 +14,7 @@ import {
   confirmDelivery,
   completeRemittance,
   calculateDeliveryAlert,
-  loadProofImage,
+  generateProofSignedUrl,
   REMITTANCE_STATUS
 } from '@/lib/remittanceService';
 import { toast } from '@/components/ui/use-toast';
@@ -49,23 +49,42 @@ const AdminRemittancesTab = () => {
   }, [remittances, searchTerm, statusFilter]);
 
   useEffect(() => {
-    if (proofModalOpen && selectedRemittance?.payment_proof_url) {
-      setProofImageLoading(true);
-      loadProofImage(selectedRemittance.payment_proof_url)
-        .then(url => {
-          setProofImageUrl(url);
+    const generateSignedUrl = async () => {
+      if (proofModalOpen && selectedRemittance?.payment_proof_url) {
+        setProofImageLoading(true);
+
+        const proofUrl = selectedRemittance.payment_proof_url;
+
+        // Check if it's already a signed URL (starts with http/https)
+        if (proofUrl.startsWith('http://') || proofUrl.startsWith('https://')) {
+          // It's already a URL (old format or signed URL), use it directly
+          setProofImageUrl(proofUrl);
           setProofImageLoading(false);
-        })
-        .catch(error => {
-          console.error('Failed to load proof image:', error);
-          setProofImageUrl(selectedRemittance.payment_proof_url);
+        } else {
+          // It's a file path, generate a signed URL
+          const result = await generateProofSignedUrl(proofUrl);
+
+          if (result.success) {
+            setProofImageUrl(result.signedUrl);
+          } else {
+            console.error('Failed to generate signed URL:', result.error);
+            toast({
+              title: t('common.error'),
+              description: 'No se pudo generar URL para visualizar el comprobante',
+              variant: 'destructive'
+            });
+            setProofImageUrl(null);
+          }
           setProofImageLoading(false);
-        });
-    } else {
-      setProofImageUrl(null);
-      setProofImageLoading(false);
-    }
-  }, [proofModalOpen, selectedRemittance?.payment_proof_url]);
+        }
+      } else {
+        setProofImageUrl(null);
+        setProofImageLoading(false);
+      }
+    };
+
+    generateSignedUrl();
+  }, [proofModalOpen, selectedRemittance?.payment_proof_url, t]);
 
   const loadRemittances = async () => {
     setLoading(true);
@@ -650,16 +669,20 @@ const AdminRemittancesTab = () => {
                         <div className="flex items-center justify-center py-12">
                           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
                         </div>
-                      ) : (
+                      ) : proofImageUrl ? (
                         <img
-                          src={proofImageUrl || selectedRemittance.payment_proof_url}
+                          src={proofImageUrl}
                           alt="Payment proof"
                           className="w-full h-auto max-h-[70vh] object-contain rounded-lg"
                           onError={(e) => {
-                            console.error('Error loading proof image:', selectedRemittance.payment_proof_url);
+                            console.error('Error loading proof image:', proofImageUrl);
                             e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect fill="%23f3f4f6" width="400" height="300"/><text x="50%" y="50%" font-family="Arial" font-size="14" fill="%236b7280" text-anchor="middle">Error al cargar imagen</text></svg>';
                           }}
                         />
+                      ) : (
+                        <div className="text-center py-12">
+                          <p className="text-gray-600">No se pudo generar URL para visualizar el comprobante</p>
+                        </div>
                       )}
                     </div>
                   )
