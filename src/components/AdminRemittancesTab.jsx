@@ -96,6 +96,17 @@ const AdminRemittancesTab = () => {
     const result = await getAllRemittances({});
     if (result.success) {
       setRemittances(result.remittances);
+
+      // Debug logging - verify statuses of loaded remittances
+      if (result.remittances && result.remittances.length > 0) {
+        const statusCounts = {};
+        result.remittances.forEach(r => {
+          statusCounts[r.status] = (statusCounts[r.status] || 0) + 1;
+        });
+        console.log('[AdminRemittancesTab] Loaded remittances by status:', statusCounts);
+        console.log('[AdminRemittancesTab] Total remittances:', result.remittances.length);
+        console.log('[AdminRemittancesTab] Pending validation:', result.remittances.filter(r => r.status === REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED).length);
+      }
     } else {
       toast({
         title: t('common.error'),
