@@ -721,7 +721,7 @@ export const getAllRemittances = async (filters = {}) => {
 /**
  * Validar pago de remesa (Admin)
  * @param {string} remittanceId - ID de la remesa
- * @param {string} notes - Notas de validación
+ * @param {string} notes - Notas de validación (para referencia del admin)
  * @returns {Promise<{success: boolean, remittance?: Object, error?: string}>}
  */
 export const validatePayment = async (remittanceId, notes = '') => {
@@ -741,19 +741,26 @@ export const validatePayment = async (remittanceId, notes = '') => {
       throw new Error('Solo se puede validar pago cuando hay comprobante subido');
     }
 
-    // Actualizar estado
+    // Obtener usuario actual (admin que valida)
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError) throw userError;
+
+    // Actualizar estado usando columnas que existen en la base de datos
     const { data, error } = await supabase
       .from('remittances')
       .update({
         status: REMITTANCE_STATUS.PAYMENT_VALIDATED,
+        payment_validated: true,
         payment_validated_at: new Date().toISOString(),
-        payment_validation_notes: notes
+        payment_validated_by: user.id
       })
       .eq('id', remittanceId)
       .select('*, remittance_types(*)')
       .single();
 
     if (error) throw error;
+
+    console.log('[validatePayment] Payment validated for remittance:', remittanceId, 'by:', user.id, 'notes:', notes);
 
     // TODO: Enviar notificación WhatsApp al usuario
     // await notifyUserPaymentValidated(data);
