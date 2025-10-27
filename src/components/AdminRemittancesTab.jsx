@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Filter, Eye, CheckCircle, XCircle, Clock, Package, Truck,
   AlertTriangle, Download, FileText, Image as ImageIcon, Calendar
@@ -14,6 +14,7 @@ import {
   confirmDelivery,
   completeRemittance,
   calculateDeliveryAlert,
+  loadProofImage,
   REMITTANCE_STATUS
 } from '@/lib/remittanceService';
 import { toast } from '@/components/ui/use-toast';
@@ -29,6 +30,15 @@ const AdminRemittancesTab = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedRemittance, setSelectedRemittance] = useState(null);
+  const [proofModalOpen, setProofModalOpen] = useState(false);
+  const [proofImageUrl, setProofImageUrl] = useState(null);
+  const [proofImageLoading, setProofImageLoading] = useState(false);
+  const [deliveryModalOpen, setDeliveryModalOpen] = useState(false);
+  const [deliveryForm, setDeliveryForm] = useState({
+    notes: '',
+    proofFile: null,
+    proofPreview: null
+  });
 
   useEffect(() => {
     loadRemittances();
@@ -37,6 +47,25 @@ const AdminRemittancesTab = () => {
   useEffect(() => {
     filterRemittances();
   }, [remittances, searchTerm, statusFilter]);
+
+  useEffect(() => {
+    if (proofModalOpen && selectedRemittance?.payment_proof_url) {
+      setProofImageLoading(true);
+      loadProofImage(selectedRemittance.payment_proof_url)
+        .then(url => {
+          setProofImageUrl(url);
+          setProofImageLoading(false);
+        })
+        .catch(error => {
+          console.error('Failed to load proof image:', error);
+          setProofImageUrl(selectedRemittance.payment_proof_url);
+          setProofImageLoading(false);
+        });
+    } else {
+      setProofImageUrl(null);
+      setProofImageLoading(false);
+    }
+  }, [proofModalOpen, selectedRemittance?.payment_proof_url]);
 
   const loadRemittances = async () => {
     setLoading(true);
@@ -180,24 +209,19 @@ const AdminRemittancesTab = () => {
   };
 
   const handleConfirmDelivery = async (remittance) => {
-    const notes = await showModal({
-      title: t('remittances.admin.confirmDelivery'),
-      message: t('remittances.admin.confirmDeliveryMessage', {
-        amount: remittance.amount_to_deliver,
-        currency: remittance.delivery_currency,
-        recipient: remittance.recipient_name
-      }),
-      input: true,
-      inputLabel: t('remittances.admin.deliveryNotes'),
-      inputPlaceholder: t('remittances.admin.deliveryNotesPlaceholder'),
-      confirmText: t('remittances.admin.confirmDelivery'),
-      cancelText: t('common.cancel'),
-      type: 'success'
-    });
+    setSelectedRemittance(remittance);
+    setDeliveryModalOpen(true);
+    setDeliveryForm({ notes: '', proofFile: null, proofPreview: null });
+  };
 
-    if (notes === false) return;
+  const handleDeliverySubmit = async () => {
+    if (!selectedRemittance) return;
 
-    const result = await confirmDelivery(remittance.id, null, notes || '');
+    const result = await confirmDelivery(
+      selectedRemittance.id,
+      deliveryForm.proofFile,
+      deliveryForm.notes || ''
+    );
 
     if (result.success) {
       toast({
@@ -205,13 +229,32 @@ const AdminRemittancesTab = () => {
         description: t('remittances.admin.deliveryConfirmed')
       });
       loadRemittances();
+      setDeliveryModalOpen(false);
       setSelectedRemittance(null);
+      setDeliveryForm({ notes: '', proofFile: null, proofPreview: null });
     } else {
       toast({
         title: t('common.error'),
         description: result.error,
         variant: 'destructive'
       });
+    }
+  };
+
+  const handleProofFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setDeliveryForm(prev => ({ ...prev, proofFile: file }));
+
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setDeliveryForm(prev => ({ ...prev, proofPreview: event.target.result }));
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setDeliveryForm(prev => ({ ...prev, proofPreview: null }));
+      }
     }
   };
 
@@ -526,15 +569,17 @@ const AdminRemittancesTab = () => {
                     {new Date(remittance.created_at).toLocaleDateString('es-CU')}
                   </span>
                   {remittance.payment_proof_url && (
-                    <a
-                      href={remittance.payment_proof_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedRemittance(remittance);
+                        setProofModalOpen(true);
+                      }}
                       className="flex items-center gap-1 text-blue-600 hover:underline"
                     >
                       <FileText className="h-4 w-4" />
                       {t('remittances.user.viewProof')}
-                    </a>
+                    </button>
                   )}
                 </div>
 
@@ -554,56 +599,266 @@ const AdminRemittancesTab = () => {
         </div>
       )}
 
-      {/* Details Modal (simplified - full implementation would use a proper modal component) */}
-      {selectedRemittance && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={() => setSelectedRemittance(null)}
-        >
+      {/* Payment Proof Modal */}
+      <AnimatePresence>
+        {proofModalOpen && selectedRemittance?.payment_proof_url && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+            onClick={() => setProofModalOpen(false)}
           >
-            <h2 className="text-2xl font-bold gradient-text mb-4">
-              {t('remittances.admin.viewDetails')}
-            </h2>
-
-            <div className="space-y-4">
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">{t('common.number')}</p>
-                  <p className="font-semibold">{selectedRemittance.remittance_number}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">{t('common.status')}</p>
-                  {getStatusBadge(selectedRemittance.status)}
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">{t('common.type')}</p>
-                  <p className="font-semibold">{selectedRemittance.remittance_types?.name}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">{t('common.createdAt')}</p>
-                  <p className="font-semibold">
-                    {new Date(selectedRemittance.created_at).toLocaleString('es-CU')}
-                  </p>
-                </div>
-              </div>
-
-              <div className="pt-4 border-t">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold">{t('remittances.user.paymentProof')}</h2>
                 <button
-                  onClick={() => setSelectedRemittance(null)}
-                  className="w-full py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  onClick={() => {
+                    setProofModalOpen(false);
+                    setProofImageUrl(null);
+                  }}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                 >
-                  {t('remittances.admin.cancel')}
+                  <XCircle className="h-6 w-6" />
                 </button>
               </div>
-            </div>
+
+              <div className="bg-gray-50 rounded-xl p-4">
+                {selectedRemittance.payment_proof_url ? (
+                  selectedRemittance.payment_proof_url.toLowerCase().endsWith('.pdf') ? (
+                    <div className="text-center py-8">
+                      <FileText className="h-16 w-16 text-blue-600 mx-auto mb-4" />
+                      <p className="text-gray-600 mb-4">{t('remittances.wizard.pdfFile')}</p>
+                      <a
+                        href={selectedRemittance.payment_proof_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        Descargar PDF
+                      </a>
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      {proofImageLoading ? (
+                        <div className="flex items-center justify-center py-12">
+                          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                        </div>
+                      ) : (
+                        <img
+                          src={proofImageUrl || selectedRemittance.payment_proof_url}
+                          alt="Payment proof"
+                          className="w-full h-auto max-h-[70vh] object-contain rounded-lg"
+                          onError={(e) => {
+                            console.error('Error loading proof image:', selectedRemittance.payment_proof_url);
+                            e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect fill="%23f3f4f6" width="400" height="300"/><text x="50%" y="50%" font-family="Arial" font-size="14" fill="%236b7280" text-anchor="middle">Error al cargar imagen</text></svg>';
+                          }}
+                        />
+                      )}
+                    </div>
+                  )
+                ) : (
+                  <div className="text-center py-12">
+                    <ImageIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600">{t('remittances.user.viewProof')}</p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
           </motion.div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
+
+      {/* Delivery Confirmation Modal */}
+      <AnimatePresence>
+        {deliveryModalOpen && selectedRemittance && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setDeliveryModalOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold">{t('remittances.admin.confirmDelivery')}</h2>
+                <button
+                  onClick={() => setDeliveryModalOpen(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <XCircle className="h-6 w-6" />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                {/* Remittance Info Summary */}
+                <div className="grid md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-xl">
+                  <div>
+                    <p className="text-xs text-gray-500">{t('remittances.user.toDeliver')}</p>
+                    <p className="text-xl font-bold">
+                      {selectedRemittance.amount_to_deliver?.toFixed(2)} {selectedRemittance.currency_delivered}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">{t('remittances.recipient.fullName')}</p>
+                    <p className="font-semibold">{selectedRemittance.recipient_name}</p>
+                  </div>
+                </div>
+
+                {/* Delivery Notes */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {t('remittances.admin.deliveryNotes')} (opcional)
+                  </label>
+                  <textarea
+                    value={deliveryForm.notes}
+                    onChange={(e) => setDeliveryForm(prev => ({ ...prev, notes: e.target.value }))}
+                    placeholder={t('remittances.admin.deliveryNotesPlaceholder')}
+                    rows="3"
+                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Optional Delivery Proof Upload */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {t('remittances.user.paymentProof')} (opcional)
+                  </label>
+                  <div className="space-y-2">
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={handleProofFileChange}
+                      className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    {deliveryForm.proofFile && (
+                      <p className="text-xs text-green-600">
+                        ✓ {deliveryForm.proofFile.name}
+                      </p>
+                    )}
+                    {deliveryForm.proofPreview && (
+                      <img
+                        src={deliveryForm.proofPreview}
+                        alt="Preview"
+                        className="w-full h-auto max-h-[200px] object-contain rounded-lg border border-gray-200"
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-4 border-t">
+                  <button
+                    onClick={() => setDeliveryModalOpen(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    {t('common.cancel')}
+                  </button>
+                  <button
+                    onClick={handleDeliverySubmit}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                  >
+                    <Truck className="h-4 w-4 inline mr-2" />
+                    {t('remittances.admin.confirmDelivery')}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Details Modal */}
+      <AnimatePresence>
+        {selectedRemittance && !proofModalOpen && !deliveryModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setSelectedRemittance(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold">{t('remittances.admin.viewDetails')}</h2>
+                <button
+                  onClick={() => setSelectedRemittance(null)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <XCircle className="h-6 w-6" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-500">{t('common.number')}</p>
+                    <p className="font-semibold">{selectedRemittance.remittance_number}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">{t('common.status')}</p>
+                    {getStatusBadge(selectedRemittance.status)}
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">{t('common.type')}</p>
+                    <p className="font-semibold">{selectedRemittance.remittance_types?.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">{t('common.createdAt')}</p>
+                    <p className="font-semibold">
+                      {new Date(selectedRemittance.created_at).toLocaleString('es-CU')}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-3 gap-4 pt-4 border-t">
+                  <div>
+                    <p className="text-xs text-gray-500">{t('remittances.user.amountSent')}</p>
+                    <p className="font-semibold">{selectedRemittance.amount_sent} {selectedRemittance.currency_sent}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">{t('remittances.user.toDeliver')}</p>
+                    <p className="font-semibold">{selectedRemittance.amount_to_deliver?.toFixed(2)} {selectedRemittance.currency_delivered}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">{t('remittances.user.method')}</p>
+                    <p className="font-semibold capitalize">{selectedRemittance.delivery_method}</p>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t space-y-4">
+                  <div>
+                    <button
+                      onClick={() => setSelectedRemittance(null)}
+                      className="w-full py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      {t('common.close')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
