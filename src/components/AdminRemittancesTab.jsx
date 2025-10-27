@@ -52,25 +52,30 @@ const AdminRemittancesTab = () => {
     const generateSignedUrl = async () => {
       if (proofModalOpen && selectedRemittance?.payment_proof_url) {
         setProofImageLoading(true);
+        setProofImageUrl(null); // Reset previous URL
 
         const proofUrl = selectedRemittance.payment_proof_url;
+        console.log('[AdminRemittancesTab] Opening proof modal for:', proofUrl);
 
         // Check if it's already a signed URL (starts with http/https)
         if (proofUrl.startsWith('http://') || proofUrl.startsWith('https://')) {
           // It's already a URL (old format or signed URL), use it directly
+          console.log('[AdminRemittancesTab] Using direct URL');
           setProofImageUrl(proofUrl);
           setProofImageLoading(false);
         } else {
           // It's a file path, generate a signed URL
+          console.log('[AdminRemittancesTab] Generating signed URL from path');
           const result = await generateProofSignedUrl(proofUrl);
 
           if (result.success) {
+            console.log('[AdminRemittancesTab] Signed URL generated successfully');
             setProofImageUrl(result.signedUrl);
           } else {
-            console.error('Failed to generate signed URL:', result.error);
+            console.error('[AdminRemittancesTab] Failed to generate signed URL:', result.error);
             toast({
               title: t('common.error'),
-              description: 'No se pudo generar URL para visualizar el comprobante',
+              description: result.error || 'No se pudo generar URL para visualizar el comprobante',
               variant: 'destructive'
             });
             setProofImageUrl(null);
