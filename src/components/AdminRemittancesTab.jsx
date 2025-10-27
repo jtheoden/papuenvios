@@ -582,7 +582,7 @@ const AdminRemittancesTab = () => {
 
                 <div>
                   <p className="text-xs text-gray-500 mb-1">{t('remittances.recipient.city')}</p>
-                  <p className="font-semibold">{remittance.recipient_city || 'N/A'}</p>
+                  <p className="font-semibold">{remittance.recipient_municipality || 'N/A'}</p>
                 </div>
               </div>
 

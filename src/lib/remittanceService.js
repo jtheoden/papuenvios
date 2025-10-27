@@ -844,17 +844,20 @@ export const startProcessing = async (remittanceId, notes = '') => {
       throw new Error('Solo se puede procesar remesa con pago validado');
     }
 
-    // Actualizar estado
+    // Actualizar estado - usar solo campos que existen en la base de datos
     const { data, error } = await supabase
       .from('remittances')
       .update({
         status: REMITTANCE_STATUS.PROCESSING,
-        processing_started_at: new Date().toISOString(),
-        processing_notes: notes
+        processing_started_at: new Date().toISOString()
       })
       .eq('id', remittanceId)
       .select('*, remittance_types(*)')
       .single();
+
+    if (notes) {
+      console.log('[startProcessing] Processing started for remittance:', remittanceId, 'notes:', notes);
+    }
 
     if (error) throw error;
 
