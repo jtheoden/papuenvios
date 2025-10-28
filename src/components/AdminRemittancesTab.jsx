@@ -654,6 +654,22 @@ const AdminRemittancesTab = () => {
                   </div>
                 )}
 
+                {/* Bank Account Information - For Bank Transfer/Card */}
+                {selectedRemittance.delivery_method !== 'cash' && selectedRemittance.recipient_bank_account && (
+                  <div className="border-l-4 border-blue-500 bg-blue-50 rounded-lg p-4">
+                    <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                      <span className="inline-block w-3 h-3 bg-blue-500 rounded-full"></span>
+                      {selectedRemittance.delivery_method === 'transfer' ? '🏦 Datos Bancarios' : '💳 Datos de Cuenta'}
+                    </h3>
+                    <div className="space-y-2 text-sm font-mono bg-white rounded p-3 border border-blue-200">
+                      <p>{selectedRemittance.recipient_bank_account}</p>
+                    </div>
+                    {selectedRemittance.recipient_bank_name && (
+                      <p className="text-sm mt-2"><span className="font-medium">Banco:</span> {selectedRemittance.recipient_bank_name}</p>
+                    )}
+                  </div>
+                )}
+
                 {/* Delivery Method */}
                 <div className="bg-blue-50 rounded-lg p-4">
                   <p className="text-sm text-blue-600 font-medium mb-1">Método de Entrega</p>

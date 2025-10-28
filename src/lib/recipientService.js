@@ -246,3 +246,221 @@ export const getMunicipalitiesByProvince = async (province) => {
     return { success: false, municipalities: [], error: error.message };
   }
 };
+
+// ============================================================================
+// BANK ACCOUNT MANAGEMENT - Functions for bank account operations
+// ============================================================================
+
+/**
+ * Create a bank account for a user
+ * @param {string} userId - User ID
+ * @param {Object} bankData - { bankId, accountTypeId, currencyId, accountNumber, accountHolderName }
+ * @returns {Object} { success, data, error }
+ */
+export const createBankAccount = async (userId, bankData) => {
+  try {
+    const { bankId, accountTypeId, currencyId, accountNumber, accountHolderName } = bankData;
+
+    // Validate inputs
+    if (!userId || !bankId || !accountTypeId || !currencyId || !accountNumber || !accountHolderName) {
+      return { success: false, error: 'Missing required fields' };
+    }
+
+    // Hash account number for security (last 4 for display)
+    const crypto = require('crypto');
+    const accountNumberHash = crypto
+      .createHash('sha256')
+      .update(accountNumber + userId)
+      .digest('hex');
+    const accountNumberLast4 = accountNumber.slice(-4);
+
+    const { data, error } = await supabase
+      .from('bank_accounts')
+      .insert([
+        {
+          user_id: userId,
+          bank_id: bankId,
+          account_type_id: accountTypeId,
+          currency_id: currencyId,
+          account_number_last4: accountNumberLast4,
+          account_number_hash: accountNumberHash,
+          account_holder_name: accountHolderName,
+          is_active: true
+        }
+      ])
+      .select()
+      .single();
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error creating bank account:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Get bank accounts for a user
+ * @param {string} userId - User ID
+ * @param {boolean} activeOnly - Filter only active accounts
+ * @returns {Object} { success, data, error }
+ */
+export const getBankAccountsByUser = async (userId, activeOnly = true) => {
+  try {
+    let query = supabase
+      .from('bank_accounts')
+      .select(`
+        id,
+        account_number_last4,
+        account_holder_name,
+        is_active,
+        created_at,
+        banks(name, swift_code),
+        account_types(name),
+        currencies(code, name)
+      `)
+      .eq('user_id', userId);
+
+    if (activeOnly) {
+      query = query.eq('is_active', true).is('deleted_at', null);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error fetching bank accounts:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Update bank account
+ * @param {string} accountId - Bank account ID
+ * @param {Object} updates - { isActive, accountHolderName }
+ * @returns {Object} { success, data, error }
+ */
+export const updateBankAccount = async (accountId, updates) => {
+  try {
+    const { data, error } = await supabase
+      .from('bank_accounts')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', accountId)
+      .select()
+      .single();
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error updating bank account:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Soft delete a bank account
+ * @param {string} accountId - Bank account ID
+ * @param {string} deletedByUserId - User deleting the account
+ * @returns {Object} { success, data, error }
+ */
+export const deleteBankAccount = async (accountId, deletedByUserId) => {
+  try {
+    const { data, error } = await supabase
+      .from('bank_accounts')
+      .update({
+        deleted_at: new Date().toISOString(),
+        deleted_by_user_id: deletedByUserId,
+        is_active: false,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', accountId)
+      .select()
+      .single();
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error deleting bank account:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Link a bank account to a recipient
+ * @param {string} recipientId - Recipient ID
+ * @param {string} bankAccountId - Bank account ID
+ * @param {boolean} isDefault - Set as default account
+ * @returns {Object} { success, data, error }
+ */
+export const linkBankAccountToRecipient = async (recipientId, bankAccountId, isDefault = false) => {
+  try {
+    // If setting as default, unset other defaults
+    if (isDefault) {
+      await supabase
+        .from('recipient_bank_accounts')
+        .update({ is_default: false })
+        .eq('recipient_id', recipientId);
+    }
+
+    const { data, error } = await supabase
+      .from('recipient_bank_accounts')
+      .insert([
+        {
+          recipient_id: recipientId,
+          bank_account_id: bankAccountId,
+          is_default: isDefault,
+          is_active: true
+        }
+      ])
+      .select()
+      .single();
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error linking bank account to recipient:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Get bank accounts for a recipient
+ * @param {string} recipientId - Recipient ID
+ * @returns {Object} { success, data, error }
+ */
+export const getBankAccountsForRecipient = async (recipientId) => {
+  try {
+    const { data, error } = await supabase
+      .from('recipient_bank_accounts')
+      .select(`
+        id,
+        is_default,
+        created_at,
+        bank_accounts(
+          id,
+          account_number_last4,
+          account_holder_name,
+          is_active,
+          banks(name, swift_code),
+          account_types(name),
+          currencies(code, name)
+        )
+      `)
+      .eq('recipient_id', recipientId)
+      .eq('is_active', true);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error fetching recipient bank accounts:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// ============================================================================
+// END BANK ACCOUNT MANAGEMENT
+// ============================================================================

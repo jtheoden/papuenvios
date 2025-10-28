@@ -1158,3 +1158,159 @@ export const getRemittancesNeedingAlert = async () => {
     return { success: false, remittances: [], error: error.message };
   }
 };
+
+// ============================================================================
+// BANK TRANSFER OPERATIONS - Functions for bank transfer tracking
+// ============================================================================
+
+/**
+ * Create a bank transfer record for a remittance
+ * @param {string} remittanceId - Remittance ID
+ * @param {string} recipientBankAccountId - Recipient bank account ID
+ * @param {Object} transferData - { processedByUserId, amountTransferred }
+ * @returns {Object} { success, data, error }
+ */
+export const createBankTransfer = async (remittanceId, recipientBankAccountId, transferData = {}) => {
+  try {
+    const { processedByUserId = null, amountTransferred = null } = transferData;
+
+    const { data, error } = await supabase
+      .from('remittance_bank_transfers')
+      .insert([
+        {
+          remittance_id: remittanceId,
+          recipient_bank_account_id: recipientBankAccountId,
+          status: 'pending',
+          processed_by_user_id: processedByUserId,
+          amount_transferred: amountTransferred
+        }
+      ])
+      .select()
+      .single();
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error creating bank transfer:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Update bank transfer status
+ * @param {string} transferId - Transfer ID
+ * @param {string} status - New status
+ * @param {Object} additionalData - { processedByUserId, processedAt, errorMessage }
+ * @returns {Object} { success, data, error }
+ */
+export const updateBankTransferStatus = async (transferId, status, additionalData = {}) => {
+  try {
+    const validStatuses = ['pending', 'confirmed', 'transferred', 'failed', 'reversed'];
+    if (!validStatuses.includes(status)) {
+      return { success: false, error: `Invalid status: ${status}` };
+    }
+
+    const updateData = {
+      status,
+      updated_at: new Date().toISOString(),
+      ...additionalData
+    };
+
+    // Auto-set processed_at if not already set and status is confirmed/transferred
+    if (['confirmed', 'transferred'].includes(status) && !additionalData.processedAt) {
+      updateData.processed_at = new Date().toISOString();
+    }
+
+    const { data, error } = await supabase
+      .from('remittance_bank_transfers')
+      .update(updateData)
+      .eq('id', transferId)
+      .select()
+      .single();
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error updating bank transfer status:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Get bank transfer history for a remittance
+ * @param {string} remittanceId - Remittance ID
+ * @returns {Object} { success, data, error }
+ */
+export const getBankTransferHistory = async (remittanceId) => {
+  try {
+    const { data, error } = await supabase
+      .from('remittance_bank_transfers')
+      .select(`
+        id,
+        status,
+        amount_transferred,
+        processed_at,
+        created_at,
+        error_message,
+        recipient_bank_account:recipient_bank_account_id(
+          id,
+          is_default,
+          bank_accounts(
+            id,
+            account_number_last4,
+            account_holder_name,
+            banks(name),
+            currencies(code)
+          )
+        )
+      `)
+      .eq('remittance_id', remittanceId)
+      .order('created_at', { ascending: false });
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error fetching bank transfer history:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Get pending bank transfers for admin review
+ * @param {Object} filters - { status }
+ * @returns {Object} { success, data, error }
+ */
+export const getPendingBankTransfers = async (filters = {}) => {
+  try {
+    let query = supabase
+      .from('remittance_bank_transfers')
+      .select(`
+        id,
+        status,
+        amount_transferred,
+        created_at,
+        remittances(id, remittance_number),
+        recipient_bank_account:recipient_bank_account_id(
+          recipient_id,
+          bank_accounts(account_number_last4, account_holder_name)
+        )
+      `)
+      .eq('status', 'pending');
+
+    if (filters.status) {
+      query = query.eq('status', filters.status);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: true });
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error fetching pending transfers:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// ============================================================================
+// END BANK TRANSFER OPERATIONS
+// ============================================================================
