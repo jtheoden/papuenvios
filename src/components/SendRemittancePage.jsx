@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight, ArrowLeft, Check, DollarSign, User, FileText, Upload,
@@ -13,13 +13,19 @@ import {
   createRemittance,
   uploadPaymentProof
 } from '@/lib/remittanceService';
+import { getActiveShippingZones } from '@/lib/shippingService';
+import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
+import RecipientSelector from '@/components/RecipientSelector';
+import ZelleAccountSelector from '@/components/ZelleAccountSelector';
 
 const SendRemittancePage = ({ onNavigate }) => {
   const { t } = useLanguage();
   const { user, isAdmin, isSuperAdmin } = useAuth();
   const { showModal } = useModal();
+
+  const recipientSelectorRef = useRef();
 
   const [step, setStep] = useState(1);
   const [types, setTypes] = useState([]);
@@ -30,6 +36,11 @@ const SendRemittancePage = ({ onNavigate }) => {
   const [selectedType, setSelectedType] = useState(null);
   const [amount, setAmount] = useState('');
   const [calculation, setCalculation] = useState(null);
+
+  const [selectedRecipientData, setSelectedRecipientData] = useState(null);
+  const [selectedZelle, setSelectedZelle] = useState(null);
+  const [shippingZones, setShippingZones] = useState([]);
+  const [municipalities, setMunicipalities] = useState([]);
 
   const [recipientData, setRecipientData] = useState({
     name: '',
@@ -50,6 +61,7 @@ const SendRemittancePage = ({ onNavigate }) => {
 
   useEffect(() => {
     loadTypes();
+    loadShippingZones();
   }, []);
 
   useEffect(() => {
@@ -64,6 +76,21 @@ const SendRemittancePage = ({ onNavigate }) => {
       });
     }
   }, [isAdmin, isSuperAdmin]);
+
+  const loadShippingZones = async () => {
+    try {
+      const result = await getActiveShippingZones();
+      if (result.success) {
+        const availableZones = (result.zones || []).filter(zone => {
+          const cost = parseFloat(zone.shipping_cost || 0);
+          return zone.free_shipping === true || cost > 0;
+        });
+        setShippingZones(availableZones);
+      }
+    } catch (error) {
+      console.error('Error loading shipping zones:', error);
+    }
+  };
 
   const loadTypes = async () => {
     setLoading(true);
@@ -113,6 +140,15 @@ const SendRemittancePage = ({ onNavigate }) => {
   };
 
   const handleRecipientSubmit = () => {
+    if (!selectedRecipientData) {
+      toast({
+        title: t('common.error'),
+        description: t('remittances.wizard.selectRecipient') || 'Selecciona un destinatario',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     if (!recipientData.name || !recipientData.phone) {
       toast({
         title: t('common.error'),
@@ -121,6 +157,16 @@ const SendRemittancePage = ({ onNavigate }) => {
       });
       return;
     }
+
+    if (!selectedZelle) {
+      toast({
+        title: t('common.error'),
+        description: t('zelle.selectAccountRequired') || 'Selecciona una cuenta Zelle',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     setStep(3);
   };
 
@@ -379,94 +425,56 @@ const SendRemittancePage = ({ onNavigate }) => {
               </div>
             </div>
 
-            {/* Recipient Form */}
+            {/* Zelle Account Selector - First */}
+            <div className="glass-effect p-6 rounded-xl">
+              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <DollarSign className="h-6 w-6 text-blue-600" />
+                {t('zelle.selectAccount')}
+              </h2>
+              <ZelleAccountSelector
+                onSelect={(account) => {
+                  setSelectedZelle(account);
+                }}
+              />
+            </div>
+
+            {/* Recipient Selector - Second */}
             <div className="glass-effect p-6 rounded-xl">
               <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
                 <User className="h-6 w-6 text-blue-600" />
                 {t('remittances.wizard.step2Title')}
               </h2>
-
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {t('remittances.recipient.fullName')} *
-                  </label>
-                  <input
-                    type="text"
-                    value={recipientData.name}
-                    onChange={(e) => setRecipientData({ ...recipientData, name: e.target.value })}
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Juan Pérez"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {t('remittances.recipient.phone')} *
-                  </label>
-                  <input
-                    type="tel"
-                    value={recipientData.phone}
-                    onChange={(e) => setRecipientData({ ...recipientData, phone: e.target.value })}
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="+53 5555 5555"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {t('remittances.recipient.city')}
-                  </label>
-                  <input
-                    type="text"
-                    value={recipientData.city}
-                    onChange={(e) => setRecipientData({ ...recipientData, city: e.target.value })}
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="La Habana"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {t('remittances.recipient.address')}
-                  </label>
-                  <input
-                    type="text"
-                    value={recipientData.address}
-                    onChange={(e) => setRecipientData({ ...recipientData, address: e.target.value })}
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Calle 23, entre L y M, Vedado"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {t('remittances.recipient.idNumber')}
-                  </label>
-                  <input
-                    type="text"
-                    value={recipientData.id_number}
-                    onChange={(e) => setRecipientData({ ...recipientData, id_number: e.target.value })}
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="12345678901"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {t('remittances.recipient.notes')}
-                  </label>
-                  <textarea
-                    value={recipientData.notes}
-                    onChange={(e) => setRecipientData({ ...recipientData, notes: e.target.value })}
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    rows="3"
-                    placeholder="Información adicional..."
-                  />
-                </div>
-              </div>
+              <RecipientSelector
+                ref={recipientSelectorRef}
+                onSelect={(recipientData) => {
+                  setSelectedRecipientData(recipientData);
+                  if (recipientData.recipientData) {
+                    // Existing recipient selected
+                    setRecipientData({
+                      name: recipientData.recipientData.full_name || '',
+                      phone: recipientData.recipientData.phone || '',
+                      address: recipientData.recipientData.addresses?.[0]?.address_line_1 || '',
+                      city: recipientData.recipientData.addresses?.[0]?.municipality || '',
+                      id_number: recipientData.recipientData.id_number || '',
+                      notes: ''
+                    });
+                  } else if (recipientData.formData) {
+                    // New recipient created
+                    setRecipientData({
+                      name: recipientData.formData.full_name || '',
+                      phone: recipientData.formData.phone || '',
+                      address: recipientData.formData.address_line_1 || '',
+                      city: recipientData.formData.municipality || '',
+                      id_number: '',
+                      notes: ''
+                    });
+                  }
+                }}
+                shippingZones={shippingZones}
+                municipalities={municipalities}
+                showAddressSelection={true}
+                showProvinceInForm={true}
+              />
             </div>
 
             <div className="flex justify-between">
