@@ -197,11 +197,15 @@ const FileUploadWithPreview = ({
           accept={accept}
           onChange={onChange}
           className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          required={required}
         />
         {value && (
           <p className="text-xs text-gray-500">
             ✓ {selectedFileLabel}: {value.name}
+          </p>
+        )}
+        {required && !value && (
+          <p className="text-xs text-red-500 font-medium">
+            {selectedFileLabel} es obligatorio
           </p>
         )}
       </div>
