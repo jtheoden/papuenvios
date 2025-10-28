@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Search, Filter, Eye, CheckCircle, XCircle, Clock, Package, Truck,
-  AlertTriangle, Download, FileText, Image as ImageIcon, Calendar
+  AlertTriangle, Download, FileText, Image as ImageIcon, Calendar, X
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useModal } from '@/contexts/ModalContext';
@@ -563,43 +563,164 @@ const AdminRemittancesTab = () => {
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-2xl font-bold gradient-text mb-4">
-              {t('remittances.admin.viewDetails')}
-            </h2>
+            {/* Header */}
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h2 className="text-2xl font-bold gradient-text">
+                {t('remittances.admin.viewDetails')} - {selectedRemittance.remittance_number}
+              </h2>
+              <button
+                onClick={() => setSelectedRemittance(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
 
-            <div className="space-y-4">
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">{t('common.number')}</p>
-                  <p className="font-semibold">{selectedRemittance.remittance_number}</p>
+            {/* Content - 2 Column Layout */}
+            <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Left Column - Remittance Information */}
+              <div className="lg:col-span-2 space-y-6">
+                {/* Basic Information */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-500 uppercase tracking-wider">{t('common.number')}</p>
+                    <p className="font-semibold text-lg">{selectedRemittance.remittance_number}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 uppercase tracking-wider">{t('common.status')}</p>
+                    {getStatusBadge(selectedRemittance.status)}
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 uppercase tracking-wider">{t('common.type')}</p>
+                    <p className="font-semibold">{selectedRemittance.remittance_types?.name || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 uppercase tracking-wider">{t('common.createdAt')}</p>
+                    <p className="font-semibold">
+                      {new Date(selectedRemittance.created_at).toLocaleString('es-CU')}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">{t('common.status')}</p>
-                  {getStatusBadge(selectedRemittance.status)}
+
+                {/* Amount Information */}
+                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                  <h3 className="font-semibold text-gray-900 mb-3">Información de Monto</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-gray-600">Monto Enviado:</p>
+                      <p className="text-lg font-bold text-blue-600">{selectedRemittance.amount} {selectedRemittance.currency}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">A Entregar:</p>
+                      <p className="text-lg font-bold text-green-600">{selectedRemittance.amount_to_deliver?.toFixed(2)} {selectedRemittance.delivery_currency}</p>
+                    </div>
+                  </div>
                 </div>
+
+                {/* Recipient Information */}
                 <div>
-                  <p className="text-sm text-gray-500">{t('common.type')}</p>
-                  <p className="font-semibold">{selectedRemittance.remittance_types?.name}</p>
+                  <h3 className="font-semibold text-gray-900 mb-3">Información del Destinatario</h3>
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
+                    <p><span className="font-medium">Nombre:</span> {selectedRemittance.recipient_name || 'N/A'}</p>
+                    <p><span className="font-medium">Teléfono:</span> {selectedRemittance.recipient_phone || 'N/A'}</p>
+                    <p><span className="font-medium">Ciudad:</span> {selectedRemittance.recipient_city || 'N/A'}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">{t('common.createdAt')}</p>
-                  <p className="font-semibold">
-                    {new Date(selectedRemittance.created_at).toLocaleString('es-CU')}
+
+                {/* Location Information - Only for Cash Delivery */}
+                {selectedRemittance.delivery_method === 'cash' && (
+                  <div className="border-l-4 border-green-500 bg-green-50 rounded-lg p-4">
+                    <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                      <span className="inline-block w-3 h-3 bg-green-500 rounded-full"></span>
+                      Entrega en Efectivo - Datos de Localización
+                    </h3>
+                    <div className="space-y-2 text-sm">
+                      {selectedRemittance.recipient_province && (
+                        <p><span className="font-medium">Provincia:</span> {selectedRemittance.recipient_province}</p>
+                      )}
+                      {selectedRemittance.recipient_municipality && (
+                        <p><span className="font-medium">Municipio:</span> {selectedRemittance.recipient_municipality}</p>
+                      )}
+                      {selectedRemittance.recipient_address && (
+                        <p><span className="font-medium">Dirección:</span> {selectedRemittance.recipient_address}</p>
+                      )}
+                      {selectedRemittance.recipient_id_number && (
+                        <p><span className="font-medium">Carnet de Identidad:</span> {selectedRemittance.recipient_id_number}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Delivery Method */}
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <p className="text-sm text-blue-600 font-medium mb-1">Método de Entrega</p>
+                  <p className="text-lg font-semibold text-blue-900">
+                    {selectedRemittance.delivery_method === 'cash' ? '💵 Efectivo'
+                      : selectedRemittance.delivery_method === 'transfer' ? '🏦 Transferencia Bancaria'
+                      : selectedRemittance.delivery_method === 'card' ? '💳 Tarjeta'
+                      : selectedRemittance.delivery_method}
                   </p>
                 </div>
+
+                {/* Payment Reference */}
+                {selectedRemittance.payment_reference && (
+                  <div>
+                    <p className="text-sm text-gray-600 font-medium mb-2">Referencia de Pago</p>
+                    <p className="font-mono bg-gray-50 p-3 rounded-lg text-sm">{selectedRemittance.payment_reference}</p>
+                  </div>
+                )}
+
+                {/* Notes */}
+                {selectedRemittance.notes && (
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-2">Notas</h3>
+                    <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-4">{selectedRemittance.notes}</p>
+                  </div>
+                )}
               </div>
 
-              <div className="pt-4 border-t">
-                <button
-                  onClick={() => setSelectedRemittance(null)}
-                  className="w-full py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  {t('remittances.admin.cancel')}
-                </button>
+              {/* Right Column - Payment Proof */}
+              <div className="lg:col-span-1">
+                {selectedRemittance.payment_proof_url ? (
+                  <div className="sticky top-20 space-y-3">
+                    <h4 className="font-semibold text-gray-900">Comprobante de Pago</h4>
+                    <div className="bg-gray-50 rounded-lg border border-gray-200 p-2">
+                      <img
+                        src={selectedRemittance.payment_proof_url}
+                        alt="Comprobante de pago"
+                        className="w-full h-auto rounded-lg"
+                      />
+                    </div>
+                    <a
+                      href={selectedRemittance.payment_proof_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block text-center text-sm text-blue-600 hover:text-blue-700 hover:underline"
+                    >
+                      Ver en tamaño completo →
+                    </a>
+                  </div>
+                ) : (
+                  <div className="sticky top-20 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <p className="text-sm text-yellow-800 font-medium">
+                      Sin comprobante de pago
+                    </p>
+                  </div>
+                )}
               </div>
+            </div>
+
+            {/* Footer - Close Button */}
+            <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4">
+              <button
+                onClick={() => setSelectedRemittance(null)}
+                className="w-full py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                {t('remittances.admin.cancel')}
+              </button>
             </div>
           </motion.div>
         </div>

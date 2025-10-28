@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { ShoppingCart, X, Plus, Minus, Copy, Upload, CheckCircle, MessageCircle } from 'lucide-react';
+import { ShoppingCart, X, Plus, Minus, Copy, Upload, CheckCircle, MessageCircle, ArrowLeft, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -11,15 +11,21 @@ import { processImage } from '@/lib/imageUtils';
 import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingService';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
 import { getCurrencies, convertCurrency } from '@/lib/currencyService';
-import { generateWhatsAppURL, notifyAdminNewPayment } from '@/lib/whatsappService';
+import { generateWhatsAppURL, notifyAdminNewPayment, openWhatsAppChat } from '@/lib/whatsappService';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
+import RecipientSelector from '@/components/RecipientSelector';
+import ZelleAccountSelector from '@/components/ZelleAccountSelector';
+import FileUploadWithPreview from '@/components/FileUploadWithPreview';
 
 const CartPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { cart, updateCartQuantity, removeFromCart, clearCart, financialSettings, zelleAccounts, visualSettings, businessInfo, notificationSettings } = useBusiness();
   const { isAuthenticated, user } = useAuth();
+
+  const recipientSelectorRef = useRef();
+
   const [view, setView] = useState('cart'); // cart, recipient, payment
   const [recipientDetails, setRecipientDetails] = useState({
     fullName: '',
@@ -28,6 +34,8 @@ const CartPage = ({ onNavigate }) => {
     municipality: '',
     address: ''
   });
+  const [selectedRecipientData, setSelectedRecipientData] = useState(null);
+  const [selectedZelle, setSelectedZelle] = useState(null);
   const [paymentProof, setPaymentProof] = useState(null);
   const [paymentProofPreview, setPaymentProofPreview] = useState(null);
   const [uploadingProof, setUploadingProof] = useState(false);
@@ -211,7 +219,44 @@ const CartPage = ({ onNavigate }) => {
   };
 
   const handleRecipientSubmit = () => {
+    if (!selectedRecipientData) {
+      toast({
+        title: t('common.error'),
+        description: language === 'es' ? 'Selecciona un destinatario' : 'Select a recipient',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (!selectedZelle) {
+      toast({
+        title: t('common.error'),
+        description: language === 'es' ? 'Selecciona una cuenta Zelle' : 'Select a Zelle account',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     setView('payment');
+  };
+
+  const handleContactSupport = () => {
+    if (!notificationSettings?.whatsapp) {
+      toast({
+        title: t('common.error'),
+        description: language === 'es'
+          ? 'Número de WhatsApp no configurado'
+          : 'WhatsApp number not configured',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const message = language === 'es'
+      ? `Hola! Tengo una pregunta sobre mi pedido.\n\nNúmero de pedido: ${purchaseId}`
+      : `Hello! I have a question about my order.\n\nOrder number: ${purchaseId}`;
+
+    openWhatsAppChat(notificationSettings.whatsapp, message);
   };
 
   const copyToClipboard = (text) => {
@@ -431,134 +476,107 @@ const CartPage = ({ onNavigate }) => {
 
   if (view === 'recipient') {
     return (
-      <div className="container mx-auto max-w-2xl py-8 px-4">
-        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="glass-effect p-8 rounded-2xl">
-          <h1 className="text-3xl font-bold mb-6" style={getHeadingStyle(visualSettings)}>
-            {language === 'es' ? 'Datos de Entrega' : 'Delivery Information'}
-          </h1>
+      <div className="container mx-auto max-w-4xl py-8 px-4">
+        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
 
-          <div className="space-y-4">
-            {/* Nombre completo */}
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                {language === 'es' ? 'Nombre completo' : 'Full name'} <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                placeholder={language === 'es' ? 'Ingrese el nombre completo del destinatario' : 'Enter recipient full name'}
-                value={recipientDetails.fullName}
-                onChange={e => setRecipientDetails({...recipientDetails, fullName: e.target.value})}
-                className="input-style w-full"
-                required
-              />
-            </div>
-
-            {/* Teléfono */}
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                {language === 'es' ? 'Teléfono' : 'Phone'} <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="tel"
-                placeholder={language === 'es' ? 'Ej: +53 5 234 5678' : 'Ex: +53 5 234 5678'}
-                value={recipientDetails.phone}
-                onChange={e => setRecipientDetails({...recipientDetails, phone: e.target.value})}
-                className="input-style w-full"
-                required
-              />
-            </div>
-
-            {/* Provincia */}
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                {language === 'es' ? 'Provincia' : 'Province'} <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={recipientDetails.province}
-                onChange={e => setRecipientDetails({...recipientDetails, province: e.target.value})}
-                className="input-style w-full"
-                required
-              >
-                <option value="">
-                  {language === 'es' ? 'Seleccione una provincia' : 'Select a province'}
-                </option>
-                {shippingZones.map(zone => (
-                  <option key={zone.id} value={zone.province_name}>
-                    {zone.province_name}
-                    {zone.free_shipping || parseFloat(zone.shipping_cost) === 0
-                      ? ` - ${language === 'es' ? 'Envío Gratis' : 'Free Shipping'}`
-                      : ` - $${parseFloat(zone.shipping_cost).toFixed(2)}`
-                    }
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Municipio */}
-            {recipientDetails.province && (
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  {language === 'es' ? 'Municipio' : 'Municipality'} <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={recipientDetails.municipality}
-                  onChange={e => setRecipientDetails({...recipientDetails, municipality: e.target.value})}
-                  className="input-style w-full"
-                  required
-                >
-                  <option value="">
-                    {language === 'es' ? 'Seleccione un municipio' : 'Select a municipality'}
-                  </option>
-                  {municipalities.map(mun => (
-                    <option key={mun} value={mun}>
-                      {mun}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Dirección */}
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                {language === 'es' ? 'Dirección completa' : 'Full address'} <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                placeholder={language === 'es' ? 'Calle, número, entre calles, edificio, apartamento, etc.' : 'Street, number, between streets, building, apartment, etc.'}
-                value={recipientDetails.address}
-                onChange={e => setRecipientDetails({...recipientDetails, address: e.target.value})}
-                className="input-style w-full min-h-[100px]"
-                required
-              />
-            </div>
-
-            {/* Resumen de envío */}
-            {recipientDetails.province && (
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm font-medium mb-1">
-                  {language === 'es' ? 'Costo de envío' : 'Shipping cost'}
-                </p>
-                <p className="text-lg font-bold" style={{ color: visualSettings.primaryColor }}>
-                  {shippingCost === 0
-                    ? (language === 'es' ? '¡Envío Gratis!' : 'Free Shipping!')
-                    : `$${shippingCost.toFixed(2)}`
-                  }
-                </p>
-              </div>
-            )}
+          {/* Page Header */}
+          <div className="glass-effect p-6 rounded-xl">
+            <h1 className="text-3xl font-bold mb-2" style={getHeadingStyle(visualSettings)}>
+              {language === 'es' ? 'Selecciona Destinatario y Método de Pago' : 'Select Recipient & Payment Method'}
+            </h1>
+            <p className="text-gray-600">
+              {language === 'es'
+                ? 'Elige un destinatario existente o crea uno nuevo, y selecciona tu cuenta Zelle para el pago.'
+                : 'Choose an existing recipient or create a new one, and select your Zelle account for payment.'}
+            </p>
           </div>
 
-          <div className="flex gap-3 mt-6">
-            <Button variant="outline" onClick={() => setView('cart')} className="flex-1">
+          {/* Zelle Account Selector - First */}
+          <div className="glass-effect p-6 rounded-xl border-2 border-blue-200 bg-blue-50">
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <Copy className="h-5 w-5 text-blue-600" />
+              {language === 'es' ? 'Selecciona Cuenta Zelle' : 'Select Zelle Account'}
+            </h2>
+            <ZelleAccountSelector
+              onSelect={(account) => {
+                setSelectedZelle(account);
+              }}
+            />
+          </div>
+
+          {/* Recipient Selector - Second */}
+          <div className="glass-effect p-6 rounded-xl border-2 border-purple-200 bg-purple-50">
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <MessageCircle className="h-5 w-5 text-purple-600" />
+              {language === 'es' ? 'Destinatario de la Entrega' : 'Delivery Recipient'}
+            </h2>
+            <RecipientSelector
+              ref={recipientSelectorRef}
+              onSelect={(recipientData) => {
+                setSelectedRecipientData(recipientData);
+                if (recipientData.recipientData) {
+                  // Existing recipient selected
+                  setRecipientDetails({
+                    fullName: recipientData.recipientData.full_name || '',
+                    phone: recipientData.recipientData.phone || '',
+                    province: recipientData.recipientData.addresses?.[0]?.province || '',
+                    municipality: recipientData.recipientData.addresses?.[0]?.municipality || '',
+                    address: recipientData.recipientData.addresses?.[0]?.address_line_1 || ''
+                  });
+                } else if (recipientData.formData) {
+                  // New recipient created
+                  setRecipientDetails({
+                    fullName: recipientData.formData.full_name || '',
+                    phone: recipientData.formData.phone || '',
+                    province: recipientData.formData.province || '',
+                    municipality: recipientData.formData.municipality || '',
+                    address: recipientData.formData.address_line_1 || ''
+                  });
+                }
+              }}
+              shippingZones={shippingZones}
+              municipalities={municipalities}
+              showAddressSelection={true}
+              showProvinceInForm={true}
+            />
+          </div>
+
+          {/* Shipping Cost Summary */}
+          {recipientDetails.province && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="glass-effect p-6 rounded-xl border-2 border-green-200 bg-green-50"
+            >
+              <p className="text-sm font-medium text-gray-600 mb-2">
+                {language === 'es' ? 'Costo de Envío' : 'Shipping Cost'}
+              </p>
+              <p className="text-2xl font-bold text-green-600">
+                {shippingCost === 0
+                  ? (language === 'es' ? '¡Envío Gratis!' : 'Free Shipping!')
+                  : `$${shippingCost.toFixed(2)}`
+                }
+              </p>
+            </motion.div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setView('cart')}
+              className="flex-1 flex items-center justify-center gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
               {language === 'es' ? 'Atrás' : 'Back'}
             </Button>
             <Button
               onClick={handleRecipientSubmit}
               style={getPrimaryButtonStyle(visualSettings)}
-              className="flex-1"
-              disabled={!recipientDetails.fullName || !recipientDetails.phone || !recipientDetails.province || !recipientDetails.municipality || !recipientDetails.address}
+              className="flex-1 flex items-center justify-center gap-2"
             >
               {language === 'es' ? 'Continuar al Pago' : 'Continue to Payment'}
+              <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
         </motion.div>
@@ -580,14 +598,19 @@ const CartPage = ({ onNavigate }) => {
             <p className="text-sm">{t('cart.payment.instructions')}</p>
           </div>
 
-          {activeZelleAccount ? (
-            <div className="mb-6 space-y-2">
-              <h3 className="font-semibold">{t('cart.payment.accountInfo')}</h3>
-              <p><strong>Email:</strong> {activeZelleAccount.email}</p>
-              <p><strong>{t('settings.zelle.name')}:</strong> {activeZelleAccount.name}</p>
+          {selectedZelle ? (
+            <div className="mb-6 glass-effect p-4 rounded-lg border-2 border-blue-200 bg-blue-50">
+              <h3 className="font-semibold text-blue-900 mb-3">{t('cart.payment.accountInfo')}</h3>
+              <div className="space-y-2 text-sm">
+                <p><strong>{t('settings.zelle.name')}:</strong> {selectedZelle.account_name || selectedZelle.name}</p>
+                <p><strong>Email:</strong> {selectedZelle.email || selectedZelle.zelle_email}</p>
+                {(selectedZelle.phone_number || selectedZelle.phone || selectedZelle.telefono) && (
+                  <p><strong>{t('common.phone')}:</strong> {selectedZelle.phone_number || selectedZelle.phone || selectedZelle.telefono}</p>
+                )}
+              </div>
             </div>
           ) : (
-            <p className="text-red-500">No Zelle account available.</p>
+            <p className="text-red-500 mb-6">{language === 'es' ? 'No hay cuenta Zelle disponible.' : 'No Zelle account available.'}</p>
           )}
 
           <div className="mb-6 space-y-4">
@@ -605,103 +628,111 @@ const CartPage = ({ onNavigate }) => {
             </div>
           </div>
 
+          {/* File Upload with Preview Component */}
           <div className="mb-6">
-            <label className="block text-sm font-medium mb-2">
-              {t('cart.payment.uploadProof')} <span className="text-red-500">*</span>
-            </label>
+            <FileUploadWithPreview
+              label={t('cart.payment.uploadProof') || (language === 'es' ? 'Comprobante de Pago' : 'Payment Proof')}
+              accept="image/*,.pdf"
+              value={paymentProof}
+              preview={paymentProofPreview}
+              previewPosition="above"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
 
-            {!paymentProofPreview ? (
-              <label className="cursor-pointer">
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/jpg,image/webp"
-                  onChange={handlePaymentProofUpload}
-                  className="hidden"
-                  disabled={uploadingProof}
-                />
-                <div
-                  className="flex justify-center px-6 py-8 border-2 border-dashed rounded-lg hover:border-gray-400 transition-colors"
-                  style={{ borderColor: visualSettings.borderColor || '#d1d5db' }}
-                >
-                  <div className="space-y-2 text-center">
-                    <Upload
-                      className="mx-auto h-12 w-12"
-                      style={{ color: uploadingProof ? visualSettings.primaryColor : '#9ca3af' }}
-                    />
-                    <div className="text-sm">
-                      {uploadingProof ? (
-                        <p className="font-medium" style={{ color: visualSettings.primaryColor }}>
-                          {language === 'es' ? 'Procesando imagen...' : 'Processing image...'}
-                        </p>
-                      ) : (
-                        <>
-                          <p className="font-medium" style={{ color: visualSettings.primaryColor }}>
-                            {language === 'es' ? 'Haz clic para subir' : 'Click to upload'}
-                          </p>
-                          <p className="text-gray-500">
-                            {language === 'es' ? 'JPG, PNG o WebP (máx. 5MB)' : 'JPG, PNG or WebP (max 5MB)'}
-                          </p>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </label>
-            ) : (
-              <div className="space-y-3">
-                <div className="relative rounded-lg overflow-hidden border-2" style={{ borderColor: visualSettings.successColor || '#10b981' }}>
-                  <img
-                    src={paymentProofPreview}
-                    alt="Payment proof"
-                    className="w-full h-64 object-contain bg-gray-50"
-                  />
-                  <div
-                    className="absolute top-2 right-2 p-2 rounded-full"
-                    style={{ backgroundColor: visualSettings.successColor || '#10b981' }}
-                  >
-                    <CheckCircle className="h-5 w-5 text-white" />
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setPaymentProof(null);
-                    setPaymentProofPreview(null);
-                  }}
-                  className="w-full"
-                >
-                  <X className="mr-2 h-4 w-4" />
-                  {language === 'es' ? 'Cambiar imagen' : 'Change image'}
-                </Button>
-              </div>
-            )}
+                // Validate file type
+                if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+                  toast({
+                    title: language === 'es' ? 'Tipo de archivo inválido' : 'Invalid file type',
+                    description: language === 'es'
+                      ? 'Solo se permiten imágenes JPG, PNG o WebP'
+                      : 'Only JPG, PNG or WebP images are allowed',
+                    variant: 'destructive'
+                  });
+                  return;
+                }
+
+                // Validate file size
+                if (file.size > FILE_SIZE_LIMITS.PAYMENT_PROOF) {
+                  toast({
+                    title: language === 'es' ? 'Archivo muy grande' : 'File too large',
+                    description: language === 'es'
+                      ? 'El tamaño máximo es 5MB'
+                      : 'Maximum size is 5MB',
+                    variant: 'destructive'
+                  });
+                  return;
+                }
+
+                setUploadingProof(true);
+
+                try {
+                  // Generate preview
+                  const reader = new FileReader();
+                  reader.onloadend = () => {
+                    setPaymentProofPreview(reader.result);
+                    setPaymentProof(file);
+                    toast({
+                      title: language === 'es' ? '✅ Comprobante cargado' : '✅ Proof uploaded',
+                      description: language === 'es'
+                        ? 'La imagen se ha cargado correctamente'
+                        : 'Image uploaded successfully'
+                    });
+                  };
+                  reader.readAsDataURL(file);
+                } catch (error) {
+                  console.error('Error uploading payment proof:', error);
+                  toast({
+                    title: language === 'es' ? 'Error al cargar' : 'Upload error',
+                    description: error.message,
+                    variant: 'destructive'
+                  });
+                } finally {
+                  setUploadingProof(false);
+                }
+              }}
+              required={true}
+            />
           </div>
 
-          {/* WhatsApp Contact Button */}
-          {notificationSettings?.whatsapp && (
-            <div className="mb-6">
-              <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                <p className="text-sm text-gray-700 mb-3">
-                  {language === 'es'
-                    ? '¿Tienes dudas sobre el pago? Contáctanos por WhatsApp'
-                    : 'Questions about payment? Contact us via WhatsApp'}
+          {/* WhatsApp Contact Section */}
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`mb-6 p-4 rounded-lg border-2 ${
+              notificationSettings?.whatsapp
+                ? 'bg-green-50 border-green-200'
+                : 'bg-yellow-50 border-yellow-200'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <MessageCircle className={`h-5 w-5 flex-shrink-0 mt-1 ${
+                notificationSettings?.whatsapp ? 'text-green-600' : 'text-yellow-600'
+              }`} />
+              <div className="flex-1">
+                <p className={`text-sm font-medium mb-3 ${
+                  notificationSettings?.whatsapp ? 'text-gray-700' : 'text-yellow-800'
+                }`}>
+                  {notificationSettings?.whatsapp
+                    ? (language === 'es'
+                        ? '¿Tienes dudas sobre el pago? Contáctanos por WhatsApp'
+                        : 'Questions about payment? Contact us via WhatsApp')
+                    : (language === 'es'
+                        ? 'Número de WhatsApp de soporte no configurado'
+                        : 'WhatsApp support number not configured')}
                 </p>
-                <Button
-                  variant="outline"
-                  className="w-full border-green-600 text-green-600 hover:bg-green-50"
-                  onClick={() => {
-                    const message = language === 'es'
-                      ? `Hola! Tengo una consulta sobre mi pago. Total: ${currencies.find(c => c.code === selectedCurrency)?.symbol || '$'}${convertedTotal !== null ? convertedTotal.toFixed(2) : (subtotal + shippingCost).toFixed(2)} ${selectedCurrency}`
-                      : `Hello! I have a question about my payment. Total: ${currencies.find(c => c.code === selectedCurrency)?.symbol || '$'}${convertedTotal !== null ? convertedTotal.toFixed(2) : (subtotal + shippingCost).toFixed(2)} ${selectedCurrency}`;
-                    window.open(generateWhatsAppURL(notificationSettings.whatsapp, message), '_blank');
-                  }}
-                >
-                  <MessageCircle className="mr-2 h-5 w-5" />
-                  {language === 'es' ? 'Contactar por WhatsApp' : 'Contact via WhatsApp'}
-                </Button>
+                {notificationSettings?.whatsapp && (
+                  <Button
+                    onClick={handleContactSupport}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <MessageCircle className="mr-2 h-4 w-4" />
+                    {language === 'es' ? 'Contactar por WhatsApp' : 'Contact via WhatsApp'}
+                  </Button>
+                )}
               </div>
             </div>
-          )}
+          </motion.div>
 
           <div className="flex gap-3">
             <Button

@@ -385,33 +385,51 @@ export const notifyAdminNewPaymentProof = (remittance, adminPhone, language = 'e
   const type = remittance.remittance_types || remittance.remittance_type;
 
   const messages = {
-    es: `💸 *Nuevo Comprobante de Remesa - ${config.businessName}*\n\n` +
-        `📋 *Remesa:* ${remittance.remittance_number}\n` +
-        `💰 *Monto:* ${remittance.amount} ${remittance.currency}\n` +
-        `🔄 *Tipo:* ${type?.name || 'N/A'}\n` +
-        `💵 *A entregar:* ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.delivery_currency}\n\n` +
-        `👤 *Destinatario:*\n` +
-        `   Nombre: ${remittance.recipient_name}\n` +
-        `   Teléfono: ${remittance.recipient_phone}\n` +
-        `   Ciudad: ${remittance.recipient_city || 'N/A'}\n\n` +
-        `📝 *Referencia:* ${remittance.payment_reference || 'N/A'}\n` +
-        `📎 *Comprobante:* ${remittance.payment_proof_url ? 'Adjunto' : 'No disponible'}\n\n` +
-        `🔗 *Ver en sistema:*\n${window.location.origin}/dashboard?tab=remittances\n\n` +
-        `_Mensaje desde PapuEnvíos_`,
+    es: `💸 *NUEVO COMPROBANTE DE REMESA*\n` +
+        `════════════════════════════════\n\n` +
+        `📋 *ID Remesa:* ${remittance.remittance_number}\n` +
+        `🆔 *Número interno:* ${remittance.id}\n\n` +
+        `💰 *Detalles del Pago*\n` +
+        `┌─────────────────────\n` +
+        `│ Monto enviado: ${remittance.amount} ${remittance.currency}\n` +
+        `│ Monto a entregar: ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.delivery_currency}\n` +
+        `│ Tipo: ${type?.name || 'N/A'}\n` +
+        `└─────────────────────\n\n` +
+        `👤 *Destinatario*\n` +
+        `┌─────────────────────\n` +
+        `│ ${remittance.recipient_name}\n` +
+        `│ 📱 ${remittance.recipient_phone}\n` +
+        `│ 📍 ${remittance.recipient_city || 'N/A'}\n` +
+        `└─────────────────────\n\n` +
+        `📸 *Comprobante de Pago*\n` +
+        `🔗 Ver/descargar en el sistema\n\n` +
+        `📝 Referencia bancaria: ${remittance.payment_reference || 'Pendiente'}\n\n` +
+        `─────────────────────────────────\n` +
+        `✅ Revisar en sistema: ${window.location.origin}/dashboard?tab=remittances\n` +
+        `─────────────────────────────────`,
 
-    en: `💸 *New Remittance Payment Proof - ${config.businessName}*\n\n` +
-        `📋 *Remittance:* ${remittance.remittance_number}\n` +
-        `💰 *Amount:* ${remittance.amount} ${remittance.currency}\n` +
-        `🔄 *Type:* ${type?.name || 'N/A'}\n` +
-        `💵 *To deliver:* ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.delivery_currency}\n\n` +
-        `👤 *Recipient:*\n` +
-        `   Name: ${remittance.recipient_name}\n` +
-        `   Phone: ${remittance.recipient_phone}\n` +
-        `   City: ${remittance.recipient_city || 'N/A'}\n\n` +
-        `📝 *Reference:* ${remittance.payment_reference || 'N/A'}\n` +
-        `📎 *Proof:* ${remittance.payment_proof_url ? 'Attached' : 'Not available'}\n\n` +
-        `🔗 *View in system:*\n${window.location.origin}/dashboard?tab=remittances\n\n` +
-        `_Message from PapuEnvíos_`
+    en: `💸 *NEW REMITTANCE PAYMENT PROOF*\n` +
+        `════════════════════════════════\n\n` +
+        `📋 *Remittance ID:* ${remittance.remittance_number}\n` +
+        `🆔 *Internal Number:* ${remittance.id}\n\n` +
+        `💰 *Payment Details*\n` +
+        `┌─────────────────────\n` +
+        `│ Amount Sent: ${remittance.amount} ${remittance.currency}\n` +
+        `│ Amount to Deliver: ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.delivery_currency}\n` +
+        `│ Type: ${type?.name || 'N/A'}\n` +
+        `└─────────────────────\n\n` +
+        `👤 *Recipient*\n` +
+        `┌─────────────────────\n` +
+        `│ ${remittance.recipient_name}\n` +
+        `│ 📱 ${remittance.recipient_phone}\n` +
+        `│ 📍 ${remittance.recipient_city || 'N/A'}\n` +
+        `└─────────────────────\n\n` +
+        `📸 *Payment Proof*\n` +
+        `🔗 View/download in system\n\n` +
+        `📝 Bank Reference: ${remittance.payment_reference || 'Pending'}\n\n` +
+        `─────────────────────────────────\n` +
+        `✅ Check in system: ${window.location.origin}/dashboard?tab=remittances\n` +
+        `─────────────────────────────────`
   };
 
   const url = generateWhatsAppURL(adminPhone, messages[language] || messages.es);
