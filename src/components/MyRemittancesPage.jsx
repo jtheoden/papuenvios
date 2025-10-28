@@ -2,18 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Calendar, DollarSign, User, FileText, AlertCircle, CheckCircle,
-  Clock, XCircle, Upload, Eye, Package, Truck, RefreshCw, X
+  Clock, XCircle, Upload, Eye, Package, Truck, RefreshCw
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
-import SEO from '@/components/SEO';
 import {
   getMyRemittances,
   getRemittanceDetails,
   uploadPaymentProof,
   cancelRemittance,
   calculateDeliveryAlert,
-  generateProofSignedUrl,
   REMITTANCE_STATUS
 } from '@/lib/remittanceService';
 import { toast } from '@/components/ui/use-toast';
@@ -29,15 +27,11 @@ const MyRemittancesPage = ({ onNavigate }) => {
   const [loading, setLoading] = useState(true);
   const [selectedRemittance, setSelectedRemittance] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [showProofModal, setShowProofModal] = useState(false);
-  const [proofImageUrl, setProofImageUrl] = useState(null);
-  const [proofImageLoading, setProofImageLoading] = useState(false);
   const [uploadData, setUploadData] = useState({
     file: null,
     reference: '',
     notes: ''
   });
-  const [previewUrl, setPreviewUrl] = useState(null);
 
   useEffect(() => {
     loadRemittances();
@@ -75,71 +69,6 @@ const MyRemittancesPage = ({ onNavigate }) => {
     setSelectedRemittance(remittance);
     setShowUploadModal(true);
     setUploadData({ file: null, reference: '', notes: '' });
-    setPreviewUrl(null);
-  };
-
-  const handleViewProof = async (remittance) => {
-    setSelectedRemittance(remittance);
-    setShowProofModal(true);
-    setProofImageLoading(true);
-
-    const proofPath = remittance.payment_proof_url;
-
-    // Check if it's already a URL (old format)
-    if (proofPath.startsWith('http://') || proofPath.startsWith('https://')) {
-      setProofImageUrl(proofPath);
-      setProofImageLoading(false);
-    } else {
-      // It's a file path, generate a signed URL
-      const result = await generateProofSignedUrl(proofPath);
-
-      if (result.success) {
-        setProofImageUrl(result.signedUrl);
-      } else {
-        console.error('Failed to generate signed URL:', result.error);
-        toast({
-          title: t('common.error'),
-          description: 'No se pudo cargar el comprobante',
-          variant: 'destructive'
-        });
-        setProofImageUrl(null);
-      }
-      setProofImageLoading(false);
-    }
-  };
-
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      toast({
-        title: t('common.error'),
-        description: 'Solo se permiten imágenes',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast({
-        title: t('common.error'),
-        description: 'El archivo no puede superar 5MB',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    setUploadData({ ...uploadData, file });
-
-    // Create preview
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setPreviewUrl(reader.result);
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleSubmitProof = async (e) => {
@@ -263,13 +192,6 @@ const MyRemittancesPage = ({ onNavigate }) => {
 
   return (
     <div className="max-w-6xl mx-auto py-8 px-4">
-      <SEO
-        titleKey="seo.myRemittances.title"
-        descriptionKey="seo.myRemittances.description"
-        path="/my-remittances"
-        type="website"
-        keywords={['mis remesas', 'my remittances', 'track remittances', 'estado remesa']}
-      />
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className={`${getHeadingStyle()} text-3xl mb-2`}>
@@ -336,7 +258,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                 </div>
 
                 {/* Amount Display */}
-                <div className="grid md:grid-cols-4 gap-4 mb-4">
+                <div className="grid md:grid-cols-3 gap-4 mb-4">
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Enviado</p>
                     <p className="text-lg font-bold text-blue-600">
@@ -354,22 +276,6 @@ const MyRemittancesPage = ({ onNavigate }) => {
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Destinatario</p>
                     <p className="font-semibold">{remittance.recipient_name}</p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Ciudad</p>
-                    <p className="font-semibold">{remittance.recipient_city || 'N/A'}</p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Método de Entrega</p>
-                    <p className="font-semibold capitalize">
-                      {remittance.delivery_method === 'cash' ? 'Efectivo' :
-                       remittance.delivery_method === 'transfer' ? 'Transferencia' :
-                       remittance.delivery_method === 'card' ? 'Tarjeta' :
-                       remittance.delivery_method === 'pickup' ? 'Recogida' :
-                       remittance.delivery_method || 'N/A'}
-                    </p>
                   </div>
                 </div>
 
@@ -434,16 +340,6 @@ const MyRemittancesPage = ({ onNavigate }) => {
                       Ver Detalles
                     </button>
 
-                    {remittance.payment_proof_url && (
-                      <button
-                        onClick={() => handleViewProof(remittance)}
-                        className="flex items-center gap-1 px-3 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
-                      >
-                        <FileText className="h-4 w-4" />
-                        Ver Comprobante
-                      </button>
-                    )}
-
                     {remittance.status === REMITTANCE_STATUS.PAYMENT_PENDING && (
                       <>
                         <button
@@ -489,109 +385,68 @@ const MyRemittancesPage = ({ onNavigate }) => {
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className={`bg-white rounded-2xl p-6 w-full ${previewUrl ? 'max-w-4xl' : 'max-w-md'}`}
+            className="bg-white rounded-2xl p-6 max-w-md w-full"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-2xl font-bold gradient-text mb-4">
               Subir Comprobante de Pago
             </h2>
 
-            <form onSubmit={handleSubmitProof}>
-              <div className={`${previewUrl ? 'grid grid-cols-2 gap-6' : 'space-y-4'}`}>
-                {/* Columna Izquierda: Formulario */}
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Remesa
-                    </label>
-                    <p className="font-semibold">{selectedRemittance.remittance_number}</p>
-                    <p className="text-sm text-gray-600">
-                      {selectedRemittance.amount} {selectedRemittance.currency}
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Comprobante de pago *
-                    </label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileChange}
-                      className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      required
-                    />
-                    {!previewUrl && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        Formatos: JPG, PNG. Máximo 5MB
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Referencia de pago *
-                    </label>
-                    <input
-                      type="text"
-                      value={uploadData.reference}
-                      onChange={(e) => setUploadData({ ...uploadData, reference: e.target.value })}
-                      className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Ej: ZELLE123456"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Notas adicionales
-                    </label>
-                    <textarea
-                      value={uploadData.notes}
-                      onChange={(e) => setUploadData({ ...uploadData, notes: e.target.value })}
-                      className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      rows="3"
-                      placeholder="Detalles adicionales..."
-                    />
-                  </div>
-                </div>
-
-                {/* Columna Derecha: Preview */}
-                {previewUrl && (
-                  <div className="flex flex-col">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Vista Previa
-                    </label>
-                    <div className="relative flex-1 min-h-[300px] bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 overflow-hidden">
-                      <img
-                        src={previewUrl}
-                        alt="Preview"
-                        className="w-full h-full object-contain"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPreviewUrl(null);
-                          setUploadData({ ...uploadData, file: null });
-                        }}
-                        className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors shadow-lg"
-                      >
-                        <X className="h-5 w-5" />
-                      </button>
-                    </div>
-                  </div>
-                )}
+            <form onSubmit={handleSubmitProof} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Remesa
+                </label>
+                <p className="font-semibold">{selectedRemittance.remittance_number}</p>
+                <p className="text-sm text-gray-600">
+                  {selectedRemittance.amount} {selectedRemittance.currency}
+                </p>
               </div>
 
-              {/* Botones */}
-              <div className="flex gap-3 pt-6 mt-6 border-t">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Comprobante de pago *
+                </label>
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={(e) => setUploadData({ ...uploadData, file: e.target.files[0] })}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Referencia de pago *
+                </label>
+                <input
+                  type="text"
+                  value={uploadData.reference}
+                  onChange={(e) => setUploadData({ ...uploadData, reference: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Ej: ZELLE123456"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Notas adicionales
+                </label>
+                <textarea
+                  value={uploadData.notes}
+                  onChange={(e) => setUploadData({ ...uploadData, notes: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  rows="3"
+                  placeholder="Detalles adicionales..."
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowUploadModal(false);
-                    setPreviewUrl(null);
-                    setUploadData({ file: null, reference: '', notes: '' });
-                  }}
+                  onClick={() => setShowUploadModal(false)}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   {t('common.cancel')}
@@ -681,78 +536,6 @@ const MyRemittancesPage = ({ onNavigate }) => {
                   Cerrar
                 </button>
               </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
-
-      {/* Payment Proof Modal */}
-      {showProofModal && selectedRemittance?.payment_proof_url && (
-        <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowProofModal(false)}
-        >
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
-            className="bg-white rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold">{t('remittances.user.paymentProof')}</h2>
-              <button
-                onClick={() => setShowProofModal(false)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <XCircle className="h-6 w-6" />
-              </button>
-            </div>
-
-            <div className="bg-gray-50 rounded-xl p-4">
-              {selectedRemittance.payment_proof_url ? (
-                selectedRemittance.payment_proof_url.toLowerCase().endsWith('.pdf') ? (
-                  <div className="text-center py-8">
-                    <FileText className="h-16 w-16 text-blue-600 mx-auto mb-4" />
-                    <p className="text-gray-600 mb-4">{t('remittances.wizard.pdfFile')}</p>
-                    <a
-                      href={proofImageUrl || selectedRemittance.payment_proof_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-block px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      Descargar PDF
-                    </a>
-                  </div>
-                ) : (
-                  <div className="text-center">
-                    {proofImageLoading ? (
-                      <div className="flex items-center justify-center py-12">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-                      </div>
-                    ) : proofImageUrl ? (
-                      <img
-                        src={proofImageUrl}
-                        alt="Payment proof"
-                        className="w-full h-auto max-h-[70vh] object-contain rounded-lg"
-                        onError={(e) => {
-                          console.error('Error loading proof image:', proofImageUrl);
-                          e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect fill="%23f3f4f6" width="400" height="300"/><text x="50%" y="50%" font-family="Arial" font-size="14" fill="%236b7280" text-anchor="middle">Error al cargar imagen</text></svg>';
-                        }}
-                      />
-                    ) : (
-                      <div className="text-center py-12">
-                        <p className="text-gray-600">No se pudo cargar el comprobante</p>
-                      </div>
-                    )}
-                  </div>
-                )
-              ) : (
-                <div className="text-center py-12">
-                  <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600">{t('remittances.user.viewProof')}</p>
-                </div>
-              )}
             </div>
           </motion.div>
         </div>

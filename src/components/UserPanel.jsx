@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
-import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send } from 'lucide-react';
+import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users } from 'lucide-react';
 import { getUserOrders, getOrderById, getAllOrders, validatePayment, rejectPayment } from '@/lib/orderService';
 import { getUserTestimonial, createTestimonial, updateTestimonial } from '@/lib/testimonialService';
 import { getMyRemittances } from '@/lib/remittanceService';
@@ -381,6 +381,54 @@ const UserPanel = ({ onNavigate }) => {
                 </div>
               </div>
             </div>
+          </motion.div>
+        )}
+
+        {/* Navigation Cards - Destinatarios and Remesas */}
+        {userRole !== 'admin' && userRole !== 'super_admin' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.08 }}
+            className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4"
+          >
+            {/* Mis Destinatarios Card */}
+            <button
+              onClick={() => onNavigate('recipients')}
+              className="p-6 rounded-xl border-2 transition-all hover:shadow-lg hover:border-blue-400 text-left bg-white"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-3 rounded-lg bg-blue-100">
+                  <Users className="h-6 w-6 text-blue-600" />
+                </div>
+                <ArrowRight className="h-5 w-5" style={{ color: visualSettings.primaryColor }} />
+              </div>
+              <h3 className="font-semibold text-lg mb-1" style={getTextStyle(visualSettings, 'primary')}>
+                {language === 'es' ? 'Mis Destinatarios' : 'My Recipients'}
+              </h3>
+              <p className="text-sm" style={getTextStyle(visualSettings, 'secondary')}>
+                {language === 'es' ? 'Administra tus contactos de entrega' : 'Manage your delivery contacts'}
+              </p>
+            </button>
+
+            {/* Mis Remesas Card */}
+            <button
+              onClick={() => onNavigate('my-remittances')}
+              className="p-6 rounded-xl border-2 transition-all hover:shadow-lg hover:border-green-400 text-left bg-white"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-3 rounded-lg bg-green-100">
+                  <Send className="h-6 w-6 text-green-600" />
+                </div>
+                <ArrowRight className="h-5 w-5" style={{ color: visualSettings.secondaryColor }} />
+              </div>
+              <h3 className="font-semibold text-lg mb-1" style={getTextStyle(visualSettings, 'primary')}>
+                {language === 'es' ? 'Mis Remesas' : 'My Remittances'}
+              </h3>
+              <p className="text-sm" style={getTextStyle(visualSettings, 'secondary')}>
+                {language === 'es' ? 'Consulta el estado de tus envíos' : 'Check your remittance status'}
+              </p>
+            </button>
           </motion.div>
         )}
 
