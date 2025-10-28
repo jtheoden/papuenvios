@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight, ArrowLeft, Check, DollarSign, User, FileText, Upload,
-  AlertCircle, CheckCircle, Calculator
+  AlertCircle, CheckCircle, Calculator, Copy, CreditCard
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -57,6 +57,7 @@ const SendRemittancePage = ({ onNavigate }) => {
     notes: ''
   });
 
+  const [imagePreview, setImagePreview] = useState(null);
   const [createdRemittance, setCreatedRemittance] = useState(null);
 
   useEffect(() => {
@@ -202,6 +203,38 @@ const SendRemittancePage = ({ onNavigate }) => {
     }
 
     setSubmitting(false);
+  };
+
+  const handleCopyToClipboard = (text, label) => {
+    navigator.clipboard.writeText(text).then(() => {
+      toast({
+        title: t('common.success'),
+        description: `${label} copiado al portapapeles`,
+        variant: 'default'
+      });
+    }).catch(() => {
+      toast({
+        title: t('common.error'),
+        description: 'Error al copiar al portapapeles',
+        variant: 'destructive'
+      });
+    });
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    setPaymentData({ ...paymentData, file });
+
+    // Generate preview
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setImagePreview(null);
+    }
   };
 
   const handlePaymentProofSubmit = async (e) => {
@@ -584,6 +617,86 @@ const SendRemittancePage = ({ onNavigate }) => {
               </p>
             </div>
 
+            {/* Zelle Account Information */}
+            {selectedZelle && (
+              <div className="glass-effect p-6 rounded-xl border-2 border-blue-200 bg-blue-50">
+                <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-blue-900">
+                  <CreditCard className="h-5 w-5" />
+                  {t('remittances.wizard.zelleAccountInfo')}
+                </h3>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between bg-white p-3 rounded-lg">
+                    <div>
+                      <p className="text-xs text-gray-500">{t('remittances.wizard.accountName')}</p>
+                      <p className="font-semibold text-gray-800">{selectedZelle.account_name}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyToClipboard(selectedZelle.account_name, 'Nombre de cuenta')}
+                      className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
+                      title="Copiar nombre de cuenta"
+                    >
+                      <Copy className="h-4 w-4 text-blue-600" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-white p-3 rounded-lg">
+                    <div>
+                      <p className="text-xs text-gray-500">{t('remittances.wizard.zelleEmail')}</p>
+                      <p className="font-semibold text-gray-800">{selectedZelle.zelle_email}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyToClipboard(selectedZelle.zelle_email, 'Email Zelle')}
+                      className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
+                      title="Copiar email Zelle"
+                    >
+                      <Copy className="h-4 w-4 text-blue-600" />
+                    </button>
+                  </div>
+
+                  {selectedZelle.phone_number && (
+                    <div className="flex items-center justify-between bg-white p-3 rounded-lg">
+                      <div>
+                        <p className="text-xs text-gray-500">{t('common.phone')}</p>
+                        <p className="font-semibold text-gray-800">{selectedZelle.phone_number}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyToClipboard(selectedZelle.phone_number, 'Teléfono')}
+                        className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
+                        title="Copiar teléfono"
+                      >
+                        <Copy className="h-4 w-4 text-blue-600" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Remittance ID */}
+            <div className="glass-effect p-6 rounded-xl border-2 border-green-200 bg-green-50">
+              <h3 className="text-lg font-bold mb-4 text-green-900">
+                {t('remittances.wizard.transferDescription')}
+              </h3>
+              <div className="flex items-center justify-between bg-white p-4 rounded-lg border border-green-300">
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">{t('remittances.wizard.remittanceIdForTransfer')}</p>
+                  <p className="text-xl font-mono font-bold text-gray-900">{createdRemittance.id}</p>
+                  <p className="text-xs text-gray-600 mt-1">{t('remittances.wizard.useThisInTransfer')}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleCopyToClipboard(createdRemittance.id, 'ID de remesa')}
+                  className="p-3 bg-green-100 hover:bg-green-200 rounded-lg transition-colors flex-shrink-0"
+                  title="Copiar ID de remesa"
+                >
+                  <Copy className="h-5 w-5 text-green-600" />
+                </button>
+              </div>
+            </div>
+
             <form onSubmit={handlePaymentProofSubmit} className="glass-effect p-6 rounded-xl">
               <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
                 <Upload className="h-6 w-6 text-blue-600" />
@@ -591,17 +704,49 @@ const SendRemittancePage = ({ onNavigate }) => {
               </h3>
 
               <div className="space-y-4">
+                {/* File Upload with Preview */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     {t('remittances.user.paymentProof')} *
                   </label>
-                  <input
-                    type="file"
-                    accept="image/*,.pdf"
-                    onChange={(e) => setPaymentData({ ...paymentData, file: e.target.files[0] })}
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+                    <div className="md:col-span-2">
+                      <input
+                        type="file"
+                        accept="image/*,.pdf"
+                        onChange={handleFileChange}
+                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        required
+                      />
+                      {paymentData.file && (
+                        <p className="text-xs text-gray-500 mt-2">
+                          {t('remittances.wizard.selectedFile')}: {paymentData.file.name}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Image Preview */}
+                    {imagePreview && (
+                      <div className="md:col-span-1">
+                        <div className="border-2 border-gray-300 rounded-lg overflow-hidden bg-gray-100">
+                          {paymentData.file?.type.startsWith('image/') ? (
+                            <img
+                              src={imagePreview}
+                              alt="Preview"
+                              className="w-full h-auto object-cover max-h-40"
+                            />
+                          ) : (
+                            <div className="flex items-center justify-center h-40 bg-gray-200">
+                              <div className="text-center">
+                                <FileText className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                                <p className="text-xs text-gray-600">PDF Preview</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div>
