@@ -19,7 +19,9 @@ const RecipientSelector = React.forwardRef((
     onSelect,
     shippingZones = [],
     showAddressSelection = false,
-    showProvinceInForm = false
+    showProvinceInForm = false,
+    deliveryMethod = 'cash', // 'cash' | 'transfer' | 'card' | 'moneypocket'
+    selectedRecipientData = null // For passing selected recipient context
   },
   ref
 ) => {
@@ -300,14 +302,16 @@ const RecipientSelector = React.forwardRef((
               submitLabel={language === 'es' ? 'Guardar Destinatario' : 'Save Recipient'}
               onSubmit={handleFormSubmit}
               onCancel={resetForm}
+              deliveryMethod={deliveryMethod}
+              recipientId={selectedRecipientData?.recipientId || null}
               fields={{
                 fullName: true,
                 phone: true,
                 email: true,
                 idNumber: false,
-                province: showProvinceInForm,
-                municipality: showProvinceInForm,
-                address: showProvinceInForm,
+                province: showProvinceInForm && deliveryMethod === 'cash',
+                municipality: showProvinceInForm && deliveryMethod === 'cash',
+                address: showProvinceInForm && deliveryMethod === 'cash',
                 notes: false
               }}
             />
