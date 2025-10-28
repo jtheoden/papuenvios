@@ -3,6 +3,31 @@
  * Reusable form for creating/editing recipients
  * Includes ProvinceSelector for address selection
  * Flexible for different use cases (remittances, orders, etc)
+ *
+ * FUTURE ENHANCEMENT - Bank Accounts Integration:
+ * This component will be extended to support bank account management.
+ * When showBankAccounts field is enabled, the form will display:
+ * - Bank account selector (select from user's linked bank accounts)
+ * - Add new bank account button (opens BankAccountForm modal)
+ * - Account details preview (showing bank name, account type, last 4 digits)
+ * - Set as default account checkbox
+ *
+ * Expected future fields config:
+ * {
+ *   bankAccounts: false,        // Show linked bank accounts section
+ *   primaryBankAccount: false,  // Show primary account selector
+ *   allowAddNewAccount: false   // Allow creating new bank account inline
+ * }
+ *
+ * Bank account data flow:
+ * - formData.bank_account_id: UUID of selected bank account
+ * - formData.linked_bank_accounts: Array of RecipientBankAccount objects
+ * - onChange will include bank account selection changes
+ *
+ * Related services:
+ * - @/lib/recipientService - getBankAccountsForRecipient(), linkBankAccountToRecipient()
+ * - @/lib/bankService - getAllBanks(), getAllAccountTypes()
+ * - @/types/banking - BankAccountDetail, RecipientBankAccount types
  */
 
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -163,6 +188,30 @@ const RecipientForm = ({
           />
         </div>
       )}
+
+      {/*
+        FUTURE SECTION: Bank Accounts
+
+        When fields.bankAccounts is enabled, this section will render:
+
+        {fields.bankAccounts && (
+          <div className="border-t pt-4">
+            <p className="text-xs font-semibold text-gray-600 mb-3">
+              {language === 'es' ? 'Cuentas Bancarias' : 'Bank Accounts'}
+            </p>
+
+            {/* Bank account selector dropdown */}
+            {/* Add new account button (opens BankAccountForm modal) */}
+            {/* Account details preview */}
+            {/* Set as default checkbox */}
+          </div>
+        )}
+
+        Implementation references:
+        - Use recipientService.getBankAccountsForRecipient(recipientId)
+        - Use recipientService.linkBankAccountToRecipient(recipientId, bankAccountId)
+        - Reference types from @/types/banking: BankAccountDetail, RecipientBankAccount
+      */}
 
       {/* Action Buttons */}
       {(onSubmit || onCancel) && (
