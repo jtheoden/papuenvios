@@ -46,8 +46,8 @@ const RecipientForm = ({
           </label>
           <input
             type="text"
-            value={formData.full_name || formData.name || ''}
-            onChange={e => handleChange(formData.full_name ? 'full_name' : 'name', e.target.value)}
+            value={formData.full_name || ''}
+            onChange={e => handleChange('full_name', e.target.value)}
             className="input-style w-full"
             placeholder={language === 'es' ? 'Juan Pérez' : 'John Doe'}
             required
@@ -130,8 +130,8 @@ const RecipientForm = ({
           </label>
           <input
             type="text"
-            value={formData.address_line_1 || formData.address || ''}
-            onChange={e => handleChange(formData.address_line_1 ? 'address_line_1' : 'address', e.target.value)}
+            value={formData.address_line_1 || ''}
+            onChange={e => handleChange('address_line_1', e.target.value)}
             className="input-style w-full"
             placeholder={language === 'es' ? 'Calle 23, entre L y M' : 'Street address'}
             required
