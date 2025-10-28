@@ -171,30 +171,60 @@ CREATE POLICY remittance_bank_transfers_update ON public.remittance_bank_transfe
   FOR UPDATE USING ((auth.jwt() ->> 'user_role') = 'admin');
 
 -- ============================================================================
--- SEED DATA - Common account types
+-- SEED DATA - Banks (Cuban institutions)
 -- ============================================================================
 
-INSERT INTO public.account_types (name, description) VALUES
-  ('checking', 'Cuenta corriente / Checking account'),
-  ('savings', 'Cuenta de ahorro / Savings account'),
-  ('moneypocket', 'Monedero móvil / Mobile wallet'),
-  ('debit_card', 'Tarjeta de débito / Debit card')
+INSERT INTO public.banks (name, swift_code, local_code, country_code, metadata) VALUES
+  ('BANDEC', 'BANDECUCU', 'BANDEC', 'CU', '{"full_name": "Banco Nacional de Desarrollo Económico y Social de Cuba", "logo": "bandec"}'),
+  ('BPA', 'BPAACUCH', 'BPA', 'CU', '{"full_name": "Banco Popular de Ahorros", "logo": "bpa"}'),
+  ('BANCO METROPOLITANO', 'BMTCUCU', 'BMT', 'CU', '{"full_name": "Banco Metropolitano", "logo": "metropolitan"}'),
+  ('BFI', 'BFICCUCH', 'BFI', 'CU', '{"full_name": "Banco de Financiamientos e Inversiones", "logo": "bfi"}')
+ON CONFLICT (name) DO NOTHING;
+
+-- ============================================================================
+-- SEED DATA - Account Types (with currency support)
+-- ============================================================================
+
+INSERT INTO public.account_types (name, description, metadata) VALUES
+  ('checking', 'Cuenta corriente / Checking account', '{"currency": "USD", "type_code": "CHK"}'),
+  ('savings', 'Cuenta de ahorro / Savings account', '{"currency": "USD", "type_code": "SAV"}'),
+  ('moneypocket', 'Monedero móvil / Mobile wallet', '{"currency": "USD", "type_code": "MWL"}'),
+  ('debit_card', 'Tarjeta de débito / Debit card', '{"currency": "USD", "type_code": "DBC"}'),
+  ('clasica', 'Cuenta Clásica USD / Classic USD Account', '{"currency": "USD", "type_code": "CLASICA_USD"}'),
+  ('cup_account', 'Cuenta en Pesos CUP / CUP Account', '{"currency": "CUP", "type_code": "CUP_ACC"}'),
+  ('mlc_account', 'Cuenta en MLC / MLC Account', '{"currency": "MLC", "type_code": "MLC_ACC"}')
 ON CONFLICT (name) DO NOTHING;
 
 -- ============================================================================
 -- COMMENTS - Documentation
 -- ============================================================================
 
-COMMENT ON TABLE public.banks IS 'Master list of banks for bank transfers';
-COMMENT ON TABLE public.account_types IS 'Types of bank accounts (checking, savings, etc)';
-COMMENT ON TABLE public.bank_accounts IS 'User bank accounts for receiving transfers';
-COMMENT ON TABLE public.recipient_bank_accounts IS 'Link between recipients and their bank accounts';
-COMMENT ON TABLE public.remittance_bank_transfers IS 'Audit trail for bank transfers';
+COMMENT ON TABLE public.banks IS 'Master list of banks for bank transfers. Seeded with Cuban banks: BANDEC, BPA, BANCO METROPOLITANO, BFI';
+COMMENT ON TABLE public.account_types IS 'Types of bank accounts (checking, savings, currency-specific). Maps to currencies: USD (checking, savings, moneypocket, debit_card, clasica), CUP (cup_account), MLC (mlc_account)';
+COMMENT ON TABLE public.bank_accounts IS 'User bank accounts for receiving transfers. Account numbers stored as SHA256 hashes with only last 4 digits displayed';
+COMMENT ON TABLE public.recipient_bank_accounts IS 'Link between recipients and their bank accounts (many-to-many relationship). Supports default account flag';
+COMMENT ON TABLE public.remittance_bank_transfers IS 'Audit trail for bank transfers. Tracks complete lifecycle from pending to transferred/failed/reversed';
 
-COMMENT ON COLUMN public.bank_accounts.account_number_hash IS 'SHA256 hash of account number + user_id for secure matching';
-COMMENT ON COLUMN public.bank_accounts.account_number_last4 IS 'Last 4 digits for display in UI only';
-COMMENT ON COLUMN public.bank_accounts.deleted_at IS 'Soft delete timestamp - NULL means active';
-COMMENT ON COLUMN public.remittance_bank_transfers.status IS 'Transfer status: pending, confirmed, transferred, failed, reversed';
+COMMENT ON COLUMN public.banks.swift_code IS 'SWIFT/BIC code for international transfers (e.g., BANDECUCU, BPAACUCH)';
+COMMENT ON COLUMN public.banks.local_code IS 'Local bank code used in Cuba (e.g., BANDEC, BPA, BMT, BFI)';
+COMMENT ON COLUMN public.banks.metadata IS 'Additional bank info: full_name, logo, routing_info, API endpoints, etc';
+
+COMMENT ON COLUMN public.account_types.metadata IS 'Account type metadata: currency (USD/CUP/MLC), type_code for integration';
+
+COMMENT ON COLUMN public.bank_accounts.account_number_hash IS 'SHA256(account_number + user_id) for secure matching without storing plain account numbers';
+COMMENT ON COLUMN public.bank_accounts.account_number_last4 IS 'Last 4 digits only for UI display/verification (e.g., ****1234)';
+COMMENT ON COLUMN public.bank_accounts.is_active IS 'Soft flag to disable accounts without deletion';
+COMMENT ON COLUMN public.bank_accounts.deleted_at IS 'Soft delete timestamp - NULL means active record';
+COMMENT ON COLUMN public.bank_accounts.deleted_by_user_id IS 'User who deleted the account (for audit trail)';
+
+COMMENT ON COLUMN public.recipient_bank_accounts.is_default IS 'Flag for default account per recipient. Only one default per recipient';
+COMMENT ON COLUMN public.recipient_bank_accounts.is_active IS 'Active flag for link between recipient and account';
+
+COMMENT ON COLUMN public.remittance_bank_transfers.status IS 'Transfer lifecycle: pending → confirmed → transferred/failed → reversed. Pending awaits admin confirmation';
+COMMENT ON COLUMN public.remittance_bank_transfers.processed_by_user_id IS 'Admin user who confirmed/processed the transfer';
+COMMENT ON COLUMN public.remittance_bank_transfers.processed_at IS 'Timestamp when transfer was confirmed or moved to transferred status';
+COMMENT ON COLUMN public.remittance_bank_transfers.amount_transferred IS 'Actual amount transferred (may differ from remittance amount due to fees/rates)';
+COMMENT ON COLUMN public.remittance_bank_transfers.error_message IS 'Error details if transfer failed (insufficient funds, invalid account, etc)';
 
 -- ============================================================================
 -- END MIGRATION
