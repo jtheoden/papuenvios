@@ -45,6 +45,7 @@ const SendRemittancePage = ({ onNavigate }) => {
   const [selectedZelle, setSelectedZelle] = useState(null);
   const [shippingZones, setShippingZones] = useState([]);
   const [municipalities, setMunicipalities] = useState([]);
+  const [selectedBankAccount, setSelectedBankAccount] = useState(null);
 
   const [recipientData, setRecipientData] = useState({
     name: '',
@@ -172,6 +173,17 @@ const SendRemittancePage = ({ onNavigate }) => {
       return;
     }
 
+    // Validación para remesas off-cash (transfer, card, moneypocket)
+    const deliveryMethod = selectedType?.delivery_method || 'cash';
+    if (deliveryMethod !== 'cash' && !selectedBankAccount) {
+      toast({
+        title: t('common.error'),
+        description: t('remittances.wizard.selectBankAccountRequired') || 'Debes seleccionar una cuenta bancaria para este tipo de remesa',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     setStep(3);
   };
 
@@ -186,8 +198,15 @@ const SendRemittancePage = ({ onNavigate }) => {
       recipient_address: recipientData.address,
       recipient_city: recipientData.city,
       recipient_id_number: recipientData.id_number,
-      notes: recipientData.notes
+      notes: recipientData.notes,
+      zelle_account_id: selectedZelle?.id,
+      recipient_id: selectedRecipientData?.recipientId
     };
+
+    // Si es remesa off-cash, incluir recipient_bank_account_id
+    if (selectedType?.delivery_method !== 'cash' && selectedBankAccount) {
+      remittanceData.recipient_bank_account_id = selectedBankAccount;
+    }
 
     const result = await createRemittance(remittanceData);
 
@@ -543,6 +562,12 @@ const SendRemittancePage = ({ onNavigate }) => {
                 ref={recipientSelectorRef}
                 onSelect={(recipientData) => {
                   setSelectedRecipientData(recipientData);
+
+                  // Guardar bank_account_id si es una remesa off-cash
+                  if (recipientData.bank_account_id) {
+                    setSelectedBankAccount(recipientData.bank_account_id);
+                  }
+
                   if (recipientData.recipientData) {
                     // Existing recipient selected
                     setRecipientData({
@@ -567,8 +592,11 @@ const SendRemittancePage = ({ onNavigate }) => {
                 }}
                 shippingZones={shippingZones}
                 municipalities={municipalities}
-                showAddressSelection={true}
-                showProvinceInForm={true}
+                showAddressSelection={selectedType?.delivery_method === 'cash'}
+                showProvinceInForm={selectedType?.delivery_method === 'cash'}
+                deliveryMethod={selectedType?.delivery_method || 'cash'}
+                selectedRecipientData={selectedRecipientData}
+                selectedRemittanceType={selectedType}
               />
             </div>
 

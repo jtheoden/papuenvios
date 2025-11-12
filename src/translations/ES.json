@@ -736,5 +736,8 @@
       "inactive": "Inactivo",
       "createdAt": "Fecha de Registro"
     }
+  },
+  "bankAccounts": {
+    "linkingToRecipient": "Vinculando cuenta al destinatario..."
   }
 }

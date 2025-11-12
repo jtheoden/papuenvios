@@ -9,25 +9,27 @@ import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
 import { createBankAccount } from '@/lib/recipientService';
-import { getAllBanks, getAllAccountTypes } from '@/lib/bankService';
+import { getAllBanks, getAllCurrencies } from '@/lib/bankService';
 import { Building2, DollarSign, AlertCircle, Loader } from 'lucide-react';
 
 const BankAccountForm = ({
   userId,
   onSuccess,
   onCancel,
-  recipientId = null
+  selectedRemittanceType = null // Tipo de remesa seleccionado para filtrar currency
 }) => {
   const { language } = useLanguage();
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [banks, setBanks] = useState([]);
-  const [accountTypes, setAccountTypes] = useState([]);
+  const [currencies, setCurrencies] = useState([]);
+
+  // Pre-determinar currency basada en delivery_currency del tipo de remesa
+  const defaultCurrency = selectedRemittanceType?.delivery_currency || 'USD';
 
   const [formData, setFormData] = useState({
     bankId: '',
-    accountTypeId: '',
-    currencyId: 'USD', // Default to USD
+    currencyId: defaultCurrency,
     accountNumber: '',
     accountHolderName: ''
   });
@@ -41,19 +43,38 @@ const BankAccountForm = ({
   const loadBankData = async () => {
     setLoadingData(true);
     try {
-      const [banksResult, typesResult] = await Promise.all([
+      console.log('🔄 Cargando bancos y monedas...');
+
+      const [banksResult, currenciesResult] = await Promise.all([
         getAllBanks(),
-        getAllAccountTypes()
+        getAllCurrencies()
       ]);
 
+      console.log('📊 Resultado de bancos:', banksResult);
+      console.log('💰 Resultado de monedas:', currenciesResult);
+
       if (banksResult.success) {
+        console.log('✅ Bancos cargados:', banksResult.data?.length || 0);
         setBanks(banksResult.data || []);
+      } else {
+        console.error('❌ Error al cargar bancos:', banksResult.error);
+        toast({
+          title: language === 'es' ? 'Error' : 'Error',
+          description: language === 'es'
+            ? `No se pudieron cargar los bancos: ${banksResult.error}`
+            : `Failed to load banks: ${banksResult.error}`,
+          variant: 'destructive'
+        });
       }
-      if (typesResult.success) {
-        setAccountTypes(typesResult.data || []);
+
+      if (currenciesResult.success) {
+        console.log('✅ Monedas cargadas:', currenciesResult.data?.length || 0);
+        setCurrencies(currenciesResult.data || []);
+      } else {
+        console.error('❌ Error al cargar monedas:', currenciesResult.error);
       }
     } catch (error) {
-      console.error('Error loading bank data:', error);
+      console.error('💥 Error inesperado loading bank data:', error);
       toast({
         title: language === 'es' ? 'Error' : 'Error',
         description: language === 'es'
@@ -71,9 +92,6 @@ const BankAccountForm = ({
 
     if (!formData.bankId) {
       newErrors.bankId = language === 'es' ? 'Selecciona un banco' : 'Select a bank';
-    }
-    if (!formData.accountTypeId) {
-      newErrors.accountTypeId = language === 'es' ? 'Selecciona tipo de cuenta' : 'Select account type';
     }
     if (!formData.accountNumber || formData.accountNumber.length < 8) {
       newErrors.accountNumber = language === 'es'
@@ -100,7 +118,7 @@ const BankAccountForm = ({
     try {
       const result = await createBankAccount(userId, {
         bankId: formData.bankId,
-        accountTypeId: formData.accountTypeId,
+        accountTypeId: null, // account_type no es necesario
         currencyId: formData.currencyId,
         accountNumber: formData.accountNumber.replace(/\s/g, ''),
         accountHolderName: formData.accountHolderName.trim()
@@ -183,36 +201,6 @@ const BankAccountForm = ({
         )}
       </div>
 
-      {/* Account Type Selection */}
-      <div>
-        <label className="block text-sm font-semibold mb-2">
-          {language === 'es' ? 'Tipo de Cuenta' : 'Account Type'} <span className="text-red-500">*</span>
-        </label>
-        <select
-          value={formData.accountTypeId}
-          onChange={(e) => setFormData({ ...formData, accountTypeId: e.target.value })}
-          className={`w-full px-4 py-2 border-2 rounded-lg transition-colors input-style ${
-            errors.accountTypeId ? 'border-red-500 bg-red-50' : 'border-gray-200'
-          }`}
-        >
-          <option value="">
-            {language === 'es' ? 'Selecciona tipo de cuenta...' : 'Select account type...'}
-          </option>
-          {accountTypes.map((type) => (
-            <option key={type.id} value={type.id}>
-              {type.name}
-              {type.description && ` - ${type.description}`}
-            </option>
-          ))}
-        </select>
-        {errors.accountTypeId && (
-          <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
-            <AlertCircle className="w-4 h-4" />
-            {errors.accountTypeId}
-          </p>
-        )}
-      </div>
-
       {/* Currency Selection */}
       <div>
         <label className="block text-sm font-semibold mb-2">
@@ -224,12 +212,34 @@ const BankAccountForm = ({
             value={formData.currencyId}
             onChange={(e) => setFormData({ ...formData, currencyId: e.target.value })}
             className="w-full pl-10 pr-4 py-2 border-2 border-gray-200 rounded-lg input-style"
+            disabled={selectedRemittanceType !== null}
           >
-            <option value="USD">USD - Dólares Estadounidenses</option>
-            <option value="CUP">CUP - Pesos Cubanos</option>
-            <option value="MLC">MLC - Moneda Libremente Convertible</option>
+            {selectedRemittanceType ? (
+              <option value={defaultCurrency}>
+                {defaultCurrency} - {currencies.find(c => c.code === defaultCurrency)?.[language === 'es' ? 'name_es' : 'name_en'] || defaultCurrency}
+              </option>
+            ) : (
+              <>
+                <option value="">
+                  {language === 'es' ? 'Selecciona una moneda...' : 'Select a currency...'}
+                </option>
+                {currencies.map((currency) => (
+                  <option key={currency.id} value={currency.code}>
+                    {currency.code} - {language === 'es' ? currency.name_es : currency.name_en}
+                  </option>
+                ))}
+              </>
+            )}
           </select>
         </div>
+        {selectedRemittanceType && (
+          <p className="text-xs text-blue-600 mt-1">
+            {language === 'es'
+              ? `Moneda predeterminada por tipo de remesa: ${defaultCurrency}`
+              : `Currency preset by remittance type: ${defaultCurrency}`
+            }
+          </p>
+        )}
       </div>
 
       {/* Account Number */}

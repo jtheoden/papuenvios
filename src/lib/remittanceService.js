@@ -336,7 +336,8 @@ export const createRemittance = async (remittanceData) => {
       recipient_id_number,
       notes,
       zelle_account_id,
-      recipient_id
+      recipient_id,
+      recipient_bank_account_id // Para remesas off-cash (transfer, card, moneypocket)
     } = remittanceData;
 
     // Validaciones básicas
@@ -432,6 +433,20 @@ export const createRemittance = async (remittanceData) => {
       amount: amount,
       notes: `Remesa ${data.remittance_number}`
     });
+
+    // Si es remesa off-cash (transfer, card, moneypocket), crear registro de bank_transfer
+    if (type.delivery_method !== 'cash' && recipient_bank_account_id) {
+      const bankTransferResult = await createBankTransfer(
+        data.id,
+        recipient_bank_account_id,
+        { amount_transferred: amountToDeliver }
+      );
+
+      if (!bankTransferResult.success) {
+        console.error('Error creating bank transfer record:', bankTransferResult.error);
+        // No lanzar error, la remesa ya fue creada, solo log el error
+      }
+    }
 
     return { success: true, remittance: data };
   } catch (error) {

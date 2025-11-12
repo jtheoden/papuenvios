@@ -1,25 +1,32 @@
-import React from 'react';
 import * as Avatar from '@radix-ui/react-avatar';
 import * as Tooltip from '@radix-ui/react-tooltip';
 
 export function UserAvatar({ user, className }) {
   if (!user) return null;
 
-  const fallbackImage = 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(user.email);
-  const displayName = user.user_metadata?.name || user.email;
-  const avatarUrl = user.user_metadata?.avatar_url || fallbackImage;
-  
+  const displayName = user.user_metadata?.name || user.full_name || user.email;
+  // Support multiple avatar sources (in priority order):
+  // 1. user.user_metadata.picture - Google OAuth direct
+  // 2. user.user_metadata.avatar_url - Custom OAuth
+  // 3. user.avatar_url - Synced from user_profiles table
+  const avatarUrl = user.user_metadata?.picture ||
+                    user.user_metadata?.avatar_url ||
+                    user.avatar_url ||
+                    null;
+
   return (
     <Tooltip.Provider>
       <Tooltip.Root>
         <Tooltip.Trigger asChild>
-          <Avatar.Root className={`relative inline-flex h-8 w-8 ${className}`}>
-            <Avatar.Image
-              src={avatarUrl}
-              className="h-full w-full rounded-full object-cover"
-              alt={displayName}
-            />
-            <Avatar.Fallback className="flex h-full w-full items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
+          <Avatar.Root className={`relative inline-flex h-8 w-8 ${className || ''}`}>
+            {avatarUrl && (
+              <Avatar.Image
+                src={avatarUrl}
+                className="h-full w-full rounded-full object-cover"
+                alt={displayName}
+              />
+            )}
+            <Avatar.Fallback className="flex h-full w-full items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-white font-semibold text-sm">
               {displayName.charAt(0).toUpperCase()}
             </Avatar.Fallback>
           </Avatar.Root>
