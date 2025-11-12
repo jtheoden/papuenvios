@@ -17,9 +17,10 @@ import { CreditCard, Plus, AlertCircle, Loader } from 'lucide-react';
 const BankAccountSelector = ({
   recipientId,
   onSelect,
-  showCreateButton = true
+  showCreateButton = true,
+  selectedRemittanceType = null // Tipo de remesa seleccionado
 }) => {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const { user } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState(null);
@@ -135,44 +136,76 @@ const BankAccountSelector = ({
             {language === 'es' ? 'Cuentas Bancarias Disponibles' : 'Available Bank Accounts'} <span className="text-red-500">*</span>
           </label>
           <div className="space-y-2">
-            {accounts.map((account) => (
-              <motion.button
-                key={account.id}
-                type="button"
-                onClick={() => handleAccountSelect(account)}
-                className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
-                  selectedAccount?.id === account.id
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-blue-300'
-                }`}
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.99 }}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-blue-600" />
-                      <p className="font-semibold text-gray-900">
-                        {account.bank_account?.bank?.name}
+            {accounts.map((account) => {
+              const logoPath = account.bank_account?.bank?.logo_filename
+                ? `/bank-logos/${account.bank_account.bank.logo_filename}`
+                : null;
+              const currencyCode = account.bank_account?.currency?.code || '';
+
+              return (
+                <motion.button
+                  key={account.id}
+                  type="button"
+                  onClick={() => handleAccountSelect(account)}
+                  className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
+                    selectedAccount?.id === account.id
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-blue-300'
+                  }`}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    {/* Bank Logo */}
+                    <div className="flex-shrink-0">
+                      {logoPath ? (
+                        <img
+                          src={logoPath}
+                          alt={account.bank_account?.bank?.name}
+                          className="w-12 h-12 object-contain rounded"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded flex items-center justify-center">
+                          <CreditCard className="w-6 h-6 text-white" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Account Info */}
+                    <div className="flex-1 space-y-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-gray-900 truncate">
+                          {account.bank_account?.bank?.name}
+                        </p>
+                        {currencyCode && (
+                          <span className="px-2 py-0.5 text-xs font-semibold bg-gray-100 text-gray-700 rounded">
+                            {currencyCode}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        {account.bank_account?.account_type?.name} • ****{account.bank_account?.account_number_last4}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {language === 'es' ? 'Titular:' : 'Holder:'} {account.bank_account?.account_holder_name}
                       </p>
                     </div>
-                    <p className="text-sm text-gray-600">
-                      {account.bank_account?.account_type?.name} • ****{account.bank_account?.account_number_last4}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {language === 'es' ? 'Titular:' : 'Holder:'} {account.bank_account?.account_holder_name}
-                    </p>
+
+                    {/* Default Badge */}
+                    <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                      {account.is_default && (
+                        <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full whitespace-nowrap">
+                          {language === 'es' ? 'Por defecto' : 'Default'}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="ml-2 flex flex-col items-end gap-1">
-                    {account.is_default && (
-                      <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full whitespace-nowrap">
-                        {language === 'es' ? 'Por defecto' : 'Default'}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </motion.button>
-            ))}
+                </motion.button>
+              );
+            })}
           </div>
         </div>
       ) : (
@@ -212,7 +245,7 @@ const BankAccountSelector = ({
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="p-4 bg-blue-50 rounded-lg border-2 border-blue-200"
+            className="p-4 bg-blue-50 rounded-lg border-2 border-blue-200 relative"
           >
             <h3 className="font-semibold text-gray-900 mb-4">
               {language === 'es' ? 'Crear Nueva Cuenta Bancaria' : 'Create New Bank Account'}
@@ -221,7 +254,20 @@ const BankAccountSelector = ({
               userId={user?.id}
               onSuccess={handleAccountCreated}
               onCancel={() => setShowForm(false)}
+              selectedRemittanceType={selectedRemittanceType}
             />
+
+            {/* Loading overlay while linking account to recipient */}
+            {creatingAccount && (
+              <div className="absolute inset-0 bg-white/80 backdrop-blur-sm rounded-lg flex items-center justify-center z-10">
+                <div className="text-center">
+                  <Loader className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-gray-700">
+                    {t('bankAccounts.linkingToRecipient')}
+                  </p>
+                </div>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

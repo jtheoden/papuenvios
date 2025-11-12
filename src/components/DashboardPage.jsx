@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart3, TrendingUp, DollarSign, Package, Users, AlertTriangle, Eye, Users2, RefreshCw, FileText, List, Send, Settings } from 'lucide-react';
+import { BarChart3, TrendingUp, DollarSign, Package, Users, AlertTriangle, Eye, Users2, RefreshCw, FileText, List, Send, Settings, Clock, CheckCircle } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -26,6 +26,12 @@ const DashboardPage = ({ onNavigate }) => {
     completedOrders: 0,
     dailyRevenue: 0,
     monthlyRevenue: 0,
+    // Remittance metrics
+    totalRemittances: 0,
+    pendingRemittances: 0,
+    completedRemittances: 0,
+    dailyRemittanceIncome: 0,
+    monthlyRemittanceIncome: 0,
     loading: true
   });
 
@@ -140,11 +146,12 @@ const DashboardPage = ({ onNavigate }) => {
       setStats(prev => ({ ...prev, loading: true }));
 
       // Get counts
-      const [productsRes, combosRes, usersRes, ordersRes] = await Promise.all([
+      const [productsRes, combosRes, usersRes, ordersRes, remittancesRes] = await Promise.all([
         supabase.from('products').select('id', { count: 'exact', head: true }),
         supabase.from('combo_products').select('id', { count: 'exact', head: true }),
         supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
-        supabase.from('orders').select('id, status, payment_status, total_amount, created_at')
+        supabase.from('orders').select('id, status, payment_status, total_amount, created_at'),
+        supabase.from('remittances').select('id, status, commission_total, created_at')
       ]);
 
       const totalProducts = productsRes.count || 0;
@@ -153,6 +160,9 @@ const DashboardPage = ({ onNavigate }) => {
 
       // Calculate order stats by status
       const orders = ordersRes.data || [];
+
+      // Calculate remittance stats by status
+      const remittances = remittancesRes.data || [];
       const paymentPending = orders.filter(o => o.payment_status === 'pending').length;
       const paymentValidated = orders.filter(o => o.payment_status === 'validated' && o.status === 'pending').length;
       const processing = orders.filter(o => o.status === 'processing').length;
@@ -178,6 +188,22 @@ const DashboardPage = ({ onNavigate }) => {
         .filter(o => new Date(o.created_at) >= oneMonthAgo && ['delivered', 'completed', 'processing'].includes(o.status))
         .reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
 
+      // Calculate remittance stats
+      const totalRemittances = remittances.length;
+      const pendingRemittances = remittances.filter(r =>
+        ['payment_pending', 'payment_proof_uploaded', 'payment_rejected'].includes(r.status)
+      ).length;
+      const completedRemittances = remittances.filter(r => r.status === 'completed').length;
+
+      // Calculate remittance income (commission earned)
+      const dailyRemittanceIncome = remittances
+        .filter(r => new Date(r.created_at) >= oneDayAgo && r.status === 'completed')
+        .reduce((sum, r) => sum + (parseFloat(r.commission_total) || 0), 0);
+
+      const monthlyRemittanceIncome = remittances
+        .filter(r => new Date(r.created_at) >= oneMonthAgo && r.status === 'completed')
+        .reduce((sum, r) => sum + (parseFloat(r.commission_total) || 0), 0);
+
       setStats({
         totalProducts,
         totalCombos,
@@ -193,6 +219,12 @@ const DashboardPage = ({ onNavigate }) => {
         totalActive,
         dailyRevenue,
         monthlyRevenue,
+        // Remittance metrics
+        totalRemittances,
+        pendingRemittances,
+        completedRemittances,
+        dailyRemittanceIncome,
+        monthlyRemittanceIncome,
         loading: false
       });
     } catch (error) {
@@ -516,6 +548,79 @@ const DashboardPage = ({ onNavigate }) => {
               </div>
             </motion.div>
         </div>
+
+        {/* Remittance Metrics Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="mb-12"
+        >
+          <h2 className="text-2xl font-bold mb-6" style={getHeadingStyle(visualSettings)}>
+            {t('dashboard.remittancesMetrics')} 📤
+          </h2>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-6">
+            {[
+              {
+                title: t('dashboard.stats.totalRemittances'),
+                value: stats.totalRemittances,
+                icon: Send,
+                color: 'from-indigo-500 to-blue-600',
+                type: 'count'
+              },
+              {
+                title: t('dashboard.stats.pendingRemittances'),
+                value: stats.pendingRemittances,
+                icon: Clock,
+                color: 'from-yellow-500 to-orange-600',
+                type: 'count'
+              },
+              {
+                title: t('dashboard.stats.completedRemittances'),
+                value: stats.completedRemittances,
+                icon: CheckCircle,
+                color: 'from-green-500 to-emerald-600',
+                type: 'count'
+              },
+              {
+                title: t('dashboard.stats.dailyRemittanceIncome'),
+                value: stats.dailyRemittanceIncome,
+                icon: DollarSign,
+                color: 'from-purple-500 to-pink-600',
+                type: 'currency'
+              },
+              {
+                title: t('dashboard.stats.monthlyRemittanceIncome'),
+                value: stats.monthlyRemittanceIncome,
+                icon: TrendingUp,
+                color: 'from-orange-500 to-red-600',
+                type: 'currency'
+              }
+            ].map((stat, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5 + index * 0.1 }}
+                className="glass-effect p-6 rounded-2xl hover-lift"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className={`w-12 h-12 bg-gradient-to-r ${stat.color} rounded-xl flex items-center justify-center`}>
+                    <stat.icon className="w-6 h-6 text-white" />
+                  </div>
+                </div>
+                <h3 className="text-2xl font-bold mb-1">
+                  {stat.type === 'currency'
+                    ? `${currencySymbol}${formatCurrency(stat.value)} ${currencyCode}`
+                    : stat.value
+                  }
+                </h3>
+                <p className="text-gray-600 text-sm">{stat.title}</p>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
 
         {/* Analytics & Site Visits Section */}
         <motion.div

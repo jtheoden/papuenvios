@@ -3,7 +3,7 @@ import React, { createContext, useContext, useEffect, useState, useRef } from 'r
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/components/ui/use-toast';
 import AuthLoadingScreen from '@/components/AuthLoadingScreen';
-import { SUPER_ADMIN_EMAILS, TIMEOUTS } from '@/lib/constants';
+import { SUPER_ADMIN_EMAILS, TIMEOUTS, RETRY_CONFIG } from '@/lib/constants';
 
 const AuthContext = createContext();
 
@@ -14,9 +14,68 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   const mountedRef = useRef(true);
+  const sessionCheckIntervalRef = useRef(null);
 
-  // Simplified profile fetch with single timeout
-  const fetchProfile = async (uid) => {
+  // Check and refresh session to prevent auth loss
+  const checkAndRefreshSession = async () => {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+
+      if (error) {
+        console.error('[Auth] Session check failed:', error.message);
+        return false;
+      }
+
+      if (!session) {
+        console.warn('[Auth] Session lost - no active session detected');
+        setUser(null);
+        setUserRole(null);
+        return false;
+      }
+
+      // Verify user still has proper permissions
+      if (user && session.user.id !== user.id) {
+        console.warn('[Auth] User ID mismatch - possible session corruption');
+        setUser(null);
+        setUserRole(null);
+        return false;
+      }
+
+      // Check token expiration
+      const expiresAt = session.expires_at;
+      const now = Math.floor(Date.now() / 1000);
+      const timeUntilExpiry = expiresAt - now;
+
+      console.log('[Auth] Session check: token expires in', timeUntilExpiry, 'seconds');
+
+      if (timeUntilExpiry < 60) {
+        console.warn('[Auth] Token expiring soon, attempting refresh...');
+        const { data, error: refreshError } = await supabase.auth.refreshSession();
+
+        if (refreshError) {
+          console.error('[Auth] Token refresh failed:', refreshError.message);
+          await supabase.auth.signOut();
+          setUser(null);
+          setUserRole(null);
+          return false;
+        }
+
+        if (data?.session) {
+          console.log('[Auth] Token refreshed successfully');
+          await updateUserState(data.session);
+          return true;
+        }
+      }
+
+      return true;
+    } catch (err) {
+      console.error('[Auth] Session check error:', err);
+      return false;
+    }
+  };
+
+  // Profile fetch with retry logic for better reliability
+  const fetchProfile = async (uid, attempt = 1) => {
     try {
       const { data, error } = await Promise.race([
         supabase.from('user_profiles')
@@ -29,19 +88,36 @@ export const AuthProvider = ({ children }) => {
       ]);
 
       if (error) {
-        console.warn('[Auth] Profile fetch error:', error);
+        console.warn(`[Auth] Profile fetch error (attempt ${attempt}/${RETRY_CONFIG.PROFILE_FETCH_ATTEMPTS}):`, error);
+
+        // Retry if attempts remaining
+        if (attempt < RETRY_CONFIG.PROFILE_FETCH_ATTEMPTS) {
+          console.log(`[Auth] Retrying profile fetch in ${RETRY_CONFIG.PROFILE_FETCH_DELAY}ms...`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_CONFIG.PROFILE_FETCH_DELAY));
+          return fetchProfile(uid, attempt + 1);
+        }
+
         return null;
       }
 
       return data;
     } catch (err) {
-      console.warn('[Auth] Profile fetch failed:', err.message);
+      console.warn(`[Auth] Profile fetch failed (attempt ${attempt}/${RETRY_CONFIG.PROFILE_FETCH_ATTEMPTS}):`, err.message);
+
+      // Retry if attempts remaining
+      if (attempt < RETRY_CONFIG.PROFILE_FETCH_ATTEMPTS) {
+        console.log(`[Auth] Retrying profile fetch in ${RETRY_CONFIG.PROFILE_FETCH_DELAY}ms...`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_CONFIG.PROFILE_FETCH_DELAY));
+        return fetchProfile(uid, attempt + 1);
+      }
+
       return null;
     }
   };
 
   const updateUserState = async (session) => {
     if (!session?.user) {
+      console.warn('[Auth] updateUserState called with invalid session');
       setUser(null);
       setUserRole(null);
       setIsEnabled(true);
@@ -50,6 +126,13 @@ export const AuthProvider = ({ children }) => {
 
     const uid = session.user.id;
     console.log('[Auth] Updating user state for:', session.user.email);
+    console.log('[Auth] Session user metadata:', {
+      id: session.user.id,
+      email: session.user.email,
+      provider: session.user.app_metadata?.provider,
+      aud: session.user.aud,
+      expires_at: session.expires_at
+    });
 
     // Fetch profile from database
     const profile = await fetchProfile(uid);
@@ -83,11 +166,33 @@ export const AuthProvider = ({ children }) => {
     }
 
     // Success - set user state with profile
-    setUser({ ...session.user, profile });
+    // CRITICAL: Merge profile fields directly into user object (NOT nested)
+    // This ensures avatar_url, full_name, etc. are accessible at user.avatar_url
+    // Priority: OAuth metadata > DB profile for avatar
+    const mergedUser = {
+      ...session.user,
+      // Preserve OAuth metadata (Google picture, etc.)
+      avatar_url: session.user.user_metadata?.picture ||
+                  session.user.user_metadata?.avatar_url ||
+                  profile.avatar_url,
+      full_name: profile.full_name || session.user.user_metadata?.name || session.user.user_metadata?.full_name,
+      email: profile.email || session.user.email,
+      role: profile.role || 'user',
+      is_enabled: profile.is_enabled,
+      // Keep profile object for backwards compatibility
+      profile
+    };
+
+    setUser(mergedUser);
     setUserRole(profile.role || 'user');
     setIsEnabled(true);
 
-    console.log('[Auth] User state updated successfully. Role:', profile.role);
+    console.log('[Auth] User state updated successfully', {
+      role: profile.role,
+      email: mergedUser.email,
+      hasAvatar: !!mergedUser.avatar_url,
+      timestamp: new Date().toISOString()
+    });
 
     // Non-blocking: Sync metadata from OAuth provider
     syncMetadata(uid, session.user, profile);
@@ -161,15 +266,23 @@ export const AuthProvider = ({ children }) => {
 
     // Listen for auth changes (sign in, sign out, token refresh)
     const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] State change:', event);
+      console.log('[Auth] State change:', event, {
+        hasSession: !!session,
+        timestamp: new Date().toISOString()
+      });
 
       if (!mountedRef.current) return;
 
       if (event === 'SIGNED_OUT') {
+        console.log('[Auth] SIGNED_OUT event received - clearing user state');
         setUser(null);
         setUserRole(null);
         setIsEnabled(true);
         return;
+      }
+
+      if (event === 'TOKEN_REFRESHED') {
+        console.log('[Auth] TOKEN_REFRESHED event - session updated');
       }
 
       if (session) {
@@ -177,11 +290,22 @@ export const AuthProvider = ({ children }) => {
       }
     });
 
+    // Set up periodic session check (every 5 minutes)
+    sessionCheckIntervalRef.current = setInterval(() => {
+      if (mountedRef.current && user) {
+        console.log('[Auth] Running periodic session check...');
+        checkAndRefreshSession();
+      }
+    }, 5 * 60 * 1000); // 5 minutes
+
     initialize();
 
     return () => {
       mountedRef.current = false;
       clearTimeout(globalTimer);
+      if (sessionCheckIntervalRef.current) {
+        clearInterval(sessionCheckIntervalRef.current);
+      }
       if (listener?.subscription) {
         listener.subscription.unsubscribe();
       }
@@ -271,6 +395,7 @@ export const AuthProvider = ({ children }) => {
     login,
     signInWithGoogle,
     logout,
+    checkAndRefreshSession, // Exported for manual session checks if needed
     supabaseClient: supabase
   };
 

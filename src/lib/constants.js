@@ -21,10 +21,16 @@ export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/jpg', 'ima
 
 // Timeouts (milliseconds)
 export const TIMEOUTS = {
-  PROFILE_FETCH: 5000,
-  INIT_AUTH: 10000,
+  PROFILE_FETCH: 15000,        // Increased from 5s to 15s to handle slow connections
+  INIT_AUTH: 20000,            // Increased from 10s to 20s to prevent auth timeout during RLS evaluation
   DEFAULT_QUERY: 10000,
   CAROUSEL_SLIDE: 5000,
+};
+
+// Retry Configuration
+export const RETRY_CONFIG = {
+  PROFILE_FETCH_ATTEMPTS: 3,   // Number of retry attempts for profile fetch
+  PROFILE_FETCH_DELAY: 1000,   // Delay between retries (ms)
 };
 
 // Default Values

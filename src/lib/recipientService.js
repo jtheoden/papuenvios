@@ -261,27 +261,69 @@ export const createBankAccount = async (userId, bankData) => {
   try {
     const { bankId, accountTypeId, currencyId, accountNumber, accountHolderName } = bankData;
 
-    // Validate inputs
-    if (!userId || !bankId || !accountTypeId || !currencyId || !accountNumber || !accountHolderName) {
+    // Validate basic inputs
+    if (!userId || !bankId || !currencyId || !accountNumber || !accountHolderName) {
       return { success: false, error: 'Missing required fields' };
     }
 
-    // Hash account number for security (last 4 for display)
-    const crypto = require('crypto');
-    const accountNumberHash = crypto
-      .createHash('sha256')
-      .update(accountNumber + userId)
-      .digest('hex');
+    // ============================================================================
+    // CONVERSIÓN AUTOMÁTICA: currencyId (code → UUID) y accountTypeId (auto-detect)
+    // ============================================================================
+
+    let finalCurrencyId = currencyId;
+    let finalAccountTypeId = accountTypeId;
+
+    // Si currencyId es un código (string como 'USD'), convertir a UUID
+    if (typeof currencyId === 'string' && currencyId.length <= 4) {
+      console.log(`🔄 Converting currency code '${currencyId}' to UUID...`);
+      const { getCurrencyByCode } = await import('@/lib/bankService');
+      const currencyResult = await getCurrencyByCode(currencyId);
+
+      if (!currencyResult.success) {
+        return { success: false, error: `Currency '${currencyId}' not found: ${currencyResult.error}` };
+      }
+
+      finalCurrencyId = currencyResult.data.id;
+      console.log(`✅ Currency UUID: ${finalCurrencyId}`);
+    }
+
+    // Si accountTypeId es null/undefined, obtener automáticamente según currency
+    if (!accountTypeId) {
+      console.log(`🔄 Auto-detecting account type for currency: ${currencyId}...`);
+      const { getDefaultAccountTypeForCurrency } = await import('@/lib/bankService');
+      const accountTypeResult = await getDefaultAccountTypeForCurrency(currencyId);
+
+      if (!accountTypeResult.success) {
+        return { success: false, error: `No account type found for currency '${currencyId}': ${accountTypeResult.error}` };
+      }
+
+      finalAccountTypeId = accountTypeResult.data.id;
+      console.log(`✅ Auto-selected account type: ${accountTypeResult.data.name} (${finalAccountTypeId})`);
+    }
+
+    // Validar que ahora tengamos UUIDs
+    if (!finalAccountTypeId) {
+      return { success: false, error: 'Account type could not be determined' };
+    }
+
+    // Hash account number for security (last 4 for display) using Web Crypto API
+    const encoder = new TextEncoder();
+    const dataToHash = encoder.encode(accountNumber + userId);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', dataToHash);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const accountNumberHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     const accountNumberLast4 = accountNumber.slice(-4);
 
+    // Insert bank account (hash + last 4 digits only for security)
+    // NOTE: account_number_full requires migration 20250128000002 to be executed first
     const { data, error } = await supabase
       .from('bank_accounts')
       .insert([
         {
           user_id: userId,
           bank_id: bankId,
-          account_type_id: accountTypeId,
-          currency_id: currencyId,
+          account_type_id: finalAccountTypeId,
+          currency_id: finalCurrencyId,
           account_number_last4: accountNumberLast4,
           account_number_hash: accountNumberHash,
           account_holder_name: accountHolderName,
@@ -440,14 +482,14 @@ export const getBankAccountsForRecipient = async (recipientId) => {
         id,
         is_default,
         created_at,
-        bank_accounts(
+        bank_account:bank_accounts!bank_account_id(
           id,
           account_number_last4,
           account_holder_name,
           is_active,
-          banks(name, swift_code),
-          account_types(name),
-          currencies(code, name)
+          bank:banks!bank_id(name, swift_code, logo_filename),
+          account_type:account_types!account_type_id(name),
+          currency:currencies!currency_id(code, name_es, name_en)
         )
       `)
       .eq('recipient_id', recipientId)

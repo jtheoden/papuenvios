@@ -13,6 +13,7 @@ import { toast } from '@/components/ui/use-toast';
 import { getMyRecipients, createRecipient, addRecipientAddress } from '@/lib/recipientService';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
 import RecipientForm from '@/components/RecipientForm';
+import BankAccountSelector from '@/components/BankAccountSelector';
 
 const RecipientSelector = React.forwardRef((
   {
@@ -21,7 +22,8 @@ const RecipientSelector = React.forwardRef((
     showAddressSelection = false,
     showProvinceInForm = false,
     deliveryMethod = 'cash', // 'cash' | 'transfer' | 'card' | 'moneypocket'
-    selectedRecipientData = null // For passing selected recipient context
+    selectedRecipientData = null, // For passing selected recipient context
+    selectedRemittanceType = null // Tipo de remesa seleccionado para pasar al BankAccountSelector
   },
   ref
 ) => {
@@ -33,6 +35,7 @@ const RecipientSelector = React.forwardRef((
   const [loading, setLoading] = useState(true);
   const [municipalities, setMunicipalities] = useState([]);
   const [creatingRecipient, setCreatingRecipient] = useState(false);
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState(null);
 
   const [formData, setFormData] = useState({
     full_name: '',
@@ -243,8 +246,8 @@ const RecipientSelector = React.forwardRef((
         </div>
       )}
 
-      {/* Select Address from existing recipient */}
-      {selectedRecipient && selectedRecipient.addresses?.length > 1 && showAddressSelection && (
+      {/* Select Address from existing recipient (only for cash deliveries) */}
+      {selectedRecipient && selectedRecipient.addresses?.length > 1 && showAddressSelection && deliveryMethod === 'cash' && (
         <div>
           <label className="block text-sm font-semibold mb-3">
             {language === 'es' ? 'Selecciona Dirección' : 'Select Address'}
@@ -271,6 +274,28 @@ const RecipientSelector = React.forwardRef((
               </motion.button>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Bank Account Selector (only for non-cash deliveries: transfer, card, moneypocket) */}
+      {selectedRecipient && deliveryMethod !== 'cash' && (
+        <div className="border-t pt-4">
+          <BankAccountSelector
+            recipientId={selectedRecipient.id}
+            onSelect={(account) => {
+              setSelectedBankAccountId(account.bank_account_id);
+              // Notificar al componente padre con el bank_account_id
+              onSelect({
+                recipientId: selectedRecipient.id,
+                addressId: selectedAddress?.id,
+                isNew: false,
+                recipientData: selectedRecipient,
+                bank_account_id: account.bank_account_id
+              });
+            }}
+            showCreateButton={true}
+            selectedRemittanceType={selectedRemittanceType}
+          />
         </div>
       )}
 
