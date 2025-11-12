@@ -12,6 +12,7 @@ import {
   uploadPaymentProof,
   cancelRemittance,
   calculateDeliveryAlert,
+  generateProofSignedUrl,
   REMITTANCE_STATUS
 } from '@/lib/remittanceService';
 import { toast } from '@/components/ui/use-toast';
@@ -26,6 +27,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
   const [remittances, setRemittances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedRemittance, setSelectedRemittance] = useState(null);
+  const [proofSignedUrl, setProofSignedUrl] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadData, setUploadData] = useState({
     file: null,
@@ -65,10 +67,35 @@ const MyRemittancesPage = ({ onNavigate }) => {
     }
   };
 
+  // Generate signed URL when remittance with payment proof is selected
+  useEffect(() => {
+    const loadProofSignedUrl = async () => {
+      if (selectedRemittance?.payment_proof_url && !showUploadModal) {
+        setProofSignedUrl(null); // Reset previous URL
+        const result = await generateProofSignedUrl(selectedRemittance.payment_proof_url);
+        if (result.success) {
+          setProofSignedUrl(result.signedUrl);
+        } else {
+          console.error('Error generating signed URL:', result.error);
+          // Don't show error toast, just log - user can still see other details
+        }
+      } else {
+        setProofSignedUrl(null);
+      }
+    };
+
+    loadProofSignedUrl();
+  }, [selectedRemittance, showUploadModal]);
+
   const handleUploadProof = (remittance) => {
     setSelectedRemittance(remittance);
     setShowUploadModal(true);
-    setUploadData({ file: null, reference: '', notes: '' });
+    // Auto-populate reference with remittance number for user convenience
+    setUploadData({
+      file: null,
+      reference: remittance.remittance_number, // Auto-load remittance ID
+      notes: ''
+    });
   };
 
   const handleSubmitProof = async (e) => {
@@ -262,14 +289,14 @@ const MyRemittancesPage = ({ onNavigate }) => {
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Enviado</p>
                     <p className="text-lg font-bold text-blue-600">
-                      {remittance.amount} {remittance.currency}
+                      {remittance.amount_sent} {remittance.currency_sent}
                     </p>
                   </div>
 
                   <div>
                     <p className="text-xs text-gray-500 mb-1">A Entregar</p>
                     <p className="text-lg font-bold text-green-600">
-                      {remittance.amount_to_deliver?.toFixed(2)} {remittance.delivery_currency}
+                      {remittance.amount_to_deliver?.toFixed(2)} {remittance.currency_delivered}
                     </p>
                   </div>
 
@@ -399,7 +426,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                 </label>
                 <p className="font-semibold">{selectedRemittance.remittance_number}</p>
                 <p className="text-sm text-gray-600">
-                  {selectedRemittance.amount} {selectedRemittance.currency}
+                  {selectedRemittance.amount_sent} {selectedRemittance.currency_sent}
                 </p>
               </div>
 
@@ -472,70 +499,138 @@ const MyRemittancesPage = ({ onNavigate }) => {
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-2xl p-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-2xl font-bold gradient-text mb-6">
               Detalles de Remesa
             </h2>
 
-            <div className="space-y-4">
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Número</p>
-                  <p className="font-semibold">{selectedRemittance.remittance_number}</p>
+            {/* Layout 2 columnas: Info izquierda, Comprobante derecha */}
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Columna Izquierda - Información */}
+              <div className="space-y-4">
+                {/* Datos Básicos */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-500">Número</p>
+                    <p className="font-semibold">{selectedRemittance.remittance_number}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Estado</p>
+                    <p className="font-semibold">{getStatusLabel(selectedRemittance.status)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Tipo</p>
+                    <p className="font-semibold">{selectedRemittance.remittance_types?.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Método de Entrega</p>
+                    <p className="font-semibold capitalize">{selectedRemittance.delivery_method}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Estado</p>
-                  <p className="font-semibold">{getStatusLabel(selectedRemittance.status)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Tipo</p>
-                  <p className="font-semibold">{selectedRemittance.remittance_types?.name}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Método de Entrega</p>
-                  <p className="font-semibold capitalize">{selectedRemittance.delivery_method}</p>
-                </div>
-              </div>
 
-              <div className="pt-4 border-t">
-                <h3 className="font-bold mb-3">Destinatario</h3>
-                <div className="space-y-2">
-                  <p><span className="text-gray-600">Nombre:</span> {selectedRemittance.recipient_name}</p>
-                  <p><span className="text-gray-600">Teléfono:</span> {selectedRemittance.recipient_phone}</p>
-                  {selectedRemittance.recipient_city && (
-                    <p><span className="text-gray-600">Ciudad:</span> {selectedRemittance.recipient_city}</p>
-                  )}
-                  {selectedRemittance.recipient_address && (
-                    <p><span className="text-gray-600">Dirección:</span> {selectedRemittance.recipient_address}</p>
-                  )}
-                </div>
-              </div>
-
-              {selectedRemittance.payment_proof_url && (
+                {/* Destinatario */}
                 <div className="pt-4 border-t">
-                  <h3 className="font-bold mb-3">Comprobante de Pago</h3>
-                  <a
-                    href={selectedRemittance.payment_proof_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-blue-600 hover:underline"
-                  >
-                    <FileText className="h-4 w-4" />
-                    Ver Comprobante
-                  </a>
+                  <h3 className="font-bold mb-3 flex items-center gap-2">
+                    <User className="w-4 h-4" />
+                    Destinatario
+                  </h3>
+                  <div className="space-y-2 bg-gray-50 p-4 rounded-lg">
+                    <p><span className="text-gray-600">Nombre:</span> <span className="font-medium">{selectedRemittance.recipient_name}</span></p>
+                    <p><span className="text-gray-600">Teléfono:</span> <span className="font-medium">{selectedRemittance.recipient_phone}</span></p>
+                    {selectedRemittance.recipient_city && (
+                      <p><span className="text-gray-600">Ciudad:</span> <span className="font-medium">{selectedRemittance.recipient_city}</span></p>
+                    )}
+                    {selectedRemittance.recipient_address && (
+                      <p><span className="text-gray-600">Dirección:</span> <span className="font-medium">{selectedRemittance.recipient_address}</span></p>
+                    )}
+                  </div>
                 </div>
-              )}
 
-              <div className="pt-4 border-t">
-                <button
-                  onClick={() => setSelectedRemittance(null)}
-                  className="w-full py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Cerrar
-                </button>
+                {/* Montos */}
+                <div className="pt-4 border-t">
+                  <h3 className="font-bold mb-3 flex items-center gap-2">
+                    <DollarSign className="w-4 h-4" />
+                    Montos
+                  </h3>
+                  <div className="space-y-2 bg-gray-50 p-4 rounded-lg">
+                    <p><span className="text-gray-600">Monto enviado:</span> <span className="font-medium">${selectedRemittance.amount_sent}</span></p>
+                    <p><span className="text-gray-600">Monto a entregar:</span> <span className="font-bold text-green-600">${selectedRemittance.amount_to_deliver} {selectedRemittance.currency_delivered}</span></p>
+                  </div>
+                </div>
               </div>
+
+              {/* Columna Derecha - Comprobante de Pago */}
+              <div className="space-y-4">
+                {selectedRemittance.payment_proof_url ? (
+                  <div>
+                    <h3 className="font-bold mb-3 flex items-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      Comprobante de Pago
+                    </h3>
+                    {proofSignedUrl ? (
+                      <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                        <img
+                          src={proofSignedUrl}
+                          alt="Comprobante de pago"
+                          className="w-full h-auto max-h-[500px] object-contain"
+                          onError={(e) => {
+                            // Si la imagen no carga, mostrar fallback
+                            e.target.style.display = 'none';
+                            e.target.nextSibling.style.display = 'flex';
+                          }}
+                        />
+                        <div className="hidden flex-col items-center justify-center p-8 text-gray-500">
+                          <FileText className="w-16 h-16 mb-4" />
+                          <p className="text-sm text-center">No se pudo cargar la imagen</p>
+                          <a
+                            href={proofSignedUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-4 text-blue-600 hover:underline text-sm"
+                          >
+                            Abrir en nueva pestaña
+                          </a>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center p-8 border-2 border-gray-200 rounded-lg bg-gray-50">
+                        <div className="text-center text-gray-500">
+                          <Clock className="w-12 h-12 mx-auto mb-2 animate-spin" />
+                          <p className="text-sm">Cargando comprobante...</p>
+                        </div>
+                      </div>
+                    )}
+                    {selectedRemittance.payment_reference && (
+                      <div className="mt-3 bg-blue-50 p-3 rounded-lg">
+                        <p className="text-sm text-gray-600">Referencia:</p>
+                        <p className="font-semibold text-blue-900">{selectedRemittance.payment_reference}</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-12 bg-yellow-50 border-2 border-yellow-200 border-dashed rounded-lg">
+                    <AlertCircle className="w-12 h-12 text-yellow-600 mb-4" />
+                    <p className="text-sm font-medium text-yellow-800 text-center">
+                      Comprobante de pago pendiente
+                    </p>
+                    <p className="text-xs text-yellow-700 text-center mt-2">
+                      El comprobante aún no ha sido enviado
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Botón Cerrar */}
+            <div className="mt-6 pt-6 border-t">
+              <button
+                onClick={() => setSelectedRemittance(null)}
+                className="w-full py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+              >
+                Cerrar
+              </button>
             </div>
           </motion.div>
         </div>

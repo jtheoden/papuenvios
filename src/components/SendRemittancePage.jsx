@@ -216,7 +216,19 @@ const SendRemittancePage = ({ onNavigate }) => {
         title: t('common.success'),
         description: t('remittances.wizard.remittanceCreatedSuccess')
       });
-      setStep(4);
+
+      // Si es remesa CASH, redirigir directamente a Mis Remesas
+      // Si es OFF-CASH (transfer, card, moneypocket), ir al paso 4 (comprobante)
+      if (selectedType?.delivery_method === 'cash') {
+        // Redirigir después de un breve delay para que el usuario vea el toast
+        setTimeout(() => {
+          if (onNavigate) {
+            onNavigate('myRemittances');
+          }
+        }, 1500);
+      } else {
+        setStep(4);
+      }
     } else {
       toast({
         title: t('common.error'),
