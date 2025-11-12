@@ -89,7 +89,7 @@ const AdminRemittancesTab = () => {
   const handleValidatePayment = async (remittance) => {
     const notes = await showModal({
       title: t('remittances.admin.validate'),
-      message: t('remittances.admin.confirmValidateMessage', { amount: remittance.amount, currency: remittance.currency }),
+      message: t('remittances.admin.confirmValidateMessage', { amount: remittance.amount_sent, currency: remittance.currency_sent }),
       input: true,
       inputLabel: t('remittances.admin.validationNotes') + ' (opcional)',
       inputPlaceholder: t('remittances.admin.validationNotesPlaceholder'),
@@ -184,7 +184,7 @@ const AdminRemittancesTab = () => {
       title: t('remittances.admin.confirmDelivery'),
       message: t('remittances.admin.confirmDeliveryMessage', {
         amount: remittance.amount_to_deliver,
-        currency: remittance.delivery_currency,
+        currency: remittance.currency_delivered,
         recipient: remittance.recipient_name
       }),
       input: true,
@@ -487,14 +487,14 @@ const AdminRemittancesTab = () => {
                 <div>
                   <p className="text-xs text-gray-500 mb-1">{t('remittances.user.amountSent')}</p>
                   <p className="font-semibold">
-                    {remittance.amount} {remittance.currency}
+                    {remittance.amount_sent} {remittance.currency_sent}
                   </p>
                 </div>
 
                 <div>
                   <p className="text-xs text-gray-500 mb-1">{t('remittances.user.toDeliver')}</p>
                   <p className="font-semibold">
-                    {remittance.amount_to_deliver?.toFixed(2)} {remittance.delivery_currency}
+                    {remittance.amount_to_deliver?.toFixed(2)} {remittance.currency_delivered}
                   </p>
                 </div>
 
