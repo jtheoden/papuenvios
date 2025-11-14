@@ -1,0 +1,11 @@
+drop user if exists supabase_admin;
+drop user if exists supabase_auth_admin;
+drop user if exists authenticated;
+drop user if exists service_role;
+drop user if exists authenticator;
+drop user if exists supabase_storage_admin;
+drop user if exists dashboard_user;
+drop role if exists service_role;
+drop role if exists authenticated;
+drop role if exists anon;
+drop role if exists supabase_admin;

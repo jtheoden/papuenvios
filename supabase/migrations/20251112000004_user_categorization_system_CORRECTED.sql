@@ -336,13 +336,15 @@ ALTER TABLE public.category_discounts ENABLE ROW LEVEL SECURITY;
 -- ============================================================================
 
 -- user_categories policies
-CREATE POLICY IF NOT EXISTS "users can view own category"
+DROP POLICY IF EXISTS "users can view own category" ON public.user_categories;
+CREATE POLICY "users can view own category"
 ON public.user_categories
 FOR SELECT
 TO authenticated
 USING (user_id = auth.uid());
 
-CREATE POLICY IF NOT EXISTS "admins can view all categories"
+DROP POLICY IF EXISTS "admins can view all categories" ON public.user_categories;
+CREATE POLICY "admins can view all categories"
 ON public.user_categories
 FOR SELECT
 TO authenticated
@@ -355,7 +357,8 @@ USING (
 );
 
 -- user_category_history policies
-CREATE POLICY IF NOT EXISTS "users can view own history"
+DROP POLICY IF EXISTS "users can view own history" ON public.user_category_history;
+CREATE POLICY "users can view own history"
 ON public.user_category_history
 FOR SELECT
 TO authenticated
@@ -368,12 +371,14 @@ USING (user_id = auth.uid() OR
 );
 
 -- category_rules: everyone can view (public config)
-CREATE POLICY IF NOT EXISTS "anyone can view rules"
+DROP POLICY IF EXISTS "anyone can view rules" ON public.category_rules;
+CREATE POLICY "anyone can view rules"
 ON public.category_rules
 FOR SELECT
 USING (enabled = true);
 
-CREATE POLICY IF NOT EXISTS "admins can manage rules"
+DROP POLICY IF EXISTS "admins can manage rules" ON public.category_rules;
+CREATE POLICY "admins can manage rules"
 ON public.category_rules
 FOR ALL
 TO authenticated
@@ -386,7 +391,8 @@ USING (
 );
 
 -- category_discounts: admins can manage
-CREATE POLICY IF NOT EXISTS "admins can view discounts"
+DROP POLICY IF EXISTS "admins can view discounts" ON public.category_discounts;
+CREATE POLICY "admins can view discounts"
 ON public.category_discounts
 FOR SELECT
 TO authenticated
@@ -398,7 +404,8 @@ USING (
   )
 );
 
-CREATE POLICY IF NOT EXISTS "super admins can manage discounts"
+DROP POLICY IF EXISTS "super admins can manage discounts" ON public.category_discounts;
+CREATE POLICY "super admins can manage discounts"
 ON public.category_discounts
 FOR ALL
 TO authenticated
