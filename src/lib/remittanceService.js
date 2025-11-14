@@ -4,7 +4,12 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import { notifyAdminNewPaymentProof } from '@/lib/whatsappService';
+import {
+  notifyAdminNewPaymentProof,
+  notifyUserPaymentValidated,
+  notifyUserPaymentRejected,
+  notifyUserRemittanceDelivered
+} from '@/lib/whatsappService';
 import { getAvailableZelleAccount, registerZelleTransaction } from '@/lib/zelleService';
 
 /**
@@ -777,8 +782,21 @@ export const validatePayment = async (remittanceId, notes = '') => {
 
     console.log('[validatePayment] Payment validated for remittance:', remittanceId, 'by:', user.id, 'notes:', notes);
 
-    // TODO: Enviar notificación WhatsApp al usuario
-    // await notifyUserPaymentValidated(data);
+    // Enviar notificación WhatsApp al usuario
+    try {
+      const notificationMessage = notifyUserPaymentValidated(data, 'es');
+      console.log('[validatePayment] WhatsApp notification generated:', {
+        remittanceId: data.id,
+        remittanceNumber: data.remittance_number,
+        userId: data.user_id,
+        message: notificationMessage
+      });
+      // TODO: Implement actual WhatsApp sending via API (Twilio, WhatsApp Business API, etc.)
+      // or store notification in database for later delivery
+    } catch (notifyError) {
+      console.error('[validatePayment] Error generating notification:', notifyError);
+      // Don't fail the operation if notification fails
+    }
 
     return { success: true, remittance: data };
   } catch (error) {
@@ -826,8 +844,22 @@ export const rejectPayment = async (remittanceId, reason) => {
 
     if (error) throw error;
 
-    // TODO: Enviar notificación WhatsApp al usuario
-    // await notifyUserPaymentRejected(data);
+    // Enviar notificación WhatsApp al usuario
+    try {
+      const notificationMessage = notifyUserPaymentRejected(data, 'es');
+      console.log('[rejectPayment] WhatsApp notification generated:', {
+        remittanceId: data.id,
+        remittanceNumber: data.remittance_number,
+        userId: data.user_id,
+        reason: reason,
+        message: notificationMessage
+      });
+      // TODO: Implement actual WhatsApp sending via API (Twilio, WhatsApp Business API, etc.)
+      // or store notification in database for later delivery
+    } catch (notifyError) {
+      console.error('[rejectPayment] Error generating notification:', notifyError);
+      // Don't fail the operation if notification fails
+    }
 
     return { success: true, remittance: data };
   } catch (error) {
@@ -950,8 +982,22 @@ export const confirmDelivery = async (remittanceId, proofFile = null, notes = ''
 
     if (error) throw error;
 
-    // TODO: Enviar notificación WhatsApp al usuario
-    // await notifyUserDelivered(data);
+    // Enviar notificación WhatsApp al usuario
+    try {
+      const notificationMessage = notifyUserRemittanceDelivered(data, 'es');
+      console.log('[confirmDelivery] WhatsApp notification generated:', {
+        remittanceId: data.id,
+        remittanceNumber: data.remittance_number,
+        userId: data.user_id,
+        recipientName: data.recipient_name,
+        message: notificationMessage
+      });
+      // TODO: Implement actual WhatsApp sending via API (Twilio, WhatsApp Business API, etc.)
+      // or store notification in database for later delivery
+    } catch (notifyError) {
+      console.error('[confirmDelivery] Error generating notification:', notifyError);
+      // Don't fail the operation if notification fails
+    }
 
     return { success: true, remittance: data };
   } catch (error) {
