@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useLanguage } from '@/contexts/LanguageContext';
 
-const AuthLoadingScreen = ({ loadingMessage = 'Autenticando...' }) => {
+const AuthLoadingScreen = ({ loadingMessage }) => {
+  const { t } = useLanguage();
+  const defaultMessage = loadingMessage || t('auth.authenticating');
   // Load visual settings from localStorage
   const [visualSettings, setVisualSettings] = useState(null);
-  const [displayMessage, setDisplayMessage] = useState(loadingMessage);
+  const [displayMessage, setDisplayMessage] = useState(defaultMessage);
   const [dotCount, setDotCount] = useState(0);
 
   useEffect(() => {
@@ -29,8 +32,8 @@ const AuthLoadingScreen = ({ loadingMessage = 'Autenticando...' }) => {
   // Update message with animated dots
   useEffect(() => {
     const dots = '.'.repeat(dotCount);
-    setDisplayMessage(loadingMessage + dots);
-  }, [dotCount, loadingMessage]);
+    setDisplayMessage(defaultMessage + dots);
+  }, [dotCount, defaultMessage]);
 
   // Use stored settings or defaults
   const primaryColor = visualSettings?.primaryColor || '#2563eb';
@@ -43,11 +46,11 @@ const AuthLoadingScreen = ({ loadingMessage = 'Autenticando...' }) => {
     : { backgroundColor: pageBgColor };
 
   const messages = [
-    'Conectando con Google...',
-    'Validando credenciales...',
-    'Obteniendo datos de usuario...',
-    'Sincronizando perfil...',
-    'Finalizando autenticación...'
+    t('auth.loadingMessages.connecting'),
+    t('auth.loadingMessages.validating'),
+    t('auth.loadingMessages.fetching'),
+    t('auth.loadingMessages.syncing'),
+    t('auth.loadingMessages.finalizing')
   ];
 
   return (

@@ -32,6 +32,7 @@
     "products": "Productos",
     "remittances": "Remesas",
     "admin": "Administración",
+    "adminMenu": "Administración",
     "dashboard": "Panel de Control",
     "settings": "Configuración",
     "cart": "Carrito",
@@ -584,7 +585,15 @@
     "loginError": "Credenciales inválidas. Por favor, intenta de nuevo.",
     "logoutSuccess": "Sesión cerrada exitosamente.",
     "loginRequired": "Inicio de Sesión Requerido",
-    "loginToCheckout": "Por favor, inicia sesión para continuar con el pago."
+    "loginToCheckout": "Por favor, inicia sesión para continuar con el pago.",
+    "authenticating": "Autenticando...",
+    "loadingMessages": {
+      "connecting": "Conectando con Google...",
+      "validating": "Validando credenciales...",
+      "fetching": "Obteniendo datos de usuario...",
+      "syncing": "Sincronizando perfil...",
+      "finalizing": "Finalizando autenticación..."
+    }
   },
   "userPanel": {
     "title": "Mi Panel de Usuario",

@@ -46,13 +46,25 @@ const HomePage = ({ onNavigate }) => {
   ].filter(f => !f.admin || isAdmin);
 
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [testimonialsError, setTestimonialsError] = useState(null);
 
   // Load testimonials from database
   useEffect(() => {
     const loadTestimonials = async () => {
-      const result = await getTestimonials(false);
-      if (result.data) {
-        setDbTestimonials(result.data);
+      try {
+        const result = await getTestimonials(false);
+        if (result.error) {
+          console.error('Error loading testimonials:', result.error);
+          setTestimonialsError(result.error);
+          setDbTestimonials([]);
+        } else if (result.data) {
+          setDbTestimonials(result.data);
+          setTestimonialsError(null);
+        }
+      } catch (error) {
+        console.error('Unexpected error loading testimonials:', error);
+        setTestimonialsError(error);
+        setDbTestimonials([]);
       }
     };
     loadTestimonials();
