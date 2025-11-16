@@ -852,10 +852,14 @@ export const markOrderAsDelivered = async (orderId, proofFile, adminId) => {
       };
     }
 
-    // Upload delivery proof
-    const fileName = `delivery-proof-${orderId}-${Date.now()}.jpg`;
+    // Upload delivery proof to order-delivery-proofs bucket
+    // Path format: {user_id}/{order_id}/filename (required by RLS policy)
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user?.id) throw new Error('User not authenticated');
+
+    const fileName = `${user.id}/${orderId}/delivery-proof-${Date.now()}.jpg`;
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('payment-proofs') // Reusing same bucket
+      .from('order-delivery-proofs')
       .upload(fileName, proofFile, {
         cacheControl: '3600',
         upsert: false
@@ -865,7 +869,7 @@ export const markOrderAsDelivered = async (orderId, proofFile, adminId) => {
 
     // Get public URL
     const { data: urlData } = supabase.storage
-      .from('payment-proofs')
+      .from('order-delivery-proofs')
       .getPublicUrl(fileName);
 
     // Update order status
