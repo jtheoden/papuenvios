@@ -32,6 +32,7 @@
     "products": "Products",
     "remittances": "Remittances",
     "admin": "Admin",
+    "adminMenu": "Admin",
     "dashboard": "Dashboard",
     "settings": "Settings",
     "cart": "Cart",
@@ -554,7 +555,15 @@
     "loginError": "Invalid credentials. Please try again.",
     "logoutSuccess": "Logged out successfully.",
     "loginRequired": "Login Required",
-    "loginToCheckout": "Please log in to continue to checkout."
+    "loginToCheckout": "Please log in to continue to checkout.",
+    "authenticating": "Authenticating...",
+    "loadingMessages": {
+      "connecting": "Connecting with Google...",
+      "validating": "Validating credentials...",
+      "fetching": "Fetching user data...",
+      "syncing": "Syncing profile...",
+      "finalizing": "Finalizing authentication..."
+    }
   },
   "userPanel": {
     "title": "My User Panel",

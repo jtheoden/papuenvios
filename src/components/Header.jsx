@@ -337,7 +337,7 @@ const Header = ({ currentPage, onNavigate }) => {
                       className="pt-2 pb-1 px-2 text-xs font-semibold uppercase opacity-70"
                       style={{ color: visualSettings.headerTextColor || '#6b7280' }}
                     >
-                      Administración
+                      {t('nav.adminMenu')}
                     </div>
                     {adminMenuItems.map((item) => (
                       <Button
