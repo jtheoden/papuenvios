@@ -21,8 +21,8 @@ export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/jpg', 'ima
 
 // Timeouts (milliseconds)
 export const TIMEOUTS = {
-  PROFILE_FETCH: 15000,        // Increased from 5s to 15s to handle slow connections
-  INIT_AUTH: 20000,            // Increased from 10s to 20s to prevent auth timeout during RLS evaluation
+  PROFILE_FETCH: 30000,        // Increased to 30s - first DB query is slower, subsequent are cached
+  INIT_AUTH: 40000,            // Increased to 40s - give RLS evaluation time
   DEFAULT_QUERY: 10000,
   CAROUSEL_SLIDE: 5000,
 };

@@ -7,6 +7,26 @@ import { SUPER_ADMIN_EMAILS, TIMEOUTS, RETRY_CONFIG } from '@/lib/constants';
 
 const AuthContext = createContext();
 
+// localStorage role cache helper functions
+const getRoleCacheKey = (userId) => `auth_role_${userId}`;
+const getCachedRole = (userId) => {
+  if (!userId) return null;
+  try {
+    const cached = localStorage.getItem(getRoleCacheKey(userId));
+    return cached ? JSON.parse(cached) : null;
+  } catch (e) {
+    return null;
+  }
+};
+const setCachedRole = (userId, role) => {
+  if (!userId || !role) return;
+  try {
+    localStorage.setItem(getRoleCacheKey(userId), JSON.stringify({ role, ts: Date.now() }));
+  } catch (e) {
+    console.warn('[Auth] Failed to cache role:', e);
+  }
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
@@ -138,10 +158,15 @@ export const AuthProvider = ({ children }) => {
     const profile = await fetchProfile(uid);
 
     if (!profile) {
-      // Profile doesn't exist or fetch failed - use fallback
-      console.warn('[Auth] Profile not found, using session data as fallback');
+      // Profile doesn't exist or fetch failed - use cached role if available
+      console.warn('[Auth] Profile not found, attempting to use cached role as fallback');
+      const cachedRoleData = getCachedRole(uid);
+      const fallbackRole = cachedRoleData?.role || 'user';
+
+      console.log('[Auth] Using fallback role:', fallbackRole, 'from cache:', !!cachedRoleData);
+
       setUser(session.user);
-      setUserRole('user');
+      setUserRole(fallbackRole);
       setIsEnabled(true);
       return;
     }
@@ -186,6 +211,9 @@ export const AuthProvider = ({ children }) => {
     setUser(mergedUser);
     setUserRole(profile.role || 'user');
     setIsEnabled(true);
+
+    // Cache the role for future use in case of timeout
+    setCachedRole(uid, profile.role || 'user');
 
     console.log('[Auth] User state updated successfully', {
       role: profile.role,
