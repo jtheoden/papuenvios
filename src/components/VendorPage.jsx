@@ -1323,23 +1323,28 @@ const VendorPage = () => {
                 testimonials.map(testimonial => (
                   <div key={testimonial.id} className="flex justify-between items-center p-3 border-b hover:bg-gray-50 transition-colors">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="font-semibold">
-                          {language === 'es' ? 'Usuario' : 'User'} #{testimonial.user_id?.substring(0, 8)}
-                        </p>
-                        {testimonial.is_featured && (
-                          <Check className="w-4 h-4 text-purple-500" title={language === 'es' ? 'Destacado' : 'Featured'} />
+                      <div className="flex items-center gap-3 mb-1">
+                        {/* Author Avatar */}
+                        {(testimonial.user_avatar || testimonial.user_photo) && (
+                          <img
+                            src={testimonial.user_avatar || testimonial.user_photo}
+                            alt={testimonial.user_name || 'User'}
+                            className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                          />
                         )}
-                        <span className="text-yellow-500">{'★'.repeat(testimonial.rating)}</span>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-gray-900">
+                              {testimonial.user_name || 'Usuario'}
+                            </p>
+                            {testimonial.is_featured && (
+                              <Check className="w-4 h-4 text-purple-500" title={language === 'es' ? 'Destacado' : 'Featured'} />
+                            )}
+                            <span className="text-yellow-500">{'★'.repeat(testimonial.rating)}</span>
+                          </div>
+                        </div>
                       </div>
                       <p className="text-sm italic text-gray-600">"{testimonial.comment}"</p>
-                      {testimonial.user_photo && (
-                        <img
-                          src={testimonial.user_photo}
-                          alt="User"
-                          className="w-8 h-8 rounded-full mt-2"
-                        />
-                      )}
                     </div>
                     <div className="flex gap-2">
                       <Button
