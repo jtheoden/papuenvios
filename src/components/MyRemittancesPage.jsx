@@ -13,6 +13,7 @@ import {
   cancelRemittance,
   calculateDeliveryAlert,
   generateProofSignedUrl,
+  confirmDelivery,
   REMITTANCE_STATUS
 } from '@/lib/remittanceService';
 import { toast } from '@/components/ui/use-toast';
@@ -28,7 +29,10 @@ const MyRemittancesPage = ({ onNavigate }) => {
   const [loading, setLoading] = useState(true);
   const [selectedRemittance, setSelectedRemittance] = useState(null);
   const [proofSignedUrl, setProofSignedUrl] = useState(null);
+  const [deliveryProofSignedUrl, setDeliveryProofSignedUrl] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showDeliveryProofModal, setShowDeliveryProofModal] = useState(false);
+  const [deliveryProofFile, setDeliveryProofFile] = useState(null);
   const [uploadData, setUploadData] = useState({
     file: null,
     reference: '',
@@ -86,6 +90,23 @@ const MyRemittancesPage = ({ onNavigate }) => {
 
     loadProofSignedUrl();
   }, [selectedRemittance, showUploadModal]);
+
+  // Generate signed URL for delivery proof
+  useEffect(() => {
+    const loadDeliveryProofUrl = async () => {
+      if (selectedRemittance?.delivery_proof_url && !showDeliveryProofModal) {
+        setDeliveryProofSignedUrl(null);
+        const result = await generateProofSignedUrl(selectedRemittance.delivery_proof_url);
+        if (result.success) {
+          setDeliveryProofSignedUrl(result.signedUrl);
+        }
+      } else {
+        setDeliveryProofSignedUrl(null);
+      }
+    };
+
+    loadDeliveryProofUrl();
+  }, [selectedRemittance?.delivery_proof_url, showDeliveryProofModal]);
 
   const handleUploadProof = (remittance) => {
     setSelectedRemittance(remittance);
@@ -159,6 +180,39 @@ const MyRemittancesPage = ({ onNavigate }) => {
       toast({
         title: t('common.error'),
         description: result.error,
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleUploadDeliveryProof = async () => {
+    if (!selectedRemittance || !deliveryProofFile) {
+      toast({
+        title: t('common.error'),
+        description: 'Por favor selecciona una foto de evidencia',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      const result = await confirmDelivery(selectedRemittance.id, deliveryProofFile);
+      if (result.success) {
+        toast({
+          title: t('common.success'),
+          description: 'Evidencia de entrega subida correctamente',
+        });
+        setDeliveryProofFile(null);
+        setShowDeliveryProofModal(false);
+        await loadRemittances();
+        setSelectedRemittance(null);
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: error.message,
         variant: 'destructive'
       });
     }
@@ -620,17 +674,159 @@ const MyRemittancesPage = ({ onNavigate }) => {
                     </p>
                   </div>
                 )}
+
+                {/* Delivery Proof Section */}
+                {selectedRemittance.status === REMITTANCE_STATUS.DELIVERED ? (
+                  <div>
+                    <h3 className="font-bold mb-3 flex items-center gap-2">
+                      <Truck className="w-4 h-4" />
+                      Evidencia de Entrega
+                    </h3>
+                    {selectedRemittance.delivery_proof_url ? (
+                      <>
+                        {deliveryProofSignedUrl ? (
+                          <div className="border-2 border-green-200 rounded-lg overflow-hidden bg-gray-50">
+                            <img
+                              src={deliveryProofSignedUrl}
+                              alt="Evidencia de entrega"
+                              className="w-full h-auto max-h-[500px] object-contain"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.nextSibling.style.display = 'flex';
+                              }}
+                            />
+                            <div className="hidden flex-col items-center justify-center p-8 text-gray-500">
+                              <FileText className="w-16 h-16 mb-4" />
+                              <p className="text-sm text-center">No se pudo cargar la imagen</p>
+                              <a
+                                href={deliveryProofSignedUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="mt-4 text-blue-600 hover:underline text-sm"
+                              >
+                                Abrir en nueva pestaña
+                              </a>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center p-8 border-2 border-green-200 rounded-lg bg-gray-50">
+                            <div className="text-center text-gray-500">
+                              <Clock className="w-12 h-12 mx-auto mb-2 animate-spin" />
+                              <p className="text-sm">Cargando evidencia...</p>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center p-12 bg-green-50 border-2 border-green-200 border-dashed rounded-lg">
+                        <Truck className="w-12 h-12 text-green-600 mb-4" />
+                        <p className="text-sm font-medium text-green-800 text-center">
+                          Remesa entregada, evidencia pendiente
+                        </p>
+                        <p className="text-xs text-green-700 text-center mt-2">
+                          Suba la foto de la entrega para confirmar
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
             </div>
 
-            {/* Botón Cerrar */}
-            <div className="mt-6 pt-6 border-t">
+            {/* Botones de Acción */}
+            <div className="mt-6 pt-6 border-t space-y-3">
+              {/* Upload Delivery Proof Button - Only show if delivered and no proof yet */}
+              {selectedRemittance.status === REMITTANCE_STATUS.DELIVERED && !selectedRemittance.delivery_proof_url && (
+                <button
+                  onClick={() => setShowDeliveryProofModal(true)}
+                  className="w-full py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center justify-center gap-2"
+                >
+                  <Upload className="h-4 w-4" />
+                  Subir Evidencia de Entrega
+                </button>
+              )}
+
               <button
                 onClick={() => setSelectedRemittance(null)}
                 className="w-full py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
               >
                 Cerrar
               </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Delivery Proof Upload Modal */}
+      {showDeliveryProofModal && selectedRemittance && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowDeliveryProofModal(false)}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl p-6 max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-2xl font-bold gradient-text mb-4">
+              Subir Evidencia de Entrega
+            </h2>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Remesa
+                </label>
+                <p className="font-semibold">{selectedRemittance.remittance_number}</p>
+                <p className="text-sm text-gray-600">
+                  {selectedRemittance.amount_to_deliver} {selectedRemittance.currency_delivered}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Foto de evidencia de entrega *
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setDeliveryProofFile(e.target.files[0])}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  required
+                />
+                {deliveryProofFile && (
+                  <p className="mt-2 text-sm text-gray-600">
+                    Archivo seleccionado: {deliveryProofFile.name}
+                  </p>
+                )}
+              </div>
+
+              <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                <p className="text-xs text-green-800">
+                  💡 Consejo: Suba una foto clara mostrando el paquete entregado al destinatario para confirmar la entrega.
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDeliveryProofModal(false);
+                    setDeliveryProofFile(null);
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  {t('common.cancel')}
+                </button>
+                <button
+                  onClick={handleUploadDeliveryProof}
+                  className={`flex-1 ${getPrimaryButtonStyle()} flex items-center justify-center gap-2`}
+                >
+                  <Upload className="h-4 w-4" />
+                  Enviar
+                </button>
+              </div>
             </div>
           </motion.div>
         </div>
