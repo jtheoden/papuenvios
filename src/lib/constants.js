@@ -21,8 +21,8 @@ export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/jpg', 'ima
 
 // Timeouts (milliseconds)
 export const TIMEOUTS = {
-  PROFILE_FETCH: 3000,         // 5s - RLS now fixed, standard query time. Max 5s total auth requirement
-  INIT_AUTH: 3000,             // 6s - global safety timeout (1s buffer for profile + cleanup)
+  PROFILE_FETCH: 5000,         // 5s - RLS now fixed, standard query time. Max 5s total auth requirement
+  INIT_AUTH: 6000,             // 6s - global safety timeout (1s buffer for profile + cleanup)
   DEFAULT_QUERY: 10000,
   CAROUSEL_SLIDE: 5000,
 };
