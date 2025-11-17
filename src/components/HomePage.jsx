@@ -288,6 +288,8 @@ const HomePage = ({ onNavigate }) => {
                   transition={{ duration: 0.5 }}
                   className="glass-effect p-6 rounded-2xl"
                 >
+                  {/* SECURITY: Only displays public author info (avatar + name)
+                      Sensitive user data (email, phone, address, etc.) is never exposed */}
                   <div className="flex items-center mb-4">
                     <img
                       className="w-12 h-12 rounded-full mr-4 object-cover"

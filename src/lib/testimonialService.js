@@ -11,8 +11,10 @@ import { supabase } from './supabase';
  * Public: only visible and verified testimonials
  * Admin: all testimonials
  *
- * REVERTED: Back to 2-query approach due to FK relationship issue
- * testimonials.user_id → auth.users(id), not user_profiles directly
+ * SECURITY: Uses secure RPC function get_testimonial_author_profiles()
+ * - Only exposes: user_id, full_name, avatar_url
+ * - Protected fields (never exposed): email, phone, address, city, birth_date, preferences
+ * - Prevents direct table access that would expose sensitive user data
  */
 export const getTestimonials = async (adminView = false) => {
   try {
@@ -30,28 +32,34 @@ export const getTestimonials = async (adminView = false) => {
 
     if (error) throw error;
 
-    // Fetch user profiles for all testimonials
+    // Fetch user profiles using secure RPC function
+    // This RPC is restricted to only return: user_id, full_name, avatar_url
     if (testimonials && testimonials.length > 0) {
       const userIds = [...new Set(testimonials.map(t => t.user_id))];
 
-      const { data: profiles } = await supabase
-        .from('user_profiles')
-        .select('user_id, full_name, avatar_url')
-        .in('user_id', userIds);
+      const { data: profiles, error: profileError } = await supabase
+        .rpc('get_testimonial_author_profiles', {
+          p_user_ids: userIds
+        });
 
-      // Create a map and attach profiles to testimonials
-      const profileMap = {};
-      if (profiles) {
+      if (profileError) {
+        console.warn('Error fetching testimonial profiles:', profileError);
+        // Fallback: use user_photo only (from testimonials table)
+      } else if (profiles) {
+        // Create a map and attach profiles to testimonials
+        const profileMap = {};
         profiles.forEach(profile => {
           profileMap[profile.user_id] = profile;
         });
-      }
 
-      testimonials.forEach(testimonial => {
-        const profile = profileMap[testimonial.user_id];
-        testimonial.user_name = profile?.full_name || 'Usuario';
-        testimonial.user_avatar = profile?.avatar_url || testimonial.user_photo;
-      });
+        testimonials.forEach(testimonial => {
+          const profile = profileMap[testimonial.user_id];
+          // Only assign: user_name and user_avatar from the RPC
+          // No sensitive user data is exposed
+          testimonial.user_name = profile?.full_name || 'Usuario';
+          testimonial.user_avatar = profile?.avatar_url || testimonial.user_photo;
+        });
+      }
     }
 
     return { data: testimonials, error: null };
@@ -246,6 +254,9 @@ export const deleteTestimonial = async (id) => {
 
 /**
  * Get featured testimonials for homepage
+ * SECURITY: Uses secure RPC function get_testimonial_author_profiles()
+ * - Only exposes: user_id, full_name, avatar_url
+ * - Protected fields (never exposed): email, phone, address, city, birth_date, preferences
  */
 export const getFeaturedTestimonials = async () => {
   try {
@@ -259,28 +270,34 @@ export const getFeaturedTestimonials = async () => {
 
     if (error) throw error;
 
-    // Fetch user profiles for all testimonials
+    // Fetch user profiles using secure RPC function
+    // This RPC is restricted to only return: user_id, full_name, avatar_url
     if (testimonials && testimonials.length > 0) {
       const userIds = [...new Set(testimonials.map(t => t.user_id))];
 
-      const { data: profiles } = await supabase
-        .from('user_profiles')
-        .select('user_id, full_name, avatar_url')
-        .in('user_id', userIds);
+      const { data: profiles, error: profileError } = await supabase
+        .rpc('get_testimonial_author_profiles', {
+          p_user_ids: userIds
+        });
 
-      // Create a map and attach profiles to testimonials
-      const profileMap = {};
-      if (profiles) {
+      if (profileError) {
+        console.warn('Error fetching testimonial profiles:', profileError);
+        // Fallback: use user_photo only (from testimonials table)
+      } else if (profiles) {
+        // Create a map and attach profiles to testimonials
+        const profileMap = {};
         profiles.forEach(profile => {
           profileMap[profile.user_id] = profile;
         });
-      }
 
-      testimonials.forEach(testimonial => {
-        const profile = profileMap[testimonial.user_id];
-        testimonial.user_name = profile?.full_name || 'Usuario';
-        testimonial.user_avatar = profile?.avatar_url || testimonial.user_photo;
-      });
+        testimonials.forEach(testimonial => {
+          const profile = profileMap[testimonial.user_id];
+          // Only assign: user_name and user_avatar from the RPC
+          // No sensitive user data is exposed
+          testimonial.user_name = profile?.full_name || 'Usuario';
+          testimonial.user_avatar = profile?.avatar_url || testimonial.user_photo;
+        });
+      }
     }
 
     return { data: testimonials, error: null };
