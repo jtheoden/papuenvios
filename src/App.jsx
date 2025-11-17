@@ -25,6 +25,7 @@ import { LanguageProvider } from '@/contexts/LanguageContext';
 import { BusinessProvider, useBusiness } from '@/contexts/BusinessContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ModalProvider } from '@/contexts/ModalContext';
+import { CurrencyProvider } from '@/contexts/CurrencyContext';
 
 // Component to dynamically update page title
 function DynamicTitle() {
@@ -150,7 +151,8 @@ function App() {
         <LanguageProvider>
           <AuthProvider>
             <BusinessProvider>
-              <ModalProvider>
+              <CurrencyProvider>
+                <ModalProvider>
                 <div className="min-h-screen">
                   <DynamicTitle />
 
@@ -188,6 +190,7 @@ function App() {
                 <Toaster />
               </div>
               </ModalProvider>
+              </CurrencyProvider>
             </BusinessProvider>
           </AuthProvider>
         </LanguageProvider>

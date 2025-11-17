@@ -237,12 +237,23 @@ const DashboardPage = ({ onNavigate }) => {
     if (user && (isAdmin || isSuperAdmin)) {
       fetchStats();
       fetchVisitStats();
+
+      // Update stats every 30 seconds for real-time dashboard
+      const statsInterval = setInterval(() => {
+        fetchStats();
+      }, 30000);
+
+      return () => clearInterval(statsInterval);
     }
   }, [user, isAdmin, isSuperAdmin]);
 
   // Calculate profits and apply exchange rate
   const dailyProfit = stats.dailyRevenue * (financialSettings.productProfit / 100);
   const monthlyProfit = stats.monthlyRevenue * (financialSettings.productProfit / 100);
+
+  // Calculate remittance profits
+  const dailyRemittanceProfit = stats.dailyRemittanceIncome * (financialSettings.remittanceProfit / 100);
+  const monthlyRemittanceProfit = stats.monthlyRemittanceIncome * (financialSettings.remittanceProfit / 100);
 
   // Get current currency symbol and code
   const currentCurrency = currencies.find(c => c.id === selectedCurrency);
@@ -548,6 +559,76 @@ const DashboardPage = ({ onNavigate }) => {
               </div>
             </motion.div>
         </div>
+
+        {/* Remittance Earnings Breakdown Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1.0 }}
+          className="mb-12"
+        >
+          <h2 className="text-2xl font-bold mb-6" style={getHeadingStyle(visualSettings)}>
+            {t('dashboard.remittancesBreakdown')} 💰
+          </h2>
+
+          <div className="grid md:grid-cols-2 gap-8">
+            {/* Daily Remittance Breakdown */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.1 }}
+              className="glass-effect p-8 rounded-2xl"
+            >
+              <h3 className="text-2xl font-semibold mb-6">{t('dashboard.dailyBreakdown')}</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span>{t('dashboard.grossRevenue')} (Remesas):</span>
+                  <span className="font-semibold">{currencySymbol}{formatCurrency(stats.dailyRemittanceIncome)} {currencyCode}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>{t('dashboard.costs')}:</span>
+                  <span className="font-semibold text-red-600">-{currencySymbol}{formatCurrency(stats.dailyRemittanceIncome - dailyRemittanceProfit)} {currencyCode}</span>
+                </div>
+                <div className="flex justify-between border-t pt-2 mt-1">
+                  <span>{t('dashboard.netProfit')}:</span>
+                  <span className="font-bold text-green-600">{currencySymbol}{formatCurrency(dailyRemittanceProfit)} {currencyCode}</span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>{t('dashboard.profitMargin')}:</span>
+                  <span>{financialSettings.remittanceProfit || 0}%</span>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Monthly Remittance Breakdown */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.2 }}
+              className="glass-effect p-8 rounded-2xl"
+            >
+              <h3 className="text-2xl font-semibold mb-6">{t('dashboard.monthlyBreakdown')}</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span>{t('dashboard.grossRevenue')} (Remesas):</span>
+                  <span className="font-semibold">{currencySymbol}{formatCurrency(stats.monthlyRemittanceIncome)} {currencyCode}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>{t('dashboard.costs')}:</span>
+                  <span className="font-semibold text-red-600">-{currencySymbol}{formatCurrency(stats.monthlyRemittanceIncome - monthlyRemittanceProfit)} {currencyCode}</span>
+                </div>
+                <div className="flex justify-between border-t pt-2 mt-1">
+                  <span>{t('dashboard.netProfit')}:</span>
+                  <span className="font-bold text-green-600">{currencySymbol}{formatCurrency(monthlyRemittanceProfit)} {currencyCode}</span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>{t('dashboard.profitMargin')}:</span>
+                  <span>{financialSettings.remittanceProfit || 0}%</span>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </motion.div>
 
         {/* Remittance Metrics Section */}
         <motion.div
