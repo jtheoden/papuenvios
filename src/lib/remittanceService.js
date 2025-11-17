@@ -939,7 +939,14 @@ export const confirmDelivery = async (remittanceId, proofFile = null, notes = ''
       throw new Error('Solo se puede confirmar entrega de remesa en procesamiento');
     }
 
-    let deliveryProofUrl = null;
+    // CRITICAL: Require delivery proof - either new file or existing proof
+    // Prevents admin from confirming delivery without evidence
+    const hasExistingProof = remittance.delivery_proof_url && remittance.delivery_proof_url.trim() !== '';
+    if (!proofFile && !hasExistingProof) {
+      throw new Error('Evidencia de entrega requerida. Por favor, proporcione una foto o documento de prueba.');
+    }
+
+    let deliveryProofUrl = remittance.delivery_proof_url; // Keep existing proof
 
     // Subir evidencia de entrega si se proporcionó
     if (proofFile) {

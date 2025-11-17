@@ -180,6 +180,19 @@ const AdminRemittancesTab = () => {
   };
 
   const handleConfirmDelivery = async (remittance) => {
+    // SECURITY: Check if delivery proof exists
+    const hasDeliveryProof = remittance.delivery_proof_url && remittance.delivery_proof_url.trim() !== '';
+
+    if (!hasDeliveryProof) {
+      // Delivery proof is required but missing
+      toast({
+        title: t('common.error'),
+        description: 'Evidencia de entrega requerida. Por favor, solicite al usuario que suba la foto o documento de prueba de entrega en la sección "Mi Remesa".',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     const notes = await showModal({
       title: t('remittances.admin.confirmDelivery'),
       message: t('remittances.admin.confirmDeliveryMessage', {
@@ -197,6 +210,7 @@ const AdminRemittancesTab = () => {
 
     if (notes === false) return;
 
+    // Pass null for proofFile since proof must already exist (enforced by validation above)
     const result = await confirmDelivery(remittance.id, null, notes || '');
 
     if (result.success) {
