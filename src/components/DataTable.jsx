@@ -4,7 +4,7 @@ import { ChevronUp, ChevronDown, Search, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 /**
- * REUSABLE DataTable Component
+ * REUSABLE DataTable Component with THEMING SUPPORT
  *
  * Generic table component for displaying tabular data with:
  * - Sorting (single column)
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
  * - Loading states
  * - Empty states
  * - Responsive design
+ * - **THEMING:** Respects system color configuration from visualSettings
  *
  * This component consolidates table logic from:
  * - UserManagement.jsx
@@ -23,6 +24,8 @@ import { Button } from '@/components/ui/button';
  *
  * @component
  * @example
+ * const { visualSettings } = useBusiness();
+ *
  * const columns = [
  *   { key: 'email', label: 'Email', sortable: true, width: '30%' },
  *   { key: 'role', label: 'Role', render: (val) => <Badge>{val}</Badge> },
@@ -39,9 +42,34 @@ import { Button } from '@/components/ui/button';
  *     emptyMessage="No users found"
  *     searchPlaceholder="Search by email or name..."
  *     searchFields={['email', 'full_name']}
+ *     accentColor={visualSettings.primaryColor || 'blue'}
  *   />
  * );
  */
+
+// TODO: Extract color utilities to separate file for reuse
+const normalizeColorFromSystem = (color) => {
+  if (!color) return 'blue';
+  const colorMap = {
+    'primary': 'blue', 'secondary': 'gray', 'success': 'green',
+    'danger': 'red', 'warning': 'yellow', 'info': 'blue'
+  };
+  return colorMap[color] || color.toLowerCase();
+};
+
+const getColorClasses = (color) => {
+  const normalized = normalizeColorFromSystem(color);
+  const classes = {
+    'blue': { text: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' },
+    'purple': { text: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-200' },
+    'green': { text: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200' },
+    'red': { text: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' },
+    'yellow': { text: 'text-yellow-600', bg: 'bg-yellow-50', border: 'border-yellow-200' },
+    'gray': { text: 'text-gray-600', bg: 'bg-gray-50', border: 'border-gray-200' }
+  };
+  return classes[normalized] || classes.blue;
+};
+
 export const DataTable = ({
   columns = [],
   data = [],
@@ -57,8 +85,10 @@ export const DataTable = ({
   striped = true,
   hoverable = true,
   compact = false,
-  accentColor = 'blue'
+  accentColor = 'blue' // Accepts visualSettings.primaryColor
 }) => {
+  // Get color classes from system configuration
+  const colorClasses = getColorClasses(accentColor);
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);

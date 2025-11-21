@@ -22,16 +22,17 @@ WITH CHECK (id = auth.uid());
 
 SELECT '✅ STEP 2: Created "users_can_update_own_profile" (users can only update themselves)' as status;
 
--- STEP 3: Create UPDATE policy for admins (can update any profile)
--- Note: Uses is_admin() and is_super_admin() helper functions
-CREATE POLICY "admins_can_update_any_profile"
+-- STEP 3: Create UPDATE policy for super_admins only (can update any profile)
+-- Note: Only super_admin can change roles and user status
+-- Regular admins cannot escalate privileges
+CREATE POLICY "super_admins_can_update_any_profile"
 ON public.user_profiles
 FOR UPDATE
 TO authenticated
-USING (is_admin() OR is_super_admin())
-WITH CHECK (is_admin() OR is_super_admin());
+USING (is_super_admin())
+WITH CHECK (is_super_admin());
 
-SELECT '✅ STEP 3: Created "admins_can_update_any_profile" (admins can update all users)' as status;
+SELECT '✅ STEP 3: Created "super_admins_can_update_any_profile" (ONLY super_admin can update all users)' as status;
 
 -- STEP 4: Verify the current UPDATE policies
 SELECT
