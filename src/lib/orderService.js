@@ -188,7 +188,19 @@ export const generateOrderNumber = async () => {
 /**
  * Create new order with items and inventory reservation
  * Validates initial state, reserves inventory, creates order and order items atomically
- * NOTE: For true atomicity, use database transaction wrapper (not currently available in Supabase)
+ *
+ * TRANSACTION BOUNDARY (for future DB transaction wrapper support):
+ * BEGIN TRANSACTION
+ *   1. Insert order record
+ *   2. Insert order_items records (all at once)
+ *   3. Update inventory reserved_quantity for all products (batch)
+ *   4. Insert inventory_movements records (batch logging)
+ * COMMIT TRANSACTION
+ *
+ * If any step fails, rollback all changes.
+ * Current implementation: Supabase doesn't support explicit transactions,
+ * so we batch operations where possible and fail loudly on errors.
+ *
  * @param {Object} orderData - Order information
  * @param {Array} items - Order items (products, combos, remittances)
  * @throws {AppError} If validation fails, creation fails, or inventory reservation fails
@@ -762,7 +774,21 @@ export const getPendingOrdersCount = async () => {
  * Validate payment and update order with inventory reduction
  * CRITICAL: Requires payment_status === 'proof_uploaded' and order.status === 'pending'
  * Handles both direct products and combo items by batching product lookups
- * NOTE: Should be wrapped in database transaction for true atomicity
+ *
+ * TRANSACTION BOUNDARY (for future DB transaction wrapper support):
+ * BEGIN TRANSACTION
+ *   1. Fetch order and validate state (status === pending, payment_status === proof_uploaded)
+ *   2. Batch fetch all combo_items for combo order items (N+1 optimization)
+ *   3. Batch fetch all products for combo items (N+1 optimization)
+ *   4. Calculate all inventory reductions (direct products + combo product quantities)
+ *   5. Execute all inventory reductions in parallel (Promise.all)
+ *   6. Update order status to PROCESSING and payment_status to VALIDATED
+ *   7. Log order status history (graceful fallback if fails)
+ * COMMIT TRANSACTION
+ *
+ * If any critical step (1-6) fails, rollback all inventory changes.
+ * Logging failure (step 7) doesn't rollback - logging is non-critical.
+ *
  * @param {string} orderId - Order ID
  * @param {string} adminId - Admin user ID
  * @throws {AppError} If validation fails, state invalid, or inventory operations fail
@@ -934,6 +960,18 @@ export const validatePayment = async (orderId, adminId) => {
  * Reject payment and cancel order
  * CRITICAL: Requires payment_status === 'proof_uploaded'
  * Releases all reserved inventory and logs rejection
+ *
+ * TRANSACTION BOUNDARY (for future DB transaction wrapper support):
+ * BEGIN TRANSACTION
+ *   1. Fetch order and validate state (status === pending, payment_status === proof_uploaded)
+ *   2. Update order status to CANCELLED and payment_status to REJECTED
+ *   3. Release reserved inventory for all product items (parallel Promise.all)
+ *   4. Log order status history (graceful fallback if fails)
+ * COMMIT TRANSACTION
+ *
+ * If any critical step (1-3) fails, rollback all inventory changes.
+ * Logging failure (step 4) doesn't rollback - logging is non-critical.
+ *
  * @param {string} orderId - Order ID
  * @param {string} adminId - Admin user ID
  * @param {string} rejectionReason - Reason for rejection
@@ -1554,6 +1592,18 @@ export const completeOrder = async (orderId, notes = '') => {
  * Cancel an order with full state validation
  * CRITICAL: Can only cancel pending or processing orders
  * Releases all reserved inventory
+ *
+ * TRANSACTION BOUNDARY (for future DB transaction wrapper support):
+ * BEGIN TRANSACTION
+ *   1. Fetch order with items and validate state (pending or processing)
+ *   2. Release reserved inventory for all items (parallel Promise.all)
+ *   3. Update order status to CANCELLED
+ *   4. Log order status history (graceful fallback if fails)
+ * COMMIT TRANSACTION
+ *
+ * If any critical step (1-3) fails, rollback all inventory changes.
+ * Logging failure (step 4) doesn't rollback - logging is non-critical.
+ *
  * @param {string} orderId - Order ID
  * @param {string} adminId - Admin user ID
  * @param {string} reason - Cancellation reason
