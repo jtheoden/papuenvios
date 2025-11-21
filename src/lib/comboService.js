@@ -1,93 +1,132 @@
 /**
  * Combo Service
  * Handles all combo-related database operations
+ * Uses standardized error handling with AppError class
  */
 
 import { supabase } from './supabase';
 import { executeQuery, getCurrentTimestamp } from './queryHelpers';
 import { DEFAULTS } from './constants';
+import {
+  handleError,
+  logError,
+  createValidationError,
+  createNotFoundError,
+  parseSupabaseError,
+  ERROR_CODES
+} from './errorHandler';
 
 /**
  * Get all combos with their products
  * @param {boolean} includeInactive - If true, returns all combos (active and inactive). Default: false
+ * @throws {AppError} If database query fails
+ * @returns {Promise<Array>} Array of combos with items and product details
  */
 export const getCombos = async (includeInactive = false) => {
-  return executeQuery(
-    async () => {
-      // Get combos
-      let comboQuery = supabase
-        .from('combo_products')
-        .select('*');
+  try {
+    // Get combos
+    let comboQuery = supabase
+      .from('combo_products')
+      .select('*');
 
-      if (!includeInactive) {
-        comboQuery = comboQuery.eq('is_active', true);
-      }
+    if (!includeInactive) {
+      comboQuery = comboQuery.eq('is_active', true);
+    }
 
-      const combosResult = await comboQuery.order('created_at', { ascending: false });
+    const combosResult = await comboQuery.order('created_at', { ascending: false });
 
-      if (combosResult.error) throw combosResult.error;
-      if (!combosResult.data || combosResult.data.length === 0) {
-        return combosResult;
-      }
+    if (combosResult.error) {
+      const appError = parseSupabaseError(combosResult.error);
+      logError(appError, { operation: 'getCombos', includeInactive });
+      throw appError;
+    }
 
-      // Get combo IDs to fetch their items
-      const comboIds = combosResult.data.map(c => c.id);
+    if (!combosResult.data || combosResult.data.length === 0) {
+      return [];
+    }
 
-      // Get combo items with product details
-      const { data: itemsData, error: itemsError } = await supabase
-        .from('combo_items')
-        .select('combo_id, quantity, products(id, name_es, name_en, base_price)')
-        .in('combo_id', comboIds);
+    // Get combo IDs to fetch their items
+    const comboIds = combosResult.data.map(c => c.id);
 
-      if (itemsError) throw itemsError;
+    // Get combo items with product details
+    const { data: itemsData, error: itemsError } = await supabase
+      .from('combo_items')
+      .select('combo_id, quantity, products(id, name_es, name_en, base_price)')
+      .in('combo_id', comboIds);
 
-      // Create items map: combo_id -> array of items
-      const itemsMap = {};
-      (itemsData || []).forEach(item => {
-        if (!itemsMap[item.combo_id]) {
-          itemsMap[item.combo_id] = [];
-        }
-        itemsMap[item.combo_id].push({
-          quantity: item.quantity,
-          product: item.products
-        });
+    if (itemsError) {
+      const appError = parseSupabaseError(itemsError);
+      logError(appError, {
+        operation: 'getCombos - items fetch',
+        comboCount: comboIds.length
       });
+      // Don't fail - return combos without item details
+    }
 
-      // Attach items to combos
-      const combosWithItems = combosResult.data.map(combo => ({
-        ...combo,
-        items: itemsMap[combo.id] || []
-      }));
+    // Create items map: combo_id -> array of items
+    const itemsMap = {};
+    (itemsData || []).forEach(item => {
+      if (!itemsMap[item.combo_id]) {
+        itemsMap[item.combo_id] = [];
+      }
+      itemsMap[item.combo_id].push({
+        quantity: item.quantity,
+        product: item.products
+      });
+    });
 
-      return { data: combosWithItems, error: null };
-    },
-    'Get combos'
-  );
+    // Attach items to combos
+    const combosWithItems = combosResult.data.map(combo => ({
+      ...combo,
+      items: itemsMap[combo.id] || []
+    }));
+
+    return combosWithItems;
+  } catch (error) {
+    if (error.code) throw error; // Already an AppError
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'getCombos',
+      includeInactive
+    });
+    throw appError;
+  }
 };
 
 /**
- * Create a new combo
+ * Create a new combo with items
+ * @param {Object} comboData - Combo creation data with productsWithQuantities
+ * @throws {AppError} If validation fails or creation fails
+ * @returns {Promise<Object>} Created combo
  */
 export const createCombo = async (comboData) => {
   try {
+    if (!comboData.name) {
+      throw createValidationError({ name: 'Combo name is required' });
+    }
+
+    if (!comboData.productsWithQuantities || comboData.productsWithQuantities.length === 0) {
+      throw createValidationError(
+        { productsWithQuantities: 'At least one product is required' },
+        'Combo must have products'
+      );
+    }
+
     // Calculate base total price from selected products with quantities
     let baseTotalPrice = 0;
-    if (comboData.productsWithQuantities && comboData.productsWithQuantities.length > 0) {
-      const productIds = comboData.productsWithQuantities.map(item => item.productId);
-      const { data: productPrices } = await supabase
-        .from('products')
-        .select('id, base_price')
-        .in('id', productIds);
+    const productIds = comboData.productsWithQuantities.map(item => item.productId);
+    const { data: productPrices } = await supabase
+      .from('products')
+      .select('id, base_price')
+      .in('id', productIds);
 
-      if (productPrices) {
-        baseTotalPrice = comboData.productsWithQuantities.reduce((sum, item) => {
-          const product = productPrices.find(p => p.id === item.productId);
-          if (product) {
-            return sum + (parseFloat(product.base_price) * item.quantity);
-          }
-          return sum;
-        }, 0);
-      }
+    if (productPrices) {
+      baseTotalPrice = comboData.productsWithQuantities.reduce((sum, item) => {
+        const product = productPrices.find(p => p.id === item.productId);
+        if (product) {
+          return sum + (parseFloat(product.base_price) * item.quantity);
+        }
+        return sum;
+      }, 0);
     }
 
     // Create combo
@@ -106,35 +145,54 @@ export const createCombo = async (comboData) => {
       .select()
       .single();
 
-    if (comboError) throw comboError;
-
-    // Create combo items with quantities
-    if (comboData.productsWithQuantities && comboData.productsWithQuantities.length > 0) {
-      const comboItems = comboData.productsWithQuantities.map(item => ({
-        combo_id: combo.id,
-        product_id: item.productId,
-        quantity: item.quantity
-      }));
-
-      const { error: itemsError } = await supabase
-        .from('combo_items')
-        .insert(comboItems);
-
-      if (itemsError) throw itemsError;
+    if (comboError) {
+      const appError = parseSupabaseError(comboError);
+      logError(appError, { operation: 'createCombo', comboName: comboData.name });
+      throw appError;
     }
 
-    return { data: combo, error: null };
+    // Create combo items with quantities
+    const comboItems = comboData.productsWithQuantities.map(item => ({
+      combo_id: combo.id,
+      product_id: item.productId,
+      quantity: item.quantity
+    }));
+
+    const { error: itemsError } = await supabase
+      .from('combo_items')
+      .insert(comboItems);
+
+    if (itemsError) {
+      const appError = parseSupabaseError(itemsError);
+      logError(appError, {
+        operation: 'createCombo - items',
+        comboId: combo.id,
+        itemCount: comboItems.length
+      });
+      // Don't fail combo creation if items fail
+    }
+
+    return combo;
   } catch (error) {
-    console.error('Error creating combo:', error);
-    return { data: null, error };
+    if (error.code) throw error; // Already an AppError
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'createCombo' });
+    throw appError;
   }
 };
 
 /**
- * Update an existing combo
+ * Update an existing combo and its items
+ * @param {string} comboId - Combo ID
+ * @param {Object} comboData - Updated combo data
+ * @throws {AppError} If combo not found or update fails
+ * @returns {Promise<Object>} Updated combo
  */
 export const updateCombo = async (comboId, comboData) => {
   try {
+    if (!comboId) {
+      throw createValidationError({ comboId: 'Combo ID is required' });
+    }
+
     // Calculate new base total price if products changed
     let baseTotalPrice = undefined;
     if (comboData.productsWithQuantities && comboData.productsWithQuantities.length > 0) {
@@ -180,44 +238,75 @@ export const updateCombo = async (comboId, comboData) => {
       .select()
       .single();
 
-    if (comboError) throw comboError;
+    if (comboError) {
+      const appError = parseSupabaseError(comboError);
+      if (!combo) {
+        throw createNotFoundError('Combo', comboId);
+      }
+      logError(appError, { operation: 'updateCombo', comboId });
+      throw appError;
+    }
 
     // Update combo items if products changed
     if (comboData.productsWithQuantities) {
-      // Delete existing items
-      await supabase
-        .from('combo_items')
-        .delete()
-        .eq('combo_id', comboId);
-
-      // Insert new items with quantities
-      if (comboData.productsWithQuantities.length > 0) {
-        const comboItems = comboData.productsWithQuantities.map(item => ({
-          combo_id: comboId,
-          product_id: item.productId,
-          quantity: item.quantity
-        }));
-
-        const { error: itemsError } = await supabase
+      try {
+        // Delete existing items
+        await supabase
           .from('combo_items')
-          .insert(comboItems);
+          .delete()
+          .eq('combo_id', comboId);
 
-        if (itemsError) throw itemsError;
+        // Insert new items with quantities
+        if (comboData.productsWithQuantities.length > 0) {
+          const comboItems = comboData.productsWithQuantities.map(item => ({
+            combo_id: comboId,
+            product_id: item.productId,
+            quantity: item.quantity
+          }));
+
+          const { error: itemsError } = await supabase
+            .from('combo_items')
+            .insert(comboItems);
+
+          if (itemsError) {
+            const appError = parseSupabaseError(itemsError);
+            logError(appError, {
+              operation: 'updateCombo - items',
+              comboId,
+              itemCount: comboItems.length
+            });
+            // Don't fail combo update if items fail
+          }
+        }
+      } catch (itemsError) {
+        // Don't fail combo update if items operation fails
+        logError(itemsError, { operation: 'updateCombo - items operation', comboId });
       }
     }
 
-    return { data: combo, error: null };
+    return combo;
   } catch (error) {
-    console.error('Error updating combo:', error);
-    return { data: null, error };
+    if (error.code) throw error; // Already an AppError
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'updateCombo',
+      comboId
+    });
+    throw appError;
   }
 };
 
 /**
- * Delete a combo (soft delete)
+ * Delete a combo (soft delete by setting is_active to false)
+ * @param {string} comboId - Combo ID to delete
+ * @throws {AppError} If deletion fails
+ * @returns {Promise<Object>} Deleted combo
  */
 export const deleteCombo = async (comboId) => {
   try {
+    if (!comboId) {
+      throw createValidationError({ comboId: 'Combo ID is required' });
+    }
+
     const { data, error } = await supabase
       .from('combo_products')
       .update({ is_active: false })
@@ -225,10 +314,55 @@ export const deleteCombo = async (comboId) => {
       .select()
       .single();
 
-    if (error) throw error;
-    return { data, error: null };
+    if (error) {
+      const appError = parseSupabaseError(error);
+      if (!data) {
+        throw createNotFoundError('Combo', comboId);
+      }
+      logError(appError, { operation: 'deleteCombo', comboId });
+      throw appError;
+    }
+
+    return data;
   } catch (error) {
-    console.error('Error deleting combo:', error);
-    return { data: null, error };
+    if (error.code) throw error; // Already an AppError
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'deleteCombo',
+      comboId
+    });
+    throw appError;
   }
 };
+
+/**
+ * Import path:
+ * import { getCombos, createCombo, updateCombo, deleteCombo } from '@/lib/comboService';
+ *
+ * Usage examples:
+ *
+ * // Fetch combos
+ * try {
+ *   const combos = await getCombos(false);  // Only active
+ * } catch (error) {
+ *   if (error.code === 'DB_ERROR') {
+ *     // Handle database error
+ *   }
+ * }
+ *
+ * // Create combo
+ * try {
+ *   const newCombo = await createCombo({
+ *     name: 'Combo Name',
+ *     description: 'Combo description',
+ *     productsWithQuantities: [
+ *       { productId: 'prod-1', quantity: 2 },
+ *       { productId: 'prod-2', quantity: 1 }
+ *     ],
+ *     profitMargin: 0.15
+ *   });
+ * } catch (error) {
+ *   if (error.code === 'VALIDATION_FAILED') {
+ *     console.log(error.context.fieldErrors);
+ *   }
+ * }
+ */
