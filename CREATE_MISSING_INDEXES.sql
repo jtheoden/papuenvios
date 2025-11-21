@@ -190,17 +190,15 @@ CREATE INDEX IF NOT EXISTS idx_products_name_search ON public.products USING GIN
 
 SELECT 'Index creation completed at: ' || NOW() as status;
 
--- Show newly created indexes
+-- Show newly created indexes with their sizes
 SELECT
   schemaname,
   tablename,
   indexname,
-  indexdef,
-  pg_size_pretty(pg_relation_size(indexrelid)) as size
+  pg_size_pretty(pg_relation_size(indexname::regclass)) as size
 FROM pg_indexes
 WHERE schemaname = 'public'
   AND indexname ILIKE 'idx_%'
-  AND indexname NOT ILIKE '%_pkey%'
 ORDER BY tablename, indexname;
 
 -- ============================================================================
