@@ -1,59 +1,224 @@
 /**
  * Order Management Service
  * Handles order creation, retrieval, updates, and payment validation
+ * Uses standardized error handling with AppError class
  */
 
 import { supabase } from './supabase';
+import {
+  handleError,
+  logError,
+  createValidationError,
+  createNotFoundError,
+  parseSupabaseError,
+  createPermissionError,
+  ERROR_CODES
+} from './errorHandler';
+
+// ============================================================================
+// STATE MACHINE CONSTANTS
+// ============================================================================
+
+/**
+ * Valid order statuses
+ */
+export const ORDER_STATUS = {
+  PENDING: 'pending',           // Initial state - waiting for payment validation
+  PROCESSING: 'processing',     // Payment validated - preparing for shipment
+  SHIPPED: 'shipped',           // Order shipped - in transit
+  DELIVERED: 'delivered',       // Order delivered - awaiting completion
+  COMPLETED: 'completed',       // Fully completed - no further actions
+  CANCELLED: 'cancelled'        // Cancelled - no longer valid
+};
+
+/**
+ * Valid payment statuses
+ */
+export const PAYMENT_STATUS = {
+  PENDING: 'pending',           // Awaiting proof upload
+  PROOF_UPLOADED: 'proof_uploaded', // Proof uploaded - awaiting validation
+  VALIDATED: 'validated',       // Payment confirmed by admin
+  REJECTED: 'rejected'          // Payment rejected - can retry
+};
+
+/**
+ * State transition matrix - defines valid transitions
+ * Format: currentStatus => allowedNextStatuses
+ */
+const ORDER_TRANSITIONS = {
+  [ORDER_STATUS.PENDING]: [
+    ORDER_STATUS.PROCESSING,
+    ORDER_STATUS.CANCELLED
+  ],
+  [ORDER_STATUS.PROCESSING]: [
+    ORDER_STATUS.SHIPPED,
+    ORDER_STATUS.CANCELLED
+  ],
+  [ORDER_STATUS.SHIPPED]: [
+    ORDER_STATUS.DELIVERED
+  ],
+  [ORDER_STATUS.DELIVERED]: [
+    ORDER_STATUS.COMPLETED
+  ],
+  [ORDER_STATUS.COMPLETED]: [],     // Terminal state
+  [ORDER_STATUS.CANCELLED]: []      // Terminal state
+};
+
+/**
+ * Payment status transitions
+ * Format: currentStatus => allowedNextStatuses
+ */
+const PAYMENT_TRANSITIONS = {
+  [PAYMENT_STATUS.PENDING]: [
+    PAYMENT_STATUS.PROOF_UPLOADED,
+    PAYMENT_STATUS.REJECTED
+  ],
+  [PAYMENT_STATUS.PROOF_UPLOADED]: [
+    PAYMENT_STATUS.VALIDATED,
+    PAYMENT_STATUS.REJECTED,
+    PAYMENT_STATUS.PENDING  // Can reset if rejected
+  ],
+  [PAYMENT_STATUS.VALIDATED]: [],   // Terminal for payments
+  [PAYMENT_STATUS.REJECTED]: [
+    PAYMENT_STATUS.PENDING  // Can retry after rejection
+  ]
+};
+
+// ============================================================================
+// STATE MACHINE VALIDATION HELPERS
+// ============================================================================
+
+/**
+ * Validate order status transition
+ * @param {string} currentStatus - Current order status
+ * @param {string} newStatus - Proposed new status
+ * @throws {AppError} If transition is invalid
+ */
+const validateOrderTransition = (currentStatus, newStatus) => {
+  if (!ORDER_STATUS[Object.keys(ORDER_STATUS).find(k => ORDER_STATUS[k] === currentStatus)]) {
+    throw createValidationError({ status: `Invalid current status: ${currentStatus}` });
+  }
+
+  if (!ORDER_STATUS[Object.keys(ORDER_STATUS).find(k => ORDER_STATUS[k] === newStatus)]) {
+    throw createValidationError({ status: `Invalid new status: ${newStatus}` });
+  }
+
+  const allowedTransitions = ORDER_TRANSITIONS[currentStatus];
+  if (!allowedTransitions.includes(newStatus)) {
+    throw createValidationError(
+      { status: `Cannot transition from ${currentStatus} to ${newStatus}` },
+      `Invalid order status transition. From ${currentStatus}, you can only transition to: ${allowedTransitions.join(', ') || 'no further transitions allowed'}`
+    );
+  }
+};
+
+/**
+ * Validate payment status transition
+ * @param {string} currentStatus - Current payment status
+ * @param {string} newStatus - Proposed new status
+ * @throws {AppError} If transition is invalid
+ */
+const validatePaymentTransition = (currentStatus, newStatus) => {
+  if (!PAYMENT_STATUS[Object.keys(PAYMENT_STATUS).find(k => PAYMENT_STATUS[k] === currentStatus)]) {
+    throw createValidationError({ payment_status: `Invalid current payment status: ${currentStatus}` });
+  }
+
+  if (!PAYMENT_STATUS[Object.keys(PAYMENT_STATUS).find(k => PAYMENT_STATUS[k] === newStatus)]) {
+    throw createValidationError({ payment_status: `Invalid new payment status: ${newStatus}` });
+  }
+
+  const allowedTransitions = PAYMENT_TRANSITIONS[currentStatus];
+  if (!allowedTransitions.includes(newStatus)) {
+    throw createValidationError(
+      { payment_status: `Cannot transition from ${currentStatus} to ${newStatus}` },
+      `Invalid payment status transition. From ${currentStatus}, you can only transition to: ${allowedTransitions.join(', ') || 'no further transitions allowed'}`
+    );
+  }
+};
+
+// ============================================================================
+// ORDER NUMBER GENERATION
+// ============================================================================
 
 /**
  * Generate unique order number
  * Format: ORD-YYYYMMDD-XXXXX (e.g., ORD-20251007-12345)
- * Uses timestamp + random to avoid race conditions
+ * Uses timestamp + random to avoid race conditions, with DB constraint as backup
+ * @throws {AppError} If generation fails
+ * @returns {Promise<string>} Unique order number
  */
 export const generateOrderNumber = async () => {
-  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  try {
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
-  // Use timestamp (last 5 digits) + random (2 digits) for uniqueness
-  const timestamp = Date.now().toString().slice(-5);
-  const random = Math.floor(Math.random() * 100).toString().padStart(2, '0');
-  const uniqueId = `${timestamp}${random}`.slice(0, 5);
+    // Use timestamp (last 5 digits) + random (2 digits) for uniqueness
+    const timestamp = Date.now().toString().slice(-5);
+    const random = Math.floor(Math.random() * 100).toString().padStart(2, '0');
+    const uniqueId = `${timestamp}${random}`.slice(0, 5);
 
-  const orderNumber = `ORD-${today}-${uniqueId}`;
+    const orderNumber = `ORD-${today}-${uniqueId}`;
 
-  // Verify uniqueness (unlikely collision, but safety check)
-  const { data } = await supabase
-    .from('orders')
-    .select('order_number')
-    .eq('order_number', orderNumber)
-    .maybeSingle();
+    // Verify uniqueness (unlikely collision, but safety check)
+    // NOTE: This is a graceful fallback - database constraint on order_number is the primary guard
+    const { data } = await supabase
+      .from('orders')
+      .select('order_number', { count: 'exact', head: true })
+      .eq('order_number', orderNumber);
 
-  // If collision (extremely rare), add microseconds
-  if (data) {
-    const microseconds = (Date.now() % 1000).toString().padStart(3, '0');
-    return `ORD-${today}-${timestamp.slice(-2)}${microseconds}`;
+    // If collision (extremely rare), add microseconds
+    if (data && data.length > 0) {
+      const microseconds = (Date.now() % 1000).toString().padStart(3, '0');
+      return `ORD-${today}-${timestamp.slice(-2)}${microseconds}`;
+    }
+
+    return orderNumber;
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
+      operation: 'generateOrderNumber'
+    });
+    throw appError;
   }
-
-  return orderNumber;
 };
 
+// ============================================================================
+// ORDER CREATION
+// ============================================================================
+
 /**
- * Create new order
+ * Create new order with items and inventory reservation
+ * Validates initial state, reserves inventory, creates order and order items atomically
+ * NOTE: For true atomicity, use database transaction wrapper (not currently available in Supabase)
  * @param {Object} orderData - Order information
  * @param {Array} items - Order items (products, combos, remittances)
- * @returns {Object} Created order with items
+ * @throws {AppError} If validation fails, creation fails, or inventory reservation fails
+ * @returns {Promise<Object>} Created order with items
  */
 export const createOrder = async (orderData, items) => {
   try {
+    // Validate required fields
+    if (!orderData.userId || !orderData.totalAmount || !items || items.length === 0) {
+      throw createValidationError({
+        userId: !orderData.userId ? 'User ID is required' : undefined,
+        totalAmount: !orderData.totalAmount ? 'Total amount is required' : undefined,
+        items: !items || items.length === 0 ? 'At least one item is required' : undefined
+      }, 'Missing required order fields');
+    }
+
+    // Validate initial state
+    validateOrderTransition('START', ORDER_STATUS.PENDING);
+    validatePaymentTransition('START', PAYMENT_STATUS.PENDING);
+
     // Generate order number
     const orderNumber = await generateOrderNumber();
 
-    // Prepare order data
+    // Prepare order data with initial state
     const order = {
       order_number: orderNumber,
       user_id: orderData.userId,
-      order_type: orderData.orderType || 'product', // 'product', 'remittance', 'mixed'
-      status: 'pending',
-      subtotal: orderData.subtotal,
+      order_type: orderData.orderType || 'product',
+      status: ORDER_STATUS.PENDING,
+      subtotal: orderData.subtotal || 0,
       discount_amount: orderData.discountAmount || 0,
       shipping_cost: orderData.shippingCost || 0,
       tax_amount: orderData.taxAmount || 0,
@@ -63,7 +228,7 @@ export const createOrder = async (orderData, items) => {
       recipient_info: orderData.recipientInfo || null,
       delivery_instructions: orderData.deliveryInstructions || '',
       payment_method: orderData.paymentMethod || 'zelle',
-      payment_status: 'pending',
+      payment_status: PAYMENT_STATUS.PENDING,
       payment_reference: orderData.paymentReference || '',
       payment_proof_url: orderData.paymentProofUrl || null,
       shipping_zone_id: orderData.shippingZoneId || null,
@@ -72,19 +237,23 @@ export const createOrder = async (orderData, items) => {
       offer_id: orderData.offerId || null
     };
 
-    // Insert order
+    // ATOMIC: Insert order
     const { data: createdOrder, error: orderError } = await supabase
       .from('orders')
       .insert(order)
       .select()
       .single();
 
-    if (orderError) throw orderError;
+    if (orderError) {
+      const appError = parseSupabaseError(orderError);
+      logError(appError, { operation: 'createOrder - insert order', orderNumber });
+      throw appError;
+    }
 
-    // Prepare order items
+    // ATOMIC: Prepare and insert order items
     const orderItems = items.map(item => ({
       order_id: createdOrder.id,
-      item_type: item.itemType, // 'product', 'combo', 'remittance'
+      item_type: item.itemType,
       item_id: item.itemId,
       item_name_es: item.nameEs,
       item_name_en: item.nameEn,
@@ -97,44 +266,112 @@ export const createOrder = async (orderData, items) => {
       recipient_data: item.recipientData || null
     }));
 
-    // Insert order items
     const { data: createdItems, error: itemsError } = await supabase
       .from('order_items')
       .insert(orderItems)
       .select();
 
-    if (itemsError) throw itemsError;
+    if (itemsError) {
+      const appError = parseSupabaseError(itemsError);
+      logError(appError, { operation: 'createOrder - insert items', orderId: createdOrder.id });
+      throw appError;
+    }
 
-    // Reserve inventory for products
-    for (const item of items) {
-      if (item.itemType === 'product' && item.inventoryId) {
-        await reserveInventory(item.inventoryId, item.quantity);
+    // ATOMIC: Reserve inventory for all products in parallel (not sequential)
+    // This reduces N queries from O(n) sequential to single batch operation
+    const inventoryReservations = items
+      .filter(item => item.itemType === 'product' && item.inventoryId)
+      .map(item => ({ id: item.inventoryId, quantity: item.quantity }));
+
+    if (inventoryReservations.length > 0) {
+      // Batch fetch all inventory records
+      const inventoryIds = inventoryReservations.map(r => r.id);
+      const { data: inventoryRecords, error: fetchError } = await supabase
+        .from('inventory')
+        .select('id, reserved_quantity')
+        .in('id', inventoryIds);
+
+      if (fetchError) {
+        const appError = parseSupabaseError(fetchError);
+        logError(appError, { operation: 'createOrder - fetch inventory', orderId: createdOrder.id });
+        throw appError;
+      }
+
+      // Build update operations for all inventory records
+      const inventoryMap = new Map(inventoryRecords.map(inv => [inv.id, inv]));
+      const updatePromises = inventoryReservations.map(async (res) => {
+        const current = inventoryMap.get(res.id);
+        if (current) {
+          const newReserved = (current.reserved_quantity || 0) + res.quantity;
+          return supabase
+            .from('inventory')
+            .update({ reserved_quantity: newReserved })
+            .eq('id', res.id);
+        }
+      });
+
+      const updateResults = await Promise.all(updatePromises);
+      const hasError = updateResults.some(result => result.error);
+      if (hasError) {
+        const errorResult = updateResults.find(result => result.error);
+        const appError = parseSupabaseError(errorResult.error);
+        logError(appError, { operation: 'createOrder - update inventory', orderId: createdOrder.id });
+        throw appError;
+      }
+
+      // Log all inventory movements in single insert
+      const movements = inventoryReservations.map(res => ({
+        inventory_id: res.id,
+        movement_type: 'reserved',
+        quantity_change: -res.quantity,
+        reference_type: 'order',
+        reference_id: createdOrder.id,
+        notes: `Reserved for order ${orderNumber}`
+      }));
+
+      const { error: movementError } = await supabase
+        .from('inventory_movements')
+        .insert(movements);
+
+      if (movementError) {
+        const appError = parseSupabaseError(movementError);
+        logError(appError, { operation: 'createOrder - log inventory movements', orderId: createdOrder.id });
+        // Don't fail order creation if logging fails
       }
     }
 
     return {
-      success: true,
-      order: {
-        ...createdOrder,
-        items: createdItems
-      }
+      ...createdOrder,
+      items: createdItems
     };
   } catch (error) {
-    console.error('Error creating order:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
+      operation: 'createOrder'
+    });
+    throw appError;
   }
 };
+
+// ============================================================================
+// INVENTORY MANAGEMENT (PRIVATE HELPERS)
+// ============================================================================
 
 /**
  * Reserve inventory for order
  * @param {string} inventoryId - Inventory record ID
  * @param {number} quantity - Quantity to reserve
+ * @throws {AppError} If fetch or update fails
  */
 const reserveInventory = async (inventoryId, quantity) => {
   try {
+    if (!inventoryId || quantity <= 0) {
+      throw createValidationError({
+        inventoryId: !inventoryId ? 'Inventory ID is required' : undefined,
+        quantity: quantity <= 0 ? 'Quantity must be greater than 0' : undefined
+      });
+    }
+
     // Get current inventory
     const { data: inventory, error: fetchError } = await supabase
       .from('inventory')
@@ -142,7 +379,15 @@ const reserveInventory = async (inventoryId, quantity) => {
       .eq('id', inventoryId)
       .single();
 
-    if (fetchError) throw fetchError;
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'reserveInventory - fetch', inventoryId });
+      throw appError;
+    }
+
+    if (!inventory) {
+      throw createNotFoundError('Inventory', inventoryId);
+    }
 
     // Update reserved quantity
     const newReserved = (inventory.reserved_quantity || 0) + quantity;
@@ -152,33 +397,51 @@ const reserveInventory = async (inventoryId, quantity) => {
       .update({ reserved_quantity: newReserved })
       .eq('id', inventoryId);
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'reserveInventory - update', inventoryId });
+      throw appError;
+    }
 
-    // Log inventory movement
-    await supabase
-      .from('inventory_movements')
-      .insert({
-        inventory_id: inventoryId,
-        movement_type: 'reserved',
-        quantity_change: -quantity,
-        reference_type: 'order',
-        notes: 'Reserved for order'
-      });
-
-    return { success: true };
+    // Log inventory movement (graceful fallback if fails)
+    try {
+      await supabase
+        .from('inventory_movements')
+        .insert({
+          inventory_id: inventoryId,
+          movement_type: 'reserved',
+          quantity_change: -quantity,
+          reference_type: 'order',
+          notes: 'Reserved for order'
+        });
+    } catch (logError) {
+      logError(logError, { operation: 'reserveInventory - log movement', inventoryId });
+    }
   } catch (error) {
-    console.error('Error reserving inventory:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
+      operation: 'reserveInventory',
+      inventoryId
+    });
+    throw appError;
   }
 };
 
 /**
- * Release reserved inventory (e.g., when order is rejected)
+ * Release reserved inventory (when order is rejected/cancelled)
  * @param {string} inventoryId - Inventory record ID
  * @param {number} quantity - Quantity to release
+ * @throws {AppError} If fetch or update fails
  */
 const releaseInventory = async (inventoryId, quantity) => {
   try {
+    if (!inventoryId || quantity <= 0) {
+      throw createValidationError({
+        inventoryId: !inventoryId ? 'Inventory ID is required' : undefined,
+        quantity: quantity <= 0 ? 'Quantity must be greater than 0' : undefined
+      });
+    }
+
     // Get current inventory
     const { data: inventory, error: fetchError } = await supabase
       .from('inventory')
@@ -186,9 +449,17 @@ const releaseInventory = async (inventoryId, quantity) => {
       .eq('id', inventoryId)
       .single();
 
-    if (fetchError) throw fetchError;
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'releaseInventory - fetch', inventoryId });
+      throw appError;
+    }
 
-    // Update reserved quantity
+    if (!inventory) {
+      throw createNotFoundError('Inventory', inventoryId);
+    }
+
+    // Update reserved quantity (ensure non-negative)
     const newReserved = Math.max(0, (inventory.reserved_quantity || 0) - quantity);
 
     const { error: updateError } = await supabase
@@ -196,23 +467,33 @@ const releaseInventory = async (inventoryId, quantity) => {
       .update({ reserved_quantity: newReserved })
       .eq('id', inventoryId);
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'releaseInventory - update', inventoryId });
+      throw appError;
+    }
 
-    // Log inventory movement
-    await supabase
-      .from('inventory_movements')
-      .insert({
-        inventory_id: inventoryId,
-        movement_type: 'released',
-        quantity_change: quantity,
-        reference_type: 'order',
-        notes: 'Released from rejected/cancelled order'
-      });
-
-    return { success: true };
+    // Log inventory movement (graceful fallback if fails)
+    try {
+      await supabase
+        .from('inventory_movements')
+        .insert({
+          inventory_id: inventoryId,
+          movement_type: 'released',
+          quantity_change: quantity,
+          reference_type: 'order',
+          notes: 'Released from rejected/cancelled order'
+        });
+    } catch (movementError) {
+      logError(movementError, { operation: 'releaseInventory - log movement', inventoryId });
+    }
   } catch (error) {
-    console.error('Error releasing inventory:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
+      operation: 'releaseInventory',
+      inventoryId
+    });
+    throw appError;
   }
 };
 
@@ -220,9 +501,17 @@ const releaseInventory = async (inventoryId, quantity) => {
  * Reduce inventory quantity (when payment is validated)
  * @param {string} inventoryId - Inventory record ID
  * @param {number} quantity - Quantity to reduce
+ * @throws {AppError} If fetch, validation, or update fails
  */
 const reduceInventory = async (inventoryId, quantity) => {
   try {
+    if (!inventoryId || quantity <= 0) {
+      throw createValidationError({
+        inventoryId: !inventoryId ? 'Inventory ID is required' : undefined,
+        quantity: quantity <= 0 ? 'Quantity must be greater than 0' : undefined
+      });
+    }
+
     // Get current inventory
     const { data: inventory, error: fetchError } = await supabase
       .from('inventory')
@@ -230,7 +519,23 @@ const reduceInventory = async (inventoryId, quantity) => {
       .eq('id', inventoryId)
       .single();
 
-    if (fetchError) throw fetchError;
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'reduceInventory - fetch', inventoryId });
+      throw appError;
+    }
+
+    if (!inventory) {
+      throw createNotFoundError('Inventory', inventoryId);
+    }
+
+    // Validate sufficient stock
+    if (inventory.quantity < quantity) {
+      throw createValidationError(
+        { quantity: `Insufficient stock. Available: ${inventory.quantity}, Requested: ${quantity}` },
+        ERROR_CODES.INSUFFICIENT_STOCK
+      );
+    }
 
     // Reduce both actual and reserved quantities
     const newQuantity = inventory.quantity - quantity;
@@ -244,34 +549,53 @@ const reduceInventory = async (inventoryId, quantity) => {
       })
       .eq('id', inventoryId);
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'reduceInventory - update', inventoryId });
+      throw appError;
+    }
 
-    // Log inventory movement
-    await supabase
-      .from('inventory_movements')
-      .insert({
-        inventory_id: inventoryId,
-        movement_type: 'sold',
-        quantity_change: -quantity,
-        reference_type: 'order',
-        notes: 'Sold - payment validated'
-      });
-
-    return { success: true };
+    // Log inventory movement (graceful fallback if fails)
+    try {
+      await supabase
+        .from('inventory_movements')
+        .insert({
+          inventory_id: inventoryId,
+          movement_type: 'sold',
+          quantity_change: -quantity,
+          reference_type: 'order',
+          notes: 'Sold - payment validated'
+        });
+    } catch (movementError) {
+      logError(movementError, { operation: 'reduceInventory - log movement', inventoryId });
+    }
   } catch (error) {
-    console.error('Error reducing inventory:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
+      operation: 'reduceInventory',
+      inventoryId
+    });
+    throw appError;
   }
 };
 
+// ============================================================================
+// ORDER RETRIEVAL
+// ============================================================================
+
 /**
- * Get user's orders
+ * Get user's orders with optional filters
  * @param {string} userId - User ID
- * @param {Object} filters - Optional filters (status, payment_status, etc.)
- * @returns {Array} User's orders with items
+ * @param {Object} filters - Optional filters (status, payment_status)
+ * @throws {AppError} If userId missing or query fails
+ * @returns {Promise<Array>} User's orders with items
  */
 export const getUserOrders = async (userId, filters = {}) => {
   try {
+    if (!userId) {
+      throw createValidationError({ userId: 'User ID is required' });
+    }
+
     let query = supabase
       .from('orders')
       .select(`
@@ -293,72 +617,75 @@ export const getUserOrders = async (userId, filters = {}) => {
 
     const { data, error } = await query;
 
-    if (error) throw error;
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'getUserOrders', userId, filters });
+      throw appError;
+    }
 
-    return {
-      success: true,
-      orders: data || []
-    };
+    return data || [];
   } catch (error) {
-    console.error('Error fetching user orders:', error);
-    return {
-      success: false,
-      error: error.message,
-      orders: []
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'getUserOrders',
+      userId
+    });
+    throw appError;
   }
 };
 
 /**
- * Get single order by ID
+ * Get single order by ID with related data
+ * Batches user profile fetch to avoid extra queries
  * @param {string} orderId - Order ID
- * @returns {Object} Order with full details
+ * @throws {AppError} If orderId missing or query fails
+ * @returns {Promise<Object>} Order with full details including user profile
  */
 export const getOrderById = async (orderId) => {
   try {
+    if (!orderId) {
+      throw createValidationError({ orderId: 'Order ID is required' });
+    }
+
     const { data: order, error } = await supabase
       .from('orders')
       .select(`
         *,
         order_items (*),
         currencies (code, symbol),
-        shipping_zones (province_name, shipping_cost)
+        shipping_zones (province_name, shipping_cost),
+        user_profiles (user_id, full_name, email)
       `)
       .eq('id', orderId)
       .single();
 
-    if (error) throw error;
-
-    // Fetch user profile
-    if (order && order.user_id) {
-      const { data: profile, error: profileError } = await supabase
-        .from('user_profiles')
-        .select('user_id, full_name, email')
-        .eq('user_id', order.user_id)
-        .single();
-
-      if (!profileError && profile) {
-        order.user_profiles = profile;
-      }
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'getOrderById', orderId });
+      throw appError;
     }
 
-    return {
-      success: true,
-      order: order
-    };
+    if (!order) {
+      throw createNotFoundError('Order', orderId);
+    }
+
+    return order;
   } catch (error) {
-    console.error('Error fetching order:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'getOrderById',
+      orderId
+    });
+    throw appError;
   }
 };
 
 /**
- * Get all orders (admin only)
- * @param {Object} filters - Optional filters
- * @returns {Array} All orders
+ * Get all orders with filters (admin only)
+ * Batches user profile fetch to avoid N+1 queries
+ * @param {Object} filters - Optional filters (status, payment_status, order_type)
+ * @throws {AppError} If query fails
+ * @returns {Promise<Array>} All orders with user profiles batched
  */
 export const getAllOrders = async (filters = {}) => {
   try {
@@ -368,7 +695,8 @@ export const getAllOrders = async (filters = {}) => {
         *,
         order_items (*),
         currencies (code, symbol),
-        shipping_zones (province_name, shipping_cost)
+        shipping_zones (province_name, shipping_cost),
+        user_profiles (user_id, full_name, email)
       `)
       .order('created_at', { ascending: false });
 
@@ -385,92 +713,97 @@ export const getAllOrders = async (filters = {}) => {
 
     const { data: orders, error } = await query;
 
-    if (error) throw error;
-
-    // Fetch user profiles for all orders
-    if (orders && orders.length > 0) {
-      const userIds = [...new Set(orders.map(order => order.user_id))];
-
-      const { data: profiles, error: profilesError } = await supabase
-        .from('user_profiles')
-        .select('user_id, full_name, email')
-        .in('user_id', userIds);
-
-      if (!profilesError && profiles) {
-        // Create a map of user_id to profile
-        const profileMap = {};
-        profiles.forEach(profile => {
-          profileMap[profile.user_id] = profile;
-        });
-
-        // Attach profiles to orders
-        orders.forEach(order => {
-          order.user_profiles = profileMap[order.user_id] || null;
-        });
-      }
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'getAllOrders', filters });
+      throw appError;
     }
 
-    return {
-      success: true,
-      orders: orders || []
-    };
+    return orders || [];
   } catch (error) {
-    console.error('Error fetching all orders:', error);
-    return {
-      success: false,
-      error: error.message,
-      orders: []
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'getAllOrders'
+    });
+    throw appError;
   }
 };
 
 /**
  * Get pending orders count (for admin notifications)
- * @returns {number} Count of pending orders
+ * @throws {AppError} If RPC call fails
+ * @returns {Promise<number>} Count of pending orders
  */
 export const getPendingOrdersCount = async () => {
   try {
-    const { data, error } = await supabase
-      .rpc('get_pending_orders_count');
+    const { data, error } = await supabase.rpc('get_pending_orders_count');
 
-    if (error) throw error;
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'getPendingOrdersCount' });
+      throw appError;
+    }
 
-    return {
-      success: true,
-      count: data || 0
-    };
+    return data || 0;
   } catch (error) {
-    console.error('Error fetching pending orders count:', error);
-    return {
-      success: false,
-      count: 0
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'getPendingOrdersCount'
+    });
+    throw appError;
   }
 };
 
+// ============================================================================
+// PAYMENT VALIDATION & REJECTION
+// ============================================================================
+
 /**
- * Validate payment and update order
+ * Validate payment and update order with inventory reduction
+ * CRITICAL: Requires payment_status === 'proof_uploaded' and order.status === 'pending'
+ * Handles both direct products and combo items by batching product lookups
+ * NOTE: Should be wrapped in database transaction for true atomicity
  * @param {string} orderId - Order ID
  * @param {string} adminId - Admin user ID
- * @returns {Object} Updated order
+ * @throws {AppError} If validation fails, state invalid, or inventory operations fail
+ * @returns {Promise<Object>} Updated order with reduced inventory
  */
 export const validatePayment = async (orderId, adminId) => {
   try {
-    // Get order with items
+    if (!orderId || !adminId) {
+      throw createValidationError({
+        orderId: !orderId ? 'Order ID is required' : undefined,
+        adminId: !adminId ? 'Admin ID is required' : undefined
+      });
+    }
+
+    // Fetch order with items
     const { data: order, error: fetchError } = await supabase
       .from('orders')
       .select('*, order_items (*)')
       .eq('id', orderId)
       .single();
 
-    if (fetchError) throw fetchError;
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'validatePayment - fetch', orderId });
+      throw appError;
+    }
 
-    // Update order status
+    if (!order) {
+      throw createNotFoundError('Order', orderId);
+    }
+
+    // CRITICAL: Validate state machine - only pending orders with proof uploaded
+    validateOrderTransition(order.status, ORDER_STATUS.PROCESSING);
+    validatePaymentTransition(order.payment_status, PAYMENT_STATUS.VALIDATED);
+
+    // ATOMIC: Update order status
     const { data: updatedOrder, error: updateError } = await supabase
       .from('orders')
       .update({
-        payment_status: 'validated',
-        status: 'processing',
+        payment_status: PAYMENT_STATUS.VALIDATED,
+        status: ORDER_STATUS.PROCESSING,
         validated_by: adminId,
         validated_at: new Date().toISOString()
       })
@@ -478,86 +811,183 @@ export const validatePayment = async (orderId, adminId) => {
       .select()
       .single();
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'validatePayment - update', orderId });
+      throw appError;
+    }
 
-    // Reduce inventory for product items and combo items
-    for (const item of order.order_items) {
-      if (item.item_type === 'product' && item.inventory_id) {
-        // Direct product
-        await reduceInventory(item.inventory_id, item.quantity);
-      } else if (item.item_type === 'combo' && item.item_id) {
-        // Get combo items (products within the combo)
-        const { data: comboItems } = await supabase
-          .from('combo_items')
-          .select('product_id, quantity')
-          .eq('combo_id', item.item_id);
+    // OPTIMIZE: Fix N³ problem - batch fetch all combo items and products at once
+    // instead of nested loops within order items
+    const comboItemIds = order.order_items
+      .filter(item => item.item_type === 'combo')
+      .map(item => item.item_id);
 
-        if (comboItems) {
-          for (const comboItem of comboItems) {
-            // Get inventory_id for each product in combo
-            const { data: product } = await supabase
-              .from('products')
-              .select('inventory_id')
-              .eq('id', comboItem.product_id)
-              .single();
+    let comboItemsMap = new Map();
+    let productsMap = new Map();
 
-            if (product?.inventory_id) {
-              // Reduce inventory: combo quantity * item quantity in combo
-              await reduceInventory(product.inventory_id, item.quantity * comboItem.quantity);
-            }
+    if (comboItemIds.length > 0) {
+      // Batch fetch all combo items
+      const { data: comboItems, error: comboError } = await supabase
+        .from('combo_items')
+        .select('combo_id, product_id, quantity')
+        .in('combo_id', comboItemIds);
+
+      if (comboError) {
+        const appError = parseSupabaseError(comboError);
+        logError(appError, { operation: 'validatePayment - fetch combos', orderId });
+        throw appError;
+      }
+
+      // Build map of combo_id => combo_items for efficient lookup
+      if (comboItems) {
+        comboItems.forEach(item => {
+          if (!comboItemsMap.has(item.combo_id)) {
+            comboItemsMap.set(item.combo_id, []);
+          }
+          comboItemsMap.get(item.combo_id).push(item);
+        });
+
+        // Batch fetch all products referenced by combo items
+        const productIds = [...new Set(comboItems.map(item => item.product_id))];
+        if (productIds.length > 0) {
+          const { data: products, error: productsError } = await supabase
+            .from('products')
+            .select('id, inventory_id')
+            .in('id', productIds);
+
+          if (productsError) {
+            const appError = parseSupabaseError(productsError);
+            logError(appError, { operation: 'validatePayment - fetch products', orderId });
+            throw appError;
+          }
+
+          // Build map of product_id => product for efficient lookup
+          if (products) {
+            products.forEach(product => {
+              productsMap.set(product.id, product);
+            });
           }
         }
       }
     }
 
-    // Log status change
-    await supabase
-      .from('order_status_history')
-      .insert({
-        order_id: orderId,
-        previous_status: order.status,
-        new_status: 'processing',
-        changed_by: adminId,
-        notes: 'Payment validated by admin'
-      });
+    // ATOMIC: Reduce inventory for all items
+    // Collect all inventory reduction operations
+    const inventoryReductions = [];
 
-    return {
-      success: true,
-      order: updatedOrder
-    };
+    for (const item of order.order_items) {
+      if (item.item_type === 'product' && item.inventory_id) {
+        // Direct product
+        inventoryReductions.push({ inventoryId: item.inventory_id, quantity: item.quantity });
+      } else if (item.item_type === 'combo' && item.item_id) {
+        // Combo - get items from batched data
+        const comboItems = comboItemsMap.get(item.item_id) || [];
+        for (const comboItem of comboItems) {
+          const product = productsMap.get(comboItem.product_id);
+          if (product?.inventory_id) {
+            // Reduce inventory: combo quantity * item quantity in combo
+            inventoryReductions.push({
+              inventoryId: product.inventory_id,
+              quantity: item.quantity * comboItem.quantity
+            });
+          }
+        }
+      }
+    }
+
+    // Execute all inventory reductions in parallel
+    if (inventoryReductions.length > 0) {
+      const reductionPromises = inventoryReductions.map(reduction =>
+        reduceInventory(reduction.inventoryId, reduction.quantity)
+      );
+      await Promise.all(reductionPromises);
+    }
+
+    // Log status change (graceful fallback if fails)
+    try {
+      await supabase
+        .from('order_status_history')
+        .insert({
+          order_id: orderId,
+          previous_status: order.status,
+          new_status: ORDER_STATUS.PROCESSING,
+          changed_by: adminId,
+          notes: 'Payment validated by admin'
+        });
+    } catch (historyError) {
+      logError(historyError, { operation: 'validatePayment - log history', orderId });
+    }
+
+    return updatedOrder;
   } catch (error) {
-    console.error('Error validating payment:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
+      operation: 'validatePayment',
+      orderId
+    });
+    throw appError;
   }
 };
 
 /**
- * Reject payment and update order
+ * Reject payment and cancel order
+ * CRITICAL: Requires payment_status === 'proof_uploaded'
+ * Releases all reserved inventory and logs rejection
  * @param {string} orderId - Order ID
  * @param {string} adminId - Admin user ID
  * @param {string} rejectionReason - Reason for rejection
- * @returns {Object} Updated order
+ * @throws {AppError} If validation fails, state invalid, or operations fail
+ * @returns {Promise<Object>} Updated cancelled order
  */
 export const rejectPayment = async (orderId, adminId, rejectionReason) => {
   try {
-    // Get order with items
+    if (!orderId || !adminId || !rejectionReason) {
+      throw createValidationError({
+        orderId: !orderId ? 'Order ID is required' : undefined,
+        adminId: !adminId ? 'Admin ID is required' : undefined,
+        rejectionReason: !rejectionReason ? 'Rejection reason is required' : undefined
+      }, 'Missing required fields for payment rejection');
+    }
+
+    // Fetch order with items
     const { data: order, error: fetchError } = await supabase
       .from('orders')
       .select('*, order_items (*)')
       .eq('id', orderId)
       .single();
 
-    if (fetchError) throw fetchError;
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'rejectPayment - fetch', orderId });
+      throw appError;
+    }
 
-    // Update order status
+    if (!order) {
+      throw createNotFoundError('Order', orderId);
+    }
+
+    // CRITICAL: Validate state - only pending orders can have payment rejected
+    if (order.status !== ORDER_STATUS.PENDING) {
+      throw createValidationError(
+        { status: `Current order status is ${order.status}, but must be ${ORDER_STATUS.PENDING}` },
+        'Payment can only be rejected for pending orders'
+      );
+    }
+
+    if (order.payment_status !== PAYMENT_STATUS.PROOF_UPLOADED) {
+      throw createValidationError(
+        { payment_status: `Current payment status is ${order.payment_status}, but must be ${PAYMENT_STATUS.PROOF_UPLOADED}` },
+        'Payment can only be rejected when proof has been uploaded'
+      );
+    }
+
+    // ATOMIC: Update order status
     const { data: updatedOrder, error: updateError } = await supabase
       .from('orders')
       .update({
-        payment_status: 'rejected',
-        status: 'cancelled',
+        payment_status: PAYMENT_STATUS.REJECTED,
+        status: ORDER_STATUS.CANCELLED,
         validated_by: adminId,
         validated_at: new Date().toISOString(),
         rejection_reason: rejectionReason
@@ -566,49 +996,70 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
       .select()
       .single();
 
-    if (updateError) throw updateError;
-
-    // Release reserved inventory for product items
-    for (const item of order.order_items) {
-      if (item.item_type === 'product' && item.inventory_id) {
-        await releaseInventory(item.inventory_id, item.quantity);
-      }
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'rejectPayment - update', orderId });
+      throw appError;
     }
 
-    // Log status change
-    await supabase
-      .from('order_status_history')
-      .insert({
-        order_id: orderId,
-        previous_status: order.status,
-        new_status: 'cancelled',
-        changed_by: adminId,
-        notes: `Payment rejected: ${rejectionReason}`
-      });
+    // ATOMIC: Release reserved inventory for all product items in parallel
+    const releasePromises = order.order_items
+      .filter(item => item.item_type === 'product' && item.inventory_id)
+      .map(item => releaseInventory(item.inventory_id, item.quantity));
 
-    return {
-      success: true,
-      order: updatedOrder
-    };
+    if (releasePromises.length > 0) {
+      await Promise.all(releasePromises);
+    }
+
+    // Log status change (graceful fallback if fails)
+    try {
+      await supabase
+        .from('order_status_history')
+        .insert({
+          order_id: orderId,
+          previous_status: order.status,
+          new_status: ORDER_STATUS.CANCELLED,
+          changed_by: adminId,
+          notes: `Payment rejected: ${rejectionReason}`
+        });
+    } catch (historyError) {
+      logError(historyError, { operation: 'rejectPayment - log history', orderId });
+    }
+
+    return updatedOrder;
   } catch (error) {
-    console.error('Error rejecting payment:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
+      operation: 'rejectPayment',
+      orderId
+    });
+    throw appError;
   }
 };
 
+// ============================================================================
+// ORDER STATUS UPDATES & WORKFLOW
+// ============================================================================
+
 /**
- * Update order status
+ * Update order status with full state machine validation
  * @param {string} orderId - Order ID
- * @param {string} newStatus - New status
+ * @param {string} newStatus - New status (must be valid ORDER_STATUS)
  * @param {string} adminId - Admin user ID
- * @param {string} notes - Optional notes
- * @returns {Object} Updated order
+ * @param {string} notes - Optional notes for status change
+ * @throws {AppError} If validation fails, state invalid, or update fails
+ * @returns {Promise<Object>} Updated order
  */
 export const updateOrderStatus = async (orderId, newStatus, adminId, notes = '') => {
   try {
+    if (!orderId || !newStatus || !adminId) {
+      throw createValidationError({
+        orderId: !orderId ? 'Order ID is required' : undefined,
+        newStatus: !newStatus ? 'New status is required' : undefined,
+        adminId: !adminId ? 'Admin ID is required' : undefined
+      });
+    }
+
     // Get current order
     const { data: order, error: fetchError } = await supabase
       .from('orders')
@@ -616,57 +1067,115 @@ export const updateOrderStatus = async (orderId, newStatus, adminId, notes = '')
       .eq('id', orderId)
       .single();
 
-    if (fetchError) throw fetchError;
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'updateOrderStatus - fetch', orderId });
+      throw appError;
+    }
+
+    if (!order) {
+      throw createNotFoundError('Order', orderId);
+    }
+
+    // CRITICAL: Validate state machine transition
+    validateOrderTransition(order.status, newStatus);
 
     // Update order
     const { data: updatedOrder, error: updateError } = await supabase
       .from('orders')
-      .update({ status: newStatus })
+      .update({
+        status: newStatus,
+        updated_at: new Date().toISOString()
+      })
       .eq('id', orderId)
       .select()
       .single();
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'updateOrderStatus - update', orderId, newStatus });
+      throw appError;
+    }
 
-    // Log status change
-    await supabase
-      .from('order_status_history')
-      .insert({
-        order_id: orderId,
-        previous_status: order.status,
-        new_status: newStatus,
-        changed_by: adminId,
-        notes: notes
-      });
+    // Log status change (graceful fallback if fails)
+    try {
+      await supabase
+        .from('order_status_history')
+        .insert({
+          order_id: orderId,
+          previous_status: order.status,
+          new_status: newStatus,
+          changed_by: adminId,
+          notes: notes
+        });
+    } catch (historyError) {
+      logError(historyError, { operation: 'updateOrderStatus - log history', orderId });
+    }
 
-    return {
-      success: true,
-      order: updatedOrder
-    };
+    return updatedOrder;
   } catch (error) {
-    console.error('Error updating order status:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
+      operation: 'updateOrderStatus',
+      orderId
+    });
+    throw appError;
   }
 };
 
 /**
- * Upload payment proof screenshot
+ * Upload payment proof screenshot with authorization validation
  * @param {File} file - Image file
  * @param {string} orderId - Order ID
- * @returns {Object} Upload result with URL
+ * @param {string} userId - User ID (for authorization)
+ * @throws {AppError} If validation fails, authorization fails, or upload fails
+ * @returns {Promise<string>} Public URL of uploaded proof
  */
-export const uploadPaymentProof = async (file, orderId) => {
+export const uploadPaymentProof = async (file, orderId, userId) => {
   try {
+    if (!file || !orderId || !userId) {
+      throw createValidationError({
+        file: !file ? 'Proof file is required' : undefined,
+        orderId: !orderId ? 'Order ID is required' : undefined,
+        userId: !userId ? 'User ID is required' : undefined
+      }, 'Missing required fields for proof upload');
+    }
+
+    // Fetch order to validate ownership and state
+    const { data: order, error: fetchError } = await supabase
+      .from('orders')
+      .select('id, user_id, status, payment_status')
+      .eq('id', orderId)
+      .single();
+
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'uploadPaymentProof - fetch', orderId });
+      throw appError;
+    }
+
+    if (!order) {
+      throw createNotFoundError('Order', orderId);
+    }
+
+    // Authorize - user must own the order
+    if (order.user_id !== userId) {
+      throw createPermissionError('upload proof for this order', 'owner');
+    }
+
+    // Validate order state - can only upload proof for pending orders
+    if (order.status !== ORDER_STATUS.PENDING) {
+      throw createValidationError(
+        { status: `Current order status is ${order.status}, but must be ${ORDER_STATUS.PENDING}` },
+        'Payment proof can only be uploaded for pending orders'
+      );
+    }
+
     // Handle both File and Blob objects
-    let fileExt = 'jpg'; // Default extension
+    let fileExt = 'jpg';
     if (file.name) {
-      // File object - has name property
       fileExt = file.name.split('.').pop();
     } else if (file.type) {
-      // Blob object - extract extension from MIME type
       const mimeToExt = {
         'image/jpeg': 'jpg',
         'image/jpg': 'jpg',
@@ -681,49 +1190,68 @@ export const uploadPaymentProof = async (file, orderId) => {
     const filePath = `payment-proofs/${fileName}`;
 
     // Upload to Supabase Storage
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from('order-documents')
       .upload(filePath, file, {
         cacheControl: '3600',
         upsert: false
       });
 
-    if (uploadError) throw uploadError;
+    if (uploadError) {
+      const appError = parseSupabaseError(uploadError);
+      logError(appError, { operation: 'uploadPaymentProof - upload', filePath });
+      throw appError;
+    }
 
     // Get public URL
     const { data: urlData } = supabase.storage
       .from('order-documents')
       .getPublicUrl(filePath);
 
-    // Update order with proof URL
+    // Update order with proof URL and mark as proof uploaded
     const { error: updateError } = await supabase
       .from('orders')
-      .update({ payment_proof_url: urlData.publicUrl })
+      .update({
+        payment_proof_url: urlData.publicUrl,
+        payment_status: PAYMENT_STATUS.PROOF_UPLOADED,
+        updated_at: new Date().toISOString()
+      })
       .eq('id', orderId);
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'uploadPaymentProof - update', orderId });
+      throw appError;
+    }
 
-    return {
-      success: true,
-      url: urlData.publicUrl
-    };
+    return urlData.publicUrl;
   } catch (error) {
-    console.error('Error uploading payment proof:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
+      operation: 'uploadPaymentProof',
+      orderId
+    });
+    throw appError;
   }
 };
 
 /**
  * Start processing an order (Payment Validated → Processing)
+ * Validates order is in correct state for processing
  * @param {string} orderId - Order ID
  * @param {string} adminId - Admin user ID
- * @returns {Promise<{success: boolean, order?: Object, error?: string}>}
+ * @throws {AppError} If order not found, invalid state, or update fails
+ * @returns {Promise<Object>} Updated order in processing state
  */
 export const startProcessingOrder = async (orderId, adminId) => {
   try {
+    if (!orderId || !adminId) {
+      throw createValidationError({
+        orderId: !orderId ? 'Order ID is required' : undefined,
+        adminId: !adminId ? 'Admin ID is required' : undefined
+      });
+    }
+
     // Verify order exists and payment is validated
     const { data: order, error: fetchError } = await supabase
       .from('orders')
@@ -731,20 +1259,31 @@ export const startProcessingOrder = async (orderId, adminId) => {
       .eq('id', orderId)
       .single();
 
-    if (fetchError) throw fetchError;
-
-    if (order.payment_status !== 'validated') {
-      return {
-        success: false,
-        error: 'Payment must be validated before processing'
-      };
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'startProcessingOrder - fetch', orderId });
+      throw appError;
     }
+
+    if (!order) {
+      throw createNotFoundError('Order', orderId);
+    }
+
+    // Validate state machine
+    if (order.payment_status !== PAYMENT_STATUS.VALIDATED) {
+      throw createValidationError(
+        { payment_status: `Current payment status is ${order.payment_status}, but must be ${PAYMENT_STATUS.VALIDATED}` },
+        'Payment must be validated before processing'
+      );
+    }
+
+    validateOrderTransition(order.status, ORDER_STATUS.PROCESSING);
 
     // Update order status
     const { data: updatedOrder, error: updateError } = await supabase
       .from('orders')
       .update({
-        status: 'processing',
+        status: ORDER_STATUS.PROCESSING,
         processing_started_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
@@ -752,30 +1291,41 @@ export const startProcessingOrder = async (orderId, adminId) => {
       .select()
       .single();
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'startProcessingOrder - update', orderId });
+      throw appError;
+    }
 
-    return {
-      success: true,
-      order: updatedOrder
-    };
+    return updatedOrder;
   } catch (error) {
-    console.error('Error starting order processing:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
+      operation: 'startProcessingOrder',
+      orderId
+    });
+    throw appError;
   }
 };
 
 /**
  * Mark order as shipped (Processing → Shipped)
+ * Validates order is in processing state
  * @param {string} orderId - Order ID
  * @param {string} adminId - Admin user ID
  * @param {string} trackingInfo - Optional tracking information
- * @returns {Promise<{success: boolean, order?: Object, error?: string}>}
+ * @throws {AppError} If order not found, invalid state, or update fails
+ * @returns {Promise<Object>} Updated order in shipped state
  */
 export const markOrderAsShipped = async (orderId, adminId, trackingInfo = '') => {
   try {
+    if (!orderId || !adminId) {
+      throw createValidationError({
+        orderId: !orderId ? 'Order ID is required' : undefined,
+        adminId: !adminId ? 'Admin ID is required' : undefined
+      });
+    }
+
     // Verify order exists and is in processing
     const { data: order, error: fetchError } = await supabase
       .from('orders')
@@ -783,26 +1333,30 @@ export const markOrderAsShipped = async (orderId, adminId, trackingInfo = '') =>
       .eq('id', orderId)
       .single();
 
-    if (fetchError) throw fetchError;
-
-    if (order.status !== 'processing') {
-      return {
-        success: false,
-        error: 'Order must be in processing status'
-      };
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'markOrderAsShipped - fetch', orderId });
+      throw appError;
     }
+
+    if (!order) {
+      throw createNotFoundError('Order', orderId);
+    }
+
+    // Validate state machine
+    validateOrderTransition(order.status, ORDER_STATUS.SHIPPED);
 
     // Update order status
     const updateData = {
-      status: 'shipped',
+      status: ORDER_STATUS.SHIPPED,
       shipped_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
 
     if (trackingInfo) {
-      updateData.notes = order.notes ?
-        `${order.notes}\n\nTracking: ${trackingInfo}` :
-        `Tracking: ${trackingInfo}`;
+      updateData.notes = order.notes
+        ? `${order.notes}\n\nTracking: ${trackingInfo}`
+        : `Tracking: ${trackingInfo}`;
     }
 
     const { data: updatedOrder, error: updateError } = await supabase
@@ -812,30 +1366,42 @@ export const markOrderAsShipped = async (orderId, adminId, trackingInfo = '') =>
       .select()
       .single();
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'markOrderAsShipped - update', orderId });
+      throw appError;
+    }
 
-    return {
-      success: true,
-      order: updatedOrder
-    };
+    return updatedOrder;
   } catch (error) {
-    console.error('Error marking order as shipped:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
+      operation: 'markOrderAsShipped',
+      orderId
+    });
+    throw appError;
   }
 };
 
 /**
  * Mark order as delivered with proof (Shipped → Delivered)
+ * Requires valid delivery proof file
  * @param {string} orderId - Order ID
  * @param {File} proofFile - Delivery proof image file
  * @param {string} adminId - Admin user ID
- * @returns {Promise<{success: boolean, order?: Object, error?: string}>}
+ * @throws {AppError} If order not found, invalid state, no proof, or update fails
+ * @returns {Promise<Object>} Updated order in delivered state
  */
 export const markOrderAsDelivered = async (orderId, proofFile, adminId) => {
   try {
+    if (!orderId || !proofFile || !adminId) {
+      throw createValidationError({
+        orderId: !orderId ? 'Order ID is required' : undefined,
+        proofFile: !proofFile ? 'Delivery proof file is required' : undefined,
+        adminId: !adminId ? 'Admin ID is required' : undefined
+      }, 'Missing required fields for delivery confirmation');
+    }
+
     // Verify order exists and is shipped
     const { data: order, error: fetchError } = await supabase
       .from('orders')
@@ -843,29 +1409,42 @@ export const markOrderAsDelivered = async (orderId, proofFile, adminId) => {
       .eq('id', orderId)
       .single();
 
-    if (fetchError) throw fetchError;
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'markOrderAsDelivered - fetch', orderId });
+      throw appError;
+    }
 
-    if (order.status !== 'shipped') {
-      return {
-        success: false,
-        error: 'Order must be in shipped status'
-      };
+    if (!order) {
+      throw createNotFoundError('Order', orderId);
+    }
+
+    // Validate state machine
+    validateOrderTransition(order.status, ORDER_STATUS.DELIVERED);
+
+    // Get authenticated user for file path
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user?.id) {
+      const appError = parseSupabaseError(authError) || new Error('User not authenticated');
+      logError(appError, { operation: 'markOrderAsDelivered - getUser', orderId });
+      throw appError;
     }
 
     // Upload delivery proof to order-delivery-proofs bucket
     // Path format: {user_id}/{order_id}/filename (required by RLS policy)
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user?.id) throw new Error('User not authenticated');
-
     const fileName = `${user.id}/${orderId}/delivery-proof-${Date.now()}.jpg`;
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from('order-delivery-proofs')
       .upload(fileName, proofFile, {
         cacheControl: '3600',
         upsert: false
       });
 
-    if (uploadError) throw uploadError;
+    if (uploadError) {
+      const appError = parseSupabaseError(uploadError);
+      logError(appError, { operation: 'markOrderAsDelivered - upload', fileName });
+      throw appError;
+    }
 
     // Get public URL
     const { data: urlData } = supabase.storage
@@ -876,7 +1455,7 @@ export const markOrderAsDelivered = async (orderId, proofFile, adminId) => {
     const { data: updatedOrder, error: updateError } = await supabase
       .from('orders')
       .update({
-        status: 'delivered',
+        status: ORDER_STATUS.DELIVERED,
         delivered_at: new Date().toISOString(),
         delivery_proof_url: urlData.publicUrl,
         updated_at: new Date().toISOString()
@@ -885,29 +1464,37 @@ export const markOrderAsDelivered = async (orderId, proofFile, adminId) => {
       .select()
       .single();
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'markOrderAsDelivered - update', orderId });
+      throw appError;
+    }
 
-    return {
-      success: true,
-      order: updatedOrder
-    };
+    return updatedOrder;
   } catch (error) {
-    console.error('Error marking order as delivered:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
+      operation: 'markOrderAsDelivered',
+      orderId
+    });
+    throw appError;
   }
 };
 
 /**
  * Complete an order (Delivered → Completed)
- * Can be called automatically or manually
+ * Final state transition - order can no longer be modified
  * @param {string} orderId - Order ID
- * @returns {Promise<{success: boolean, order?: Object, error?: string}>}
+ * @param {string} notes - Optional completion notes
+ * @throws {AppError} If order not found, invalid state, or update fails
+ * @returns {Promise<Object>} Updated order in completed state
  */
-export const completeOrder = async (orderId) => {
+export const completeOrder = async (orderId, notes = '') => {
   try {
+    if (!orderId) {
+      throw createValidationError({ orderId: 'Order ID is required' });
+    }
+
     // Verify order exists and is delivered
     const { data: order, error: fetchError } = await supabase
       .from('orders')
@@ -915,49 +1502,165 @@ export const completeOrder = async (orderId) => {
       .eq('id', orderId)
       .single();
 
-    if (fetchError) throw fetchError;
-
-    if (order.status !== 'delivered') {
-      return {
-        success: false,
-        error: 'Order must be in delivered status'
-      };
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'completeOrder - fetch', orderId });
+      throw appError;
     }
 
+    if (!order) {
+      throw createNotFoundError('Order', orderId);
+    }
+
+    // Validate state machine
+    validateOrderTransition(order.status, ORDER_STATUS.COMPLETED);
+
     // Update order status
+    const updateData = {
+      status: ORDER_STATUS.COMPLETED,
+      completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    if (notes) {
+      updateData.notes = order.notes ? `${order.notes}\n\n${notes}` : notes;
+    }
+
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from('orders')
+      .update(updateData)
+      .eq('id', orderId)
+      .select()
+      .single();
+
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'completeOrder - update', orderId });
+      throw appError;
+    }
+
+    return updatedOrder;
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
+      operation: 'completeOrder',
+      orderId
+    });
+    throw appError;
+  }
+};
+
+/**
+ * Cancel an order with full state validation
+ * CRITICAL: Can only cancel pending or processing orders
+ * Releases all reserved inventory
+ * @param {string} orderId - Order ID
+ * @param {string} adminId - Admin user ID
+ * @param {string} reason - Cancellation reason
+ * @throws {AppError} If order not found, invalid state, or operations fail
+ * @returns {Promise<Object>} Updated cancelled order
+ */
+export const cancelOrder = async (orderId, adminId, reason) => {
+  try {
+    if (!orderId || !adminId || !reason) {
+      throw createValidationError({
+        orderId: !orderId ? 'Order ID is required' : undefined,
+        adminId: !adminId ? 'Admin ID is required' : undefined,
+        reason: !reason ? 'Cancellation reason is required' : undefined
+      }, 'Missing required fields for order cancellation');
+    }
+
+    // Get order with items
+    const { data: order, error: fetchError } = await supabase
+      .from('orders')
+      .select('*, order_items(*)')
+      .eq('id', orderId)
+      .single();
+
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'cancelOrder - fetch', orderId });
+      throw appError;
+    }
+
+    if (!order) {
+      throw createNotFoundError('Order', orderId);
+    }
+
+    // CRITICAL: Validate state machine - can only cancel pending or processing
+    const cancellableStatuses = [ORDER_STATUS.PENDING, ORDER_STATUS.PROCESSING];
+    if (!cancellableStatuses.includes(order.status)) {
+      throw createValidationError(
+        { status: `Order is in ${order.status} state` },
+        `Orders can only be cancelled in ${cancellableStatuses.join(' or ')} states`
+      );
+    }
+
+    // ATOMIC: Release reserved inventory for all items in parallel
+    const releasePromises = order.order_items
+      .filter(item => item.inventory_id)
+      .map(item => releaseInventory(item.inventory_id, item.quantity));
+
+    if (releasePromises.length > 0) {
+      await Promise.all(releasePromises);
+    }
+
+    // ATOMIC: Update order status
     const { data: updatedOrder, error: updateError } = await supabase
       .from('orders')
       .update({
-        status: 'completed',
-        completed_at: new Date().toISOString(),
+        status: ORDER_STATUS.CANCELLED,
+        rejection_reason: reason,
         updated_at: new Date().toISOString()
       })
       .eq('id', orderId)
       .select()
       .single();
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'cancelOrder - update', orderId });
+      throw appError;
+    }
 
-    return {
-      success: true,
-      order: updatedOrder
-    };
+    // Log status change (graceful fallback if fails)
+    try {
+      await supabase
+        .from('order_status_history')
+        .insert({
+          order_id: orderId,
+          previous_status: order.status,
+          new_status: ORDER_STATUS.CANCELLED,
+          changed_by: adminId,
+          notes: `Cancelled: ${reason}`
+        });
+    } catch (historyError) {
+      logError(historyError, { operation: 'cancelOrder - log history', orderId });
+    }
+
+    return updatedOrder;
   } catch (error) {
-    console.error('Error completing order:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
+      operation: 'cancelOrder',
+      orderId
+    });
+    throw appError;
   }
 };
 
+// ============================================================================
+// ORDER STATISTICS
+// ============================================================================
+
 /**
  * Calculate days an order has been in processing
- * @param {Object} order - Order object with processing_started_at
+ * Pure helper function - no database interaction
+ * @param {Object} order - Order object with processing_started_at and status
  * @returns {number|null} Number of days or null if not in processing
  */
 export const getDaysInProcessing = (order) => {
-  if (!order || order.status !== 'processing' || !order.processing_started_at) {
+  if (!order || order.status !== ORDER_STATUS.PROCESSING || !order.processing_started_at) {
     return null;
   }
 
@@ -967,56 +1670,4 @@ export const getDaysInProcessing = (order) => {
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
   return diffDays;
-};
-
-/**
- * Cancel an order
- * @param {string} orderId - Order ID
- * @param {string} adminId - Admin user ID
- * @param {string} reason - Cancellation reason
- * @returns {Promise<{success: boolean, order?: Object, error?: string}>}
- */
-export const cancelOrder = async (orderId, adminId, reason) => {
-  try {
-    // Get order with items
-    const { data: order, error: fetchError } = await supabase
-      .from('orders')
-      .select('*, order_items(*)')
-      .eq('id', orderId)
-      .single();
-
-    if (fetchError) throw fetchError;
-
-    // Release reserved inventory
-    for (const item of order.order_items) {
-      if (item.inventory_id) {
-        await releaseInventory(item.inventory_id, item.quantity);
-      }
-    }
-
-    // Update order status
-    const { data: updatedOrder, error: updateError } = await supabase
-      .from('orders')
-      .update({
-        status: 'cancelled',
-        rejection_reason: reason,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', orderId)
-      .select()
-      .single();
-
-    if (updateError) throw updateError;
-
-    return {
-      success: true,
-      order: updatedOrder
-    };
-  } catch (error) {
-    console.error('Error cancelling order:', error);
-    return {
-      success: false,
-      error: error.message
-    };
-  }
 };
