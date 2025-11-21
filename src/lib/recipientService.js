@@ -1,41 +1,71 @@
 /**
  * Recipient Service
  * Gestión de destinatarios y sus direcciones
+ * User-owned data with authorization checks and bank account management
  */
 
 import { supabase } from '@/lib/supabase';
+import {
+  handleError, logError, createValidationError,
+  createNotFoundError, createPermissionError, parseSupabaseError, ERROR_CODES
+} from './errorHandler';
 
 // ============================================================================
 // DESTINATARIOS
 // ============================================================================
 
 /**
- * Obtener todos los destinatarios del usuario
+ * Get all recipients for authenticated user
+ * @returns {Promise<Array>} Array of recipient objects with addresses
+ * @throws {AppError} AUTH_REQUIRED if not authenticated, DB_ERROR on failure
  */
 export const getMyRecipients = async () => {
   try {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      throw new Error('Not authenticated');
+    }
+
     const { data, error } = await supabase
       .from('recipients')
       .select(`
         *,
         addresses:recipient_addresses(*)
       `)
+      .eq('user_id', user.id)
       .order('is_favorite', { ascending: false })
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
-    return { success: true, recipients: data || [] };
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return data || [];
   } catch (error) {
-    console.error('Error fetching recipients:', error);
-    return { success: false, recipients: [], error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getMyRecipients' });
+    logError(appError, { operation: 'getMyRecipients' });
+    throw appError;
   }
 };
 
 /**
- * Obtener un destinatario por ID
+ * Get recipient by ID with authorization check
+ * @param {string} recipientId - Recipient UUID
+ * @returns {Promise<Object>} Recipient object with addresses
+ * @throws {AppError} NOT_FOUND if recipient not found, FORBIDDEN if not owner, DB_ERROR on failure
  */
 export const getRecipientById = async (recipientId) => {
   try {
+    if (!recipientId) {
+      throw createValidationError({ recipientId: 'Recipient ID required' }, 'Missing recipient ID');
+    }
+
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      throw new Error('Not authenticated');
+    }
+
     const { data, error } = await supabase
       .from('recipients')
       .select(`
@@ -45,22 +75,47 @@ export const getRecipientById = async (recipientId) => {
       .eq('id', recipientId)
       .single();
 
-    if (error) throw error;
-    return { success: true, recipient: data };
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw createNotFoundError('Recipient', recipientId);
+      }
+      throw parseSupabaseError(error);
+    }
+
+    // Authorization check: user can only access their own recipients
+    if (data.user_id !== user.id) {
+      throw createPermissionError('access this recipient', 'owner');
+    }
+
+    return data;
   } catch (error) {
-    console.error('Error fetching recipient:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'getRecipientById',
+      recipientId
+    });
+    logError(appError, { operation: 'getRecipientById', recipientId });
+    throw appError;
   }
 };
 
 /**
- * Crear nuevo destinatario
+ * Create new recipient for authenticated user
+ * @param {Object} recipientData - Recipient data
+ * @returns {Promise<Object>} Created recipient object
+ * @throws {AppError} AUTH_REQUIRED if not authenticated, VALIDATION_FAILED if invalid data, DB_ERROR on failure
  */
 export const createRecipient = async (recipientData) => {
   try {
     const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) throw userError;
-    if (!user) throw new Error('Usuario no autenticado');
+    if (userError || !user) {
+      throw new Error('Not authenticated');
+    }
+
+    // Basic validation
+    if (!recipientData || typeof recipientData !== 'object') {
+      throw createValidationError({ recipientData: 'Valid recipient data required' }, 'Invalid recipient data');
+    }
 
     const { data, error } = await supabase
       .from('recipients')
@@ -71,19 +126,54 @@ export const createRecipient = async (recipientData) => {
       .select()
       .single();
 
-    if (error) throw error;
-    return { success: true, recipient: data };
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return data;
   } catch (error) {
-    console.error('Error creating recipient:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'createRecipient'
+    });
+    logError(appError, { operation: 'createRecipient' });
+    throw appError;
   }
 };
 
 /**
- * Actualizar destinatario
+ * Update recipient with authorization check
+ * @param {string} recipientId - Recipient UUID
+ * @param {Object} updates - Fields to update
+ * @returns {Promise<Object>} Updated recipient object
+ * @throws {AppError} NOT_FOUND if recipient not found, FORBIDDEN if not owner, DB_ERROR on failure
  */
 export const updateRecipient = async (recipientId, updates) => {
   try {
+    if (!recipientId) {
+      throw createValidationError({ recipientId: 'Recipient ID required' }, 'Missing recipient ID');
+    }
+
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      throw new Error('Not authenticated');
+    }
+
+    // Verify ownership before updating
+    const { data: recipient, error: checkError } = await supabase
+      .from('recipients')
+      .select('user_id')
+      .eq('id', recipientId)
+      .single();
+
+    if (checkError || !recipient) {
+      throw createNotFoundError('Recipient', recipientId);
+    }
+
+    if (recipient.user_id !== user.id) {
+      throw createPermissionError('update this recipient', 'owner');
+    }
+
     const { data, error } = await supabase
       .from('recipients')
       .update(updates)
@@ -91,29 +181,72 @@ export const updateRecipient = async (recipientId, updates) => {
       .select()
       .single();
 
-    if (error) throw error;
-    return { success: true, recipient: data };
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return data;
   } catch (error) {
-    console.error('Error updating recipient:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'updateRecipient',
+      recipientId
+    });
+    logError(appError, { operation: 'updateRecipient', recipientId });
+    throw appError;
   }
 };
 
 /**
- * Eliminar destinatario
+ * Delete recipient with authorization check
+ * @param {string} recipientId - Recipient UUID
+ * @returns {Promise<boolean>} True if successful
+ * @throws {AppError} NOT_FOUND if recipient not found, FORBIDDEN if not owner, DB_ERROR on failure
  */
 export const deleteRecipient = async (recipientId) => {
   try {
+    if (!recipientId) {
+      throw createValidationError({ recipientId: 'Recipient ID required' }, 'Missing recipient ID');
+    }
+
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      throw new Error('Not authenticated');
+    }
+
+    // Verify ownership before deleting
+    const { data: recipient, error: checkError } = await supabase
+      .from('recipients')
+      .select('user_id')
+      .eq('id', recipientId)
+      .single();
+
+    if (checkError || !recipient) {
+      throw createNotFoundError('Recipient', recipientId);
+    }
+
+    if (recipient.user_id !== user.id) {
+      throw createPermissionError('delete this recipient', 'owner');
+    }
+
     const { error } = await supabase
       .from('recipients')
       .delete()
       .eq('id', recipientId);
 
-    if (error) throw error;
-    return { success: true };
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return true;
   } catch (error) {
-    console.error('Error deleting recipient:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'deleteRecipient',
+      recipientId
+    });
+    logError(appError, { operation: 'deleteRecipient', recipientId });
+    throw appError;
   }
 };
 
@@ -122,16 +255,36 @@ export const deleteRecipient = async (recipientId) => {
 // ============================================================================
 
 /**
- * Agregar dirección a destinatario
+ * Add address to recipient with default address management
+ * @param {Object} addressData - Address data
+ * @param {string} addressData.recipient_id - Recipient UUID (required)
+ * @param {boolean} [addressData.is_default] - Mark as default address
+ * @returns {Promise<Object>} Created address object
+ * @throws {AppError} VALIDATION_FAILED if recipient_id missing, DB_ERROR on failure
  */
 export const addRecipientAddress = async (addressData) => {
   try {
-    // Si es dirección por defecto, desmarcar las demás
+    if (!addressData || !addressData.recipient_id) {
+      throw createValidationError(
+        { recipient_id: 'Recipient ID is required' },
+        'Missing recipient ID'
+      );
+    }
+
+    // If marking as default, unset others
     if (addressData.is_default) {
-      await supabase
+      const { error: updateError } = await supabase
         .from('recipient_addresses')
         .update({ is_default: false })
         .eq('recipient_id', addressData.recipient_id);
+
+      if (updateError) {
+        logError(parseSupabaseError(updateError), {
+          operation: 'addRecipientAddress - unset other defaults',
+          recipientId: addressData.recipient_id
+        });
+        // Continue despite error in non-critical operation
+      }
     }
 
     const { data, error } = await supabase
@@ -140,32 +293,56 @@ export const addRecipientAddress = async (addressData) => {
       .select()
       .single();
 
-    if (error) throw error;
-    return { success: true, address: data };
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return data;
   } catch (error) {
-    console.error('Error adding address:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'addRecipientAddress',
+      recipientId: addressData?.recipient_id
+    });
+    logError(appError, { operation: 'addRecipientAddress', recipientId: addressData?.recipient_id });
+    throw appError;
   }
 };
 
 /**
- * Actualizar dirección
+ * Update recipient address with default address management
+ * @param {string} addressId - Address UUID
+ * @param {Object} updates - Fields to update
+ * @returns {Promise<Object>} Updated address object
+ * @throws {AppError} NOT_FOUND if address not found, DB_ERROR on failure
  */
 export const updateRecipientAddress = async (addressId, updates) => {
   try {
-    // Si se marca como default, desmarcar las demás
+    if (!addressId) {
+      throw createValidationError({ addressId: 'Address ID required' }, 'Missing address ID');
+    }
+
+    // If marking as default, unset others
     if (updates.is_default) {
-      const { data: address } = await supabase
+      const { data: address, error: fetchError } = await supabase
         .from('recipient_addresses')
         .select('recipient_id')
         .eq('id', addressId)
         .single();
 
       if (address) {
-        await supabase
+        const { error: updateError } = await supabase
           .from('recipient_addresses')
           .update({ is_default: false })
           .eq('recipient_id', address.recipient_id);
+
+        if (updateError) {
+          logError(parseSupabaseError(updateError), {
+            operation: 'updateRecipientAddress - unset other defaults',
+            recipientId: address.recipient_id
+          });
+          // Continue despite error in non-critical operation
+        }
       }
     }
 
@@ -176,29 +353,55 @@ export const updateRecipientAddress = async (addressId, updates) => {
       .select()
       .single();
 
-    if (error) throw error;
-    return { success: true, address: data };
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw createNotFoundError('Address', addressId);
+      }
+      throw parseSupabaseError(error);
+    }
+
+    return data;
   } catch (error) {
-    console.error('Error updating address:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'updateRecipientAddress',
+      addressId
+    });
+    logError(appError, { operation: 'updateRecipientAddress', addressId });
+    throw appError;
   }
 };
 
 /**
- * Eliminar dirección
+ * Delete recipient address
+ * @param {string} addressId - Address UUID
+ * @returns {Promise<boolean>} True if successful
+ * @throws {AppError} NOT_FOUND if address not found, DB_ERROR on failure
  */
 export const deleteRecipientAddress = async (addressId) => {
   try {
+    if (!addressId) {
+      throw createValidationError({ addressId: 'Address ID required' }, 'Missing address ID');
+    }
+
     const { error } = await supabase
       .from('recipient_addresses')
       .delete()
       .eq('id', addressId);
 
-    if (error) throw error;
-    return { success: true };
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return true;
   } catch (error) {
-    console.error('Error deleting address:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'deleteRecipientAddress',
+      addressId
+    });
+    logError(appError, { operation: 'deleteRecipientAddress', addressId });
+    throw appError;
   }
 };
 
@@ -207,7 +410,9 @@ export const deleteRecipientAddress = async (addressId) => {
 // ============================================================================
 
 /**
- * Obtener todas las provincias
+ * Get all Cuban provinces with delivery available
+ * @returns {Promise<Array>} Array of province names sorted alphabetically
+ * @throws {AppError} DB_ERROR if query fails
  */
 export const getCubanProvinces = async () => {
   try {
@@ -216,22 +421,33 @@ export const getCubanProvinces = async () => {
       .select('province')
       .eq('delivery_available', true);
 
-    if (error) throw error;
+    if (error) {
+      throw parseSupabaseError(error);
+    }
 
-    // Eliminar duplicados
-    const provinces = [...new Set(data.map(item => item.province))].sort();
-    return { success: true, provinces };
+    // Remove duplicates and sort
+    const provinces = [...new Set((data || []).map(item => item.province))].sort();
+    return provinces;
   } catch (error) {
-    console.error('Error fetching provinces:', error);
-    return { success: false, provinces: [], error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getCubanProvinces' });
+    logError(appError, { operation: 'getCubanProvinces' });
+    throw appError;
   }
 };
 
 /**
- * Obtener municipios por provincia
+ * Get municipalities by province with delivery available
+ * @param {string} province - Province name
+ * @returns {Promise<Array>} Array of municipality objects sorted by name
+ * @throws {AppError} DB_ERROR if query fails
  */
 export const getMunicipalitiesByProvince = async (province) => {
   try {
+    if (!province) {
+      throw createValidationError({ province: 'Province name required' }, 'Missing province');
+    }
+
     const { data, error } = await supabase
       .from('cuban_municipalities')
       .select('*')
@@ -239,11 +455,19 @@ export const getMunicipalitiesByProvince = async (province) => {
       .eq('delivery_available', true)
       .order('municipality');
 
-    if (error) throw error;
-    return { success: true, municipalities: data || [] };
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return data || [];
   } catch (error) {
-    console.error('Error fetching municipalities:', error);
-    return { success: false, municipalities: [], error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'getMunicipalitiesByProvince',
+      province
+    });
+    logError(appError, { operation: 'getMunicipalitiesByProvince', province });
+    throw appError;
   }
 };
 
@@ -252,61 +476,57 @@ export const getMunicipalitiesByProvince = async (province) => {
 // ============================================================================
 
 /**
- * Create a bank account for a user
- * @param {string} userId - User ID
- * @param {Object} bankData - { bankId, accountTypeId, currencyId, accountNumber, accountHolderName }
- * @returns {Object} { success, data, error }
+ * Create bank account for user with automatic currency/account type detection
+ * Supports currency code → UUID auto-conversion
+ * Supports automatic account type selection based on currency
+ *
+ * @param {string} userId - User UUID
+ * @param {Object} bankData - Bank account data
+ * @param {string} bankData.bankId - Bank UUID (required)
+ * @param {string} [bankData.accountTypeId] - Account type UUID (auto-detect if null)
+ * @param {string} bankData.currencyId - Currency UUID or code (required)
+ * @param {string} bankData.accountNumber - Full account number (hashed for security)
+ * @param {string} bankData.accountHolderName - Account holder name
+ * @returns {Promise<Object>} Created bank account object
+ * @throws {AppError} VALIDATION_FAILED if required fields missing, DB_ERROR on failure
  */
 export const createBankAccount = async (userId, bankData) => {
   try {
     const { bankId, accountTypeId, currencyId, accountNumber, accountHolderName } = bankData;
 
-    // Validate basic inputs
+    // Validate required inputs
     if (!userId || !bankId || !currencyId || !accountNumber || !accountHolderName) {
-      return { success: false, error: 'Missing required fields' };
+      throw createValidationError({
+        userId: !userId ? 'User ID required' : null,
+        bankId: !bankId ? 'Bank ID required' : null,
+        currencyId: !currencyId ? 'Currency ID required' : null,
+        accountNumber: !accountNumber ? 'Account number required' : null,
+        accountHolderName: !accountHolderName ? 'Account holder name required' : null
+      }, 'Missing required bank account fields');
     }
-
-    // ============================================================================
-    // CONVERSIÓN AUTOMÁTICA: currencyId (code → UUID) y accountTypeId (auto-detect)
-    // ============================================================================
 
     let finalCurrencyId = currencyId;
     let finalAccountTypeId = accountTypeId;
 
-    // Si currencyId es un código (string como 'USD'), convertir a UUID
+    // Auto-convert currency code (e.g., 'USD') to UUID if needed
     if (typeof currencyId === 'string' && currencyId.length <= 4) {
-      console.log(`🔄 Converting currency code '${currencyId}' to UUID...`);
       const { getCurrencyByCode } = await import('@/lib/bankService');
-      const currencyResult = await getCurrencyByCode(currencyId);
-
-      if (!currencyResult.success) {
-        return { success: false, error: `Currency '${currencyId}' not found: ${currencyResult.error}` };
-      }
-
-      finalCurrencyId = currencyResult.data.id;
-      console.log(`✅ Currency UUID: ${finalCurrencyId}`);
+      const currencyData = await getCurrencyByCode(currencyId);
+      finalCurrencyId = currencyData.id;
     }
 
-    // Si accountTypeId es null/undefined, obtener automáticamente según currency
+    // Auto-detect account type based on currency if not provided
     if (!accountTypeId) {
-      console.log(`🔄 Auto-detecting account type for currency: ${currencyId}...`);
       const { getDefaultAccountTypeForCurrency } = await import('@/lib/bankService');
-      const accountTypeResult = await getDefaultAccountTypeForCurrency(currencyId);
-
-      if (!accountTypeResult.success) {
-        return { success: false, error: `No account type found for currency '${currencyId}': ${accountTypeResult.error}` };
-      }
-
-      finalAccountTypeId = accountTypeResult.data.id;
-      console.log(`✅ Auto-selected account type: ${accountTypeResult.data.name} (${finalAccountTypeId})`);
+      const accountTypeData = await getDefaultAccountTypeForCurrency(currencyId);
+      finalAccountTypeId = accountTypeData.id;
     }
 
-    // Validar que ahora tengamos UUIDs
     if (!finalAccountTypeId) {
-      return { success: false, error: 'Account type could not be determined' };
+      throw new Error('Account type could not be determined');
     }
 
-    // Hash account number for security (last 4 for display) using Web Crypto API
+    // Hash account number for security
     const encoder = new TextEncoder();
     const dataToHash = encoder.encode(accountNumber + userId);
     const hashBuffer = await crypto.subtle.digest('SHA-256', dataToHash);
@@ -314,8 +534,6 @@ export const createBankAccount = async (userId, bankData) => {
     const accountNumberHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     const accountNumberLast4 = accountNumber.slice(-4);
 
-    // Insert bank account (hash + last 4 digits only for security)
-    // NOTE: account_number_full requires migration 20250128000002 to be executed first
     const { data, error } = await supabase
       .from('bank_accounts')
       .insert([
@@ -333,22 +551,35 @@ export const createBankAccount = async (userId, bankData) => {
       .select()
       .single();
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return data;
   } catch (error) {
-    console.error('Error creating bank account:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'createBankAccount',
+      userId
+    });
+    logError(appError, { operation: 'createBankAccount', userId });
+    throw appError;
   }
 };
 
 /**
- * Get bank accounts for a user
- * @param {string} userId - User ID
- * @param {boolean} activeOnly - Filter only active accounts
- * @returns {Object} { success, data, error }
+ * Get bank accounts for user with optional filtering
+ * @param {string} userId - User UUID
+ * @param {boolean} [activeOnly=true] - Return only active accounts
+ * @returns {Promise<Array>} Array of bank account objects with relationships
+ * @throws {AppError} DB_ERROR if query fails
  */
 export const getBankAccountsByUser = async (userId, activeOnly = true) => {
   try {
+    if (!userId) {
+      throw createValidationError({ userId: 'User ID required' }, 'Missing user ID');
+    }
+
     let query = supabase
       .from('bank_accounts')
       .select(`
@@ -369,22 +600,35 @@ export const getBankAccountsByUser = async (userId, activeOnly = true) => {
 
     const { data, error } = await query.order('created_at', { ascending: false });
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return data || [];
   } catch (error) {
-    console.error('Error fetching bank accounts:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'getBankAccountsByUser',
+      userId
+    });
+    logError(appError, { operation: 'getBankAccountsByUser', userId });
+    throw appError;
   }
 };
 
 /**
- * Update bank account
- * @param {string} accountId - Bank account ID
- * @param {Object} updates - { isActive, accountHolderName }
- * @returns {Object} { success, data, error }
+ * Update bank account with timestamp management
+ * @param {string} accountId - Bank account UUID
+ * @param {Object} updates - Fields to update
+ * @returns {Promise<Object>} Updated bank account object
+ * @throws {AppError} NOT_FOUND if account not found, DB_ERROR on failure
  */
 export const updateBankAccount = async (accountId, updates) => {
   try {
+    if (!accountId) {
+      throw createValidationError({ accountId: 'Account ID required' }, 'Missing account ID');
+    }
+
     const { data, error } = await supabase
       .from('bank_accounts')
       .update({
@@ -395,22 +639,41 @@ export const updateBankAccount = async (accountId, updates) => {
       .select()
       .single();
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw createNotFoundError('Bank account', accountId);
+      }
+      throw parseSupabaseError(error);
+    }
+
+    return data;
   } catch (error) {
-    console.error('Error updating bank account:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'updateBankAccount',
+      accountId
+    });
+    logError(appError, { operation: 'updateBankAccount', accountId });
+    throw appError;
   }
 };
 
 /**
- * Soft delete a bank account
- * @param {string} accountId - Bank account ID
- * @param {string} deletedByUserId - User deleting the account
- * @returns {Object} { success, data, error }
+ * Soft delete bank account with deletion tracking
+ * @param {string} accountId - Bank account UUID
+ * @param {string} deletedByUserId - User UUID performing deletion
+ * @returns {Promise<Object>} Updated bank account object
+ * @throws {AppError} NOT_FOUND if account not found, DB_ERROR on failure
  */
 export const deleteBankAccount = async (accountId, deletedByUserId) => {
   try {
+    if (!accountId || !deletedByUserId) {
+      throw createValidationError({
+        accountId: !accountId ? 'Account ID required' : null,
+        deletedByUserId: !deletedByUserId ? 'Deleted by user ID required' : null
+      }, 'Missing deletion parameters');
+    }
+
     const { data, error } = await supabase
       .from('bank_accounts')
       .update({
@@ -423,29 +686,56 @@ export const deleteBankAccount = async (accountId, deletedByUserId) => {
       .select()
       .single();
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw createNotFoundError('Bank account', accountId);
+      }
+      throw parseSupabaseError(error);
+    }
+
+    return data;
   } catch (error) {
-    console.error('Error deleting bank account:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'deleteBankAccount',
+      accountId
+    });
+    logError(appError, { operation: 'deleteBankAccount', accountId });
+    throw appError;
   }
 };
 
 /**
- * Link a bank account to a recipient
- * @param {string} recipientId - Recipient ID
- * @param {string} bankAccountId - Bank account ID
- * @param {boolean} isDefault - Set as default account
- * @returns {Object} { success, data, error }
+ * Link bank account to recipient with default account management
+ * @param {string} recipientId - Recipient UUID
+ * @param {string} bankAccountId - Bank account UUID
+ * @param {boolean} [isDefault=false] - Mark as default account for recipient
+ * @returns {Promise<Object>} Created link object
+ * @throws {AppError} VALIDATION_FAILED if IDs missing, DB_ERROR on failure
  */
 export const linkBankAccountToRecipient = async (recipientId, bankAccountId, isDefault = false) => {
   try {
+    if (!recipientId || !bankAccountId) {
+      throw createValidationError({
+        recipientId: !recipientId ? 'Recipient ID required' : null,
+        bankAccountId: !bankAccountId ? 'Bank account ID required' : null
+      }, 'Missing link parameters');
+    }
+
     // If setting as default, unset other defaults
     if (isDefault) {
-      await supabase
+      const { error: updateError } = await supabase
         .from('recipient_bank_accounts')
         .update({ is_default: false })
         .eq('recipient_id', recipientId);
+
+      if (updateError) {
+        logError(parseSupabaseError(updateError), {
+          operation: 'linkBankAccountToRecipient - unset other defaults',
+          recipientId
+        });
+        // Continue despite error in non-critical operation
+      }
     }
 
     const { data, error } = await supabase
@@ -461,21 +751,39 @@ export const linkBankAccountToRecipient = async (recipientId, bankAccountId, isD
       .select()
       .single();
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return data;
   } catch (error) {
-    console.error('Error linking bank account to recipient:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'linkBankAccountToRecipient',
+      recipientId,
+      bankAccountId
+    });
+    logError(appError, {
+      operation: 'linkBankAccountToRecipient',
+      recipientId,
+      bankAccountId
+    });
+    throw appError;
   }
 };
 
 /**
- * Get bank accounts for a recipient
- * @param {string} recipientId - Recipient ID
- * @returns {Object} { success, data, error }
+ * Get bank accounts for recipient with full relationships
+ * @param {string} recipientId - Recipient UUID
+ * @returns {Promise<Array>} Array of linked bank accounts with bank/currency details
+ * @throws {AppError} DB_ERROR if query fails
  */
 export const getBankAccountsForRecipient = async (recipientId) => {
   try {
+    if (!recipientId) {
+      throw createValidationError({ recipientId: 'Recipient ID required' }, 'Missing recipient ID');
+    }
+
     const { data, error } = await supabase
       .from('recipient_bank_accounts')
       .select(`
@@ -495,11 +803,19 @@ export const getBankAccountsForRecipient = async (recipientId) => {
       .eq('recipient_id', recipientId)
       .eq('is_active', true);
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return data || [];
   } catch (error) {
-    console.error('Error fetching recipient bank accounts:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'getBankAccountsForRecipient',
+      recipientId
+    });
+    logError(appError, { operation: 'getBankAccountsForRecipient', recipientId });
+    throw appError;
   }
 };
 
