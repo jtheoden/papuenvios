@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Shield, UserCheck, UserX, RefreshCw, Search, Trash2, AlertCircle } from 'lucide-react';
+import { Users, Shield, UserCheck, UserX, Trash2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { DataTable } from '@/components/DataTable';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -156,11 +157,6 @@ const UserManagement = () => {
 
   const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(user?.email);
 
-  const filteredUsers = users.filter(u =>
-    u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   const getRoleBadgeColor = (role) => {
     switch (role) {
       case 'super_admin': return 'bg-purple-100 text-purple-800';
@@ -168,6 +164,131 @@ const UserManagement = () => {
       default: return 'bg-gray-100 text-gray-800';
     }
   };
+
+  // DataTable columns configuration
+  const columns = [
+    {
+      key: 'email',
+      label: t('users.table.email'),
+      width: '25%',
+      render: (value, row) => (
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white text-xs font-semibold">
+            {value?.charAt(0).toUpperCase()}
+          </div>
+          <span className="text-sm">{value}</span>
+        </div>
+      )
+    },
+    {
+      key: 'full_name',
+      label: t('users.table.name'),
+      width: '20%',
+      render: (value) => <span className="text-sm">{value || '-'}</span>
+    },
+    {
+      key: 'role',
+      label: t('users.table.role'),
+      width: '20%',
+      render: (value, row) => {
+        const isSuperAdminUser = SUPER_ADMIN_EMAILS.includes(row.email);
+        if (isSuperAdminUser) {
+          return (
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+              <Shield className="w-3 h-3 mr-1" />
+              {t('users.superAdmin')}
+            </span>
+          );
+        }
+        if (!isSuperAdmin) {
+          return (
+            <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${getRoleBadgeColor(value)}`}>
+              {t(`users.roles.${value || 'user'}`)}
+            </span>
+          );
+        }
+        return (
+          <select
+            value={value || 'user'}
+            onChange={(e) => handleRoleChange(row.id, e.target.value)}
+            className={`px-3 py-1 rounded-full text-xs font-medium border-0 focus:ring-2 focus:ring-blue-500 ${getRoleBadgeColor(value)}`}
+          >
+            <option value="user">{t('users.roles.user')}</option>
+            <option value="admin">{t('users.roles.admin')}</option>
+          </select>
+        );
+      }
+    },
+    {
+      key: 'is_enabled',
+      label: t('users.table.status'),
+      width: '15%',
+      render: (value) => (
+        <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
+          value ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+        }`}>
+          {value ? t('users.table.active') : t('users.table.inactive')}
+        </span>
+      )
+    },
+    {
+      key: 'id',
+      label: t('users.table.actions'),
+      width: '20%',
+      render: (value, row) => {
+        const isSuperAdminUser = SUPER_ADMIN_EMAILS.includes(row.email);
+        if (isSuperAdminUser) {
+          return (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400 italic flex items-center gap-1">
+                <Shield className="w-3 h-3" />
+                {t('users.protected')}
+              </span>
+            </div>
+          );
+        }
+        if (!isSuperAdmin) return null;
+        return (
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              variant={row.is_enabled ? "outline" : "default"}
+              size="sm"
+              onClick={() => handleToggleUserStatus(row.id, !row.is_enabled)}
+              title={row.is_enabled ? t('users.disableUser') : t('users.enableUser')}
+            >
+              {row.is_enabled ? (
+                <>
+                  <UserX className="w-4 h-4" />
+                  {t('users.disable')}
+                </>
+              ) : (
+                <>
+                  <UserCheck className="w-4 h-4" />
+                  {t('users.enable')}
+                </>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleDeleteUser(row.id)}
+              style={{
+                backgroundColor: visualSettings.destructiveBgColor || '#dc2626',
+                color: visualSettings.destructiveTextColor || '#ffffff',
+                borderColor: visualSettings.destructiveBgColor || '#dc2626'
+              }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = visualSettings.destructiveHoverBgColor || '#b91c1c'}
+              onMouseLeave={e => e.currentTarget.style.backgroundColor = visualSettings.destructiveBgColor || '#dc2626'}
+              title={t('users.deleteUser')}
+            >
+              <Trash2 className="w-4 h-4" />
+              {t('users.delete')}
+            </Button>
+          </div>
+        );
+      }
+    }
+  ];
 
   return (
     <div className="min-h-screen py-8 px-4">
@@ -178,220 +299,45 @@ const UserManagement = () => {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-4xl font-bold mb-2" style={getHeadingStyle(visualSettings)}>
-                {t('users.management')}
-              </h1>
-              <p className="text-gray-600">
-                {t('users.managementDescription')}
-              </p>
-            </div>
-            <Button
-              onClick={fetchUsers}
-              disabled={loading}
-              variant="outline"
-              size="sm"
-              className="flex items-center gap-2"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              {t('users.refresh')}
-            </Button>
-          </div>
+          <h1 className="text-4xl font-bold mb-2" style={getHeadingStyle(visualSettings)}>
+            {t('users.management')}
+          </h1>
+          <p className="text-gray-600 mb-4">
+            {t('users.managementDescription')}
+          </p>
 
-          {/* Search and Stats */}
-          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-            <div className="relative w-full sm:w-96">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder={`${t('users.table.email')}, ${t('users.table.name')}...`}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+          {/* Stats */}
+          <div className="flex gap-4 text-sm">
+            <div className="px-4 py-2 glass-effect rounded-xl">
+              <span className="text-gray-600">{t('users.total')}:</span>
+              <span className="ml-2 font-bold">{users.length}</span>
             </div>
-
-            <div className="flex gap-4 text-sm">
-              <div className="px-4 py-2 glass-effect rounded-xl">
-                <span className="text-gray-600">{t('users.total')}:</span>
-                <span className="ml-2 font-bold">{users.length}</span>
-              </div>
-              <div className="px-4 py-2 glass-effect rounded-xl">
-                <span className="text-gray-600">{t('users.table.active')}:</span>
-                <span className="ml-2 font-bold text-green-600">
-                  {users.filter(u => u.is_enabled).length}
-                </span>
-              </div>
+            <div className="px-4 py-2 glass-effect rounded-xl">
+              <span className="text-gray-600">{t('users.table.active')}:</span>
+              <span className="ml-2 font-bold text-green-600">
+                {users.filter(u => u.is_enabled).length}
+              </span>
             </div>
           </div>
         </motion.div>
 
-        {/* Table */}
+        {/* DataTable Component */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="glass-effect rounded-2xl overflow-hidden"
         >
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    {t('users.table.email')}
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    {t('users.table.name')}
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    {t('users.table.role')}
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    {t('users.table.status')}
-                  </th>
-                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    {t('users.table.actions')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {loading ? (
-                  <tr>
-                    <td colSpan="5" className="px-6 py-12 text-center">
-                      <RefreshCw className="w-8 h-8 animate-spin mx-auto text-gray-400 mb-2" />
-                      <p className="text-gray-500">{t('users.loadingUsers')}</p>
-                    </td>
-                  </tr>
-                ) : filteredUsers.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" className="px-6 py-12 text-center">
-                      <Users className="w-12 h-12 mx-auto text-gray-300 mb-2" />
-                      <p className="text-gray-500">
-                        {searchTerm ? t('users.noUsersFound') : t('users.noUsers')}
-                      </p>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredUsers.map((userItem, index) => {
-                    const isSuperAdminUser = SUPER_ADMIN_EMAILS.includes(userItem.email);
-                    return (
-                      <motion.tr
-                        key={userItem.id}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        className="hover:bg-gray-50"
-                      >
-                        <td className="px-6 py-4">
-                          <div className="flex items-center">
-                            <div className="flex-shrink-0 h-10 w-10">
-                              <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white font-semibold">
-                                {userItem.email?.charAt(0).toUpperCase()}
-                              </div>
-                            </div>
-                            <div className="ml-4">
-                              <div className="text-sm font-medium text-gray-900">
-                                {userItem.email}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-gray-900">
-                            {userItem.full_name || '-'}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          {isSuperAdminUser ? (
-                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                              <Shield className="w-3 h-3 mr-1" />
-                              {t('users.superAdmin')}
-                            </span>
-                          ) : isSuperAdmin ? (
-                            <select
-                              value={userItem.role || 'user'}
-                              onChange={(e) => handleRoleChange(userItem.id, e.target.value)}
-                              className={`px-3 py-1 rounded-full text-xs font-medium border-0 focus:ring-2 focus:ring-blue-500 ${getRoleBadgeColor(userItem.role)}`}
-                            >
-                              <option value="user">{t('users.roles.user')}</option>
-                              <option value="admin">{t('users.roles.admin')}</option>
-                            </select>
-                          ) : (
-                            <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${getRoleBadgeColor(userItem.role)}`}>
-                              {t(`users.roles.${userItem.role || 'user'}`)}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
-                            userItem.is_enabled
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {userItem.is_enabled ? t('users.table.active') : t('users.table.inactive')}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            {!isSuperAdminUser && isSuperAdmin && (
-                              <>
-                                {/* Toggle Status Button */}
-                                <Button
-                                  variant={userItem.is_enabled ? "outline" : "default"}
-                                  size="sm"
-                                  onClick={() => handleToggleUserStatus(userItem.id, !userItem.is_enabled)}
-                                  className="flex items-center gap-2"
-                                  title={userItem.is_enabled ? t('users.disableUser') : t('users.enableUser')}
-                                >
-                                  {userItem.is_enabled ? (
-                                    <>
-                                      <UserX className="w-4 h-4" />
-                                      {t('users.disable')}
-                                    </>
-                                  ) : (
-                                    <>
-                                      <UserCheck className="w-4 h-4" />
-                                      {t('users.enable')}
-                                    </>
-                                  )}
-                                </Button>
-
-                                {/* Delete Button */}
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleDeleteUser(userItem.id)}
-                                  className="flex items-center gap-2"
-                                  style={{
-                                    backgroundColor: visualSettings.destructiveBgColor || '#dc2626',
-                                    color: visualSettings.destructiveTextColor || '#ffffff',
-                                    borderColor: visualSettings.destructiveBgColor || '#dc2626'
-                                  }}
-                                  onMouseEnter={e => e.currentTarget.style.backgroundColor = visualSettings.destructiveHoverBgColor || '#b91c1c'}
-                                  onMouseLeave={e => e.currentTarget.style.backgroundColor = visualSettings.destructiveBgColor || '#dc2626'}
-                                  title={t('users.deleteUser')}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                  {t('users.delete')}
-                                </Button>
-                              </>
-                            )}
-                            {isSuperAdminUser && (
-                              <span className="text-xs text-gray-400 italic flex items-center gap-1">
-                                <Shield className="w-3 h-3" />
-                                {t('users.protected')}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                      </motion.tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={columns}
+            data={users}
+            loading={loading}
+            emptyMessage={t('users.noUsers')}
+            searchPlaceholder={`${t('users.table.email')}, ${t('users.table.name')}...`}
+            searchFields={['email', 'full_name']}
+            onRefresh={fetchUsers}
+            pageSize={10}
+            accentColor={visualSettings.primaryColor || 'blue'}
+          />
         </motion.div>
 
         {/* Info Cards */}
