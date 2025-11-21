@@ -3,10 +3,15 @@
 // ============================================================================
 
 import { supabase } from '@/lib/supabase';
+import {
+  handleError, logError, createValidationError,
+  createNotFoundError, parseSupabaseError, ERROR_CODES
+} from './errorHandler';
 
 /**
  * Get all banks
- * @returns {Object} { success, data, error }
+ * @returns {Promise<Array>} Array of bank objects sorted by name
+ * @throws {AppError} DB_ERROR if query fails
  */
 export const getAllBanks = async () => {
   try {
@@ -15,17 +20,23 @@ export const getAllBanks = async () => {
       .select('*')
       .order('name', { ascending: true });
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return data || [];
   } catch (error) {
-    console.error('Error fetching banks:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getAllBanks' });
+    logError(appError, { operation: 'getAllBanks' });
+    throw appError;
   }
 };
 
 /**
  * Get all account types
- * @returns {Object} { success, data, error }
+ * @returns {Promise<Array>} Array of account type objects sorted by name
+ * @throws {AppError} DB_ERROR if query fails
  */
 export const getAllAccountTypes = async () => {
   try {
@@ -34,25 +45,36 @@ export const getAllAccountTypes = async () => {
       .select('*')
       .order('name', { ascending: true });
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return data || [];
   } catch (error) {
-    console.error('Error fetching account types:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getAllAccountTypes' });
+    logError(appError, { operation: 'getAllAccountTypes' });
+    throw appError;
   }
 };
 
 /**
- * Create a new bank (admin only)
- * @param {Object} bankData - { name, swiftCode, localCode, countryCode }
- * @returns {Object} { success, data, error }
+ * Create a new bank (ADMIN ONLY)
+ * @param {Object} bankData - Bank data
+ * @param {string} bankData.name - Bank name (required)
+ * @param {string} [bankData.swiftCode] - SWIFT code
+ * @param {string} [bankData.localCode] - Local bank code
+ * @param {string} [bankData.countryCode] - Country code
+ * @returns {Promise<Object>} Created bank object
+ * @throws {AppError} VALIDATION_FAILED if name missing, DB_ERROR on failure
  */
 export const createBank = async (bankData) => {
   try {
     const { name, swiftCode, localCode, countryCode } = bankData;
 
+    // Input validation
     if (!name) {
-      return { success: false, error: 'Bank name is required' };
+      throw createValidationError({ name: 'Bank name is required' }, 'Missing bank name');
     }
 
     const { data, error } = await supabase
@@ -68,44 +90,70 @@ export const createBank = async (bankData) => {
       .select()
       .single();
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return data;
   } catch (error) {
-    console.error('Error creating bank:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'createBank',
+      bankName: bankData.name
+    });
+    logError(appError, { operation: 'createBank', bankName: bankData.name });
+    throw appError;
   }
 };
 
 /**
  * Get bank by ID with full details
- * @param {string} bankId - Bank ID
- * @returns {Object} { success, data, error }
+ * @param {string} bankId - Bank UUID
+ * @returns {Promise<Object>} Bank object with all details
+ * @throws {AppError} NOT_FOUND if bank not found, DB_ERROR on failure
  */
 export const getBankById = async (bankId) => {
   try {
+    if (!bankId) {
+      throw createValidationError({ bankId: 'Bank ID is required' }, 'Missing bank ID');
+    }
+
     const { data, error } = await supabase
       .from('banks')
       .select('*')
       .eq('id', bankId)
       .single();
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw createNotFoundError('Bank', bankId);
+      }
+      throw parseSupabaseError(error);
+    }
+
+    return data;
   } catch (error) {
-    console.error('Error fetching bank:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'getBankById',
+      bankId
+    });
+    logError(appError, { operation: 'getBankById', bankId });
+    throw appError;
   }
 };
 
 /**
  * Search banks by name or code
- * @param {string} query - Search query
- * @returns {Object} { success, data, error }
+ * @param {string} query - Search query (minimum 2 characters)
+ * @returns {Promise<Array>} Array of matching banks (max 10 results)
+ * @throws {AppError} DB_ERROR if query fails
  */
 export const searchBanks = async (query) => {
   try {
+    // Return empty array for short queries
     if (!query || query.length < 2) {
-      return { success: true, data: [] };
+      return [];
     }
 
     const { data, error } = await supabase
@@ -114,17 +162,26 @@ export const searchBanks = async (query) => {
       .or(`name.ilike.%${query}%,swift_code.ilike.%${query}%,local_code.ilike.%${query}%`)
       .limit(10);
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return data || [];
   } catch (error) {
-    console.error('Error searching banks:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'searchBanks',
+      query
+    });
+    logError(appError, { operation: 'searchBanks', query });
+    throw appError;
   }
 };
 
 /**
  * Get all active currencies
- * @returns {Object} { success, data, error }
+ * @returns {Promise<Array>} Array of active currency objects sorted by code
+ * @throws {AppError} DB_ERROR if query fails
  */
 export const getAllCurrencies = async () => {
   try {
@@ -134,18 +191,24 @@ export const getAllCurrencies = async () => {
       .eq('is_active', true)
       .order('code', { ascending: true });
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return data || [];
   } catch (error) {
-    console.error('Error fetching currencies:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getAllCurrencies' });
+    logError(appError, { operation: 'getAllCurrencies' });
+    throw appError;
   }
 };
 
 /**
  * Get account types filtered by currency
  * @param {string} currencyCode - Currency code (USD, CUP, MLC, etc.)
- * @returns {Object} { success, data, error }
+ * @returns {Promise<Array>} Array of account types for the currency
+ * @throws {AppError} DB_ERROR if query fails
  */
 export const getAccountTypesByCurrency = async (currencyCode) => {
   try {
@@ -158,28 +221,40 @@ export const getAccountTypesByCurrency = async (currencyCode) => {
       .select('*')
       .order('name', { ascending: true });
 
-    if (error) return { success: false, error: error.message };
+    if (error) {
+      throw parseSupabaseError(error);
+    }
 
     // Filter by currency in metadata
-    const filtered = data.filter(type => {
+    const filtered = (data || []).filter(type => {
       const currency = type.metadata?.currency;
       return currency === currencyCode;
     });
 
-    return { success: true, data: filtered };
+    return filtered;
   } catch (error) {
-    console.error('Error fetching account types by currency:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'getAccountTypesByCurrency',
+      currencyCode
+    });
+    logError(appError, { operation: 'getAccountTypesByCurrency', currencyCode });
+    throw appError;
   }
 };
 
 /**
  * Get currency UUID by code
  * @param {string} currencyCode - Currency code (USD, CUP, MLC, etc.)
- * @returns {Object} { success, data: {id, code}, error }
+ * @returns {Promise<Object>} Currency object with id, code, name_es, name_en
+ * @throws {AppError} NOT_FOUND if currency not found, DB_ERROR on failure
  */
 export const getCurrencyByCode = async (currencyCode) => {
   try {
+    if (!currencyCode) {
+      throw createValidationError({ currencyCode: 'Currency code is required' }, 'Missing currency code');
+    }
+
     const { data, error } = await supabase
       .from('currencies')
       .select('id, code, name_es, name_en')
@@ -187,100 +262,136 @@ export const getCurrencyByCode = async (currencyCode) => {
       .eq('is_active', true)
       .single();
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw createNotFoundError('Currency', currencyCode);
+      }
+      throw parseSupabaseError(error);
+    }
+
+    return data;
   } catch (error) {
-    console.error('Error fetching currency by code:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'getCurrencyByCode',
+      currencyCode
+    });
+    logError(appError, { operation: 'getCurrencyByCode', currencyCode });
+    throw appError;
   }
 };
 
 /**
- * Get default account type for a currency (100% dinámico, busca en metadata)
- * Busca account_types donde metadata.currency === currencyCode
+ * Get default account type for a currency
+ * Dynamically searches account_types where metadata.currency === currencyCode
+ *
  * @param {string} currencyCode - Currency code (USD, CUP, MLC, etc.)
- * @returns {Object} { success, data: {id, name}, error }
+ * @returns {Promise<Object>} First matching account type object
+ * @throws {AppError} NOT_FOUND if no account type found for currency, DB_ERROR on failure
  */
 export const getDefaultAccountTypeForCurrency = async (currencyCode) => {
   try {
-    // Cargar TODOS los account_types
+    if (!currencyCode) {
+      throw createValidationError({ currencyCode: 'Currency code is required' }, 'Missing currency code');
+    }
+
+    // Load all account types
     const { data, error } = await supabase
       .from('account_types')
       .select('id, name, description, metadata')
       .order('name', { ascending: true });
 
     if (error) {
-      console.error('Error loading account types:', error);
-      return { success: false, error: error.message };
+      throw parseSupabaseError(error);
     }
 
-    // Buscar dinámicamente el que tenga metadata.currency === currencyCode
-    const matchingTypes = data.filter(type =>
+    // Dynamically find matching account type by currency in metadata
+    const matchingTypes = (data || []).filter(type =>
       type.metadata?.currency === currencyCode
     );
 
     if (matchingTypes.length === 0) {
-      return {
-        success: false,
-        error: `No account type found for currency: ${currencyCode}. Please configure one in account_types table with metadata.currency = '${currencyCode}'`
-      };
+      throw new Error(
+        `No account type found for currency: ${currencyCode}. ` +
+        `Please configure one in account_types table with metadata.currency = '${currencyCode}'`
+      );
     }
 
-    // Si hay varios, tomar el primero (puede mejorarse con is_default en metadata si se necesita)
+    // Return first matching type (can be enhanced with is_default flag if needed)
     const selectedType = matchingTypes[0];
 
-    console.log(`✅ Auto-selected account type '${selectedType.name}' for currency ${currencyCode}`);
+    logError(null, {
+      operation: 'getDefaultAccountTypeForCurrency - success',
+      message: `Auto-selected account type '${selectedType.name}' for currency ${currencyCode}`,
+      currencyCode
+    });
 
-    return { success: true, data: selectedType };
+    return selectedType;
   } catch (error) {
-    console.error('Error fetching default account type:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.NOT_FOUND, {
+      operation: 'getDefaultAccountTypeForCurrency',
+      currencyCode
+    });
+    logError(appError, { operation: 'getDefaultAccountTypeForCurrency', currencyCode });
+    throw appError;
   }
 };
 
 // ============================================================================
 // ADMIN-ONLY FUNCTIONS - Full account number access
-// NOTA: Estas funciones requieren ejecutar la migración 20250128000002 primero
+// NOTE: These functions require running migration 20250128000002 first
 // ============================================================================
 
 /**
  * Get full bank account details for a recipient (ADMIN ONLY)
  * Includes complete account number - only accessible to admin/super_admin roles
  *
- * IMPORTANTE: Requiere ejecutar migración 20250128000002_add_account_full_number_and_logos.sql
- * antes de usar esta función.
+ * IMPORTANT: Requires running migration 20250128000002_add_account_full_number_and_logos.sql
+ * before using this function.
  *
  * @param {string} recipientBankAccountId - ID from recipient_bank_accounts table
- * @returns {Object} { success, data, error }
+ * @returns {Promise<Object>} Bank account object with full account number
+ * @throws {AppError} NOT_FOUND if account not found, SERVICE_UNAVAILABLE if migration not executed
  */
 export const getRecipientBankAccountFull = async (recipientBankAccountId) => {
   try {
+    if (!recipientBankAccountId) {
+      throw createValidationError(
+        { recipientBankAccountId: 'Bank account ID is required' },
+        'Missing bank account ID'
+      );
+    }
+
     const { data, error } = await supabase
       .rpc('get_recipient_bank_account_full', {
         p_recipient_bank_account_id: recipientBankAccountId
       });
 
     if (error) {
-      console.error('Error fetching full bank account:', error);
-      // Si la función no existe, dar mensaje claro
+      // Check if function doesn't exist (migration not executed)
       if (error.message.includes('function') && error.message.includes('does not exist')) {
-        return {
-          success: false,
-          error: 'Migration 20250128000002 not executed. Please run the migration first.'
-        };
+        throw new Error(
+          'Migration 20250128000002 not executed. Please run the migration first.'
+        );
       }
-      return { success: false, error: error.message };
+      throw parseSupabaseError(error);
     }
 
     // RPC returns array, get first element
     if (data && data.length > 0) {
-      return { success: true, data: data[0] };
+      return data[0];
     }
 
-    return { success: false, error: 'Bank account not found' };
+    throw createNotFoundError('Bank account', recipientBankAccountId);
   } catch (error) {
-    console.error('Error in getRecipientBankAccountFull:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.SERVICE_UNAVAILABLE, {
+      operation: 'getRecipientBankAccountFull',
+      recipientBankAccountId
+    });
+    logError(appError, { operation: 'getRecipientBankAccountFull', recipientBankAccountId });
+    throw appError;
   }
 };
 
@@ -288,35 +399,43 @@ export const getRecipientBankAccountFull = async (recipientBankAccountId) => {
  * Get all bank accounts for a remittance with full details (ADMIN ONLY)
  * Includes complete account numbers - only accessible to admin/super_admin roles
  *
- * IMPORTANTE: Requiere ejecutar migración 20250128000002_add_account_full_number_and_logos.sql
- * antes de usar esta función.
+ * IMPORTANT: Requires running migration 20250128000002_add_account_full_number_and_logos.sql
+ * before using this function.
  *
- * @param {string} remittanceId - Remittance ID
- * @returns {Object} { success, data, error }
+ * @param {string} remittanceId - Remittance UUID
+ * @returns {Promise<Array>} Array of bank account objects with full details
+ * @throws {AppError} SERVICE_UNAVAILABLE if migration not executed, DB_ERROR on failure
  */
 export const getRemittanceBankAccountsAdmin = async (remittanceId) => {
   try {
+    if (!remittanceId) {
+      throw createValidationError({ remittanceId: 'Remittance ID is required' }, 'Missing remittance ID');
+    }
+
     const { data, error } = await supabase
       .rpc('get_remittance_bank_accounts_admin', {
         p_remittance_id: remittanceId
       });
 
     if (error) {
-      console.error('Error fetching remittance bank accounts:', error);
-      // Si la función no existe, dar mensaje claro
+      // Check if function doesn't exist (migration not executed)
       if (error.message.includes('function') && error.message.includes('does not exist')) {
-        return {
-          success: false,
-          error: 'Migration 20250128000002 not executed. Please run the migration first.'
-        };
+        throw new Error(
+          'Migration 20250128000002 not executed. Please run the migration first.'
+        );
       }
-      return { success: false, error: error.message };
+      throw parseSupabaseError(error);
     }
 
-    return { success: true, data: data || [] };
+    return data || [];
   } catch (error) {
-    console.error('Error in getRemittanceBankAccountsAdmin:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.SERVICE_UNAVAILABLE, {
+      operation: 'getRemittanceBankAccountsAdmin',
+      remittanceId
+    });
+    logError(appError, { operation: 'getRemittanceBankAccountsAdmin', remittanceId });
+    throw appError;
   }
 };
 
