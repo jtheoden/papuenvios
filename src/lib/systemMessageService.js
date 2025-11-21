@@ -4,15 +4,24 @@
  */
 
 import { supabase } from './supabase';
+import {
+  handleError, logError, createValidationError,
+  createNotFoundError, parseSupabaseError, ERROR_CODES
+} from './errorHandler';
 
 /**
  * Get system message by key
  * @param {string} messageKey - Message key identifier
  * @param {string} language - Language code ('es' or 'en')
- * @returns {Object} System message
+ * @returns {Promise<Object>} System message with language-specific content
+ * @throws {AppError} VALIDATION_FAILED if messageKey missing, NOT_FOUND if not found, DB_ERROR on failure
  */
 export const getSystemMessage = async (messageKey, language = 'es') => {
   try {
+    if (!messageKey) {
+      throw createValidationError({ messageKey: 'Message key is required' }, 'Missing message key');
+    }
+
     const { data, error } = await supabase
       .from('system_messages')
       .select('*')
@@ -20,33 +29,32 @@ export const getSystemMessage = async (messageKey, language = 'es') => {
       .eq('is_active', true)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw createNotFoundError('System message', messageKey);
+      }
+      throw parseSupabaseError(error);
+    }
 
-    // Return language-specific content
-    const message = {
+    return {
       key: data.message_key,
       title: language === 'es' ? data.title_es : data.title_en,
       content: language === 'es' ? data.content_es : data.content_en,
       isActive: data.is_active
     };
-
-    return {
-      success: true,
-      message
-    };
   } catch (error) {
-    console.error('Error fetching system message:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getSystemMessage', messageKey });
+    logError(appError, { operation: 'getSystemMessage', messageKey });
+    throw appError;
   }
 };
 
 /**
  * Get all active system messages
  * @param {string} language - Language code ('es' or 'en')
- * @returns {Array} List of active system messages
+ * @returns {Promise<Array>} List of active system messages with language-specific content
+ * @throws {AppError} DB_ERROR if query fails
  */
 export const getActiveSystemMessages = async (language = 'es') => {
   try {
@@ -56,33 +64,28 @@ export const getActiveSystemMessages = async (language = 'es') => {
       .eq('is_active', true)
       .order('message_key', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      throw parseSupabaseError(error);
+    }
 
-    // Return language-specific content
-    const messages = data.map(msg => ({
+    return (data || []).map(msg => ({
       key: msg.message_key,
       title: language === 'es' ? msg.title_es : msg.title_en,
       content: language === 'es' ? msg.content_es : msg.content_en,
       isActive: msg.is_active
     }));
-
-    return {
-      success: true,
-      messages
-    };
   } catch (error) {
-    console.error('Error fetching active system messages:', error);
-    return {
-      success: false,
-      error: error.message,
-      messages: []
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getActiveSystemMessages' });
+    logError(appError, { operation: 'getActiveSystemMessages' });
+    throw appError;
   }
 };
 
 /**
  * Get all system messages (admin only)
- * @returns {Array} List of all system messages
+ * @returns {Promise<Array>} List of all system messages
+ * @throws {AppError} DB_ERROR if query fails
  */
 export const getAllSystemMessages = async () => {
   try {
@@ -91,54 +94,58 @@ export const getAllSystemMessages = async () => {
       .select('*')
       .order('message_key', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      throw parseSupabaseError(error);
+    }
 
-    return {
-      success: true,
-      messages: data || []
-    };
+    return data || [];
   } catch (error) {
-    console.error('Error fetching all system messages:', error);
-    return {
-      success: false,
-      error: error.message,
-      messages: []
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getAllSystemMessages' });
+    logError(appError, { operation: 'getAllSystemMessages' });
+    throw appError;
   }
 };
 
 /**
  * Get system message by ID (admin only)
  * @param {string} messageId - System message ID
- * @returns {Object} System message
+ * @returns {Promise<Object>} System message
+ * @throws {AppError} VALIDATION_FAILED if messageId missing, NOT_FOUND if not found, DB_ERROR on failure
  */
 export const getSystemMessageById = async (messageId) => {
   try {
+    if (!messageId) {
+      throw createValidationError({ messageId: 'Message ID is required' }, 'Missing message ID');
+    }
+
     const { data, error } = await supabase
       .from('system_messages')
       .select('*')
       .eq('id', messageId)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw createNotFoundError('System message', messageId);
+      }
+      throw parseSupabaseError(error);
+    }
 
-    return {
-      success: true,
-      message: data
-    };
+    return data;
   } catch (error) {
-    console.error('Error fetching system message by ID:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getSystemMessageById', messageId });
+    logError(appError, { operation: 'getSystemMessageById', messageId });
+    throw appError;
   }
 };
 
 /**
  * Get payment instructions (convenience method)
  * @param {string} language - Language code ('es' or 'en')
- * @returns {Object} Payment instructions
+ * @returns {Promise<Object>} Payment instructions with language-specific content
+ * @throws {AppError} NOT_FOUND if payment instructions not configured, DB_ERROR on failure
  */
 export const getPaymentInstructions = async (language = 'es') => {
   return await getSystemMessage('payment_instructions', language);
@@ -147,16 +154,30 @@ export const getPaymentInstructions = async (language = 'es') => {
 /**
  * Create system message (admin only)
  * @param {Object} messageData - System message information
- * @returns {Object} Created system message
+ * @param {string} messageData.messageKey - Unique message key identifier
+ * @param {string} messageData.contentEs - Spanish content
+ * @param {string} messageData.contentEn - English content
+ * @param {string} [messageData.titleEs] - Spanish title (optional)
+ * @param {string} [messageData.titleEn] - English title (optional)
+ * @param {boolean} [messageData.isActive] - Active status (default: true)
+ * @returns {Promise<Object>} Created system message
+ * @throws {AppError} VALIDATION_FAILED if required fields missing, DB_ERROR on failure
  */
 export const createSystemMessage = async (messageData) => {
   try {
+    if (!messageData.messageKey) {
+      throw createValidationError({ messageKey: 'Message key is required' }, 'Missing required field');
+    }
+    if (!messageData.contentEs && !messageData.contentEn) {
+      throw createValidationError({ content: 'At least one language content is required' }, 'Missing content');
+    }
+
     const message = {
       message_key: messageData.messageKey,
       title_es: messageData.titleEs || '',
       title_en: messageData.titleEn || '',
-      content_es: messageData.contentEs,
-      content_en: messageData.contentEn,
+      content_es: messageData.contentEs || '',
+      content_en: messageData.contentEn || '',
       is_active: messageData.isActive !== undefined ? messageData.isActive : true
     };
 
@@ -166,18 +187,16 @@ export const createSystemMessage = async (messageData) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      throw parseSupabaseError(error);
+    }
 
-    return {
-      success: true,
-      message: data
-    };
+    return data;
   } catch (error) {
-    console.error('Error creating system message:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'createSystemMessage', messageKey: messageData.messageKey });
+    logError(appError, { operation: 'createSystemMessage', messageKey: messageData.messageKey });
+    throw appError;
   }
 };
 
@@ -185,10 +204,21 @@ export const createSystemMessage = async (messageData) => {
  * Update system message (admin only)
  * @param {string} messageId - System message ID
  * @param {Object} updates - Fields to update
- * @returns {Object} Updated system message
+ * @param {string} [updates.messageKey] - Message key
+ * @param {string} [updates.titleEs] - Spanish title
+ * @param {string} [updates.titleEn] - English title
+ * @param {string} [updates.contentEs] - Spanish content
+ * @param {string} [updates.contentEn] - English content
+ * @param {boolean} [updates.isActive] - Active status
+ * @returns {Promise<Object>} Updated system message
+ * @throws {AppError} VALIDATION_FAILED if messageId missing, NOT_FOUND if not found, DB_ERROR on failure
  */
 export const updateSystemMessage = async (messageId, updates) => {
   try {
+    if (!messageId) {
+      throw createValidationError({ messageId: 'Message ID is required' }, 'Missing message ID');
+    }
+
     const updateData = {};
 
     if (updates.messageKey !== undefined) {
@@ -219,18 +249,19 @@ export const updateSystemMessage = async (messageId, updates) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw createNotFoundError('System message', messageId);
+      }
+      throw parseSupabaseError(error);
+    }
 
-    return {
-      success: true,
-      message: data
-    };
+    return data;
   } catch (error) {
-    console.error('Error updating system message:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'updateSystemMessage', messageId });
+    logError(appError, { operation: 'updateSystemMessage', messageId });
+    throw appError;
   }
 };
 
@@ -238,10 +269,20 @@ export const updateSystemMessage = async (messageId, updates) => {
  * Update system message by key (admin only)
  * @param {string} messageKey - Message key
  * @param {Object} updates - Fields to update
- * @returns {Object} Updated system message
+ * @param {string} [updates.titleEs] - Spanish title
+ * @param {string} [updates.titleEn] - English title
+ * @param {string} [updates.contentEs] - Spanish content
+ * @param {string} [updates.contentEn] - English content
+ * @param {boolean} [updates.isActive] - Active status
+ * @returns {Promise<Object>} Updated system message
+ * @throws {AppError} VALIDATION_FAILED if messageKey missing, NOT_FOUND if not found, DB_ERROR on failure
  */
 export const updateSystemMessageByKey = async (messageKey, updates) => {
   try {
+    if (!messageKey) {
+      throw createValidationError({ messageKey: 'Message key is required' }, 'Missing message key');
+    }
+
     const updateData = {};
 
     if (updates.titleEs !== undefined) {
@@ -269,28 +310,34 @@ export const updateSystemMessageByKey = async (messageKey, updates) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw createNotFoundError('System message', messageKey);
+      }
+      throw parseSupabaseError(error);
+    }
 
-    return {
-      success: true,
-      message: data
-    };
+    return data;
   } catch (error) {
-    console.error('Error updating system message by key:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'updateSystemMessageByKey', messageKey });
+    logError(appError, { operation: 'updateSystemMessageByKey', messageKey });
+    throw appError;
   }
 };
 
 /**
  * Toggle system message active status (admin only)
  * @param {string} messageId - System message ID
- * @returns {Object} Updated system message
+ * @returns {Promise<Object>} Updated system message with toggled status
+ * @throws {AppError} VALIDATION_FAILED if messageId missing, NOT_FOUND if not found, DB_ERROR on failure
  */
 export const toggleSystemMessageStatus = async (messageId) => {
   try {
+    if (!messageId) {
+      throw createValidationError({ messageId: 'Message ID is required' }, 'Missing message ID');
+    }
+
     // Get current status
     const { data: message, error: fetchError } = await supabase
       .from('system_messages')
@@ -298,7 +345,12 @@ export const toggleSystemMessageStatus = async (messageId) => {
       .eq('id', messageId)
       .single();
 
-    if (fetchError) throw fetchError;
+    if (fetchError) {
+      if (fetchError.code === 'PGRST116') {
+        throw createNotFoundError('System message', messageId);
+      }
+      throw parseSupabaseError(fetchError);
+    }
 
     // Toggle status
     const { data, error } = await supabase
@@ -311,78 +363,99 @@ export const toggleSystemMessageStatus = async (messageId) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      throw parseSupabaseError(error);
+    }
 
-    return {
-      success: true,
-      message: data
-    };
+    return data;
   } catch (error) {
-    console.error('Error toggling system message status:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'toggleSystemMessageStatus', messageId });
+    logError(appError, { operation: 'toggleSystemMessageStatus', messageId });
+    throw appError;
   }
 };
 
 /**
  * Delete system message (admin only)
  * @param {string} messageId - System message ID
- * @returns {Object} Deletion result
+ * @returns {Promise<void>}
+ * @throws {AppError} VALIDATION_FAILED if messageId missing, NOT_FOUND if not found, DB_ERROR on failure
  */
 export const deleteSystemMessage = async (messageId) => {
   try {
+    if (!messageId) {
+      throw createValidationError({ messageId: 'Message ID is required' }, 'Missing message ID');
+    }
+
+    // Check existence first
+    const { data: exists, error: checkError } = await supabase
+      .from('system_messages')
+      .select('id')
+      .eq('id', messageId)
+      .single();
+
+    if (checkError) {
+      if (checkError.code === 'PGRST116') {
+        throw createNotFoundError('System message', messageId);
+      }
+      throw parseSupabaseError(checkError);
+    }
+
     const { error } = await supabase
       .from('system_messages')
       .delete()
       .eq('id', messageId);
 
-    if (error) throw error;
-
-    return {
-      success: true
-    };
+    if (error) {
+      throw parseSupabaseError(error);
+    }
   } catch (error) {
-    console.error('Error deleting system message:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'deleteSystemMessage', messageId });
+    logError(appError, { operation: 'deleteSystemMessage', messageId });
+    throw appError;
   }
 };
 
 /**
  * Check if message key exists (admin only)
  * @param {string} messageKey - Message key to check
- * @returns {boolean} Whether key exists
+ * @returns {Promise<boolean>} Whether key exists
+ * @throws {AppError} VALIDATION_FAILED if messageKey missing, DB_ERROR on failure
  */
 export const messageKeyExists = async (messageKey) => {
   try {
+    if (!messageKey) {
+      throw createValidationError({ messageKey: 'Message key is required' }, 'Missing message key');
+    }
+
     const { data, error } = await supabase
       .from('system_messages')
       .select('id')
       .eq('message_key', messageKey)
       .single();
 
-    if (error && error.code !== 'PGRST116') throw error;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return false;
+      }
+      throw parseSupabaseError(error);
+    }
 
-    return {
-      success: true,
-      exists: !!data
-    };
+    return !!data;
   } catch (error) {
-    console.error('Error checking message key existence:', error);
-    return {
-      success: false,
-      exists: false
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'messageKeyExists', messageKey });
+    logError(appError, { operation: 'messageKeyExists', messageKey });
+    throw appError;
   }
 };
 
 /**
  * Get message keys list (admin only)
- * @returns {Array} List of message keys
+ * @returns {Promise<Array>} List of message keys with active status
+ * @throws {AppError} DB_ERROR if query fails
  */
 export const getMessageKeys = async () => {
   try {
@@ -391,62 +464,76 @@ export const getMessageKeys = async () => {
       .select('message_key, is_active')
       .order('message_key', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      throw parseSupabaseError(error);
+    }
 
-    return {
-      success: true,
-      keys: data || []
-    };
+    return data || [];
   } catch (error) {
-    console.error('Error fetching message keys:', error);
-    return {
-      success: false,
-      error: error.message,
-      keys: []
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getMessageKeys' });
+    logError(appError, { operation: 'getMessageKeys' });
+    throw appError;
   }
 };
 
 /**
  * Bulk create system messages (admin only)
  * @param {Array} messages - Array of message objects
- * @returns {Object} Creation result
+ * @param {string} messages[].messageKey - Unique message key identifier
+ * @param {string} messages[].contentEs - Spanish content
+ * @param {string} messages[].contentEn - English content
+ * @param {string} [messages[].titleEs] - Spanish title (optional)
+ * @param {string} [messages[].titleEn] - English title (optional)
+ * @param {boolean} [messages[].isActive] - Active status (default: true)
+ * @returns {Promise<Array>} Created system messages
+ * @throws {AppError} VALIDATION_FAILED if messages array invalid, DB_ERROR on failure
  */
 export const bulkCreateSystemMessages = async (messages) => {
   try {
-    const messageData = messages.map(msg => ({
-      message_key: msg.messageKey,
-      title_es: msg.titleEs || '',
-      title_en: msg.titleEn || '',
-      content_es: msg.contentEs,
-      content_en: msg.contentEn,
-      is_active: msg.isActive !== undefined ? msg.isActive : true
-    }));
+    if (!Array.isArray(messages) || messages.length === 0) {
+      throw createValidationError({ messages: 'Messages array is required and must not be empty' }, 'Invalid messages');
+    }
+
+    const messageData = messages.map(msg => {
+      if (!msg.messageKey) {
+        throw createValidationError({ messageKey: 'Message key is required for all messages' }, 'Missing required field');
+      }
+      return {
+        message_key: msg.messageKey,
+        title_es: msg.titleEs || '',
+        title_en: msg.titleEn || '',
+        content_es: msg.contentEs || '',
+        content_en: msg.contentEn || '',
+        is_active: msg.isActive !== undefined ? msg.isActive : true
+      };
+    });
 
     const { data, error } = await supabase
       .from('system_messages')
       .insert(messageData)
       .select();
 
-    if (error) throw error;
+    if (error) {
+      throw parseSupabaseError(error);
+    }
 
-    return {
-      success: true,
-      messages: data,
-      count: data.length
-    };
+    return data;
   } catch (error) {
-    console.error('Error bulk creating system messages:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'bulkCreateSystemMessages', count: messages?.length });
+    logError(appError, { operation: 'bulkCreateSystemMessages', count: messages?.length });
+    throw appError;
   }
 };
 
 /**
  * Get system messages statistics (admin only)
- * @returns {Object} Statistics
+ * @returns {Promise<Object>} Statistics object with counts
+ * @returns {number} .totalMessages - Total system messages count
+ * @returns {number} .activeMessages - Active messages count
+ * @returns {number} .inactiveMessages - Inactive messages count
+ * @throws {AppError} DB_ERROR if query fails
  */
 export const getSystemMessagesStatistics = async () => {
   try {
@@ -454,23 +541,21 @@ export const getSystemMessagesStatistics = async () => {
       .from('system_messages')
       .select('is_active');
 
-    if (error) throw error;
+    if (error) {
+      throw parseSupabaseError(error);
+    }
 
     const stats = {
-      totalMessages: data.length,
-      activeMessages: data.filter(m => m.is_active).length,
-      inactiveMessages: data.filter(m => !m.is_active).length
+      totalMessages: (data || []).length,
+      activeMessages: (data || []).filter(m => m.is_active).length,
+      inactiveMessages: (data || []).filter(m => !m.is_active).length
     };
 
-    return {
-      success: true,
-      statistics: stats
-    };
+    return stats;
   } catch (error) {
-    console.error('Error fetching system messages statistics:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getSystemMessagesStatistics' });
+    logError(appError, { operation: 'getSystemMessagesStatistics' });
+    throw appError;
   }
 };
