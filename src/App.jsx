@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster } from '@/components/ui/toaster';
 import LoadingScreen from '@/components/LoadingScreen';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { diagnostics } from '@/lib/diagnostics';
 import Header from '@/components/Header';
 import HomePage from '@/components/HomePage';
 import ProductsPage from '@/components/ProductsPage';
@@ -89,6 +90,16 @@ function App() {
     }, 2500);
 
     return () => clearTimeout(timer);
+  }, []);
+
+  // TODO: Run diagnostics on app startup (remove in production)
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      diagnostics.runAll().then(report => {
+        // Store report for debugging
+        window.__papuDiagnosticsReport = report;
+      });
+    }
   }, []);
 
   const handleNavigate = (page, params = {}) => {
