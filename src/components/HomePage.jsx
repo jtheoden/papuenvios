@@ -52,17 +52,11 @@ const HomePage = ({ onNavigate }) => {
   useEffect(() => {
     const loadTestimonials = async () => {
       try {
-        const result = await getTestimonials(false);
-        if (result.error) {
-          console.error('Error loading testimonials:', result.error);
-          setTestimonialsError(result.error);
-          setDbTestimonials([]);
-        } else if (result.data) {
-          setDbTestimonials(result.data);
-          setTestimonialsError(null);
-        }
+        const testimonials = await getTestimonials(false);
+        setDbTestimonials(testimonials);
+        setTestimonialsError(null);
       } catch (error) {
-        console.error('Unexpected error loading testimonials:', error);
+        console.error('Error loading testimonials:', error);
         setTestimonialsError(error);
         setDbTestimonials([]);
       }
