@@ -101,19 +101,18 @@ const AdminRemittancesTab = () => {
 
     if (notes === false) return; // User cancelled
 
-    const result = await validatePayment(remittance.id, notes || '');
-
-    if (result.success) {
+    try {
+      await validatePayment(remittance.id, notes || '');
       toast({
         title: t('common.success'),
         description: t('remittances.admin.paymentValidated')
       });
-      loadRemittances();
+      await loadRemittances();
       setSelectedRemittance(null);
-    } else {
+    } catch (error) {
       toast({
         title: t('common.error'),
-        description: result.error,
+        description: error?.message || t('remittances.admin.paymentValidationFailed'),
         variant: 'destructive'
       });
     }
@@ -134,19 +133,18 @@ const AdminRemittancesTab = () => {
 
     if (!reason) return;
 
-    const result = await rejectPayment(remittance.id, reason);
-
-    if (result.success) {
+    try {
+      await rejectPayment(remittance.id, reason);
       toast({
         title: t('common.success'),
         description: t('remittances.admin.paymentRejected')
       });
-      loadRemittances();
+      await loadRemittances();
       setSelectedRemittance(null);
-    } else {
+    } catch (error) {
       toast({
         title: t('common.error'),
-        description: result.error,
+        description: error?.message || t('remittances.admin.paymentRejectionFailed'),
         variant: 'destructive'
       });
     }
@@ -162,19 +160,18 @@ const AdminRemittancesTab = () => {
 
     if (!confirmed) return;
 
-    const result = await startProcessing(remittance.id, '');
-
-    if (result.success) {
+    try {
+      await startProcessing(remittance.id, '');
       toast({
         title: t('common.success'),
         description: t('remittances.admin.processingStarted')
       });
-      loadRemittances();
+      await loadRemittances();
       setSelectedRemittance(null);
-    } else {
+    } catch (error) {
       toast({
         title: t('common.error'),
-        description: result.error,
+        description: error?.message || t('remittances.admin.processingFailed'),
         variant: 'destructive'
       });
     }
@@ -188,7 +185,7 @@ const AdminRemittancesTab = () => {
       // Delivery proof is required but missing
       toast({
         title: t('common.error'),
-        description: 'Evidencia de entrega requerida. Por favor, solicite al usuario que suba la foto o documento de prueba de entrega en la sección "Mi Remesa".',
+        description: t('remittances.admin.deliveryProofRequired'),
         variant: 'destructive'
       });
       return;
@@ -211,20 +208,19 @@ const AdminRemittancesTab = () => {
 
     if (notes === false) return;
 
-    // Pass null for proofFile since proof must already exist (enforced by validation above)
-    const result = await confirmDelivery(remittance.id, null, notes || '');
-
-    if (result.success) {
+    try {
+      // Pass null for proofFile since proof must already exist (enforced by validation above)
+      await confirmDelivery(remittance.id, null, notes || '');
       toast({
         title: t('common.success'),
         description: t('remittances.admin.deliveryConfirmed')
       });
-      loadRemittances();
+      await loadRemittances();
       setSelectedRemittance(null);
-    } else {
+    } catch (error) {
       toast({
         title: t('common.error'),
-        description: result.error,
+        description: error?.message || t('remittances.admin.deliveryConfirmationFailed'),
         variant: 'destructive'
       });
     }
@@ -241,19 +237,18 @@ const AdminRemittancesTab = () => {
 
     if (!confirmed) return;
 
-    const result = await completeRemittance(remittance.id, '');
-
-    if (result.success) {
+    try {
+      await completeRemittance(remittance.id, '');
       toast({
         title: t('common.success'),
         description: t('remittances.admin.remittanceCompleted')
       });
-      loadRemittances();
+      await loadRemittances();
       setSelectedRemittance(null);
-    } else {
+    } catch (error) {
       toast({
         title: t('common.error'),
-        description: result.error,
+        description: error?.message || t('remittances.admin.completionFailed'),
         variant: 'destructive'
       });
     }
