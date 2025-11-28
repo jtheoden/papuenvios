@@ -245,6 +245,12 @@
       "deliveryConfirmationFailed": "Error al confirmar entrega",
       "completionFailed": "Error al completar remesa",
       "deliveryProofRequired": "Evidencia de entrega requerida. Por favor, solicite al usuario que suba la foto o documento de prueba de entrega en la sección \"Mi Remesa\".",
+      "uploadDeliveryProof": "Subir Evidencia",
+      "changeDeliveryProof": "Cambiar Evidencia",
+      "proofUploaded": "Evidencia subida",
+      "deliveryProofUploaded": "Evidencia de entrega subida exitosamente",
+      "deliveryProofUploadFailed": "Error al subir evidencia de entrega",
+      "selectDeliveryProofFile": "Por favor seleccione un archivo",
       "adminCannotSendRemittance": "Esta página es solo para usuarios. Los administradores deben usar el panel de gestión de remesas."
     },
     "user": {

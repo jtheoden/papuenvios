@@ -177,6 +177,54 @@ const AdminRemittancesTab = () => {
     }
   };
 
+  const handleUploadDeliveryProof = async (remittance, file) => {
+    if (!file) {
+      toast({
+        title: t('common.error'),
+        description: t('remittances.admin.selectDeliveryProofFile'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      // Upload file to Supabase Storage
+      const { supabase } = await import('@/lib/supabase');
+      const fileName = `${remittance.id}_${Date.now()}`;
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${remittance.user_id}/${remittance.id}_delivery_proof.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('remittance-proofs')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // Update remittance with delivery proof URL
+      const { supabase: sb } = await import('@/lib/supabase');
+      const { error: updateError } = await sb
+        .from('remittances')
+        .update({ delivery_proof_url: filePath })
+        .eq('id', remittance.id);
+
+      if (updateError) throw updateError;
+
+      toast({
+        title: t('common.success'),
+        description: t('remittances.admin.deliveryProofUploaded')
+      });
+
+      await loadRemittances();
+    } catch (error) {
+      console.error('Error uploading delivery proof:', error);
+      toast({
+        title: t('common.error'),
+        description: error?.message || t('remittances.admin.deliveryProofUploadFailed'),
+        variant: 'destructive'
+      });
+    }
+  };
+
   const handleConfirmDelivery = async (remittance) => {
     // SECURITY: Check if delivery proof exists
     const hasDeliveryProof = remittance.delivery_proof_url && remittance.delivery_proof_url.trim() !== '';
@@ -358,14 +406,48 @@ const AdminRemittancesTab = () => {
         );
 
       case REMITTANCE_STATUS.PROCESSING:
+        const hasDeliveryProof = remittance.delivery_proof_url && remittance.delivery_proof_url.trim() !== '';
         return (
-          <button
-            onClick={() => handleConfirmDelivery(remittance)}
-            className="flex items-center gap-1 px-3 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
-          >
-            <Truck className="h-4 w-4" />
-            {t('remittances.admin.confirmDelivery')}
-          </button>
+          <div className="flex flex-col gap-2">
+            {/* Upload Delivery Proof */}
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm cursor-pointer">
+                <ImageIcon className="h-4 w-4" />
+                {hasDeliveryProof ? t('remittances.admin.changeDeliveryProof') : t('remittances.admin.uploadDeliveryProof')}
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      handleUploadDeliveryProof(remittance, file);
+                    }
+                  }}
+                  className="hidden"
+                />
+              </label>
+              {hasDeliveryProof && (
+                <span className="text-xs text-green-600 font-semibold flex items-center gap-1">
+                  <CheckCircle className="h-4 w-4" />
+                  {t('remittances.admin.proofUploaded')}
+                </span>
+              )}
+            </div>
+
+            {/* Confirm Delivery - Only enabled if proof exists */}
+            <button
+              onClick={() => handleConfirmDelivery(remittance)}
+              disabled={!hasDeliveryProof}
+              className={`flex items-center gap-1 px-3 py-1 rounded-lg transition-colors text-sm ${
+                hasDeliveryProof
+                  ? 'bg-purple-600 text-white hover:bg-purple-700'
+                  : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+              }`}
+            >
+              <Truck className="h-4 w-4" />
+              {t('remittances.admin.confirmDelivery')}
+            </button>
+          </div>
         );
 
       case REMITTANCE_STATUS.DELIVERED:
