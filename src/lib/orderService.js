@@ -701,14 +701,15 @@ export const getOrderById = async (orderId) => {
  */
 export const getAllOrders = async (filters = {}) => {
   try {
+    // Query orders without user_profiles join (due to schema relationship constraints)
+    // User profiles will be enriched manually after fetching orders
     let query = supabase
       .from('orders')
       .select(`
         *,
         order_items (*),
         currencies (code, symbol),
-        shipping_zones (province_name, shipping_cost),
-        user_profiles (user_id, full_name, email)
+        shipping_zones (province_name, shipping_cost)
       `)
       .order('created_at', { ascending: false });
 
@@ -729,6 +730,27 @@ export const getAllOrders = async (filters = {}) => {
       const appError = parseSupabaseError(error);
       logError(appError, { operation: 'getAllOrders', filters });
       throw appError;
+    }
+
+    // Enrich orders with user profile data if orders exist
+    if (orders && orders.length > 0) {
+      const userIds = [...new Set(orders.map(o => o.user_id))];
+
+      const { data: profiles, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('user_id, full_name, email')
+        .in('user_id', userIds);
+
+      if (!profileError && profiles && profiles.length > 0) {
+        // Create a map for O(1) lookups
+        const profileMap = new Map(profiles.map(p => [p.user_id, p]));
+
+        // Enrich each order with its user profile
+        return orders.map(order => ({
+          ...order,
+          user_profiles: profileMap.get(order.user_id) || { user_id: order.user_id, full_name: null, email: null }
+        }));
+      }
     }
 
     return orders || [];

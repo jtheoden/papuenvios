@@ -155,16 +155,11 @@ const AdminOrdersTab = () => {
 
       if (filters.order_type) apiFilters.order_type = filters.order_type;
 
-      const result = await getAllOrders(apiFilters);
-
-      if (result.success) {
-        setOrders(result.orders || []);
-      } else {
-        setError(result.error || 'Error loading orders');
-      }
+      const orders = await getAllOrders(apiFilters);
+      setOrders(orders || []);
     } catch (err) {
       console.error('Error loading orders:', err);
-      setError('Error loading orders');
+      setError(err?.message || 'Error loading orders');
     } finally {
       setLoading(false);
     }
