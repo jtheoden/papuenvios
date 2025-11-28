@@ -540,7 +540,12 @@
       "linkUrl": "Enlace (URL)",
       "order": "Orden",
       "active": "Activa",
-      "save": "Guardar Ajustes"
+      "save": "Guardar Ajustes",
+      "errorLoadingSlides": "Error al cargar diapositivas",
+      "errorUpdating": "Error al actualizar",
+      "validationError": "Error de validación",
+      "imageOptimized": "Imagen optimizada",
+      "errorProcessingImage": "Error al procesar imagen"
     },
     "notifications": {
       "title": "Ajustes de Notificación",
