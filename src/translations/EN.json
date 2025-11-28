@@ -510,7 +510,12 @@
       "linkUrl": "Link (URL)",
       "order": "Order",
       "active": "Active",
-      "save": "Save Settings"
+      "save": "Save Settings",
+      "errorLoadingSlides": "Error loading slides",
+      "errorUpdating": "Error updating",
+      "validationError": "Validation error",
+      "imageOptimized": "Optimized image",
+      "errorProcessingImage": "Error processing image"
     },
     "notifications": {
       "title": "Notification Settings",

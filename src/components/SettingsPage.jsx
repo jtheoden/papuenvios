@@ -526,7 +526,7 @@ const SettingsPage = () => {
     } catch (error) {
       console.error('Error loading carousel slides:', error);
       toast({
-        title: 'Error al cargar diapositivas',
+        title: t('settings.visual.errorLoadingSlides'),
         description: error.message,
         variant: 'destructive'
       });
@@ -587,7 +587,7 @@ const SettingsPage = () => {
       console.error('Error updating slide:', error);
       setSavingSlide(null);
       toast({
-        title: 'Error al actualizar',
+        title: t('settings.visual.errorUpdating'),
         description: error.message,
         variant: 'destructive'
       });
@@ -685,7 +685,7 @@ const SettingsPage = () => {
 
       if (!result.success) {
         toast({
-          title: 'Error de validación',
+          title: t('settings.visual.validationError'),
           description: result.errors.join('\n'),
           variant: 'destructive',
         });
@@ -697,13 +697,13 @@ const SettingsPage = () => {
       setSlidePreviews(prev => ({ ...prev, [slideId]: result.base64 }));
 
       toast({
-        title: 'Imagen optimizada',
-        description: `${result.metadata.originalDimensions} → ${result.metadata.finalDimensions} (${result.metadata.compression} compresión)`,
+        title: t('settings.visual.imageOptimized'),
+        description: `${result.metadata.originalDimensions} → ${result.metadata.finalDimensions} (${result.metadata.compression} ${language === 'es' ? 'compresión' : 'compression'})`,
       });
     } catch (error) {
       console.error('Error processing slide image:', error);
       toast({
-        title: 'Error al procesar imagen',
+        title: t('settings.visual.errorProcessingImage'),
         description: error.message,
         variant: 'destructive',
       });
