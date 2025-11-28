@@ -245,6 +245,12 @@
       "deliveryConfirmationFailed": "Error confirming delivery",
       "completionFailed": "Error completing remittance",
       "deliveryProofRequired": "Delivery proof required. Please ask the user to upload a photo or proof document in the \"My Remittance\" section.",
+      "uploadDeliveryProof": "Upload Proof",
+      "changeDeliveryProof": "Change Proof",
+      "proofUploaded": "Proof uploaded",
+      "deliveryProofUploaded": "Delivery proof uploaded successfully",
+      "deliveryProofUploadFailed": "Error uploading delivery proof",
+      "selectDeliveryProofFile": "Please select a file",
       "adminCannotSendRemittance": "This page is only for users. Admins should use the remittance management panel."
     },
     "user": {
