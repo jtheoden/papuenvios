@@ -40,17 +40,18 @@ const AdminRemittancesTab = () => {
 
   const loadRemittances = async () => {
     setLoading(true);
-    const result = await getAllRemittances({});
-    if (result.success) {
-      setRemittances(result.remittances);
-    } else {
+    try {
+      const remittances = await getAllRemittances({});
+      setRemittances(remittances || []);
+    } catch (error) {
       toast({
         title: t('common.error'),
-        description: result.error,
+        description: error?.message || 'Error loading remittances',
         variant: 'destructive'
       });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const filterRemittances = () => {
