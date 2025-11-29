@@ -27,13 +27,15 @@ import { getAvailableZelleAccount, registerZelleTransaction } from '@/lib/zelleS
  * Signed URLs are valid for 1 hour and work with private buckets
  * @param {string} proofFilePath - File path in the storage bucket (e.g., "user-id/REM-2025-0001.jpg")
  * @param {string} bucketName - Optional bucket name (defaults to 'remittance-proofs' for payment proofs)
- * @throws {AppError} If file path is missing or URL generation fails
  * @returns {Promise<{success: boolean, signedUrl?: string, error?: string}>} Result object with signed URL or error
  */
 export const generateProofSignedUrl = async (proofFilePath, bucketName = 'remittance-proofs') => {
   try {
     if (!proofFilePath) {
-      throw createValidationError({ proofFilePath: 'File path is required' }, 'Missing proof file path');
+      return {
+        success: false,
+        error: 'File path is required'
+      };
     }
 
     // Generate signed URL valid for 1 hour (3600 seconds)
@@ -44,21 +46,29 @@ export const generateProofSignedUrl = async (proofFilePath, bucketName = 'remitt
     if (error) {
       const appError = parseSupabaseError(error);
       logError(appError, { operation: 'generateProofSignedUrl', proofFilePath });
-      throw appError;
+      return {
+        success: false,
+        error: appError.message || 'Failed to generate signed URL'
+      };
     }
 
     if (!data?.signedUrl) {
-      throw new Error('No signed URL returned from storage');
+      return {
+        success: false,
+        error: 'No signed URL returned from storage'
+      };
     }
 
-    return data.signedUrl;
+    return {
+      success: true,
+      signedUrl: data.signedUrl
+    };
   } catch (error) {
-    if (error.code) throw error; // Already an AppError
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'generateProofSignedUrl',
-      proofFilePath
-    });
-    throw appError;
+    logError(error, { operation: 'generateProofSignedUrl', proofFilePath });
+    return {
+      success: false,
+      error: error?.message || 'Unknown error generating signed URL'
+    };
   }
 };
 
