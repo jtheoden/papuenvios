@@ -20,8 +20,8 @@ const CurrencyContext = createContext();
  */
 export const CurrencyProvider = ({ children }) => {
   const [currencies, setCurrencies] = useState([]);
-  // Initialize with a default placeholder until real currency data loads
-  const [selectedCurrency, setSelectedCurrency] = useState('default-usd');
+  // Start with null until currencies load (prevents invalid UUID queries)
+  const [selectedCurrency, setSelectedCurrency] = useState(null);
   const [exchangeRatesCache, setExchangeRatesCache] = useState(new Map());
   const [loading, setLoading] = useState(true);
   const [conversionLoading, setConversionLoading] = useState(false);
@@ -153,12 +153,37 @@ export const CurrencyProvider = ({ children }) => {
 
   /**
    * Convert amount from one currency to another
+   * SYNCHRONOUS VERSION - Uses cached rates or returns original amount if no cache
+   * For render-phase calls. Use convertAmountAsync for guaranteed conversions.
+   * @param {number} amount - Amount to convert
+   * @param {string} fromCurrencyId - Source currency UUID
+   * @param {string} toCurrencyId - Target currency UUID
+   * @returns {number} Converted amount (or original if not cached)
+   */
+  const convertAmount = useCallback((amount, fromCurrencyId, toCurrencyId) => {
+    if (!amount || amount === 0) return 0;
+    if (!fromCurrencyId || !toCurrencyId) return amount;
+    if (fromCurrencyId === toCurrencyId) return amount;
+
+    // Check cache first (synchronous)
+    const cacheKey = `${fromCurrencyId}-${toCurrencyId}`;
+    if (exchangeRatesCache.has(cacheKey)) {
+      const rate = exchangeRatesCache.get(cacheKey);
+      return amount * rate;
+    }
+
+    // If not in cache, return original amount (avoid async in render)
+    return amount;
+  }, [exchangeRatesCache]);
+
+  /**
+   * Async version for guaranteed conversions (use in effects/handlers)
    * @param {number} amount - Amount to convert
    * @param {string} fromCurrencyId - Source currency UUID
    * @param {string} toCurrencyId - Target currency UUID
    * @returns {Promise<number>} Converted amount
    */
-  const convertAmount = useCallback(async (amount, fromCurrencyId, toCurrencyId) => {
+  const convertAmountAsync = useCallback(async (amount, fromCurrencyId, toCurrencyId) => {
     if (!amount || amount === 0) return 0;
 
     const rate = await getConversionRateWithCache(fromCurrencyId, toCurrencyId);
@@ -232,6 +257,7 @@ export const CurrencyProvider = ({ children }) => {
     // Conversion utilities
     getConversionRateWithCache,
     convertAmount,
+    convertAmountAsync,
     convertToSelected,
 
     // Formatting utilities
