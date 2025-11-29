@@ -190,9 +190,9 @@ const AdminRemittancesTab = () => {
     try {
       // Upload file to Supabase Storage
       const { supabase } = await import('@/lib/supabase');
-      const fileName = `${remittance.id}_${Date.now()}`;
       const fileExt = file.name.split('.').pop();
-      const filePath = `${remittance.user_id}/${remittance.id}_delivery_proof.${fileExt}`;
+      // RLS Policy requires: (storage.foldername(name))[1] = 'delivery'
+      const filePath = `delivery/${remittance.remittance_number}_delivery_proof.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('remittance-proofs')
