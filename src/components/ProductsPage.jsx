@@ -211,7 +211,7 @@ const ProductsPage = ({ onNavigate }) => {
    * For use in calculations and displays without async/await
    */
   const getComboDisplayPrice = useCallback((combo) => {
-    if (!combo || !selectedCurrency) return '0.00';
+    if (!combo) return '0.00';
 
     let totalBasePrice = 0;
 
@@ -231,7 +231,7 @@ const ProductsPage = ({ onNavigate }) => {
     const finalPrice = totalBasePrice * (1 + profitMargin);
 
     return finalPrice.toFixed(2);
-  }, [products, selectedCurrency, financialSettings]);
+  }, [products, financialSettings]);
 
   /**
    * Get display price for a product (base price with markup)

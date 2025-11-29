@@ -20,7 +20,8 @@ const CurrencyContext = createContext();
  */
 export const CurrencyProvider = ({ children }) => {
   const [currencies, setCurrencies] = useState([]);
-  const [selectedCurrency, setSelectedCurrency] = useState(null);
+  // Initialize with a default placeholder until real currency data loads
+  const [selectedCurrency, setSelectedCurrency] = useState('default-usd');
   const [exchangeRatesCache, setExchangeRatesCache] = useState(new Map());
   const [loading, setLoading] = useState(true);
   const [conversionLoading, setConversionLoading] = useState(false);
