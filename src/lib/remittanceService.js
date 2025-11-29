@@ -23,13 +23,14 @@ import {
 import { getAvailableZelleAccount, registerZelleTransaction } from '@/lib/zelleService';
 
 /**
- * Generate a signed URL for accessing a payment proof from private storage
+ * Generate a signed URL for accessing a proof from private storage
  * Signed URLs are valid for 1 hour and work with private buckets
- * @param {string} proofFilePath - File path in the remittance-proofs bucket (e.g., "user-id/REM-2025-0001.jpg")
+ * @param {string} proofFilePath - File path in the storage bucket (e.g., "user-id/REM-2025-0001.jpg")
+ * @param {string} bucketName - Optional bucket name (defaults to 'remittance-proofs' for payment proofs)
  * @throws {AppError} If file path is missing or URL generation fails
- * @returns {Promise<string>} Signed URL for the proof file
+ * @returns {Promise<{success: boolean, signedUrl?: string, error?: string}>} Result object with signed URL or error
  */
-export const generateProofSignedUrl = async (proofFilePath) => {
+export const generateProofSignedUrl = async (proofFilePath, bucketName = 'remittance-proofs') => {
   try {
     if (!proofFilePath) {
       throw createValidationError({ proofFilePath: 'File path is required' }, 'Missing proof file path');
@@ -37,7 +38,7 @@ export const generateProofSignedUrl = async (proofFilePath) => {
 
     // Generate signed URL valid for 1 hour (3600 seconds)
     const { data, error } = await supabase.storage
-      .from('remittance-proofs')
+      .from(bucketName)
       .createSignedUrl(proofFilePath, 3600);
 
     if (error) {
