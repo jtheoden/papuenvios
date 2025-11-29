@@ -62,7 +62,7 @@ const AdminRemittancesTab = () => {
     const loadDeliveryProofUrl = async () => {
       if (selectedRemittance?.delivery_proof_url) {
         setDeliveryProofSignedUrl(null);
-        const result = await generateProofSignedUrl(selectedRemittance.delivery_proof_url);
+        const result = await generateProofSignedUrl(selectedRemittance.delivery_proof_url, 'remittance-delivery-proofs');
         if (result.success) {
           setDeliveryProofSignedUrl(result.signedUrl);
         }
