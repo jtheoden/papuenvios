@@ -92,16 +92,6 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
   const [currentList, setCurrentList] = useState([]);
   const [showTransition, setShowTransition] = useState(false);
 
-  // Don't render until currencies are loaded and selectedCurrency is set
-  if (!selectedCurrency || currenciesLoading) {
-    return (
-      <div className="min-h-screen py-8 px-4 flex items-center justify-center">
-        <p className="text-gray-500">{t('products.loading') || 'Loading...'}</p>
-      </div>
-    );
-  }
-
-
   useEffect(() => {
     // Determine which list to use based on itemType
     const list = itemType === 'combo' ? combos : products;
@@ -250,6 +240,15 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
     if (!category) return '';
     return language === 'es' ? (category.name_es || category.es) : (category.name_en || category.en);
   };
+
+  // Show loading while currencies load
+  if (!selectedCurrency || currenciesLoading) {
+    return (
+      <div className="min-h-screen py-8 px-4 flex items-center justify-center">
+        <p className="text-gray-500">{t('products.loading') || 'Loading...'}</p>
+      </div>
+    );
+  }
 
   if (!currentItem) {
     return (
