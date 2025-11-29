@@ -86,11 +86,20 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
   const { t, language } = useLanguage();
   const { products, combos, categories, addToCart, financialSettings, visualSettings } = useBusiness();
   const { isAdmin } = useAuth();
-  const { selectedCurrency, setSelectedCurrency, currencySymbol, currencyCode, convertAmount } = useCurrency();
+  const { selectedCurrency, setSelectedCurrency, currencySymbol, currencyCode, convertAmount, loading: currenciesLoading } = useCurrency();
   const [currentItem, setCurrentItem] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentList, setCurrentList] = useState([]);
   const [showTransition, setShowTransition] = useState(false);
+
+  // Don't render until currencies are loaded and selectedCurrency is set
+  if (!selectedCurrency || currenciesLoading) {
+    return (
+      <div className="min-h-screen py-8 px-4 flex items-center justify-center">
+        <p className="text-gray-500">{t('products.loading') || 'Loading...'}</p>
+      </div>
+    );
+  }
 
 
   useEffect(() => {
@@ -108,7 +117,7 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
 
 
   const getDisplayPrice = (item, isProduct) => {
-    if (!item || !selectedCurrency) return '0.00';
+    if (!item) return '0.00';
 
     if (isProduct) {
       // Use final_price if available, otherwise use base_price
