@@ -1,20 +1,24 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Search, Filter, ShoppingCart, Plus, Package, Upload, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCurrency } from '@/contexts/CurrencyContext';
 import { toast } from '@/components/ui/use-toast';
 import { uploadProductImage, deleteProductImage } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { getHeadingStyle } from '@/lib/styleUtils';
+import CurrencySelector from '@/components/CurrencySelector';
+import PriceDisplay from '@/components/PriceDisplay';
 
 const ProductsPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { user, isAdmin } = useAuth();
   const { products, combos, categories, addToCart, financialSettings, refreshProducts, visualSettings } = useBusiness();
+  const { selectedCurrency, setSelectedCurrency, currencySymbol } = useCurrency();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [filteredProducts, setFilteredProducts] = useState([]);
@@ -23,9 +27,6 @@ const ProductsPage = ({ onNavigate }) => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [editingProduct, setEditingProduct] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
-  const [currencies, setCurrencies] = useState([]);
-  const [selectedCurrency, setSelectedCurrency] = useState(null);
-  const [exchangeRates, setExchangeRates] = useState({});
   const combosScrollRef = useRef(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
@@ -123,47 +124,6 @@ const ProductsPage = ({ onNavigate }) => {
     }
   }, [t, refreshProducts]);
 
-  // Load currencies and exchange rates
-  useEffect(() => {
-    const loadCurrencies = async () => {
-      try {
-        const { data: currenciesData, error: currError } = await supabase
-          .from('currencies')
-          .select('*')
-          .eq('is_active', true)
-          .order('code', { ascending: true });
-
-        if (currError) throw currError;
-
-        setCurrencies(currenciesData || []);
-
-        // Set base currency as default
-        const baseCurrency = currenciesData?.find(c => c.is_base);
-        if (baseCurrency) {
-          setSelectedCurrency(baseCurrency.id);
-        }
-
-        // Load exchange rates
-        const { data: ratesData, error: ratesError } = await supabase
-          .from('exchange_rates')
-          .select('*')
-          .eq('is_active', true);
-
-        if (ratesError) throw ratesError;
-
-        // Create exchange rate map: "fromId-toId" => rate
-        const ratesMap = {};
-        (ratesData || []).forEach(rate => {
-          ratesMap[`${rate.from_currency_id}-${rate.to_currency_id}`] = rate.rate;
-        });
-        setExchangeRates(ratesMap);
-      } catch (error) {
-        console.error('Error loading currencies:', error);
-      }
-    };
-
-    loadCurrencies();
-  }, []);
 
   useEffect(() => {
     // Filter products - Hide products with zero stock for non-admin users
@@ -246,64 +206,46 @@ const ProductsPage = ({ onNavigate }) => {
     }
   }, [filteredCombos]);
 
-  const convertPrice = (price, fromCurrencyId, toCurrencyId) => {
-    if (!price || !fromCurrencyId || !toCurrencyId) return price;
-    if (fromCurrencyId === toCurrencyId) return price;
-
-    const rateKey = `${fromCurrencyId}-${toCurrencyId}`;
-    const rate = exchangeRates[rateKey];
-
-    if (rate) {
-      return parseFloat(price) * rate;
-    }
-
-    return price;
-  };
-
-  const getDisplayPrice = (product) => {
-    if (!product || !selectedCurrency) return '0.00';
-
-    // Use final_price if available, otherwise use base_price
-    const basePrice = parseFloat(product.final_price || product.base_price || 0);
-    const productCurrencyId = product.base_currency_id;
-
-    if (!productCurrencyId) return basePrice.toFixed(2);
-
-    // Convert to selected currency
-    const convertedPrice = convertPrice(basePrice, productCurrencyId, selectedCurrency);
-    return convertedPrice.toFixed(2);
-  };
-
-  const getComboDisplayPrice = (combo) => {
+  /**
+   * Calculate combo display price (synchronous version)
+   * For use in calculations and displays without async/await
+   */
+  const getComboDisplayPrice = useCallback((combo) => {
     if (!combo || !selectedCurrency) return '0.00';
 
-    // Calculate from base_price and apply ONLY combo profit margin
     let totalBasePrice = 0;
 
     (combo.products || []).forEach(productId => {
       const product = products.find(p => p.id === productId);
       if (product) {
-        // Use ONLY base_price (no product margin)
+        // For now, use simple pricing without full conversion
+        // The actual conversion will happen when rendered with PriceDisplay
         const basePrice = parseFloat(product.base_price || 0);
-        const productCurrencyId = product.base_currency_id;
         const quantity = combo.productQuantities?.[productId] || 1;
-
-        // Convert each product price to selected currency
-        let convertedPrice = basePrice;
-        if (productCurrencyId && productCurrencyId !== selectedCurrency) {
-          convertedPrice = convertPrice(basePrice, productCurrencyId, selectedCurrency);
-        }
-
-        totalBasePrice += convertedPrice * quantity;
+        totalBasePrice += basePrice * quantity;
       }
     });
 
-    // Apply ONLY combo profit margin
+    // Apply combo profit margin
     const profitMargin = parseFloat(combo.profitMargin || financialSettings.comboProfit) / 100;
     const finalPrice = totalBasePrice * (1 + profitMargin);
 
     return finalPrice.toFixed(2);
-  };
+  }, [products, selectedCurrency, financialSettings]);
+
+  /**
+   * Get display price for a product (base price with markup)
+   */
+  const getDisplayPrice = useCallback((product) => {
+    if (!product) return '0.00';
+
+    const basePrice = parseFloat(product.final_price || product.base_price || 0);
+    const profitMargin = parseFloat(financialSettings.productProfit || 40) / 100;
+    const finalPrice = basePrice * (1 + profitMargin);
+
+    return finalPrice.toFixed(2);
+  }, [financialSettings]);
+
 
   return (
     <div className="min-h-screen py-8 px-4">
@@ -355,20 +297,14 @@ const ProductsPage = ({ onNavigate }) => {
               </select>
             </div>
 
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-gray-600">{language === 'es' ? 'Moneda:' : 'Currency:'}</span>
-              <select
-                value={selectedCurrency || ''}
-                onChange={(e) => setSelectedCurrency(e.target.value)}
-                className="px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {currencies.map(currency => (
-                  <option key={currency.id} value={currency.id}>
-                    {currency.code} ({currency.symbol})
-                  </option>
-                ))}
-              </select>
-            </div>
+            <CurrencySelector
+              selectedCurrency={selectedCurrency}
+              onCurrencyChange={setSelectedCurrency}
+              label={language === 'es' ? 'Moneda:' : 'Currency:'}
+              showSymbol
+              size="md"
+              className="px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
         </motion.div>
 
@@ -418,17 +354,16 @@ const ProductsPage = ({ onNavigate }) => {
               style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
               {filteredCombos.map((combo, index) => {
-                // Calculate savings for this combo
+                // Simple savings calculation using base prices (conversion happens in display)
                 const calculateSavings = () => {
                   let totalIndividual = 0;
                   (combo.products || []).forEach(productId => {
                     const product = products.find(p => p.id === productId);
                     if (product) {
                       const basePrice = parseFloat(product.base_price || 0);
-                      const convertedBase = convertPrice(basePrice, product.base_currency_id, selectedCurrency);
                       const quantity = combo.productQuantities?.[productId] || 1;
                       const productMargin = parseFloat(financialSettings.productProfit || 40) / 100;
-                      const priceWithMargin = convertedBase * (1 + productMargin);
+                      const priceWithMargin = basePrice * (1 + productMargin);
                       totalIndividual += priceWithMargin * quantity;
                     }
                   });
@@ -441,7 +376,6 @@ const ProductsPage = ({ onNavigate }) => {
                 };
 
                 const savingsData = calculateSavings();
-                const currencySymbol = currencies.find(c => c.id === selectedCurrency)?.symbol || '$';
 
                 return (
                   <motion.div
@@ -492,9 +426,8 @@ const ProductsPage = ({ onNavigate }) => {
                     <div className="flex items-center justify-between mb-4">
                       <div>
                         <p className="text-2xl font-bold text-purple-600">
-                          {currencies.find(c => c.id === selectedCurrency)?.symbol || '$'}{getComboDisplayPrice(combo)}
+                          {currencySymbol}{getComboDisplayPrice(combo)}
                         </p>
-                        <p className="text-xs text-gray-500">{currencies.find(c => c.id === selectedCurrency)?.code || 'USD'}</p>
                       </div>
                     </div>
 
@@ -627,9 +560,8 @@ const ProductsPage = ({ onNavigate }) => {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <div className="text-xl font-bold text-green-600">
-                      {currencies.find(c => c.id === selectedCurrency)?.symbol || '$'}{getDisplayPrice(product)}
+                      {currencySymbol}{getDisplayPrice(product)}
                     </div>
-                    <p className="text-xs text-gray-500">{currencies.find(c => c.id === selectedCurrency)?.code || 'USD'}</p>
                   </div>
                 </div>
 

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { getProducts, getCategories } from '@/lib/productService';
 import { getCombos } from '@/lib/comboService';
@@ -27,8 +27,7 @@ export const ProductProvider = ({ children }) => {
   const refreshProducts = async () => {
     try {
       setError(null);
-      const { data, error } = await getProducts();
-      if (error) throw error;
+      const data = await getProducts();
       setProducts(data || []);
     } catch (error) {
       console.error('Error refreshing products:', error);
@@ -40,8 +39,7 @@ export const ProductProvider = ({ children }) => {
   const refreshCategories = async () => {
     try {
       setError(null);
-      const { data, error } = await getCategories();
-      if (error) throw error;
+      const data = await getCategories();
       setCategories(data || []);
     } catch (error) {
       console.error('Error refreshing categories:', error);
@@ -52,11 +50,10 @@ export const ProductProvider = ({ children }) => {
   // Fetch combos from Supabase
   const refreshCombos = async (includeInactive = false) => {
     try {
-      const { data, error } = await getCombos(includeInactive);
-      if (error) throw error;
+      const data = await getCombos(includeInactive);
 
       // Get current products to check stock
-      const { data: productsData } = await getProducts();
+      const productsData = await getProducts();
       const productsMap = {};
       (productsData || []).forEach(p => {
         productsMap[p.id] = p;
@@ -116,8 +113,7 @@ export const ProductProvider = ({ children }) => {
   const refreshTestimonials = async (adminView = false) => {
     try {
       setError(null);
-      const { data, error } = await getTestimonials(adminView);
-      if (error) throw error;
+      const data = await getTestimonials(adminView);
       setTestimonials(data || []);
     } catch (error) {
       console.error('Error refreshing testimonials:', error);
@@ -129,8 +125,7 @@ export const ProductProvider = ({ children }) => {
   const refreshCarouselSlides = async (activeOnly = false) => {
     try {
       setError(null);
-      const { data, error } = await getCarouselSlides(activeOnly);
-      if (error) throw error;
+      const data = await getCarouselSlides(activeOnly);
       setCarouselSlides(data || []);
     } catch (error) {
       console.error('Error refreshing carousel slides:', error);

@@ -5,12 +5,13 @@ import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCurrency } from '@/contexts/CurrencyContext';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle, getAlertStyle } from '@/lib/styleUtils';
 import { processImage } from '@/lib/imageUtils';
 import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingService';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
-import { getCurrencies, convertCurrency } from '@/lib/currencyService';
+import { convertCurrency } from '@/lib/currencyService';
 import { generateWhatsAppURL, notifyAdminNewPayment, openWhatsAppChat } from '@/lib/whatsappService';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
@@ -18,11 +19,13 @@ import { supabase } from '@/lib/supabase';
 import RecipientSelector from '@/components/RecipientSelector';
 import ZelleAccountSelector from '@/components/ZelleAccountSelector';
 import FileUploadWithPreview from '@/components/FileUploadWithPreview';
+import CurrencySelector from '@/components/CurrencySelector';
 
 const CartPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { cart, updateCartQuantity, removeFromCart, clearCart, financialSettings, zelleAccounts, visualSettings, businessInfo, notificationSettings } = useBusiness();
   const { isAuthenticated, user } = useAuth();
+  const { selectedCurrency, setSelectedCurrency, currencies, currencyCode, currencySymbol } = useCurrency();
 
   const recipientSelectorRef = useRef();
 
@@ -43,8 +46,6 @@ const CartPage = ({ onNavigate }) => {
   const [shippingZones, setShippingZones] = useState([]);
   const [municipalities, setMunicipalities] = useState([]);
   const [shippingCost, setShippingCost] = useState(0);
-  const [selectedCurrency, setSelectedCurrency] = useState('USD');
-  const [currencies, setCurrencies] = useState([]);
   const [convertedSubtotal, setConvertedSubtotal] = useState(null);
   const [convertedShipping, setConvertedShipping] = useState(null);
   const [convertedTotal, setConvertedTotal] = useState(null);
@@ -54,7 +55,7 @@ const CartPage = ({ onNavigate }) => {
     // Use displayed price if available (price shown when added to cart)
     if (item.displayed_price && item.displayed_currency_code) {
       // If displayed currency matches selected currency, use as-is
-      if (item.displayed_currency_code === selectedCurrency) {
+      if (item.displayed_currency_code === currencyCode) {
         return parseFloat(item.displayed_price);
       }
       // Otherwise need conversion - for now return displayed price
@@ -79,7 +80,7 @@ const CartPage = ({ onNavigate }) => {
       const profitMargin = parseFloat(financialSettings.productProfit || 40) / 100;
       return basePrice * (1 + profitMargin);
     }
-  }, [selectedCurrency, financialSettings.comboProfit, financialSettings.productProfit]);
+  }, [currencyCode, financialSettings.comboProfit, financialSettings.productProfit]);
 
   // Calculate subtotal - memoized to avoid recalculation on every render
   const subtotal = useMemo(() => {
@@ -88,10 +89,9 @@ const CartPage = ({ onNavigate }) => {
     }, 0);
   }, [cart, getItemPrice]);
 
-  // Load shipping zones and currencies
+  // Load shipping zones
   useEffect(() => {
     loadShippingZones();
-    loadCurrencies();
   }, []);
 
   // Load municipalities when province changes
@@ -118,7 +118,7 @@ const CartPage = ({ onNavigate }) => {
   useEffect(() => {
     convertAmounts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCurrency, subtotal, shippingCost]);
+  }, [currencyCode, subtotal, shippingCost]);
 
   const loadShippingZones = async () => {
     try {
@@ -139,20 +139,9 @@ const CartPage = ({ onNavigate }) => {
     }
   };
 
-  const loadCurrencies = async () => {
-    try {
-      const { data, error } = await getCurrencies();
-      if (!error && data) {
-        setCurrencies(data);
-      }
-    } catch (error) {
-      console.error('Error loading currencies:', error);
-    }
-  };
-
   const convertAmounts = async () => {
     // If selected currency is USD (base currency), no conversion needed
-    if (selectedCurrency === 'USD') {
+    if (currencyCode === 'USD') {
       setConvertedSubtotal(subtotal);
       setConvertedShipping(shippingCost);
       setConvertedTotal(subtotal + shippingCost);
@@ -164,14 +153,14 @@ const CartPage = ({ onNavigate }) => {
       const { data: convertedSub, error: subError } = await convertCurrency(
         subtotal,
         'USD',
-        selectedCurrency
+        currencyCode
       );
 
       // Convert shipping cost
       const { data: convertedShip, error: shipError } = await convertCurrency(
         shippingCost,
         'USD',
-        selectedCurrency
+        currencyCode
       );
 
       if (!subError && !shipError) {
@@ -350,8 +339,8 @@ const CartPage = ({ onNavigate }) => {
     setProcessingPayment(true);
 
     try {
-      // Get currency ID
-      const currency = currencies.find(c => c.code === selectedCurrency);
+      // Get currency object (selectedCurrency is already the UUID)
+      const currency = currencies.find(c => c.id === selectedCurrency);
       if (!currency) {
         throw new Error('Currency not found');
       }
@@ -787,10 +776,9 @@ const CartPage = ({ onNavigate }) => {
                 const isCombo = !!item.products;
 
                 // Calculate converted prices for display
-                const exchangeRate = selectedCurrency === 'USD' ? 1 : (convertedSubtotal !== null ? convertedSubtotal / subtotal : 1);
+                const exchangeRate = currencyCode === 'USD' ? 1 : (convertedSubtotal !== null ? convertedSubtotal / subtotal : 1);
                 const convertedItemPrice = itemPrice * exchangeRate;
                 const convertedItemTotal = itemTotal * exchangeRate;
-                const currencySymbol = currencies.find(c => c.code === selectedCurrency)?.symbol || '$';
 
                 return (
                   <motion.div key={item.id} layout className="glass-effect p-4 rounded-2xl">
@@ -859,37 +847,20 @@ const CartPage = ({ onNavigate }) => {
                 <h2 className="text-2xl font-semibold">{t('cart.summary')}</h2>
 
                 {/* Selector de moneda */}
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    {language === 'es' ? 'Moneda' : 'Currency'}
-                  </label>
-                  <select
-                    value={selectedCurrency}
-                    onChange={e => setSelectedCurrency(e.target.value)}
-                    className="input-style w-full"
-                  >
-                    {currencies.length > 0 ? (
-                      currencies.map(curr => (
-                        <option key={curr.code} value={curr.code}>
-                          {curr.code} - {language === 'es' ? curr.name_es : curr.name_en}
-                        </option>
-                      ))
-                    ) : (
-                      <>
-                        <option value="USD">USD - Dólar Estadounidense</option>
-                        <option value="EUR">EUR - Euro</option>
-                        <option value="CUP">CUP - Peso Cubano</option>
-                      </>
-                    )}
-                  </select>
-                </div>
+                <CurrencySelector
+                  selectedCurrency={selectedCurrency}
+                  onCurrencyChange={setSelectedCurrency}
+                  label={language === 'es' ? 'Moneda' : 'Currency'}
+                  showSymbol
+                  className="input-style w-full"
+                />
 
                 <div className="space-y-3">
                   <div className="flex justify-between">
                     <span>{t('cart.subtotal')}</span>
                     <span className="font-semibold">
-                      {currencies.find(c => c.code === selectedCurrency)?.symbol || '$'}
-                      {convertedSubtotal !== null ? convertedSubtotal.toFixed(2) : subtotal.toFixed(2)} {selectedCurrency}
+                      {currencySymbol}
+                      {convertedSubtotal !== null ? convertedSubtotal.toFixed(2) : subtotal.toFixed(2)} {currencyCode}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -897,7 +868,7 @@ const CartPage = ({ onNavigate }) => {
                     <span className="text-sm font-semibold">
                       {(convertedShipping !== null ? convertedShipping : shippingCost) === 0
                         ? (language === 'es' ? 'Gratis' : 'Free')
-                        : `${currencies.find(c => c.code === selectedCurrency)?.symbol || '$'}${(convertedShipping !== null ? convertedShipping : shippingCost).toFixed(2)} ${selectedCurrency}`
+                        : `${currencySymbol}${(convertedShipping !== null ? convertedShipping : shippingCost).toFixed(2)} ${currencyCode}`
                       }
                     </span>
                   </div>
@@ -905,8 +876,8 @@ const CartPage = ({ onNavigate }) => {
                   <div className="flex justify-between text-xl font-bold">
                     <span>{t('cart.total')}</span>
                     <span style={{ color: visualSettings.primaryColor || '#2563eb' }}>
-                      {currencies.find(c => c.code === selectedCurrency)?.symbol || '$'}
-                      {convertedTotal !== null ? convertedTotal.toFixed(2) : (subtotal + shippingCost).toFixed(2)} {selectedCurrency}
+                      {currencySymbol}
+                      {convertedTotal !== null ? convertedTotal.toFixed(2) : (subtotal + shippingCost).toFixed(2)} {currencyCode}
                     </span>
                   </div>
                 </div>
