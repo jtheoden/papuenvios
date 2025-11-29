@@ -5,12 +5,13 @@ import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCurrency } from '@/contexts/CurrencyContext';
+import { CurrencySelector } from '@/components/CurrencySelector';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
-import { supabase } from '@/lib/supabase';
 
 // Product Thumbnail Component with Toggle
-const ProductThumbnail = ({ product, selectedCurrency, currencySymbol, currencyCode, convertPrice, quantity = 1 }) => {
+const ProductThumbnail = ({ product, selectedCurrency, currencySymbol, currencyCode, convertAmount, quantity = 1 }) => {
   const [expanded, setExpanded] = useState(false);
   const { language } = useLanguage();
   const { visualSettings } = useBusiness();
@@ -23,7 +24,7 @@ const ProductThumbnail = ({ product, selectedCurrency, currencySymbol, currencyC
       return basePrice.toFixed(2);
     }
 
-    const converted = convertPrice(basePrice, productCurrencyId, selectedCurrency);
+    const converted = convertAmount(basePrice, productCurrencyId, selectedCurrency);
     return converted.toFixed(2);
   };
 
@@ -85,55 +86,12 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
   const { t, language } = useLanguage();
   const { products, combos, categories, addToCart, financialSettings, visualSettings } = useBusiness();
   const { isAdmin } = useAuth();
+  const { selectedCurrency, setSelectedCurrency, currencySymbol, currencyCode, convertAmount } = useCurrency();
   const [currentItem, setCurrentItem] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentList, setCurrentList] = useState([]);
   const [showTransition, setShowTransition] = useState(false);
-  const [currencies, setCurrencies] = useState([]);
-  const [selectedCurrency, setSelectedCurrency] = useState(null);
-  const [exchangeRates, setExchangeRates] = useState({});
 
-  // Load currencies and exchange rates
-  useEffect(() => {
-    const loadCurrencies = async () => {
-      try {
-        const { data: currenciesData, error: currError } = await supabase
-          .from('currencies')
-          .select('*')
-          .eq('is_active', true)
-          .order('code', { ascending: true });
-
-        if (currError) throw currError;
-
-        setCurrencies(currenciesData || []);
-
-        // Set base currency as default
-        const baseCurrency = currenciesData?.find(c => c.is_base);
-        if (baseCurrency) {
-          setSelectedCurrency(baseCurrency.id);
-        }
-
-        // Load exchange rates
-        const { data: ratesData, error: ratesError } = await supabase
-          .from('exchange_rates')
-          .select('*')
-          .eq('is_active', true);
-
-        if (ratesError) throw ratesError;
-
-        // Create exchange rate map: "fromId-toId" => rate
-        const ratesMap = {};
-        (ratesData || []).forEach(rate => {
-          ratesMap[`${rate.from_currency_id}-${rate.to_currency_id}`] = rate.rate;
-        });
-        setExchangeRates(ratesMap);
-      } catch (error) {
-        console.error('Error loading currencies:', error);
-      }
-    };
-
-    loadCurrencies();
-  }, []);
 
   useEffect(() => {
     // Determine which list to use based on itemType
@@ -148,19 +106,6 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
     }
   }, [itemId, itemType, products, combos]);
 
-  const convertPrice = (price, fromCurrencyId, toCurrencyId) => {
-    if (!price || !fromCurrencyId || !toCurrencyId) return price;
-    if (fromCurrencyId === toCurrencyId) return price;
-
-    const rateKey = `${fromCurrencyId}-${toCurrencyId}`;
-    const rate = exchangeRates[rateKey];
-
-    if (rate) {
-      return parseFloat(price) * rate;
-    }
-
-    return price;
-  };
 
   const getDisplayPrice = (item, isProduct) => {
     if (!item || !selectedCurrency) return '0.00';
@@ -173,7 +118,7 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
       if (!productCurrencyId) return basePrice.toFixed(2);
 
       // Convert to selected currency
-      const convertedPrice = convertPrice(basePrice, productCurrencyId, selectedCurrency);
+      const convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
       return convertedPrice.toFixed(2);
     } else {
       // For combos, calculate from base_price and apply ONLY combo profit margin
@@ -189,7 +134,7 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
 
           let convertedPrice = basePrice;
           if (productCurrencyId && productCurrencyId !== selectedCurrency) {
-            convertedPrice = convertPrice(basePrice, productCurrencyId, selectedCurrency);
+            convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
           }
 
           totalBasePrice += convertedPrice * quantity;
@@ -276,14 +221,11 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
     // This ensures what user sees is what gets added to cart
     const displayedPrice = parseFloat(getDisplayPrice(currentItem, isProduct));
 
-    // Get current currency code
-    const currentCurrency = currencies.find(c => c.id === selectedCurrency);
-
     // Add to cart with price and currency info
     const itemWithPrice = {
       ...currentItem,
       displayed_price: displayedPrice,
-      displayed_currency_code: currentCurrency?.code || 'USD',
+      displayed_currency_code: currencyCode,
       displayed_currency_id: selectedCurrency
     };
 
@@ -310,8 +252,6 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
 
   const isProduct = !currentItem.products; // Products don't have a 'products' array
   const price = getDisplayPrice(currentItem, isProduct);
-  const currencySymbol = currencies.find(c => c.id === selectedCurrency)?.symbol || '$';
-  const currencyCode = currencies.find(c => c.id === selectedCurrency)?.code || 'USD';
 
   return (
     <div className="min-h-screen py-8 px-4">
@@ -422,17 +362,11 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
             <div className="glass-effect p-6 rounded-xl">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm text-gray-600">{language === 'es' ? 'Mostrar en:' : 'Display in:'}</span>
-                <select
-                  value={selectedCurrency || ''}
-                  onChange={(e) => setSelectedCurrency(e.target.value)}
-                  className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {currencies.map(currency => (
-                    <option key={currency.id} value={currency.id}>
-                      {currency.code} ({currency.symbol})
-                    </option>
-                  ))}
-                </select>
+                <CurrencySelector
+                  selectedCurrency={selectedCurrency}
+                  onCurrencyChange={setSelectedCurrency}
+                  showSymbol={true}
+                />
               </div>
               <div className="flex items-baseline gap-2">
                 <span className="text-4xl font-bold" style={getHeadingStyle(visualSettings)}>{currencySymbol}{price}</span>
@@ -501,7 +435,7 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
 
                         // Base price
                         const basePrice = parseFloat(product.base_price || 0);
-                        const convertedBase = convertPrice(basePrice, product.base_currency_id, selectedCurrency);
+                        const convertedBase = convertAmount(basePrice, product.base_currency_id, selectedCurrency);
                         const quantity = currentItem.productQuantities?.[productId] || 1;
 
                         // Apply individual product profit margin
@@ -525,7 +459,7 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
                               const product = products.find(p => p.id === productId);
                               if (product) {
                                 const basePrice = parseFloat(product.base_price || 0);
-                                const convertedBase = convertPrice(basePrice, product.base_currency_id, selectedCurrency);
+                                const convertedBase = convertAmount(basePrice, product.base_currency_id, selectedCurrency);
                                 const quantity = currentItem.productQuantities?.[productId] || 1;
 
                                 // Apply individual product profit margin
@@ -558,7 +492,7 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
                             const product = products.find(p => p.id === productId);
                             if (product) {
                               const basePrice = parseFloat(product.base_price || 0);
-                              const convertedBase = convertPrice(basePrice, product.base_currency_id, selectedCurrency);
+                              const convertedBase = convertAmount(basePrice, product.base_currency_id, selectedCurrency);
                               const quantity = currentItem.productQuantities?.[productId] || 1;
 
                               // Apply individual product profit margin
@@ -590,7 +524,7 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
                           selectedCurrency={selectedCurrency}
                           currencySymbol={currencySymbol}
                           currencyCode={currencyCode}
-                          convertPrice={convertPrice}
+                          convertAmount={convertAmount}
                           quantity={quantity}
                         />
                       ) : null;

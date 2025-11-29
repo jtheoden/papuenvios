@@ -52,14 +52,10 @@ const CartPage = ({ onNavigate }) => {
 
   // Calculate item price based on type (product or combo) - memoized with useCallback
   const getItemPrice = useCallback((item) => {
+    if (!item) return 0;
+
     // Use displayed price if available (price shown when added to cart)
-    if (item.displayed_price && item.displayed_currency_code) {
-      // If displayed currency matches selected currency, use as-is
-      if (item.displayed_currency_code === currencyCode) {
-        return parseFloat(item.displayed_price);
-      }
-      // Otherwise need conversion - for now return displayed price
-      // TODO: Implement cross-currency conversion in cart
+    if (item.displayed_price) {
       return parseFloat(item.displayed_price);
     }
 
@@ -80,7 +76,7 @@ const CartPage = ({ onNavigate }) => {
       const profitMargin = parseFloat(financialSettings.productProfit || 40) / 100;
       return basePrice * (1 + profitMargin);
     }
-  }, [currencyCode, financialSettings.comboProfit, financialSettings.productProfit]);
+  }, [financialSettings]);
 
   // Calculate subtotal - memoized to avoid recalculation on every render
   const subtotal = useMemo(() => {
