@@ -1262,16 +1262,23 @@ export const confirmDelivery = async (remittanceId, proofFile = null, notes = ''
     }
 
     // Update remittance to delivered
+    // CRITICAL: Ensure delivery_proof_url is valid and persisted
+    const trimmedProofUrl = deliveryProofUrl?.trim();
+
+    if (!trimmedProofUrl) {
+      throw createValidationError(
+        { delivery_proof_url: 'Delivery proof URL is required but is empty or invalid' },
+        'Cannot confirm delivery without valid proof URL. This should not happen - proof validation failed.'
+      );
+    }
+
     const updateData = {
       status: REMITTANCE_STATUS.DELIVERED,
       delivered_at: new Date().toISOString(),
       delivery_notes_admin: notes,
+      delivery_proof_url: trimmedProofUrl,  // ✅ ALWAYS include valid proof URL
       updated_at: new Date().toISOString()
     };
-
-    if (deliveryProofUrl) {
-      updateData.delivery_proof_url = deliveryProofUrl;
-    }
 
     const { data: updatedRemittance, error: updateError } = await supabase
       .from('remittances')
