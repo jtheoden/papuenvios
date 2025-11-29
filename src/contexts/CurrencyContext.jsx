@@ -31,7 +31,7 @@ export const CurrencyProvider = ({ children }) => {
     const loadCurrencies = async () => {
       setLoading(true);
       try {
-        const { data } = await getCurrencies();
+        const data = await getCurrencies();
         if (data && data.length > 0) {
           setCurrencies(data);
           // Auto-select base currency or first one
