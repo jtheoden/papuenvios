@@ -14,6 +14,7 @@ import {
   confirmDelivery,
   completeRemittance,
   calculateDeliveryAlert,
+  generateProofSignedUrl,
   REMITTANCE_STATUS
 } from '@/lib/remittanceService';
 import { toast } from '@/components/ui/use-toast';
@@ -29,6 +30,8 @@ const AdminRemittancesTab = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedRemittance, setSelectedRemittance] = useState(null);
+  const [proofSignedUrl, setProofSignedUrl] = useState(null);
+  const [deliveryProofSignedUrl, setDeliveryProofSignedUrl] = useState(null);
 
   useEffect(() => {
     loadRemittances();
@@ -37,6 +40,38 @@ const AdminRemittancesTab = () => {
   useEffect(() => {
     filterRemittances();
   }, [remittances, searchTerm, statusFilter]);
+
+  // Generate signed URL for payment proof when modal opens
+  useEffect(() => {
+    const loadProofSignedUrl = async () => {
+      if (selectedRemittance?.payment_proof_url) {
+        setProofSignedUrl(null);
+        const result = await generateProofSignedUrl(selectedRemittance.payment_proof_url);
+        if (result.success) {
+          setProofSignedUrl(result.signedUrl);
+        }
+      } else {
+        setProofSignedUrl(null);
+      }
+    };
+    loadProofSignedUrl();
+  }, [selectedRemittance?.payment_proof_url]);
+
+  // Generate signed URL for delivery proof when modal opens
+  useEffect(() => {
+    const loadDeliveryProofUrl = async () => {
+      if (selectedRemittance?.delivery_proof_url) {
+        setDeliveryProofSignedUrl(null);
+        const result = await generateProofSignedUrl(selectedRemittance.delivery_proof_url);
+        if (result.success) {
+          setDeliveryProofSignedUrl(result.signedUrl);
+        }
+      } else {
+        setDeliveryProofSignedUrl(null);
+      }
+    };
+    loadDeliveryProofUrl();
+  }, [selectedRemittance?.delivery_proof_url]);
 
   const loadRemittances = async () => {
     setLoading(true);
@@ -790,34 +825,85 @@ const AdminRemittancesTab = () => {
                 )}
               </div>
 
-              {/* Right Column - Payment Proof */}
-              <div className="lg:col-span-1">
+              {/* Right Column - Payment Proof and Delivery Proof */}
+              <div className="lg:col-span-1 space-y-4">
+                {/* Payment Proof */}
                 {selectedRemittance.payment_proof_url ? (
-                  <div className="sticky top-20 space-y-3">
-                    <h4 className="font-semibold text-gray-900">Comprobante de Pago</h4>
-                    <div className="bg-gray-50 rounded-lg border border-gray-200 p-2">
-                      <img
-                        src={selectedRemittance.payment_proof_url}
-                        alt="Comprobante de pago"
-                        className="w-full h-auto rounded-lg"
-                      />
-                    </div>
-                    <a
-                      href={selectedRemittance.payment_proof_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block text-center text-sm text-blue-600 hover:text-blue-700 hover:underline"
-                    >
-                      Ver en tamaño completo →
-                    </a>
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Comprobante de Pago
+                    </h4>
+                    {proofSignedUrl ? (
+                      <div className="bg-gray-50 rounded-lg border border-gray-200 p-2">
+                        <img
+                          src={proofSignedUrl}
+                          alt="Comprobante de pago"
+                          className="w-full h-auto rounded-lg max-h-[400px] object-contain"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                            e.target.nextSibling.style.display = 'flex';
+                          }}
+                        />
+                        <div className="hidden flex-col items-center justify-center p-4 text-gray-500">
+                          <FileText className="w-8 h-8 mb-2" />
+                          <p className="text-xs text-center">No se pudo cargar la imagen</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center p-4 border-2 border-gray-200 rounded-lg bg-gray-50">
+                        <Clock className="w-6 h-6 text-gray-400 animate-spin" />
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <div className="sticky top-20 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                     <p className="text-sm text-yellow-800 font-medium">
                       Sin comprobante de pago
                     </p>
                   </div>
                 )}
+
+                {/* Delivery Proof */}
+                {selectedRemittance.status === REMITTANCE_STATUS.DELIVERED || selectedRemittance.status === REMITTANCE_STATUS.COMPLETED ? (
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                      <Truck className="h-4 w-4" />
+                      Evidencia de Entrega
+                    </h4>
+                    {selectedRemittance.delivery_proof_url ? (
+                      <>
+                        {deliveryProofSignedUrl ? (
+                          <div className="bg-gray-50 rounded-lg border border-green-200 p-2">
+                            <img
+                              src={deliveryProofSignedUrl}
+                              alt="Evidencia de entrega"
+                              className="w-full h-auto rounded-lg max-h-[400px] object-contain"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.nextSibling.style.display = 'flex';
+                              }}
+                            />
+                            <div className="hidden flex-col items-center justify-center p-4 text-gray-500">
+                              <FileText className="w-8 h-8 mb-2" />
+                              <p className="text-xs text-center">No se pudo cargar la imagen</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center p-4 border-2 border-green-200 rounded-lg bg-gray-50">
+                            <Clock className="w-6 h-6 text-green-400 animate-spin" />
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <p className="text-sm text-green-800 font-medium">
+                          Evidencia de entrega pendiente
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
             </div>
 
