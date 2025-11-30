@@ -5,6 +5,7 @@ import {
   AlertTriangle, Download, FileText, Image as ImageIcon, Calendar, X
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useModal } from '@/contexts/ModalContext';
 import {
   getAllRemittances,
@@ -18,10 +19,10 @@ import {
   REMITTANCE_STATUS
 } from '@/lib/remittanceService';
 import { toast } from '@/components/ui/use-toast';
-import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 
 const AdminRemittancesTab = () => {
   const { t } = useLanguage();
+  const { isAdmin, isSuperAdmin } = useAuth();
   const { showModal } = useModal();
 
   const [remittances, setRemittances] = useState([]);
@@ -500,6 +501,20 @@ const AdminRemittancesTab = () => {
         return null;
     }
   };
+
+  if (!isAdmin && !isSuperAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <AlertTriangle className="h-16 w-16 text-yellow-600 mb-4" />
+        <h3 className="text-xl font-bold text-gray-700 mb-2">
+          {t('common.accessDenied')}
+        </h3>
+        <p className="text-gray-600 text-center max-w-md">
+          {t('remittances.admin.adminCannotViewRemittances')}
+        </p>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
