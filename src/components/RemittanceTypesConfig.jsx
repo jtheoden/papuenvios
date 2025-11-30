@@ -48,17 +48,20 @@ const RemittanceTypesConfig = () => {
 
   const loadTypes = async () => {
     setLoading(true);
-    const result = await getAllRemittanceTypes();
-    if (result.success) {
-      setTypes(result.types);
-    } else {
+    try {
+      const types = await getAllRemittanceTypes();
+      setTypes(types || []);
+    } catch (error) {
+      console.error('Error loading remittance types:', error);
       toast({
         title: t('common.error'),
-        description: result.error,
+        description: error.message || 'Error loading remittance types',
         variant: 'destructive'
       });
+      setTypes([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleCreate = () => {
