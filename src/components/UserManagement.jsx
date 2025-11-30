@@ -41,21 +41,21 @@ const UserManagement = () => {
       if (data && data.length > 0) {
         const { data: categoriesData } = await supabase
           .from('user_categories')
-          .select('user_id, category_id')
+          .select('user_id, category_name')
           .in('user_id', data.map(u => u.id));
 
         // Map categories to users
         const categoryMap = {};
         if (categoriesData) {
           categoriesData.forEach(cat => {
-            categoryMap[cat.user_id] = cat.category_id;
+            categoryMap[cat.user_id] = cat.category_name;
           });
         }
 
-        // Add category_id to each user
+        // Add category_name to each user
         const usersWithCategories = data.map(user => ({
           ...user,
-          category_id: categoryMap[user.id] || null
+          category_name: categoryMap[user.id] || null
         }));
 
         setUsers(usersWithCategories);
@@ -212,9 +212,9 @@ const UserManagement = () => {
     }
   };
 
-  const handleCategoryChange = async (userId, newCategoryId) => {
+  const handleCategoryChange = async (userId, newCategoryName) => {
     try {
-      if (!newCategoryId) {
+      if (!newCategoryName) {
         throw new Error(t('users.categories.selectCategory'));
       }
 
@@ -222,7 +222,7 @@ const UserManagement = () => {
         .from('user_categories')
         .upsert({
           user_id: userId,
-          category_id: newCategoryId,
+          category_name: newCategoryName,
           assigned_at: new Date().toISOString(),
           assigned_by: user?.id,
           assignment_reason: 'manual',
@@ -343,7 +343,7 @@ const UserManagement = () => {
       }
     },
     {
-      key: 'category_id',
+      key: 'category_name',
       label: t('users.table.category'),
       width: '15%',
       render: (value, row) => {
@@ -366,7 +366,7 @@ const UserManagement = () => {
           >
             <option value="">{t('users.categories.selectCategory')}</option>
             {categoryRules && categoryRules.map((rule) => (
-              <option key={rule.category_id} value={rule.category_id}>
+              <option key={rule.category_name} value={rule.category_name}>
                 {t(`users.categories.${rule.category_name}`)}
               </option>
             ))}
