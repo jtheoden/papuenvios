@@ -68,9 +68,8 @@ const HomePage = ({ onNavigate }) => {
   useEffect(() => {
     const loadSlides = async () => {
       try {
-        const { data, error } = await getActiveCarouselSlides();
-        if (error) throw error;
-        setCarouselSlides(data || []);
+        const slides = await getActiveCarouselSlides();
+        setCarouselSlides(slides || []);
       } catch (error) {
         console.error('Error loading carousel slides:', error);
         // Fallback to empty array if database fails
