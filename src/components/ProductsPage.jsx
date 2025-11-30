@@ -18,7 +18,7 @@ const ProductsPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { user, isAdmin } = useAuth();
   const { products, combos, categories, addToCart, financialSettings, refreshProducts, visualSettings } = useBusiness();
-  const { selectedCurrency, setSelectedCurrency, currencySymbol } = useCurrency();
+  const { selectedCurrency, setSelectedCurrency, currencySymbol, currencyCode, convertAmount } = useCurrency();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [filteredProducts, setFilteredProducts] = useState([]);
@@ -218,11 +218,17 @@ const ProductsPage = ({ onNavigate }) => {
     (combo.products || []).forEach(productId => {
       const product = products.find(p => p.id === productId);
       if (product) {
-        // For now, use simple pricing without full conversion
-        // The actual conversion will happen when rendered with PriceDisplay
         const basePrice = parseFloat(product.base_price || 0);
+        const productCurrencyId = product.base_currency_id;
         const quantity = combo.productQuantities?.[productId] || 1;
-        totalBasePrice += basePrice * quantity;
+
+        // Convert to selected currency first
+        let convertedPrice = basePrice;
+        if (productCurrencyId && productCurrencyId !== selectedCurrency) {
+          convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
+        }
+
+        totalBasePrice += convertedPrice * quantity;
       }
     });
 
@@ -231,7 +237,7 @@ const ProductsPage = ({ onNavigate }) => {
     const finalPrice = totalBasePrice * (1 + profitMargin);
 
     return finalPrice.toFixed(2);
-  }, [products, financialSettings]);
+  }, [products, financialSettings, selectedCurrency, convertAmount]);
 
   /**
    * Get display price for a product (base price with markup)
@@ -240,11 +246,19 @@ const ProductsPage = ({ onNavigate }) => {
     if (!product) return '0.00';
 
     const basePrice = parseFloat(product.final_price || product.base_price || 0);
+    const productCurrencyId = product.base_currency_id;
+
+    // Convert to selected currency first, then apply profit margin
+    let convertedPrice = basePrice;
+    if (productCurrencyId && productCurrencyId !== selectedCurrency) {
+      convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
+    }
+
     const profitMargin = parseFloat(financialSettings.productProfit || 40) / 100;
-    const finalPrice = basePrice * (1 + profitMargin);
+    const finalPrice = convertedPrice * (1 + profitMargin);
 
     return finalPrice.toFixed(2);
-  }, [financialSettings]);
+  }, [financialSettings, selectedCurrency, convertAmount]);
 
 
   return (
@@ -354,16 +368,24 @@ const ProductsPage = ({ onNavigate }) => {
               style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
               {filteredCombos.map((combo, index) => {
-                // Simple savings calculation using base prices (conversion happens in display)
+                // Savings calculation with currency conversion applied
                 const calculateSavings = () => {
                   let totalIndividual = 0;
                   (combo.products || []).forEach(productId => {
                     const product = products.find(p => p.id === productId);
                     if (product) {
                       const basePrice = parseFloat(product.base_price || 0);
+                      const productCurrencyId = product.base_currency_id;
                       const quantity = combo.productQuantities?.[productId] || 1;
+
+                      // Convert to selected currency first
+                      let convertedPrice = basePrice;
+                      if (productCurrencyId && productCurrencyId !== selectedCurrency) {
+                        convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
+                      }
+
                       const productMargin = parseFloat(financialSettings.productProfit || 40) / 100;
-                      const priceWithMargin = basePrice * (1 + productMargin);
+                      const priceWithMargin = convertedPrice * (1 + productMargin);
                       totalIndividual += priceWithMargin * quantity;
                     }
                   });
@@ -426,7 +448,7 @@ const ProductsPage = ({ onNavigate }) => {
                     <div className="flex items-center justify-between mb-4">
                       <div>
                         <p className="text-2xl font-bold text-purple-600">
-                          {currencySymbol}{getComboDisplayPrice(combo)}
+                          {currencySymbol}{getComboDisplayPrice(combo)} <span className="text-sm text-gray-600">{currencyCode}</span>
                         </p>
                       </div>
                     </div>
@@ -560,7 +582,7 @@ const ProductsPage = ({ onNavigate }) => {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <div className="text-xl font-bold text-green-600">
-                      {currencySymbol}{getDisplayPrice(product)}
+                      {currencySymbol}{getDisplayPrice(product)} <span className="text-sm text-gray-600">{currencyCode}</span>
                     </div>
                   </div>
                 </div>

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Shield, UserCheck, UserX, Trash2, AlertCircle } from 'lucide-react';
+import { Users, Shield, UserCheck, UserX, Trash2, AlertCircle, BarChart3, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/DataTable';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -9,6 +9,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle } from '@/lib/styleUtils';
+import TabsResponsive from '@/components/TabsResponsive';
+import CategoryBadge from '@/components/CategoryBadge';
+import { getCategoryRules, getCategoryDiscounts, recalculateAllCategories } from '@/lib/userCategorizationService';
 
 const SUPER_ADMIN_EMAILS = ['jtheoden@gmail.com', 'jtheoden@googlemail.com'];
 
@@ -18,7 +21,11 @@ const UserManagement = () => {
   const { visualSettings } = useBusiness();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState('users');
+  const [categoryRules, setCategoryRules] = useState([]);
+  const [categoryDiscounts, setCategoryDiscounts] = useState([]);
+  const [recalculatingAll, setRecalculatingAll] = useState(false);
+  const [lastRecalculateTime, setLastRecalculateTime] = useState(null);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -29,7 +36,32 @@ const UserManagement = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setUsers(data || []);
+
+      // Fetch categories for each user
+      if (data && data.length > 0) {
+        const { data: categoriesData } = await supabase
+          .from('user_categories')
+          .select('user_id, category_id')
+          .in('user_id', data.map(u => u.id));
+
+        // Map categories to users
+        const categoryMap = {};
+        if (categoriesData) {
+          categoriesData.forEach(cat => {
+            categoryMap[cat.user_id] = cat.category_id;
+          });
+        }
+
+        // Add category_id to each user
+        const usersWithCategories = data.map(user => ({
+          ...user,
+          category_id: categoryMap[user.id] || null
+        }));
+
+        setUsers(usersWithCategories);
+      } else {
+        setUsers(data || []);
+      }
     } catch (error) {
       console.error('Error fetching users:', error);
       toast({
@@ -42,8 +74,33 @@ const UserManagement = () => {
     }
   };
 
+  const fetchCategoryData = async () => {
+    try {
+      const [rulesData, discountsData] = await Promise.all([
+        getCategoryRules(),
+        getCategoryDiscounts()
+      ]);
+      setCategoryRules(rulesData || []);
+      setCategoryDiscounts(discountsData || []);
+    } catch (error) {
+      console.error('Error fetching categorization data:', error);
+      // Set empty arrays to prevent UI errors
+      setCategoryRules([]);
+      setCategoryDiscounts([]);
+      // Only show toast if it's not a permission denied error (which is expected without RLS setup)
+      if (error.message && !error.message.includes('permission denied')) {
+        toast({
+          title: t('users.categories.loadError'),
+          description: error.message,
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
+    fetchCategoryData();
   }, []);
 
   const handleRoleChange = async (userId, newRole) => {
@@ -155,6 +212,72 @@ const UserManagement = () => {
     }
   };
 
+  const handleCategoryChange = async (userId, newCategoryId) => {
+    try {
+      if (!newCategoryId) {
+        throw new Error(t('users.categories.selectCategory'));
+      }
+
+      const { error } = await supabase
+        .from('user_categories')
+        .upsert({
+          user_id: userId,
+          category_id: newCategoryId,
+          assigned_at: new Date().toISOString(),
+          assigned_by: user?.id,
+          assignment_reason: 'manual',
+          effective_from: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+
+      if (error) throw error;
+
+      await fetchUsers();
+      toast({
+        title: t('users.categories.categoryUpdated'),
+        description: t('users.categories.categoryUpdateSuccess'),
+      });
+    } catch (error) {
+      console.error('Error updating user category:', error);
+      toast({
+        title: t('users.categories.categoryUpdateError'),
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRecalculateAll = async () => {
+    if (!window.confirm(t('users.categories.confirmRecalculateAll'))) {
+      return;
+    }
+
+    setRecalculatingAll(true);
+    try {
+      const result = await recalculateAllCategories();
+      setLastRecalculateTime(new Date());
+
+      toast({
+        title: t('users.categories.recalculateSuccess'),
+        description: t('users.categories.recalculateSuccessDesc', {
+          processed: result.processed,
+          total: result.total
+        }),
+      });
+
+      await fetchUsers();
+    } catch (error) {
+      console.error('Error recalculating categories:', error);
+      toast({
+        title: t('users.categories.recalculateError'),
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setRecalculatingAll(false);
+    }
+  };
+
   const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(user?.email);
 
   const getRoleBadgeColor = (role) => {
@@ -215,6 +338,38 @@ const UserManagement = () => {
           >
             <option value="user">{t('users.roles.user')}</option>
             <option value="admin">{t('users.roles.admin')}</option>
+          </select>
+        );
+      }
+    },
+    {
+      key: 'category_id',
+      label: t('users.table.category'),
+      width: '15%',
+      render: (value, row) => {
+        const isSuperAdminUser = SUPER_ADMIN_EMAILS.includes(row.email);
+        if (isSuperAdminUser) {
+          return (
+            <span className="text-xs text-gray-400 italic">
+              {t('users.protected')}
+            </span>
+          );
+        }
+        if (!isSuperAdmin) {
+          return <CategoryBadge categoryName={value || 'regular'} readOnly />;
+        }
+        return (
+          <select
+            value={value || ''}
+            onChange={(e) => handleCategoryChange(row.id, e.target.value)}
+            className="px-2 py-1 rounded text-xs border border-gray-300 focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">{t('users.categories.selectCategory')}</option>
+            {categoryRules && categoryRules.map((rule) => (
+              <option key={rule.category_id} value={rule.category_id}>
+                {t(`users.categories.${rule.category_name}`)}
+              </option>
+            ))}
           </select>
         );
       }
@@ -290,6 +445,238 @@ const UserManagement = () => {
     }
   ];
 
+  const renderUsersTab = () => (
+    <>
+      {/* Stats */}
+      <div className="flex gap-4 text-sm mb-6">
+        <div className="px-4 py-2 glass-effect rounded-xl">
+          <span className="text-gray-600">{t('users.total')}:</span>
+          <span className="ml-2 font-bold">{users.length}</span>
+        </div>
+        <div className="px-4 py-2 glass-effect rounded-xl">
+          <span className="text-gray-600">{t('users.table.active')}:</span>
+          <span className="ml-2 font-bold text-green-600">
+            {users.filter(u => u.is_enabled).length}
+          </span>
+        </div>
+      </div>
+
+      {/* DataTable Component */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
+        <DataTable
+          columns={columns}
+          data={users}
+          loading={loading}
+          emptyMessage={t('users.noUsers')}
+          searchPlaceholder={`${t('users.table.email')}, ${t('users.table.name')}...`}
+          searchFields={['email', 'full_name']}
+          onRefresh={fetchUsers}
+          pageSize={10}
+          accentColor={visualSettings.primaryColor || 'blue'}
+        />
+      </motion.div>
+
+      {/* Info Cards */}
+      <div className="mt-6 grid md:grid-cols-2 gap-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="p-4 bg-blue-50 border border-blue-200 rounded-xl"
+        >
+          <div className="flex items-start gap-3">
+            <Shield className="w-5 h-5 text-blue-600 mt-0.5" />
+            <div className="text-sm text-blue-800">
+              <p className="font-semibold mb-1">{t('users.rolesPermissions.title')}:</p>
+              <ul className="space-y-1 list-disc list-inside">
+                <li><strong>{t('users.roles.user')}:</strong> {t('users.rolesPermissions.userDesc')}</li>
+                <li><strong>{t('users.roles.admin')}:</strong> {t('users.rolesPermissions.adminDesc')}</li>
+                <li><strong>{t('users.roles.super_admin')}:</strong> {t('users.rolesPermissions.superAdminDesc')}</li>
+              </ul>
+            </div>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="p-4 bg-amber-50 border border-amber-200 rounded-xl"
+        >
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
+            <div className="text-sm text-amber-800">
+              <p className="font-semibold mb-1">{t('users.securityNote.title')}:</p>
+              <ul className="space-y-1 list-disc list-inside">
+                <li>{t('users.securityNote.superAdminProtected')}</li>
+                <li>{t('users.securityNote.onlySuperAdminManage')}</li>
+                <li>{t('users.securityNote.deletionPermanent')}</li>
+              </ul>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    </>
+  );
+
+  const renderCategoriesTab = () => (
+    <div className="space-y-6">
+      {/* Recalculate All Button */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl"
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-blue-900 mb-1">
+              {t('users.categories.recalculateTitle')}
+            </h3>
+            <p className="text-sm text-blue-800">
+              {t('users.categories.recalculateDesc')}
+            </p>
+            {lastRecalculateTime && (
+              <p className="text-xs text-blue-700 mt-2">
+                {t('users.categories.lastRecalculate')}: {new Date(lastRecalculateTime).toLocaleString()}
+              </p>
+            )}
+          </div>
+          <Button
+            onClick={handleRecalculateAll}
+            disabled={recalculatingAll}
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            {recalculatingAll ? t('common.processing') : t('users.categories.recalculate')}
+          </Button>
+        </div>
+      </motion.div>
+
+      {/* Category Rules */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+      >
+        <div className="p-4 border-b border-gray-200 bg-gray-50">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-blue-600" />
+            {t('users.categories.rulesTitle')}
+          </h3>
+        </div>
+        <div className="p-4">
+          {categoryRules && categoryRules.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700">
+                      {t('users.categories.threshold')}
+                    </th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700">
+                      {t('users.categories.categoryName')}
+                    </th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700">
+                      {t('users.categories.status')}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {categoryRules.map((rule) => (
+                    <tr key={rule.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-gray-900">{rule.interaction_threshold}</td>
+                      <td className="px-4 py-3">
+                        <CategoryBadge categoryName={rule.category_name} readOnly />
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                          rule.enabled
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {rule.enabled ? t('common.active') : t('common.inactive')}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-gray-500 text-center py-8">{t('users.categories.noRules')}</p>
+          )}
+        </div>
+      </motion.div>
+
+      {/* Category Discounts */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+      >
+        <div className="p-4 border-b border-gray-200 bg-gray-50">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <Settings className="w-5 h-5 text-purple-600" />
+            {t('users.categories.discountsTitle')}
+          </h3>
+        </div>
+        <div className="p-4">
+          {categoryDiscounts && categoryDiscounts.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700">
+                      {t('users.categories.categoryName')}
+                    </th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700">
+                      {t('users.categories.discountPercent')}
+                    </th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700">
+                      {t('users.categories.description')}
+                    </th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700">
+                      {t('users.categories.status')}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {categoryDiscounts.map((discount) => (
+                    <tr key={discount.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <CategoryBadge categoryName={discount.category_name} readOnly />
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-green-600">
+                        {discount.discount_percentage}%
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">{discount.discount_description || '-'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                          discount.enabled
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {discount.enabled ? t('common.active') : t('common.inactive')}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-gray-500 text-center py-8">{t('users.categories.noDiscounts')}</p>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen py-8 px-4">
       <div className="container mx-auto max-w-7xl">
@@ -305,81 +692,33 @@ const UserManagement = () => {
           <p className="text-gray-600 mb-4">
             {t('users.managementDescription')}
           </p>
-
-          {/* Stats */}
-          <div className="flex gap-4 text-sm">
-            <div className="px-4 py-2 glass-effect rounded-xl">
-              <span className="text-gray-600">{t('users.total')}:</span>
-              <span className="ml-2 font-bold">{users.length}</span>
-            </div>
-            <div className="px-4 py-2 glass-effect rounded-xl">
-              <span className="text-gray-600">{t('users.table.active')}:</span>
-              <span className="ml-2 font-bold text-green-600">
-                {users.filter(u => u.is_enabled).length}
-              </span>
-            </div>
-          </div>
         </motion.div>
 
-        {/* DataTable Component */}
+        {/* Tabs */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
+          transition={{ delay: 0.05 }}
         >
-          <DataTable
-            columns={columns}
-            data={users}
-            loading={loading}
-            emptyMessage={t('users.noUsers')}
-            searchPlaceholder={`${t('users.table.email')}, ${t('users.table.name')}...`}
-            searchFields={['email', 'full_name']}
-            onRefresh={fetchUsers}
-            pageSize={10}
-            accentColor={visualSettings.primaryColor || 'blue'}
+          <TabsResponsive
+            tabs={[
+              {
+                id: 'users',
+                label: t('users.tabs.users'),
+                icon: <Users className="w-5 h-5" />,
+                content: renderUsersTab()
+              },
+              {
+                id: 'categories',
+                label: t('users.tabs.categories'),
+                icon: <BarChart3 className="w-5 h-5" />,
+                content: renderCategoriesTab()
+              }
+            ]}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
           />
         </motion.div>
-
-        {/* Info Cards */}
-        <div className="mt-6 grid md:grid-cols-2 gap-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="p-4 bg-blue-50 border border-blue-200 rounded-xl"
-          >
-            <div className="flex items-start gap-3">
-              <Shield className="w-5 h-5 text-blue-600 mt-0.5" />
-              <div className="text-sm text-blue-800">
-                <p className="font-semibold mb-1">{t('users.rolesPermissions.title')}:</p>
-                <ul className="space-y-1 list-disc list-inside">
-                  <li><strong>{t('users.roles.user')}:</strong> {t('users.rolesPermissions.userDesc')}</li>
-                  <li><strong>{t('users.roles.admin')}:</strong> {t('users.rolesPermissions.adminDesc')}</li>
-                  <li><strong>{t('users.roles.super_admin')}:</strong> {t('users.rolesPermissions.superAdminDesc')}</li>
-                </ul>
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25 }}
-            className="p-4 bg-amber-50 border border-amber-200 rounded-xl"
-          >
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
-              <div className="text-sm text-amber-800">
-                <p className="font-semibold mb-1">{t('users.securityNote.title')}:</p>
-                <ul className="space-y-1 list-disc list-inside">
-                  <li>{t('users.securityNote.superAdminProtected')}</li>
-                  <li>{t('users.securityNote.onlySuperAdminManage')}</li>
-                  <li>{t('users.securityNote.deletionPermanent')}</li>
-                </ul>
-              </div>
-            </div>
-          </motion.div>
-        </div>
       </div>
     </div>
   );

@@ -114,11 +114,17 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
       const basePrice = parseFloat(item.final_price || item.base_price || 0);
       const productCurrencyId = item.base_currency_id;
 
-      if (!productCurrencyId) return basePrice.toFixed(2);
+      // Convert to selected currency first
+      let convertedPrice = basePrice;
+      if (productCurrencyId && productCurrencyId !== selectedCurrency) {
+        convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
+      }
 
-      // Convert to selected currency
-      const convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
-      return convertedPrice.toFixed(2);
+      // Apply product profit margin
+      const profitMargin = parseFloat(financialSettings.productProfit || 40) / 100;
+      const finalPrice = convertedPrice * (1 + profitMargin);
+
+      return finalPrice.toFixed(2);
     } else {
       // For combos, calculate from base_price and apply ONLY combo profit margin
       let totalBasePrice = 0;
