@@ -19,10 +19,11 @@ import {
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { useModal } from '@/contexts/ModalContext';
+import FileUploadWithPreview from '@/components/FileUploadWithPreview';
 
 const MyRemittancesPage = ({ onNavigate }) => {
   const { t } = useLanguage();
-  const { user } = useAuth();
+  const { isAdmin, isSuperAdmin } = useAuth();
   const { showModal } = useModal();
 
   const [remittances, setRemittances] = useState([]);
@@ -38,34 +39,67 @@ const MyRemittancesPage = ({ onNavigate }) => {
     reference: '',
     notes: ''
   });
+  const [imagePreview, setImagePreview] = useState(null);
+  const [deliveryProofPreview, setDeliveryProofPreview] = useState(null);
 
   useEffect(() => {
     loadRemittances();
   }, []);
 
-  const loadRemittances = async () => {
-    setLoading(true);
-    const result = await getMyRemittances({});
-    if (result.success) {
-      setRemittances(result.remittances);
-    } else {
-      toast({
-        title: t('common.error'),
-        description: result.error,
-        variant: 'destructive'
+  useEffect(() => {
+    if (isAdmin || isSuperAdmin) {
+      showModal({
+        type: 'info',
+        title: t('common.accessDenied'),
+        message: t('remittances.admin.adminCannotViewRemittances'),
+        confirmText: t('common.ok')
+      }).then(() => {
+        onNavigate('dashboard');
       });
     }
-    setLoading(false);
+  }, [isAdmin, isSuperAdmin]);
+
+  const loadRemittances = async () => {
+    setLoading(true);
+    try {
+      const result = await getMyRemittances({});
+      // getMyRemittances returns array directly, not a result object
+      if (Array.isArray(result)) {
+        setRemittances(result);
+      } else {
+        // Handle legacy response format if needed
+        if (result.success) {
+          setRemittances(result.remittances);
+        } else {
+          throw new Error(result.error || 'Failed to load remittances');
+        }
+      }
+    } catch (error) {
+      console.error('Error loading remittances:', error);
+      toast({
+        title: t('common.error'),
+        description: error.message || 'Failed to load remittances',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleViewDetails = async (remittance) => {
-    const result = await getRemittanceDetails(remittance.id);
-    if (result.success) {
-      setSelectedRemittance(result.remittance);
-    } else {
+    try {
+      const result = await getRemittanceDetails(remittance.id);
+      // getRemittanceDetails returns the remittance object directly, not wrapped in { success, remittance }
+      if (result) {
+        setSelectedRemittance(result);
+      } else {
+        throw new Error('No remittance data returned');
+      }
+    } catch (error) {
+      console.error('Error fetching remittance details:', error);
       toast({
         title: t('common.error'),
-        description: result.error,
+        description: error.message || 'Failed to load remittance details',
         variant: 'destructive'
       });
     }
@@ -117,6 +151,41 @@ const MyRemittancesPage = ({ onNavigate }) => {
       reference: remittance.remittance_number, // Auto-load remittance ID
       notes: ''
     });
+    setImagePreview(null);
+  };
+
+  // Handle payment proof file change with preview generation
+  const handlePaymentProofChange = (e) => {
+    const file = e.target.files[0];
+    setUploadData({ ...uploadData, file });
+
+    // Generate preview
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setImagePreview(null);
+    }
+  };
+
+  // Handle delivery proof file change with preview generation
+  const handleDeliveryProofChange = (e) => {
+    const file = e.target.files[0];
+    setDeliveryProofFile(file);
+
+    // Generate preview
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setDeliveryProofPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setDeliveryProofPreview(null);
+    }
   };
 
   const handleSubmitProof = async (e) => {
@@ -144,6 +213,12 @@ const MyRemittancesPage = ({ onNavigate }) => {
         description: t('remittances.user.proofUploaded')
       });
       setShowUploadModal(false);
+      setImagePreview(null);
+      setUploadData({
+        file: null,
+        reference: '',
+        notes: ''
+      });
       loadRemittances();
     } else {
       toast({
@@ -203,6 +278,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
           description: 'Evidencia de entrega subida correctamente',
         });
         setDeliveryProofFile(null);
+        setDeliveryProofPreview(null);
         setShowDeliveryProofModal(false);
         await loadRemittances();
         setSelectedRemittance(null);
@@ -484,18 +560,14 @@ const MyRemittancesPage = ({ onNavigate }) => {
                 </p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Comprobante de pago *
-                </label>
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={(e) => setUploadData({ ...uploadData, file: e.target.files[0] })}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                />
-              </div>
+              <FileUploadWithPreview
+                label="Comprobante de pago *"
+                accept="image/*,.pdf"
+                value={uploadData.file}
+                preview={imagePreview}
+                onChange={handlePaymentProofChange}
+                previewPosition="above"
+              />
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -527,7 +599,10 @@ const MyRemittancesPage = ({ onNavigate }) => {
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowUploadModal(false)}
+                  onClick={() => {
+                    setShowUploadModal(false);
+                    setImagePreview(null);
+                  }}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   {t('common.cancel')}
@@ -676,7 +751,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                 )}
 
                 {/* Delivery Proof Section */}
-                {selectedRemittance.status === REMITTANCE_STATUS.DELIVERED ? (
+                {[REMITTANCE_STATUS.DELIVERED, REMITTANCE_STATUS.COMPLETED].includes(selectedRemittance.status) ? (
                   <div>
                     <h3 className="font-bold mb-3 flex items-center gap-2">
                       <Truck className="w-4 h-4" />
@@ -784,23 +859,14 @@ const MyRemittancesPage = ({ onNavigate }) => {
                 </p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Foto de evidencia de entrega *
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setDeliveryProofFile(e.target.files[0])}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  required
-                />
-                {deliveryProofFile && (
-                  <p className="mt-2 text-sm text-gray-600">
-                    Archivo seleccionado: {deliveryProofFile.name}
-                  </p>
-                )}
-              </div>
+              <FileUploadWithPreview
+                label="Foto de evidencia de entrega *"
+                accept="image/*"
+                value={deliveryProofFile}
+                preview={deliveryProofPreview}
+                onChange={handleDeliveryProofChange}
+                previewPosition="above"
+              />
 
               <div className="bg-green-50 p-3 rounded-lg border border-green-200">
                 <p className="text-xs text-green-800">
@@ -814,6 +880,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                   onClick={() => {
                     setShowDeliveryProofModal(false);
                     setDeliveryProofFile(null);
+                    setDeliveryProofPreview(null);
                   }}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >

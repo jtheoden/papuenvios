@@ -25,7 +25,7 @@ const CartPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { cart, updateCartQuantity, removeFromCart, clearCart, financialSettings, zelleAccounts, visualSettings, businessInfo, notificationSettings } = useBusiness();
   const { isAuthenticated, user } = useAuth();
-  const { selectedCurrency, setSelectedCurrency, currencies, currencyCode, currencySymbol } = useCurrency();
+  const { selectedCurrency, setSelectedCurrency, currencies, currencyCode, currencySymbol, convertAmount } = useCurrency();
 
   const recipientSelectorRef = useRef();
 
@@ -55,8 +55,14 @@ const CartPage = ({ onNavigate }) => {
     if (!item) return 0;
 
     // Use displayed price if available (price shown when added to cart)
-    if (item.displayed_price) {
-      return parseFloat(item.displayed_price);
+    // But convert from the currency it was displayed in to the currently selected currency
+    if (item.displayed_price && item.displayed_currency_id) {
+      const displayedPrice = parseFloat(item.displayed_price);
+      // If prices are in different currencies, convert them
+      if (item.displayed_currency_id !== selectedCurrency) {
+        return convertAmount(displayedPrice, item.displayed_currency_id, selectedCurrency);
+      }
+      return displayedPrice;
     }
 
     // Fallback: use calculated_price_usd if available
@@ -76,7 +82,7 @@ const CartPage = ({ onNavigate }) => {
       const profitMargin = parseFloat(financialSettings.productProfit || 40) / 100;
       return basePrice * (1 + profitMargin);
     }
-  }, [financialSettings]);
+  }, [financialSettings, selectedCurrency, convertAmount]);
 
   // Calculate subtotal - memoized to avoid recalculation on every render
   const subtotal = useMemo(() => {

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getCurrencies, getConversionRate } from '@/lib/currencyService';
 
 const CurrencyContext = createContext();
@@ -22,7 +22,10 @@ export const CurrencyProvider = ({ children }) => {
   const [currencies, setCurrencies] = useState([]);
   // Start with null until currencies load (prevents invalid UUID queries)
   const [selectedCurrency, setSelectedCurrency] = useState(null);
-  const [exchangeRatesCache, setExchangeRatesCache] = useState(new Map());
+  // Use useRef for cache to avoid unnecessary re-renders and dependency issues
+  const exchangeRatesCacheRef = useRef(new Map());
+  // Track cache version to trigger re-renders when rates are loaded
+  const [cacheVersion, setCacheVersion] = useState(0);
   const [loading, setLoading] = useState(true);
   const [conversionLoading, setConversionLoading] = useState(false);
 
@@ -51,6 +54,88 @@ export const CurrencyProvider = ({ children }) => {
 
     loadCurrencies();
   }, []);
+
+  /**
+   * Get conversion rate between two currencies
+   * Uses cache to avoid repeated API calls
+   * @param {string} fromCurrencyId - Source currency UUID
+   * @param {string} toCurrencyId - Target currency UUID
+   * @returns {Promise<number>} Conversion rate or null if not found
+   */
+  const getConversionRateWithCache = useCallback(async (fromCurrencyId, toCurrencyId) => {
+    // Same currency = 1:1 rate
+    if (fromCurrencyId === toCurrencyId) {
+      return 1;
+    }
+
+    // Check cache
+    const cacheKey = `${fromCurrencyId}-${toCurrencyId}`;
+    if (exchangeRatesCacheRef.current.has(cacheKey)) {
+      return exchangeRatesCacheRef.current.get(cacheKey);
+    }
+
+    try {
+      setConversionLoading(true);
+      // getConversionRate returns a number directly, not an object with data/error
+      const rate = await getConversionRate(fromCurrencyId, toCurrencyId);
+
+      if (rate && rate !== null && !isNaN(rate)) {
+        // Cache the result and trigger re-render
+        exchangeRatesCacheRef.current.set(cacheKey, rate);
+        // Increment version to trigger re-renders in components using cached rates
+        setCacheVersion(prev => prev + 1);
+        return rate;
+      }
+
+      // Fallback to 1:1 if rate not found
+      console.warn(`No conversion rate found from ${fromCurrencyId} to ${toCurrencyId}`);
+      return 1;
+    } catch (error) {
+      console.error('Error getting conversion rate:', error);
+      return 1; // Fallback to 1:1
+    } finally {
+      setConversionLoading(false);
+    }
+  }, []);
+
+  /**
+   * Convert amount from one currency to another
+   * SYNCHRONOUS VERSION - Uses cached rates or returns original amount if no cache
+   * For render-phase calls. Use convertAmountAsync for guaranteed conversions.
+   * @param {number} amount - Amount to convert
+   * @param {string} fromCurrencyId - Source currency UUID
+   * @param {string} toCurrencyId - Target currency UUID
+   * @returns {number} Converted amount (or original if not cached)
+   */
+  const convertAmount = useCallback((amount, fromCurrencyId, toCurrencyId) => {
+    if (!amount || amount === 0) return 0;
+    if (!fromCurrencyId || !toCurrencyId) return amount;
+    if (fromCurrencyId === toCurrencyId) return amount;
+
+    // Check cache first (synchronous)
+    const cacheKey = `${fromCurrencyId}-${toCurrencyId}`;
+    if (exchangeRatesCacheRef.current.has(cacheKey)) {
+      const rate = exchangeRatesCacheRef.current.get(cacheKey);
+      return amount * rate;
+    }
+
+    // If not in cache, return original amount (avoid async in render)
+    return amount;
+  }, [cacheVersion]);
+
+  /**
+   * Async version for guaranteed conversions (use in effects/handlers)
+   * @param {number} amount - Amount to convert
+   * @param {string} fromCurrencyId - Source currency UUID
+   * @param {string} toCurrencyId - Target currency UUID
+   * @returns {Promise<number>} Converted amount
+   */
+  const convertAmountAsync = useCallback(async (amount, fromCurrencyId, toCurrencyId) => {
+    if (!amount || amount === 0) return 0;
+
+    const rate = await getConversionRateWithCache(fromCurrencyId, toCurrencyId);
+    return amount * rate;
+  }, [getConversionRateWithCache]);
 
   // Get current currency object
   const currentCurrency = useMemo(
@@ -108,89 +193,6 @@ export const CurrencyProvider = ({ children }) => {
   }, [getCurrencyById]);
 
   /**
-   * Get conversion rate between two currencies
-   * Uses cache to avoid repeated API calls
-   * @param {string} fromCurrencyId - Source currency UUID
-   * @param {string} toCurrencyId - Target currency UUID
-   * @returns {Promise<number>} Conversion rate or null if not found
-   */
-  const getConversionRateWithCache = useCallback(async (fromCurrencyId, toCurrencyId) => {
-    // Same currency = 1:1 rate
-    if (fromCurrencyId === toCurrencyId) {
-      return 1;
-    }
-
-    // Check cache
-    const cacheKey = `${fromCurrencyId}-${toCurrencyId}`;
-    if (exchangeRatesCache.has(cacheKey)) {
-      return exchangeRatesCache.get(cacheKey);
-    }
-
-    try {
-      setConversionLoading(true);
-      const { data, error } = await getConversionRate(fromCurrencyId, toCurrencyId);
-
-      if (!error && data) {
-        // Cache the result
-        setExchangeRatesCache(prev => {
-          const newCache = new Map(prev);
-          newCache.set(cacheKey, data.rate);
-          return newCache;
-        });
-        return data.rate;
-      }
-
-      // Fallback to 1:1 if rate not found
-      console.warn(`No conversion rate found from ${fromCurrencyId} to ${toCurrencyId}`);
-      return 1;
-    } catch (error) {
-      console.error('Error getting conversion rate:', error);
-      return 1; // Fallback to 1:1
-    } finally {
-      setConversionLoading(false);
-    }
-  }, [exchangeRatesCache]);
-
-  /**
-   * Convert amount from one currency to another
-   * SYNCHRONOUS VERSION - Uses cached rates or returns original amount if no cache
-   * For render-phase calls. Use convertAmountAsync for guaranteed conversions.
-   * @param {number} amount - Amount to convert
-   * @param {string} fromCurrencyId - Source currency UUID
-   * @param {string} toCurrencyId - Target currency UUID
-   * @returns {number} Converted amount (or original if not cached)
-   */
-  const convertAmount = useCallback((amount, fromCurrencyId, toCurrencyId) => {
-    if (!amount || amount === 0) return 0;
-    if (!fromCurrencyId || !toCurrencyId) return amount;
-    if (fromCurrencyId === toCurrencyId) return amount;
-
-    // Check cache first (synchronous)
-    const cacheKey = `${fromCurrencyId}-${toCurrencyId}`;
-    if (exchangeRatesCache.has(cacheKey)) {
-      const rate = exchangeRatesCache.get(cacheKey);
-      return amount * rate;
-    }
-
-    // If not in cache, return original amount (avoid async in render)
-    return amount;
-  }, [exchangeRatesCache]);
-
-  /**
-   * Async version for guaranteed conversions (use in effects/handlers)
-   * @param {number} amount - Amount to convert
-   * @param {string} fromCurrencyId - Source currency UUID
-   * @param {string} toCurrencyId - Target currency UUID
-   * @returns {Promise<number>} Converted amount
-   */
-  const convertAmountAsync = useCallback(async (amount, fromCurrencyId, toCurrencyId) => {
-    if (!amount || amount === 0) return 0;
-
-    const rate = await getConversionRateWithCache(fromCurrencyId, toCurrencyId);
-    return amount * rate;
-  }, [getConversionRateWithCache]);
-
-  /**
    * Convert amount to selected currency
    * @param {number} amount - Amount to convert
    * @param {string} fromCurrencyId - Source currency UUID
@@ -223,6 +225,28 @@ export const CurrencyProvider = ({ children }) => {
     return `${symbol}${formatted} ${code}`;
   }, [selectedCurrency, getSymbol, getCode, formatCurrency]);
 
+  // Precache conversion rates when selected currency changes
+  // This ensures convertAmount() returns correct values without waiting for API calls
+  // MUST be after getConversionRateWithCache is defined to avoid TDZ error
+  useEffect(() => {
+    if (!selectedCurrency || currencies.length === 0) return;
+
+    const preloadConversionRates = async () => {
+      // Load conversion rates from all other currencies to the selected one
+      const conversionPromises = currencies
+        .filter(currency => currency.id !== selectedCurrency)
+        .map(currency => getConversionRateWithCache(currency.id, selectedCurrency));
+
+      try {
+        await Promise.all(conversionPromises);
+      } catch (error) {
+        console.error('Error preloading conversion rates:', error);
+      }
+    };
+
+    preloadConversionRates();
+  }, [selectedCurrency, currencies, getConversionRateWithCache]);
+
   // Create currency map for quick access
   const currencyMap = useMemo(() => {
     const map = new Map();
@@ -233,7 +257,9 @@ export const CurrencyProvider = ({ children }) => {
     return map;
   }, [currencies]);
 
-  const value = {
+  // Memoize value object to ensure context subscribers re-render when it changes
+  // CRITICAL: Include cacheVersion so when conversion rates load, subscribers are notified
+  const value = useMemo(() => ({
     // State
     currencies,
     selectedCurrency,
@@ -263,7 +289,35 @@ export const CurrencyProvider = ({ children }) => {
     // Formatting utilities
     formatCurrency,
     displayCurrency
-  };
+  }), [
+    // State dependencies
+    currencies,
+    selectedCurrency,
+    setSelectedCurrency,
+    currentCurrency,
+    loading,
+    conversionLoading,
+    // Properties dependencies
+    currencySymbol,
+    currencyCode,
+    // Utilities dependencies
+    getCurrencyById,
+    getCurrencyByCode,
+    getSymbol,
+    getCode,
+    formatDisplay,
+    currencyMap,
+    // Conversion dependencies - CRITICAL
+    getConversionRateWithCache,
+    convertAmount,
+    convertAmountAsync,
+    convertToSelected,
+    // Formatting dependencies
+    formatCurrency,
+    displayCurrency,
+    // Cache version to trigger updates when rates load
+    cacheVersion
+  ]);
 
   return (
     <CurrencyContext.Provider value={value}>
