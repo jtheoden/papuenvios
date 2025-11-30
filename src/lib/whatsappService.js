@@ -446,15 +446,15 @@ export const notifyAdminNewPaymentProof = (remittance, adminPhone, language = 'e
         `🆔 *Número interno:* ${remittance.id}\n\n` +
         `💰 *Detalles del Pago*\n` +
         `┌─────────────────────\n` +
-        `│ Monto enviado: ${remittance.amount} ${remittance.currency}\n` +
-        `│ Monto a entregar: ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.delivery_currency}\n` +
+        `│ Monto enviado: ${remittance.amount_sent} ${remittance.currency_sent}\n` +
+        `│ Monto a entregar: ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.currency_delivered}\n` +
         `│ Tipo: ${type?.name || 'N/A'}\n` +
         `└─────────────────────\n\n` +
         `👤 *Destinatario*\n` +
         `┌─────────────────────\n` +
         `│ ${remittance.recipient_name}\n` +
         `│ 📱 ${remittance.recipient_phone}\n` +
-        `│ 📍 ${remittance.recipient_city || 'N/A'}\n` +
+        `│ 📍 ${remittance.recipient_province || 'N/A'}\n` +
         `└─────────────────────\n\n` +
         `📸 *Comprobante de Pago*\n` +
         `🔗 Ver/descargar en el sistema\n\n` +
@@ -469,15 +469,15 @@ export const notifyAdminNewPaymentProof = (remittance, adminPhone, language = 'e
         `🆔 *Internal Number:* ${remittance.id}\n\n` +
         `💰 *Payment Details*\n` +
         `┌─────────────────────\n` +
-        `│ Amount Sent: ${remittance.amount} ${remittance.currency}\n` +
-        `│ Amount to Deliver: ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.delivery_currency}\n` +
+        `│ Amount Sent: ${remittance.amount_sent} ${remittance.currency_sent}\n` +
+        `│ Amount to Deliver: ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.currency_delivered}\n` +
         `│ Type: ${type?.name || 'N/A'}\n` +
         `└─────────────────────\n\n` +
         `👤 *Recipient*\n` +
         `┌─────────────────────\n` +
         `│ ${remittance.recipient_name}\n` +
         `│ 📱 ${remittance.recipient_phone}\n` +
-        `│ 📍 ${remittance.recipient_city || 'N/A'}\n` +
+        `│ 📍 ${remittance.recipient_province || 'N/A'}\n` +
         `└─────────────────────\n\n` +
         `📸 *Payment Proof*\n` +
         `🔗 View/download in system\n\n` +
