@@ -69,11 +69,9 @@ const UserPanel = ({ onNavigate }) => {
       // Admin/super_admin see all pending orders, regular users see their own orders
       if (userRole === 'admin' || userRole === 'super_admin') {
         console.log('[UserPanel] Loading pending orders for admin');
-        const result = await getAllOrders({ payment_status: 'pending' });
-        console.log('[UserPanel] Admin orders result:', result);
-        if (result.success) {
-          setOrders(result.orders);
-        }
+        const orders = await getAllOrders({ payment_status: 'pending' });
+        console.log('[UserPanel] Admin orders result:', orders);
+        setOrders(orders || []);
       } else {
         console.log('[UserPanel] Loading user orders for regular user');
         const result = await getUserOrders(user.id);
