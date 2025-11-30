@@ -64,12 +64,11 @@ const Header = ({ currentPage, onNavigate }) => {
 
   const loadPendingOrders = async () => {
     try {
-      const result = await getPendingOrdersCount();
-      if (result.success) {
-        setPendingOrdersCount(result.count || 0);
-      }
+      const count = await getPendingOrdersCount();
+      setPendingOrdersCount(count || 0);
     } catch (error) {
       console.error('Error loading pending orders:', error);
+      setPendingOrdersCount(0);
     }
   };
 

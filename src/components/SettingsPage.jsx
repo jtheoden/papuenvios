@@ -103,11 +103,11 @@ const SettingsPage = () => {
   const loadOfficialRates = async () => {
     setLoadingRates(true);
     try {
-      const { data, error } = await fetchOfficialRates();
-      if (error) throw error;
-      setOfficialRates(data);
+      const rates = await fetchOfficialRates();
+      setOfficialRates(rates || []);
     } catch (error) {
       console.error('Error loading official rates:', error);
+      setOfficialRates([]);
     } finally {
       setLoadingRates(false);
     }
@@ -127,11 +127,11 @@ const SettingsPage = () => {
   // Load currencies from database
   const loadCurrencies = async () => {
     try {
-      const { data, error } = await getCurrencies();
-      if (error) throw error;
-      setCurrencies(data || []);
+      const currencies = await getCurrencies();
+      setCurrencies(currencies || []);
     } catch (error) {
       console.error('Error loading currencies:', error);
+      setCurrencies([]);
       toast({
         title: 'Error',
         description: language === 'es'
@@ -272,28 +272,29 @@ const SettingsPage = () => {
   const loadShippingZones = async () => {
     setLoadingZones(true);
     try {
-      const result = await getAllShippingZones();
-      if (result.success) {
-        // Ensure all Cuban provinces are represented
-        const provinceNames = getProvinceNames();
-        const existingProvinces = result.zones.map(z => z.province_name);
-        const missingProvinces = provinceNames.filter(p => !existingProvinces.includes(p));
+      const zones = await getAllShippingZones();
+      // getAllShippingZones returns array directly
+      const existingZones = zones || [];
 
-        // Add missing provinces with 0 cost
-        const allZones = [
-          ...result.zones,
-          ...missingProvinces.map(name => ({
-            id: `temp-${name}`,
-            province_name: name,
-            shipping_cost: 0,
-            is_active: false,
-            free_shipping: false,
-            is_new: true
-          }))
-        ];
+      // Ensure all Cuban provinces are represented
+      const provinceNames = getProvinceNames();
+      const existingProvinces = existingZones.map(z => z.province_name);
+      const missingProvinces = provinceNames.filter(p => !existingProvinces.includes(p));
 
-        setShippingZones(allZones.sort((a, b) => a.province_name.localeCompare(b.province_name)));
-      }
+      // Add missing provinces with 0 cost
+      const allZones = [
+        ...existingZones,
+        ...missingProvinces.map(name => ({
+          id: `temp-${name}`,
+          province_name: name,
+          shipping_cost: 0,
+          is_active: false,
+          free_shipping: false,
+          is_new: true
+        }))
+      ];
+
+      setShippingZones(allZones.sort((a, b) => a.province_name.localeCompare(b.province_name)));
     } catch (error) {
       console.error('Error loading shipping zones:', error);
       toast({
@@ -360,12 +361,11 @@ const SettingsPage = () => {
   const loadExchangeRates = async () => {
     setLoadingRates2(true);
     try {
-      const { data, error } = await getAllExchangeRates();
-      if (!error && data) {
-        setExchangeRates(data);
-      }
+      const rates = await getAllExchangeRates();
+      setExchangeRates(rates || []);
     } catch (error) {
       console.error('Error loading exchange rates:', error);
+      setExchangeRates([]);
     } finally {
       setLoadingRates2(false);
     }
@@ -520,11 +520,11 @@ const SettingsPage = () => {
   const loadCarouselSlides = async () => {
     setLoadingSlides(true);
     try {
-      const { data, error } = await getCarouselSlides();
-      if (error) throw error;
-      setCarouselSlides(data || []);
+      const slides = await getCarouselSlides();
+      setCarouselSlides(slides || []);
     } catch (error) {
       console.error('Error loading carousel slides:', error);
+      setCarouselSlides([]);
       toast({
         title: t('settings.visual.errorLoadingSlides'),
         description: error.message,
@@ -538,7 +538,7 @@ const SettingsPage = () => {
   // Create new slide
   const handleAddSlide = async () => {
     try {
-      const { data, error } = await createCarouselSlide({
+      await createCarouselSlide({
         title_es: '',
         title_en: '',
         subtitle_es: '',
@@ -547,8 +547,6 @@ const SettingsPage = () => {
         link_url: '',
         is_active: false
       });
-
-      if (error) throw error;
 
       await loadCarouselSlides();
       toast({
