@@ -659,14 +659,15 @@ export const getOrderById = async (orderId) => {
       throw createValidationError({ orderId: 'Order ID is required' });
     }
 
+    // Query order without user_profiles join (due to schema relationship constraints)
+    // User profile will be enriched manually after fetching order
     const { data: order, error } = await supabase
       .from('orders')
       .select(`
         *,
         order_items (*),
         currencies (code, symbol),
-        shipping_zones (province_name, shipping_cost),
-        user_profiles (user_id, full_name, email)
+        shipping_zones (province_name, shipping_cost)
       `)
       .eq('id', orderId)
       .single();
@@ -679,6 +680,22 @@ export const getOrderById = async (orderId) => {
 
     if (!order) {
       throw createNotFoundError('Order', orderId);
+    }
+
+    // Enrich order with user profile data if order exists
+    if (order && order.user_id) {
+      const { data: profile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('user_id, full_name, email')
+        .eq('user_id', order.user_id)
+        .single();
+
+      if (!profileError && profile) {
+        return {
+          ...order,
+          user_profiles: profile
+        };
+      }
     }
 
     return order;
