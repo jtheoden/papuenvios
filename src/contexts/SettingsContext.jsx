@@ -1,4 +1,5 @@
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { loadNotificationSettings } from '@/lib/notificationSettingsService';
 
 const SettingsContext = createContext();
 
@@ -70,11 +71,25 @@ export const SettingsProvider = ({ children }) => {
     shippingFreeThreshold: 100 // Free shipping over this amount
   });
 
-  const [notificationSettings, setNotificationSettings] = useLocalStorage('notificationSettings', {
+  // Notification settings now loaded from Supabase system_config table
+  const [notificationSettings, setNotificationSettings] = useState({
     whatsapp: '',
     whatsappGroup: '',
     adminEmail: ''
   });
+
+  // Load notification settings from Supabase on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const settings = await loadNotificationSettings();
+        setNotificationSettings(settings);
+      } catch (err) {
+        console.error('Failed to load notification settings:', err);
+      }
+    };
+    loadSettings();
+  }, []);
 
   const [visualSettings, setVisualSettings] = useLocalStorage('visualSettings', {
     logo: '',

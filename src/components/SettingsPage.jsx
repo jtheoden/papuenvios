@@ -12,6 +12,7 @@ import { getCurrencies, createCurrency, updateCurrency, deleteCurrency, fetchOff
 import { getCarouselSlides, createCarouselSlide, updateCarouselSlide, hardDeleteCarouselSlide, reorderSlides } from '@/lib/carouselService';
 import { getAllShippingZones, updateShippingZone, createShippingZone } from '@/lib/shippingService';
 import { getProvinceNames } from '@/lib/cubanLocations';
+import { saveNotificationSettings } from '@/lib/notificationSettingsService';
 import { supabase } from '@/lib/supabase';
 
 const SettingsPage = () => {
@@ -263,9 +264,18 @@ const SettingsPage = () => {
     setCurrencyForm({ code: '', name_es: '', name_en: '', symbol: '', is_base: false });
   };
 
-  const handleNotificationSave = () => {
-    setNotificationSettings(localNotifications);
-    toast({ title: t('settings.saveSuccess') });
+  const handleNotificationSave = async () => {
+    try {
+      await saveNotificationSettings(localNotifications);
+      setNotificationSettings(localNotifications);
+      toast({ title: t('settings.saveSuccess') });
+    } catch (err) {
+      console.error('Failed to save notification settings:', err);
+      toast({
+        title: t('common.error'),
+        description: 'Failed to save notification settings'
+      });
+    }
   };
 
   // Shipping zones functions
