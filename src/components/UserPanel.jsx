@@ -105,14 +105,12 @@ const UserPanel = ({ onNavigate }) => {
     setShowOrderDetails(true);
 
     try {
-      const result = await getOrderById(orderId);
-      console.log('[UserPanel] Order details loaded:', result);
-      if (result.success) {
-        setSelectedOrder(result.order);
-        console.log('[UserPanel] Selected order payment_status:', result.order?.payment_status);
-        console.log('[UserPanel] Payment proof URL:', result.order?.payment_proof_url);
-        console.log('[UserPanel] Current userRole:', userRole);
-      }
+      const order = await getOrderById(orderId);
+      console.log('[UserPanel] Order details loaded:', order);
+      setSelectedOrder(order);
+      console.log('[UserPanel] Selected order payment_status:', order?.payment_status);
+      console.log('[UserPanel] Payment proof URL:', order?.payment_proof_url);
+      console.log('[UserPanel] Current userRole:', userRole);
     } catch (error) {
       console.error('Error loading order details:', error);
     } finally {
