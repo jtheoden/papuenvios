@@ -659,14 +659,14 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
 
     // Notify admin (graceful fallback if fails - don't block remittance creation)
     try {
-      const { data: settings } = await supabase
-        .from('system_settings')
-        .select('value')
+      const { data: settings, error: settingsError } = await supabase
+        .from('system_config')
+        .select('value_text')
         .eq('key', 'whatsapp_admin_phone')
         .single();
 
-      if (settings?.value) {
-        await notifyAdminNewPaymentProof(updatedRemittance, settings.value, 'es');
+      if (!settingsError && settings?.value_text) {
+        await notifyAdminNewPaymentProof(updatedRemittance, settings.value_text, 'es');
       }
     } catch (notifyError) {
       logError(notifyError, { operation: 'uploadPaymentProof - notification', remittanceId });
@@ -778,7 +778,7 @@ export const getRemittanceDetails = async (remittanceId) => {
         .from('remittance_status_history')
         .select('*')
         .eq('remittance_id', remittanceId)
-        .order('changed_at', { ascending: true });
+        .order('created_at', { ascending: true });
 
       if (historyError) {
         logError(parseSupabaseError(historyError), { operation: 'getRemittanceDetails - history', remittanceId });
