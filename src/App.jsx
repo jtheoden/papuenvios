@@ -44,20 +44,21 @@ function DynamicTitle() {
   );
 }
 
-// Protect routes with required roles
-const ProtectedUserManagement = withProtectedRoute(UserManagement, 'admin');
-const ProtectedDashboard = withProtectedRoute(DashboardPage, 'admin');
-const ProtectedAdmin = withProtectedRoute(AdminPage, 'admin');
-const ProtectedSettings = withProtectedRoute(SettingsPage, 'admin');
-const ProtectedUserPanel = withProtectedRoute(UserPanel, 'user');
-const ProtectedSendRemittance = withProtectedRoute(SendRemittancePage, 'user');
-const ProtectedMyRemittances = withProtectedRoute(MyRemittancesPage, 'user');
-const ProtectedMyRecipients = withProtectedRoute(MyRecipientsPage, 'user');
-
 function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState('home');
   const [detailParams, setDetailParams] = useState({ itemId: null, itemType: null });
+
+  // Create protected routes inside App to ensure they have access to context providers
+  // This prevents HMR issues where context might not be available
+  const ProtectedUserManagement = React.useMemo(() => withProtectedRoute(UserManagement, 'admin'), []);
+  const ProtectedDashboard = React.useMemo(() => withProtectedRoute(DashboardPage, 'admin'), []);
+  const ProtectedAdmin = React.useMemo(() => withProtectedRoute(AdminPage, 'admin'), []);
+  const ProtectedSettings = React.useMemo(() => withProtectedRoute(SettingsPage, 'admin'), []);
+  const ProtectedUserPanel = React.useMemo(() => withProtectedRoute(UserPanel, 'user'), []);
+  const ProtectedSendRemittance = React.useMemo(() => withProtectedRoute(SendRemittancePage, 'user'), []);
+  const ProtectedMyRemittances = React.useMemo(() => withProtectedRoute(MyRemittancesPage, 'user'), []);
+  const ProtectedMyRecipients = React.useMemo(() => withProtectedRoute(MyRecipientsPage, 'user'), []);
 
   // Handle URL-based routing for OAuth callback
   useEffect(() => {
