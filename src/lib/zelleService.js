@@ -67,12 +67,12 @@ const validateAccountData = (data) => {
     errors.account_name = 'Account name is required and must be a non-empty string';
   }
 
-  if (!data.phone_number || typeof data.phone_number !== 'string' || data.phone_number.trim().length === 0) {
-    errors.phone_number = 'Phone number is required and must be a non-empty string';
+  if (!data.phone || typeof data.phone !== 'string' || data.phone.trim().length === 0) {
+    errors.phone = 'Phone number is required and must be a non-empty string';
   }
 
-  if (!data.holder_name || typeof data.holder_name !== 'string' || data.holder_name.trim().length === 0) {
-    errors.holder_name = 'Holder name is required and must be a non-empty string';
+  if (!data.account_holder || typeof data.account_holder !== 'string' || data.account_holder.trim().length === 0) {
+    errors.account_holder = 'Holder name is required and must be a non-empty string';
   }
 
   if (data.daily_limit !== undefined && (typeof data.daily_limit !== 'number' || data.daily_limit < 0)) {
