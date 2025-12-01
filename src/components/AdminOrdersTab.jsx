@@ -1,7 +1,8 @@
 /**
  * Admin Orders Tab Component
- * Complete orders management with advanced filtering
+ * Complete orders management with advanced filtering and responsive tables
  * Filters: Date range, Status, Payment Status, User, Product, Order Type
+ * Uses: ResponsiveTableWrapper, OrderTableConfig, OrderActionButtons
  */
 
 import { useState, useEffect, useMemo } from 'react';
@@ -43,6 +44,9 @@ import {
 import { ORDER_STATUS, PAYMENT_STATUS, ITEM_TYPES } from '@/lib/constants';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
+import OrderActionButtons from '@/components/admin/OrderActionButtons';
+import { getTableColumns, getModalColumns } from '@/components/admin/OrderTableConfig';
 
 // Helper functions
 const getStatusText = (status, paymentStatus, language = 'es') => {
@@ -488,6 +492,44 @@ const AdminOrdersTab = () => {
     }).format(amount);
   };
 
+  // Render order type icon
+  const renderTypeIcon = (type) => {
+    switch (type) {
+      case 'product':
+        return <Package className="h-3 w-3" />;
+      case 'remittance':
+        return <DollarSign className="h-3 w-3" />;
+      default:
+        return <ShoppingBag className="h-3 w-3" />;
+    }
+  };
+
+  // Get columns with actions for responsive table
+  const columnsWithActions = useMemo(() => {
+    const baseColumns = getTableColumns(t, formatDate, formatCurrency, renderTypeIcon);
+    // Add actions column at the end
+    return [
+      ...baseColumns,
+      {
+        key: 'actions',
+        label: t('adminOrders.table.actions'),
+        width: '120px',
+        render: (value, order) => (
+          <OrderActionButtons
+            order={order}
+            onView={() => viewOrderDetails(order)}
+            onStartProcessing={() => handleStartProcessing(order)}
+            onMarkAsShipped={() => handleMarkAsShipped(order)}
+            onUploadDeliveryProof={() => handleUploadDeliveryProof(order)}
+            onCompleteOrder={() => handleCompleteOrder(order)}
+            onCancelOrder={() => handleCancelOrder(order)}
+            actionLoading={actionLoading === order.id}
+          />
+        )
+      }
+    ];
+  }, [t, actionLoading]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -683,84 +725,16 @@ const AdminOrdersTab = () => {
         )}
       </AnimatePresence>
 
-      {/* Orders Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <RefreshCw className="h-8 w-8 animate-spin text-blue-600" />
-          </div>
-        ) : error ? (
-          <div className="flex flex-col items-center justify-center py-12 text-red-600">
-            <XCircle className="h-12 w-12 mb-4" />
-            <p>{error}</p>
-            <button
-              onClick={loadOrders}
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              {t('adminOrders.messages.retry')}
-            </button>
-          </div>
-        ) : filteredOrders.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-            <Package className="h-12 w-12 mb-4" />
-            <p>{t('adminOrders.messages.noOrders')}</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('adminOrders.table.order')}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('adminOrders.table.user')}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('adminOrders.table.date')}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('adminOrders.table.type')}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('adminOrders.table.items')}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('adminOrders.table.total')}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('adminOrders.table.paymentStatus.label')}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('adminOrders.table.orderStatus.label')}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('adminOrders.table.actions')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredOrders.map((order) => (
-                  <OrderRow
-                    key={order.id}
-                    order={order}
-                    onViewDetails={viewOrderDetails}
-                    onStartProcessing={handleStartProcessing}
-                    onMarkAsShipped={handleMarkAsShipped}
-                    onUploadDeliveryProof={handleUploadDeliveryProof}
-                    onCompleteOrder={handleCompleteOrder}
-                    onCancelOrder={handleCancelOrder}
-                    formatDate={formatDate}
-                    formatCurrency={formatCurrency}
-                    actionLoading={actionLoading}
-                    t={t}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {/* Orders Table - Responsive */}
+      <ResponsiveTableWrapper
+        data={filteredOrders}
+        columns={columnsWithActions}
+        onRowClick={viewOrderDetails}
+        isLoading={loading}
+        modalTitle={t('adminOrders.detail.title')}
+        modalColumns={getModalColumns(t, formatDate, formatCurrency)}
+        emptyMessage={filteredOrders.length === 0 && !loading ? t('adminOrders.messages.noOrders') : undefined}
+      />
 
       {/* Order Details Modal */}
       {showOrderModal && selectedOrder && (
@@ -855,192 +829,6 @@ const StatCard = ({ label, value, icon: Icon, color, isAmount }) => {
   );
 };
 
-// Order Row Component
-const OrderRow = ({
-  order,
-  onViewDetails,
-  onStartProcessing,
-  onMarkAsShipped,
-  onUploadDeliveryProof,
-  onCompleteOrder,
-  onCancelOrder,
-  formatDate,
-  formatCurrency,
-  actionLoading,
-  t
-}) => {
-  // Calculate days in processing
-  const daysInProcessing = order.status === ORDER_STATUS.PROCESSING ? getDaysInProcessing(order) : null;
-
-  // Determine action button based on order state
-  const renderActionButton = () => {
-    const isLoading = actionLoading === order.id;
-
-    // Payment validated and pending - ready to start processing
-    if (order.payment_status === PAYMENT_STATUS.VALIDATED && order.status === ORDER_STATUS.PENDING) {
-      return (
-        <button
-          onClick={() => onStartProcessing(order)}
-          disabled={isLoading}
-          className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Play className="h-3 w-3" />
-          {isLoading ? t('adminOrders.actions.processing') : t('adminOrders.actions.start')}
-        </button>
-      );
-    }
-
-    // Processing - mark as shipped
-    if (order.status === ORDER_STATUS.PROCESSING) {
-      return (
-        <button
-          onClick={() => onMarkAsShipped(order)}
-          disabled={isLoading}
-          className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-600 text-white text-xs font-medium rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Truck className="h-3 w-3" />
-          {isLoading ? t('adminOrders.actions.processing') : t('adminOrders.actions.ship')}
-        </button>
-      );
-    }
-
-    // Shipped - upload delivery proof
-    if (order.status === ORDER_STATUS.SHIPPED) {
-      return (
-        <button
-          onClick={() => onUploadDeliveryProof(order)}
-          disabled={isLoading}
-          className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Camera className="h-3 w-3" />
-          {isLoading ? t('adminOrders.actions.loading') : t('adminOrders.actions.proof')}
-        </button>
-      );
-    }
-
-    // Delivered - complete order (or auto-complete)
-    if (order.status === ORDER_STATUS.DELIVERED) {
-      return (
-        <button
-          onClick={() => onCompleteOrder(order)}
-          disabled={isLoading}
-          className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Check className="h-3 w-3" />
-          {isLoading ? t('adminOrders.actions.completing') : t('adminOrders.actions.complete')}
-        </button>
-      );
-    }
-
-    // Completed or Cancelled - no action
-    if (order.status === ORDER_STATUS.COMPLETED || order.status === ORDER_STATUS.CANCELLED) {
-      return (
-        <span className="text-xs text-gray-500 italic">
-          {order.status === ORDER_STATUS.COMPLETED ? t('adminOrders.table.orderStatus.completed') : t('adminOrders.table.orderStatus.cancelled')}
-        </span>
-      );
-    }
-
-    // Default - view only
-    return <span className="text-xs text-gray-400">-</span>;
-  };
-
-  return (
-    <tr className="hover:bg-gray-50 transition-colors">
-      <td className="px-6 py-4 whitespace-nowrap">
-        <div className="text-sm font-medium text-gray-900">{order.order_number}</div>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap">
-        <div className="text-sm text-gray-900">{order.user_name || 'N/A'}</div>
-        <div className="text-xs text-gray-500">{order.user_email || ''}</div>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap">
-        <div className="text-sm text-gray-900">{formatDate(order.created_at)}</div>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap">
-        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-          {order.order_type === 'product' ? <Package className="h-3 w-3" /> :
-           order.order_type === 'remittance' ? <DollarSign className="h-3 w-3" /> :
-           <ShoppingBag className="h-3 w-3" />}
-          {order.order_type === 'product' ? t('adminOrders.types.products') :
-           order.order_type === 'remittance' ? t('adminOrders.types.remittance') : t('adminOrders.types.mixed')}
-        </span>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap">
-        <div className="text-sm text-gray-900">{order.order_items?.length || 0} items</div>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap">
-        <div className="text-sm font-semibold text-gray-900">
-          {formatCurrency(order.total_amount, order.currencies?.code)}
-        </div>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap">
-        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-          order.payment_status === PAYMENT_STATUS.VALIDATED
-            ? 'bg-green-100 text-green-700'
-            : order.payment_status === PAYMENT_STATUS.REJECTED
-            ? 'bg-red-100 text-red-700'
-            : 'bg-yellow-100 text-yellow-700'
-        }`}>
-          {getStatusIcon(order.status, order.payment_status)}
-          {getStatusText(order.status, order.payment_status, 'es')}
-        </span>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap">
-        <div className="flex flex-col gap-1">
-          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-            order.status === ORDER_STATUS.COMPLETED
-              ? 'bg-green-100 text-green-700'
-              : order.status === ORDER_STATUS.CANCELLED
-              ? 'bg-red-100 text-red-700'
-              : order.status === ORDER_STATUS.SHIPPED
-              ? 'bg-purple-100 text-purple-700'
-              : order.status === ORDER_STATUS.DELIVERED
-              ? 'bg-teal-100 text-teal-700'
-              : 'bg-blue-100 text-blue-700'
-          }`}>
-            {order.status}
-          </span>
-          {daysInProcessing !== null && (
-            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
-              daysInProcessing > 5
-                ? 'bg-red-100 text-red-700'
-                : daysInProcessing > 3
-                ? 'bg-yellow-100 text-yellow-700'
-                : 'bg-blue-100 text-blue-700'
-            }`}>
-              <Clock className="h-3 w-3" />
-              {daysInProcessing} {daysInProcessing === 1 ? t('adminOrders.days.singular') : t('adminOrders.days.plural')}
-            </span>
-          )}
-        </div>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-right">
-        <div className="flex items-center justify-end gap-2">
-          <button
-            onClick={() => onViewDetails(order)}
-            className="text-blue-600 hover:text-blue-900 inline-flex items-center gap-1"
-            title={t('adminOrders.actions.view')}
-          >
-            <Eye className="h-4 w-4" />
-          </button>
-          {renderActionButton()}
-          {/* Cancel button for non-completed orders */}
-          {order.status !== ORDER_STATUS.COMPLETED && order.status !== ORDER_STATUS.CANCELLED && (
-            <button
-              onClick={() => onCancelOrder(order)}
-              disabled={actionLoading === order.id}
-              className="text-red-600 hover:text-red-900 disabled:opacity-50"
-              title={t('adminOrders.actions.cancel')}
-            >
-              <Ban className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-      </td>
-    </tr>
-  );
-};
 
 // Order Details Modal Component
 const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
