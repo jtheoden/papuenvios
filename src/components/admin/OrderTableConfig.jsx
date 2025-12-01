@@ -1,3 +1,5 @@
+import React from 'react';
+
 /**
  * Order Table Column Configuration
  * Shared configuration for responsive table display in AdminOrdersTab

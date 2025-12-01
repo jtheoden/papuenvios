@@ -1,3 +1,5 @@
+import React from 'react';
+
 /**
  * Inventory Table Column Configuration
  * Shared configuration for responsive inventory table display
