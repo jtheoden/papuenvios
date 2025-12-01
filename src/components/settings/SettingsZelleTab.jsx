@@ -395,7 +395,7 @@ const SettingsZelleTab = () => {
           >
             <div className="sticky top-0 bg-white border-b p-6 flex items-center justify-between">
               <h2 className="text-xl font-semibold">
-                {selectedAccount ? t('zelle.editAccount') : t('zelle.createAccount')} || 'Account'}
+                {selectedAccount ? t('zelle.editAccount') : t('zelle.createAccount')}
               </h2>
               <button
                 onClick={() => setShowFormModal(false)}
@@ -536,7 +536,7 @@ const SettingsZelleTab = () => {
             animate={{ opacity: 1, scale: 1 }}
             className="bg-white rounded-lg max-w-md w-full p-6"
           >
-            <h2 className="text-lg font-semibold mb-2">{t('zelle.confirmDelete')} || 'Confirm Delete'}</h2>
+            <h2 className="text-lg font-semibold mb-2">{t('zelle.confirmDelete')}</h2>
             <p className="text-gray-600 mb-6">
               {language === 'es'
                 ? `¿Estás seguro de que deseas eliminar la cuenta "${selectedAccount.account_name}"? Esta acción no se puede deshacer.`
@@ -567,10 +567,10 @@ const SettingsZelleTab = () => {
             animate={{ opacity: 1, scale: 1 }}
             className="bg-white rounded-lg max-w-md w-full p-6"
           >
-            <h2 className="text-lg font-semibold mb-4">{t('zelle.resetCounters')} || 'Reset Counters'}</h2>
+            <h2 className="text-lg font-semibold mb-4">{t('zelle.resetCounters')}</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-2">{t('zelle.counterType')} || 'Counter Type'}</label>
+                <label className="block text-sm font-medium mb-2">{t('zelle.counterType')}</label>
                 <select
                   value={resetType}
                   onChange={(e) => setResetType(e.target.value)}
