@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Search, Filter, ShoppingCart, Plus, Package, Upload, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Filter, ShoppingCart, Plus, Package, Upload, X, ChevronLeft, ChevronRight, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -11,6 +11,8 @@ import { uploadProductImage, deleteProductImage } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { getHeadingStyle } from '@/lib/styleUtils';
+import { getDisplayPrice as formatPrice, convertPrice, calculateDiscount } from '@/lib/priceCalculationService';
+import { getUserCategoryWithDiscount } from '@/lib/orderDiscountService';
 import CurrencySelector from '@/components/CurrencySelector';
 import PriceDisplay from '@/components/PriceDisplay';
 
@@ -30,6 +32,10 @@ const ProductsPage = ({ onNavigate }) => {
   const combosScrollRef = useRef(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
+
+  // User pricing and discount state
+  const [userCategory, setUserCategory] = useState('regular');
+  const [userCategoryDiscount, setUserCategoryDiscount] = useState(0);
 
   const handleImageUpload = useCallback(async (event, productId) => {
     const file = event.target.files[0];
@@ -206,9 +212,29 @@ const ProductsPage = ({ onNavigate }) => {
     }
   }, [filteredCombos]);
 
+  // Load user category discount on mount and when user changes
+  useEffect(() => {
+    const loadUserDiscount = async () => {
+      if (user && user.id) {
+        try {
+          const categoryInfo = await getUserCategoryWithDiscount(user.id);
+          setUserCategory(categoryInfo.category || 'regular');
+          setUserCategoryDiscount(categoryInfo.discountPercent || 0);
+        } catch (error) {
+          console.error('Error loading user category discount:', error);
+          setUserCategory('regular');
+          setUserCategoryDiscount(0);
+        }
+      }
+    };
+
+    loadUserDiscount();
+  }, [user?.id]);
+
   /**
    * Calculate combo display price (synchronous version)
    * For use in calculations and displays without async/await
+   * Applies user category discounts to combos as well
    */
   const getComboDisplayPrice = useCallback((combo) => {
     if (!combo) return '0.00';
@@ -218,7 +244,8 @@ const ProductsPage = ({ onNavigate }) => {
     (combo.products || []).forEach(productId => {
       const product = products.find(p => p.id === productId);
       if (product) {
-        const basePrice = parseFloat(product.base_price || 0);
+        // Use final_price to get price with margin already applied
+        const basePrice = parseFloat(product.final_price || product.base_price || 0);
         const productCurrencyId = product.base_currency_id;
         const quantity = combo.productQuantities?.[productId] || 1;
 
@@ -232,33 +259,102 @@ const ProductsPage = ({ onNavigate }) => {
       }
     });
 
-    // Apply combo profit margin
-    const profitMargin = parseFloat(combo.profitMargin || financialSettings.comboProfit) / 100;
-    const finalPrice = totalBasePrice * (1 + profitMargin);
+    // Apply combo profit margin from database (combo.final_price if available)
+    // OR calculate if not stored
+    const comboFinalPrice = combo.final_price || (totalBasePrice * (1 + (parseFloat(combo.profitMargin || financialSettings.comboProfit) / 100)));
+
+    // Apply user category discount
+    const discountAmount = calculateDiscount(comboFinalPrice, userCategoryDiscount);
+    const finalPrice = comboFinalPrice - discountAmount;
 
     return finalPrice.toFixed(2);
-  }, [products, financialSettings, selectedCurrency, convertAmount]);
+  }, [products, financialSettings, selectedCurrency, convertAmount, userCategoryDiscount]);
 
   /**
-   * Get display price for a product (base price with markup)
+   * Get combo price breakdown for display (original + discount)
+   */
+  const getComboPriceBreakdown = useCallback((combo) => {
+    if (!combo) return { original: '0.00', discount: '0.00', final: '0.00' };
+
+    let totalBasePrice = 0;
+
+    (combo.products || []).forEach(productId => {
+      const product = products.find(p => p.id === productId);
+      if (product) {
+        const basePrice = parseFloat(product.final_price || product.base_price || 0);
+        const productCurrencyId = product.base_currency_id;
+        const quantity = combo.productQuantities?.[productId] || 1;
+
+        let convertedPrice = basePrice;
+        if (productCurrencyId && productCurrencyId !== selectedCurrency) {
+          convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
+        }
+
+        totalBasePrice += convertedPrice * quantity;
+      }
+    });
+
+    const comboFinalPrice = combo.final_price || (totalBasePrice * (1 + (parseFloat(combo.profitMargin || financialSettings.comboProfit) / 100)));
+    const discountAmount = calculateDiscount(comboFinalPrice, userCategoryDiscount);
+    const finalPrice = comboFinalPrice - discountAmount;
+
+    return {
+      original: comboFinalPrice.toFixed(2),
+      discount: discountAmount.toFixed(2),
+      final: finalPrice.toFixed(2),
+      hasDiscount: userCategoryDiscount > 0
+    };
+  }, [products, financialSettings, selectedCurrency, convertAmount, userCategoryDiscount]);
+
+  /**
+   * Get display price for a product with discount applied
+   * Use final_price directly (already includes profit margin from database)
+   * Do NOT apply margin again - that was the double-margin bug
    */
   const getDisplayPrice = useCallback((product) => {
     if (!product) return '0.00';
 
+    // Use final_price from database (already includes margin)
     const basePrice = parseFloat(product.final_price || product.base_price || 0);
     const productCurrencyId = product.base_currency_id;
 
-    // Convert to selected currency first, then apply profit margin
+    // Convert to selected currency
     let convertedPrice = basePrice;
     if (productCurrencyId && productCurrencyId !== selectedCurrency) {
       convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
     }
 
-    const profitMargin = parseFloat(financialSettings.productProfit || 40) / 100;
-    const finalPrice = convertedPrice * (1 + profitMargin);
+    // Apply user category discount (not double margin)
+    const discountAmount = calculateDiscount(convertedPrice, userCategoryDiscount);
+    const finalPrice = convertedPrice - discountAmount;
 
     return finalPrice.toFixed(2);
-  }, [financialSettings, selectedCurrency, convertAmount]);
+  }, [selectedCurrency, convertAmount, userCategoryDiscount]);
+
+  /**
+   * Get price breakdown for display (original + discount)
+   */
+  const getPriceBreakdown = useCallback((product) => {
+    if (!product) return { original: '0.00', discount: '0.00', final: '0.00' };
+
+    const basePrice = parseFloat(product.final_price || product.base_price || 0);
+    const productCurrencyId = product.base_currency_id;
+
+    let convertedPrice = basePrice;
+    if (productCurrencyId && productCurrencyId !== selectedCurrency) {
+      convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
+    }
+
+    const discountAmount = calculateDiscount(convertedPrice, userCategoryDiscount);
+    const finalPrice = convertedPrice - discountAmount;
+
+    return {
+      original: convertedPrice.toFixed(2),
+      discount: discountAmount.toFixed(2),
+      final: finalPrice.toFixed(2),
+      hasDiscount: userCategoryDiscount > 0
+    };
+  }, [selectedCurrency, convertAmount, userCategoryDiscount]);
 
 
   return (
@@ -446,10 +542,26 @@ const ProductsPage = ({ onNavigate }) => {
                     </p>
 
                     <div className="flex items-center justify-between mb-4">
-                      <div>
+                      <div className="flex-1">
+                        {userCategoryDiscount > 0 && (
+                          <div className="mb-2">
+                            <div className="text-xs text-gray-500 line-through">
+                              {currencySymbol}{getComboPriceBreakdown(combo).original} {currencyCode}
+                            </div>
+                            <div className="text-xs text-green-600 font-semibold flex items-center gap-1">
+                              <Tag className="w-3 h-3" />
+                              {language === 'es' ? 'Descuento' : 'Discount'} {userCategoryDiscount}%: -{currencySymbol}{getComboPriceBreakdown(combo).discount}
+                            </div>
+                          </div>
+                        )}
                         <p className="text-2xl font-bold text-purple-600">
                           {currencySymbol}{getComboDisplayPrice(combo)} <span className="text-sm text-gray-600">{currencyCode}</span>
                         </p>
+                        {userCategory !== 'regular' && (
+                          <div className="text-xs text-blue-600 mt-1">
+                            {language === 'es' ? `Categoría: ${userCategory}` : `Category: ${userCategory}`}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -580,10 +692,26 @@ const ProductsPage = ({ onNavigate }) => {
                   </p>
                 )}
                 <div className="flex items-center justify-between mb-4">
-                  <div>
+                  <div className="flex-1">
+                    {userCategoryDiscount > 0 && (
+                      <div className="mb-2">
+                        <div className="text-xs text-gray-500 line-through">
+                          {currencySymbol}{getPriceBreakdown(product).original} {currencyCode}
+                        </div>
+                        <div className="text-xs text-green-600 font-semibold flex items-center gap-1">
+                          <Tag className="w-3 h-3" />
+                          {language === 'es' ? 'Descuento' : 'Discount'} {userCategoryDiscount}%: -{currencySymbol}{getPriceBreakdown(product).discount}
+                        </div>
+                      </div>
+                    )}
                     <div className="text-xl font-bold text-green-600">
                       {currencySymbol}{getDisplayPrice(product)} <span className="text-sm text-gray-600">{currencyCode}</span>
                     </div>
+                    {userCategory !== 'regular' && (
+                      <div className="text-xs text-blue-600 mt-1">
+                        {language === 'es' ? `Categoría: ${userCategory}` : `Category: ${userCategory}`}
+                      </div>
+                    )}
                   </div>
                 </div>
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { ShoppingCart, X, Plus, Minus, Copy, Upload, CheckCircle, MessageCircle, ArrowLeft, ArrowRight } from 'lucide-react';
+import { ShoppingCart, X, Plus, Minus, Copy, Upload, CheckCircle, MessageCircle, ArrowLeft, ArrowRight, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -16,6 +16,8 @@ import { generateWhatsAppURL, notifyAdminNewPayment, openWhatsAppChat } from '@/
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
+import { calculateDiscount } from '@/lib/priceCalculationService';
+import { calculateOrderWithDiscounts } from '@/lib/orderDiscountService';
 import RecipientSelector from '@/components/RecipientSelector';
 import ZelleAccountSelector from '@/components/ZelleAccountSelector';
 import FileUploadWithPreview from '@/components/FileUploadWithPreview';
@@ -48,6 +50,10 @@ const CartPage = ({ onNavigate }) => {
   const [shippingCost, setShippingCost] = useState(0);
   const [convertedSubtotal, setConvertedSubtotal] = useState(null);
   const [convertedShipping, setConvertedShipping] = useState(null);
+
+  // User category discount state
+  const [userCategory, setUserCategory] = useState('regular');
+  const [userCategoryDiscount, setUserCategoryDiscount] = useState(0);
   const [convertedTotal, setConvertedTotal] = useState(null);
 
   // Calculate item price based on type (product or combo) - memoized with useCallback
@@ -91,10 +97,27 @@ const CartPage = ({ onNavigate }) => {
     }, 0);
   }, [cart, getItemPrice]);
 
-  // Load shipping zones
+  // Load shipping zones and user category discount
   useEffect(() => {
     loadShippingZones();
+    loadUserCategoryDiscount();
   }, []);
+
+  // Load user category discount
+  const loadUserCategoryDiscount = async () => {
+    if (user && user.id) {
+      try {
+        const { getUserCategoryWithDiscount } = await import('@/lib/orderDiscountService');
+        const categoryInfo = await getUserCategoryWithDiscount(user.id);
+        setUserCategory(categoryInfo.category || 'regular');
+        setUserCategoryDiscount(categoryInfo.discountPercent || 0);
+      } catch (error) {
+        console.error('Error loading user category discount:', error);
+        setUserCategory('regular');
+        setUserCategoryDiscount(0);
+      }
+    }
+  };
 
   // Load municipalities when province changes
   useEffect(() => {
@@ -196,7 +219,10 @@ const CartPage = ({ onNavigate }) => {
     }
   };
 
-  const total = (subtotal + shippingCost).toFixed(2);
+  // Calculate discount amount and final total
+  const discountAmount = calculateDiscount(subtotal, userCategoryDiscount);
+  const subtotalAfterDiscount = subtotal - discountAmount;
+  const total = (subtotalAfterDiscount + shippingCost).toFixed(2);
   const purchaseId = `PO-${Date.now()}`;
 
   const activeZelleAccount = zelleAccounts.find(acc => acc.forProducts && acc.active);
