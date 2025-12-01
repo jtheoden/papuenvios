@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Save, Edit, AlertTriangle, AlertCircle } from 'lucide-react';
+import { Plus, Save, Edit, AlertTriangle, AlertCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { createProduct, updateProduct as updateProductDB } from '@/lib/productService';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
+import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
+import { getTableColumns, getModalColumns } from './ProductTableConfig';
 
 /**
  * Vendor Inventory Tab Component
@@ -23,6 +25,8 @@ const VendorInventoryTab = ({
   const { t, language } = useLanguage();
   const [productForm, setProductForm] = useState(null);
   const [productImagePreview, setProductImagePreview] = useState(null);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [showProductDetails, setShowProductDetails] = useState(false);
 
   const handleInputChange = (field, value) => {
     setProductForm(prev => ({ ...prev, [field]: value }));
@@ -62,6 +66,11 @@ const VendorInventoryTab = ({
       sku: product.sku || ''
     });
     setProductImagePreview(product.image_url || product.image_file || product.image || null);
+  };
+
+  const handleViewProductDetails = (product) => {
+    setSelectedProduct(product);
+    setShowProductDetails(true);
   };
 
   const handleProductImageUpload = async (e) => {
@@ -415,114 +424,123 @@ const VendorInventoryTab = ({
         </motion.div>
       )}
 
-      {/* Products Table */}
-      <div className="glass-effect rounded-2xl overflow-hidden">
-        <table className="w-full text-left">
-          <thead>
-            <tr>
-              <th className="p-4">{t('vendor.inventory.product')}</th>
-              <th className="p-4">{language === 'es' ? 'Categoría' : 'Category'}</th>
-              <th className="p-4">{language === 'es' ? 'Moneda' : 'Currency'}</th>
-              <th className="p-4">{t('vendor.inventory.stock')}</th>
-              <th className="p-4">{t('vendor.inventory.price')}</th>
-              <th className="p-4">{t('vendor.inventory.expiryDate')}</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {products.map(p => {
-              const productCurrency = currencies.find(c => c.id === p.base_currency_id);
-              const stock = p.stock !== undefined ? p.stock : 0;
-              const minStock = p.min_stock_alert || 10;
-              const isOutOfStock = stock === 0;
-              const isLowStock = stock > 0 && stock <= minStock;
-              const expiryStatus = getExpiryStatus(p.expiry_date || p.expiryDate);
+      {/* Responsive Products Table */}
+      <ResponsiveTableWrapper
+        data={products}
+        columns={getTableColumns(t, language, currencies)}
+        onRowClick={handleViewProductDetails}
+        modalTitle="vendor.inventory.productDetails"
+        modalColumns={getModalColumns(t, language, currencies)}
+        emptyMessage={t('vendor.inventory.noProducts') || 'No products found'}
+      />
 
-              return (
-                <tr
-                  key={p.id}
-                  className={`border-b last:border-none ${expiryStatus?.color || ''} ${
-                    isOutOfStock ? 'opacity-60' : ''
-                  }`}
-                >
-                  <td className={`p-4 font-medium ${isOutOfStock ? 'line-through text-gray-400' : ''}`}>
-                    {p.name_es || p.name || 'Sin nombre'}
-                  </td>
-                  <td className="p-4 text-gray-600">
-                    {p.category
-                      ? language === 'es'
-                        ? p.category.name_es
-                        : p.category.name_en
-                      : 'Sin categoría'}
-                  </td>
-                  <td className="p-4 text-center">
-                    <span className="text-xs bg-gray-200 px-2 py-1 rounded">
-                      {productCurrency?.code || 'USD'}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex items-center gap-2">
-                      <span className={isOutOfStock ? 'line-through text-gray-400' : ''}>
-                        {stock}
-                      </span>
-                      {isOutOfStock && (
-                        <AlertCircle
-                          className="h-4 w-4 text-red-600"
-                          title={language === 'es' ? 'Sin stock' : 'Out of stock'}
-                        />
-                      )}
-                      {isLowStock && (
-                        <AlertTriangle
-                          className="h-4 w-4 text-orange-500"
-                          title={language === 'es' ? 'Stock bajo' : 'Low stock'}
-                        />
-                      )}
+      {/* Product Details Modal */}
+      {showProductDetails && selectedProduct && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          onClick={() => setShowProductDetails(false)}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-lg">
+              <h3 className="text-xl font-bold text-gray-900">
+                {t('vendor.inventory.productDetails')} - {selectedProduct.name_es || selectedProduct.name}
+              </h3>
+              <button
+                onClick={() => setShowProductDetails(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Left Column - Product Information */}
+              <div className="lg:col-span-2 space-y-6">
+                {/* Product Info */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <ProductInfoItem label={t('vendor.inventory.product')} value={selectedProduct.name_es || selectedProduct.name} />
+                  <ProductInfoItem label={language === 'es' ? 'Categoría' : 'Category'} value={selectedProduct.category ? (language === 'es' ? selectedProduct.category.name_es : selectedProduct.category.name_en) : 'Sin categoría'} />
+                  <ProductInfoItem label={t('vendor.inventory.stock')} value={selectedProduct.stock || 0} />
+                  <ProductInfoItem label={language === 'es' ? 'Moneda' : 'Currency'} value={currencies.find(c => c.id === selectedProduct.base_currency_id)?.code || 'USD'} />
+                  <ProductInfoItem label={t('vendor.inventory.basePrice')} value={`${currencies.find(c => c.id === selectedProduct.base_currency_id)?.symbol || '$'}${Number(selectedProduct.base_price || 0).toFixed(2)}`} />
+                  <ProductInfoItem label={t('vendor.inventory.finalPrice')} value={`${currencies.find(c => c.id === selectedProduct.base_currency_id)?.symbol || '$'}${Number(selectedProduct.final_price || 0).toFixed(2)}`} />
+                  <ProductInfoItem label={language === 'es' ? 'Stock Mínimo' : 'Min Stock'} value={selectedProduct.min_stock_alert || 10} />
+                  <ProductInfoItem label={t('vendor.inventory.expiryDate')} value={selectedProduct.expiry_date ? new Date(selectedProduct.expiry_date).toLocaleDateString() : 'N/A'} />
+                </div>
+
+                {/* Description */}
+                {selectedProduct.description_es && (
+                  <div>
+                    <h4 className="text-lg font-semibold text-gray-900 mb-3">{language === 'es' ? 'Descripción (Español)' : 'Description (Spanish)'}</h4>
+                    <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-4">{selectedProduct.description_es}</p>
+                  </div>
+                )}
+
+                {selectedProduct.description_en && (
+                  <div>
+                    <h4 className="text-lg font-semibold text-gray-900 mb-3">{language === 'es' ? 'Descripción (Inglés)' : 'Description (English)'}</h4>
+                    <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-4">{selectedProduct.description_en}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column - Product Image */}
+              <div className="lg:col-span-1">
+                {selectedProduct.image_url || selectedProduct.image_file || selectedProduct.image ? (
+                  <div className="sticky top-20 space-y-3">
+                    <h4 className="text-lg font-semibold text-gray-900">📷 {language === 'es' ? 'Imagen del Producto' : 'Product Image'}</h4>
+                    <div className="bg-gray-50 rounded-lg border border-gray-200 p-2">
+                      <img
+                        src={selectedProduct.image_url || selectedProduct.image_file || selectedProduct.image}
+                        alt={selectedProduct.name_es || selectedProduct.name}
+                        className="w-full h-auto rounded-lg"
+                      />
                     </div>
-                  </td>
-                  <td className="p-4">
-                    {productCurrency?.symbol || '$'}
-                    {p.final_price
-                      ? Number(p.final_price).toFixed(2)
-                      : p.base_price
-                      ? Number(p.base_price).toFixed(2)
-                      : '0.00'}
-                  </td>
-                  <td className="p-4">
-                    <div className="flex items-center gap-2">
-                      <span>
-                        {p.expiry_date || p.expiryDate
-                          ? new Date(p.expiry_date || p.expiryDate).toLocaleDateString()
-                          : 'N/A'}
-                      </span>
-                      {expiryStatus?.icon && (
-                        <expiryStatus.icon
-                          className={`h-4 w-4 ${expiryStatus.iconColor}`}
-                          title={
-                            expiryStatus.status === 'expired'
-                              ? language === 'es'
-                                ? 'Expirado'
-                                : 'Expired'
-                              : language === 'es'
-                              ? `${expiryStatus.days} días restantes`
-                              : `${expiryStatus.days} days left`
-                          }
-                        />
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-4 text-right">
-                    <Button variant="ghost" size="icon" onClick={() => openEditProductForm(p)}>
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                  </div>
+                ) : (
+                  <div className="sticky top-20 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <p className="text-sm text-yellow-800 font-medium">
+                      {language === 'es' ? 'Sin imagen' : 'No image'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end gap-3 rounded-b-lg">
+              <Button variant="outline" onClick={() => setShowProductDetails(false)}>
+                {t('vendor.addProduct.cancel')}
+              </Button>
+              <Button onClick={() => {
+                openEditProductForm(selectedProduct);
+                setShowProductDetails(false);
+              }} style={getPrimaryButtonStyle(visualSettings)}>
+                <Edit className="h-4 w-4 mr-2" />
+                {t('vendor.actions.edit')}
+              </Button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
     </motion.div>
   );
 };
+
+// Helper component for product info items
+const ProductInfoItem = ({ label, value }) => (
+  <div>
+    <dt className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">{label}</dt>
+    <dd className="text-sm text-gray-900 font-medium">{value}</dd>
+  </div>
+);
 
 export default VendorInventoryTab;
