@@ -17,7 +17,7 @@ import { createOrder, uploadPaymentProof } from '@/lib/orderService';
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
 import { calculateDiscount } from '@/lib/priceCalculationService';
-import { calculateOrderWithDiscounts } from '@/lib/orderDiscountService';
+import { calculateOrderWithDiscounts, validateAndGetOffer, recordOfferUsage } from '@/lib/orderDiscountService';
 import RecipientSelector from '@/components/RecipientSelector';
 import ZelleAccountSelector from '@/components/ZelleAccountSelector';
 import FileUploadWithPreview from '@/components/FileUploadWithPreview';
@@ -55,6 +55,12 @@ const CartPage = ({ onNavigate }) => {
   const [userCategory, setUserCategory] = useState('regular');
   const [userCategoryDiscount, setUserCategoryDiscount] = useState(0);
   const [convertedTotal, setConvertedTotal] = useState(null);
+
+  // Coupon/offer code state
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedOffer, setAppliedOffer] = useState(null);
+  const [couponError, setCouponError] = useState('');
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
 
   // Calculate item price based on type (product or combo) - memoized with useCallback
   const getItemPrice = useCallback((item) => {
@@ -257,6 +263,47 @@ const CartPage = ({ onNavigate }) => {
     setView('payment');
   };
 
+  // Apply coupon code
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) {
+      setCouponError(language === 'es' ? 'Ingresa un código de cupón' : 'Enter a coupon code');
+      return;
+    }
+
+    setValidatingCoupon(true);
+    setCouponError('');
+
+    try {
+      const validation = await validateAndGetOffer(couponCode, subtotal, user?.id);
+
+      if (!validation.valid) {
+        setCouponError(validation.reason || (language === 'es' ? 'Cupón inválido' : 'Invalid coupon'));
+        setAppliedOffer(null);
+        setValidatingCoupon(false);
+        return;
+      }
+
+      setAppliedOffer(validation.offer);
+      toast({
+        title: language === 'es' ? '✅ Cupón aplicado' : '✅ Coupon applied',
+        description: `${validation.offer.discount_value}${validation.offer.discount_type === 'percentage' ? '%' : '$'} ${language === 'es' ? 'descuento' : 'discount'}`
+      });
+    } catch (error) {
+      console.error('Error validating coupon:', error);
+      setCouponError(error.message || (language === 'es' ? 'Error al validar cupón' : 'Error validating coupon'));
+      setAppliedOffer(null);
+    }
+
+    setValidatingCoupon(false);
+  };
+
+  // Remove coupon
+  const handleRemoveCoupon = () => {
+    setCouponCode('');
+    setAppliedOffer(null);
+    setCouponError('');
+  };
+
   const handleContactSupport = () => {
     if (!notificationSettings?.whatsapp) {
       toast({
@@ -410,8 +457,8 @@ const CartPage = ({ onNavigate }) => {
         shippingZoneId: shippingZone?.id || null,
         // TODO: Fix zelle_accounts table to use UUID instead of integer IDs
         zelleAccountId: null,
-        // Offer/coupon code support (ready for future enhancement)
-        offerId: null  // Can be updated when coupon code input is added to UI
+        // Offer/coupon code - added from Phase 3.13
+        offerId: appliedOffer?.id || null
       };
 
       // Create order
@@ -635,6 +682,56 @@ const CartPage = ({ onNavigate }) => {
             <p className="text-red-500 mb-6">{language === 'es' ? 'No hay cuenta Zelle disponible.' : 'No Zelle account available.'}</p>
           )}
 
+          {/* Coupon Code Section */}
+          <div className="mb-6 glass-effect p-4 rounded-lg border-2 border-yellow-200 bg-yellow-50">
+            <h3 className="font-semibold text-yellow-900 mb-3">
+              {language === 'es' ? 'Aplicar Cupón de Descuento' : 'Apply Coupon Code'}
+            </h3>
+            {!appliedOffer ? (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={couponCode}
+                    onChange={(e) => {
+                      setCouponCode(e.target.value.toUpperCase());
+                      setCouponError('');
+                    }}
+                    placeholder={language === 'es' ? 'Ingresa código de cupón' : 'Enter coupon code'}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                    disabled={validatingCoupon}
+                  />
+                  <Button
+                    onClick={handleApplyCoupon}
+                    disabled={!couponCode.trim() || validatingCoupon}
+                    className="bg-yellow-600 text-white hover:bg-yellow-700"
+                  >
+                    {validatingCoupon ? (language === 'es' ? 'Validando...' : 'Validating...') : (language === 'es' ? 'Aplicar' : 'Apply')}
+                  </Button>
+                </div>
+                {couponError && (
+                  <p className="text-sm text-red-600 font-medium">{couponError}</p>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border-l-4 border-green-500">
+                  <span className="text-sm font-medium text-green-700">
+                    ✅ {language === 'es' ? 'Cupón aplicado' : 'Coupon applied'}: <strong>{couponCode}</strong>
+                  </span>
+                  <Button
+                    onClick={handleRemoveCoupon}
+                    variant="ghost"
+                    size="sm"
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    {language === 'es' ? 'Remover' : 'Remove'}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="mb-6 space-y-4">
             <div className="flex justify-between items-center">
               <p>{t('cart.payment.purchaseId')}: <strong className="font-mono">{purchaseId}</strong></p>
@@ -642,9 +739,31 @@ const CartPage = ({ onNavigate }) => {
                 <Copy className="mr-2 h-4 w-4" />{t('cart.payment.copy')}
               </Button>
             </div>
-            <div className="flex justify-between items-center">
-              <p>{t('cart.payment.amount')}: <strong className="text-2xl" style={{ color: visualSettings.successColor || '#10b981' }}>${total}</strong></p>
-              <Button onClick={() => copyToClipboard(total)} variant="outline">
+
+            {/* Price Breakdown */}
+            <div className="space-y-2 p-4 bg-gray-50 rounded-lg">
+              <div className="flex justify-between text-sm">
+                <span>{language === 'es' ? 'Subtotal' : 'Subtotal'}:</span>
+                <span>${subtotal.toFixed(2)}</span>
+              </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>{language === 'es' ? 'Descuento categoría' : 'Category discount'} ({userCategoryDiscount}%):</span>
+                  <span>-${discountAmount.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-sm border-t pt-2">
+                <span>{language === 'es' ? 'Envío' : 'Shipping'}:</span>
+                <span>${shippingCost.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-lg font-bold border-t pt-2">
+                <span>{t('cart.payment.amount')}:</span>
+                <span style={{ color: visualSettings.successColor || '#10b981' }}>${total}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Button onClick={() => copyToClipboard(total)} variant="outline" size="sm">
                 <Copy className="mr-2 h-4 w-4" />{t('cart.payment.copy')}
               </Button>
             </div>
