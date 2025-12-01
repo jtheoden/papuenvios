@@ -22,7 +22,10 @@ import {
   Check,
   AlertCircle,
   Percent,
-  DollarSign
+  DollarSign,
+  BarChart3,
+  TrendingUp,
+  Clock
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
@@ -35,6 +38,7 @@ const AdminOffersTab = () => {
 
   // States
   const [offers, setOffers] = useState([]);
+  const [offerStats, setOfferStats] = useState({}); // Map of offer ID to usage stats
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterActive, setFilterActive] = useState('all'); // all, active, inactive
@@ -70,6 +74,36 @@ const AdminOffersTab = () => {
 
       if (error) throw error;
       setOffers(data || []);
+
+      // Load usage statistics for each offer
+      const statsMap = {};
+      for (const offer of data || []) {
+        try {
+          const { data: usageData, error: usageError } = await supabase
+            .from('offer_usage')
+            .select('*')
+            .eq('offer_id', offer.id);
+
+          if (!usageError && usageData) {
+            const totalUses = usageData.length;
+            const lastUsed = usageData.length > 0
+              ? usageData.reduce((max, curr) => new Date(curr.created_at) > new Date(max.created_at) ? curr : max).created_at
+              : null;
+
+            // Calculate total discount value given (estimated based on discount type and offer details)
+            // In a real scenario, you'd want to sum from orders with this offer
+            statsMap[offer.id] = {
+              totalUses,
+              lastUsed,
+              usagePercentage: offer.max_usage_global ? (totalUses / offer.max_usage_global) * 100 : 0
+            };
+          }
+        } catch (statsErr) {
+          console.warn('Error loading stats for offer:', statsErr);
+          statsMap[offer.id] = { totalUses: 0, lastUsed: null, usagePercentage: 0 };
+        }
+      }
+      setOfferStats(statsMap);
     } catch (err) {
       console.error('Error loading offers:', err);
       toast({
@@ -571,6 +605,23 @@ const AdminOffersTab = () => {
                         </span>
                       </div>
                     )}
+                    {offerStats[offer.id] && (
+                      <div className="flex items-center gap-2">
+                        <BarChart3 className="h-4 w-4" />
+                        <span className="text-xs text-gray-500">
+                          {language === 'es' ? 'Usos:' : 'Uses:'} {offerStats[offer.id].totalUses}
+                          {offer.max_usage_global ? `/${offer.max_usage_global}` : ''}
+                        </span>
+                      </div>
+                    )}
+                    {offerStats[offer.id]?.lastUsed && (
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        <span className="text-xs text-gray-500">
+                          {language === 'es' ? 'Últ uso:' : 'Last:'} {new Date(offerStats[offer.id].lastUsed).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Expandable Details */}
@@ -705,6 +756,83 @@ const AdminOffersTab = () => {
                         </div>
                       )}
                     </div>
+
+                    {/* Usage Statistics Section */}
+                    {offerStats[offer.id] && (
+                      <div className="mt-6 pt-6 border-t border-gray-200">
+                        <div className="flex items-center gap-2 mb-4">
+                          <BarChart3 className="h-5 w-5 text-purple-600" />
+                          <h4 className="font-bold text-gray-900">
+                            {language === 'es' ? 'Estadísticas de Uso' : 'Usage Statistics'}
+                          </h4>
+                        </div>
+
+                        <div className="space-y-4">
+                          {/* Total Uses */}
+                          <div>
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-gray-700 font-medium">
+                                {language === 'es' ? 'Usos Totales:' : 'Total Uses:'}
+                              </span>
+                              <span className="font-bold text-purple-600">
+                                {offerStats[offer.id].totalUses}
+                                {offer.max_usage_global ? ` / ${offer.max_usage_global}` : ''}
+                              </span>
+                            </div>
+
+                            {/* Usage Progress Bar */}
+                            {offer.max_usage_global && (
+                              <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div
+                                  className={`h-2 rounded-full transition-all ${
+                                    offerStats[offer.id].usagePercentage > 90
+                                      ? 'bg-red-500'
+                                      : offerStats[offer.id].usagePercentage > 70
+                                      ? 'bg-yellow-500'
+                                      : 'bg-green-500'
+                                  }`}
+                                  style={{ width: `${Math.min(offerStats[offer.id].usagePercentage, 100)}%` }}
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Last Used */}
+                          {offerStats[offer.id].lastUsed && (
+                            <div>
+                              <span className="text-gray-700 font-medium">
+                                {language === 'es' ? 'Último uso:' : 'Last used:'}
+                              </span>
+                              <p className="text-gray-600">
+                                {new Date(offerStats[offer.id].lastUsed).toLocaleDateString()} {new Date(offerStats[offer.id].lastUsed).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Usage Status */}
+                          <div className="p-3 rounded-lg bg-gradient-to-r from-blue-50 to-purple-50">
+                            <div className="flex items-start gap-3">
+                              <TrendingUp className="h-5 w-5 text-blue-600 mt-0.5" />
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">
+                                  {offerStats[offer.id].totalUses === 0
+                                    ? language === 'es'
+                                      ? 'Esta oferta aún no ha sido utilizada'
+                                      : 'This offer has not been used yet'
+                                    : offer.max_usage_global && offerStats[offer.id].totalUses >= offer.max_usage_global
+                                    ? language === 'es'
+                                      ? 'Límite de usos alcanzado'
+                                      : 'Usage limit reached'
+                                    : language === 'es'
+                                    ? `${offerStats[offer.id].totalUses} ${offerStats[offer.id].totalUses === 1 ? 'cliente ha' : 'clientes han'} utilizado esta oferta`
+                                    : `${offerStats[offer.id].totalUses} customer${offerStats[offer.id].totalUses === 1 ? ' has' : 's have'} used this offer`}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
