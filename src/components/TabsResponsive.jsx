@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { semanticColors } from '@/lib/colorTokens';
 
 /**
  * TabsResponsive - Mobile-first responsive tabs component
@@ -22,16 +23,36 @@ const TabsResponsive = ({ tabs, activeTab, onTabChange }) => {
   return (
     <div className="w-full">
       {/* Desktop View (md+) */}
-      <div className="hidden md:flex border-b border-gray-200">
+      <div
+        className="hidden md:flex border-b"
+        style={{ borderBottomColor: semanticColors.neutral[200] }}
+      >
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
-            className={`px-6 py-3 font-medium text-sm transition-colors ${
+            style={
               activeTab === tab.id
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
+                ? {
+                    borderBottom: `2px solid ${semanticColors.primary.main}`,
+                    color: semanticColors.primary.main
+                  }
+                : {
+                    color: semanticColors.neutral[600],
+                    transition: 'color 0.2s'
+                  }
+            }
+            onMouseEnter={(e) => {
+              if (activeTab !== tab.id) {
+                e.currentTarget.style.color = semanticColors.neutral[900];
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== tab.id) {
+                e.currentTarget.style.color = semanticColors.neutral[600];
+              }
+            }}
+            className="px-6 py-3 font-medium text-sm transition-colors"
           >
             {t(tab.label)}
           </button>
@@ -39,10 +60,22 @@ const TabsResponsive = ({ tabs, activeTab, onTabChange }) => {
       </div>
 
       {/* Mobile View (<md) - Dropdown */}
-      <div className="md:hidden bg-white border-b border-gray-200">
+      <div
+        className="md:hidden"
+        style={{
+          backgroundColor: semanticColors.background.primary,
+          borderBottom: `1px solid ${semanticColors.neutral[200]}`
+        }}
+      >
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+          className="w-full px-4 py-3 flex items-center justify-between transition-colors"
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = semanticColors.neutral[50];
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
         >
           <div className="flex items-center gap-2">
             {activeTabData?.icon}
@@ -56,7 +89,13 @@ const TabsResponsive = ({ tabs, activeTab, onTabChange }) => {
 
         {/* Mobile Dropdown Menu */}
         {mobileMenuOpen && (
-          <div className="absolute left-0 right-0 bg-white border-b border-gray-200 z-50">
+          <div
+            className="absolute left-0 right-0 z-50"
+            style={{
+              backgroundColor: semanticColors.background.primary,
+              borderBottom: `1px solid ${semanticColors.neutral[200]}`
+            }}
+          >
             {tabs.map(tab => (
               <button
                 key={tab.id}
@@ -64,11 +103,29 @@ const TabsResponsive = ({ tabs, activeTab, onTabChange }) => {
                   onTabChange(tab.id);
                   setMobileMenuOpen(false);
                 }}
-                className={`w-full px-4 py-3 text-left flex items-center gap-3 transition-colors ${
+                className="w-full px-4 py-3 text-left flex items-center gap-3 transition-colors"
+                style={
                   activeTab === tab.id
-                    ? 'bg-blue-50 text-blue-600 border-r-2 border-blue-600'
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
+                    ? {
+                        backgroundColor: semanticColors.primary.light,
+                        color: semanticColors.primary.main,
+                        borderRight: `2px solid ${semanticColors.primary.main}`
+                      }
+                    : {
+                        color: semanticColors.neutral[700],
+                        transition: 'background-color 0.2s'
+                      }
+                }
+                onMouseEnter={(e) => {
+                  if (activeTab !== tab.id) {
+                    e.currentTarget.style.backgroundColor = semanticColors.neutral[50];
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (activeTab !== tab.id) {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }
+                }}
               >
                 {tab.icon}
                 <span className="text-sm font-medium">{t(tab.label)}</span>
