@@ -11,8 +11,8 @@ import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { toast } from '@/components/ui/use-toast';
-import { ResponsiveTableWrapper } from '@/components/tables/ResponsiveTableWrapper';
-import { TableDetailModal } from '@/components/modals/TableDetailModal';
+import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
+import TableDetailModal from '@/components/modals/TableDetailModal';
 import { zelleService } from '@/lib/zelleService';
 import { getZelleTableColumns, getZelleModalColumns } from './ZelleAccountTableConfig';
 
