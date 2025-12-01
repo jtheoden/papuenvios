@@ -715,6 +715,14 @@
       "remittance": "Remittance",
       "mixed": "Mixed"
     },
+    "action": {
+      "viewDetails": "View Details",
+      "startProcessing": "Start Processing",
+      "markAsShipped": "Mark as Shipped",
+      "uploadProof": "Upload Proof",
+      "completeOrder": "Complete Order",
+      "cancelOrder": "Cancel Order"
+    },
     "actions": {
       "view": "View",
       "start": "Start",
@@ -725,6 +733,22 @@
       "processing": "Processing...",
       "loading": "Loading...",
       "completing": "Completing..."
+    },
+    "detail": {
+      "title": "Order Details",
+      "order": "Order Number",
+      "email": "Email",
+      "paymentMethod": "Payment Method",
+      "subtotal": "Subtotal",
+      "shipping": "Shipping Cost",
+      "discount": "Discount",
+      "total": "Total Amount",
+      "address": "Shipping Address",
+      "recipient": "Recipient Name",
+      "phone": "Recipient Phone",
+      "instructions": "Delivery Instructions",
+      "notes": "Notes",
+      "rejectionReason": "Rejection Reason"
     },
     "messages": {
       "noOrders": "No orders found",

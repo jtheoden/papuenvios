@@ -740,6 +740,14 @@
       "remittance": "Remesa",
       "mixed": "Mixto"
     },
+    "action": {
+      "viewDetails": "Ver Detalles",
+      "startProcessing": "Iniciar Procesamiento",
+      "markAsShipped": "Marcar como Enviado",
+      "uploadProof": "Subir Evidencia",
+      "completeOrder": "Completar Orden",
+      "cancelOrder": "Cancelar Orden"
+    },
     "actions": {
       "view": "Ver",
       "start": "Iniciar",
@@ -750,6 +758,22 @@
       "processing": "Procesando...",
       "loading": "Cargando...",
       "completing": "Completando..."
+    },
+    "detail": {
+      "title": "Detalles de la Orden",
+      "order": "Número de Orden",
+      "email": "Correo Electrónico",
+      "paymentMethod": "Método de Pago",
+      "subtotal": "Subtotal",
+      "shipping": "Costo de Envío",
+      "discount": "Descuento",
+      "total": "Monto Total",
+      "address": "Dirección de Envío",
+      "recipient": "Nombre del Destinatario",
+      "phone": "Teléfono del Destinatario",
+      "instructions": "Instrucciones de Entrega",
+      "notes": "Notas",
+      "rejectionReason": "Razón del Rechazo"
     },
     "messages": {
       "noOrders": "No se encontraron órdenes",
