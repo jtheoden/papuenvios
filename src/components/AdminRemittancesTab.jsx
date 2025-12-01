@@ -19,6 +19,8 @@ import {
   REMITTANCE_STATUS
 } from '@/lib/remittanceService';
 import { toast } from '@/components/ui/use-toast';
+import ImageProofModal from './ImageProofModal';
+import TooltipButton from './TooltipButton';
 
 const AdminRemittancesTab = () => {
   const { t } = useLanguage();
@@ -33,6 +35,8 @@ const AdminRemittancesTab = () => {
   const [selectedRemittance, setSelectedRemittance] = useState(null);
   const [proofSignedUrl, setProofSignedUrl] = useState(null);
   const [deliveryProofSignedUrl, setDeliveryProofSignedUrl] = useState(null);
+  const [showPaymentProofModal, setShowPaymentProofModal] = useState(false);
+  const [selectedProofUrl, setSelectedProofUrl] = useState(null);
 
   useEffect(() => {
     loadRemittances();
@@ -57,6 +61,7 @@ const AdminRemittancesTab = () => {
     };
     loadProofSignedUrl();
   }, [selectedRemittance?.payment_proof_url]);
+
 
   // Generate signed URL for delivery proof when modal opens
   useEffect(() => {
@@ -338,6 +343,11 @@ const AdminRemittancesTab = () => {
     }
   };
 
+  const handleViewPaymentProof = (remittance) => {
+    setSelectedProofUrl(remittance.payment_proof_url);
+    setShowPaymentProofModal(true);
+  };
+
   const getStatusBadge = (status) => {
     const badges = {
       [REMITTANCE_STATUS.PAYMENT_PENDING]: {
@@ -413,32 +423,38 @@ const AdminRemittancesTab = () => {
       case REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED:
         return (
           <div className="flex gap-2">
-            <button
+            <TooltipButton
+              tooltipText={t('remittances.admin.validate')}
+              className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
               onClick={() => handleValidatePayment(remittance)}
-              className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+              title={t('remittances.admin.validate')}
             >
               <CheckCircle className="h-4 w-4" />
-              {t('remittances.admin.validate')}
-            </button>
-            <button
+              <span className="hidden sm:inline">{t('remittances.admin.validate')}</span>
+            </TooltipButton>
+            <TooltipButton
+              tooltipText={t('remittances.admin.reject')}
+              className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
               onClick={() => handleRejectPayment(remittance)}
-              className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+              title={t('remittances.admin.reject')}
             >
               <XCircle className="h-4 w-4" />
-              {t('remittances.admin.reject')}
-            </button>
+              <span className="hidden sm:inline">{t('remittances.admin.reject')}</span>
+            </TooltipButton>
           </div>
         );
 
       case REMITTANCE_STATUS.PAYMENT_VALIDATED:
         return (
-          <button
+          <TooltipButton
+            tooltipText={t('remittances.admin.process')}
+            className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
             onClick={() => handleStartProcessing(remittance)}
-            className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+            title={t('remittances.admin.process')}
           >
             <Package className="h-4 w-4" />
-            {t('remittances.admin.process')}
-          </button>
+            <span className="hidden sm:inline">{t('remittances.admin.process')}</span>
+          </TooltipButton>
         );
 
       case REMITTANCE_STATUS.PROCESSING:
@@ -447,9 +463,12 @@ const AdminRemittancesTab = () => {
           <div className="flex flex-col gap-2">
             {/* Upload Delivery Proof */}
             <div className="flex items-center gap-2">
-              <label className="flex items-center gap-2 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm cursor-pointer">
+              <label
+                className="flex items-center gap-2 px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm cursor-pointer"
+                title={hasDeliveryProof ? t('remittances.admin.changeDeliveryProof') : t('remittances.admin.uploadDeliveryProof')}
+              >
                 <ImageIcon className="h-4 w-4" />
-                {hasDeliveryProof ? t('remittances.admin.changeDeliveryProof') : t('remittances.admin.uploadDeliveryProof')}
+                <span className="hidden sm:inline">{hasDeliveryProof ? t('remittances.admin.changeDeliveryProof') : t('remittances.admin.uploadDeliveryProof')}</span>
                 <input
                   type="file"
                   accept="image/*,.pdf"
@@ -463,38 +482,42 @@ const AdminRemittancesTab = () => {
                 />
               </label>
               {hasDeliveryProof && (
-                <span className="text-xs text-green-600 font-semibold flex items-center gap-1">
+                <span className="text-xs text-green-600 font-semibold flex items-center gap-1" title={t('remittances.admin.proofUploaded')}>
                   <CheckCircle className="h-4 w-4" />
-                  {t('remittances.admin.proofUploaded')}
+                  <span className="hidden sm:inline">{t('remittances.admin.proofUploaded')}</span>
                 </span>
               )}
             </div>
 
             {/* Confirm Delivery - Only enabled if proof exists */}
-            <button
+            <TooltipButton
+              tooltipText={t('remittances.admin.confirmDelivery')}
               onClick={() => handleConfirmDelivery(remittance)}
               disabled={!hasDeliveryProof}
-              className={`flex items-center gap-1 px-3 py-1 rounded-lg transition-colors text-sm ${
+              className={`flex items-center gap-1 px-2 sm:px-3 py-1 rounded-lg transition-colors text-sm ${
                 hasDeliveryProof
                   ? 'bg-purple-600 text-white hover:bg-purple-700'
                   : 'bg-gray-400 text-gray-200 cursor-not-allowed'
               }`}
+              title={t('remittances.admin.confirmDelivery')}
             >
               <Truck className="h-4 w-4" />
-              {t('remittances.admin.confirmDelivery')}
-            </button>
+              <span className="hidden sm:inline">{t('remittances.admin.confirmDelivery')}</span>
+            </TooltipButton>
           </div>
         );
 
       case REMITTANCE_STATUS.DELIVERED:
         return (
-          <button
+          <TooltipButton
+            tooltipText={t('remittances.admin.complete')}
             onClick={() => handleComplete(remittance)}
-            className="flex items-center gap-1 px-3 py-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm"
+            className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm"
+            title={t('remittances.admin.complete')}
           >
             <CheckCircle className="h-4 w-4" />
-            {t('remittances.admin.complete')}
-          </button>
+            <span className="hidden sm:inline">{t('remittances.admin.complete')}</span>
+          </TooltipButton>
         );
 
       default:
@@ -625,7 +648,7 @@ const AdminRemittancesTab = () => {
                 </div>
               </div>
 
-              <div className="grid md:grid-cols-3 gap-4 mb-4">
+              <div className="grid md:grid-cols-4 gap-4 mb-4">
                 <div>
                   <p className="text-xs text-gray-500 mb-1">{t('remittances.user.amountSent')}</p>
                   <p className="font-semibold">
@@ -645,6 +668,17 @@ const AdminRemittancesTab = () => {
                   <p className="font-semibold capitalize">{remittance.delivery_method}</p>
                 </div>
 
+                {remittance.recipient_city && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">{t('remittances.recipient.city')}</p>
+                    <p className="font-semibold">
+                      {remittance.recipient_city}
+                      {remittance.recipient_province && `, ${remittance.recipient_province}`}
+                      {remittance.recipient_municipality && `, ${remittance.recipient_municipality}`}
+                    </p>
+                  </div>
+                )}
+
                 <div>
                   <p className="text-xs text-gray-500 mb-1">{t('remittances.recipient.fullName')}</p>
                   <p className="font-semibold">{remittance.recipient_name}</p>
@@ -653,11 +687,6 @@ const AdminRemittancesTab = () => {
                 <div>
                   <p className="text-xs text-gray-500 mb-1">{t('remittances.recipient.phone')}</p>
                   <p className="font-semibold">{remittance.recipient_phone}</p>
-                </div>
-
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">{t('remittances.recipient.city')}</p>
-                  <p className="font-semibold">{remittance.recipient_city || 'N/A'}</p>
                 </div>
               </div>
 
@@ -668,26 +697,28 @@ const AdminRemittancesTab = () => {
                     {new Date(remittance.created_at).toLocaleDateString('es-CU')}
                   </span>
                   {remittance.payment_proof_url && (
-                    <a
-                      href={remittance.payment_proof_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-blue-600 hover:underline"
+                    <TooltipButton
+                      tooltipText={t('remittances.user.viewProof')}
+                      onClick={() => handleViewPaymentProof(remittance)}
+                      className="flex items-center gap-1 px-2 sm:px-3 py-1 text-blue-600 hover:bg-blue-50 rounded transition-colors text-sm"
+                      title={t('remittances.user.viewProof')}
                     >
                       <FileText className="h-4 w-4" />
-                      {t('remittances.user.viewProof')}
-                    </a>
+                      <span className="hidden sm:inline">{t('remittances.user.viewProof')}</span>
+                    </TooltipButton>
                   )}
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
+                  <TooltipButton
+                    tooltipText={t('remittances.admin.viewDetails')}
                     onClick={() => setSelectedRemittance(remittance)}
-                    className="flex items-center gap-1 px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+                    className="flex items-center gap-1 px-2 sm:px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+                    title={t('remittances.admin.viewDetails')}
                   >
                     <Eye className="h-4 w-4" />
-                    {t('remittances.admin.viewDetails')}
-                  </button>
+                    <span className="hidden sm:inline">{t('remittances.admin.viewDetails')}</span>
+                  </TooltipButton>
                   {renderActionButtons(remittance)}
                 </div>
               </div>
@@ -705,12 +736,12 @@ const AdminRemittancesTab = () => {
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-2xl max-w-4xl sm:max-w-5xl w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-2xl font-bold gradient-text">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between">
+              <h2 className="text-xl sm:text-2xl font-bold gradient-text">
                 {t('remittances.admin.viewDetails')} - {selectedRemittance.remittance_number}
               </h2>
               <button
@@ -722,7 +753,7 @@ const AdminRemittancesTab = () => {
             </div>
 
             {/* Content - 2 Column Layout */}
-            <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Left Column - Remittance Information */}
               <div className="lg:col-span-2 space-y-6">
                 {/* Basic Information */}
@@ -748,49 +779,55 @@ const AdminRemittancesTab = () => {
                 </div>
 
                 {/* Amount Information */}
-                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                  <h3 className="font-semibold text-gray-900 mb-3">Información de Monto</h3>
+                <div className="bg-gray-50 rounded-lg p-3 sm:p-4 space-y-3">
+                  <h3 className="font-semibold text-gray-900 mb-3 text-sm sm:text-base">{t('remittances.admin.amountInfoTitle')}</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <p className="text-sm text-gray-600">Monto Enviado:</p>
-                      <p className="text-lg font-bold text-blue-600">{selectedRemittance.amount} {selectedRemittance.currency}</p>
+                      <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.amountSent')}</p>
+                      <p className="text-base sm:text-lg font-bold text-blue-600">{selectedRemittance.amount} {selectedRemittance.currency}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">A Entregar:</p>
-                      <p className="text-lg font-bold text-green-600">{selectedRemittance.amount_to_deliver?.toFixed(2)} {selectedRemittance.delivery_currency}</p>
+                      <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.toDeliver')}</p>
+                      <p className="text-base sm:text-lg font-bold text-green-600">{selectedRemittance.amount_to_deliver?.toFixed(2)} {selectedRemittance.delivery_currency}</p>
                     </div>
                   </div>
                 </div>
 
                 {/* Recipient Information */}
                 <div>
-                  <h3 className="font-semibold text-gray-900 mb-3">Información del Destinatario</h3>
-                  <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
-                    <p><span className="font-medium">Nombre:</span> {selectedRemittance.recipient_name || 'N/A'}</p>
-                    <p><span className="font-medium">Teléfono:</span> {selectedRemittance.recipient_phone || 'N/A'}</p>
-                    <p><span className="font-medium">Ciudad:</span> {selectedRemittance.recipient_city || 'N/A'}</p>
+                  <h3 className="font-semibold text-gray-900 mb-3 text-sm sm:text-base">{t('remittances.admin.recipientInfoTitle')}</h3>
+                  <div className="bg-gray-50 rounded-lg p-3 sm:p-4 space-y-2 text-xs sm:text-sm">
+                    <p><span className="font-medium">{t('remittances.admin.recipientName')}</span> {selectedRemittance.recipient_name || 'N/A'}</p>
+                    <p><span className="font-medium">{t('remittances.admin.recipientPhone')}</span> {selectedRemittance.recipient_phone || 'N/A'}</p>
+                    {selectedRemittance.recipient_city && (
+                      <p>
+                        <span className="font-medium">{t('remittances.admin.recipientLocation')}</span> {selectedRemittance.recipient_city}
+                        {selectedRemittance.recipient_province && `, ${selectedRemittance.recipient_province}`}
+                        {selectedRemittance.recipient_municipality && `, ${selectedRemittance.recipient_municipality}`}
+                      </p>
+                    )}
                   </div>
                 </div>
 
                 {/* Location Information - Only for Cash Delivery */}
                 {selectedRemittance.delivery_method === 'cash' && (
-                  <div className="border-l-4 border-green-500 bg-green-50 rounded-lg p-4">
-                    <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                  <div className="border-l-4 border-green-500 bg-green-50 rounded-lg p-3 sm:p-4">
+                    <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2 text-sm sm:text-base">
                       <span className="inline-block w-3 h-3 bg-green-500 rounded-full"></span>
-                      Entrega en Efectivo - Datos de Localización
+                      {t('remittances.admin.cashDeliveryTitle')}
                     </h3>
-                    <div className="space-y-2 text-sm">
+                    <div className="space-y-2 text-xs sm:text-sm">
                       {selectedRemittance.recipient_province && (
-                        <p><span className="font-medium">Provincia:</span> {selectedRemittance.recipient_province}</p>
+                        <p><span className="font-medium">{t('remittances.admin.province')}</span> {selectedRemittance.recipient_province}</p>
                       )}
                       {selectedRemittance.recipient_municipality && (
-                        <p><span className="font-medium">Municipio:</span> {selectedRemittance.recipient_municipality}</p>
+                        <p><span className="font-medium">{t('remittances.admin.municipality')}</span> {selectedRemittance.recipient_municipality}</p>
                       )}
                       {selectedRemittance.recipient_address && (
-                        <p><span className="font-medium">Dirección:</span> {selectedRemittance.recipient_address}</p>
+                        <p><span className="font-medium">{t('common.address')}</span> {selectedRemittance.recipient_address}</p>
                       )}
                       {selectedRemittance.recipient_id_number && (
-                        <p><span className="font-medium">Carnet de Identidad:</span> {selectedRemittance.recipient_id_number}</p>
+                        <p><span className="font-medium">{t('remittances.recipient.idNumber')}</span> {selectedRemittance.recipient_id_number}</p>
                       )}
                     </div>
                   </div>
@@ -798,27 +835,27 @@ const AdminRemittancesTab = () => {
 
                 {/* Bank Account Information - For Bank Transfer/Card */}
                 {selectedRemittance.delivery_method !== 'cash' && selectedRemittance.recipient_bank_account && (
-                  <div className="border-l-4 border-blue-500 bg-blue-50 rounded-lg p-4">
-                    <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                  <div className="border-l-4 border-blue-500 bg-blue-50 rounded-lg p-3 sm:p-4">
+                    <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2 text-sm sm:text-base">
                       <span className="inline-block w-3 h-3 bg-blue-500 rounded-full"></span>
-                      {selectedRemittance.delivery_method === 'transfer' ? '🏦 Datos Bancarios' : '💳 Datos de Cuenta'}
+                      {selectedRemittance.delivery_method === 'transfer' ? t('remittances.admin.bankInfoTitle') : t('remittances.admin.cardInfoTitle')}
                     </h3>
-                    <div className="space-y-2 text-sm font-mono bg-white rounded p-3 border border-blue-200">
+                    <div className="space-y-2 text-xs sm:text-sm font-mono bg-white rounded p-3 border border-blue-200">
                       <p>{selectedRemittance.recipient_bank_account}</p>
                     </div>
                     {selectedRemittance.recipient_bank_name && (
-                      <p className="text-sm mt-2"><span className="font-medium">Banco:</span> {selectedRemittance.recipient_bank_name}</p>
+                      <p className="text-xs sm:text-sm mt-2"><span className="font-medium">{t('remittances.admin.bankName')}</span> {selectedRemittance.recipient_bank_name}</p>
                     )}
                   </div>
                 )}
 
                 {/* Delivery Method */}
-                <div className="bg-blue-50 rounded-lg p-4">
-                  <p className="text-sm text-blue-600 font-medium mb-1">Método de Entrega</p>
-                  <p className="text-lg font-semibold text-blue-900">
-                    {selectedRemittance.delivery_method === 'cash' ? '💵 Efectivo'
-                      : selectedRemittance.delivery_method === 'transfer' ? '🏦 Transferencia Bancaria'
-                      : selectedRemittance.delivery_method === 'card' ? '💳 Tarjeta'
+                <div className="bg-blue-50 rounded-lg p-3 sm:p-4">
+                  <p className="text-xs sm:text-sm text-blue-600 font-medium mb-1">{t('remittances.admin.deliveryMethodLabel')}</p>
+                  <p className="text-base sm:text-lg font-semibold text-blue-900">
+                    {selectedRemittance.delivery_method === 'cash' ? t('remittances.admin.cash')
+                      : selectedRemittance.delivery_method === 'transfer' ? t('remittances.admin.transfer')
+                      : selectedRemittance.delivery_method === 'card' ? t('remittances.admin.card')
                       : selectedRemittance.delivery_method}
                   </p>
                 </div>
@@ -826,16 +863,16 @@ const AdminRemittancesTab = () => {
                 {/* Payment Reference */}
                 {selectedRemittance.payment_reference && (
                   <div>
-                    <p className="text-sm text-gray-600 font-medium mb-2">Referencia de Pago</p>
-                    <p className="font-mono bg-gray-50 p-3 rounded-lg text-sm">{selectedRemittance.payment_reference}</p>
+                    <p className="text-xs sm:text-sm text-gray-600 font-medium mb-2">{t('remittances.admin.paymentReferenceLabel')}</p>
+                    <p className="font-mono bg-gray-50 p-3 rounded-lg text-xs sm:text-sm">{selectedRemittance.payment_reference}</p>
                   </div>
                 )}
 
                 {/* Notes */}
                 {selectedRemittance.notes && (
                   <div>
-                    <h3 className="font-semibold text-gray-900 mb-2">Notas</h3>
-                    <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-4">{selectedRemittance.notes}</p>
+                    <h3 className="font-semibold text-gray-900 mb-2 text-sm sm:text-base">{t('remittances.admin.notesLabel')}</h3>
+                    <p className="text-xs sm:text-sm text-gray-700 bg-gray-50 rounded-lg p-3 sm:p-4">{selectedRemittance.notes}</p>
                   </div>
                 )}
               </div>
@@ -845,15 +882,15 @@ const AdminRemittancesTab = () => {
                 {/* Payment Proof */}
                 {selectedRemittance.payment_proof_url ? (
                   <div className="space-y-3">
-                    <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <h4 className="font-semibold text-gray-900 flex items-center gap-2 text-sm sm:text-base">
                       <FileText className="h-4 w-4" />
-                      Comprobante de Pago
+                      {t('remittances.admin.paymentProofSection')}
                     </h4>
                     {proofSignedUrl ? (
                       <div className="bg-gray-50 rounded-lg border border-gray-200 p-2">
                         <img
                           src={proofSignedUrl}
-                          alt="Comprobante de pago"
+                          alt={t('remittances.user.paymentProofAlt')}
                           className="w-full h-auto rounded-lg max-h-[400px] object-contain"
                           onError={(e) => {
                             e.target.style.display = 'none';
@@ -862,7 +899,7 @@ const AdminRemittancesTab = () => {
                         />
                         <div className="hidden flex-col items-center justify-center p-4 text-gray-500">
                           <FileText className="w-8 h-8 mb-2" />
-                          <p className="text-xs text-center">No se pudo cargar la imagen</p>
+                          <p className="text-xs text-center">{t('remittances.user.imageLoadError')}</p>
                         </div>
                       </div>
                     ) : (
@@ -872,9 +909,9 @@ const AdminRemittancesTab = () => {
                     )}
                   </div>
                 ) : (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <p className="text-sm text-yellow-800 font-medium">
-                      Sin comprobante de pago
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4">
+                    <p className="text-xs sm:text-sm text-yellow-800 font-medium">
+                      {t('remittances.admin.noPaymentProof')}
                     </p>
                   </div>
                 )}
@@ -882,9 +919,9 @@ const AdminRemittancesTab = () => {
                 {/* Delivery Proof */}
                 {selectedRemittance.status === REMITTANCE_STATUS.DELIVERED || selectedRemittance.status === REMITTANCE_STATUS.COMPLETED ? (
                   <div className="space-y-3">
-                    <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <h4 className="font-semibold text-gray-900 flex items-center gap-2 text-sm sm:text-base">
                       <Truck className="h-4 w-4" />
-                      Evidencia de Entrega
+                      {t('remittances.admin.deliveryProofSection')}
                     </h4>
                     {selectedRemittance.delivery_proof_url ? (
                       <>
@@ -934,6 +971,15 @@ const AdminRemittancesTab = () => {
           </motion.div>
         </div>
       )}
+
+      {/* Payment Proof Modal */}
+      <ImageProofModal
+        isOpen={showPaymentProofModal}
+        onClose={() => setShowPaymentProofModal(false)}
+        proofUrl={selectedProofUrl}
+        title={t('remittances.user.paymentProof')}
+        bucketName="remittance-proofs"
+      />
     </div>
   );
 };
