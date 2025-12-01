@@ -973,7 +973,7 @@ const SettingsPage = () => {
                     : (language === 'es' ? 'Nueva Moneda' : 'New Currency')
                   }
                 </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-3">
                   <div>
                     <label className="block text-sm font-medium mb-1">
                       {t('settings.financial.code')}
@@ -1091,7 +1091,7 @@ const SettingsPage = () => {
                 <h4 className="text-lg font-semibold mb-3">
                   {language === 'es' ? 'Nueva Tasa de Cambio' : 'New Exchange Rate'}
                 </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-3">
                   <div>
                     <label className="block text-sm font-medium mb-1">
                       {language === 'es' ? 'Desde Moneda' : 'From Currency'}

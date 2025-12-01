@@ -420,7 +420,7 @@ const UserManagement = () => {
   const renderUsersTab = () => (
     <>
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-6">
         <div className="glass-effect p-3 sm:p-4 rounded-xl">
           <div className="text-xs sm:text-sm text-gray-600 mb-1">{t('users.total')}</div>
           <div className="text-lg sm:text-2xl font-bold text-gray-900">{users.length}</div>
