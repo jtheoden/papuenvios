@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
-import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users, Crown } from 'lucide-react';
+import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users, Crown, TrendingDown, Gift } from 'lucide-react';
 import { getUserOrders, getOrderById, getAllOrders, validatePayment, rejectPayment } from '@/lib/orderService';
 import { getUserTestimonial, createTestimonial, updateTestimonial } from '@/lib/testimonialService';
 import { getMyRemittances } from '@/lib/remittanceService';
@@ -558,6 +558,12 @@ const UserPanel = ({ onNavigate }) => {
                       <p className="text-xs" style={getTextStyle(visualSettings, 'muted')}>
                         {order.order_items?.length || 0} {language === 'es' ? 'artículos' : 'items'}
                       </p>
+                      {order.discount_amount > 0 && (
+                        <div className="mt-2 flex items-center justify-end gap-1 text-xs font-semibold text-green-600">
+                          <TrendingDown className="h-3 w-3" />
+                          {language === 'es' ? 'Descuento' : 'Discount'}
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -942,6 +948,29 @@ const UserPanel = ({ onNavigate }) => {
                             ${parseFloat(selectedOrder.subtotal).toFixed(2)}
                           </span>
                         </div>
+
+                        {/* Discount Section */}
+                        {selectedOrder.discount_amount > 0 && (
+                          <div className="p-3 rounded-lg" style={{ backgroundColor: visualSettings.primaryColor ? `${visualSettings.primaryColor}15` : '#dcfce7' }}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <TrendingDown className="h-4 w-4" style={{ color: '#16a34a' }} />
+                                <span className="text-sm font-semibold" style={{ color: '#16a34a' }}>
+                                  {language === 'es' ? 'Descuento' : 'Discount'}
+                                </span>
+                              </div>
+                              <span className="font-semibold" style={{ color: '#16a34a' }}>
+                                -${parseFloat(selectedOrder.discount_amount).toFixed(2)}
+                              </span>
+                            </div>
+                            {selectedOrder.offer_code && (
+                              <p className="text-xs mt-2" style={{ color: '#16a34a' }}>
+                                {language === 'es' ? 'Cupón:' : 'Coupon:'} <code className="font-mono font-bold">{selectedOrder.offer_code}</code>
+                              </p>
+                            )}
+                          </div>
+                        )}
+
                         <div className="flex justify-between text-sm">
                           <span style={getTextStyle(visualSettings, 'secondary')}>
                             {language === 'es' ? 'Envío' : 'Shipping'}
