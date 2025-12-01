@@ -112,7 +112,7 @@ const ResponsiveTableWrapper = ({
         </div>
       </div>
 
-      {/* Desktop View: md+ screens */}
+      {/* Desktop View: md+ screens - Show full table with all columns */}
       <div className="hidden md:block overflow-x-auto">
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
@@ -126,9 +126,6 @@ const ResponsiveTableWrapper = ({
                   {col.label}
                 </th>
               ))}
-              <th className="px-4 py-3 text-left text-xs sm:text-sm font-medium text-gray-700 w-10">
-                Actions
-              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
@@ -144,27 +141,18 @@ const ResponsiveTableWrapper = ({
                   <td
                     key={col.key}
                     className="px-4 py-3 text-sm text-gray-900"
-                    onClick={() => handleRowClick(row)}
+                    onClick={() => col.key !== 'actions' && onRowClick?.(row)}
                   >
                     {col.render ? col.render(row[col.key], row) : row[col.key] || '-'}
                   </td>
                 ))}
-                <td className="px-4 py-3">
-                  <button
-                    onClick={() => handleRowClick(row)}
-                    className="p-2 hover:bg-gray-200 rounded transition-colors"
-                    title="View details"
-                  >
-                    <ChevronRight size={18} className="text-gray-600" />
-                  </button>
-                </td>
               </motion.tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      {/* Detail Modal */}
+      {/* Mobile Detail Modal (xs only) */}
       {modalTitle && modalColumns.length > 0 && (
         <TableDetailModal
           isOpen={showModal}
