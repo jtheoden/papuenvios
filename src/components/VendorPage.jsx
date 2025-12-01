@@ -11,6 +11,7 @@ import { createCombo, updateCombo as updateComboDB } from '@/lib/comboService';
 import { toggleTestimonialVisibility, toggleTestimonialVerification } from '@/lib/testimonialService';
 import { supabase } from '@/lib/supabase';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
+import TabsResponsive from './TabsResponsive';
 
 const VendorPage = () => {
   const { t, language } = useLanguage();
@@ -74,7 +75,7 @@ const VendorPage = () => {
     fetchAdminData();
   }, []);
   
-  const [view, setView] = useState('inventory');
+  const [view, setView] = useState('inventory'); // Used with TabsResponsive for activeTab/onTabChange
   const [productForm, setProductForm] = useState(null);
   const [comboForm, setComboForm] = useState(null);
   const [categoryForm, setCategoryForm] = useState({
@@ -587,46 +588,17 @@ const VendorPage = () => {
         <p className="text-xl text-gray-600 max-w-2xl mx-auto">{t('vendor.subtitle')}</p>
       </motion.div>
 
-      <div className="flex justify-center mb-8 border-b">
-        <Button
-          variant={view === 'inventory' ? 'default' : 'ghost'}
-          onClick={() => setView('inventory')}
-          className="rounded-b-none"
-          style={view === 'inventory' ? getPrimaryButtonStyle(visualSettings) : {}}
-        >
-          <Package className="mr-2 h-4 w-4"/>{t('vendor.tabs.inventory')}
-        </Button>
-        <Button
-          variant={view === 'categories' ? 'default' : 'ghost'}
-          onClick={() => setView('categories')}
-          className="rounded-b-none"
-          style={view === 'categories' ? getPrimaryButtonStyle(visualSettings) : {}}
-        >
-          <List className="mr-2 h-4 w-4"/>{t('vendor.tabs.categories')}
-        </Button>
-        <Button
-          variant={view === 'combos' ? 'default' : 'ghost'}
-          onClick={() => setView('combos')}
-          className="rounded-b-none"
-          style={view === 'combos' ? getPrimaryButtonStyle(visualSettings) : {}}
-        >
-          <Box className="mr-2 h-4 w-4"/>{t('vendor.tabs.combos')}
-        </Button>
-        <Button
-          variant={view === 'management' ? 'default' : 'ghost'}
-          onClick={() => setView('management')}
-          className="rounded-b-none"
-          style={view === 'management' ? getPrimaryButtonStyle(visualSettings) : {}}
-        >
-          <Settings2 className="mr-2 h-4 w-4"/>{t('vendor.tabs.management')}
-        </Button>
-      </div>
-
-      {view === 'inventory' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <div className="flex justify-end mb-6">
-            <Button onClick={openNewProductForm} style={getPrimaryButtonStyle(visualSettings)}>
-              <Plus className="mr-2 h-4 w-4" />{t('vendor.actions.addProduct')}
+      <TabsResponsive
+        tabs={[
+          {
+            id: 'inventory',
+            label: 'vendor.tabs.inventory',
+            icon: <Package className="h-5 w-5" />,
+            content: (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <div className="flex justify-end mb-6">
+                  <Button onClick={openNewProductForm} style={getPrimaryButtonStyle(visualSettings)}>
+                    <Plus className="mr-2 h-4 w-4" />{t('vendor.actions.addProduct')}
             </Button>
           </div>
           {productForm && (
@@ -930,10 +902,14 @@ const VendorPage = () => {
               );
             })}</tbody>
           </table></div>
-        </motion.div>
-      )}
-
-      {view === 'categories' && (
+              </motion.div>
+            )
+          },
+          {
+            id: 'categories',
+            label: 'vendor.tabs.categories',
+            icon: <List className="h-5 w-5" />,
+            content: (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto">
           <div className="glass-effect p-8 rounded-2xl mb-8">
             <h2 className="text-2xl font-semibold mb-6">
@@ -1074,10 +1050,14 @@ const VendorPage = () => {
               </ul>
             )}
           </div>
-        </motion.div>
-      )}
-
-      {view === 'combos' && (
+            </motion.div>
+            )
+          },
+          {
+            id: 'combos',
+            label: 'vendor.tabs.combos',
+            icon: <Box className="h-5 w-5" />,
+            content: (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <div className="flex justify-between items-center mb-6">
             <div className="flex items-center gap-2">
@@ -1307,10 +1287,14 @@ const VendorPage = () => {
               );
             })}
           </div>
-        </motion.div>
-      )}
-
-      {view === 'management' && (
+            </motion.div>
+            )
+          },
+          {
+            id: 'management',
+            label: 'vendor.tabs.management',
+            icon: <Settings2 className="h-5 w-5" />,
+            content: (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <div>
             <h2 className="text-2xl font-semibold mb-4">{t('vendor.management.testimonials')}</h2>
@@ -1376,8 +1360,13 @@ const VendorPage = () => {
               )}
             </div>
           </div>
-        </motion.div>
-      )}
+            </motion.div>
+            )
+          }
+        ]}
+        activeTab={view}
+        onTabChange={setView}
+      />
     </div>
   );
 };
