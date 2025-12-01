@@ -937,3 +937,19 @@ export const resetZelleCounters = async (accountId, type = 'daily') => {
     throw appError;
   }
 };
+
+// ============================================================================
+// SERVICE NAMESPACE EXPORT
+// ============================================================================
+
+export const zelleService = {
+  getAllZelleAccounts,
+  createZelleAccount,
+  updateZelleAccount,
+  deleteZelleAccount,
+  getZelleAccountTransactions,
+  getZelleAccountStats,
+  resetZelleCounters,
+  ZELLE_STATUS,
+  ZELLE_TRANSACTION_TYPES
+};
