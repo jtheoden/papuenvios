@@ -1,8 +1,10 @@
 import React from 'react';
+import StatusBadge from '@/components/ui/StatusBadge';
 
 /**
  * Order Table Column Configuration
  * Shared configuration for responsive table display in AdminOrdersTab
+ * Now uses accessible StatusBadge component instead of plain badges
  */
 
 /**
@@ -111,41 +113,64 @@ export const getModalColumns = (t, formatDate, formatCurrency) => [
 
 /**
  * Render payment status badge
+ * Uses accessible StatusBadge component with proper icons
  */
 function renderPaymentStatusBadge(status, row) {
-  const statusConfig = {
-    pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Pending' },
-    validated: { bg: 'bg-green-100', text: 'text-green-800', label: 'Validated' },
-    failed: { bg: 'bg-red-100', text: 'text-red-800', label: 'Failed' }
+  const statusMap = {
+    pending: 'pending',
+    validated: 'success',
+    rejected: 'error',
+    confirmed: 'success',
+    failed: 'error'
   };
 
-  const config = statusConfig[status] || statusConfig.pending;
+  const statusType = statusMap[status] || 'pending';
+  const labelMap = {
+    pending: 'Pendiente',
+    validated: 'Validado',
+    rejected: 'Rechazado',
+    confirmed: 'Confirmado',
+    failed: 'Fallido'
+  };
 
   return (
-    <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
-      {config.label}
-    </span>
+    <StatusBadge
+      status={statusType}
+      label={labelMap[status] || status}
+      size="sm"
+    />
   );
 }
 
 /**
  * Render order status badge
+ * Uses accessible StatusBadge component with proper icons and semantic meaning
  */
 function renderOrderStatusBadge(status, row) {
-  const statusConfig = {
-    pending: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Pending' },
-    processing: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Processing' },
-    shipped: { bg: 'bg-purple-100', text: 'text-purple-800', label: 'Shipped' },
-    delivered: { bg: 'bg-green-100', text: 'text-green-800', label: 'Delivered' },
-    completed: { bg: 'bg-emerald-100', text: 'text-emerald-800', label: 'Completed' },
-    cancelled: { bg: 'bg-red-100', text: 'text-red-800', label: 'Cancelled' }
+  const statusMap = {
+    pending: 'pending',
+    processing: 'pending',
+    shipped: 'info',
+    delivered: 'success',
+    completed: 'success',
+    cancelled: 'error'
   };
 
-  const config = statusConfig[status] || statusConfig.pending;
+  const statusType = statusMap[status] || 'pending';
+  const labelMap = {
+    pending: 'Pendiente',
+    processing: 'En proceso',
+    shipped: 'Enviado',
+    delivered: 'Entregado',
+    completed: 'Completado',
+    cancelled: 'Cancelado'
+  };
 
   return (
-    <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
-      {config.label}
-    </span>
+    <StatusBadge
+      status={statusType}
+      label={labelMap[status] || status}
+      size="sm"
+    />
   );
 }
