@@ -1,8 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Users, Shield, UserCheck, UserX, Trash2, AlertCircle, BarChart3, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { DataTable } from '@/components/DataTable';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,6 +11,9 @@ import { getHeadingStyle } from '@/lib/styleUtils';
 import TabsResponsive from '@/components/TabsResponsive';
 import CategoryBadge from '@/components/CategoryBadge';
 import UserAvatar from '@/components/avatars/UserAvatar';
+import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
+import TableDetailModal from '@/components/modals/TableDetailModal';
+import { getUserTableColumns, getUserModalColumns } from '@/components/admin/UserTableConfig';
 import { getCategoryRules, getCategoryDiscounts, recalculateAllCategories } from '@/lib/userCategorizationService';
 
 const SUPER_ADMIN_EMAILS = ['jtheoden@googlemail.com', 'elpapuedition@gmail.com'];
@@ -280,209 +282,197 @@ const UserManagement = () => {
   };
 
   const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(user?.email);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [showUserModal, setShowUserModal] = useState(false);
 
-  const getRoleBadgeColor = (role) => {
-    switch (role) {
-      case 'super_admin': return 'bg-purple-100 text-purple-800';
-      case 'admin': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
+  // Get table columns with action handlers
+  const userTableColumns = useMemo(() => {
+    const baseColumns = getUserTableColumns(t, isSuperAdmin, user?.email);
+
+    // Add role change handler
+    const roleColumnIndex = baseColumns.findIndex(col => col.key === 'role');
+    if (roleColumnIndex !== -1 && isSuperAdmin) {
+      baseColumns[roleColumnIndex] = {
+        ...baseColumns[roleColumnIndex],
+        render: (value, row) => {
+          const isSuperAdminUser = SUPER_ADMIN_EMAILS.includes(row.email);
+          if (isSuperAdminUser) {
+            return (
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                <Shield className="w-3 h-3 mr-1" />
+                {t('users.superAdmin')}
+              </span>
+            );
+          }
+          return (
+            <select
+              value={value || 'user'}
+              onChange={(e) => handleRoleChange(row.id, e.target.value)}
+              className="px-3 py-1 rounded-full text-xs font-medium border-0 focus:ring-2 focus:ring-blue-500 bg-gray-100 text-gray-800"
+            >
+              <option value="user">{t('users.roles.user')}</option>
+              <option value="admin">{t('users.roles.admin')}</option>
+            </select>
+          );
+        }
+      };
     }
-  };
 
-  // DataTable columns configuration
-  const columns = [
-    {
-      key: 'email',
-      label: t('users.table.email'),
-      width: '25%',
-      render: (value, row) => (
-        <div className="flex items-center gap-2 sm:gap-3">
-          <UserAvatar
-            email={value}
-            fullName={row.full_name}
-            avatarUrl={row.avatar_url}
-            size="md"
-          />
-          <span className="text-xs sm:text-sm truncate">{value}</span>
-        </div>
-      )
-    },
-    {
-      key: 'full_name',
-      label: t('users.table.name'),
-      width: '20%',
-      render: (value) => <span className="text-sm">{value || '-'}</span>
-    },
-    {
-      key: 'role',
-      label: t('users.table.role'),
-      width: '20%',
-      render: (value, row) => {
-        const isSuperAdminUser = SUPER_ADMIN_EMAILS.includes(row.email);
-        if (isSuperAdminUser) {
-          return (
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-              <Shield className="w-3 h-3 mr-1" />
-              {t('users.superAdmin')}
-            </span>
-          );
-        }
-        if (!isSuperAdmin) {
-          return (
-            <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${getRoleBadgeColor(value)}`}>
-              {t(`users.roles.${value || 'user'}`)}
-            </span>
-          );
-        }
-        return (
-          <select
-            value={value || 'user'}
-            onChange={(e) => handleRoleChange(row.id, e.target.value)}
-            className={`px-3 py-1 rounded-full text-xs font-medium border-0 focus:ring-2 focus:ring-blue-500 ${getRoleBadgeColor(value)}`}
-          >
-            <option value="user">{t('users.roles.user')}</option>
-            <option value="admin">{t('users.roles.admin')}</option>
-          </select>
-        );
-      }
-    },
-    {
-      key: 'category_name',
-      label: t('users.table.category'),
-      width: '15%',
-      render: (value, row) => {
-        const isSuperAdminUser = SUPER_ADMIN_EMAILS.includes(row.email);
-        if (isSuperAdminUser) {
-          return (
-            <span className="text-xs text-gray-400 italic">
-              {t('users.protected')}
-            </span>
-          );
-        }
-        if (!isSuperAdmin) {
-          return <CategoryBadge categoryName={value || 'regular'} readOnly />;
-        }
-        return (
-          <select
-            value={value || ''}
-            onChange={(e) => handleCategoryChange(row.id, e.target.value)}
-            className="px-2 py-1 rounded text-xs border border-gray-300 focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">{t('users.categories.selectCategory')}</option>
-            {categoryRules && categoryRules.map((rule) => (
-              <option key={rule.category_name} value={rule.category_name}>
-                {t(`users.categories.${rule.category_name}`)}
-              </option>
-            ))}
-          </select>
-        );
-      }
-    },
-    {
-      key: 'is_enabled',
-      label: t('users.table.status'),
-      width: '15%',
-      render: (value) => (
-        <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
-          value ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-        }`}>
-          {value ? t('users.table.active') : t('users.table.inactive')}
-        </span>
-      )
-    },
-    {
-      key: 'id',
-      label: t('users.table.actions'),
-      width: '20%',
-      render: (value, row) => {
-        const isSuperAdminUser = SUPER_ADMIN_EMAILS.includes(row.email);
-        if (isSuperAdminUser) {
-          return (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400 italic flex items-center gap-1">
-                <Shield className="w-3 h-3" />
+    // Add category change handler
+    const categoryColumnIndex = baseColumns.findIndex(col => col.key === 'category_name');
+    if (categoryColumnIndex !== -1 && isSuperAdmin) {
+      baseColumns[categoryColumnIndex] = {
+        ...baseColumns[categoryColumnIndex],
+        render: (value, row) => {
+          const isSuperAdminUser = SUPER_ADMIN_EMAILS.includes(row.email);
+          if (isSuperAdminUser) {
+            return (
+              <span className="text-xs text-gray-400 italic">
                 {t('users.protected')}
               </span>
-            </div>
+            );
+          }
+          return (
+            <select
+              value={value || ''}
+              onChange={(e) => handleCategoryChange(row.id, e.target.value)}
+              className="px-2 py-1 rounded text-xs border border-gray-300 focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">{t('users.categories.selectCategory')}</option>
+              {categoryRules && categoryRules.map((rule) => (
+                <option key={rule.category_name} value={rule.category_name}>
+                  {t(`users.categories.${rule.category_name}`)}
+                </option>
+              ))}
+            </select>
           );
         }
-        if (!isSuperAdmin) return null;
-        return (
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              variant={row.is_enabled ? "outline" : "default"}
-              size="sm"
-              onClick={() => handleToggleUserStatus(row.id, !row.is_enabled)}
-              title={row.is_enabled ? t('users.disableUser') : t('users.enableUser')}
-            >
-              {row.is_enabled ? (
-                <>
-                  <UserX className="w-4 h-4" />
-                  {t('users.disable')}
-                </>
-              ) : (
-                <>
-                  <UserCheck className="w-4 h-4" />
-                  {t('users.enable')}
-                </>
-              )}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleDeleteUser(row.id)}
-              style={{
-                backgroundColor: visualSettings.destructiveBgColor || '#dc2626',
-                color: visualSettings.destructiveTextColor || '#ffffff',
-                borderColor: visualSettings.destructiveBgColor || '#dc2626'
-              }}
-              onMouseEnter={e => e.currentTarget.style.backgroundColor = visualSettings.destructiveHoverBgColor || '#b91c1c'}
-              onMouseLeave={e => e.currentTarget.style.backgroundColor = visualSettings.destructiveBgColor || '#dc2626'}
-              title={t('users.deleteUser')}
-            >
-              <Trash2 className="w-4 h-4" />
-              {t('users.delete')}
-            </Button>
-          </div>
-        );
-      }
+      };
     }
-  ];
+
+    // Add action handlers to the actions column
+    if (isSuperAdmin) {
+      const actionsColumnIndex = baseColumns.findIndex(col => col.key === 'id');
+      if (actionsColumnIndex !== -1) {
+        baseColumns[actionsColumnIndex] = {
+          ...baseColumns[actionsColumnIndex],
+          render: (_, row) => {
+            const isSuperAdminUser = SUPER_ADMIN_EMAILS.includes(row.email);
+            if (isSuperAdminUser) {
+              return (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400 italic flex items-center gap-1">
+                    <Shield className="w-3 h-3" />
+                    {t('users.protected')}
+                  </span>
+                </div>
+              );
+            }
+            return (
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  variant={row.is_enabled ? "outline" : "default"}
+                  size="sm"
+                  onClick={() => handleToggleUserStatus(row.id, !row.is_enabled)}
+                  title={row.is_enabled ? t('users.disableUser') : t('users.enableUser')}
+                >
+                  {row.is_enabled ? (
+                    <>
+                      <UserX className="w-4 h-4" />
+                      {t('users.disable')}
+                    </>
+                  ) : (
+                    <>
+                      <UserCheck className="w-4 h-4" />
+                      {t('users.enable')}
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDeleteUser(row.id)}
+                  style={{
+                    backgroundColor: visualSettings.destructiveBgColor || '#dc2626',
+                    color: visualSettings.destructiveTextColor || '#ffffff',
+                    borderColor: visualSettings.destructiveBgColor || '#dc2626'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = visualSettings.destructiveHoverBgColor || '#b91c1c'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = visualSettings.destructiveBgColor || '#dc2626'}
+                  title={t('users.deleteUser')}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {t('users.delete')}
+                </Button>
+              </div>
+            );
+          }
+        };
+      }
+    } else {
+      // If not super admin, remove actions column
+      return baseColumns.filter(col => col.key !== 'id');
+    }
+
+    return baseColumns;
+  }, [t, isSuperAdmin, user?.email, visualSettings, categoryRules, handleRoleChange, handleCategoryChange, handleToggleUserStatus, handleDeleteUser]);
 
   const renderUsersTab = () => (
     <>
       {/* Stats */}
-      <div className="flex gap-4 text-sm mb-6">
-        <div className="px-4 py-2 glass-effect rounded-xl">
-          <span className="text-gray-600">{t('users.total')}:</span>
-          <span className="ml-2 font-bold">{users.length}</span>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 mb-6">
+        <div className="glass-effect p-3 sm:p-4 rounded-xl">
+          <div className="text-xs sm:text-sm text-gray-600 mb-1">{t('users.total')}</div>
+          <div className="text-lg sm:text-2xl font-bold text-gray-900">{users.length}</div>
         </div>
-        <div className="px-4 py-2 glass-effect rounded-xl">
-          <span className="text-gray-600">{t('users.table.active')}:</span>
-          <span className="ml-2 font-bold text-green-600">
-            {users.filter(u => u.is_enabled).length}
-          </span>
+        <div className="glass-effect p-3 sm:p-4 rounded-xl">
+          <div className="text-xs sm:text-sm text-gray-600 mb-1">{t('users.table.active')}</div>
+          <div className="text-lg sm:text-2xl font-bold text-green-600">{users.filter(u => u.is_enabled).length}</div>
+        </div>
+        <div className="glass-effect p-3 sm:p-4 rounded-xl">
+          <div className="text-xs sm:text-sm text-gray-600 mb-1">{t('users.roles.admin')}</div>
+          <div className="text-lg sm:text-2xl font-bold text-blue-600">{users.filter(u => u.role === 'admin').length}</div>
+        </div>
+        <div className="glass-effect p-3 sm:p-4 rounded-xl">
+          <div className="text-xs sm:text-sm text-gray-600 mb-1">{t('users.superAdmin')}</div>
+          <div className="text-lg sm:text-2xl font-bold text-purple-600">{users.filter(u => SUPER_ADMIN_EMAILS.includes(u.email)).length}</div>
         </div>
       </div>
 
-      {/* DataTable Component */}
+      {/* Responsive Users Table */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
       >
-        <DataTable
-          columns={columns}
+        <ResponsiveTableWrapper
           data={users}
-          loading={loading}
-          emptyMessage={t('users.noUsers')}
-          searchPlaceholder={`${t('users.table.email')}, ${t('users.table.name')}...`}
-          searchFields={['email', 'full_name']}
-          onRefresh={fetchUsers}
-          pageSize={10}
-          accentColor={visualSettings.primaryColor || 'blue'}
+          columns={userTableColumns}
+          onRowClick={(user) => {
+            setSelectedUser(user);
+            setShowUserModal(true);
+          }}
+          isLoading={loading}
+          modalTitle={t('users.detail')}
+          modalColumns={getUserModalColumns(t)}
+          emptyMessage={loading ? undefined : t('users.noUsers')}
         />
       </motion.div>
+
+      {/* User Detail Modal */}
+      {showUserModal && selectedUser && (
+        <TableDetailModal
+          isOpen={showUserModal}
+          onClose={() => {
+            setShowUserModal(false);
+            setTimeout(() => setSelectedUser(null), 300);
+          }}
+          title={t('users.detail') || 'User Details'}
+          data={selectedUser}
+          columns={getUserModalColumns(t)}
+          maxHeight="80vh"
+        />
+      )}
 
       {/* Info Cards */}
       <div className="mt-6 grid md:grid-cols-2 gap-4">
