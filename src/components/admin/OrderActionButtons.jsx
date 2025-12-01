@@ -1,11 +1,10 @@
 import React from 'react';
 import { Eye, Play, Truck, Camera, Check, Ban } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import IconButtonGroup from '@/components/buttons/IconButtonGroup';
 
 /**
  * Order Action Buttons Component
- * Renders conditional action buttons based on order status
+ * Renders conditional action buttons based on order status with intuitive colors and styling
  * Uses state machine logic to determine available actions
  */
 const OrderActionButtons = ({
@@ -34,7 +33,9 @@ const OrderActionButtons = ({
         icon: <Play className="h-4 w-4" />,
         label: t('adminOrders.action.startProcessing'),
         onClick: () => onStartProcessing(order),
-        disabled: isLoading
+        disabled: isLoading,
+        color: 'bg-emerald-500 hover:bg-emerald-600 text-white',
+        tooltip: t('adminOrders.action.startProcessing')
       };
     }
 
@@ -43,7 +44,9 @@ const OrderActionButtons = ({
         icon: <Truck className="h-4 w-4" />,
         label: t('adminOrders.action.markAsShipped'),
         onClick: () => onMarkAsShipped(order),
-        disabled: isLoading
+        disabled: isLoading,
+        color: 'bg-blue-500 hover:bg-blue-600 text-white',
+        tooltip: t('adminOrders.action.markAsShipped')
       };
     }
 
@@ -52,7 +55,9 @@ const OrderActionButtons = ({
         icon: <Camera className="h-4 w-4" />,
         label: t('adminOrders.action.uploadProof'),
         onClick: () => onUploadDeliveryProof(order),
-        disabled: isLoading
+        disabled: isLoading,
+        color: 'bg-purple-500 hover:bg-purple-600 text-white',
+        tooltip: t('adminOrders.action.uploadProof')
       };
     }
 
@@ -61,7 +66,9 @@ const OrderActionButtons = ({
         icon: <Check className="h-4 w-4" />,
         label: t('adminOrders.action.completeOrder'),
         onClick: () => onCompleteOrder(order),
-        disabled: isLoading
+        disabled: isLoading,
+        color: 'bg-green-500 hover:bg-green-600 text-white',
+        tooltip: t('adminOrders.action.completeOrder')
       };
     }
 
@@ -70,42 +77,47 @@ const OrderActionButtons = ({
 
   const primaryAction = getPrimaryAction();
 
-  // Build buttons array
-  const buttons = [
-    {
-      icon: <Eye className="h-4 w-4" />,
-      label: t('common.view'),
-      onClick: () => onView(order),
-      disabled: false,
-      title: t('adminOrders.action.viewDetails')
-    }
-  ];
-
-  // Add primary action if available
-  if (primaryAction) {
-    buttons.push({
-      ...primaryAction,
-      title: primaryAction.label
-    });
-  }
-
-  // Add cancel button if order not completed/cancelled
-  if (order.status !== 'completed' && order.status !== 'cancelled') {
-    buttons.push({
-      icon: <Ban className="h-4 w-4" />,
-      label: t('common.cancel'),
-      onClick: () => onCancelOrder(order),
-      disabled: isLoading,
-      title: t('adminOrders.action.cancelOrder')
-    });
-  }
+  // Helper function to render individual button with styling
+  const renderButton = (button) => (
+    <button
+      key={button.label}
+      onClick={button.onClick}
+      disabled={button.disabled}
+      title={button.tooltip}
+      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all duration-200 text-sm ${
+        button.color || 'bg-blue-500 hover:bg-blue-600 text-white'
+      } ${button.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer shadow-sm'}`}
+    >
+      {button.icon}
+      <span className="hidden sm:inline whitespace-nowrap">{button.label}</span>
+    </button>
+  );
 
   return (
-    <IconButtonGroup
-      buttons={buttons}
-      gap="gap-1"
-      tooltipPosition="left"
-    />
+    <div className="flex items-center gap-2 flex-wrap">
+      {/* View Details Button - Always visible */}
+      {renderButton({
+        icon: <Eye className="h-4 w-4" />,
+        label: t('common.view'),
+        onClick: () => onView(order),
+        disabled: false,
+        color: 'bg-slate-500 hover:bg-slate-600 text-white',
+        tooltip: t('adminOrders.action.viewDetails')
+      })}
+
+      {/* Primary Action Button - Status dependent */}
+      {primaryAction && renderButton(primaryAction)}
+
+      {/* Cancel Button - Always available except when completed or cancelled */}
+      {order.status !== 'completed' && order.status !== 'cancelled' && renderButton({
+        icon: <Ban className="h-4 w-4" />,
+        label: t('common.cancel'),
+        onClick: () => onCancelOrder(order),
+        disabled: isLoading,
+        color: 'bg-red-500 hover:bg-red-600 text-white',
+        tooltip: t('adminOrders.action.cancelOrder')
+      })}
+    </div>
   );
 };
 
