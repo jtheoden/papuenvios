@@ -21,14 +21,21 @@ export const getZelleTableColumns = (t, formatCurrency) => [
     render: (value) => <span className="font-medium">{value}</span>
   },
   {
-    key: 'holder_name',
+    key: 'account_holder',
     label: t('zelle.holderName'),
     width: 'w-32',
     sortable: true,
     render: (value) => <span>{value}</span>
   },
   {
-    key: 'phone_number',
+    key: 'email',
+    label: t('common.email'),
+    width: 'w-40',
+    sortable: true,
+    render: (value) => <span className="text-sm">{value || '-'}</span>
+  },
+  {
+    key: 'phone',
     label: t('zelle.phoneNumber'),
     width: 'w-28',
     render: (value) => <span className="font-mono text-sm">{value}</span>
@@ -130,12 +137,17 @@ export const getZelleModalColumns = (t, formatCurrency) => [
     render: (value) => <span className="font-medium">{value}</span>
   },
   {
-    key: 'holder_name',
+    key: 'account_holder',
     label: t('zelle.holderName'),
     render: (value) => <span>{value}</span>
   },
   {
-    key: 'phone_number',
+    key: 'email',
+    label: t('common.email'),
+    render: (value) => <span className="text-sm">{value || '-'}</span>
+  },
+  {
+    key: 'phone',
     label: t('zelle.phoneNumber'),
     render: (value) => <span className="font-mono">{value}</span>
   },
