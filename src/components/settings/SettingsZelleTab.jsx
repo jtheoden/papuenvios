@@ -40,11 +40,11 @@ const SettingsZelleTab = () => {
   const [transactions, setTransactions] = useState([]);
   const [accountStats, setAccountStats] = useState(null);
 
-  // Form state
+  // Form state (field names match Supabase zelle_accounts table structure)
   const [formData, setFormData] = useState({
     account_name: '',
-    phone_number: '',
-    holder_name: '',
+    phone: '',
+    account_holder: '',
     daily_limit: 0,
     monthly_limit: 0,
     security_limit: 0,
@@ -133,8 +133,8 @@ const SettingsZelleTab = () => {
   const handleCreateAccount = () => {
     setFormData({
       account_name: '',
-      phone_number: '',
-      holder_name: '',
+      phone: '',
+      account_holder: '',
       daily_limit: 0,
       monthly_limit: 0,
       security_limit: 0,
@@ -152,8 +152,8 @@ const SettingsZelleTab = () => {
     setSelectedAccount(account);
     setFormData({
       account_name: account.account_name,
-      phone_number: account.phone_number,
-      holder_name: account.holder_name,
+      phone: account.phone,
+      account_holder: account.account_holder,
       daily_limit: account.daily_limit,
       monthly_limit: account.monthly_limit,
       security_limit: account.security_limit,
@@ -167,7 +167,7 @@ const SettingsZelleTab = () => {
   };
 
   const handleSubmitForm = async () => {
-    if (!formData.account_name || !formData.phone_number || !formData.holder_name) {
+    if (!formData.account_name || !formData.phone || !formData.account_holder) {
       toast({
         title: t('zelle.errorRequiredFields') || 'Required fields',
         description: language === 'es'
@@ -421,8 +421,8 @@ const SettingsZelleTab = () => {
                   <label className="block text-sm font-medium mb-1">{t('zelle.phoneNumber')} *</label>
                   <input
                     type="tel"
-                    value={formData.phone_number}
-                    onChange={(e) => setFormData({...formData, phone_number: e.target.value})}
+                    value={formData.phone}
+                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
                     placeholder={t('zelle.phoneNumberPlaceholder') || 'Phone number'}
                     className="input-style w-full"
                   />
@@ -431,8 +431,8 @@ const SettingsZelleTab = () => {
                   <label className="block text-sm font-medium mb-1">{t('zelle.holderName')} *</label>
                   <input
                     type="text"
-                    value={formData.holder_name}
-                    onChange={(e) => setFormData({...formData, holder_name: e.target.value})}
+                    value={formData.account_holder}
+                    onChange={(e) => setFormData({...formData, account_holder: e.target.value})}
                     placeholder={t('zelle.holderNamePlaceholder') || 'Holder name'}
                     className="input-style w-full"
                   />
