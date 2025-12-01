@@ -528,6 +528,7 @@
     "ordersTab": "Orders History",
     "remittancesTab": "Remittances",
     "remittancesKindTab": "Kind of Remittances",
+    "zelleHistoryTab": "Zelle Payment History",
     "orderStatus": {
       "paymentPending": "Payment Pending",
       "paymentValidated": "Payment Validated",
@@ -1072,5 +1073,25 @@
     "countersResetDaily": "Daily counters reset successfully",
     "countersResetMonthly": "Monthly counters reset successfully",
     "notesPlaceholder": "Additional notes about this account"
+  },
+  "zelleHistory": {
+    "title": "Zelle Payment History",
+    "date": "Date",
+    "userName": "User Name",
+    "email": "Email",
+    "account": "Zelle Account",
+    "amount": "Amount",
+    "type": "Type",
+    "status": "Status",
+    "recipient": "Recipient",
+    "transactions": "transactions",
+    "details": "Transaction Details",
+    "amountToDeliver": "Amount to Deliver",
+    "typeRemittance": "Remittance",
+    "typeProduct": "Product",
+    "typeCombo": "Combo",
+    "statusPending": "Pending",
+    "statusValidated": "Validated",
+    "statusRejected": "Rejected"
   }
 }

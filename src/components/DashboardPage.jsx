@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart3, TrendingUp, DollarSign, Package, Users, AlertTriangle, Eye, Users2, RefreshCw, FileText, List, Send, Settings, Clock, CheckCircle, Ticket } from 'lucide-react';
+import { BarChart3, TrendingUp, DollarSign, Package, Users, AlertTriangle, Eye, Users2, RefreshCw, FileText, List, Send, Settings, Clock, CheckCircle, Ticket, CreditCard } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,6 +11,7 @@ import AdminOrdersTab from './AdminOrdersTab';
 import AdminRemittancesTab from './AdminRemittancesTab';
 import AdminOffersTab from './AdminOffersTab';
 import RemittanceTypesConfig from './RemittanceTypesConfig';
+import ZellePaymentHistoryTab from './admin/ZellePaymentHistoryTab';
 
 const DashboardPage = ({ onNavigate }) => {
   const { t } = useLanguage();
@@ -788,6 +789,20 @@ const DashboardPage = ({ onNavigate }) => {
                   transition={{ delay: 0.2 }}
                 >
                   <RemittanceTypesConfig />
+                </motion.div>
+              )
+            },
+            {
+              id: 'zelle-history',
+              label: 'dashboard.zelleHistoryTab',
+              icon: <CreditCard className="h-5 w-5" />,
+              content: (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                >
+                  <ZellePaymentHistoryTab />
                 </motion.div>
               )
             }

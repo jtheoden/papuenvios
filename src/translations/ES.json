@@ -553,6 +553,7 @@
     "ordersTab": "Historial de Órdenes",
     "remittancesTab": "Remesas",
     "remittancesKindTab": "Tipos de Remesas",
+    "zelleHistoryTab": "Historial de Pagos Zelle",
     "orderStatus": {
       "paymentPending": "Pago Pendiente",
       "paymentValidated": "Pago Validado",
@@ -1097,5 +1098,25 @@
     "countersResetDaily": "Contador diario reiniciado exitosamente",
     "countersResetMonthly": "Contador mensual reiniciado exitosamente",
     "notesPlaceholder": "Notas adicionales sobre esta cuenta"
+  },
+  "zelleHistory": {
+    "title": "Historial de Pagos Zelle",
+    "date": "Fecha",
+    "userName": "Nombre de Usuario",
+    "email": "Correo Electrónico",
+    "account": "Cuenta Zelle",
+    "amount": "Monto",
+    "type": "Tipo",
+    "status": "Estado",
+    "recipient": "Destinatario",
+    "transactions": "transacciones",
+    "details": "Detalles de la Transacción",
+    "amountToDeliver": "Monto a Entregar",
+    "typeRemittance": "Remesa",
+    "typeProduct": "Producto",
+    "typeCombo": "Combo",
+    "statusPending": "Pendiente",
+    "statusValidated": "Validado",
+    "statusRejected": "Rechazado"
   }
 }
