@@ -25,7 +25,9 @@ import {
   DollarSign,
   BarChart3,
   TrendingUp,
-  Clock
+  Clock,
+  Users,
+  Activity
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
@@ -39,6 +41,14 @@ const AdminOffersTab = () => {
   // States
   const [offers, setOffers] = useState([]);
   const [offerStats, setOfferStats] = useState({}); // Map of offer ID to usage stats
+  const [analytics, setAnalytics] = useState({
+    totalOffers: 0,
+    totalUses: 0,
+    totalDiscountValue: 0,
+    uniqueUsers: 0,
+    activeOffers: 0,
+    topOffers: []
+  });
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterActive, setFilterActive] = useState('all'); // all, active, inactive
@@ -104,6 +114,45 @@ const AdminOffersTab = () => {
         }
       }
       setOfferStats(statsMap);
+
+      // Calculate analytics
+      const calculateAnalytics = async () => {
+        try {
+          // Get unique users who used coupons
+          const { data: usageData, error: usageError } = await supabase
+            .from('offer_usage')
+            .select('user_id')
+            .distinct();
+
+          const uniqueUsers = usageError ? 0 : (usageData?.length || 0);
+
+          const totalUses = Object.values(statsMap).reduce((sum, stat) => sum + stat.totalUses, 0);
+          const activeCount = (data || []).filter(o => o.is_active).length;
+
+          // Get top 3 offers by usage
+          const topOffersList = (data || [])
+            .map(offer => ({
+              code: offer.code,
+              uses: statsMap[offer.id]?.totalUses || 0,
+              discount: offer.discount_value
+            }))
+            .sort((a, b) => b.uses - a.uses)
+            .slice(0, 3);
+
+          setAnalytics({
+            totalOffers: data?.length || 0,
+            totalUses,
+            totalDiscountValue: 0, // Would need order data to calculate
+            uniqueUsers,
+            activeOffers: activeCount,
+            topOffers: topOffersList
+          });
+        } catch (analyticsErr) {
+          console.warn('Error calculating analytics:', analyticsErr);
+        }
+      };
+
+      calculateAnalytics();
     } catch (err) {
       console.error('Error loading offers:', err);
       toast({
@@ -297,6 +346,117 @@ const AdminOffersTab = () => {
           {language === 'es' ? 'Nueva Oferta' : 'New Offer'}
         </button>
       </div>
+
+      {/* Analytics Dashboard */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Offers */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-blue-600 font-medium">
+                {language === 'es' ? 'Total Ofertas' : 'Total Offers'}
+              </p>
+              <p className="text-2xl font-bold text-blue-900 mt-1">{analytics.totalOffers}</p>
+            </div>
+            <Activity className="h-8 w-8 text-blue-600 opacity-30" />
+          </div>
+        </motion.div>
+
+        {/* Active Offers */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-200"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-green-600 font-medium">
+                {language === 'es' ? 'Activas' : 'Active'}
+              </p>
+              <p className="text-2xl font-bold text-green-900 mt-1">{analytics.activeOffers}</p>
+            </div>
+            <TrendingUp className="h-8 w-8 text-green-600 opacity-30" />
+          </div>
+        </motion.div>
+
+        {/* Total Uses */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-purple-600 font-medium">
+                {language === 'es' ? 'Usos Totales' : 'Total Uses'}
+              </p>
+              <p className="text-2xl font-bold text-purple-900 mt-1">{analytics.totalUses}</p>
+            </div>
+            <BarChart3 className="h-8 w-8 text-purple-600 opacity-30" />
+          </div>
+        </motion.div>
+
+        {/* Unique Users */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="bg-gradient-to-br from-orange-50 to-orange-100 p-4 rounded-lg border border-orange-200"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-orange-600 font-medium">
+                {language === 'es' ? 'Usuarios Únicos' : 'Unique Users'}
+              </p>
+              <p className="text-2xl font-bold text-orange-900 mt-1">{analytics.uniqueUsers}</p>
+            </div>
+            <Users className="h-8 w-8 text-orange-600 opacity-30" />
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Top Offers */}
+      {analytics.topOffers.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-lg shadow-sm border border-gray-200 p-4"
+        >
+          <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-purple-600" />
+            {language === 'es' ? 'Top 3 Cupones Utilizados' : 'Top 3 Used Coupons'}
+          </h3>
+          <div className="space-y-3">
+            {analytics.topOffers.map((offer, idx) => (
+              <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-center h-8 w-8 rounded-full bg-purple-100">
+                    <span className="text-sm font-bold text-purple-600">#{idx + 1}</span>
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">{offer.code}</p>
+                    <p className="text-xs text-gray-500">
+                      {offer.discount}% {language === 'es' ? 'de descuento' : 'discount'}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-gray-900">{offer.uses}</p>
+                  <p className="text-xs text-gray-500">
+                    {language === 'es' ? 'usos' : 'uses'}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
       {/* Search and Filter */}
       <div className="flex flex-col sm:flex-row gap-4">
