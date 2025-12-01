@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { DollarSign, Image as ImageIcon, Bell, Save, Plus, Trash2, Upload, Link, Edit, RefreshCw, Check, Palette, ShoppingBag, MapPin, Truck } from 'lucide-react';
+import { DollarSign, Image as ImageIcon, Bell, Save, Plus, Trash2, Upload, Link, Edit, RefreshCw, Check, Palette, ShoppingBag, MapPin, Truck, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -19,6 +19,7 @@ import SettingsPageFinancial from '@/components/settings/SettingsPageFinancial';
 import SettingsPageShipping from '@/components/settings/SettingsPageShipping';
 import SettingsPageVisual from '@/components/settings/SettingsPageVisual';
 import SettingsPageContent from '@/components/settings/SettingsPageContent';
+import SettingsZelleTab from '@/components/settings/SettingsZelleTab';
 
 const SettingsPage = () => {
   const { t, language } = useLanguage();
@@ -741,6 +742,12 @@ const SettingsPage = () => {
       label: language === 'es' ? 'Visual' : 'Visual',
       icon: Palette,
       color: '#9333ea'
+    },
+    {
+      id: 'zelle',
+      label: 'Zelle',
+      icon: CreditCard,
+      color: '#3b82f6'
     },
     {
       id: 'contenido',
@@ -2157,6 +2164,15 @@ const SettingsPage = () => {
               </div>
             )}
           </motion.div>
+            </>
+          )}
+
+          {/* ZELLE TAB */}
+          {activeTab === 'zelle' && (
+            <>
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-effect p-8 rounded-2xl">
+                <SettingsZelleTab />
+              </motion.div>
             </>
           )}
 
