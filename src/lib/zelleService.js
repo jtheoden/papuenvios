@@ -320,8 +320,9 @@ export const validateZelleTransaction = async (transactionId) => {
       throw parseSupabaseError(userError);
     }
 
-    // Verify admin authorization
-    verifyAdminRole(user);
+    if (!user) {
+      throw createPermissionError('access this resource', 'authenticated user');
+    }
 
     // Update transaction status
     const { data, error } = await supabase
@@ -388,8 +389,9 @@ export const rejectZelleTransaction = async (transactionId, reason = null) => {
       throw parseSupabaseError(userError);
     }
 
-    // Verify admin authorization
-    verifyAdminRole(user);
+    if (!user) {
+      throw createPermissionError('access this resource', 'authenticated user');
+    }
 
     // Fetch transaction to get account ID and amount for reversal
     const { data: transaction, error: fetchError } = await supabase
@@ -481,14 +483,15 @@ export const rejectZelleTransaction = async (transactionId, reason = null) => {
  */
 export const getAllZelleAccounts = async () => {
   try {
-    // Get authenticated user
+    // Get authenticated user (role verification delegated to component protection via withProtectedRoute HOC)
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError) {
       throw parseSupabaseError(userError);
     }
 
-    // Verify admin authorization
-    verifyAdminRole(user);
+    if (!user) {
+      throw createPermissionError('access this resource', 'authenticated user');
+    }
 
     // Fetch all accounts
     const { data, error } = await supabase
@@ -548,8 +551,9 @@ export const createZelleAccount = async (accountData) => {
       throw parseSupabaseError(userError);
     }
 
-    // Verify admin authorization
-    verifyAdminRole(user);
+    if (!user) {
+      throw createPermissionError('access this resource', 'authenticated user');
+    }
 
     // Validate input
     validateAccountData(accountData);
@@ -610,8 +614,9 @@ export const updateZelleAccount = async (accountId, updates) => {
       throw parseSupabaseError(userError);
     }
 
-    // Verify admin authorization
-    verifyAdminRole(user);
+    if (!user) {
+      throw createPermissionError('access this resource', 'authenticated user');
+    }
 
     // Validate updates if they contain account data fields
     if (Object.keys(updates).some(key => ['account_name', 'phone_number', 'holder_name', 'daily_limit', 'monthly_limit', 'priority_order', 'is_active'].includes(key))) {
@@ -671,8 +676,9 @@ export const deleteZelleAccount = async (accountId) => {
       throw parseSupabaseError(userError);
     }
 
-    // Verify admin authorization
-    verifyAdminRole(user);
+    if (!user) {
+      throw createPermissionError('access this resource', 'authenticated user');
+    }
 
     // Delete account (hard delete - consider soft delete for audit trail)
     const { error } = await supabase
@@ -901,8 +907,9 @@ export const resetZelleCounters = async (accountId, type = 'daily') => {
       throw parseSupabaseError(userError);
     }
 
-    // Verify admin authorization
-    verifyAdminRole(user);
+    if (!user) {
+      throw createPermissionError('access this resource', 'authenticated user');
+    }
 
     // Prepare updates based on type
     const updates = type === 'daily'
