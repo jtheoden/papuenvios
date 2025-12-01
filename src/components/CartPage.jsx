@@ -396,19 +396,22 @@ const CartPage = ({ onNavigate }) => {
         inventoryId: item.inventory_id || null
       }));
 
-      // Prepare order data
+      // Prepare order data with discount applied
       const orderData = {
         userId: user.id,
         orderType: 'product',
-        subtotal: subtotal,
-        shippingCost: shippingCost,
-        totalAmount: subtotal + shippingCost,
+        subtotal: parseFloat(subtotal.toFixed(2)),
+        discountAmount: parseFloat(discountAmount.toFixed(2)),  // Apply user category discount
+        shippingCost: parseFloat(shippingCost.toFixed(2)),
+        totalAmount: parseFloat(total),  // Already includes discount and shipping
         currencyId: currency.id,
         recipientInfo: JSON.stringify(recipientDetails),
         paymentMethod: 'zelle',
         shippingZoneId: shippingZone?.id || null,
         // TODO: Fix zelle_accounts table to use UUID instead of integer IDs
-        zelleAccountId: null
+        zelleAccountId: null,
+        // Offer/coupon code support (ready for future enhancement)
+        offerId: null  // Can be updated when coupon code input is added to UI
       };
 
       // Create order
@@ -453,7 +456,9 @@ const CartPage = ({ onNavigate }) => {
               orderData: {
                 orderNumber: createdOrder.order_number,
                 customerName: recipientDetails.fullName,
-                total: (subtotal + shippingCost).toFixed(2),
+                subtotal: subtotal.toFixed(2),
+                discountAmount: discountAmount.toFixed(2),
+                total: total,  // Includes discount and shipping
                 currency: selectedCurrency,
                 paymentProofUrl: uploadResult?.url || createdOrder.payment_proof_url || null
               },
