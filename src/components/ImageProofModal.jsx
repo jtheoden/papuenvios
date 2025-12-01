@@ -1,12 +1,13 @@
 import { motion } from 'framer-motion';
 import { FileText, Clock, X } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { generateProofSignedUrl } from '@/lib/remittanceService';
 
 /**
  * Reusable modal for displaying proof/receipt images
  * Handles signed URL generation and loading states
+ * Fully accessible with ARIA attributes and keyboard navigation support
  */
 const ImageProofModal = ({
   isOpen,
@@ -18,6 +19,8 @@ const ImageProofModal = ({
   const { t } = useLanguage();
   const [signedUrl, setSignedUrl] = useState(null);
   const [loading, setLoading] = useState(false);
+  const modalRef = useRef(null);
+  const titleId = `image-proof-modal-title`;
 
   useEffect(() => {
     const loadSignedUrl = async () => {
@@ -36,27 +39,60 @@ const ImageProofModal = ({
     loadSignedUrl();
   }, [isOpen, proofUrl, bucketName]);
 
+  // Handle Escape key to close modal
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-      onClick={onClose}
+      role="presentation"
+      onClick={(e) => {
+        // Close modal when clicking outside (on the backdrop)
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
     >
       <motion.div
+        ref={modalRef}
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-busy={loading}
       >
         {/* Header */}
         <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <h2 className="text-2xl font-bold gradient-text">
+          <h2
+            id={titleId}
+            className="text-2xl font-bold gradient-text"
+          >
             {title}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-lg p-1"
+            aria-label="Cerrar modal de comprobante"
+            title="Presione Escape para cerrar"
           >
             <X className="h-6 w-6" />
           </button>
@@ -101,7 +137,8 @@ const ImageProofModal = ({
         <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4">
           <button
             onClick={onClose}
-            className="w-full py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+            className="w-full py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+            aria-label="Cerrar"
           >
             {t('common.close')}
           </button>

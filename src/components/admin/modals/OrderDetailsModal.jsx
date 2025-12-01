@@ -1,27 +1,66 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { X, Gift, TrendingDown } from 'lucide-react';
 
 /**
  * Order Details Modal Component
  * Displays complete order information including items, totals, shipping, and payment proof
+ * Fully accessible with ARIA attributes and keyboard navigation support
  */
 const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
+  const modalRef = useRef(null);
+  const titleId = `order-modal-title-${order.id}`;
+
+  // Handle Escape key to close modal
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    // Add event listener
+    document.addEventListener('keydown', handleKeyDown);
+
+    // Return cleanup function
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+      role="presentation"
+      onClick={(e) => {
+        // Close modal when clicking outside (on the backdrop)
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <motion.div
+        ref={modalRef}
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
       >
         <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <h3 className="text-xl font-bold text-gray-900">
+          <h3
+            id={titleId}
+            className="text-xl font-bold text-gray-900"
+          >
             Detalles de Orden: {order.order_number}
           </h3>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-lg p-1"
+            aria-label="Cerrar modal"
+            title="Presione Escape para cerrar"
           >
             <X className="h-6 w-6" />
           </button>
@@ -49,26 +88,52 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
             <div>
               <h4 className="text-lg font-semibold text-gray-900 mb-3">Items de la Orden</h4>
               <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <table className="w-full">
+                <table className="w-full" role="table">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Producto</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Cantidad</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Precio Unit.</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Total</th>
+                      <th
+                        className="px-4 py-2 text-left text-xs font-medium text-gray-500"
+                        scope="col"
+                        role="columnheader"
+                      >
+                        Producto
+                      </th>
+                      <th
+                        className="px-4 py-2 text-left text-xs font-medium text-gray-500"
+                        scope="col"
+                        role="columnheader"
+                      >
+                        Cantidad
+                      </th>
+                      <th
+                        className="px-4 py-2 text-left text-xs font-medium text-gray-500"
+                        scope="col"
+                        role="columnheader"
+                      >
+                        Precio Unit.
+                      </th>
+                      <th
+                        className="px-4 py-2 text-left text-xs font-medium text-gray-500"
+                        scope="col"
+                        role="columnheader"
+                      >
+                        Total
+                      </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-gray-200" role="rowgroup">
                     {order.order_items?.map((item, index) => (
-                      <tr key={index}>
-                        <td className="px-4 py-3 text-sm text-gray-900">
+                      <tr key={index} role="row">
+                        <td className="px-4 py-3 text-sm text-gray-900" role="cell">
                           {item.item_name_es || item.item_name_en}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{item.quantity}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">
+                        <td className="px-4 py-3 text-sm text-gray-900" role="cell">
+                          {item.quantity}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-900" role="cell">
                           {formatCurrency(item.unit_price, order.currencies?.code)}
                         </td>
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900" role="cell">
                           {formatCurrency(item.total_price, order.currencies?.code)}
                         </td>
                       </tr>
@@ -192,7 +257,8 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
         <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end">
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+            className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+            aria-label="Cerrar detalles de la orden"
           >
             Cerrar
           </button>

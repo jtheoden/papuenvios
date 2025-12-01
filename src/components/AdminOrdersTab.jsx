@@ -662,14 +662,14 @@ const AdminOrdersTab = () => {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="">{t('adminOrders.filters.allStatuses')}</option>
-                  <option value="payment_pending">🟡 {t('adminOrders.table.paymentStatus.pending')}</option>
-                  <option value="payment_validated">✅ {t('adminOrders.table.paymentStatus.validated')}</option>
-                  <option value="processing">🔵 {t('adminOrders.table.orderStatus.processing')}</option>
-                  <option value="shipped">🟣 {t('adminOrders.table.orderStatus.shipped')}</option>
-                  <option value="delivered">🟢 {t('adminOrders.table.orderStatus.delivered')}</option>
-                  <option value="completed">✅ {t('adminOrders.table.orderStatus.completed')}</option>
-                  <option value="cancelled">❌ {t('adminOrders.table.orderStatus.cancelled')}</option>
-                  <option value="rejected">🔴 {t('adminOrders.table.paymentStatus.rejected')}</option>
+                  <option value="payment_pending">{t('adminOrders.table.paymentStatus.pending')}</option>
+                  <option value="payment_validated">{t('adminOrders.table.paymentStatus.validated')}</option>
+                  <option value="processing">{t('adminOrders.table.orderStatus.processing')}</option>
+                  <option value="shipped">{t('adminOrders.table.orderStatus.shipped')}</option>
+                  <option value="delivered">{t('adminOrders.table.orderStatus.delivered')}</option>
+                  <option value="completed">{t('adminOrders.table.orderStatus.completed')}</option>
+                  <option value="cancelled">{t('adminOrders.table.orderStatus.cancelled')}</option>
+                  <option value="rejected">{t('adminOrders.table.paymentStatus.rejected')}</option>
                 </select>
               </div>
 

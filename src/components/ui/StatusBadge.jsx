@@ -62,7 +62,7 @@ const StatusBadge = ({
 	const Icon = config.icon;
 
 	// Size configuration
-	const sizeConfig = {
+	const sizeConfigMap = {
 		sm: {
 			padding: 'px-2 py-1',
 			textSize: 'text-xs',
@@ -80,7 +80,7 @@ const StatusBadge = ({
 		}
 	};
 
-	const size Config = sizeConfig[size] || sizeConfig.md;
+	const sizeConfig = sizeConfigMap[size] || sizeConfigMap.md;
 
 	return (
 		<span
