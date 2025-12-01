@@ -14,7 +14,7 @@ import CategoryBadge from '@/components/CategoryBadge';
 import UserAvatar from '@/components/avatars/UserAvatar';
 import { getCategoryRules, getCategoryDiscounts, recalculateAllCategories } from '@/lib/userCategorizationService';
 
-const SUPER_ADMIN_EMAILS = ['jtheoden@gmail.com', 'jtheoden@googlemail.com'];
+const SUPER_ADMIN_EMAILS = ['jtheoden@googlemail.com', 'elpapuedition@gmail.com'];
 
 const UserManagement = () => {
   const { t } = useLanguage();
