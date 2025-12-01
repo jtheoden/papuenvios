@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart3, TrendingUp, DollarSign, Package, Users, AlertTriangle, Eye, Users2, RefreshCw, FileText, List, Send, Settings, Clock, CheckCircle } from 'lucide-react';
+import { BarChart3, TrendingUp, DollarSign, Package, Users, AlertTriangle, Eye, Users2, RefreshCw, FileText, List, Send, Settings, Clock, CheckCircle, Ticket } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -9,6 +9,7 @@ import { getHeadingStyle } from '@/lib/styleUtils';
 import TabsResponsive from './TabsResponsive';
 import AdminOrdersTab from './AdminOrdersTab';
 import AdminRemittancesTab from './AdminRemittancesTab';
+import AdminOffersTab from './AdminOffersTab';
 import RemittanceTypesConfig from './RemittanceTypesConfig';
 
 const DashboardPage = ({ onNavigate }) => {
@@ -759,6 +760,20 @@ const DashboardPage = ({ onNavigate }) => {
                   transition={{ delay: 0.2 }}
                 >
                   <AdminRemittancesTab />
+                </motion.div>
+              )
+            },
+            {
+              id: 'offers',
+              label: 'dashboard.offersTab',
+              icon: <Ticket className="h-5 w-5" />,
+              content: (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                >
+                  <AdminOffersTab />
                 </motion.div>
               )
             },
