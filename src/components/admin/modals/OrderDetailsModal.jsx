@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { X } from 'lucide-react';
+import { X, Gift, TrendingDown } from 'lucide-react';
 
 /**
  * Order Details Modal Component
@@ -78,22 +78,42 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
               </div>
             </div>
 
+            {/* Discount Details Section */}
+            {order.discount_amount > 0 && (
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
+                <div className="flex items-start gap-3">
+                  <TrendingDown className="h-5 w-5 text-green-600 mt-1 flex-shrink-0" />
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-green-900 mb-2">Descuento Aplicado</h4>
+                    <div className="text-sm text-green-800">
+                      {order.offer_code ? (
+                        <p>Cupón: <code className="bg-white px-2 py-1 rounded font-mono font-bold text-green-700">{order.offer_code}</code></p>
+                      ) : (
+                        <p>Descuento por categoría de usuario</p>
+                      )}
+                      <p className="mt-1">Ahorro: <span className="font-bold">{formatCurrency(order.discount_amount, order.currencies?.code)}</span></p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Totals */}
             <div className="bg-gray-50 rounded-lg p-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Subtotal:</span>
                 <span className="font-medium">{formatCurrency(order.subtotal, order.currencies?.code)}</span>
               </div>
-              {order.shipping_cost > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Envío:</span>
-                  <span className="font-medium">{formatCurrency(order.shipping_cost, order.currencies?.code)}</span>
-                </div>
-              )}
               {order.discount_amount > 0 && (
                 <div className="flex justify-between text-sm text-green-600">
                   <span>Descuento:</span>
                   <span className="font-medium">-{formatCurrency(order.discount_amount, order.currencies?.code)}</span>
+                </div>
+              )}
+              {order.shipping_cost > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Envío:</span>
+                  <span className="font-medium">{formatCurrency(order.shipping_cost, order.currencies?.code)}</span>
                 </div>
               )}
               <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-200">
