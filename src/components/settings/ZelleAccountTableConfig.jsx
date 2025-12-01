@@ -54,6 +54,30 @@ export const getZelleTableColumns = (t, formatCurrency) => [
     )
   },
   {
+    key: 'for_products',
+    label: t('zelle.forProducts'),
+    width: 'w-24',
+    render: (value) => (
+      <StatusBadge
+        status={value ? 'success' : 'error'}
+        label={value ? t('common.active') : t('common.inactive')}
+        size="sm"
+      />
+    )
+  },
+  {
+    key: 'for_remittances',
+    label: t('zelle.forRemittances'),
+    width: 'w-24',
+    render: (value) => (
+      <StatusBadge
+        status={value ? 'success' : 'error'}
+        label={value ? t('common.active') : t('common.inactive')}
+        size="sm"
+      />
+    )
+  },
+  {
     key: 'daily_limit',
     label: t('zelle.dailyLimit'),
     width: 'w-24',
