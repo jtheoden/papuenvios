@@ -75,6 +75,12 @@ const validateAccountData = (data) => {
     errors.account_holder = 'Holder name is required and must be a non-empty string';
   }
 
+  if (!data.email || typeof data.email !== 'string' || data.email.trim().length === 0) {
+    errors.email = 'Email is required and must be a non-empty string';
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+    errors.email = 'Email must be a valid email address';
+  }
+
   if (data.daily_limit !== undefined && (typeof data.daily_limit !== 'number' || data.daily_limit < 0)) {
     errors.daily_limit = 'Daily limit must be a non-negative number';
   }

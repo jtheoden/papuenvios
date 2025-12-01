@@ -45,6 +45,7 @@ const SettingsZelleTab = () => {
     account_name: '',
     phone: '',
     account_holder: '',
+    email: '',
     daily_limit: 0,
     monthly_limit: 0,
     security_limit: 0,
@@ -135,6 +136,7 @@ const SettingsZelleTab = () => {
       account_name: '',
       phone: '',
       account_holder: '',
+      email: '',
       daily_limit: 0,
       monthly_limit: 0,
       security_limit: 0,
@@ -154,6 +156,7 @@ const SettingsZelleTab = () => {
       account_name: account.account_name,
       phone: account.phone,
       account_holder: account.account_holder,
+      email: account.email || '',
       daily_limit: account.daily_limit,
       monthly_limit: account.monthly_limit,
       security_limit: account.security_limit,
@@ -167,7 +170,7 @@ const SettingsZelleTab = () => {
   };
 
   const handleSubmitForm = async () => {
-    if (!formData.account_name || !formData.phone || !formData.account_holder) {
+    if (!formData.account_name || !formData.phone || !formData.account_holder || !formData.email) {
       toast({
         title: t('zelle.errorRequiredFields') || 'Required fields',
         description: language === 'es'
@@ -438,11 +441,21 @@ const SettingsZelleTab = () => {
                   />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium mb-1">{t('common.email')} *</label>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    placeholder={t('zelle.emailPlaceholder') || 'account@example.com'}
+                    className="input-style w-full"
+                  />
+                </div>
+                <div>
                   <label className="block text-sm font-medium mb-1">{t('zelle.priority')}</label>
                   <input
                     type="number"
                     value={formData.priority_order}
-                    onChange={(e) => setFormData({...formData, priority_order: parseInt(e.target.value)})}
+                    onChange={(e) => setFormData({...formData, priority_order: e.target.value === '' ? 0 : parseInt(e.target.value) || 0})}
                     min="1"
                     className="input-style w-full"
                   />
@@ -453,7 +466,7 @@ const SettingsZelleTab = () => {
                     type="number"
                     step="0.01"
                     value={formData.daily_limit}
-                    onChange={(e) => setFormData({...formData, daily_limit: parseFloat(e.target.value)})}
+                    onChange={(e) => setFormData({...formData, daily_limit: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0})}
                     className="input-style w-full"
                   />
                 </div>
@@ -463,7 +476,7 @@ const SettingsZelleTab = () => {
                     type="number"
                     step="0.01"
                     value={formData.monthly_limit}
-                    onChange={(e) => setFormData({...formData, monthly_limit: parseFloat(e.target.value)})}
+                    onChange={(e) => setFormData({...formData, monthly_limit: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0})}
                     className="input-style w-full"
                   />
                 </div>
