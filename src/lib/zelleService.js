@@ -951,6 +951,112 @@ export const resetZelleCounters = async (accountId, type = 'daily') => {
   }
 };
 
+/**
+ * Get all Zelle payment history with user information
+ * Fetches transactions from zelle_transaction_history with joins to get complete context
+ * Used for admin dashboard to view all Zelle transactions organized by user
+ *
+ * @param {object} filters - Optional filters for transactions
+ * @returns {Promise<array>} Array of transactions with user and account info
+ */
+export const getAllZellePaymentHistory = async (filters = {}) => {
+  try {
+    // Query zelle_transaction_history with all related data
+    let query = supabase
+      .from('zelle_transaction_history')
+      .select(`
+        id,
+        zelle_account_id,
+        zelle_accounts(account_name),
+        transaction_type,
+        transaction_id,
+        amount,
+        status,
+        transaction_date,
+        created_at,
+        remittances(
+          remittance_number,
+          user_id,
+          recipient_name,
+          amount_to_deliver
+        ),
+        order_id
+      `);
+
+    // Apply status filter if provided
+    if (filters.status) {
+      query = query.eq('status', filters.status);
+    }
+
+    // Apply date range filters
+    if (filters.startDate) {
+      query = query.gte('transaction_date', filters.startDate);
+    }
+
+    if (filters.endDate) {
+      query = query.lte('transaction_date', filters.endDate);
+    }
+
+    // Apply transaction type filter
+    if (filters.transactionType) {
+      query = query.eq('transaction_type', filters.transactionType);
+    }
+
+    // Sort by date, newest first
+    query = query.order('transaction_date', { ascending: false });
+
+    const { data: transactions, error } = await query;
+
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    if (!transactions || transactions.length === 0) {
+      return [];
+    }
+
+    // Enrich data with user information from remittances
+    const enrichedTransactions = await Promise.all(
+      transactions.map(async (transaction) => {
+        let userData = null;
+
+        // Get user info from remittance if available
+        if (transaction.transaction_type === 'remittance' && transaction.remittances) {
+          const userId = transaction.remittances.user_id;
+          if (userId) {
+            const { data: user, error: userError } = await supabase
+              .from('profiles')
+              .select('id, full_name, email')
+              .eq('id', userId)
+              .single();
+
+            if (!userError && user) {
+              userData = user;
+            }
+          }
+        }
+
+        return {
+          ...transaction,
+          user: userData,
+          account_name: transaction.zelle_accounts?.account_name || 'N/A'
+        };
+      })
+    );
+
+    return enrichedTransactions;
+  } catch (error) {
+    if (error instanceof AppError) {
+      logError(error, { operation: 'getAllZellePaymentHistory', filters });
+      throw error;
+    }
+
+    const appError = parseSupabaseError(error);
+    logError(appError, { operation: 'getAllZellePaymentHistory', filters });
+    throw appError;
+  }
+};
+
 // ============================================================================
 // SERVICE NAMESPACE EXPORT
 // ============================================================================
@@ -963,6 +1069,7 @@ export const zelleService = {
   getZelleAccountTransactions,
   getZelleAccountStats,
   resetZelleCounters,
+  getAllZellePaymentHistory,
   ZELLE_STATUS,
   ZELLE_TRANSACTION_TYPES
 };
