@@ -782,6 +782,15 @@
       "invalidImage": "Please select a valid image",
       "imageTooLarge": "File is too large. Max 5MB"
     },
+    "modals": {
+      "startTitle": "Start Processing",
+      "trackingTitle": "Tracking Number",
+      "completeTitle": "Complete Order",
+      "cancelTitle": "Cancel Order",
+      "cancel": "Cancel",
+      "submit": "Submit",
+      "confirm": "Confirm"
+    },
     "deliveryModal": {
       "title": "Upload Delivery Evidence",
       "orderLabel": "Order:",
@@ -800,16 +809,67 @@
     "days": {
       "singular": "day",
       "plural": "days"
+    }
+  },
+  "offers": {
+    "title": "Offers & Coupons",
+    "subtitle": "Manage promotional offers and coupon codes",
+    "createNew": "Create New Offer",
+    "editOffer": "Edit Offer",
+    "search": "Search offers...",
+    "filters": {
+      "all": "All",
+      "active": "Active",
+      "inactive": "Inactive"
     },
-    "modals": {
-      "confirm": "Confirm",
-      "cancel": "Cancel",
-      "submit": "Submit",
-      "startTitle": "Start Processing",
-      "completeTitle": "Complete Order",
-      "cancelTitle": "Cancel Order",
-      "trackingTitle": "Tracking Number",
-      "cancelReasonTitle": "Cancellation Reason"
+    "table": {
+      "code": "Code",
+      "type": "Type",
+      "discount": "Discount",
+      "usage": "Usage",
+      "validUntil": "Valid Until",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "form": {
+      "code": "Offer Code",
+      "codePlaceholder": "E.g.: SUMMER2024",
+      "type": "Discount Type",
+      "percentage": "Percentage (%)",
+      "fixedAmount": "Fixed Amount ($)",
+      "discountValue": "Discount Value",
+      "minPurchase": "Minimum Purchase Amount",
+      "maxDiscount": "Maximum Discount",
+      "validUntil": "Valid Until",
+      "usageLimit": "Global Usage Limit",
+      "userLimit": "Usage Limit per User",
+      "description": "Description",
+      "active": "Active",
+      "save": "Save Offer",
+      "cancel": "Cancel"
+    },
+    "analytics": {
+      "totalOffers": "Total Offers",
+      "activeOffers": "Active Offers",
+      "totalUses": "Total Uses",
+      "uniqueUsers": "Unique Users",
+      "topOffers": "Top 3 Used Offers"
+    },
+    "messages": {
+      "offerCreated": "Offer created successfully",
+      "offerUpdated": "Offer updated successfully",
+      "offerDeleted": "Offer deleted successfully",
+      "offerActivated": "Offer activated",
+      "offerDeactivated": "Offer deactivated",
+      "noOffers": "No offers found",
+      "invalidCode": "Please enter a valid code",
+      "codeAlreadyExists": "This code already exists",
+      "requiredFields": "Please fill all required fields"
+    },
+    "usageStatus": {
+      "available": "Available",
+      "limited": "Limited",
+      "exhausted": "Exhausted"
     }
   },
   "users": {

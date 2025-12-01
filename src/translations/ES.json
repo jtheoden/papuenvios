@@ -807,6 +807,15 @@
       "invalidImage": "Por favor seleccione una imagen válida",
       "imageTooLarge": "El archivo es muy grande. Máximo 5MB"
     },
+    "modals": {
+      "startTitle": "Comenzar Procesamiento",
+      "trackingTitle": "Número de Seguimiento",
+      "completeTitle": "Completar Orden",
+      "cancelTitle": "Cancelar Orden",
+      "cancel": "Cancelar",
+      "submit": "Enviar",
+      "confirm": "Confirmar"
+    },
     "deliveryModal": {
       "title": "Subir Evidencia de Entrega",
       "orderLabel": "Orden:",
@@ -825,16 +834,67 @@
     "days": {
       "singular": "día",
       "plural": "días"
+    }
+  },
+  "offers": {
+    "title": "Ofertas y Cupones",
+    "subtitle": "Gestiona ofertas promocionales y códigos de cupón",
+    "createNew": "Crear Nueva Oferta",
+    "editOffer": "Editar Oferta",
+    "search": "Buscar ofertas...",
+    "filters": {
+      "all": "Todas",
+      "active": "Activas",
+      "inactive": "Inactivas"
     },
-    "modals": {
-      "confirm": "Confirmar",
-      "cancel": "Cancelar",
-      "submit": "Enviar",
-      "startTitle": "Iniciar Procesamiento",
-      "completeTitle": "Completar Orden",
-      "cancelTitle": "Cancelar Orden",
-      "trackingTitle": "Número de Tracking",
-      "cancelReasonTitle": "Razón de Cancelación"
+    "table": {
+      "code": "Código",
+      "type": "Tipo",
+      "discount": "Descuento",
+      "usage": "Uso",
+      "validUntil": "Válido Hasta",
+      "status": "Estado",
+      "actions": "Acciones"
+    },
+    "form": {
+      "code": "Código de Oferta",
+      "codePlaceholder": "Ej: VERANO2024",
+      "type": "Tipo de Descuento",
+      "percentage": "Porcentaje (%)",
+      "fixedAmount": "Monto Fijo ($)",
+      "discountValue": "Valor del Descuento",
+      "minPurchase": "Monto Mínimo de Compra",
+      "maxDiscount": "Descuento Máximo",
+      "validUntil": "Válido Hasta",
+      "usageLimit": "Límite de Uso Global",
+      "userLimit": "Límite de Uso por Usuario",
+      "description": "Descripción",
+      "active": "Activa",
+      "save": "Guardar Oferta",
+      "cancel": "Cancelar"
+    },
+    "analytics": {
+      "totalOffers": "Total de Ofertas",
+      "activeOffers": "Ofertas Activas",
+      "totalUses": "Usos Totales",
+      "uniqueUsers": "Usuarios Únicos",
+      "topOffers": "Top 3 Ofertas Más Usadas"
+    },
+    "messages": {
+      "offerCreated": "Oferta creada exitosamente",
+      "offerUpdated": "Oferta actualizada exitosamente",
+      "offerDeleted": "Oferta eliminada exitosamente",
+      "offerActivated": "Oferta activada",
+      "offerDeactivated": "Oferta desactivada",
+      "noOffers": "No se encontraron ofertas",
+      "invalidCode": "Por favor ingrese un código válido",
+      "codeAlreadyExists": "Este código ya existe",
+      "requiredFields": "Por favor completa todos los campos requeridos"
+    },
+    "usageStatus": {
+      "available": "Disponible",
+      "limited": "Limitado",
+      "exhausted": "Agotado"
     }
   },
   "users": {
