@@ -28,7 +28,8 @@
     "address": "Dirección",
     "processing": "Procesando...",
     "active": "Activo",
-    "inactive": "Inactivo"
+    "inactive": "Inactivo",
+    "notes": "Notas"
   },
   "nav": {
     "home": "Inicio",
@@ -438,7 +439,19 @@
       "product": "Producto",
       "stock": "Existencias",
       "price": "Precio Final",
-      "expiryDate": "Fecha de Caducidad"
+      "expiryDate": "Fecha de Caducidad",
+      "category": "Categoría",
+      "sku": "SKU",
+      "totalStock": "Existencia Total",
+      "reservedStock": "Existencia Reservada",
+      "availableStock": "Existencia Disponible",
+      "costPerUnit": "Costo Unitario",
+      "basePrice": "Precio Base",
+      "profitMargin": "Margen de Ganancia",
+      "currency": "Moneda",
+      "receivedDate": "Fecha de Recepción",
+      "supplierReference": "Referencia del Proveedor",
+      "batchNumber": "Número de Lote"
     },
     "categories": {
       "manage": "Gestionar Categorías",

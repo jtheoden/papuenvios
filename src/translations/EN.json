@@ -28,7 +28,8 @@
     "address": "Address",
     "processing": "Processing...",
     "active": "Active",
-    "inactive": "Inactive"
+    "inactive": "Inactive",
+    "notes": "Notes"
   },
   "nav": {
     "home": "Home",
@@ -413,7 +414,19 @@
       "product": "Product",
       "stock": "Stock",
       "price": "Final Price",
-      "expiryDate": "Expiry Date"
+      "expiryDate": "Expiry Date",
+      "category": "Category",
+      "sku": "SKU",
+      "totalStock": "Total Stock",
+      "reservedStock": "Reserved Stock",
+      "availableStock": "Available Stock",
+      "costPerUnit": "Cost per Unit",
+      "basePrice": "Base Price",
+      "profitMargin": "Profit Margin",
+      "currency": "Currency",
+      "receivedDate": "Received Date",
+      "supplierReference": "Supplier Reference",
+      "batchNumber": "Batch Number"
     },
     "categories": {
       "manage": "Manage Categories",
