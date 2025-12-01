@@ -11,6 +11,7 @@ import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle } from '@/lib/styleUtils';
 import TabsResponsive from '@/components/TabsResponsive';
 import CategoryBadge from '@/components/CategoryBadge';
+import UserAvatar from '@/components/avatars/UserAvatar';
 import { getCategoryRules, getCategoryDiscounts, recalculateAllCategories } from '@/lib/userCategorizationService';
 
 const SUPER_ADMIN_EMAILS = ['jtheoden@gmail.com', 'jtheoden@googlemail.com'];
@@ -295,11 +296,14 @@ const UserManagement = () => {
       label: t('users.table.email'),
       width: '25%',
       render: (value, row) => (
-        <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white text-xs font-semibold">
-            {value?.charAt(0).toUpperCase()}
-          </div>
-          <span className="text-sm">{value}</span>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <UserAvatar
+            email={value}
+            fullName={row.full_name}
+            avatarUrl={row.avatar_url}
+            size="md"
+          />
+          <span className="text-xs sm:text-sm truncate">{value}</span>
         </div>
       )
     },
