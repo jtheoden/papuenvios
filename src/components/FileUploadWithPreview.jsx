@@ -92,8 +92,8 @@ const FileUploadWithPreview = ({
     switch (previewPosition) {
       case 'right':
         return (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
-            <div className="md:col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-start">
+            <div className="sm:col-span-1 md:col-span-2">
               <FileInput />
             </div>
             {preview && (
@@ -120,9 +120,9 @@ const FileUploadWithPreview = ({
 
       case 'left':
         return (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-start">
             {preview && (
-              <div className="md:col-span-1">
+              <div className="sm:col-span-1 md:col-span-1">
                 <div className="p-4 border-2 border-blue-300 rounded-lg bg-gray-50">
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-xs font-medium text-gray-600">{previewLabel}</p>

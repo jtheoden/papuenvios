@@ -66,11 +66,11 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
           </button>
         </div>
 
-        <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="p-6 grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column - Order Information */}
           <div className="lg:col-span-2 space-y-6">
             {/* Order Info */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <InfoItem label="Número de Orden" value={order.order_number} />
               <InfoItem label="Fecha" value={formatDate(order.created_at)} />
               <InfoItem label="Usuario" value={order.user_name || 'N/A'} />
