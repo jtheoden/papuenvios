@@ -9,6 +9,7 @@ import { useState } from 'react';
  * @param {string} props.tooltipText - Text to show in tooltip
  * @param {string} props.className - CSS classes for the button
  * @param {string} props.tooltipPosition - Tooltip position: 'top', 'bottom', 'left', 'right' (default: 'top')
+ * @param {string} props.variant - Button variant: 'default' or 'icon' (default: 'default')
  * @param {Function} props.onClick - Click handler
  * @param {boolean} props.disabled - Button disabled state
  * @param {string} props.title - Native title attribute for accessibility
@@ -18,6 +19,7 @@ const TooltipButton = ({
   tooltipText,
   className = '',
   tooltipPosition = 'top',
+  variant = 'default',
   onClick,
   disabled = false,
   title
@@ -38,12 +40,19 @@ const TooltipButton = ({
     right: 'right-full top-1/2 -translate-y-1/2 border-r-gray-900 border-t-transparent border-b-transparent'
   };
 
+  const variantClasses = {
+    default: className,
+    icon: `p-2 hover:bg-gray-100 rounded-lg transition-colors ${className}`
+  };
+
+  const finalClassName = variantClasses[variant] || variantClasses.default;
+
   return (
     <div className="relative inline-block" onMouseEnter={() => setShowTooltip(true)} onMouseLeave={() => setShowTooltip(false)}>
       <button
         onClick={onClick}
         disabled={disabled}
-        className={className}
+        className={finalClassName}
         title={title || tooltipText}
       >
         {children}

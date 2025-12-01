@@ -363,7 +363,8 @@ const DashboardPage = ({ onNavigate }) => {
                     </motion.div>
                   )}
 
-                  <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+                  {isSuperAdmin && (
+                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
                     {[
                       { title: t('dashboard.stats.dailyRevenue'), value: stats.dailyRevenue, icon: DollarSign, color: 'from-green-500 to-emerald-600' },
                       { title: t('dashboard.stats.monthlyRevenue'), value: stats.monthlyRevenue, icon: TrendingUp, color: 'from-blue-500 to-cyan-600' },
@@ -388,7 +389,8 @@ const DashboardPage = ({ onNavigate }) => {
                         <p className="text-gray-600 text-sm">{stat.title}</p>
                       </motion.div>
                     ))}
-                  </div>
+                    </div>
+                  )}
 
                   <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
                     {[
@@ -417,8 +419,9 @@ const DashboardPage = ({ onNavigate }) => {
                     ))}
                   </div>
 
-                  <div className="grid md:grid-cols-2 gap-8">
-                    <motion.div
+                  <div className={`grid md:grid-cols-${isSuperAdmin? '2': '1'} gap-8`}>
+                    { isSuperAdmin && (
+                        <motion.div
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.8 }}
@@ -469,7 +472,9 @@ const DashboardPage = ({ onNavigate }) => {
                           </div>
                         </div>
                       </div>
-                    </motion.div>
+                        </motion.div>
+                      )
+                    }
                     <motion.div
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -514,7 +519,8 @@ const DashboardPage = ({ onNavigate }) => {
                     </motion.div>
                   </div>
 
-                  <motion.div
+                  { isSuperAdmin && (
+                    <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 1.0 }}
@@ -579,56 +585,63 @@ const DashboardPage = ({ onNavigate }) => {
                         </div>
                       </motion.div>
                     </div>
-                  </motion.div>
-
+                    </motion.div>
+                  )}
+<br/>
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.5 }}
                     className="mb-12"
                   >
-                    <h2 className="text-2xl font-bold mb-6" style={getHeadingStyle(visualSettings)}>
-                      {t('dashboard.remittancesMetrics')} 📤
+                    <h2 className="text-2xl font-bold mb-6" >
+                     📤 <span style={getHeadingStyle(visualSettings)}>{t('dashboard.remittancesMetrics')} </span>
                     </h2>
 
-                    <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-6">
+                    <div className={`grid md:grid-cols-2 lg:grid-cols-${isSuperAdmin?'5':'3'} gap-6`}>
                       {[
                         {
                           title: t('dashboard.stats.totalRemittances'),
                           value: stats.totalRemittances,
                           icon: Send,
                           color: 'from-indigo-500 to-blue-600',
-                          type: 'count'
+                          type: 'count',
+                          public: true
                         },
                         {
                           title: t('dashboard.stats.pendingRemittances'),
                           value: stats.pendingRemittances,
                           icon: Clock,
                           color: 'from-yellow-500 to-orange-600',
-                          type: 'count'
+                          type: 'count',
+                          public: true
                         },
                         {
                           title: t('dashboard.stats.completedRemittances'),
                           value: stats.completedRemittances,
                           icon: CheckCircle,
                           color: 'from-green-500 to-emerald-600',
-                          type: 'count'
+                          type: 'count',
+                          public: true
                         },
                         {
                           title: t('dashboard.stats.dailyRemittanceIncome'),
                           value: stats.dailyRemittanceIncome,
                           icon: DollarSign,
                           color: 'from-purple-500 to-pink-600',
-                          type: 'currency'
+                          type: 'currency',
+                          public: false
                         },
                         {
                           title: t('dashboard.stats.monthlyRemittanceIncome'),
                           value: stats.monthlyRemittanceIncome,
                           icon: TrendingUp,
                           color: 'from-orange-500 to-red-600',
-                          type: 'currency'
+                          type: 'currency',
+                          public: false
                         }
-                      ].map((stat, index) => (
+                      ].filter(stat => isSuperAdmin || stat.public)
+                      .map((stat, index) => (
                         <motion.div
                           key={index}
                           initial={{ opacity: 0, y: 30 }}

@@ -14,6 +14,11 @@ import { getAllShippingZones, updateShippingZone, createShippingZone } from '@/l
 import { getProvinceNames } from '@/lib/cubanLocations';
 import { saveNotificationSettings } from '@/lib/notificationSettingsService';
 import { supabase } from '@/lib/supabase';
+// Extracted Settings Components
+import SettingsPageFinancial from '@/components/settings/SettingsPageFinancial';
+import SettingsPageShipping from '@/components/settings/SettingsPageShipping';
+import SettingsPageVisual from '@/components/settings/SettingsPageVisual';
+import SettingsPageContent from '@/components/settings/SettingsPageContent';
 
 const SettingsPage = () => {
   const { t, language } = useLanguage();
