@@ -470,6 +470,16 @@ const CartPage = ({ onNavigate }) => {
 
       const createdOrder = orderResult.order;
 
+      // Record offer usage if coupon was applied
+      if (appliedOffer?.id) {
+        try {
+          await recordOfferUsage(appliedOffer.id, user.id, createdOrder.id);
+        } catch (offerUsageErr) {
+          console.warn('Error recording offer usage (non-blocking):', offerUsageErr?.message || offerUsageErr);
+          // Don't fail the order if usage recording fails
+        }
+      }
+
       // Upload payment proof
       const uploadResult = await uploadPaymentProof(paymentProof, createdOrder.id);
 
@@ -507,6 +517,7 @@ const CartPage = ({ onNavigate }) => {
                 discountAmount: discountAmount.toFixed(2),
                 total: total,  // Includes discount and shipping
                 currency: selectedCurrency,
+                couponCode: appliedOffer?.code || null,  // Include coupon if applied
                 paymentProofUrl: uploadResult?.url || createdOrder.payment_proof_url || null
               },
               notificationSettings
@@ -517,12 +528,21 @@ const CartPage = ({ onNavigate }) => {
         console.warn('notify-order function error (non-blocking):', fnErr?.message || fnErr);
       }
 
-      // Success
+      // Success message with discount info if applicable
+      let descriptionMsg;
+      if (appliedOffer?.id) {
+        descriptionMsg = language === 'es'
+          ? `Tu pedido ${createdOrder.order_number} ha sido creado con descuento por cupón. Recibirás una notificación cuando sea validado.`
+          : `Your order ${createdOrder.order_number} has been created with coupon discount. You'll receive a notification when it's validated.`;
+      } else {
+        descriptionMsg = language === 'es'
+          ? `Tu pedido ${createdOrder.order_number} ha sido creado. Recibirás una notificación cuando sea validado.`
+          : `Your order ${createdOrder.order_number} has been created. You'll receive a notification when it's validated.`;
+      }
+
       toast({
         title: language === 'es' ? '✅ Pedido confirmado' : '✅ Order confirmed',
-        description: language === 'es'
-          ? `Tu pedido ${createdOrder.order_number} ha sido creado. Recibirás una notificación cuando sea validado.`
-          : `Your order ${createdOrder.order_number} has been created. You'll receive a notification when it's validated.`
+        description: descriptionMsg
       });
 
       // Clear cart and navigate
