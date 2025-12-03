@@ -24,7 +24,7 @@ import ZelleAccountSelector from '@/components/ZelleAccountSelector';
 import FileUploadWithPreview from '@/components/FileUploadWithPreview';
 
 const SendRemittancePage = ({ onNavigate }) => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user, isAdmin, isSuperAdmin } = useAuth();
   const { showModal } = useModal();
   const { notificationSettings } = useBusiness();
@@ -293,7 +293,8 @@ const SendRemittancePage = ({ onNavigate }) => {
         delivery_currency: calculation?.deliveryCurrency,
         payment_reference: paymentData.reference || '(Pendiente)'
       };
-      notifyAdminNewPaymentProof(enrichedRemittance, notificationSettings.whatsapp, t('common.language') === 'en' ? 'en' : 'es');
+      const locale = language || 'es';
+      notifyAdminNewPaymentProof(enrichedRemittance, notificationSettings.whatsapp, locale);
 
       toast({
         title: t('common.success'),
@@ -350,7 +351,8 @@ const SendRemittancePage = ({ onNavigate }) => {
             delivery_currency: calculation?.deliveryCurrency,
             payment_reference: paymentData.reference
           };
-          notifyAdminNewPaymentProof(enrichedRemittance, notificationSettings.whatsapp, t('common.language') === 'en' ? 'en' : 'es');
+          const locale = language || 'es';
+          notifyAdminNewPaymentProof(enrichedRemittance, notificationSettings.whatsapp, locale);
         } catch (error) {
           console.error('Error sending WhatsApp notification:', error);
           // Don't prevent the redirect if WhatsApp notification fails
