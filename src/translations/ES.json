@@ -404,7 +404,13 @@
       "fillRecipientInfo": "Por favor complete nombre y teléfono del destinatario",
       "remittanceCreatedSuccess": "Remesa creada exitosamente",
       "uploadProofAndReference": "Por favor suba el comprobante y la referencia de pago",
-      "proofSentSuccess": "Comprobante enviado. Recibirá notificación cuando se valide el pago."
+      "proofSentSuccess": "Comprobante enviado. Recibirá notificación cuando se valide el pago.",
+      "paymentReferencePlaceholder": "Ej: ZELLE123456",
+      "paymentNotesPlaceholder": "Detalles adicionales del pago...",
+      "whatsappNotification": "Notificación por WhatsApp",
+      "whatsappInfo": "Cuando envíes el comprobante de pago, se notificará automáticamente al administrador a través de WhatsApp con todos los detalles de tu remesa.",
+      "whatsappNotConfigured": "⚠️ Número de WhatsApp del administrador no configurado. Contacta con soporte para activar esta función y recibir notificaciones instantáneas cuando envíes comprobantes de pago.",
+      "notifyAdmin": "Notificar Administrador Ahora"
     }
   },
   "vendor": {
