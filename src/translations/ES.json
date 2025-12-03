@@ -404,7 +404,12 @@
       "fillRecipientInfo": "Por favor complete nombre y teléfono del destinatario",
       "remittanceCreatedSuccess": "Remesa creada exitosamente",
       "uploadProofAndReference": "Por favor suba el comprobante y la referencia de pago",
-      "proofSentSuccess": "Comprobante enviado. Recibirá notificación cuando se valide el pago."
+      "proofSentSuccess": "Comprobante enviado. Recibirá notificación cuando se valide el pago.",
+      "accountName": "Nombre de la cuenta",
+      "zelleAccountInfo": "Cuenta Zelle asignada",
+      "zelleEmail": "Correo Zelle",
+      "zellePhone": "Teléfono Zelle",
+      "zelleAccountMissing": "No pudimos cargar los datos de la cuenta Zelle. Contacta soporte antes de enviar la transferencia."
     }
   },
   "vendor": {
