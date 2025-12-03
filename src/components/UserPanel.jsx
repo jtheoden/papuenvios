@@ -11,6 +11,7 @@ import { getUserCategory } from '@/lib/userCategorizationService';
 import { getHeadingStyle, getTextStyle, getPillStyle, getStatusStyle } from '@/lib/styleUtils';
 import { generateWhatsAppURL } from '@/lib/whatsappService';
 import { Button } from '@/components/ui/button';
+import CategoryBadge from '@/components/CategoryBadge';
 
 const UserPanel = ({ onNavigate }) => {
   const { user, userRole } = useAuth();
@@ -302,24 +303,14 @@ const UserPanel = ({ onNavigate }) => {
             </p>
             {userCategory && userRole !== 'admin' && userRole !== 'super_admin' && (
               <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
+                initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full font-medium text-sm"
-                style={{
-                  background: userCategory.category_name === 'vip'
-                    ? '#fbbf2420'
-                    : userCategory.category_name === 'pro'
-                    ? '#3b82f620'
-                    : '#80808020',
-                  color: userCategory.category_name === 'vip'
-                    ? '#d97706'
-                    : userCategory.category_name === 'pro'
-                    ? '#2563eb'
-                    : '#6b7280'
-                }}
+                className="inline-flex items-center gap-2"
               >
-                {userCategory.category_name === 'vip' && <Crown className="h-4 w-4" />}
-                {userCategory.category_name.charAt(0).toUpperCase() + userCategory.category_name.slice(1)}
+                <span className="text-sm font-medium" style={getTextStyle(visualSettings, 'secondary')}>
+                  {t('userPanel.categoryLabel')}
+                </span>
+                <CategoryBadge categoryName={userCategory.category_name} />
               </motion.div>
             )}
           </div>

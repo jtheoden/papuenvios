@@ -669,6 +669,7 @@
   "userPanel": {
     "title": "My User Panel",
     "welcome": "Welcome, {name}",
+    "categoryLabel": "Category",
     "myOrders": "My Orders",
     "noOrders": "You have no orders yet.",
     "status": {
@@ -955,6 +956,7 @@
       "regularDesc": "New users (0-4 interactions)",
       "proDesc": "Active users (5-9 interactions)",
       "vipDesc": "Premium users (10+ interactions)",
+      "current": "Current category",
       "saving": "Saving...",
       "lastRecalc": "Last calculated: {time}",
       "statusRegular": "Regular",
