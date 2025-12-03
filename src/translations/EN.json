@@ -379,7 +379,12 @@
       "fillRecipientInfo": "Please complete recipient name and phone",
       "remittanceCreatedSuccess": "Remittance created successfully",
       "uploadProofAndReference": "Please upload the payment proof and reference",
-      "proofSentSuccess": "Proof sent. You will be notified once payment is validated."
+      "proofSentSuccess": "Proof sent. You will be notified once payment is validated.",
+      "accountName": "Account name",
+      "zelleAccountInfo": "Assigned Zelle account",
+      "zelleEmail": "Zelle email",
+      "zellePhone": "Phone number",
+      "zelleAccountMissing": "We couldn't load the Zelle account details. Please contact support before sending the transfer."
     }
   },
   "vendor": {
