@@ -563,6 +563,7 @@
     "overviewTab": "General Overview",
     "ordersTab": "Orders History",
     "remittancesTab": "Remittances",
+    "offersTab": "Offers & Coupons",
     "remittancesKindTab": "Kind of Remittances",
     "zelleHistoryTab": "Zelle Payment History",
     "activityLogTab": "Activity Log",
@@ -1157,5 +1158,11 @@
     "totalVolume": "Total volume",
     "validatedVolume": "Validated volume",
     "pendingVolume": "Pending volume"
+  },
+  "tables": {
+    "noData": "No data available",
+    "viewDetails": "View Details",
+    "closeDetailsAria": "Close record details",
+    "closeDetailsHint": "Press Escape to close"
   }
 }

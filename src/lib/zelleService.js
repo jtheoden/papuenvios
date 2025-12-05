@@ -969,19 +969,16 @@ export const getAllZellePaymentHistory = async (filters = {}) => {
         zelle_account_id,
         zelle_accounts(account_name),
         transaction_type,
-        transaction_id,
+        reference_id,
         amount,
         status,
         transaction_date,
         created_at,
-        remittances(
-          remittance_number,
-          user_id,
-          recipient_name,
-          amount_to_deliver
-        ),
-        order_id
-      `);
+        validated_by,
+        validated_at,
+        notes
+      `)
+      .order('transaction_date', { ascending: false });
 
     // Apply status filter if provided
     if (filters.status) {
@@ -1002,9 +999,6 @@ export const getAllZellePaymentHistory = async (filters = {}) => {
       query = query.eq('transaction_type', filters.transactionType);
     }
 
-    // Sort by date, newest first
-    query = query.order('transaction_date', { ascending: false });
-
     const { data: transactions, error } = await query;
 
     if (error) {
@@ -1015,34 +1009,65 @@ export const getAllZellePaymentHistory = async (filters = {}) => {
       return [];
     }
 
-    // Enrich data with user information from remittances
-    const enrichedTransactions = await Promise.all(
-      transactions.map(async (transaction) => {
-        let userData = null;
+    // Fetch remittance details for transactions that reference remittances
+    const remittanceIds = transactions
+      .filter(tx => tx.transaction_type === 'remittance' && tx.reference_id)
+      .map(tx => tx.reference_id);
 
-        // Get user info from remittance if available
-        if (transaction.transaction_type === 'remittance' && transaction.remittances) {
-          const userId = transaction.remittances.user_id;
-          if (userId) {
-            const { data: user, error: userError } = await supabase
-              .from('profiles')
-              .select('id, full_name, email')
-              .eq('id', userId)
-              .single();
+    let remittanceMap = {};
+    if (remittanceIds.length > 0) {
+      const { data: remittanceData, error: remittanceError } = await supabase
+        .from('remittances')
+        .select('id, remittance_number, user_id, recipient_name, amount_to_deliver')
+        .in('id', remittanceIds);
 
-            if (!userError && user) {
-              userData = user;
-            }
-          }
-        }
+      if (remittanceError) {
+        throw parseSupabaseError(remittanceError);
+      }
 
-        return {
-          ...transaction,
-          user: userData,
-          account_name: transaction.zelle_accounts?.account_name || 'N/A'
-        };
-      })
-    );
+      remittanceMap = (remittanceData || []).reduce((acc, remittance) => {
+        acc[remittance.id] = remittance;
+        return acc;
+      }, {});
+    }
+
+    const userIds = Array.from(new Set(
+      Object.values(remittanceMap)
+        .map(remittance => remittance.user_id)
+        .filter(Boolean)
+    ));
+
+    let userMap = {};
+    if (userIds.length > 0) {
+      const { data: usersData, error: usersError } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('id', userIds);
+
+      if (usersError) {
+        throw parseSupabaseError(usersError);
+      }
+
+      userMap = (usersData || []).reduce((acc, user) => {
+        acc[user.id] = user;
+        return acc;
+      }, {});
+    }
+
+    const enrichedTransactions = transactions.map((transaction) => {
+      const remittance = transaction.transaction_type === 'remittance'
+        ? remittanceMap[transaction.reference_id]
+        : null;
+
+      const userData = remittance ? userMap[remittance.user_id] : null;
+
+      return {
+        ...transaction,
+        remittances: remittance || null,
+        user: userData || null,
+        account_name: transaction.zelle_accounts?.account_name || 'N/A'
+      };
+    });
 
     return enrichedTransactions;
   } catch (error) {
