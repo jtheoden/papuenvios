@@ -64,6 +64,7 @@ const AdminOffersTab = () => {
     code: '',
     nameEs: '',
     nameEn: '',
+    appliesTo: 'product', // product, combo, remittance
     discountType: 'percentage', // percentage or fixed
     discountValue: '',
     minPurchaseAmount: '',
@@ -209,6 +210,7 @@ const AdminOffersTab = () => {
         code: formData.code.toUpperCase().trim(),
         name_es: formData.nameEs.trim(),
         name_en: formData.nameEn.trim(),
+        applies_to: formData.appliesTo,
         discount_type: formData.discountType,
         discount_value: parseFloat(formData.discountValue),
         min_purchase_amount: formData.minPurchaseAmount ? parseFloat(formData.minPurchaseAmount) : null,
@@ -317,6 +319,7 @@ const AdminOffersTab = () => {
       code: offer.code,
       nameEs: offer.name_es || '',
       nameEn: offer.name_en || '',
+      appliesTo: offer.applies_to || 'product',
       discountType: offer.discount_type,
       discountValue: offer.discount_value,
       minPurchaseAmount: offer.min_purchase_amount || '',
@@ -334,6 +337,7 @@ const AdminOffersTab = () => {
       code: '',
       nameEs: '',
       nameEn: '',
+      appliesTo: 'product',
       discountType: 'percentage',
       discountValue: '',
       minPurchaseAmount: '',
@@ -602,6 +606,22 @@ const AdminOffersTab = () => {
                     required
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   />
+                </div>
+
+                {/* Applies To */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {language === 'es' ? 'Aplica a' : 'Applies To'}
+                  </label>
+                  <select
+                    value={formData.appliesTo}
+                    onChange={(e) => setFormData({ ...formData, appliesTo: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  >
+                    <option value="product">{language === 'es' ? 'Productos' : 'Products'}</option>
+                    <option value="combo">{language === 'es' ? 'Combos' : 'Combos'}</option>
+                    <option value="remittance">{language === 'es' ? 'Remesas' : 'Remittances'}</option>
+                  </select>
                 </div>
 
                 {/* Discount Type */}
