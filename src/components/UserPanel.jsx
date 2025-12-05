@@ -49,11 +49,11 @@ const UserPanel = ({ onNavigate }) => {
     if (!user?.id) return;
 
     try {
-      const result = await getUserTestimonial(user.id);
-      if (result.data) {
-        setTestimonial(result.data);
-        setRating(result.data.rating);
-        setComment(result.data.comment || '');
+      const testimonial = await getUserTestimonial(user.id);
+      if (testimonial) {
+        setTestimonial(testimonial);
+        setRating(testimonial.rating);
+        setComment(testimonial.comment || '');
       }
     } catch (error) {
       console.error('Error loading testimonial:', error);

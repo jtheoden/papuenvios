@@ -283,6 +283,7 @@
     },
     "user": {
       "trackYourRemittances": "Consulte el estado de sus envíos de dinero",
+      "trackRemittances": "Consulte el estado de sus envíos de dinero",
       "noRemittances": "No tiene remesas registradas",
       "noRemittancesDesc": "Envíe su primera remesa de forma rápida y segura",
       "remittanceNumber": "Número de Remesa",
@@ -299,6 +300,7 @@
       "uploadFile": "Subir archivo",
       "additionalNotes": "Notas adicionales",
       "viewProof": "Ver Comprobante",
+      "viewDetails": "Ver Detalles",
       "proofUploaded": "Comprobante subido exitosamente",
       "remittanceCancelled": "Remesa cancelada",
       "confirmCancelMessage": "¿Está seguro que desea cancelar la remesa {number}?",

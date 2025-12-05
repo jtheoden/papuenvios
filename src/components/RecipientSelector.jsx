@@ -62,13 +62,14 @@ const RecipientSelector = React.forwardRef((
 
   const loadRecipients = async () => {
     setLoading(true);
-    const result = await getMyRecipients();
-    if (result.success) {
-      setRecipients(result.recipients || []);
-    } else {
+    try {
+      const recipients = await getMyRecipients();
+      setRecipients(recipients || []);
+    } catch (error) {
+      console.error('Error loading recipients:', error);
       toast({
         title: t('common.error'),
-        description: result.error,
+        description: error?.message || t('common.error'),
         variant: 'destructive'
       });
     }
