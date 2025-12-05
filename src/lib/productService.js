@@ -1,14 +1,26 @@
 /**
  * Product Service
  * Handles all product-related database operations
+ * Uses standardized error handling with AppError class
  */
 
 import { supabase } from './supabase';
 import { generateSlug, getCurrentTimestamp } from './queryHelpers';
 import { DEFAULTS } from './constants';
+import {
+  handleError,
+  logError,
+  createValidationError,
+  createConflictError,
+  createNotFoundError,
+  parseSupabaseError,
+  ERROR_CODES
+} from './errorHandler';
 
 /**
  * Get all active products with their categories
+ * @throws {AppError} If database query fails
+ * @returns {Promise<Array>} Array of products with inventory data
  */
 export const getProducts = async () => {
   try {
@@ -21,16 +33,30 @@ export const getProducts = async () => {
       .eq('is_active', true)
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'getProducts' });
+      throw appError;
+    }
 
     // Get inventory data for all products
     const productIds = (data || []).map(p => p.id);
-    const { data: inventoryData } = await supabase
+    if (productIds.length === 0) {
+      return [];
+    }
+
+    const { data: inventoryData, error: invError } = await supabase
       .from('inventory')
       .select('product_id, quantity, available_quantity, expiry_date')
       .in('product_id', productIds)
       .eq('is_active', true)
       .order('created_at', { ascending: false });
+
+    if (invError) {
+      const appError = parseSupabaseError(invError);
+      logError(appError, { operation: 'getProducts - inventory fetch', productCount: productIds.length });
+      // Don't fail, just continue without inventory data
+    }
 
     // Create inventory map with stock and expiry_date
     const inventoryMap = {};
@@ -54,26 +80,55 @@ export const getProducts = async () => {
       expiry_date: expiryDateMap[product.id] || null
     }));
 
-    return { data: transformedData, error: null };
+    return transformedData;
   } catch (error) {
-    console.error('Error fetching products:', error);
-    return { data: null, error };
+    if (error.code) throw error; // Already an AppError
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getProducts' });
+    throw appError;
   }
 };
 
 /**
- * Create a new product
+ * Create a new product with optional initial inventory
+ * @param {Object} productData - Product creation data
+ * @throws {AppError} If validation fails or database operation fails
+ * @returns {Promise<Object>} Created product with inventory
  */
 export const createProduct = async (productData) => {
   try {
-    console.log('📝 createProduct called with:', productData);
+    // Validate required fields
+    if (!productData.name) {
+      throw createValidationError(
+        { name: 'Product name is required' },
+        'Missing required product fields'
+      );
+    }
 
-    const { data, error} = await supabase
+    if (!productData.basePrice || isNaN(parseFloat(productData.basePrice))) {
+      throw createValidationError(
+        { basePrice: 'Valid base price is required' },
+        'Invalid product price'
+      );
+    }
+
+    if (!productData.category_id) {
+      throw createValidationError(
+        { category_id: 'Category selection is required' },
+        'Missing product category'
+      );
+    }
+
+    logError(
+      { message: 'Creating product' },
+      { operation: 'createProduct', productName: productData.name }
+    );
+
+    const { data, error } = await supabase
       .from('products')
       .insert([{
         sku: productData.sku || `SKU-${Date.now()}`,
         name_es: productData.name,
-        name_en: productData.name, // Can be updated later for multi-language
+        name_en: productData.name,
         description_es: productData.description_es || '',
         description_en: productData.description_en || '',
         category_id: productData.category_id,
@@ -88,12 +143,14 @@ export const createProduct = async (productData) => {
       .select()
       .single();
 
-    if (error) throw error;
-    console.log('✅ Product created:', data);
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'createProduct - insert', productName: productData.name });
+      throw appError;
+    }
 
     // Create initial inventory record if stock is provided
     if (productData.stock && parseInt(productData.stock) > 0) {
-      console.log('📦 Creating inventory with stock:', productData.stock);
       const inventoryData = {
         product_id: data.id,
         quantity: parseInt(productData.stock),
@@ -101,7 +158,6 @@ export const createProduct = async (productData) => {
         is_active: true
       };
 
-      // Add expiry_date if provided
       if (productData.expiryDate) {
         inventoryData.expiry_date = productData.expiryDate;
       }
@@ -111,28 +167,36 @@ export const createProduct = async (productData) => {
         .insert([inventoryData]);
 
       if (invError) {
-        console.error('❌ Error creating inventory:', invError);
-        // Don't fail product creation if inventory fails
-      } else {
-        console.log('✅ Inventory created successfully');
+        // Log but don't fail - product was created successfully
+        const appError = parseSupabaseError(invError);
+        logError(appError, {
+          operation: 'createProduct - inventory',
+          productId: data.id,
+          requestedStock: productData.stock
+        });
       }
-    } else {
-      console.log('⚠️ No stock to create, stock value:', productData.stock);
     }
 
-    return { data, error: null };
+    return data;
   } catch (error) {
-    console.error('❌ Error creating product:', error);
-    return { data: null, error };
+    if (error.code) throw error; // Already an AppError
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'createProduct' });
+    throw appError;
   }
 };
 
 /**
- * Update an existing product
+ * Update an existing product and optionally its inventory
+ * @param {string} productId - Product ID
+ * @param {Object} productData - Updated product data
+ * @throws {AppError} If product not found or update fails
+ * @returns {Promise<Object>} Updated product
  */
 export const updateProduct = async (productId, productData) => {
   try {
-    console.log('📝 updateProduct called for:', productId, 'with data:', productData);
+    if (!productId) {
+      throw createValidationError({ productId: 'Product ID is required' });
+    }
 
     const updateData = {
       name_es: productData.name,
@@ -151,8 +215,6 @@ export const updateProduct = async (productId, productData) => {
       updateData.image_file = productData.image;
     }
 
-    console.log('📤 Sending update to products table:', updateData);
-
     const { data, error } = await supabase
       .from('products')
       .update(updateData)
@@ -160,99 +222,118 @@ export const updateProduct = async (productId, productData) => {
       .select()
       .single();
 
-    if (error) throw error;
-    console.log('✅ Product updated:', data);
+    if (error) {
+      const appError = parseSupabaseError(error);
+      if (!data) {
+        throw createNotFoundError('Product', productId);
+      }
+      logError(appError, { operation: 'updateProduct', productId });
+      throw appError;
+    }
 
     // Update inventory if stock or expiry date changed
     if (productData.stock !== undefined || productData.expiryDate !== undefined) {
-      // Check if inventory record exists for this product
-      const { data: inventoryRecords } = await supabase
-        .from('inventory')
-        .select('id')
-        .eq('product_id', productId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      const existingInventory = inventoryRecords && inventoryRecords.length > 0 ? inventoryRecords[0] : null;
-
-      if (existingInventory) {
-        // Update existing inventory record
-        const inventoryUpdate = {
-          updated_at: getCurrentTimestamp()
-        };
-
-        // Update stock if provided
-        if (productData.stock !== undefined) {
-          inventoryUpdate.quantity = parseInt(productData.stock);
-        }
-
-        // Update expiry_date if provided
-        if (productData.expiryDate !== undefined) {
-          inventoryUpdate.expiry_date = productData.expiryDate || null;
-        }
-
-        const { error: invError } = await supabase
+      try {
+        const { data: inventoryRecords } = await supabase
           .from('inventory')
-          .update(inventoryUpdate)
-          .eq('id', existingInventory.id);
+          .select('id')
+          .eq('product_id', productId)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1);
 
-        if (invError) {
-          console.error('Error updating inventory:', invError);
+        const existingInventory = inventoryRecords && inventoryRecords.length > 0 ? inventoryRecords[0] : null;
+
+        if (existingInventory) {
+          const inventoryUpdate = { updated_at: getCurrentTimestamp() };
+
+          if (productData.stock !== undefined) {
+            inventoryUpdate.quantity = parseInt(productData.stock);
+          }
+
+          if (productData.expiryDate !== undefined) {
+            inventoryUpdate.expiry_date = productData.expiryDate || null;
+          }
+
+          const { error: invError } = await supabase
+            .from('inventory')
+            .update(inventoryUpdate)
+            .eq('id', existingInventory.id);
+
+          if (invError) {
+            const appError = parseSupabaseError(invError);
+            logError(appError, { operation: 'updateProduct - inventory update', productId });
+          }
+        } else if (productData.stock !== undefined && parseInt(productData.stock) > 0) {
+          const inventoryData = {
+            product_id: productId,
+            quantity: parseInt(productData.stock),
+            batch_number: `BATCH-${Date.now()}`,
+            is_active: true
+          };
+
+          if (productData.expiryDate) {
+            inventoryData.expiry_date = productData.expiryDate;
+          }
+
+          const { error: invError } = await supabase
+            .from('inventory')
+            .insert([inventoryData]);
+
+          if (invError) {
+            const appError = parseSupabaseError(invError);
+            logError(appError, { operation: 'updateProduct - inventory create', productId });
+          }
         }
-      } else if (productData.stock !== undefined && parseInt(productData.stock) > 0) {
-        // Create new inventory record only if stock > 0
-        const inventoryData = {
-          product_id: productId,
-          quantity: parseInt(productData.stock),
-          batch_number: `BATCH-${Date.now()}`,
-          is_active: true
-        };
-
-        // Add expiry_date if provided
-        if (productData.expiryDate) {
-          inventoryData.expiry_date = productData.expiryDate;
-        }
-
-        const { error: invError } = await supabase
-          .from('inventory')
-          .insert([inventoryData]);
-
-        if (invError) {
-          console.error('Error creating inventory:', invError);
-        }
+      } catch (invError) {
+        // Don't fail product update if inventory operation fails
+        logError(invError, { operation: 'updateProduct - inventory operation', productId });
       }
     }
 
-    return { data, error: null };
+    return data;
   } catch (error) {
-    console.error('Error updating product:', error);
-    return { data: null, error };
+    if (error.code) throw error; // Already an AppError
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'updateProduct', productId });
+    throw appError;
   }
 };
 
 /**
  * Delete a product (soft delete by setting is_active to false)
+ * @param {string} productId - Product ID to delete
+ * @throws {AppError} If deletion fails
+ * @returns {Promise<boolean>} True if deletion successful
  */
 export const deleteProduct = async (productId) => {
   try {
-    const { data, error } = await supabase
+    if (!productId) {
+      throw createValidationError({ productId: 'Product ID is required' });
+    }
+
+    const { error } = await supabase
       .from('products')
       .update({ is_active: false })
-      .eq('id', productId)
-      .select()
-      .single();
+      .eq('id', productId);
 
-    if (error) throw error;
-    return { data, error: null };
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'deleteProduct', productId });
+      throw appError;
+    }
+
+    return true;
   } catch (error) {
-    console.error('Error deleting product:', error);
-    return { data: null, error };
+    if (error.code) throw error; // Already an AppError
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'deleteProduct', productId });
+    throw appError;
   }
 };
 
 /**
- * Get product categories
+ * Get all active product categories
+ * @throws {AppError} If database query fails
+ * @returns {Promise<Array>} Array of active categories
  */
 export const getCategories = async () => {
   try {
@@ -262,19 +343,35 @@ export const getCategories = async () => {
       .eq('is_active', true)
       .order('display_order', { ascending: true });
 
-    if (error) throw error;
-    return { data: data || [], error: null };
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'getCategories' });
+      throw appError;
+    }
+
+    return data || [];
   } catch (error) {
-    console.error('Error fetching categories:', error);
-    return { data: null, error };
+    if (error.code) throw error; // Already an AppError
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getCategories' });
+    throw appError;
   }
 };
 
 /**
- * Create a new category
+ * Create a new product category
+ * @param {Object} categoryData - Category data with es and en names
+ * @throws {AppError} If validation fails or creation fails
+ * @returns {Promise<Object>} Created category
  */
 export const createCategory = async (categoryData) => {
   try {
+    if (!categoryData.es || !categoryData.en) {
+      throw createValidationError(
+        { categoryName: 'Category name in Spanish and English is required' },
+        'Missing required category fields'
+      );
+    }
+
     const { data, error } = await supabase
       .from('product_categories')
       .insert([{
@@ -289,19 +386,40 @@ export const createCategory = async (categoryData) => {
       .select()
       .single();
 
-    if (error) throw error;
-    return { data, error: null };
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'createCategory', categoryName: categoryData.es });
+      throw appError;
+    }
+
+    return data;
   } catch (error) {
-    console.error('Error creating category:', error);
-    return { data: null, error };
+    if (error.code) throw error; // Already an AppError
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'createCategory' });
+    throw appError;
   }
 };
 
 /**
- * Update a category
+ * Update a product category
+ * @param {string} categoryId - Category ID
+ * @param {Object} categoryData - Updated category data
+ * @throws {AppError} If category not found or update fails
+ * @returns {Promise<Object>} Updated category
  */
 export const updateCategory = async (categoryId, categoryData) => {
   try {
+    if (!categoryId) {
+      throw createValidationError({ categoryId: 'Category ID is required' });
+    }
+
+    if (!categoryData.es || !categoryData.en) {
+      throw createValidationError(
+        { categoryName: 'Category name in Spanish and English is required' },
+        'Missing required category fields'
+      );
+    }
+
     const { data, error } = await supabase
       .from('product_categories')
       .update({
@@ -316,28 +434,83 @@ export const updateCategory = async (categoryId, categoryData) => {
       .select()
       .single();
 
-    if (error) throw error;
-    return { data, error: null };
+    if (error) {
+      const appError = parseSupabaseError(error);
+      if (!data) {
+        throw createNotFoundError('Category', categoryId);
+      }
+      logError(appError, { operation: 'updateCategory', categoryId });
+      throw appError;
+    }
+
+    return data;
   } catch (error) {
-    console.error('Error updating category:', error);
-    return { data: null, error };
+    if (error.code) throw error; // Already an AppError
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'updateCategory', categoryId });
+    throw appError;
   }
 };
 
 /**
- * Delete a category (soft delete)
+ * Delete a product category (soft delete by setting is_active to false)
+ * @param {string} categoryId - Category ID to delete
+ * @throws {AppError} If deletion fails
+ * @returns {Promise<boolean>} True if deletion successful
  */
 export const deleteCategory = async (categoryId) => {
   try {
+    if (!categoryId) {
+      throw createValidationError({ categoryId: 'Category ID is required' });
+    }
+
     const { error } = await supabase
       .from('product_categories')
       .update({ is_active: false })
       .eq('id', categoryId);
 
-    if (error) throw error;
-    return { data: true, error: null };
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'deleteCategory', categoryId });
+      throw appError;
+    }
+
+    return true;
   } catch (error) {
-    console.error('Error deleting category:', error);
-    return { data: null, error };
+    if (error.code) throw error; // Already an AppError
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'deleteCategory', categoryId });
+    throw appError;
   }
 };
+
+/**
+ * Import path:
+ * import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, createCategory, updateCategory, deleteCategory } from '@/lib/productService';
+ *
+ * Usage examples:
+ *
+ * // Fetch all products with inventory
+ * try {
+ *   const products = await getProducts();
+ * } catch (error) {
+ *   if (error.code === 'DB_ERROR') {
+ *     // Handle database error
+ *   }
+ * }
+ *
+ * // Create product with validation
+ * try {
+ *   const newProduct = await createProduct({
+ *     name: 'Product Name',
+ *     basePrice: 99.99,
+ *     category_id: 'cat-123',
+ *     stock: 100
+ *   });
+ * } catch (error) {
+ *   if (error.code === 'VALIDATION_FAILED') {
+ *     console.log(error.context.fieldErrors);
+ *   }
+ * }
+ *
+ * // Get categories
+ * const categories = await getCategories();
+ */

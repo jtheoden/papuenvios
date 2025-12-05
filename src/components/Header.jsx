@@ -8,6 +8,7 @@ import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/use-toast';
 import { getPendingOrdersCount } from '@/lib/orderService';
+import { semanticColors } from '@/lib/colorTokens';
 
 const Header = ({ currentPage, onNavigate }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -64,12 +65,11 @@ const Header = ({ currentPage, onNavigate }) => {
 
   const loadPendingOrders = async () => {
     try {
-      const result = await getPendingOrdersCount();
-      if (result.success) {
-        setPendingOrdersCount(result.count || 0);
-      }
+      const count = await getPendingOrdersCount();
+      setPendingOrdersCount(count || 0);
     } catch (error) {
       console.error('Error loading pending orders:', error);
+      setPendingOrdersCount(0);
     }
   };
 
@@ -80,7 +80,7 @@ const Header = ({ currentPage, onNavigate }) => {
       className="fixed top-0 left-0 right-0 z-40 backdrop-blur-md shadow-sm"
       style={{
         backgroundColor: visualSettings.headerBgColor || 'rgba(255, 255, 255, 0.8)',
-        color: visualSettings.headerTextColor || '#1f2937'
+        color: visualSettings.headerTextColor || semanticColors.neutral[800]
       }}
     >
       <div className="container mx-auto px-4">
@@ -103,8 +103,8 @@ const Header = ({ currentPage, onNavigate }) => {
                 className="w-8 h-8 rounded-lg flex items-center justify-center"
                 style={{
                   background: visualSettings.useGradient
-                    ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
-                    : visualSettings.primaryColor || '#2563eb'
+                    ? `linear-gradient(to right, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.secondaryColor || semanticColors.secondary.hex})`
+                    : visualSettings.primaryColor || semanticColors.primary.main
                 }}
               >
                 <ShoppingBag className="w-5 h-5 text-white" />
@@ -114,8 +114,8 @@ const Header = ({ currentPage, onNavigate }) => {
               className="text-xl font-bold"
               style={{
                 backgroundImage: visualSettings.useGradient
-                  ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
-                  : `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.primaryColor || '#2563eb'})`,
+                  ? `linear-gradient(to right, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.secondaryColor || semanticColors.secondary.hex})`
+                  : `linear-gradient(to right, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.primaryColor || semanticColors.primary.main})`,
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text'
@@ -137,12 +137,12 @@ const Header = ({ currentPage, onNavigate }) => {
                 className="flex items-center space-x-2"
                 style={currentPage === item.id ? {
                   background: visualSettings.useGradient
-                    ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
-                    : visualSettings.buttonBgColor || '#2563eb',
-                  color: visualSettings.buttonTextColor || '#ffffff',
+                    ? `linear-gradient(to right, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.secondaryColor || semanticColors.secondary.hex})`
+                    : visualSettings.buttonBgColor || semanticColors.primary.main,
+                  color: visualSettings.buttonTextColor || semanticColors.background.primary,
                   border: 'none'
                 } : {
-                  color: visualSettings.headerTextColor || '#1f2937'
+                  color: visualSettings.headerTextColor || semanticColors.neutral[800]
                 }}
               >
                 <item.icon className="w-4 h-4" />
@@ -160,12 +160,12 @@ const Header = ({ currentPage, onNavigate }) => {
                   className="flex items-center space-x-2"
                   style={adminMenuItems.some(i => currentPage === i.id) ? {
                     background: visualSettings.useGradient
-                      ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
-                      : visualSettings.buttonBgColor || '#2563eb',
-                    color: visualSettings.buttonTextColor || '#ffffff',
+                      ? `linear-gradient(to right, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.secondaryColor || semanticColors.secondary.hex})`
+                      : visualSettings.buttonBgColor || semanticColors.primary.main,
+                    color: visualSettings.buttonTextColor || semanticColors.background.primary,
                     border: 'none'
                   } : {
-                    color: visualSettings.headerTextColor || '#1f2937'
+                    color: visualSettings.headerTextColor || semanticColors.neutral[800]
                   }}
                 >
                   <ShieldCheck className="w-4 h-4" />
@@ -182,7 +182,7 @@ const Header = ({ currentPage, onNavigate }) => {
                       className="absolute right-0 mt-2 w-56 rounded-xl shadow-xl overflow-hidden backdrop-blur-md"
                       style={{
                         backgroundColor: visualSettings.headerBgColor || 'rgba(255, 255, 255, 0.95)',
-                        color: visualSettings.headerTextColor || '#1f2937'
+                        color: visualSettings.headerTextColor || semanticColors.neutral[800]
                       }}
                     >
                       {adminMenuItems.map((item) => {
@@ -194,7 +194,7 @@ const Header = ({ currentPage, onNavigate }) => {
 
                         const activeStyle = currentPage === item.id ? {
                           backgroundColor: hoverBgColor,
-                          color: visualSettings.primaryColor || '#2563eb'
+                          color: visualSettings.primaryColor || semanticColors.primary.main
                         } : {};
 
                         return (
@@ -206,7 +206,7 @@ const Header = ({ currentPage, onNavigate }) => {
                             className="w-full justify-start flex items-center space-x-2 rounded-none hover:opacity-100"
                             style={{
                               ...activeStyle,
-                              color: visualSettings.headerTextColor || '#1f2937'
+                              color: visualSettings.headerTextColor || semanticColors.neutral[800]
                             }}
                             onMouseEnter={(e) => {
                               if (currentPage !== item.id) {
@@ -238,8 +238,8 @@ const Header = ({ currentPage, onNavigate }) => {
               onClick={() => setLanguage(language === 'es' ? 'en' : 'es')}
               className="hidden sm:flex items-center space-x-2"
               style={{
-                borderColor: visualSettings.primaryColor || '#2563eb',
-                color: visualSettings.primaryColor || '#2563eb'
+                borderColor: visualSettings.primaryColor || semanticColors.primary.main,
+                color: visualSettings.primaryColor || semanticColors.primary.main
               }}
             >
               <Globe className="w-4 h-4" />
@@ -317,12 +317,12 @@ const Header = ({ currentPage, onNavigate }) => {
                     className="flex items-center space-x-2 justify-start"
                     style={currentPage === item.id ? {
                       background: visualSettings.useGradient
-                        ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
-                        : visualSettings.buttonBgColor || '#2563eb',
-                      color: visualSettings.buttonTextColor || '#ffffff',
+                        ? `linear-gradient(to right, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.secondaryColor || semanticColors.secondary.hex})`
+                        : visualSettings.buttonBgColor || semanticColors.primary.main,
+                      color: visualSettings.buttonTextColor || semanticColors.background.primary,
                       border: 'none'
                     } : {
-                      color: visualSettings.headerTextColor || '#1f2937'
+                      color: visualSettings.headerTextColor || semanticColors.neutral[800]
                     }}
                   >
                     <item.icon className="w-4 h-4" />
@@ -335,9 +335,9 @@ const Header = ({ currentPage, onNavigate }) => {
                   <>
                     <div
                       className="pt-2 pb-1 px-2 text-xs font-semibold uppercase opacity-70"
-                      style={{ color: visualSettings.headerTextColor || '#6b7280' }}
+                      style={{ color: visualSettings.headerTextColor || semanticColors.neutral[500] }}
                     >
-                      Administración
+                      {t('nav.adminMenu')}
                     </div>
                     {adminMenuItems.map((item) => (
                       <Button
@@ -348,12 +348,12 @@ const Header = ({ currentPage, onNavigate }) => {
                         className="flex items-center space-x-2 justify-start"
                         style={currentPage === item.id ? {
                           background: visualSettings.useGradient
-                            ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
-                            : visualSettings.buttonBgColor || '#2563eb',
-                          color: visualSettings.buttonTextColor || '#ffffff',
+                            ? `linear-gradient(to right, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.secondaryColor || semanticColors.secondary.hex})`
+                            : visualSettings.buttonBgColor || semanticColors.primary.main,
+                          color: visualSettings.buttonTextColor || semanticColors.background.primary,
                           border: 'none'
                         } : {
-                          color: visualSettings.useGradient || '#1f2937'
+                          color: visualSettings.useGradient || semanticColors.neutral[800]
                         }}
                       >
                         <item.icon className="w-4 h-4" />
@@ -367,8 +367,8 @@ const Header = ({ currentPage, onNavigate }) => {
               size="sm"
               onClick={() => setLanguage(language === 'es' ? 'en' : 'es')}
               className="flex items-center space-x-2 justify-start"
-               style={{background: `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`,
-                border: 'none', color: visualSettings.buttonTextColor || '#ffffff'}}
+               style={{background: `linear-gradient(to right, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.secondaryColor || semanticColors.secondary.hex})`,
+                border: 'none', color: visualSettings.buttonTextColor || semanticColors.background.primary}}
             >
               <Globe className="w-4 h-4" />
               <span>{language.toUpperCase()}</span>

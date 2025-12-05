@@ -72,7 +72,7 @@ export function LoginForm() {
   };
 
   return (
-    <div className="w-full max-w-sm space-y-6">
+    <div className="w-full max-w-sm sm:max-w-md md:max-w-lg space-y-6">
       {/* Method Tabs */}
       <div className="flex gap-2 rounded-lg border border-gray-300 p-1 bg-gray-50">
         <button

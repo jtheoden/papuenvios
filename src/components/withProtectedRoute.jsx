@@ -8,7 +8,21 @@ import AuthLoadingScreen from '@/components/AuthLoadingScreen';
  */
 export const withProtectedRoute = (WrappedComponent, requiredRole) => {
   const ProtectedWrapper = (props) => {
-    const { user, loading: authLoading, checkRole, userRole } = useAuth();
+    let user, authLoading, checkRole, userRole;
+
+    try {
+      const auth = useAuth();
+      user = auth.user;
+      authLoading = auth.loading;
+      checkRole = auth.checkRole;
+      userRole = auth.userRole;
+    } catch (error) {
+      // During hot module replacement, AuthContext might not be available yet
+      if (import.meta.env.DEV) {
+        return null;
+      }
+      throw error;
+    }
 
     // Show loading while auth is initializing
     if (authLoading) {

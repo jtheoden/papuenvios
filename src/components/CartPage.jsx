@@ -1,28 +1,33 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { ShoppingCart, X, Plus, Minus, Copy, Upload, CheckCircle, MessageCircle, ArrowLeft, ArrowRight } from 'lucide-react';
+import { ShoppingCart, X, Plus, Minus, Copy, Upload, CheckCircle, MessageCircle, ArrowLeft, ArrowRight, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCurrency } from '@/contexts/CurrencyContext';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle, getAlertStyle } from '@/lib/styleUtils';
 import { processImage } from '@/lib/imageUtils';
 import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingService';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
-import { getCurrencies, convertCurrency } from '@/lib/currencyService';
+import { convertCurrency } from '@/lib/currencyService';
 import { generateWhatsAppURL, notifyAdminNewPayment, openWhatsAppChat } from '@/lib/whatsappService';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
+import { calculateDiscount } from '@/lib/priceCalculationService';
+import { calculateOrderWithDiscounts, validateAndGetOffer, recordOfferUsage } from '@/lib/orderDiscountService';
 import RecipientSelector from '@/components/RecipientSelector';
 import ZelleAccountSelector from '@/components/ZelleAccountSelector';
 import FileUploadWithPreview from '@/components/FileUploadWithPreview';
+import CurrencySelector from '@/components/CurrencySelector';
 
 const CartPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { cart, updateCartQuantity, removeFromCart, clearCart, financialSettings, zelleAccounts, visualSettings, businessInfo, notificationSettings } = useBusiness();
   const { isAuthenticated, user } = useAuth();
+  const { selectedCurrency, setSelectedCurrency, currencies, currencyCode, currencySymbol, convertAmount } = useCurrency();
 
   const recipientSelectorRef = useRef();
 
@@ -43,23 +48,33 @@ const CartPage = ({ onNavigate }) => {
   const [shippingZones, setShippingZones] = useState([]);
   const [municipalities, setMunicipalities] = useState([]);
   const [shippingCost, setShippingCost] = useState(0);
-  const [selectedCurrency, setSelectedCurrency] = useState('USD');
-  const [currencies, setCurrencies] = useState([]);
   const [convertedSubtotal, setConvertedSubtotal] = useState(null);
   const [convertedShipping, setConvertedShipping] = useState(null);
+
+  // User category discount state
+  const [userCategory, setUserCategory] = useState('regular');
+  const [userCategoryDiscount, setUserCategoryDiscount] = useState(0);
   const [convertedTotal, setConvertedTotal] = useState(null);
+
+  // Coupon/offer code state
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedOffer, setAppliedOffer] = useState(null);
+  const [couponError, setCouponError] = useState('');
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
 
   // Calculate item price based on type (product or combo) - memoized with useCallback
   const getItemPrice = useCallback((item) => {
+    if (!item) return 0;
+
     // Use displayed price if available (price shown when added to cart)
-    if (item.displayed_price && item.displayed_currency_code) {
-      // If displayed currency matches selected currency, use as-is
-      if (item.displayed_currency_code === selectedCurrency) {
-        return parseFloat(item.displayed_price);
+    // But convert from the currency it was displayed in to the currently selected currency
+    if (item.displayed_price && item.displayed_currency_id) {
+      const displayedPrice = parseFloat(item.displayed_price);
+      // If prices are in different currencies, convert them
+      if (item.displayed_currency_id !== selectedCurrency) {
+        return convertAmount(displayedPrice, item.displayed_currency_id, selectedCurrency);
       }
-      // Otherwise need conversion - for now return displayed price
-      // TODO: Implement cross-currency conversion in cart
-      return parseFloat(item.displayed_price);
+      return displayedPrice;
     }
 
     // Fallback: use calculated_price_usd if available
@@ -79,7 +94,7 @@ const CartPage = ({ onNavigate }) => {
       const profitMargin = parseFloat(financialSettings.productProfit || 40) / 100;
       return basePrice * (1 + profitMargin);
     }
-  }, [selectedCurrency, financialSettings.comboProfit, financialSettings.productProfit]);
+  }, [financialSettings, selectedCurrency, convertAmount]);
 
   // Calculate subtotal - memoized to avoid recalculation on every render
   const subtotal = useMemo(() => {
@@ -88,11 +103,27 @@ const CartPage = ({ onNavigate }) => {
     }, 0);
   }, [cart, getItemPrice]);
 
-  // Load shipping zones and currencies
+  // Load shipping zones and user category discount
   useEffect(() => {
     loadShippingZones();
-    loadCurrencies();
+    loadUserCategoryDiscount();
   }, []);
+
+  // Load user category discount
+  const loadUserCategoryDiscount = async () => {
+    if (user && user.id) {
+      try {
+        const { getUserCategoryWithDiscount } = await import('@/lib/orderDiscountService');
+        const categoryInfo = await getUserCategoryWithDiscount(user.id);
+        setUserCategory(categoryInfo.category || 'regular');
+        setUserCategoryDiscount(categoryInfo.discountPercent || 0);
+      } catch (error) {
+        console.error('Error loading user category discount:', error);
+        setUserCategory('regular');
+        setUserCategoryDiscount(0);
+      }
+    }
+  };
 
   // Load municipalities when province changes
   useEffect(() => {
@@ -118,7 +149,7 @@ const CartPage = ({ onNavigate }) => {
   useEffect(() => {
     convertAmounts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCurrency, subtotal, shippingCost]);
+  }, [currencyCode, subtotal, shippingCost]);
 
   const loadShippingZones = async () => {
     try {
@@ -139,20 +170,9 @@ const CartPage = ({ onNavigate }) => {
     }
   };
 
-  const loadCurrencies = async () => {
-    try {
-      const { data, error } = await getCurrencies();
-      if (!error && data) {
-        setCurrencies(data);
-      }
-    } catch (error) {
-      console.error('Error loading currencies:', error);
-    }
-  };
-
   const convertAmounts = async () => {
     // If selected currency is USD (base currency), no conversion needed
-    if (selectedCurrency === 'USD') {
+    if (currencyCode === 'USD') {
       setConvertedSubtotal(subtotal);
       setConvertedShipping(shippingCost);
       setConvertedTotal(subtotal + shippingCost);
@@ -164,14 +184,14 @@ const CartPage = ({ onNavigate }) => {
       const { data: convertedSub, error: subError } = await convertCurrency(
         subtotal,
         'USD',
-        selectedCurrency
+        currencyCode
       );
 
       // Convert shipping cost
       const { data: convertedShip, error: shipError } = await convertCurrency(
         shippingCost,
         'USD',
-        selectedCurrency
+        currencyCode
       );
 
       if (!subError && !shipError) {
@@ -205,7 +225,10 @@ const CartPage = ({ onNavigate }) => {
     }
   };
 
-  const total = (subtotal + shippingCost).toFixed(2);
+  // Calculate discount amount and final total
+  const discountAmount = calculateDiscount(subtotal, userCategoryDiscount);
+  const subtotalAfterDiscount = subtotal - discountAmount;
+  const total = (subtotalAfterDiscount + shippingCost).toFixed(2);
   const purchaseId = `PO-${Date.now()}`;
 
   const activeZelleAccount = zelleAccounts.find(acc => acc.forProducts && acc.active);
@@ -238,6 +261,47 @@ const CartPage = ({ onNavigate }) => {
     }
 
     setView('payment');
+  };
+
+  // Apply coupon code
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) {
+      setCouponError(language === 'es' ? 'Ingresa un código de cupón' : 'Enter a coupon code');
+      return;
+    }
+
+    setValidatingCoupon(true);
+    setCouponError('');
+
+    try {
+      const validation = await validateAndGetOffer(couponCode, subtotal, user?.id);
+
+      if (!validation.valid) {
+        setCouponError(validation.reason || (language === 'es' ? 'Cupón inválido' : 'Invalid coupon'));
+        setAppliedOffer(null);
+        setValidatingCoupon(false);
+        return;
+      }
+
+      setAppliedOffer(validation.offer);
+      toast({
+        title: language === 'es' ? '✅ Cupón aplicado' : '✅ Coupon applied',
+        description: `${validation.offer.discount_value}${validation.offer.discount_type === 'percentage' ? '%' : '$'} ${language === 'es' ? 'descuento' : 'discount'}`
+      });
+    } catch (error) {
+      console.error('Error validating coupon:', error);
+      setCouponError(error.message || (language === 'es' ? 'Error al validar cupón' : 'Error validating coupon'));
+      setAppliedOffer(null);
+    }
+
+    setValidatingCoupon(false);
+  };
+
+  // Remove coupon
+  const handleRemoveCoupon = () => {
+    setCouponCode('');
+    setAppliedOffer(null);
+    setCouponError('');
   };
 
   const handleContactSupport = () => {
@@ -350,8 +414,8 @@ const CartPage = ({ onNavigate }) => {
     setProcessingPayment(true);
 
     try {
-      // Get currency ID
-      const currency = currencies.find(c => c.code === selectedCurrency);
+      // Get currency object (selectedCurrency is already the UUID)
+      const currency = currencies.find(c => c.id === selectedCurrency);
       if (!currency) {
         throw new Error('Currency not found');
       }
@@ -379,19 +443,22 @@ const CartPage = ({ onNavigate }) => {
         inventoryId: item.inventory_id || null
       }));
 
-      // Prepare order data
+      // Prepare order data with discount applied
       const orderData = {
         userId: user.id,
         orderType: 'product',
-        subtotal: subtotal,
-        shippingCost: shippingCost,
-        totalAmount: subtotal + shippingCost,
+        subtotal: parseFloat(subtotal.toFixed(2)),
+        discountAmount: parseFloat(discountAmount.toFixed(2)),  // Apply user category discount
+        shippingCost: parseFloat(shippingCost.toFixed(2)),
+        totalAmount: parseFloat(total),  // Already includes discount and shipping
         currencyId: currency.id,
         recipientInfo: JSON.stringify(recipientDetails),
         paymentMethod: 'zelle',
         shippingZoneId: shippingZone?.id || null,
         // TODO: Fix zelle_accounts table to use UUID instead of integer IDs
-        zelleAccountId: null
+        zelleAccountId: null,
+        // Offer/coupon code - added from Phase 3.13
+        offerId: appliedOffer?.id || null
       };
 
       // Create order
@@ -402,6 +469,16 @@ const CartPage = ({ onNavigate }) => {
       }
 
       const createdOrder = orderResult.order;
+
+      // Record offer usage if coupon was applied
+      if (appliedOffer?.id) {
+        try {
+          await recordOfferUsage(appliedOffer.id, user.id, createdOrder.id);
+        } catch (offerUsageErr) {
+          console.warn('Error recording offer usage (non-blocking):', offerUsageErr?.message || offerUsageErr);
+          // Don't fail the order if usage recording fails
+        }
+      }
 
       // Upload payment proof
       const uploadResult = await uploadPaymentProof(paymentProof, createdOrder.id);
@@ -436,8 +513,11 @@ const CartPage = ({ onNavigate }) => {
               orderData: {
                 orderNumber: createdOrder.order_number,
                 customerName: recipientDetails.fullName,
-                total: (subtotal + shippingCost).toFixed(2),
+                subtotal: subtotal.toFixed(2),
+                discountAmount: discountAmount.toFixed(2),
+                total: total,  // Includes discount and shipping
                 currency: selectedCurrency,
+                couponCode: appliedOffer?.code || null,  // Include coupon if applied
                 paymentProofUrl: uploadResult?.url || createdOrder.payment_proof_url || null
               },
               notificationSettings
@@ -448,12 +528,21 @@ const CartPage = ({ onNavigate }) => {
         console.warn('notify-order function error (non-blocking):', fnErr?.message || fnErr);
       }
 
-      // Success
+      // Success message with discount info if applicable
+      let descriptionMsg;
+      if (appliedOffer?.id) {
+        descriptionMsg = language === 'es'
+          ? `Tu pedido ${createdOrder.order_number} ha sido creado con descuento por cupón. Recibirás una notificación cuando sea validado.`
+          : `Your order ${createdOrder.order_number} has been created with coupon discount. You'll receive a notification when it's validated.`;
+      } else {
+        descriptionMsg = language === 'es'
+          ? `Tu pedido ${createdOrder.order_number} ha sido creado. Recibirás una notificación cuando sea validado.`
+          : `Your order ${createdOrder.order_number} has been created. You'll receive a notification when it's validated.`;
+      }
+
       toast({
         title: language === 'es' ? '✅ Pedido confirmado' : '✅ Order confirmed',
-        description: language === 'es'
-          ? `Tu pedido ${createdOrder.order_number} ha sido creado. Recibirás una notificación cuando sea validado.`
-          : `Your order ${createdOrder.order_number} has been created. You'll receive a notification when it's validated.`
+        description: descriptionMsg
       });
 
       // Clear cart and navigate
@@ -613,6 +702,56 @@ const CartPage = ({ onNavigate }) => {
             <p className="text-red-500 mb-6">{language === 'es' ? 'No hay cuenta Zelle disponible.' : 'No Zelle account available.'}</p>
           )}
 
+          {/* Coupon Code Section */}
+          <div className="mb-6 glass-effect p-4 rounded-lg border-2 border-yellow-200 bg-yellow-50">
+            <h3 className="font-semibold text-yellow-900 mb-3">
+              {language === 'es' ? 'Aplicar Cupón de Descuento' : 'Apply Coupon Code'}
+            </h3>
+            {!appliedOffer ? (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={couponCode}
+                    onChange={(e) => {
+                      setCouponCode(e.target.value.toUpperCase());
+                      setCouponError('');
+                    }}
+                    placeholder={language === 'es' ? 'Ingresa código de cupón' : 'Enter coupon code'}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                    disabled={validatingCoupon}
+                  />
+                  <Button
+                    onClick={handleApplyCoupon}
+                    disabled={!couponCode.trim() || validatingCoupon}
+                    className="bg-yellow-600 text-white hover:bg-yellow-700"
+                  >
+                    {validatingCoupon ? (language === 'es' ? 'Validando...' : 'Validating...') : (language === 'es' ? 'Aplicar' : 'Apply')}
+                  </Button>
+                </div>
+                {couponError && (
+                  <p className="text-sm text-red-600 font-medium">{couponError}</p>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border-l-4 border-green-500">
+                  <span className="text-sm font-medium text-green-700">
+                    ✅ {language === 'es' ? 'Cupón aplicado' : 'Coupon applied'}: <strong>{couponCode}</strong>
+                  </span>
+                  <Button
+                    onClick={handleRemoveCoupon}
+                    variant="ghost"
+                    size="sm"
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    {language === 'es' ? 'Remover' : 'Remove'}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="mb-6 space-y-4">
             <div className="flex justify-between items-center">
               <p>{t('cart.payment.purchaseId')}: <strong className="font-mono">{purchaseId}</strong></p>
@@ -620,9 +759,31 @@ const CartPage = ({ onNavigate }) => {
                 <Copy className="mr-2 h-4 w-4" />{t('cart.payment.copy')}
               </Button>
             </div>
-            <div className="flex justify-between items-center">
-              <p>{t('cart.payment.amount')}: <strong className="text-2xl" style={{ color: visualSettings.successColor || '#10b981' }}>${total}</strong></p>
-              <Button onClick={() => copyToClipboard(total)} variant="outline">
+
+            {/* Price Breakdown */}
+            <div className="space-y-2 p-4 bg-gray-50 rounded-lg">
+              <div className="flex justify-between text-sm">
+                <span>{language === 'es' ? 'Subtotal' : 'Subtotal'}:</span>
+                <span>${subtotal.toFixed(2)}</span>
+              </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>{language === 'es' ? 'Descuento categoría' : 'Category discount'} ({userCategoryDiscount}%):</span>
+                  <span>-${discountAmount.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-sm border-t pt-2">
+                <span>{language === 'es' ? 'Envío' : 'Shipping'}:</span>
+                <span>${shippingCost.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-lg font-bold border-t pt-2">
+                <span>{t('cart.payment.amount')}:</span>
+                <span style={{ color: visualSettings.successColor || '#10b981' }}>${total}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Button onClick={() => copyToClipboard(total)} variant="outline" size="sm">
                 <Copy className="mr-2 h-4 w-4" />{t('cart.payment.copy')}
               </Button>
             </div>
@@ -787,10 +948,9 @@ const CartPage = ({ onNavigate }) => {
                 const isCombo = !!item.products;
 
                 // Calculate converted prices for display
-                const exchangeRate = selectedCurrency === 'USD' ? 1 : (convertedSubtotal !== null ? convertedSubtotal / subtotal : 1);
+                const exchangeRate = currencyCode === 'USD' ? 1 : (convertedSubtotal !== null ? convertedSubtotal / subtotal : 1);
                 const convertedItemPrice = itemPrice * exchangeRate;
                 const convertedItemTotal = itemTotal * exchangeRate;
-                const currencySymbol = currencies.find(c => c.code === selectedCurrency)?.symbol || '$';
 
                 return (
                   <motion.div key={item.id} layout className="glass-effect p-4 rounded-2xl">
@@ -859,37 +1019,20 @@ const CartPage = ({ onNavigate }) => {
                 <h2 className="text-2xl font-semibold">{t('cart.summary')}</h2>
 
                 {/* Selector de moneda */}
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    {language === 'es' ? 'Moneda' : 'Currency'}
-                  </label>
-                  <select
-                    value={selectedCurrency}
-                    onChange={e => setSelectedCurrency(e.target.value)}
-                    className="input-style w-full"
-                  >
-                    {currencies.length > 0 ? (
-                      currencies.map(curr => (
-                        <option key={curr.code} value={curr.code}>
-                          {curr.code} - {language === 'es' ? curr.name_es : curr.name_en}
-                        </option>
-                      ))
-                    ) : (
-                      <>
-                        <option value="USD">USD - Dólar Estadounidense</option>
-                        <option value="EUR">EUR - Euro</option>
-                        <option value="CUP">CUP - Peso Cubano</option>
-                      </>
-                    )}
-                  </select>
-                </div>
+                <CurrencySelector
+                  selectedCurrency={selectedCurrency}
+                  onCurrencyChange={setSelectedCurrency}
+                  label={language === 'es' ? 'Moneda' : 'Currency'}
+                  showSymbol
+                  className="input-style w-full"
+                />
 
                 <div className="space-y-3">
                   <div className="flex justify-between">
                     <span>{t('cart.subtotal')}</span>
                     <span className="font-semibold">
-                      {currencies.find(c => c.code === selectedCurrency)?.symbol || '$'}
-                      {convertedSubtotal !== null ? convertedSubtotal.toFixed(2) : subtotal.toFixed(2)} {selectedCurrency}
+                      {currencySymbol}
+                      {convertedSubtotal !== null ? convertedSubtotal.toFixed(2) : subtotal.toFixed(2)} {currencyCode}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -897,7 +1040,7 @@ const CartPage = ({ onNavigate }) => {
                     <span className="text-sm font-semibold">
                       {(convertedShipping !== null ? convertedShipping : shippingCost) === 0
                         ? (language === 'es' ? 'Gratis' : 'Free')
-                        : `${currencies.find(c => c.code === selectedCurrency)?.symbol || '$'}${(convertedShipping !== null ? convertedShipping : shippingCost).toFixed(2)} ${selectedCurrency}`
+                        : `${currencySymbol}${(convertedShipping !== null ? convertedShipping : shippingCost).toFixed(2)} ${currencyCode}`
                       }
                     </span>
                   </div>
@@ -905,8 +1048,8 @@ const CartPage = ({ onNavigate }) => {
                   <div className="flex justify-between text-xl font-bold">
                     <span>{t('cart.total')}</span>
                     <span style={{ color: visualSettings.primaryColor || '#2563eb' }}>
-                      {currencies.find(c => c.code === selectedCurrency)?.symbol || '$'}
-                      {convertedTotal !== null ? convertedTotal.toFixed(2) : (subtotal + shippingCost).toFixed(2)} {selectedCurrency}
+                      {currencySymbol}
+                      {convertedTotal !== null ? convertedTotal.toFixed(2) : (subtotal + shippingCost).toFixed(2)} {currencyCode}
                     </span>
                   </div>
                 </div>

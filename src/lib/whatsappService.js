@@ -1,7 +1,10 @@
 /**
  * WhatsApp Service
  * Handles WhatsApp notification integration for orders and admin notifications
+ * Pure functions - message generation and URL construction (minimal validation)
  */
+
+import { logError } from './errorHandler';
 
 /**
  * Get WhatsApp configuration from environment or settings
@@ -19,11 +22,17 @@ const getWhatsAppConfig = () => {
 /**
  * Format phone number for WhatsApp
  * Removes spaces, dashes, and country code prefixes
- * @param {string} phone - Phone number
- * @returns {string} Formatted phone number
+ * @param {string} phone - Phone number to format
+ * @returns {string} Formatted phone number (empty string if invalid)
  */
 export const formatPhoneForWhatsApp = (phone) => {
-  if (!phone) return '';
+  if (!phone || typeof phone !== 'string') {
+    if (!phone) return '';
+    logError({ code: 'VALIDATION_FAILED', message: 'Invalid phone type' }, {
+      operation: 'formatPhoneForWhatsApp', phoneType: typeof phone
+    });
+    return '';
+  }
 
   // Remove all non-digit characters
   let cleaned = phone.replace(/\D/g, '');
@@ -45,12 +54,27 @@ export const formatPhoneForWhatsApp = (phone) => {
 /**
  * Generate WhatsApp message URL
  * @param {string} phone - Recipient phone number
- * @param {string} message - Pre-filled message
- * @returns {string} WhatsApp URL
+ * @param {string} [message=''] - Pre-filled message (optional)
+ * @returns {string} WhatsApp URL (returns empty string if phone invalid)
  */
 export const generateWhatsAppURL = (phone, message = '') => {
+  if (!phone || typeof phone !== 'string') {
+    logError({ code: 'VALIDATION_FAILED', message: 'Phone is required and must be string' }, {
+      operation: 'generateWhatsAppURL', phoneType: typeof phone
+    });
+    return '';
+  }
+
   const formattedPhone = formatPhoneForWhatsApp(phone);
-  const encodedMessage = encodeURIComponent(message);
+  if (!formattedPhone) {
+    logError({ code: 'VALIDATION_FAILED', message: 'Phone formatting failed' }, {
+      operation: 'generateWhatsAppURL', originalPhone: phone
+    });
+    return '';
+  }
+
+  const messageStr = message || '';
+  const encodedMessage = encodeURIComponent(messageStr);
 
   // Use WhatsApp API URL format
   // Works on both mobile and desktop
@@ -60,24 +84,55 @@ export const generateWhatsAppURL = (phone, message = '') => {
 /**
  * Open WhatsApp chat with pre-filled message
  * @param {string} phone - Recipient phone number
- * @param {string} message - Pre-filled message
+ * @param {string} [message=''] - Pre-filled message (optional)
+ * @requires window.open API (browser environment)
  */
 export const openWhatsAppChat = (phone, message = '') => {
+  if (!phone || typeof phone !== 'string') {
+    logError({ code: 'VALIDATION_FAILED', message: 'Phone is required for WhatsApp chat' }, {
+      operation: 'openWhatsAppChat'
+    });
+    return;
+  }
+
+  if (typeof window === 'undefined' || !window.open) {
+    logError({ code: 'VALIDATION_FAILED', message: 'Window API not available' }, {
+      operation: 'openWhatsAppChat'
+    });
+    return;
+  }
+
   const url = generateWhatsAppURL(phone, message);
+  if (!url) {
+    logError({ code: 'VALIDATION_FAILED', message: 'Failed to generate WhatsApp URL' }, {
+      operation: 'openWhatsAppChat', phone
+    });
+    return;
+  }
+
   window.open(url, '_blank');
 };
 
 /**
  * Notify admin about new payment submission
  * Opens WhatsApp directly from user's device
- * @param {Object} order - Order details
+ * @param {Object} order - Order details object
  * @param {string} adminPhone - Admin phone from settings
- * @param {string} language - Language for message ('es' or 'en')
+ * @param {string} [language='es'] - Language for message ('es' or 'en')
  */
 export const notifyAdminNewPayment = (order, adminPhone, language = 'es') => {
-  if (!adminPhone) {
-    console.error('Admin WhatsApp number not configured');
+  if (!adminPhone || typeof adminPhone !== 'string') {
+    logError({ code: 'VALIDATION_FAILED', message: 'Admin phone not configured' }, {
+      operation: 'notifyAdminNewPayment'
+    });
     alert('Número de WhatsApp del administrador no configurado. Contacte al soporte.');
+    return;
+  }
+
+  if (!order || typeof order !== 'object') {
+    logError({ code: 'VALIDATION_FAILED', message: 'Invalid order object' }, {
+      operation: 'notifyAdminNewPayment', orderType: typeof order
+    });
     return;
   }
 
@@ -391,15 +446,15 @@ export const notifyAdminNewPaymentProof = (remittance, adminPhone, language = 'e
         `🆔 *Número interno:* ${remittance.id}\n\n` +
         `💰 *Detalles del Pago*\n` +
         `┌─────────────────────\n` +
-        `│ Monto enviado: ${remittance.amount} ${remittance.currency}\n` +
-        `│ Monto a entregar: ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.delivery_currency}\n` +
+        `│ Monto enviado: ${remittance.amount_sent} ${remittance.currency_sent}\n` +
+        `│ Monto a entregar: ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.currency_delivered}\n` +
         `│ Tipo: ${type?.name || 'N/A'}\n` +
         `└─────────────────────\n\n` +
         `👤 *Destinatario*\n` +
         `┌─────────────────────\n` +
         `│ ${remittance.recipient_name}\n` +
         `│ 📱 ${remittance.recipient_phone}\n` +
-        `│ 📍 ${remittance.recipient_city || 'N/A'}\n` +
+        `│ 📍 ${remittance.recipient_province || 'N/A'}\n` +
         `└─────────────────────\n\n` +
         `📸 *Comprobante de Pago*\n` +
         `🔗 Ver/descargar en el sistema\n\n` +
@@ -414,15 +469,15 @@ export const notifyAdminNewPaymentProof = (remittance, adminPhone, language = 'e
         `🆔 *Internal Number:* ${remittance.id}\n\n` +
         `💰 *Payment Details*\n` +
         `┌─────────────────────\n` +
-        `│ Amount Sent: ${remittance.amount} ${remittance.currency}\n` +
-        `│ Amount to Deliver: ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.delivery_currency}\n` +
+        `│ Amount Sent: ${remittance.amount_sent} ${remittance.currency_sent}\n` +
+        `│ Amount to Deliver: ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.currency_delivered}\n` +
         `│ Type: ${type?.name || 'N/A'}\n` +
         `└─────────────────────\n\n` +
         `👤 *Recipient*\n` +
         `┌─────────────────────\n` +
         `│ ${remittance.recipient_name}\n` +
         `│ 📱 ${remittance.recipient_phone}\n` +
-        `│ 📍 ${remittance.recipient_city || 'N/A'}\n` +
+        `│ 📍 ${remittance.recipient_province || 'N/A'}\n` +
         `└─────────────────────\n\n` +
         `📸 *Payment Proof*\n` +
         `🔗 View/download in system\n\n` +

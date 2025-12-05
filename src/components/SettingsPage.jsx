@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { DollarSign, Image as ImageIcon, Bell, Save, Plus, Trash2, Upload, Link, Edit, RefreshCw, Check, Palette, ShoppingBag, MapPin, Truck } from 'lucide-react';
+import { DollarSign, Image as ImageIcon, Bell, Save, Plus, Trash2, Upload, Link, Edit, RefreshCw, Check, Palette, ShoppingBag, MapPin, Truck, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -12,7 +12,14 @@ import { getCurrencies, createCurrency, updateCurrency, deleteCurrency, fetchOff
 import { getCarouselSlides, createCarouselSlide, updateCarouselSlide, hardDeleteCarouselSlide, reorderSlides } from '@/lib/carouselService';
 import { getAllShippingZones, updateShippingZone, createShippingZone } from '@/lib/shippingService';
 import { getProvinceNames } from '@/lib/cubanLocations';
+import { saveNotificationSettings } from '@/lib/notificationSettingsService';
 import { supabase } from '@/lib/supabase';
+// Extracted Settings Components
+import SettingsPageFinancial from '@/components/settings/SettingsPageFinancial';
+import SettingsPageShipping from '@/components/settings/SettingsPageShipping';
+import SettingsPageVisual from '@/components/settings/SettingsPageVisual';
+import SettingsPageContent from '@/components/settings/SettingsPageContent';
+import SettingsZelleTab from '@/components/settings/SettingsZelleTab';
 
 const SettingsPage = () => {
   const { t, language } = useLanguage();
@@ -103,11 +110,11 @@ const SettingsPage = () => {
   const loadOfficialRates = async () => {
     setLoadingRates(true);
     try {
-      const { data, error } = await fetchOfficialRates();
-      if (error) throw error;
-      setOfficialRates(data);
+      const rates = await fetchOfficialRates();
+      setOfficialRates(rates || []);
     } catch (error) {
       console.error('Error loading official rates:', error);
+      setOfficialRates([]);
     } finally {
       setLoadingRates(false);
     }
@@ -127,11 +134,11 @@ const SettingsPage = () => {
   // Load currencies from database
   const loadCurrencies = async () => {
     try {
-      const { data, error } = await getCurrencies();
-      if (error) throw error;
-      setCurrencies(data || []);
+      const currencies = await getCurrencies();
+      setCurrencies(currencies || []);
     } catch (error) {
       console.error('Error loading currencies:', error);
+      setCurrencies([]);
       toast({
         title: 'Error',
         description: language === 'es'
@@ -263,37 +270,47 @@ const SettingsPage = () => {
     setCurrencyForm({ code: '', name_es: '', name_en: '', symbol: '', is_base: false });
   };
 
-  const handleNotificationSave = () => {
-    setNotificationSettings(localNotifications);
-    toast({ title: t('settings.saveSuccess') });
+  const handleNotificationSave = async () => {
+    try {
+      await saveNotificationSettings(localNotifications);
+      setNotificationSettings(localNotifications);
+      toast({ title: t('settings.saveSuccess') });
+    } catch (err) {
+      console.error('Failed to save notification settings:', err);
+      toast({
+        title: t('common.error'),
+        description: 'Failed to save notification settings'
+      });
+    }
   };
 
   // Shipping zones functions
   const loadShippingZones = async () => {
     setLoadingZones(true);
     try {
-      const result = await getAllShippingZones();
-      if (result.success) {
-        // Ensure all Cuban provinces are represented
-        const provinceNames = getProvinceNames();
-        const existingProvinces = result.zones.map(z => z.province_name);
-        const missingProvinces = provinceNames.filter(p => !existingProvinces.includes(p));
+      const zones = await getAllShippingZones();
+      // getAllShippingZones returns array directly
+      const existingZones = zones || [];
 
-        // Add missing provinces with 0 cost
-        const allZones = [
-          ...result.zones,
-          ...missingProvinces.map(name => ({
-            id: `temp-${name}`,
-            province_name: name,
-            shipping_cost: 0,
-            is_active: false,
-            free_shipping: false,
-            is_new: true
-          }))
-        ];
+      // Ensure all Cuban provinces are represented
+      const provinceNames = getProvinceNames();
+      const existingProvinces = existingZones.map(z => z.province_name);
+      const missingProvinces = provinceNames.filter(p => !existingProvinces.includes(p));
 
-        setShippingZones(allZones.sort((a, b) => a.province_name.localeCompare(b.province_name)));
-      }
+      // Add missing provinces with 0 cost
+      const allZones = [
+        ...existingZones,
+        ...missingProvinces.map(name => ({
+          id: `temp-${name}`,
+          province_name: name,
+          shipping_cost: 0,
+          is_active: false,
+          free_shipping: false,
+          is_new: true
+        }))
+      ];
+
+      setShippingZones(allZones.sort((a, b) => a.province_name.localeCompare(b.province_name)));
     } catch (error) {
       console.error('Error loading shipping zones:', error);
       toast({
@@ -360,12 +377,11 @@ const SettingsPage = () => {
   const loadExchangeRates = async () => {
     setLoadingRates2(true);
     try {
-      const { data, error } = await getAllExchangeRates();
-      if (!error && data) {
-        setExchangeRates(data);
-      }
+      const rates = await getAllExchangeRates();
+      setExchangeRates(rates || []);
     } catch (error) {
       console.error('Error loading exchange rates:', error);
+      setExchangeRates([]);
     } finally {
       setLoadingRates2(false);
     }
@@ -520,13 +536,13 @@ const SettingsPage = () => {
   const loadCarouselSlides = async () => {
     setLoadingSlides(true);
     try {
-      const { data, error } = await getCarouselSlides();
-      if (error) throw error;
-      setCarouselSlides(data || []);
+      const slides = await getCarouselSlides();
+      setCarouselSlides(slides || []);
     } catch (error) {
       console.error('Error loading carousel slides:', error);
+      setCarouselSlides([]);
       toast({
-        title: 'Error al cargar diapositivas',
+        title: t('settings.visual.errorLoadingSlides'),
         description: error.message,
         variant: 'destructive'
       });
@@ -538,7 +554,7 @@ const SettingsPage = () => {
   // Create new slide
   const handleAddSlide = async () => {
     try {
-      const { data, error } = await createCarouselSlide({
+      await createCarouselSlide({
         title_es: '',
         title_en: '',
         subtitle_es: '',
@@ -547,8 +563,6 @@ const SettingsPage = () => {
         link_url: '',
         is_active: false
       });
-
-      if (error) throw error;
 
       await loadCarouselSlides();
       toast({
@@ -587,7 +601,7 @@ const SettingsPage = () => {
       console.error('Error updating slide:', error);
       setSavingSlide(null);
       toast({
-        title: 'Error al actualizar',
+        title: t('settings.visual.errorUpdating'),
         description: error.message,
         variant: 'destructive'
       });
@@ -685,7 +699,7 @@ const SettingsPage = () => {
 
       if (!result.success) {
         toast({
-          title: 'Error de validación',
+          title: t('settings.visual.validationError'),
           description: result.errors.join('\n'),
           variant: 'destructive',
         });
@@ -697,13 +711,13 @@ const SettingsPage = () => {
       setSlidePreviews(prev => ({ ...prev, [slideId]: result.base64 }));
 
       toast({
-        title: 'Imagen optimizada',
-        description: `${result.metadata.originalDimensions} → ${result.metadata.finalDimensions} (${result.metadata.compression} compresión)`,
+        title: t('settings.visual.imageOptimized'),
+        description: `${result.metadata.originalDimensions} → ${result.metadata.finalDimensions} (${result.metadata.compression} ${language === 'es' ? 'compresión' : 'compression'})`,
       });
     } catch (error) {
       console.error('Error processing slide image:', error);
       toast({
-        title: 'Error al procesar imagen',
+        title: t('settings.visual.errorProcessingImage'),
         description: error.message,
         variant: 'destructive',
       });
@@ -728,6 +742,12 @@ const SettingsPage = () => {
       label: language === 'es' ? 'Visual' : 'Visual',
       icon: Palette,
       color: '#9333ea'
+    },
+    {
+      id: 'zelle',
+      label: 'Zelle',
+      icon: CreditCard,
+      color: '#3b82f6'
     },
     {
       id: 'contenido',
@@ -953,7 +973,7 @@ const SettingsPage = () => {
                     : (language === 'es' ? 'Nueva Moneda' : 'New Currency')
                   }
                 </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-3">
                   <div>
                     <label className="block text-sm font-medium mb-1">
                       {t('settings.financial.code')}
@@ -1071,7 +1091,7 @@ const SettingsPage = () => {
                 <h4 className="text-lg font-semibold mb-3">
                   {language === 'es' ? 'Nueva Tasa de Cambio' : 'New Exchange Rate'}
                 </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-3">
                   <div>
                     <label className="block text-sm font-medium mb-1">
                       {language === 'es' ? 'Desde Moneda' : 'From Currency'}
@@ -2144,6 +2164,15 @@ const SettingsPage = () => {
               </div>
             )}
           </motion.div>
+            </>
+          )}
+
+          {/* ZELLE TAB */}
+          {activeTab === 'zelle' && (
+            <>
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-effect p-8 rounded-2xl">
+                <SettingsZelleTab />
+              </motion.div>
             </>
           )}
 
