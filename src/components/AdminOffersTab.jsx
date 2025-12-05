@@ -62,6 +62,8 @@ const AdminOffersTab = () => {
   // Form state
   const [formData, setFormData] = useState({
     code: '',
+    nameEs: '',
+    nameEn: '',
     discountType: 'percentage', // percentage or fixed
     discountValue: '',
     minPurchaseAmount: '',
@@ -205,6 +207,8 @@ const AdminOffersTab = () => {
     try {
       const offerData = {
         code: formData.code.toUpperCase().trim(),
+        name_es: formData.nameEs.trim(),
+        name_en: formData.nameEn.trim(),
         discount_type: formData.discountType,
         discount_value: parseFloat(formData.discountValue),
         min_purchase_amount: formData.minPurchaseAmount ? parseFloat(formData.minPurchaseAmount) : null,
@@ -311,6 +315,8 @@ const AdminOffersTab = () => {
     setEditingOffer(offer);
     setFormData({
       code: offer.code,
+      nameEs: offer.name_es || '',
+      nameEn: offer.name_en || '',
       discountType: offer.discount_type,
       discountValue: offer.discount_value,
       minPurchaseAmount: offer.min_purchase_amount || '',
@@ -326,6 +332,8 @@ const AdminOffersTab = () => {
   const resetForm = () => {
     setFormData({
       code: '',
+      nameEs: '',
+      nameEn: '',
       discountType: 'percentage',
       discountValue: '',
       minPurchaseAmount: '',
@@ -561,6 +569,37 @@ const AdminOffersTab = () => {
                     value={formData.code}
                     onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
                     placeholder={language === 'es' ? 'Ej: SUMMER20' : 'E.g: SUMMER20'}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Name Spanish */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {language === 'es' ? 'Nombre (Español)' : 'Name (Spanish)'}
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.nameEs}
+                    onChange={(e) => setFormData({ ...formData, nameEs: e.target.value })}
+                    placeholder={language === 'es' ? 'Verano 2025' : 'Summer 2025'}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Name English */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {language === 'es' ? 'Nombre (Inglés)' : 'Name (English)'}
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.nameEn}
+                    onChange={(e) => setFormData({ ...formData, nameEn: e.target.value })}
+                    placeholder="Summer 2025"
+                    required
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   />
                 </div>

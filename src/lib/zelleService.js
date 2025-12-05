@@ -1040,7 +1040,7 @@ export const getAllZellePaymentHistory = async (filters = {}) => {
     let userMap = {};
     if (userIds.length > 0) {
       const { data: usersData, error: usersError } = await supabase
-        .from('profiles')
+        .from('user_profiles')
         .select('id, full_name, email')
         .in('id', userIds);
 
