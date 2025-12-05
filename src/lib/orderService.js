@@ -217,9 +217,8 @@ export const createOrder = async (orderData, items) => {
       }, 'Missing required order fields');
     }
 
-    // Validate initial state
-    validateOrderTransition('START', ORDER_STATUS.PENDING);
-    validatePaymentTransition('START', PAYMENT_STATUS.PENDING);
+    // Note: No validation needed for initial order creation
+    // Orders always start in PENDING status
 
     // Generate order number
     const orderNumber = await generateOrderNumber();
