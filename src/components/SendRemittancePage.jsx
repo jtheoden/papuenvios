@@ -566,6 +566,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                 {t('zelle.selectAccount')}
               </h2>
               <ZelleAccountSelector
+                usageType="remittances"
                 onSelect={(account) => {
                   setSelectedZelle(account);
                 }}

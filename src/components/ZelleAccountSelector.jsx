@@ -2,6 +2,9 @@
  * ZelleAccountSelector Component
  * Selector para elegir cuenta Zelle para pagos
  * Usado en SendRemittancePage y CartPage
+ *
+ * @param {function} onSelect - Callback cuando se selecciona una cuenta
+ * @param {string} usageType - 'products' para productos/orders o 'remittances' para remesas
  */
 
 import React, { useState, useEffect } from 'react';
@@ -11,7 +14,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
 import { getAllZelleAccounts } from '@/lib/zelleService';
 
-const ZelleAccountSelector = ({ onSelect }) => {
+const ZelleAccountSelector = ({ onSelect, usageType = 'remittances' }) => {
   const { t } = useLanguage();
   const [accounts, setAccounts] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState(null);
@@ -19,22 +22,40 @@ const ZelleAccountSelector = ({ onSelect }) => {
 
   useEffect(() => {
     loadAccounts();
-  }, []);
+  }, [usageType]);
 
   const loadAccounts = async () => {
     setLoading(true);
-    const result = await getAllZelleAccounts();
-    if (result.success) {
-      setAccounts(result.accounts || []);
+    try {
+      const allAccounts = await getAllZelleAccounts();
+
+      // Filtrar cuentas activas y según el tipo de uso
+      const filteredAccounts = (allAccounts || []).filter(account => {
+        // Debe estar activa
+        if (!account.is_active) return false;
+
+        // Filtrar según tipo de uso
+        if (usageType === 'products') {
+          return account.for_products === true;
+        } else if (usageType === 'remittances') {
+          return account.for_remittances === true;
+        }
+
+        return false;
+      });
+
+      setAccounts(filteredAccounts);
+
       // Auto-select si solo hay una cuenta
-      if (result.accounts?.length === 1) {
-        setSelectedAccount(result.accounts[0]);
-        onSelect(result.accounts[0]);
+      if (filteredAccounts.length === 1) {
+        setSelectedAccount(filteredAccounts[0]);
+        onSelect(filteredAccounts[0]);
       }
-    } else {
+    } catch (error) {
+      console.error('Error loading Zelle accounts:', error);
       toast({
         title: t('common.error'),
-        description: result.error || 'Error al cargar cuentas Zelle',
+        description: error?.message || 'Error al cargar cuentas Zelle',
         variant: 'destructive'
       });
     }
