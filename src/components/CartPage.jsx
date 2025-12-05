@@ -587,6 +587,7 @@ const CartPage = ({ onNavigate }) => {
               {language === 'es' ? 'Selecciona Cuenta Zelle' : 'Select Zelle Account'}
             </h2>
             <ZelleAccountSelector
+              usageType="products"
               onSelect={(account) => {
                 setSelectedZelle(account);
               }}
