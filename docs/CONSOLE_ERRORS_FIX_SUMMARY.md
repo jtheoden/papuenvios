@@ -212,5 +212,69 @@ WHERE table_schema = 'public'
 
 ---
 
+---
+
+## New Errors Fixed (Session 2)
+
+### 5. ✅ `user_categories` - 406 Not Acceptable - FIXED
+
+**Error**:
+```
+GET /rest/v1/user_categories?select=category_name&user_id=eq.cedc2b86... 406 (Not Acceptable)
+```
+
+**Root Cause**:
+- Code used `.single()` but user had no category assigned (0 rows returned)
+- 406 error occurs when `.single()` expects exactly 1 row but gets 0 or 2+
+
+**Fix Applied**: ✅ COMMITTED
+- Changed [orderDiscountService.js:24](src/lib/orderDiscountService.js#L24) from `.single()` to `.maybeSingle()`
+- `.maybeSingle()` returns null when no rows found instead of throwing error
+- Existing error handling (lines 26-32) already defaults to 'regular' category with 0% discount
+
+**Code**:
+```javascript
+const { data: categoryData, error: categoryError } = await supabase
+  .from('user_categories')
+  .select('category_name')
+  .eq('user_id', userId)
+  .maybeSingle(); // Changed from .single()
+```
+
+---
+
+### 6. ✅ `offer_usage` - 404 Not Found - FIXED
+
+**Error**:
+```
+GET /rest/v1/offer_usage?select=*&offer_id=eq.b636f19e... 404 (Not Found)
+POST /rest/v1/offer_usage 404 (Not Found)
+```
+
+**Root Cause**:
+- Table `offer_usage` doesn't exist in database
+- Required for tracking promotional offer/coupon usage limits
+
+**Fix Applied**: ✅ SQL CREATED
+1. Created migration: [create_offer_usage_table.sql](supabase/diagnostics/create_offer_usage_table.sql)
+2. Fixed incorrect usage counting queries in [orderDiscountService.js](src/lib/orderDiscountService.js):
+   - Lines 116-129: Global usage limit check
+   - Lines 132-147: Per-user usage limit check
+   - Changed from querying non-existent 'count' column to counting array length
+   - Fixed column names: `usage_limit` → `max_usage_global`, `user_usage_limit` → `max_usage_per_user`
+
+**SQL to Execute**:
+```sql
+-- Creates offer_usage table with:
+-- - Tracks individual offer usage records
+-- - Links to offers, users, and orders
+-- - RLS policies for authenticated users and admins
+-- - Indexes for performance
+```
+
+**Action Required**: Execute `supabase/diagnostics/create_offer_usage_table.sql` in Supabase SQL Editor
+
+---
+
 **Documentation Date**: 2025-12-05
-**Status**: 3/4 fixes applied, 1 pending user action
+**Status**: All critical errors fixed, 2 SQL migrations pending user execution

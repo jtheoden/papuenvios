@@ -21,7 +21,7 @@ export const getUserCategoryWithDiscount = async (userId) => {
       .from('user_categories')
       .select('category_name')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
 
     if (categoryError || !categoryData) {
       // Default to regular if not found
@@ -113,14 +113,13 @@ export const validateAndGetOffer = async (offerCode, subtotal = 0, userId = null
     }
 
     // Check global usage limit
-    if (offers.usage_limit) {
+    if (offers.max_usage_global) {
       const { data: usageData, error: usageError } = await supabase
         .from('offer_usage')
-        .select('count')
-        .eq('offer_id', offers.id)
-        .single();
+        .select('id')
+        .eq('offer_id', offers.id);
 
-      if (!usageError && usageData && usageData.count >= offers.usage_limit) {
+      if (!usageError && usageData && usageData.length >= offers.max_usage_global) {
         return {
           valid: false,
           reason: 'Offer has reached its usage limit',
@@ -130,23 +129,20 @@ export const validateAndGetOffer = async (offerCode, subtotal = 0, userId = null
     }
 
     // Check per-user usage limit
-    if (userId && offers.user_usage_limit) {
+    if (userId && offers.max_usage_per_user) {
       const { data: userUsageData, error: userUsageError } = await supabase
         .from('offer_usage')
-        .select('count')
+        .select('id')
         .eq('offer_id', offers.id)
         .eq('user_id', userId);
 
-      if (!userUsageError && userUsageData && userUsageData.length > 0) {
-        const userCount = userUsageData.reduce((sum, item) => sum + (item.count || 0), 0);
-        if (userCount >= offers.user_usage_limit) {
-          return {
-            valid: false,
-            reason: `You have already used this offer ${userCount} times (limit: ${offers.user_usage_limit})`,
-            userUsageCount: userCount,
-            code: offerCode
-          };
-        }
+      if (!userUsageError && userUsageData && userUsageData.length >= offers.max_usage_per_user) {
+        return {
+          valid: false,
+          reason: `You have already used this offer ${userUsageData.length} times (limit: ${offers.max_usage_per_user})`,
+          userUsageCount: userUsageData.length,
+          code: offerCode
+        };
       }
     }
 
