@@ -1,0 +1,309 @@
+================================================================================
+                    ERROR 57014 TIMEOUT FLOW DIAGRAM
+================================================================================
+
+SCENARIO: User loads homepage (5 parallel queries fire simultaneously)
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ BusinessContext.jsx lines 225-231: Promise.all() - ALL 5 QUERIES AT ONCE    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+         ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+         │ getProducts()│    │getCategories()│    │ getCombos()  │
+         └──────┬───────┘    └──────┬───────┘    └──────┬───────┘
+                │                   │                    │
+         Query 1a (PRODUCTS)  Query 2 (CATEGORIES)  Query 3a (COMBOS)
+         TABLES: products      TABLES: product_      TABLES: combo_
+                 inventory           categories             products
+         ────────────────────────────────────────────────────────────
+
+                 ┌──────────────┐         ┌──────────────┐
+                 │getTestimonials│       │getCarouselSlides│
+                 └──────┬───────┘        └──────┬───────┘
+                        │                       │
+                Query 2 (TESTIMONIALS)  Query 4 (CAROUSEL_SLIDES)
+                Query 2b (PROFILES)    NO RLS POLICY
+                TABLES: testimonials   TABLES: carousel_slides
+                        user_profiles
+
+
+================================================================================
+CRITICAL ISSUE: PARALLEL OVERLOAD ON user_profiles TABLE
+================================================================================
+
+With 5 queries firing at once, the user_profiles table gets:
+  - Query 1a: is_admin() calls for inventory RLS = 50 function calls
+  - Query 2b: RLS evaluation for 100 profiles = 100 RLS checks
+  - Query 2: (implied) RLS evaluation for testimonials = N checks
+  - Query 3a: is_admin() + is_super_admin() calls = M function calls
+  - Query 4: No RLS policy = Full table scan
+
+RESULT: 250+ concurrent RLS evaluations all hitting user_profiles table
+
+Supabase default statement timeout = 5-10 seconds
+Frontend timeout = 10-20 seconds
+
+Database can't complete all 250+ RLS evaluations within 5s timeout!
+
+
+================================================================================
+DETAILED FLOW: Query 1a (GET /products) - SLOWEST
+================================================================================
+
+ProductService.js getProducts() [lines 13-62]:
+
+  STEP 1: Fetch products [lines 15-22]
+  ────────────────────────────────────────
+  supabase.from('products')
+    .select('*, category:product_categories(...)')
+    .eq('is_active', true)   ← RLS: USING (true) = FAST ✓
+    .order('created_at', { ascending: false })
+  
+  Result: 50 products fetched in ~200ms ✓
+
+
+  STEP 2: Fetch inventory [lines 28-33] ← THIS CAUSES TIMEOUT
+  ─────────────────────────────────────────
+  supabase.from('inventory')
+    .select('product_id, quantity, ...')
+    .in('product_id', [50 product IDs])  ← 50 rows to evaluate
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+  
+  RLS POLICY EVALUATION (migration 20251112000001, no explicit policy shown):
+  For EACH of the 50 inventory rows:
+    1. Evaluate RLS policy
+    2. Check: is_admin() ← CALLS FUNCTION
+    3. Function hits user_profiles table
+    4. FULL TABLE SCAN (no LIMIT 1)
+    5. Return true/false
+  
+  Timeline:
+    50 rows × (RLS check + function call + table scan) = 50-100ms per row
+    50 rows × 50-100ms = 2,500-5,000ms ← ALREADY HITTING TIMEOUT
+  
+  Meanwhile, 4 OTHER QUERIES are doing the same thing...
+
+
+================================================================================
+ROOT CAUSE #1: NO LIMIT 1 IN NESTED EXISTS (Storage Policies)
+================================================================================
+
+File: supabase/migrations/20251112000002_create_storage_buckets.sql
+Line: 48-61
+
+CREATE POLICY "users can view order delivery proofs"
+ON storage.objects
+FOR SELECT
+TO authenticated
+USING (
+  bucket_id = 'order-delivery-proofs' AND
+  (
+    (auth.uid())::text = (storage.foldername(name))[1] OR
+    EXISTS (                    ← OUTER EXISTS
+      SELECT 1 FROM public.orders
+      WHERE id = (storage.foldername(name))[2]::uuid
+      AND (
+        orders.user_id = auth.uid() OR
+        EXISTS (                ← NESTED EXISTS ← MISSING LIMIT 1
+          SELECT 1 FROM public.user_profiles
+          WHERE id = auth.uid()
+          AND role IN ('admin', 'super_admin', 'manager')
+          ← NO LIMIT 1: Scans ALL user_profiles rows before stopping
+        )
+      )
+      ← NO LIMIT 1: Scans ALL orders before stopping
+    )
+  )
+)
+
+COMPLEXITY:
+  Without LIMIT 1:
+    For each storage object:
+      - Scan entire orders table (100,000s of rows)
+      - For each order row, scan entire user_profiles table (1000s of rows)
+      - O(n * m) = massive scan operation
+  
+  With LIMIT 1:
+    For each storage object:
+      - Scan orders until 1 match found (indexed)
+      - For user check, scan user_profiles until 1 match found (indexed)
+      - O(log n) per subquery = fast
+
+
+================================================================================
+ROOT CAUSE #2: MISSING INDICES FOR RLS EVALUATION
+================================================================================
+
+When RLS policies check conditions, PostgreSQL needs to find rows quickly.
+Missing indices force full table scans.
+
+MISSING INDEX #1: user_profiles(id) with role included
+└─ USED BY: is_admin(), is_super_admin(), is_manager() function calls
+└ IMPACT: Every RLS check = full table scan
+└─ SOLUTION: CREATE INDEX idx_user_profiles_id_role ON user_profiles(id) INCLUDE (role)
+
+MISSING INDEX #2: user_profiles(role)
+└─ USED BY: Role-based access control policies
+└─ IMPACT: Filtering by role = full table scan
+└─ SOLUTION: CREATE INDEX idx_user_profiles_role_id ON user_profiles(role, id)
+
+MISSING INDEX #3: inventory(product_id, is_active)
+└─ USED BY: getProducts() second query
+└─ IMPACT: 50 inventory rows need lookup for each product
+└─ SOLUTION: CREATE INDEX idx_inventory_product_active ON inventory(product_id, is_active)
+
+MISSING INDEX #4: testimonials(is_visible, user_id)
+└─ USED BY: getTestimonials() RLS evaluation
+└─ IMPACT: Filter by is_visible, then RLS check per row
+└─ SOLUTION: CREATE INDEX idx_testimonials_visible_user ON testimonials(is_visible, user_id)
+
+
+================================================================================
+ROOT CAUSE #3: FUNCTION RE-EXECUTION FOR EVERY ROW
+================================================================================
+
+Migration 20251112000001, lines 23-28:
+
+CREATE OR REPLACE FUNCTION is_admin() RETURNS boolean AS $$
+  SELECT COALESCE(role = 'admin', false)
+  FROM public.user_profiles
+  WHERE id = auth.uid()
+  LIMIT 1;
+$$ LANGUAGE sql STABLE;  ← PROBLEM: STABLE not IMMUTABLE
+
+IMPACT:
+  Query returns 100 products:
+    - Product 1: Evaluate RLS → is_admin() called
+    - Product 2: Evaluate RLS → is_admin() called AGAIN (not cached)
+    - Product 3: Evaluate RLS → is_admin() called AGAIN
+    ...
+    - Product 100: Evaluate RLS → is_admin() called for 100th time
+
+With 100 rows and concurrent queries = 100 × 5 queries = 500 function calls!
+Each function call = table scan without index
+
+
+================================================================================
+ROOT CAUSE #4: N+1 QUERY PATTERN (testimonialService.js)
+================================================================================
+
+File: src/lib/testimonialService.js, lines 17-62
+
+QUERY 1 [lines 19-29]:
+  supabase.from('testimonials')
+    .select('*')
+    .eq('is_visible', true)
+  
+  Result: 100 testimonials fetched ✓
+
+QUERY 2 [lines 34-48]:
+  supabase.from('user_profiles')
+    .select('user_id, full_name, avatar_url')
+    .in('user_id', [100 user IDs])
+  
+  RLS EVALUATION for EACH of 100 profile rows:
+    POLICY: "users can view own profile"
+    USING (user_id = auth.uid())
+    
+    For public user (not authenticated):
+      - Try to access profile_1: DENIED (not auth.uid())
+      - Try to access profile_2: DENIED (not auth.uid())
+      ...
+      - Try to access profile_100: DENIED (not auth.uid())
+    
+    Database MUST check all 100 rows before returning empty result
+    Timeline: 100 rows × (function call + check) = 1,000-2,000ms
+
+
+================================================================================
+ROOT CAUSE #5: FRONTEND TIMEOUTS TOO SHORT
+================================================================================
+
+File: src/lib/constants.js, lines 23-28
+
+Current timeouts:
+  PROFILE_FETCH: 15000ms (15s)
+  INIT_AUTH: 20000ms (20s)
+  DEFAULT_QUERY: 10000ms (10s)
+  CAROUSEL_SLIDE: 5000ms (5s)
+
+But Supabase statement timeout is typically: 5-10 seconds!
+
+When 5 queries fire:
+  - Time 0ms: All 5 queries start
+  - Time 2500ms: Database processing RLS policies
+  - Time 5000ms: SUPABASE STATEMENT TIMEOUT (database-level)
+    └─ Kills all 5 queries regardless of frontend timeout
+  - Time 10000ms: Frontend timeout would fire (but already dead)
+
+RESULT: All 5 queries fail with ERROR 57014 at ~5 seconds
+
+
+================================================================================
+COMBINED EFFECT: CASCADING FAILURE
+================================================================================
+
+Timeline of failure when loading homepage:
+
+t=0ms:      5 parallel queries fire
+            ├─ Query 1a: products + inventory
+            ├─ Query 1b: categories
+            ├─ Query 2a: testimonials + profiles
+            ├─ Query 3a: combos
+            └─ Query 4: carousel_slides
+
+t=100ms:    RLS evaluation begins on user_profiles table
+            Each query needs to evaluate rows
+            ├─ is_admin() called 50 times
+            ├─ is_admin() called 100 times
+            ├─ is_admin() called 30 times
+            └─ (no RLS) scanning carousel_slides
+
+t=500ms:    250+ concurrent RLS evaluations all trying to hit user_profiles
+            NO INDICES → Full table scans
+            NESTED EXISTS without LIMIT 1 → Cartesian product
+            Function re-execution → No caching
+            Concurrent load → Resource contention
+
+t=2000ms:   Database getting slow, queries still running
+            RLS policies still evaluating...
+
+t=5000ms:   SUPABASE STATEMENT TIMEOUT TRIGGERED
+            All 5 queries killed with ERROR 57014
+            Frontend receives:
+            ├─ GET /products: ERROR 57014
+            ├─ GET /categories: ERROR 57014
+            ├─ GET /testimonials: ERROR 57014
+            ├─ GET /carousel_slides: ERROR 57014
+            └─ GET /user_profiles: ERROR 57014
+
+
+================================================================================
+REQUIRED FIXES (IN ORDER)
+================================================================================
+
+CRITICAL (Must do first):
+  1. Add LIMIT 1 to all nested EXISTS in storage bucket policies
+     Impact: Reduce O(n*m) to O(log n) for policy evaluation
+  
+  2. Create indices for RLS policy evaluation
+     Impact: Speed up individual row checks from 10-50ms to <1ms
+
+HIGH:
+  3. Fix testimonialService.js N+1 pattern
+     Impact: Reduce profile fetch RLS load by skipping for public view
+  
+  4. Increase frontend timeouts
+     Impact: Allow database more time to complete RLS evaluation
+
+MEDIUM:
+  5. Batch initial queries instead of parallel
+     Impact: Reduce concurrent load on database
+
+LOW:
+  6. Add query limits to inventory and other fetch operations
+     Impact: Further reduce RLS evaluation scope
+
+
+================================================================================

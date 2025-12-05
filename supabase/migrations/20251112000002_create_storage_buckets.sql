@@ -18,18 +18,27 @@
 -- STEP 2: Order Delivery Proofs Bucket Policies
 -- ============================================================================
 
--- Users can upload delivery proofs for their own orders
-CREATE POLICY IF NOT EXISTS "users can upload order delivery proofs"
+-- Managers and admins can upload delivery proofs for orders
+DROP POLICY IF EXISTS "users can upload order delivery proofs" ON storage.objects;
+
+CREATE POLICY "managers can upload order delivery proofs"
 ON storage.objects
 FOR INSERT
 TO authenticated
 WITH CHECK (
   bucket_id = 'order-delivery-proofs' AND
-  (auth.uid())::text = (storage.foldername(name))[1]
+  EXISTS (
+    SELECT 1 FROM public.user_profiles
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'super_admin', 'manager')
+    LIMIT 1
+  )
 );
 
 -- Users can view delivery proofs for their own orders
-CREATE POLICY IF NOT EXISTS "users can view order delivery proofs"
+DROP POLICY IF EXISTS "users can view order delivery proofs" ON storage.objects;
+
+CREATE POLICY "users can view order delivery proofs"
 ON storage.objects
 FOR SELECT
 TO authenticated
@@ -46,14 +55,18 @@ USING (
           SELECT 1 FROM public.user_profiles
           WHERE id = auth.uid()
           AND role IN ('admin', 'super_admin', 'manager')
+          LIMIT 1
         )
       )
+      LIMIT 1
     )
   )
 );
 
 -- Users can delete their own delivery proofs
-CREATE POLICY IF NOT EXISTS "users can delete order delivery proofs"
+DROP POLICY IF EXISTS "users can delete order delivery proofs" ON storage.objects;
+
+CREATE POLICY "users can delete order delivery proofs"
 ON storage.objects
 FOR DELETE
 TO authenticated
@@ -63,7 +76,9 @@ USING (
 );
 
 -- Admins can view all delivery proofs
-CREATE POLICY IF NOT EXISTS "admins can view all order delivery proofs"
+DROP POLICY IF EXISTS "admins can view all order delivery proofs" ON storage.objects;
+
+CREATE POLICY "admins can view all order delivery proofs"
 ON storage.objects
 FOR SELECT
 TO authenticated
@@ -73,6 +88,7 @@ USING (
     SELECT 1 FROM public.user_profiles
     WHERE id = auth.uid()
     AND role IN ('admin', 'super_admin')
+    LIMIT 1
   )
 );
 
@@ -80,18 +96,27 @@ USING (
 -- STEP 3: Remittance Delivery Proofs Bucket Policies
 -- ============================================================================
 
--- Users can upload delivery proofs for their own remittances
-CREATE POLICY IF NOT EXISTS "users can upload remittance delivery proofs"
+-- Managers and admins can upload delivery proofs for remittances
+DROP POLICY IF EXISTS "users can upload remittance delivery proofs" ON storage.objects;
+
+CREATE POLICY "managers can upload remittance delivery proofs"
 ON storage.objects
 FOR INSERT
 TO authenticated
 WITH CHECK (
   bucket_id = 'remittance-delivery-proofs' AND
-  (auth.uid())::text = (storage.foldername(name))[1]
+  EXISTS (
+    SELECT 1 FROM public.user_profiles
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'super_admin', 'manager')
+    LIMIT 1
+  )
 );
 
 -- Users can view delivery proofs for their own remittances
-CREATE POLICY IF NOT EXISTS "users can view remittance delivery proofs"
+DROP POLICY IF EXISTS "users can view remittance delivery proofs" ON storage.objects;
+
+CREATE POLICY "users can view remittance delivery proofs"
 ON storage.objects
 FOR SELECT
 TO authenticated
@@ -108,14 +133,18 @@ USING (
           SELECT 1 FROM public.user_profiles
           WHERE id = auth.uid()
           AND role IN ('admin', 'super_admin', 'manager')
+          LIMIT 1
         )
       )
+      LIMIT 1
     )
   )
 );
 
 -- Users can delete their own delivery proofs
-CREATE POLICY IF NOT EXISTS "users can delete remittance delivery proofs"
+DROP POLICY IF EXISTS "users can delete remittance delivery proofs" ON storage.objects;
+
+CREATE POLICY "users can delete remittance delivery proofs"
 ON storage.objects
 FOR DELETE
 TO authenticated
@@ -125,7 +154,9 @@ USING (
 );
 
 -- Admins and managers can view all remittance proofs
-CREATE POLICY IF NOT EXISTS "admins can view all remittance delivery proofs"
+DROP POLICY IF EXISTS "admins can view all remittance delivery proofs" ON storage.objects;
+
+CREATE POLICY "admins can view all remittance delivery proofs"
 ON storage.objects
 FOR SELECT
 TO authenticated
@@ -135,6 +166,7 @@ USING (
     SELECT 1 FROM public.user_profiles
     WHERE id = auth.uid()
     AND role IN ('admin', 'super_admin', 'manager')
+    LIMIT 1
   )
 );
 

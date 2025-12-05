@@ -61,14 +61,18 @@ ALTER TABLE public.manager_assignments ENABLE ROW LEVEL SECURITY;
 -- ============================================================================
 
 -- Managers can view their own assignment info
-CREATE POLICY IF NOT EXISTS "managers can view own assignment"
+DROP POLICY IF EXISTS "managers can view own assignment" ON public.manager_assignments;
+
+CREATE POLICY "managers can view own assignment"
 ON public.manager_assignments
 FOR SELECT
 TO authenticated
 USING (manager_id = auth.uid());
 
 -- Super admins can view all assignments
-CREATE POLICY IF NOT EXISTS "super admins can view all assignments"
+DROP POLICY IF EXISTS "super admins can view all assignments" ON public.manager_assignments;
+
+CREATE POLICY "super admins can view all assignments"
 ON public.manager_assignments
 FOR SELECT
 TO authenticated
@@ -81,7 +85,9 @@ USING (
 );
 
 -- Super admins can create assignments
-CREATE POLICY IF NOT EXISTS "super admins can create assignments"
+DROP POLICY IF EXISTS "super admins can create assignments" ON public.manager_assignments;
+
+CREATE POLICY "super admins can create assignments"
 ON public.manager_assignments
 FOR INSERT
 TO authenticated
@@ -94,7 +100,9 @@ WITH CHECK (
 );
 
 -- Super admins can update assignments
-CREATE POLICY IF NOT EXISTS "super admins can update assignments"
+DROP POLICY IF EXISTS "super admins can update assignments" ON public.manager_assignments;
+
+CREATE POLICY "super admins can update assignments"
 ON public.manager_assignments
 FOR UPDATE
 TO authenticated
@@ -114,7 +122,9 @@ WITH CHECK (
 );
 
 -- Super admins can delete assignments
-CREATE POLICY IF NOT EXISTS "super admins can delete assignments"
+DROP POLICY IF EXISTS "super admins can delete assignments" ON public.manager_assignments;
+
+CREATE POLICY "super admins can delete assignments"
 ON public.manager_assignments
 FOR DELETE
 TO authenticated
