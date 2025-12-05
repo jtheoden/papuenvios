@@ -858,7 +858,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                         type="button"
                         onClick={handleNotifyAdminWhatsApp}
                         className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium"
-                        title="Notificar al administrador ahora por WhatsApp"
+                        title={t('remittances.wizard.notifyAdmin') || 'Notificar al administrador ahora por WhatsApp'}
                       >
                         <MessageCircle className="h-4 w-4" />
                         {t('remittances.wizard.notifyAdmin') || 'Notificar Administrador Ahora'}
@@ -866,7 +866,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                     </>
                   ) : (
                     <p className="text-sm text-yellow-800">
-                      ⚠️ Número de WhatsApp del administrador no configurado. Contacta con soporte para activar esta función y recibir notificaciones instantáneas cuando envíes comprobantes de pago.
+                      {t('remittances.wizard.whatsappNotConfigured') || '⚠️ Número de WhatsApp del administrador no configurado. Contacta con soporte para activar esta función y recibir notificaciones instantáneas cuando envíes comprobantes de pago.'}
                     </p>
                   )}
                 </div>
@@ -913,7 +913,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                     value={paymentData.reference}
                     onChange={(e) => setPaymentData({ ...paymentData, reference: e.target.value })}
                     className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Ej: ZELLE123456"
+                    placeholder={t('remittances.wizard.paymentReferencePlaceholder') || 'Ej: ZELLE123456'}
                     required
                   />
                 </div>
@@ -927,7 +927,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                     onChange={(e) => setPaymentData({ ...paymentData, notes: e.target.value })}
                     className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     rows="3"
-                    placeholder="Detalles adicionales del pago..."
+                    placeholder={t('remittances.wizard.paymentNotesPlaceholder') || 'Detalles adicionales del pago...'}
                   />
                 </div>
               </div>
@@ -943,18 +943,18 @@ const SendRemittancePage = ({ onNavigate }) => {
                   </div>
                 </div>
 
-                {notificationSettings?.whatsapp && (
-                  <div className="p-4 bg-green-50 rounded-lg">
-                    <div className="flex items-start gap-3">
-                      <MessageCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                      <div className="text-sm text-green-800">
-                        <p className="font-semibold mb-1">📱 Notificación WhatsApp:</p>
-                        <p>Cuando envíes el comprobante, se notificará automáticamente al administrador vía WhatsApp con tu número de remesa, monto y detalles del comprobante.</p>
+                  {notificationSettings?.whatsapp && (
+                    <div className="p-4 bg-green-50 rounded-lg">
+                      <div className="flex items-start gap-3">
+                        <MessageCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm text-green-800">
+                          <p className="font-semibold mb-1">📱 {t('remittances.wizard.whatsappNotification') || 'Notificación por WhatsApp'}:</p>
+                          <p>{t('remittances.wizard.whatsappInfo') || 'Cuando envíes el comprobante, se notificará automáticamente al administrador vía WhatsApp con tu número de remesa, monto y detalles del comprobante.'}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
 
               <div className="flex gap-3 mt-6">
                 <button
