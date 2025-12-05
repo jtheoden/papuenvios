@@ -410,7 +410,12 @@
       "whatsappNotification": "Notificación por WhatsApp",
       "whatsappInfo": "Cuando envíes el comprobante de pago, se notificará automáticamente al administrador a través de WhatsApp con todos los detalles de tu remesa.",
       "whatsappNotConfigured": "⚠️ Número de WhatsApp del administrador no configurado. Contacta con soporte para activar esta función y recibir notificaciones instantáneas cuando envíes comprobantes de pago.",
-      "notifyAdmin": "Notificar Administrador Ahora"
+      "notifyAdmin": "Notificar Administrador Ahora",
+      "accountName": "Nombre de la cuenta",
+      "zelleAccountInfo": "Cuenta Zelle asignada",
+      "zelleEmail": "Correo Zelle",
+      "zellePhone": "Teléfono Zelle",
+      "zelleAccountMissing": "No pudimos cargar los datos de la cuenta Zelle. Contacta soporte antes de enviar la transferencia."
     }
   },
   "vendor": {
@@ -700,6 +705,7 @@
   "userPanel": {
     "title": "Mi Panel de Usuario",
     "welcome": "Bienvenido, {name}",
+    "categoryLabel": "Categoría",
     "myOrders": "Mis Pedidos",
     "noOrders": "Aún no tienes pedidos.",
     "status": {
@@ -986,6 +992,7 @@
       "regularDesc": "Nuevos usuarios (0-4 interacciones)",
       "proDesc": "Usuarios activos (5-9 interacciones)",
       "vipDesc": "Usuarios premium (10+ interacciones)",
+      "current": "Categoría actual",
       "saving": "Guardando...",
       "lastRecalc": "Último cálculo: {time}",
       "statusRegular": "Regular",

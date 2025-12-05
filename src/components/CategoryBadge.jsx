@@ -1,5 +1,5 @@
 import React from 'react';
-import { Crown, Zap } from 'lucide-react';
+import { Crown, Zap, Star } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 /**
@@ -14,7 +14,7 @@ const CategoryBadge = ({ categoryName = 'regular', readOnly = true }) => {
     regular: {
       color: 'bg-gray-100 text-gray-800 border-gray-300',
       label: t('users.categories.statusRegular'),
-      icon: null,
+      icon: <Star size={14} className="inline mr-1" />,
       description: t('users.categories.regularDesc')
     },
     pro: {

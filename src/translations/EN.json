@@ -385,7 +385,12 @@
       "whatsappNotification": "WhatsApp Notification",
       "whatsappInfo": "When you send the payment proof, the admin will automatically be notified via WhatsApp with all your remittance details.",
       "whatsappNotConfigured": "⚠️ Admin WhatsApp number not configured. Contact support to activate this feature and receive instant notifications when you send payment proofs.",
-      "notifyAdmin": "Notify Admin Now"
+      "notifyAdmin": "Notify Admin Now",
+      "accountName": "Account name",
+      "zelleAccountInfo": "Assigned Zelle account",
+      "zelleEmail": "Zelle email",
+      "zellePhone": "Phone number",
+      "zelleAccountMissing": "We couldn't load the Zelle account details. Please contact support before sending the transfer."
     }
   },
   "vendor": {
@@ -675,6 +680,7 @@
   "userPanel": {
     "title": "My User Panel",
     "welcome": "Welcome, {name}",
+    "categoryLabel": "Category",
     "myOrders": "My Orders",
     "noOrders": "You have no orders yet.",
     "status": {
@@ -961,6 +967,7 @@
       "regularDesc": "New users (0-4 interactions)",
       "proDesc": "Active users (5-9 interactions)",
       "vipDesc": "Premium users (10+ interactions)",
+      "current": "Current category",
       "saving": "Saving...",
       "lastRecalc": "Last calculated: {time}",
       "statusRegular": "Regular",
