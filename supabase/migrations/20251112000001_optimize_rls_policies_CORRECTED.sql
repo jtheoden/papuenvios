@@ -219,6 +219,9 @@ USING (is_admin() OR is_super_admin());
 
 DROP POLICY IF EXISTS "anyone can view combos" ON public.combo_products;
 DROP POLICY IF EXISTS "admins can manage combos" ON public.combo_products;
+DROP POLICY IF EXISTS "admins can insert combos" ON public.combo_products;
+DROP POLICY IF EXISTS "admins can update combos" ON public.combo_products;
+DROP POLICY IF EXISTS "admins can delete combos" ON public.combo_products;
 
 -- Anyone can view combos
 CREATE POLICY "anyone can view combos"
@@ -256,6 +259,9 @@ USING (is_admin() OR is_super_admin());
 DROP POLICY IF EXISTS "anyone can view testimonials" ON public.testimonials;
 DROP POLICY IF EXISTS "users can insert testimonials" ON public.testimonials;
 DROP POLICY IF EXISTS "admins can manage testimonials" ON public.testimonials;
+DROP POLICY IF EXISTS "users can view own testimonials" ON public.testimonials;
+DROP POLICY IF EXISTS "admins can update testimonials" ON public.testimonials;
+DROP POLICY IF EXISTS "admins can delete testimonials" ON public.testimonials;
 
 -- Anyone can view approved testimonials (is_visible = true)
 CREATE POLICY "anyone can view testimonials"

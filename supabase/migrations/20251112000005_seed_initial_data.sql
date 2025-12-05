@@ -22,7 +22,7 @@ INSERT INTO public.user_profiles (
   created_at
 )
 VALUES (
-  'super-admin-uuid-placeholder', -- Replace with actual UUID from Supabase Auth
+  'cedc2b86-33a5-46ce-91b4-93f01056e029', -- Your actual UUID
   'jtheoden@googlemail.com',
   'Super Admin',
   'super_admin',
@@ -244,6 +244,60 @@ ON CONFLICT (name) DO UPDATE
 SET is_active = EXCLUDED.is_active, updated_at = now();
 
 -- ============================================================================
+-- STEP 9: Calculate and Assign User Categories Based on Interactions
+-- ============================================================================
+-- This step calculates user categories based on actual order and remittance data
+-- Each user gets categorized as REGULAR/PRO/VIP based on interaction count
+
+-- First, initialize all existing users with REGULAR category if they don't have one
+INSERT INTO public.user_categories (user_id, category_name, assignment_reason)
+SELECT id, 'regular', 'automatic'
+FROM auth.users
+WHERE id NOT IN (SELECT user_id FROM public.user_categories)
+ON CONFLICT (user_id) DO NOTHING;
+
+-- Now refresh categories for all users based on their actual interactions
+-- This uses the count_user_interactions function to count:
+-- - Completed orders
+-- - Validated and delivered remittances
+DO $$
+DECLARE
+  v_user record;
+  v_interaction_count integer;
+  v_new_category text;
+  v_old_category text;
+BEGIN
+  -- Loop through all users
+  FOR v_user IN SELECT id FROM auth.users LOOP
+    -- Count interactions for this user
+    v_interaction_count := public.count_user_interactions(v_user.id);
+
+    -- Determine new category
+    v_new_category := public.get_category_from_interactions(v_interaction_count);
+
+    -- Get current category
+    SELECT category_name INTO v_old_category
+    FROM public.user_categories
+    WHERE user_id = v_user.id;
+
+    v_old_category := COALESCE(v_old_category, 'regular');
+
+    -- Update if category changed
+    IF v_new_category != v_old_category THEN
+      UPDATE public.user_categories
+      SET category_name = v_new_category,
+          assignment_reason = 'automatic',
+          updated_at = now()
+      WHERE user_id = v_user.id;
+
+      -- Record in history
+      INSERT INTO public.user_category_history (user_id, old_category, new_category, change_reason)
+      VALUES (v_user.id, v_old_category, v_new_category, 'Automatic initial categorization during seed');
+    END IF;
+  END LOOP;
+END $$;
+
+-- ============================================================================
 -- VERIFICATION QUERIES
 -- ============================================================================
 
@@ -269,6 +323,28 @@ SELECT name, code, country FROM public.bank_accounts ORDER BY name;
 
 -- Verify currencies
 SELECT code, name, exchange_rate_to_usd FROM public.currencies ORDER BY code;
+
+-- Verify user categories were assigned
+SELECT
+  up.email,
+  uc.category_name,
+  (SELECT COUNT(*) FROM public.orders WHERE user_id = uc.user_id AND status = 'completed') as completed_orders,
+  (SELECT COUNT(*) FROM public.remittances WHERE user_id = uc.user_id AND payment_validated = true AND delivered_at IS NOT NULL) as delivered_remittances,
+  public.count_user_interactions(uc.user_id) as total_interactions
+FROM public.user_categories uc
+JOIN auth.users up ON up.id = uc.user_id
+ORDER BY total_interactions DESC;
+
+-- Verify category distribution
+SELECT category_name, COUNT(*) as user_count
+FROM public.user_categories
+GROUP BY category_name
+ORDER BY category_name;
+
+-- Verify category rules are properly set
+SELECT category_name, interaction_threshold, description, color_code
+FROM public.category_rules
+ORDER BY interaction_threshold;
 */
 
 -- ============================================================================
