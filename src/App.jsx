@@ -60,37 +60,81 @@ function App() {
   const ProtectedMyRemittances = React.useMemo(() => withProtectedRoute(MyRemittancesPage, 'user'), []);
   const ProtectedMyRecipients = React.useMemo(() => withProtectedRoute(MyRecipientsPage, 'user'), []);
 
-  // Handle URL-based routing for OAuth callback
-  useEffect(() => {
-    const path = window.location.pathname;
+  const normalizePath = (path) => path.replace(/\/$/, '') || '/';
+
+  const resolvePageFromPath = (path) => {
+    const normalizedPath = normalizePath(path);
     const searchParams = new URLSearchParams(window.location.search);
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
 
-    // Check if this is an OAuth callback
-    if (path === '/auth/callback' ||
-        searchParams.has('access_token') ||
-        hashParams.has('access_token') ||
-        searchParams.has('code')) {
-      setCurrentPage('auth/callback');
+    if (
+      normalizedPath === '/auth/callback' ||
+      searchParams.has('access_token') ||
+      hashParams.has('access_token') ||
+      searchParams.has('code')
+    ) {
+      return { page: 'auth/callback' };
     }
 
-    // Check for product/combo detail routes
-    const productMatch = path.match(/^\/product\/([^/]+)$/);
-    const comboMatch = path.match(/^\/combo\/([^/]+)$/);
+    const productMatch = normalizedPath.match(/^\/product\/([^/]+)$/);
+    const comboMatch = normalizedPath.match(/^\/combo\/([^/]+)$/);
 
     if (productMatch) {
-      setCurrentPage('product-detail');
-      setDetailParams({ itemId: productMatch[1], itemType: 'product' });
-    } else if (comboMatch) {
-      setCurrentPage('product-detail');
-      setDetailParams({ itemId: comboMatch[1], itemType: 'combo' });
+      return { page: 'product-detail', params: { itemId: productMatch[1], itemType: 'product' } };
+    }
+
+    if (comboMatch) {
+      return { page: 'product-detail', params: { itemId: comboMatch[1], itemType: 'combo' } };
+    }
+
+    const pathToPage = {
+      '/': 'home',
+      '/products': 'products',
+      '/remittances': 'remittances',
+      '/remittances/send': 'send-remittance',
+      '/remittances/my': 'my-remittances',
+      '/recipients': 'recipients',
+      '/dashboard': 'dashboard',
+      '/admin': 'admin',
+      '/settings': 'settings',
+      '/cart': 'cart',
+      '/login': 'login',
+      '/user-panel': 'user-panel',
+      '/user-management': 'user-management'
+    };
+
+    return { page: pathToPage[normalizedPath] || 'home' };
+  };
+
+  // Handle URL-based routing for OAuth callback
+  useEffect(() => {
+    const { page, params } = resolvePageFromPath(window.location.pathname);
+
+    setCurrentPage(page);
+    if (page === 'product-detail' && params) {
+      setDetailParams(params);
     }
 
     const timer = setTimeout(() => {
       setIsLoading(false);
     }, 2500);
 
-    return () => clearTimeout(timer);
+    const handlePopState = (event) => {
+      const newPath = event?.state?.path || window.location.pathname;
+      const { page, params } = resolvePageFromPath(newPath);
+
+      setCurrentPage(page);
+      if (page === 'product-detail' && params) {
+        setDetailParams(params);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('popstate', handlePopState);
+    };
   }, []);
 
   // TODO: Run diagnostics on app startup (remove in production)
@@ -110,13 +154,31 @@ function App() {
     if (page === 'product-detail' && params.itemId && params.itemType) {
       setDetailParams({ itemId: params.itemId, itemType: params.itemType });
       const url = `/${params.itemType}/${params.itemId}`;
-      window.history.pushState({}, '', url);
+      window.history.pushState({ path: url }, '', url);
+      return;
     }
-    // Update browser URL if needed
-    else if (page === 'home' && window.location.pathname !== '/') {
-      window.history.pushState({}, '', '/');
-    } else if (page !== 'home' && window.location.pathname === '/') {
-      window.history.pushState({}, '', `/${page}`);
+
+    const pageToPath = {
+      home: '/',
+      products: '/products',
+      remittances: '/remittances',
+      'send-remittance': '/remittances/send',
+      'my-remittances': '/remittances/my',
+      recipients: '/recipients',
+      dashboard: '/dashboard',
+      admin: '/admin',
+      settings: '/settings',
+      cart: '/cart',
+      login: '/login',
+      'user-panel': '/user-panel',
+      'user-management': '/user-management',
+      'auth/callback': '/auth/callback'
+    };
+
+    const newPath = pageToPath[page] || '/';
+
+    if (newPath !== window.location.pathname) {
+      window.history.pushState({ path: newPath }, '', newPath);
     }
   };
 
