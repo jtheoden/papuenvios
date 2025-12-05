@@ -379,7 +379,12 @@
       "fillRecipientInfo": "Please complete recipient name and phone",
       "remittanceCreatedSuccess": "Remittance created successfully",
       "uploadProofAndReference": "Please upload the payment proof and reference",
-      "proofSentSuccess": "Proof sent. You will be notified once payment is validated."
+      "proofSentSuccess": "Proof sent. You will be notified once payment is validated.",
+      "accountName": "Account name",
+      "zelleAccountInfo": "Assigned Zelle account",
+      "zelleEmail": "Zelle email",
+      "zellePhone": "Phone number",
+      "zelleAccountMissing": "We couldn't load the Zelle account details. Please contact support before sending the transfer."
     }
   },
   "vendor": {
@@ -669,6 +674,7 @@
   "userPanel": {
     "title": "My User Panel",
     "welcome": "Welcome, {name}",
+    "categoryLabel": "Category",
     "myOrders": "My Orders",
     "noOrders": "You have no orders yet.",
     "status": {
@@ -955,6 +961,7 @@
       "regularDesc": "New users (0-4 interactions)",
       "proDesc": "Active users (5-9 interactions)",
       "vipDesc": "Premium users (10+ interactions)",
+      "current": "Current category",
       "saving": "Saving...",
       "lastRecalc": "Last calculated: {time}",
       "statusRegular": "Regular",

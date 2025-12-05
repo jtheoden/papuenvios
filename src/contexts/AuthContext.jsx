@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from '@/components/ui/use-toast';
 import AuthLoadingScreen from '@/components/AuthLoadingScreen';
 import { SUPER_ADMIN_EMAILS, TIMEOUTS, RETRY_CONFIG } from '@/lib/constants';
+import { getUserCategory } from '@/lib/userCategorizationService';
 
 const AuthContext = createContext();
 
@@ -30,6 +31,7 @@ const setCachedRole = (userId, role) => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
+  const [userCategory, setUserCategory] = useState(null);
   const [isEnabled, setIsEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
 
@@ -50,6 +52,7 @@ export const AuthProvider = ({ children }) => {
         console.warn('[Auth] Session lost - no active session detected');
         setUser(null);
         setUserRole(null);
+        setUserCategory(null);
         return false;
       }
 
@@ -58,6 +61,7 @@ export const AuthProvider = ({ children }) => {
         console.warn('[Auth] User ID mismatch - possible session corruption');
         setUser(null);
         setUserRole(null);
+        setUserCategory(null);
         return false;
       }
 
@@ -77,6 +81,7 @@ export const AuthProvider = ({ children }) => {
           await supabase.auth.signOut();
           setUser(null);
           setUserRole(null);
+          setUserCategory(null);
           return false;
         }
 
@@ -140,6 +145,7 @@ export const AuthProvider = ({ children }) => {
       console.warn('[Auth] updateUserState called with invalid session');
       setUser(null);
       setUserRole(null);
+      setUserCategory(null);
       setIsEnabled(true);
       return;
     }
@@ -167,6 +173,7 @@ export const AuthProvider = ({ children }) => {
 
       setUser(session.user);
       setUserRole(fallbackRole);
+      setUserCategory(null);
       setIsEnabled(true);
       return;
     }
@@ -176,6 +183,7 @@ export const AuthProvider = ({ children }) => {
       console.warn('[Auth] Account is disabled');
       setUser(null);
       setUserRole(null);
+      setUserCategory(null);
       setIsEnabled(false);
       try {
         await supabase.auth.signOut();
@@ -305,6 +313,7 @@ export const AuthProvider = ({ children }) => {
         console.log('[Auth] SIGNED_OUT event received - clearing user state');
         setUser(null);
         setUserRole(null);
+        setUserCategory(null);
         setIsEnabled(true);
         return;
       }
@@ -387,12 +396,47 @@ export const AuthProvider = ({ children }) => {
       if (error) throw error;
       setUser(null);
       setUserRole(null);
+      setUserCategory(null);
       setIsEnabled(true);
     } catch (err) {
       console.error('[Auth] logout error', err);
       toast({ title: 'Error al cerrar sesión', description: err.message || String(err), variant: 'destructive' });
     }
   };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCategory = async () => {
+      if (!user?.id) {
+        setUserCategory(null);
+        return;
+      }
+
+      if (userRole === 'admin' || userRole === 'super_admin') {
+        setUserCategory(null);
+        return;
+      }
+
+      try {
+        const category = await getUserCategory(user.id);
+        if (isMounted) {
+          setUserCategory(category);
+        }
+      } catch (err) {
+        console.warn('[Auth] Failed to load user category:', err);
+        if (isMounted) {
+          setUserCategory(null);
+        }
+      }
+    };
+
+    loadCategory();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id, userRole]);
 
   const checkRole = (requiredRole) => {
     if (!requiredRole) return true;
@@ -416,6 +460,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     isAuthenticated: !!user && isEnabled,
     userRole,
+    userCategory,
     isEnabled,
     isSuperAdmin: userRole === 'super_admin' || isSuperAdminEmail,
     isAdmin: userRole === 'admin' || userRole === 'super_admin' || isSuperAdminEmail,
