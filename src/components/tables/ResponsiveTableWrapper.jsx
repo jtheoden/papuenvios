@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { ChevronRight, Loader } from 'lucide-react';
 import TableDetailModal from '@/components/modals/TableDetailModal';
 import { semanticColors } from '@/lib/colorTokens';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 /**
  * Responsive table wrapper that adapts display based on screen size
@@ -27,6 +28,7 @@ const ResponsiveTableWrapper = ({
   modalColumns = [],
   className = ''
 }) => {
+  const { t } = useLanguage();
   const [selectedRow, setSelectedRow] = useState(null);
   const [showModal, setShowModal] = useState(false);
 
@@ -47,7 +49,7 @@ const ResponsiveTableWrapper = ({
   if (!data || data.length === 0) {
     return (
       <div className="text-center py-12" style={{ color: semanticColors.neutral[500] }}>
-        <p className="text-sm sm:text-base">No data available</p>
+        <p className="text-sm sm:text-base">{t('tables.noData') || 'No data available'}</p>
       </div>
     );
   }
@@ -91,26 +93,26 @@ const ResponsiveTableWrapper = ({
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.05 }}
-              onClick={() => handleRowClick(row)}
-              className="bg-white rounded-lg p-4 hover:shadow-lg transition-shadow cursor-pointer"
-              style={{ border: `1px solid ${semanticColors.neutral[200]}` }}
-            >
-              <div className="grid grid-cols-2 gap-4">
-                {columns.slice(0, 4).map((col) => (
-                  <div key={col.key}>
-                    <p className="text-xs sm:text-sm font-medium mb-1" style={{ color: semanticColors.neutral[700] }}>{col.label}</p>
-                    <p className="text-sm sm:text-base break-words" style={{ color: semanticColors.neutral[900] }}>
-                      {col.render ? col.render(row[col.key], row) : row[col.key] || '-'}
-                    </p>
+            onClick={() => handleRowClick(row)}
+            className="bg-white rounded-lg p-4 hover:shadow-lg transition-shadow cursor-pointer"
+            style={{ border: `1px solid ${semanticColors.neutral[200]}` }}
+          >
+            <div className="grid grid-cols-2 gap-4">
+              {columns.slice(0, 4).map((col) => (
+                <div key={col.key}>
+                  <div className="text-xs sm:text-sm font-medium mb-1" style={{ color: semanticColors.neutral[700] }}>{col.label}</div>
+                  <div className="text-sm sm:text-base break-words" style={{ color: semanticColors.neutral[900] }}>
+                    {col.render ? col.render(row[col.key], row) : row[col.key] || '-'}
                   </div>
-                ))}
-              </div>
-              <div className="mt-3 flex justify-end">
-                <button className="text-xs sm:text-sm font-medium" style={{ color: semanticColors.primary.main }} onMouseEnter={(e) => { e.currentTarget.style.color = semanticColors.primary.dark; }} onMouseLeave={(e) => { e.currentTarget.style.color = semanticColors.primary.main; }}>
-                  View Details →
-                </button>
-              </div>
-            </motion.div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button className="text-xs sm:text-sm font-medium" style={{ color: semanticColors.primary.main }} onMouseEnter={(e) => { e.currentTarget.style.color = semanticColors.primary.dark; }} onMouseLeave={(e) => { e.currentTarget.style.color = semanticColors.primary.main; }}>
+                {t('tables.viewDetails') || 'View Details'} →
+              </button>
+            </div>
+          </motion.div>
           ))}
         </div>
       </div>
