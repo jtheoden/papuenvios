@@ -23,9 +23,11 @@ import ImageProofModal from './ImageProofModal';
 import TooltipButton from './TooltipButton';
 
 const AdminRemittancesTab = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { isAdmin, isSuperAdmin } = useAuth();
   const { showModal } = useModal();
+
+  const locale = language === 'es' ? 'es-CU' : 'en-US';
 
   const [remittances, setRemittances] = useState([]);
   const [filteredRemittances, setFilteredRemittances] = useState([]);
@@ -694,7 +696,7 @@ const AdminRemittancesTab = () => {
                 <div className="flex items-center gap-4 text-sm text-gray-600">
                   <span className="flex items-center gap-1">
                     <Calendar className="h-4 w-4" />
-                    {new Date(remittance.created_at).toLocaleDateString('es-CU')}
+                    {new Date(remittance.created_at).toLocaleDateString(locale)}
                   </span>
                   {remittance.payment_proof_url && (
                     <TooltipButton
@@ -773,7 +775,7 @@ const AdminRemittancesTab = () => {
                   <div>
                     <p className="text-sm text-gray-500 uppercase tracking-wider">{t('common.createdAt')}</p>
                     <p className="font-semibold">
-                      {new Date(selectedRemittance.created_at).toLocaleString('es-CU')}
+                      {new Date(selectedRemittance.created_at).toLocaleString(locale)}
                     </p>
                   </div>
                 </div>
