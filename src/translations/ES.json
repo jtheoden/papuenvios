@@ -588,6 +588,7 @@
     "overviewTab": "Resumen General",
     "ordersTab": "Historial de Órdenes",
     "remittancesTab": "Remesas",
+    "offersTab": "Ofertas y Cupones",
     "remittancesKindTab": "Tipos de Remesas",
     "zelleHistoryTab": "Historial de Pagos Zelle",
     "activityLogTab": "Registro de Actividad",
@@ -1182,5 +1183,11 @@
     "totalVolume": "Volumen total",
     "validatedVolume": "Validado",
     "pendingVolume": "Pendiente"
+  },
+  "tables": {
+    "noData": "No hay datos disponibles",
+    "viewDetails": "Ver Detalles",
+    "closeDetailsAria": "Cerrar detalles del registro",
+    "closeDetailsHint": "Presiona Escape para cerrar"
   }
 }

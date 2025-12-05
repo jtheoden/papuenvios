@@ -72,8 +72,8 @@ const TableDetailModal = ({ isOpen, onClose, title, data, columns = [], maxHeigh
           <button
             onClick={onClose}
             className="p-2 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-lg transition-colors"
-            aria-label="Cerrar detalles del registro"
-            title="Presione Escape para cerrar"
+            aria-label={t('tables.closeDetailsAria') || 'Close record details'}
+            title={t('tables.closeDetailsHint') || 'Press Escape to close'}
           >
             <X size={24} className="text-gray-600" aria-hidden="true" />
           </button>
