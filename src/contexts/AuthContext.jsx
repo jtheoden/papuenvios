@@ -5,6 +5,7 @@ import { toast } from '@/components/ui/use-toast';
 import AuthLoadingScreen from '@/components/AuthLoadingScreen';
 import { SUPER_ADMIN_EMAILS, TIMEOUTS, RETRY_CONFIG } from '@/lib/constants';
 import { getUserCategory } from '@/lib/userCategorizationService';
+import { logActivity } from '@/lib/activityLogger';
 
 const AuthContext = createContext();
 
@@ -34,6 +35,7 @@ export const AuthProvider = ({ children }) => {
   const [userCategory, setUserCategory] = useState(null);
   const [isEnabled, setIsEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [hasLoggedSession, setHasLoggedSession] = useState(false);
 
   const mountedRef = useRef(true);
   const sessionCheckIntervalRef = useRef(null);
@@ -437,6 +439,24 @@ export const AuthProvider = ({ children }) => {
       isMounted = false;
     };
   }, [user?.id, userRole]);
+
+  useEffect(() => {
+    if (user && !hasLoggedSession) {
+      logActivity({
+        action: 'login',
+        entityType: 'user',
+        entityId: user.id,
+        performedBy: user.email,
+        description: 'Inicio de sesión exitoso',
+        metadata: { provider: user.app_metadata?.provider }
+      });
+      setHasLoggedSession(true);
+    }
+
+    if (!user && hasLoggedSession) {
+      setHasLoggedSession(false);
+    }
+  }, [hasLoggedSession, user]);
 
   const checkRole = (requiredRole) => {
     if (!requiredRole) return true;

@@ -70,10 +70,33 @@
         "description": "Herramientas completas para que vendedores independientes gestionen su inventario"
       }
     },
+    "offers": {
+      "title": "Ofertas y cupones destacados",
+      "subtitle": "Aprovecha las promociones activas para tu próximo envío",
+      "cta": "Explorar catálogo",
+      "manage": "Gestionar ofertas",
+      "availableUntil": "Disponible hasta {date}",
+      "limited": "Tiempo limitado",
+      "usage": "Usos",
+      "unlimited": "Ilimitado",
+      "copy": "Copiar código",
+      "empty": "No hay ofertas activas por ahora"
+    },
+    "stats": {
+      "title": "Impacto de un vistazo",
+      "subtitle": "Métricas reales de la comunidad que siguen creciendo",
+      "users": "Usuarios registrados",
+      "remittances": "Remesas exitosas",
+      "years": "Años operando"
+    },
     "testimonials": {
       "title": "Lo que dicen nuestros clientes",
       "subtitle": "Experiencias reales de usuarios satisfechos con nuestra plataforma."
     }
+  },
+  "footer": {
+    "date": "Hoy es {date}",
+    "developedBy": "Desarrollado por {name} (contacto@papuenvios.com)"
   },
   "products": {
     "title": "Catálogo de Productos",
@@ -565,6 +588,7 @@
     "remittancesTab": "Remesas",
     "remittancesKindTab": "Tipos de Remesas",
     "zelleHistoryTab": "Historial de Pagos Zelle",
+    "activityLogTab": "Registro de Actividad",
     "orderStatus": {
       "paymentPending": "Pago Pendiente",
       "paymentValidated": "Pago Validado",
@@ -591,6 +615,22 @@
       "thisYear": "Este Año",
       "allTime": "Histórico"
     }
+  },
+  "activityLog": {
+    "title": "Registro de actividad",
+    "subtitle": "Auditoría completa de eventos del sistema y seguridad",
+    "timestamp": "Fecha y hora",
+    "user": "Usuario",
+    "unknownUser": "Desconocido",
+    "action": "Acción",
+    "entity": "Entidad",
+    "description": "Descripción",
+    "noDescription": "Sin descripción",
+    "target": "Objetivo",
+    "latest": "Últimas entradas",
+    "securityEvents": "Eventos de seguridad",
+    "onlySuperAdmin": "Solo los super administradores pueden ver el registro",
+    "search": "Buscar actividad"
   },
   "settings": {
     "title": "Ajustes Generales",
@@ -905,6 +945,12 @@
       "codeAlreadyExists": "Este código ya existe",
       "requiredFields": "Por favor completa todos los campos requeridos"
     },
+    "activity": {
+      "create": "Oferta creada",
+      "update": "Oferta actualizada",
+      "delete": "Oferta eliminada",
+      "status_change": "Estado de oferta actualizado"
+    },
     "usageStatus": {
       "available": "Disponible",
       "limited": "Limitado",
@@ -1130,6 +1176,9 @@
     "typeCombo": "Combo",
     "statusPending": "Pendiente",
     "statusValidated": "Validado",
-    "statusRejected": "Rechazado"
+    "statusRejected": "Rechazado",
+    "totalVolume": "Volumen total",
+    "validatedVolume": "Validado",
+    "pendingVolume": "Pendiente"
   }
 }
