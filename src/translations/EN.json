@@ -379,7 +379,13 @@
       "fillRecipientInfo": "Please complete recipient name and phone",
       "remittanceCreatedSuccess": "Remittance created successfully",
       "uploadProofAndReference": "Please upload the payment proof and reference",
-      "proofSentSuccess": "Proof sent. You will be notified once payment is validated."
+      "proofSentSuccess": "Proof sent. You will be notified once payment is validated.",
+      "paymentReferencePlaceholder": "E.g.: ZELLE123456",
+      "paymentNotesPlaceholder": "Additional payment details...",
+      "whatsappNotification": "WhatsApp Notification",
+      "whatsappInfo": "When you send the payment proof, the admin will automatically be notified via WhatsApp with all your remittance details.",
+      "whatsappNotConfigured": "⚠️ Admin WhatsApp number not configured. Contact support to activate this feature and receive instant notifications when you send payment proofs.",
+      "notifyAdmin": "Notify Admin Now"
     }
   },
   "vendor": {
