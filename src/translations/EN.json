@@ -283,6 +283,7 @@
     },
     "user": {
       "trackYourRemittances": "Track the status of your money transfers",
+      "trackRemittances": "Track the status of your money transfers",
       "noRemittances": "You have no registered remittances",
       "noRemittancesDesc": "Send your first remittance quickly and securely",
       "remittanceNumber": "Remittance Number",
@@ -299,6 +300,7 @@
       "uploadFile": "Upload file",
       "additionalNotes": "Additional notes",
       "viewProof": "View Proof",
+      "viewDetails": "View Details",
       "proofUploaded": "Proof uploaded successfully",
       "remittanceCancelled": "Remittance cancelled",
       "myRemittances": "My Remittances",

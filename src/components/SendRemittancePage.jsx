@@ -100,13 +100,14 @@ const SendRemittancePage = ({ onNavigate }) => {
 
   const loadTypes = async () => {
     setLoading(true);
-    const result = await getActiveRemittanceTypes();
-    if (result.success) {
-      setTypes(result.types);
-    } else {
+    try {
+      const types = await getActiveRemittanceTypes();
+      setTypes(types || []);
+    } catch (error) {
+      console.error('Error loading remittance types:', error);
       toast({
         title: t('common.error'),
-        description: result.error,
+        description: error?.message || t('common.error'),
         variant: 'destructive'
       });
     }

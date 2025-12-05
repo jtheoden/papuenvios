@@ -360,7 +360,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
           </p>
         </div>
         <button
-          onClick={() => onNavigate && onNavigate('sendRemittance')}
+          onClick={() => onNavigate && onNavigate('send-remittance')}
           className={`${getPrimaryButtonStyle()} flex items-center gap-2`}
         >
           <DollarSign className="h-5 w-5" />
@@ -378,7 +378,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
             {t('remittances.user.noRemittancesDesc')}
           </p>
           <button
-            onClick={() => onNavigate && onNavigate('sendRemittance')}
+            onClick={() => onNavigate && onNavigate('send-remittance')}
             className={`${getPrimaryButtonStyle()} inline-flex items-center gap-2`}
           >
             <DollarSign className="h-5 w-5" />
