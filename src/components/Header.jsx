@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, ShoppingBag, Globe, DollarSign, BarChart3, Settings, ShoppingCart, User as UserIcon, LogIn, LogOut, ShieldCheck, Users, LayoutDashboard, ChevronDown } from 'lucide-react';
+import { Menu, X, ShoppingBag, Globe, DollarSign, BarChart3, Settings, ShoppingCart, User as UserIcon, LogIn, LogOut, ShieldCheck, Users, LayoutDashboard, ChevronDown, Crown, Zap, Star } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -16,7 +16,7 @@ const Header = ({ currentPage, onNavigate }) => {
   const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
   const { language, setLanguage, t } = useLanguage();
   const { cart, visualSettings } = useBusiness();
-  const { user, isAdmin, userRole } = useAuth();
+  const { user, isAdmin, userRole, userCategory } = useAuth();
 
   // Public menu items
   let publicMenuItems = [
@@ -71,6 +71,34 @@ const Header = ({ currentPage, onNavigate }) => {
       console.error('Error loading pending orders:', error);
       setPendingOrdersCount(0);
     }
+  };
+
+  const getCategoryIndicatorConfig = (categoryName) => {
+    const normalized = categoryName || 'regular';
+    const baseConfig = {
+      regular: { Icon: Star, color: visualSettings.primaryColor || semanticColors.neutral[700] },
+      pro: { Icon: Zap, color: '#2563eb' },
+      vip: { Icon: Crown, color: '#d97706' }
+    };
+
+    return baseConfig[normalized] || baseConfig.regular;
+  };
+
+  const renderCategoryIndicator = () => {
+    if (!userCategory?.category_name) return null;
+
+    const { Icon, color } = getCategoryIndicatorConfig(userCategory.category_name);
+    const translationKey = `users.categories.status${userCategory.category_name.charAt(0).toUpperCase()}${userCategory.category_name.slice(1)}`;
+
+    return (
+      <span
+        className="absolute -left-2 -top-1 flex items-center justify-center h-5 w-5 rounded-full shadow-sm"
+        style={{ backgroundColor: '#ffffff', border: `1px solid ${color}`, color }}
+        title={`${t('users.categories.current')}: ${t(translationKey)}`}
+      >
+        <Icon className="h-3 w-3" />
+      </span>
+    );
   };
 
   return (
@@ -268,6 +296,7 @@ const Header = ({ currentPage, onNavigate }) => {
                   className="relative"
                 >
                   <div className="relative">
+                    {renderCategoryIndicator()}
                     <UserAvatar user={user} />
                     {(userRole === 'admin' || userRole === 'super_admin') && pendingOrdersCount > 0 && (
                       <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold shadow-lg">

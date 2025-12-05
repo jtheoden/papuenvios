@@ -399,9 +399,14 @@ const SendRemittancePage = ({ onNavigate }) => {
             />
           )}
         </React.Fragment>
-      ))}
-    </div>
-  );
+        ))}
+      </div>
+    );
+
+  const zelleAccountInfo = createdRemittance?.zelle_accounts?.[0] || selectedZelle;
+  const zelleName = zelleAccountInfo?.account_name || zelleAccountInfo?.account_holder || zelleAccountInfo?.name;
+  const zelleEmail = zelleAccountInfo?.email || zelleAccountInfo?.zelle_email;
+  const zellePhone = zelleAccountInfo?.phone_number || zelleAccountInfo?.phone || zelleAccountInfo?.telefono;
 
   if (loading) {
     return (
@@ -719,68 +724,79 @@ const SendRemittancePage = ({ onNavigate }) => {
               </p>
             </div>
 
-            {/* Zelle Account Information */}
-            {selectedZelle && (
-              <div className="glass-effect p-6 rounded-xl border-2 border-blue-200 bg-blue-50">
-                <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-blue-900">
-                  <CreditCard className="h-5 w-5" />
-                  {t('remittances.wizard.zelleAccountInfo')}
-                </h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between bg-white p-3 rounded-lg">
-                    <div>
-                      <p className="text-xs text-gray-500">{t('remittances.wizard.accountName')}</p>
-                      <p className="font-semibold text-gray-800">{selectedZelle.account_name}</p>
-                      {selectedZelle.phone_number && (
-                        <p className="text-sm text-gray-700 font-medium mt-1">
-                          {selectedZelle.phone_number}
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCopyToClipboard(selectedZelle.account_name, 'Nombre de cuenta')}
-                      className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
-                      title="Copiar nombre de cuenta"
-                    >
-                      <Copy className="h-4 w-4 text-blue-600" />
-                    </button>
-                  </div>
-
-                  <div className="flex items-center justify-between bg-white p-3 rounded-lg">
-                    <div>
-                      <p className="text-xs text-gray-500">{t('remittances.wizard.zelleEmail')}</p>
-                      <p className="font-semibold text-gray-800">{selectedZelle.email || selectedZelle.zelle_email}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCopyToClipboard(selectedZelle.email || selectedZelle.zelle_email, 'Email Zelle')}
-                      className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
-                      title="Copiar email Zelle"
-                    >
-                      <Copy className="h-4 w-4 text-blue-600" />
-                    </button>
-                  </div>
-
-                  {(selectedZelle.phone_number || selectedZelle.phone || selectedZelle.telefono) && (
+              {/* Zelle Account Information */}
+              {zelleAccountInfo ? (
+                <div className="glass-effect p-6 rounded-xl border-2 border-blue-200 bg-blue-50">
+                  <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-blue-900">
+                    <CreditCard className="h-5 w-5" />
+                    {t('remittances.wizard.zelleAccountInfo')}
+                  </h3>
+                  <div className="space-y-3">
                     <div className="flex items-center justify-between bg-white p-3 rounded-lg">
                       <div>
-                        <p className="text-xs text-gray-500">{t('common.phone')}</p>
-                        <p className="font-semibold text-gray-800">{selectedZelle.phone_number || selectedZelle.phone || selectedZelle.telefono}</p>
+                        <p className="text-xs text-gray-500">{t('remittances.wizard.accountName')}</p>
+                        <p className="font-semibold text-gray-800">{zelleName}</p>
+                        {zelleAccountInfo.account_holder && (
+                          <p className="text-sm text-gray-700 font-medium mt-1">{zelleAccountInfo.account_holder}</p>
+                        )}
+                        {zellePhone && (
+                          <p className="text-sm text-gray-700 font-medium mt-1">{zellePhone}</p>
+                        )}
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleCopyToClipboard(selectedZelle.phone_number || selectedZelle.phone || selectedZelle.telefono, 'Teléfono')}
+                        onClick={() => handleCopyToClipboard(zelleName, t('remittances.wizard.accountName'))}
                         className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
-                        title="Copiar teléfono"
+                        title="Copiar nombre de cuenta"
                       >
                         <Copy className="h-4 w-4 text-blue-600" />
                       </button>
                     </div>
-                  )}
+
+                    {zelleEmail && (
+                      <div className="flex items-center justify-between bg-white p-3 rounded-lg">
+                        <div>
+                          <p className="text-xs text-gray-500">{t('remittances.wizard.zelleEmail')}</p>
+                          <p className="font-semibold text-gray-800">{zelleEmail}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyToClipboard(zelleEmail, t('remittances.wizard.zelleEmail'))}
+                          className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
+                          title="Copiar email Zelle"
+                        >
+                          <Copy className="h-4 w-4 text-blue-600" />
+                        </button>
+                      </div>
+                    )}
+
+                    {zellePhone && (
+                      <div className="flex items-center justify-between bg-white p-3 rounded-lg">
+                        <div>
+                          <p className="text-xs text-gray-500">{t('remittances.wizard.zellePhone')}</p>
+                          <p className="font-semibold text-gray-800">{zellePhone}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyToClipboard(zellePhone, t('remittances.wizard.zellePhone'))}
+                          className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
+                          title="Copiar teléfono"
+                        >
+                          <Copy className="h-4 w-4 text-blue-600" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="glass-effect p-6 rounded-xl border-2 border-yellow-200 bg-yellow-50 flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-yellow-900">{t('remittances.wizard.zelleAccountInfo')}</p>
+                    <p className="text-sm text-yellow-800">{t('remittances.wizard.zelleAccountMissing')}</p>
+                  </div>
+                </div>
+              )}
 
             {/* Remittance ID and Amount to Transfer */}
             <div className="glass-effect p-6 rounded-xl border-2 border-green-200 bg-green-50">
