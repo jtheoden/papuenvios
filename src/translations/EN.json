@@ -70,10 +70,33 @@
         "description": "Complete tools for independent vendors to manage inventory"
       }
     },
+    "offers": {
+      "title": "Featured Offers & Coupons",
+      "subtitle": "Use our active promotions to save on your next shipment",
+      "cta": "Explore catalog",
+      "manage": "Manage offers",
+      "availableUntil": "Available until {date}",
+      "limited": "Limited time",
+      "usage": "Usages",
+      "unlimited": "Unlimited",
+      "copy": "Copy code",
+      "empty": "No active offers at the moment"
+    },
+    "stats": {
+      "title": "Impact at a glance",
+      "subtitle": "Real community metrics that keep growing",
+      "users": "Registered users",
+      "remittances": "Successful remittances",
+      "years": "Years operating"
+    },
     "testimonials": {
       "title": "What our customers say",
       "subtitle": "Real experiences from satisfied platform users."
     }
+  },
+  "footer": {
+    "date": "Today is {date}",
+    "developedBy": "Developed by {name} (contacto@papuenvios.com)"
   },
   "products": {
     "title": "Product Catalog",
@@ -540,6 +563,7 @@
     "remittancesTab": "Remittances",
     "remittancesKindTab": "Kind of Remittances",
     "zelleHistoryTab": "Zelle Payment History",
+    "activityLogTab": "Activity Log",
     "orderStatus": {
       "paymentPending": "Payment Pending",
       "paymentValidated": "Payment Validated",
@@ -566,6 +590,22 @@
       "thisYear": "This Year",
       "allTime": "All Time"
     }
+  },
+  "activityLog": {
+    "title": "Activity log",
+    "subtitle": "Full audit of system and security events",
+    "timestamp": "Timestamp",
+    "user": "User",
+    "unknownUser": "Unknown",
+    "action": "Action",
+    "entity": "Entity",
+    "description": "Description",
+    "noDescription": "No description provided",
+    "target": "Target",
+    "latest": "Latest entries",
+    "securityEvents": "Security events",
+    "onlySuperAdmin": "Only super admins can view the activity log",
+    "search": "Search activity"
   },
   "settings": {
     "title": "General Settings",
@@ -880,6 +920,12 @@
       "codeAlreadyExists": "This code already exists",
       "requiredFields": "Please fill all required fields"
     },
+    "activity": {
+      "create": "Offer created",
+      "update": "Offer updated",
+      "delete": "Offer deleted",
+      "status_change": "Offer status updated"
+    },
     "usageStatus": {
       "available": "Available",
       "limited": "Limited",
@@ -1105,6 +1151,9 @@
     "typeCombo": "Combo",
     "statusPending": "Pending",
     "statusValidated": "Validated",
-    "statusRejected": "Rejected"
+    "statusRejected": "Rejected",
+    "totalVolume": "Total volume",
+    "validatedVolume": "Validated volume",
+    "pendingVolume": "Pending volume"
   }
 }

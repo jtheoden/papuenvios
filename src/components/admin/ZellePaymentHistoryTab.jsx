@@ -91,6 +91,23 @@ const ZellePaymentHistoryTab = () => {
     });
   }, [transactions, statusFilter, typeFilter, searchQuery]);
 
+  const financialSummary = useMemo(() => {
+    const dataset = filteredTransactions.length ? filteredTransactions : transactions;
+    const totalAmount = dataset.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const validatedAmount = dataset
+      .filter(t => t.status === 'validated')
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const pendingAmount = dataset
+      .filter(t => t.status === 'pending')
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+    return {
+      total: totalAmount,
+      validated: validatedAmount,
+      pending: pendingAmount
+    };
+  }, [filteredTransactions, transactions]);
+
   // Table columns definition
   const columns = [
     {
@@ -290,6 +307,21 @@ const ZellePaymentHistoryTab = () => {
           <Filter size={18} />
           {t('common.filters') || 'Filters'}
         </button>
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-4">
+        <div className="glass-effect p-4 rounded-xl border border-gray-100">
+          <p className="text-sm text-gray-500">{t('zelleHistory.totalVolume') || 'Total volume'}</p>
+          <p className="text-2xl font-bold">{formatCurrency(financialSummary.total)}</p>
+        </div>
+        <div className="glass-effect p-4 rounded-xl border border-gray-100">
+          <p className="text-sm text-gray-500">{t('zelleHistory.validatedVolume') || 'Validated'}</p>
+          <p className="text-2xl font-bold text-green-600">{formatCurrency(financialSummary.validated)}</p>
+        </div>
+        <div className="glass-effect p-4 rounded-xl border border-gray-100">
+          <p className="text-sm text-gray-500">{t('zelleHistory.pendingVolume') || 'Pending'}</p>
+          <p className="text-2xl font-bold text-amber-600">{formatCurrency(financialSummary.pending)}</p>
+        </div>
       </div>
 
       {/* Filters Panel */}
