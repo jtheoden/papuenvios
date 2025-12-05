@@ -1,20 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingBag, DollarSign, TrendingUp, Users, ChevronLeft, ChevronRight, Star } from 'lucide-react';
+import { ShoppingBag, DollarSign, TrendingUp, Users, ChevronLeft, ChevronRight, Star, Gift } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCurrency } from '@/contexts/CurrencyContext';
 import { getActiveCarouselSlides } from '@/lib/carouselService';
 import { getTestimonials } from '@/lib/testimonialService';
 import { getHeadingStyle } from '@/lib/styleUtils';
+import { supabase } from '@/lib/supabase';
 
 const HomePage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { visualSettings } = useBusiness();
   const { isAdmin } = useAuth();
+  const { currencySymbol } = useCurrency();
   const [carouselSlides, setCarouselSlides] = useState([]);
   const [dbTestimonials, setDbTestimonials] = useState([]);
+  const [activeOffers, setActiveOffers] = useState([]);
+  const [landingStats, setLandingStats] = useState({ users: 0, remittances: 0, years: 1 });
+  const [testimonialIndex, setTestimonialIndex] = useState(0);
 
   const features = [
     {
@@ -64,6 +70,19 @@ const HomePage = ({ onNavigate }) => {
     loadTestimonials();
   }, []);
 
+  useEffect(() => {
+    setTestimonialIndex(0);
+  }, [dbTestimonials.length]);
+
+  useEffect(() => {
+    if (dbTestimonials.length > 1) {
+      const timer = setInterval(() => {
+        setTestimonialIndex(prev => (prev + 1) % dbTestimonials.length);
+      }, 7000);
+      return () => clearInterval(timer);
+    }
+  }, [dbTestimonials.length]);
+
   // Load carousel slides from database
   useEffect(() => {
     const loadSlides = async () => {
@@ -77,6 +96,48 @@ const HomePage = ({ onNavigate }) => {
       }
     };
     loadSlides();
+  }, []);
+
+  useEffect(() => {
+    const fetchLandingData = async () => {
+      try {
+        const now = new Date();
+        const [offersRes, usersRes, remittancesRes] = await Promise.all([
+          supabase.from('offers').select('*').eq('is_active', true),
+          supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
+          supabase.from('remittances').select('id, status, created_at')
+        ]);
+
+        const offersList = (offersRes.data || []).filter((offer) => {
+          const starts = offer.start_date ? new Date(offer.start_date) <= now : true;
+          const ends = offer.end_date ? new Date(offer.end_date) >= now : true;
+          return starts && ends;
+        });
+
+        setActiveOffers(offersList);
+
+        const remittances = remittancesRes.data || [];
+        const completed = remittances.filter(r => r.status === 'completed').length;
+        const earliest = remittances.reduce((earliestItem, current) => {
+          if (!current.created_at) return earliestItem;
+          if (!earliestItem) return current;
+          return new Date(current.created_at) < new Date(earliestItem.created_at) ? current : earliestItem;
+        }, null);
+        const startYear = earliest ? new Date(earliest.created_at).getFullYear() : 2020;
+        const years = Math.max(1, new Date().getFullYear() - startYear + 1);
+
+        setLandingStats({
+          users: usersRes.count || 0,
+          remittances: completed,
+          years
+        });
+      } catch (error) {
+        console.error('Error loading offers and stats:', error);
+        setActiveOffers([]);
+      }
+    };
+
+    fetchLandingData();
   }, []);
 
   const nextSlide = () => {
@@ -206,6 +267,108 @@ const HomePage = ({ onNavigate }) => {
         )}
       </section>
 
+      <section className="py-16 px-4 bg-white">
+        <div className="container mx-auto">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 mb-8">
+            <div>
+              <h2 className="text-3xl font-bold" style={getHeadingStyle(visualSettings)}>
+                {t('home.offers.title')}
+              </h2>
+              <p className="text-gray-600 mt-2">{t('home.offers.subtitle')}</p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={() => onNavigate('products')} variant="outline">
+                <Gift className="w-4 h-4 mr-2" />
+                {t('home.offers.cta')}
+              </Button>
+              {isAdmin && (
+                <Button onClick={() => onNavigate('dashboard')}>
+                  {t('home.offers.manage')}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {activeOffers.length > 0 ? (
+              activeOffers.map((offer, idx) => (
+                <motion.div
+                  key={offer.id || idx}
+                  initial={{ opacity: 0, y: 15 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.05 }}
+                  className="glass-effect p-6 rounded-2xl border border-purple-100 shadow-sm"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="px-3 py-1 rounded-full bg-purple-100 text-purple-700 text-xs font-semibold">{offer.discount_type === 'percentage' ? `${offer.discount_value}% OFF` : `${currencySymbol}${offer.discount_value}`}</span>
+                    <span className="text-xs text-gray-500">{offer.code}</span>
+                  </div>
+                  <p className="text-gray-700 text-sm mb-3">{t('home.offers.availableUntil', { date: offer.end_date ? new Date(offer.end_date).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US') : t('home.offers.limited') })}</p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-gray-500">{t('home.offers.usage')}</p>
+                      <p className="font-semibold">{offer.max_usage_global || t('home.offers.unlimited')}</p>
+                    </div>
+                    <Button size="sm" variant="secondary" onClick={() => navigator.clipboard.writeText(offer.code)}>
+                      {t('home.offers.copy')}
+                    </Button>
+                  </div>
+                </motion.div>
+              ))
+            ) : (
+              <div className="col-span-full text-center text-gray-500">
+                {t('home.offers.empty')}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="py-16 px-4 bg-slate-50">
+        <div className="container mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="text-center mb-12"
+          >
+            <h2 className="text-4xl font-bold mb-3" style={getHeadingStyle(visualSettings)}>
+              {t('home.stats.title')}
+            </h2>
+            <p className="text-gray-600">{t('home.stats.subtitle')}</p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-3 gap-6">
+            {[{
+              label: t('home.stats.users'),
+              value: landingStats.users,
+              color: 'from-purple-500 to-indigo-600'
+            }, {
+              label: t('home.stats.remittances'),
+              value: landingStats.remittances,
+              color: 'from-emerald-500 to-green-600'
+            }, {
+              label: t('home.stats.years'),
+              value: landingStats.years,
+              color: 'from-orange-500 to-amber-600'
+            }].map((stat, idx) => (
+              <motion.div
+                key={stat.label}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.1 }}
+                className="p-6 rounded-2xl bg-white shadow-sm border border-gray-100"
+              >
+                <div className={`w-12 h-12 rounded-xl bg-gradient-to-r ${stat.color} flex items-center justify-center mb-4 text-white text-xl font-bold`}>
+                  {stat.value}
+                </div>
+                <p className="text-gray-700 font-semibold">{stat.label}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section className="py-20 px-4">
         <div className="container mx-auto">
           <motion.div
@@ -259,7 +422,7 @@ const HomePage = ({ onNavigate }) => {
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
-            className="text-center mb-16"
+            className="text-center mb-12"
           >
             <h2
               className="text-4xl font-bold mb-4"
@@ -271,45 +434,61 @@ const HomePage = ({ onNavigate }) => {
               {t('home.testimonials.subtitle')}
             </p>
           </motion.div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {dbTestimonials.length > 0 ? (
-              dbTestimonials.map((testimonial) => (
+
+          {dbTestimonials.length > 0 ? (
+            <div className="relative max-w-4xl mx-auto">
+              <AnimatePresence mode="wait">
                 <motion.div
-                  key={testimonial.id}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5 }}
-                  className="glass-effect p-6 rounded-2xl"
+                  key={dbTestimonials[testimonialIndex]?.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.4 }}
+                  className="glass-effect p-8 rounded-2xl"
                 >
-                  {/* SECURITY: Only displays public author info (avatar + name)
-                      Sensitive user data (email, phone, address, etc.) is never exposed */}
                   <div className="flex items-center mb-4">
                     <img
-                      className="w-12 h-12 rounded-full mr-4 object-cover"
-                      alt={testimonial.user_name || 'User'}
-                      src={testimonial.user_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(testimonial.user_name || 'U')}&background=random`}
+                      className="w-14 h-14 rounded-full mr-4 object-cover"
+                      alt={dbTestimonials[testimonialIndex]?.user_name || 'User'}
+                      src={dbTestimonials[testimonialIndex]?.user_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(dbTestimonials[testimonialIndex]?.user_name || 'U')}&background=random`}
                     />
                     <div>
-                      <p className="font-semibold">{testimonial.user_name}</p>
+                      <p className="font-semibold">{dbTestimonials[testimonialIndex]?.user_name}</p>
                       <div className="flex">
-                        {[...Array(testimonial.rating)].map((_, i) => (
+                        {[...Array(dbTestimonials[testimonialIndex]?.rating || 0)].map((_, i) => (
                           <Star key={i} className="w-4 h-4 text-yellow-400 fill-current" />
                         ))}
-                        {[...Array(5 - testimonial.rating)].map((_, i) => (
+                        {[...Array(Math.max(0, 5 - (dbTestimonials[testimonialIndex]?.rating || 0)))].map((_, i) => (
                           <Star key={i} className="w-4 h-4 text-gray-300" />
                         ))}
                       </div>
                     </div>
                   </div>
-                  <p className="text-gray-600 italic">"{testimonial.comment}"</p>
+                  <p className="text-gray-700 italic text-lg">"{dbTestimonials[testimonialIndex]?.comment}"</p>
                 </motion.div>
-              ))
-            ) : (
-              <p className="text-gray-500 col-span-full text-center">
-                {language === 'es' ? 'Aún no hay testimonios disponibles' : 'No testimonials available yet'}
-              </p>
-            )}
-          </div>
+              </AnimatePresence>
+              {dbTestimonials.length > 1 && (
+                <div className="flex justify-between mt-6">
+                  <button
+                    onClick={() => setTestimonialIndex(prev => (prev === 0 ? dbTestimonials.length - 1 : prev - 1))}
+                    className="px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-100"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setTestimonialIndex(prev => (prev + 1) % dbTestimonials.length)}
+                    className="px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-100"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-gray-500 col-span-full text-center">
+              {language === 'es' ? 'Aún no hay testimonios disponibles' : 'No testimonials available yet'}
+            </p>
+          )}
         </div>
       </section>
     </div>

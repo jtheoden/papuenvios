@@ -31,12 +31,15 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/supabase';
+import { logActivity } from '@/lib/activityLogger';
 
 const AdminOffersTab = () => {
   const { t, language } = useLanguage();
   const { currencySymbol } = useCurrency();
+  const { user } = useAuth();
 
   // States
   const [offers, setOffers] = useState([]);
@@ -68,6 +71,21 @@ const AdminOffersTab = () => {
     endDate: '',
     isActive: true
   });
+
+  const recordActivity = async (action, offer, extra = {}) => {
+    await logActivity({
+      action,
+      entityType: 'offer',
+      entityId: offer?.id || offer?.code,
+      performedBy: user?.email,
+      description: t(`offers.activity.${action}`),
+      metadata: {
+        code: offer?.code,
+        status: offer?.is_active,
+        ...extra
+      }
+    });
+  };
 
   // Load offers on mount
   useEffect(() => {
@@ -210,6 +228,8 @@ const AdminOffersTab = () => {
           title: language === 'es' ? '✅ Actualizado' : '✅ Updated',
           description: language === 'es' ? 'Oferta actualizada exitosamente' : 'Offer updated successfully'
         });
+
+        recordActivity('update', { ...offerData, id: editingOffer.id });
       } else {
         // Create new offer
         const { error } = await supabase
@@ -222,6 +242,8 @@ const AdminOffersTab = () => {
           title: language === 'es' ? '✅ Creado' : '✅ Created',
           description: language === 'es' ? 'Oferta creada exitosamente' : 'Offer created successfully'
         });
+
+        recordActivity('create', offerData);
       }
 
       // Reset form and reload
@@ -242,6 +264,7 @@ const AdminOffersTab = () => {
     }
 
     try {
+      const offerToDelete = offers.find(o => o.id === offerId);
       const { error } = await supabase
         .from('offers')
         .delete()
@@ -253,6 +276,8 @@ const AdminOffersTab = () => {
         title: language === 'es' ? '✅ Eliminado' : '✅ Deleted',
         description: language === 'es' ? 'Oferta eliminada exitosamente' : 'Offer deleted successfully'
       });
+
+      recordActivity('delete', offerToDelete);
 
       loadOffers();
     } catch (err) {
@@ -266,12 +291,15 @@ const AdminOffersTab = () => {
 
   const handleToggleActive = async (offerId, currentStatus) => {
     try {
+      const targetOffer = offers.find(o => o.id === offerId);
       const { error } = await supabase
         .from('offers')
         .update({ is_active: !currentStatus })
         .eq('id', offerId);
 
       if (error) throw error;
+
+      recordActivity('status_change', { ...targetOffer, is_active: !currentStatus }, { previousStatus: currentStatus });
 
       loadOffers();
     } catch (err) {

@@ -21,6 +21,7 @@ import LoginPage from '@/components/LoginPage';
 import UserPanel from '@/components/UserPanel';
 import UserManagement from '@/components/UserManagement';
 import AuthCallback from '@/components/AuthCallback';
+import Footer from '@/components/Footer';
 import { withProtectedRoute } from '@/components/withProtectedRoute';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { BusinessProvider, useBusiness } from '@/contexts/BusinessContext';
@@ -257,6 +258,7 @@ function App() {
                           </motion.div>
                         </AnimatePresence>
                       </main>
+                      {currentPage !== 'auth/callback' && <Footer />}
                     </motion.div>
                   )}
                 </AnimatePresence>
