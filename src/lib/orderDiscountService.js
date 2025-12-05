@@ -37,7 +37,7 @@ export const getUserCategoryWithDiscount = async (userId) => {
     // Get discount for this category
     const { data: discountData, error: discountError } = await supabase
       .from('category_discounts')
-      .select('discount_percent, enabled')
+      .select('discount_percentage, enabled')
       .eq('category_name', category)
       .single();
 
@@ -52,7 +52,7 @@ export const getUserCategoryWithDiscount = async (userId) => {
 
     return {
       category,
-      discountPercent: discountData.enabled ? (discountData.discount_percent || 0) : 0,
+      discountPercent: discountData.enabled ? (discountData.discount_percentage || 0) : 0,
       enabled: discountData.enabled,
       categoryFound: true
     };
