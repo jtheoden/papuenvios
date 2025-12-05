@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster } from '@/components/ui/toaster';
 import LoadingScreen from '@/components/LoadingScreen';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { diagnostics } from '@/lib/diagnostics';
 import Header from '@/components/Header';
 import HomePage from '@/components/HomePage';
 import ProductsPage from '@/components/ProductsPage';
@@ -25,6 +26,7 @@ import { LanguageProvider } from '@/contexts/LanguageContext';
 import { BusinessProvider, useBusiness } from '@/contexts/BusinessContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ModalProvider } from '@/contexts/ModalContext';
+import { CurrencyProvider } from '@/contexts/CurrencyContext';
 
 // Component to dynamically update page title
 function DynamicTitle() {
@@ -42,20 +44,21 @@ function DynamicTitle() {
   );
 }
 
-// Protect routes with required roles
-const ProtectedUserManagement = withProtectedRoute(UserManagement, 'admin');
-const ProtectedDashboard = withProtectedRoute(DashboardPage, 'admin');
-const ProtectedAdmin = withProtectedRoute(AdminPage, 'admin');
-const ProtectedSettings = withProtectedRoute(SettingsPage, 'admin');
-const ProtectedUserPanel = withProtectedRoute(UserPanel, 'user');
-const ProtectedSendRemittance = withProtectedRoute(SendRemittancePage, 'user');
-const ProtectedMyRemittances = withProtectedRoute(MyRemittancesPage, 'user');
-const ProtectedMyRecipients = withProtectedRoute(MyRecipientsPage, 'user');
-
 function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState('home');
   const [detailParams, setDetailParams] = useState({ itemId: null, itemType: null });
+
+  // Create protected routes inside App to ensure they have access to context providers
+  // This prevents HMR issues where context might not be available
+  const ProtectedUserManagement = React.useMemo(() => withProtectedRoute(UserManagement, 'admin'), []);
+  const ProtectedDashboard = React.useMemo(() => withProtectedRoute(DashboardPage, 'admin'), []);
+  const ProtectedAdmin = React.useMemo(() => withProtectedRoute(AdminPage, 'admin'), []);
+  const ProtectedSettings = React.useMemo(() => withProtectedRoute(SettingsPage, 'admin'), []);
+  const ProtectedUserPanel = React.useMemo(() => withProtectedRoute(UserPanel, 'user'), []);
+  const ProtectedSendRemittance = React.useMemo(() => withProtectedRoute(SendRemittancePage, 'user'), []);
+  const ProtectedMyRemittances = React.useMemo(() => withProtectedRoute(MyRemittancesPage, 'user'), []);
+  const ProtectedMyRecipients = React.useMemo(() => withProtectedRoute(MyRecipientsPage, 'user'), []);
 
   // Handle URL-based routing for OAuth callback
   useEffect(() => {
@@ -88,6 +91,16 @@ function App() {
     }, 2500);
 
     return () => clearTimeout(timer);
+  }, []);
+
+  // TODO: Run diagnostics on app startup (remove in production)
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      diagnostics.runAll().then(report => {
+        // Store report for debugging
+        window.__papuDiagnosticsReport = report;
+      });
+    }
   }, []);
 
   const handleNavigate = (page, params = {}) => {
@@ -150,7 +163,8 @@ function App() {
         <LanguageProvider>
           <AuthProvider>
             <BusinessProvider>
-              <ModalProvider>
+              <CurrencyProvider>
+                <ModalProvider>
                 <div className="min-h-screen">
                   <DynamicTitle />
 
@@ -188,6 +202,7 @@ function App() {
                 <Toaster />
               </div>
               </ModalProvider>
+              </CurrencyProvider>
             </BusinessProvider>
           </AuthProvider>
         </LanguageProvider>

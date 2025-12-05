@@ -1,7 +1,8 @@
 /**
  * Admin Orders Tab Component
- * Complete orders management with advanced filtering
+ * Complete orders management with advanced filtering and responsive tables
  * Filters: Date range, Status, Payment Status, User, Product, Order Type
+ * Uses: ResponsiveTableWrapper, OrderTableConfig, OrderActionButtons
  */
 
 import { useState, useEffect, useMemo } from 'react';
@@ -43,6 +44,15 @@ import {
 import { ORDER_STATUS, PAYMENT_STATUS, ITEM_TYPES } from '@/lib/constants';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
+import OrderActionButtons from '@/components/admin/OrderActionButtons';
+import { getTableColumns, getModalColumns } from '@/components/admin/OrderTableConfig';
+import {
+  OrderDetailsModal,
+  DeliveryProofModal,
+  ConfirmDialog,
+  InputDialog
+} from '@/components/admin/modals';
 
 // Helper functions
 const getStatusText = (status, paymentStatus, language = 'es') => {
@@ -155,16 +165,11 @@ const AdminOrdersTab = () => {
 
       if (filters.order_type) apiFilters.order_type = filters.order_type;
 
-      const result = await getAllOrders(apiFilters);
-
-      if (result.success) {
-        setOrders(result.orders || []);
-      } else {
-        setError(result.error || 'Error loading orders');
-      }
+      const orders = await getAllOrders(apiFilters);
+      setOrders(orders || []);
     } catch (err) {
       console.error('Error loading orders:', err);
-      setError('Error loading orders');
+      setError(err?.message || 'Error loading orders');
     } finally {
       setLoading(false);
     }
@@ -493,6 +498,44 @@ const AdminOrdersTab = () => {
     }).format(amount);
   };
 
+  // Render order type icon
+  const renderTypeIcon = (type) => {
+    switch (type) {
+      case 'product':
+        return <Package className="h-3 w-3" />;
+      case 'remittance':
+        return <DollarSign className="h-3 w-3" />;
+      default:
+        return <ShoppingBag className="h-3 w-3" />;
+    }
+  };
+
+  // Get columns with actions for responsive table
+  const columnsWithActions = useMemo(() => {
+    const baseColumns = getTableColumns(t, formatDate, formatCurrency, renderTypeIcon);
+    // Add actions column at the end
+    return [
+      ...baseColumns,
+      {
+        key: 'actions',
+        label: t('adminOrders.table.actions'),
+        width: '120px',
+        render: (value, order) => (
+          <OrderActionButtons
+            order={order}
+            onView={() => viewOrderDetails(order)}
+            onStartProcessing={() => handleStartProcessing(order)}
+            onMarkAsShipped={() => handleMarkAsShipped(order)}
+            onUploadDeliveryProof={() => handleUploadDeliveryProof(order)}
+            onCompleteOrder={() => handleCompleteOrder(order)}
+            onCancelOrder={() => handleCancelOrder(order)}
+            actionLoading={actionLoading === order.id}
+          />
+        )
+      }
+    ];
+  }, [t, actionLoading]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -532,7 +575,7 @@ const AdminOrdersTab = () => {
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <StatCard
           label={t('adminOrders.stats.total')}
           value={stats.total}
@@ -592,7 +635,7 @@ const AdminOrdersTab = () => {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Search */}
               <div className="lg:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -619,14 +662,14 @@ const AdminOrdersTab = () => {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="">{t('adminOrders.filters.allStatuses')}</option>
-                  <option value="payment_pending">🟡 {t('adminOrders.table.paymentStatus.pending')}</option>
-                  <option value="payment_validated">✅ {t('adminOrders.table.paymentStatus.validated')}</option>
-                  <option value="processing">🔵 {t('adminOrders.table.orderStatus.processing')}</option>
-                  <option value="shipped">🟣 {t('adminOrders.table.orderStatus.shipped')}</option>
-                  <option value="delivered">🟢 {t('adminOrders.table.orderStatus.delivered')}</option>
-                  <option value="completed">✅ {t('adminOrders.table.orderStatus.completed')}</option>
-                  <option value="cancelled">❌ {t('adminOrders.table.orderStatus.cancelled')}</option>
-                  <option value="rejected">🔴 {t('adminOrders.table.paymentStatus.rejected')}</option>
+                  <option value="payment_pending">{t('adminOrders.table.paymentStatus.pending')}</option>
+                  <option value="payment_validated">{t('adminOrders.table.paymentStatus.validated')}</option>
+                  <option value="processing">{t('adminOrders.table.orderStatus.processing')}</option>
+                  <option value="shipped">{t('adminOrders.table.orderStatus.shipped')}</option>
+                  <option value="delivered">{t('adminOrders.table.orderStatus.delivered')}</option>
+                  <option value="completed">{t('adminOrders.table.orderStatus.completed')}</option>
+                  <option value="cancelled">{t('adminOrders.table.orderStatus.cancelled')}</option>
+                  <option value="rejected">{t('adminOrders.table.paymentStatus.rejected')}</option>
                 </select>
               </div>
 
@@ -688,84 +731,16 @@ const AdminOrdersTab = () => {
         )}
       </AnimatePresence>
 
-      {/* Orders Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <RefreshCw className="h-8 w-8 animate-spin text-blue-600" />
-          </div>
-        ) : error ? (
-          <div className="flex flex-col items-center justify-center py-12 text-red-600">
-            <XCircle className="h-12 w-12 mb-4" />
-            <p>{error}</p>
-            <button
-              onClick={loadOrders}
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              {t('adminOrders.messages.retry')}
-            </button>
-          </div>
-        ) : filteredOrders.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-            <Package className="h-12 w-12 mb-4" />
-            <p>{t('adminOrders.messages.noOrders')}</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('adminOrders.table.order')}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('adminOrders.table.user')}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('adminOrders.table.date')}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('adminOrders.table.type')}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('adminOrders.table.items')}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('adminOrders.table.total')}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('adminOrders.table.paymentStatus.label')}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('adminOrders.table.orderStatus.label')}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('adminOrders.table.actions')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredOrders.map((order) => (
-                  <OrderRow
-                    key={order.id}
-                    order={order}
-                    onViewDetails={viewOrderDetails}
-                    onStartProcessing={handleStartProcessing}
-                    onMarkAsShipped={handleMarkAsShipped}
-                    onUploadDeliveryProof={handleUploadDeliveryProof}
-                    onCompleteOrder={handleCompleteOrder}
-                    onCancelOrder={handleCancelOrder}
-                    formatDate={formatDate}
-                    formatCurrency={formatCurrency}
-                    actionLoading={actionLoading}
-                    t={t}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {/* Orders Table - Responsive */}
+      <ResponsiveTableWrapper
+        data={filteredOrders}
+        columns={columnsWithActions}
+        onRowClick={viewOrderDetails}
+        isLoading={loading}
+        modalTitle={t('adminOrders.detail.title')}
+        modalColumns={getModalColumns(t, formatDate, formatCurrency)}
+        emptyMessage={filteredOrders.length === 0 && !loading ? t('adminOrders.messages.noOrders') : undefined}
+      />
 
       {/* Order Details Modal */}
       {showOrderModal && selectedOrder && (
@@ -798,8 +773,8 @@ const AdminOrdersTab = () => {
         />
       )}
 
-      {/* Custom Confirm Modal */}
-      <CustomConfirmModal
+      {/* Confirm Dialog */}
+      <ConfirmDialog
         show={confirmModal.show}
         title={confirmModal.title}
         message={confirmModal.message}
@@ -811,8 +786,8 @@ const AdminOrdersTab = () => {
         t={t}
       />
 
-      {/* Custom Input Modal */}
-      <CustomInputModal
+      {/* Input Dialog */}
+      <InputDialog
         show={inputModal.show}
         title={inputModal.title}
         message={inputModal.message}
@@ -860,630 +835,7 @@ const StatCard = ({ label, value, icon: Icon, color, isAmount }) => {
   );
 };
 
-// Order Row Component
-const OrderRow = ({
-  order,
-  onViewDetails,
-  onStartProcessing,
-  onMarkAsShipped,
-  onUploadDeliveryProof,
-  onCompleteOrder,
-  onCancelOrder,
-  formatDate,
-  formatCurrency,
-  actionLoading,
-  t
-}) => {
-  // Calculate days in processing
-  const daysInProcessing = order.status === ORDER_STATUS.PROCESSING ? getDaysInProcessing(order) : null;
 
-  // Determine action button based on order state
-  const renderActionButton = () => {
-    const isLoading = actionLoading === order.id;
-
-    // Payment validated and pending - ready to start processing
-    if (order.payment_status === PAYMENT_STATUS.VALIDATED && order.status === ORDER_STATUS.PENDING) {
-      return (
-        <button
-          onClick={() => onStartProcessing(order)}
-          disabled={isLoading}
-          className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Play className="h-3 w-3" />
-          {isLoading ? t('adminOrders.actions.processing') : t('adminOrders.actions.start')}
-        </button>
-      );
-    }
-
-    // Processing - mark as shipped
-    if (order.status === ORDER_STATUS.PROCESSING) {
-      return (
-        <button
-          onClick={() => onMarkAsShipped(order)}
-          disabled={isLoading}
-          className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-600 text-white text-xs font-medium rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Truck className="h-3 w-3" />
-          {isLoading ? t('adminOrders.actions.processing') : t('adminOrders.actions.ship')}
-        </button>
-      );
-    }
-
-    // Shipped - upload delivery proof
-    if (order.status === ORDER_STATUS.SHIPPED) {
-      return (
-        <button
-          onClick={() => onUploadDeliveryProof(order)}
-          disabled={isLoading}
-          className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Camera className="h-3 w-3" />
-          {isLoading ? t('adminOrders.actions.loading') : t('adminOrders.actions.proof')}
-        </button>
-      );
-    }
-
-    // Delivered - complete order (or auto-complete)
-    if (order.status === ORDER_STATUS.DELIVERED) {
-      return (
-        <button
-          onClick={() => onCompleteOrder(order)}
-          disabled={isLoading}
-          className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Check className="h-3 w-3" />
-          {isLoading ? t('adminOrders.actions.completing') : t('adminOrders.actions.complete')}
-        </button>
-      );
-    }
-
-    // Completed or Cancelled - no action
-    if (order.status === ORDER_STATUS.COMPLETED || order.status === ORDER_STATUS.CANCELLED) {
-      return (
-        <span className="text-xs text-gray-500 italic">
-          {order.status === ORDER_STATUS.COMPLETED ? t('adminOrders.table.orderStatus.completed') : t('adminOrders.table.orderStatus.cancelled')}
-        </span>
-      );
-    }
-
-    // Default - view only
-    return <span className="text-xs text-gray-400">-</span>;
-  };
-
-  return (
-    <tr className="hover:bg-gray-50 transition-colors">
-      <td className="px-6 py-4 whitespace-nowrap">
-        <div className="text-sm font-medium text-gray-900">{order.order_number}</div>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap">
-        <div className="text-sm text-gray-900">{order.user_name || 'N/A'}</div>
-        <div className="text-xs text-gray-500">{order.user_email || ''}</div>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap">
-        <div className="text-sm text-gray-900">{formatDate(order.created_at)}</div>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap">
-        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-          {order.order_type === 'product' ? <Package className="h-3 w-3" /> :
-           order.order_type === 'remittance' ? <DollarSign className="h-3 w-3" /> :
-           <ShoppingBag className="h-3 w-3" />}
-          {order.order_type === 'product' ? t('adminOrders.types.products') :
-           order.order_type === 'remittance' ? t('adminOrders.types.remittance') : t('adminOrders.types.mixed')}
-        </span>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap">
-        <div className="text-sm text-gray-900">{order.order_items?.length || 0} items</div>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap">
-        <div className="text-sm font-semibold text-gray-900">
-          {formatCurrency(order.total_amount, order.currencies?.code)}
-        </div>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap">
-        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-          order.payment_status === PAYMENT_STATUS.VALIDATED
-            ? 'bg-green-100 text-green-700'
-            : order.payment_status === PAYMENT_STATUS.REJECTED
-            ? 'bg-red-100 text-red-700'
-            : 'bg-yellow-100 text-yellow-700'
-        }`}>
-          {getStatusIcon(order.status, order.payment_status)}
-          {getStatusText(order.status, order.payment_status, 'es')}
-        </span>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap">
-        <div className="flex flex-col gap-1">
-          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-            order.status === ORDER_STATUS.COMPLETED
-              ? 'bg-green-100 text-green-700'
-              : order.status === ORDER_STATUS.CANCELLED
-              ? 'bg-red-100 text-red-700'
-              : order.status === ORDER_STATUS.SHIPPED
-              ? 'bg-purple-100 text-purple-700'
-              : order.status === ORDER_STATUS.DELIVERED
-              ? 'bg-teal-100 text-teal-700'
-              : 'bg-blue-100 text-blue-700'
-          }`}>
-            {order.status}
-          </span>
-          {daysInProcessing !== null && (
-            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
-              daysInProcessing > 5
-                ? 'bg-red-100 text-red-700'
-                : daysInProcessing > 3
-                ? 'bg-yellow-100 text-yellow-700'
-                : 'bg-blue-100 text-blue-700'
-            }`}>
-              <Clock className="h-3 w-3" />
-              {daysInProcessing} {daysInProcessing === 1 ? t('adminOrders.days.singular') : t('adminOrders.days.plural')}
-            </span>
-          )}
-        </div>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-right">
-        <div className="flex items-center justify-end gap-2">
-          <button
-            onClick={() => onViewDetails(order)}
-            className="text-blue-600 hover:text-blue-900 inline-flex items-center gap-1"
-            title={t('adminOrders.actions.view')}
-          >
-            <Eye className="h-4 w-4" />
-          </button>
-          {renderActionButton()}
-          {/* Cancel button for non-completed orders */}
-          {order.status !== ORDER_STATUS.COMPLETED && order.status !== ORDER_STATUS.CANCELLED && (
-            <button
-              onClick={() => onCancelOrder(order)}
-              disabled={actionLoading === order.id}
-              className="text-red-600 hover:text-red-900 disabled:opacity-50"
-              title={t('adminOrders.actions.cancel')}
-            >
-              <Ban className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-      </td>
-    </tr>
-  );
-};
-
-// Order Details Modal Component
-const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
-      >
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <h3 className="text-xl font-bold text-gray-900">
-            Detalles de Orden: {order.order_number}
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="h-6 w-6" />
-          </button>
-        </div>
-
-        <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Order Information */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Order Info */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <InfoItem label="Número de Orden" value={order.order_number} />
-              <InfoItem label="Fecha" value={formatDate(order.created_at)} />
-              <InfoItem label="Usuario" value={order.user_name || 'N/A'} />
-              <InfoItem label="Email" value={order.user_email || 'N/A'} />
-              <InfoItem label="Tipo de Orden" value={order.order_type} />
-              <InfoItem
-                label="Estado de Pago"
-                value={getStatusText(order.status, order.payment_status, 'es')}
-              />
-              <InfoItem label="Estado de Orden" value={order.status} />
-              <InfoItem label="Método de Pago" value={order.payment_method} />
-            </div>
-
-            {/* Order Items */}
-            <div>
-              <h4 className="text-lg font-semibold text-gray-900 mb-3">Items de la Orden</h4>
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Producto</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Cantidad</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Precio Unit.</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {order.order_items?.map((item, index) => (
-                      <tr key={index}>
-                        <td className="px-4 py-3 text-sm text-gray-900">
-                          {item.item_name_es || item.item_name_en}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{item.quantity}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">
-                          {formatCurrency(item.unit_price, order.currencies?.code)}
-                        </td>
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                          {formatCurrency(item.total_price, order.currencies?.code)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Totals */}
-            <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Subtotal:</span>
-                <span className="font-medium">{formatCurrency(order.subtotal, order.currencies?.code)}</span>
-              </div>
-              {order.shipping_cost > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Envío:</span>
-                  <span className="font-medium">{formatCurrency(order.shipping_cost, order.currencies?.code)}</span>
-                </div>
-              )}
-              {order.discount_amount > 0 && (
-                <div className="flex justify-between text-sm text-green-600">
-                  <span>Descuento:</span>
-                  <span className="font-medium">-{formatCurrency(order.discount_amount, order.currencies?.code)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-200">
-                <span>Total:</span>
-                <span>{formatCurrency(order.total_amount, order.currencies?.code)}</span>
-              </div>
-            </div>
-
-            {/* Shipping Info */}
-            {order.shipping_address && (
-              <div>
-                <h4 className="text-lg font-semibold text-gray-900 mb-3">Información de Envío</h4>
-                <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
-                  <p><span className="font-medium">Dirección:</span> {order.shipping_address}</p>
-                  {order.recipient_info && (
-                    <>
-                      <p><span className="font-medium">Destinatario:</span> {order.recipient_info.name}</p>
-                      <p><span className="font-medium">Teléfono:</span> {order.recipient_info.phone}</p>
-                    </>
-                  )}
-                  {order.delivery_instructions && (
-                    <p><span className="font-medium">Instrucciones:</span> {order.delivery_instructions}</p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Notes */}
-            {order.notes && (
-              <div>
-                <h4 className="text-lg font-semibold text-gray-900 mb-3">Notas</h4>
-                <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-4">{order.notes}</p>
-              </div>
-            )}
-
-            {/* Rejection Reason */}
-            {order.rejection_reason && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <h4 className="text-lg font-semibold text-red-900 mb-2">Razón de Rechazo</h4>
-                <p className="text-sm text-red-700">{order.rejection_reason}</p>
-              </div>
-            )}
-          </div>
-
-          {/* Right Column - Payment Proof */}
-          <div className="lg:col-span-1">
-            {order.payment_proof_url ? (
-              <div className="sticky top-20 space-y-3">
-                <h4 className="text-lg font-semibold text-gray-900">Comprobante de Pago</h4>
-                <div className="bg-gray-50 rounded-lg border border-gray-200 p-2">
-                  <img
-                    src={order.payment_proof_url}
-                    alt="Comprobante de pago"
-                    className="w-full h-auto rounded-lg"
-                  />
-                </div>
-                <a
-                  href={order.payment_proof_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-center text-sm text-blue-600 hover:text-blue-700 hover:underline"
-                >
-                  Ver en tamaño completo →
-                </a>
-              </div>
-            ) : (
-              <div className="sticky top-20 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p className="text-sm text-yellow-800 font-medium">
-                  Sin comprobante de pago
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-          >
-            Cerrar
-          </button>
-        </div>
-      </motion.div>
-    </div>
-  );
-};
-
-// Info Item Component
-const InfoItem = ({ label, value }) => (
-  <div>
-    <dt className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">{label}</dt>
-    <dd className="text-sm text-gray-900 font-medium">{value}</dd>
-  </div>
-);
-
-// Delivery Proof Modal Component
-const DeliveryProofModal = ({ order, onClose, onFileChange, onSubmit, preview, loading, t }) => {
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-white rounded-lg shadow-xl max-w-2xl w-full"
-      >
-        <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-lg">
-          <h3 className="text-xl font-bold text-gray-900">
-            📸 {t('adminOrders.deliveryModal.title')}
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-            disabled={loading}
-          >
-            <X className="h-6 w-6" />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-sm text-blue-900">
-              <strong>{t('adminOrders.deliveryModal.orderLabel')}</strong> {order.order_number}
-            </p>
-            <p className="text-sm text-blue-900">
-              <strong>{t('adminOrders.deliveryModal.customerLabel')}</strong> {order.user_name}
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {t('adminOrders.deliveryModal.selectPhoto')}
-            </label>
-            <div className="flex items-center justify-center w-full">
-              <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
-                {preview ? (
-                  <img
-                    src={preview}
-                    alt="Preview"
-                    className="max-h-44 rounded-lg object-contain"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                    <ImageIcon className="h-12 w-12 text-gray-400 mb-3" />
-                    <p className="mb-2 text-sm text-gray-500">
-                      <span className="font-semibold">{t('adminOrders.deliveryModal.clickToUpload')}</span> {t('adminOrders.deliveryModal.dragHere')}
-                    </p>
-                    <p className="text-xs text-gray-500">{t('adminOrders.deliveryModal.fileTypes')}</p>
-                  </div>
-                )}
-                <input
-                  type="file"
-                  className="hidden"
-                  accept="image/*"
-                  onChange={onFileChange}
-                  disabled={loading}
-                />
-              </label>
-            </div>
-          </div>
-
-          {preview && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-              <p className="text-sm text-green-700">
-                ✅ {t('adminOrders.deliveryModal.imageLoaded')}
-              </p>
-            </div>
-          )}
-
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-            <p className="text-xs text-yellow-800">
-              <strong>{t('adminOrders.deliveryModal.note')}</strong> {t('adminOrders.deliveryModal.noteText')}
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end gap-3 rounded-b-lg">
-          <button
-            onClick={onClose}
-            disabled={loading}
-            className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50"
-          >
-            {t('adminOrders.deliveryModal.cancel')}
-          </button>
-          <button
-            onClick={onSubmit}
-            disabled={loading || !preview}
-            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
-          >
-            {loading ? (
-              <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                {t('adminOrders.deliveryModal.uploading')}
-              </>
-            ) : (
-              <>
-                <Camera className="h-4 w-4" />
-                {t('adminOrders.deliveryModal.submit')}
-              </>
-            )}
-          </button>
-        </div>
-      </motion.div>
-    </div>
-  );
-};
-
-// Custom Confirm Modal Component
-const CustomConfirmModal = ({ show, title, message, onConfirm, onCancel, t }) => {
-  if (!show) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-white rounded-lg shadow-xl max-w-md w-full"
-      >
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 rounded-t-lg">
-          <h3 className="text-xl font-bold text-white">{title}</h3>
-        </div>
-
-        <div className="p-6">
-          <p className="text-gray-700 text-base">{message}</p>
-        </div>
-
-        <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 rounded-b-lg">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors font-medium"
-          >
-            {t('adminOrders.modals.cancel')}
-          </button>
-          <button
-            onClick={onConfirm}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-          >
-            {t('adminOrders.modals.confirm')}
-          </button>
-        </div>
-      </motion.div>
-    </div>
-  );
-};
-
-// Custom Input Modal Component
-const CustomInputModal = ({ show, title, message, defaultValue, onConfirm, onCancel, t }) => {
-  const [inputValue, setInputValue] = useState(defaultValue || '');
-
-  useEffect(() => {
-    if (show) {
-      setInputValue(defaultValue || '');
-    }
-  }, [show, defaultValue]);
-
-  if (!show) return null;
-
-  const handleSubmit = () => {
-    onConfirm(inputValue);
-  };
-
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter') {
-      handleSubmit();
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-white rounded-lg shadow-xl max-w-md w-full"
-      >
-        <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-6 py-4 rounded-t-lg">
-          <h3 className="text-xl font-bold text-white">{title}</h3>
-        </div>
-
-        <div className="p-6 space-y-4">
-          <p className="text-gray-700 text-base">{message}</p>
-          <input
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyPress={handleKeyPress}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-            autoFocus
-          />
-        </div>
-
-        <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 rounded-b-lg">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors font-medium"
-          >
-            {t('adminOrders.modals.cancel')}
-          </button>
-          <button
-            onClick={handleSubmit}
-            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
-          >
-            {t('adminOrders.modals.submit')}
-          </button>
-        </div>
-      </motion.div>
-    </div>
-  );
-};
-
-// Toast Notification Component
-const ToastNotification = ({ message, type, onClose }) => {
-  if (!message) return null;
-
-  const colors = {
-    success: 'bg-green-500',
-    error: 'bg-red-500',
-    info: 'bg-blue-500',
-    warning: 'bg-yellow-500'
-  };
-
-  const icons = {
-    success: '✅',
-    error: '❌',
-    info: 'ℹ️',
-    warning: '⚠️'
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: -50 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -50 }}
-      className="fixed top-4 right-4 z-50 max-w-md"
-    >
-      <div className={`${colors[type]} text-white px-6 py-4 rounded-lg shadow-lg flex items-center gap-3`}>
-        <span className="text-2xl">{icons[type]}</span>
-        <p className="flex-1 font-medium">{message}</p>
-        <button
-          onClick={onClose}
-          className="text-white hover:text-gray-200 transition-colors"
-        >
-          <X className="h-5 w-5" />
-        </button>
-      </div>
-    </motion.div>
-  );
-};
+// Modal components extracted to /components/admin/modals/ and imported above
 
 export default AdminOrdersTab;

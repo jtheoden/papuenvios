@@ -1,9 +1,19 @@
 /**
  * Remittance Service
  * Manages remittance types, remittance orders, and all related operations
+ * Uses standardized error handling with AppError class
  */
 
 import { supabase } from '@/lib/supabase';
+import {
+  handleError,
+  logError,
+  createValidationError,
+  createNotFoundError,
+  parseSupabaseError,
+  createPermissionError,
+  ERROR_CODES
+} from './errorHandler';
 import {
   notifyAdminNewPaymentProof,
   notifyUserPaymentValidated,
@@ -13,57 +23,52 @@ import {
 import { getAvailableZelleAccount, registerZelleTransaction } from '@/lib/zelleService';
 
 /**
- * Generate a signed URL for accessing a payment proof from private storage
+ * Generate a signed URL for accessing a proof from private storage
  * Signed URLs are valid for 1 hour and work with private buckets
- * @param {string} proofFilePath - File path in the remittance-proofs bucket (e.g., "user-id/REM-2025-0001.jpg")
- * @returns {Promise<{success: boolean, signedUrl?: string, error?: string}>}
+ * @param {string} proofFilePath - File path in the storage bucket (e.g., "user-id/REM-2025-0001.jpg")
+ * @param {string} bucketName - Optional bucket name (defaults to 'remittance-proofs' for payment proofs)
+ * @returns {Promise<{success: boolean, signedUrl?: string, error?: string}>} Result object with signed URL or error
  */
-export const generateProofSignedUrl = async (proofFilePath) => {
+export const generateProofSignedUrl = async (proofFilePath, bucketName = 'remittance-proofs') => {
   try {
     if (!proofFilePath) {
-      console.warn('[generateProofSignedUrl] No file path provided');
-      return { success: false, error: 'Ruta de comprobante no proporcionada' };
+      return {
+        success: false,
+        error: 'File path is required'
+      };
     }
 
-    console.log('[generateProofSignedUrl] Generating signed URL for:', proofFilePath);
-
-    // Generar URL firmada válida por 1 hora
+    // Generate signed URL valid for 1 hour (3600 seconds)
     const { data, error } = await supabase.storage
-      .from('remittance-proofs')
-      .createSignedUrl(proofFilePath, 3600); // 3600 segundos = 1 hora
+      .from(bucketName)
+      .createSignedUrl(proofFilePath, 3600);
 
     if (error) {
-      console.error('[generateProofSignedUrl] Supabase error:', {
-        message: error.message,
-        name: error.name,
-        status: error.status,
-        filePath: proofFilePath
-      });
-
-      // Check if it's a permission issue
-      if (error.message?.includes('permission') || error.message?.includes('Policy')) {
-        return {
-          success: false,
-          error: 'No tiene permisos para acceder a este comprobante. Verifique que la ruta sea correcta.'
-        };
-      }
-
-      return { success: false, error: error.message };
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'generateProofSignedUrl', proofFilePath });
+      return {
+        success: false,
+        error: appError.message || 'Failed to generate signed URL'
+      };
     }
 
     if (!data?.signedUrl) {
-      console.error('[generateProofSignedUrl] No signed URL returned:', data);
-      return { success: false, error: 'No se pudo generar URL firmada' };
+      return {
+        success: false,
+        error: 'No signed URL returned from storage'
+      };
     }
 
-    console.log('[generateProofSignedUrl] Successfully generated signed URL');
-    return { success: true, signedUrl: data.signedUrl };
+    return {
+      success: true,
+      signedUrl: data.signedUrl
+    };
   } catch (error) {
-    console.error('[generateProofSignedUrl] Exception:', {
-      message: error.message,
-      stack: error.stack
-    });
-    return { success: false, error: error.message };
+    logError(error, { operation: 'generateProofSignedUrl', proofFilePath });
+    return {
+      success: false,
+      error: error?.message || 'Unknown error generating signed URL'
+    };
   }
 };
 
@@ -93,8 +98,9 @@ export const DELIVERY_METHODS = {
 // ============================================================================
 
 /**
- * Obtener todos los tipos de remesas (Admin)
- * @returns {Promise<{success: boolean, types: Array, error?: string}>}
+ * Get all remittance types (Admin)
+ * @throws {AppError} If database query fails
+ * @returns {Promise<Array>} Array of remittance types
  */
 export const getAllRemittanceTypes = async () => {
   try {
@@ -103,18 +109,24 @@ export const getAllRemittanceTypes = async () => {
       .select('*')
       .order('display_order', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'getAllRemittanceTypes' });
+      throw appError;
+    }
 
-    return { success: true, types: data || [] };
+    return data || [];
   } catch (error) {
-    console.error('Error fetching remittance types:', error);
-    return { success: false, types: [], error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getAllRemittanceTypes' });
+    throw appError;
   }
 };
 
 /**
- * Obtener tipos de remesas activos (Usuario)
- * @returns {Promise<{success: boolean, types: Array, error?: string}>}
+ * Get active remittance types (User)
+ * @throws {AppError} If database query fails
+ * @returns {Promise<Array>} Array of active remittance types
  */
 export const getActiveRemittanceTypes = async () => {
   try {
@@ -124,59 +136,83 @@ export const getActiveRemittanceTypes = async () => {
       .eq('is_active', true)
       .order('display_order', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'getActiveRemittanceTypes' });
+      throw appError;
+    }
 
-    return { success: true, types: data || [] };
+    return data || [];
   } catch (error) {
-    console.error('Error fetching active remittance types:', error);
-    return { success: false, types: [], error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getActiveRemittanceTypes' });
+    throw appError;
   }
 };
 
 /**
- * Obtener un tipo de remesa por ID
- * @param {string} typeId - ID del tipo
- * @returns {Promise<{success: boolean, type?: Object, error?: string}>}
+ * Get a specific remittance type by ID
+ * @param {string} typeId - Remittance type ID
+ * @throws {AppError} If type not found or query fails
+ * @returns {Promise<Object>} Remittance type details
  */
 export const getRemittanceTypeById = async (typeId) => {
   try {
+    if (!typeId) {
+      throw createValidationError({ typeId: 'Type ID is required' });
+    }
+
     const { data, error } = await supabase
       .from('remittance_types')
       .select('*')
       .eq('id', typeId)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      const appError = parseSupabaseError(error);
+      if (!data) {
+        throw createNotFoundError('Remittance type', typeId);
+      }
+      logError(appError, { operation: 'getRemittanceTypeById', typeId });
+      throw appError;
+    }
 
-    return { success: true, type: data };
+    return data;
   } catch (error) {
-    console.error('Error fetching remittance type:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getRemittanceTypeById', typeId });
+    throw appError;
   }
 };
 
 /**
- * Crear nuevo tipo de remesa (Admin)
- * @param {Object} typeData - Datos del tipo
- * @returns {Promise<{success: boolean, type?: Object, error?: string}>}
+ * Create a new remittance type (Admin)
+ * @param {Object} typeData - Type creation data
+ * @throws {AppError} If validation fails or creation fails
+ * @returns {Promise<Object>} Created remittance type
  */
 export const createRemittanceType = async (typeData) => {
   try {
-    // Validaciones
+    // Validate required fields
     if (!typeData.name || !typeData.currency_code || !typeData.delivery_currency) {
-      throw new Error('Nombre y monedas son requeridos');
+      throw createValidationError({
+        name: !typeData.name ? 'Name is required' : undefined,
+        currency_code: !typeData.currency_code ? 'Currency code is required' : undefined,
+        delivery_currency: !typeData.delivery_currency ? 'Delivery currency is required' : undefined
+      }, 'Missing required remittance type fields');
     }
 
-    if (!typeData.exchange_rate || typeData.exchange_rate <= 0) {
-      throw new Error('Tasa de cambio debe ser mayor a 0');
+    // Validate numeric fields
+    if (!typeData.exchange_rate || parseFloat(typeData.exchange_rate) <= 0) {
+      throw createValidationError({ exchange_rate: 'Exchange rate must be greater than 0' });
     }
 
-    if (!typeData.min_amount || typeData.min_amount <= 0) {
-      throw new Error('Monto mínimo debe ser mayor a 0');
+    if (!typeData.min_amount || parseFloat(typeData.min_amount) <= 0) {
+      throw createValidationError({ min_amount: 'Minimum amount must be greater than 0' });
     }
 
-    if (typeData.max_amount && typeData.max_amount < typeData.min_amount) {
-      throw new Error('Monto máximo debe ser mayor al mínimo');
+    if (typeData.max_amount && parseFloat(typeData.max_amount) < parseFloat(typeData.min_amount)) {
+      throw createValidationError({ max_amount: 'Maximum amount must be greater than minimum' });
     }
 
     const { data, error } = await supabase
@@ -185,34 +221,44 @@ export const createRemittanceType = async (typeData) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'createRemittanceType', typeName: typeData.name });
+      throw appError;
+    }
 
-    return { success: true, type: data };
+    return data;
   } catch (error) {
-    console.error('Error creating remittance type:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'createRemittanceType' });
+    throw appError;
   }
 };
 
 /**
- * Actualizar tipo de remesa (Admin)
- * @param {string} typeId - ID del tipo
- * @param {Object} updates - Datos a actualizar
- * @returns {Promise<{success: boolean, type?: Object, error?: string}>}
+ * Update a remittance type (Admin)
+ * @param {string} typeId - Remittance type ID
+ * @param {Object} updates - Fields to update
+ * @throws {AppError} If type not found or update fails
+ * @returns {Promise<Object>} Updated remittance type
  */
 export const updateRemittanceType = async (typeId, updates) => {
   try {
-    // Validaciones
-    if (updates.exchange_rate && updates.exchange_rate <= 0) {
-      throw new Error('Tasa de cambio debe ser mayor a 0');
+    if (!typeId) {
+      throw createValidationError({ typeId: 'Type ID is required' });
     }
 
-    if (updates.min_amount && updates.min_amount <= 0) {
-      throw new Error('Monto mínimo debe ser mayor a 0');
+    // Validate numeric fields if provided
+    if (updates.exchange_rate !== undefined && parseFloat(updates.exchange_rate) <= 0) {
+      throw createValidationError({ exchange_rate: 'Exchange rate must be greater than 0' });
     }
 
-    if (updates.max_amount && updates.min_amount && updates.max_amount < updates.min_amount) {
-      throw new Error('Monto máximo debe ser mayor al mínimo');
+    if (updates.min_amount !== undefined && parseFloat(updates.min_amount) <= 0) {
+      throw createValidationError({ min_amount: 'Minimum amount must be greater than 0' });
+    }
+
+    if (updates.max_amount && updates.min_amount && parseFloat(updates.max_amount) < parseFloat(updates.min_amount)) {
+      throw createValidationError({ max_amount: 'Maximum amount must be greater than minimum' });
     }
 
     const { data, error } = await supabase
@@ -222,33 +268,50 @@ export const updateRemittanceType = async (typeId, updates) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      const appError = parseSupabaseError(error);
+      if (!data) {
+        throw createNotFoundError('Remittance type', typeId);
+      }
+      logError(appError, { operation: 'updateRemittanceType', typeId });
+      throw appError;
+    }
 
-    return { success: true, type: data };
+    return data;
   } catch (error) {
-    console.error('Error updating remittance type:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'updateRemittanceType', typeId });
+    throw appError;
   }
 };
 
 /**
- * Eliminar tipo de remesa (Super Admin)
- * @param {string} typeId - ID del tipo
- * @returns {Promise<{success: boolean, error?: string}>}
+ * Delete a remittance type (Super Admin)
+ * @param {string} typeId - Remittance type ID to delete
+ * @throws {AppError} If type has associated remittances or deletion fails
+ * @returns {Promise<boolean>} True if deletion successful
  */
 export const deleteRemittanceType = async (typeId) => {
   try {
-    // Verificar si hay remesas asociadas
+    if (!typeId) {
+      throw createValidationError({ typeId: 'Type ID is required' });
+    }
+
+    // Check if there are associated remittances
     const { data: remittances, error: checkError } = await supabase
       .from('remittances')
       .select('id')
       .eq('remittance_type_id', typeId)
       .limit(1);
 
-    if (checkError) throw checkError;
+    if (checkError) {
+      const appError = parseSupabaseError(checkError);
+      logError(appError, { operation: 'deleteRemittanceType - check', typeId });
+      throw appError;
+    }
 
     if (remittances && remittances.length > 0) {
-      throw new Error('No se puede eliminar. Existen remesas asociadas a este tipo.');
+      throw new Error('Cannot delete. There are remittances associated with this type.');
     }
 
     const { error } = await supabase
@@ -256,12 +319,17 @@ export const deleteRemittanceType = async (typeId) => {
       .delete()
       .eq('id', typeId);
 
-    if (error) throw error;
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'deleteRemittanceType', typeId });
+      throw appError;
+    }
 
-    return { success: true };
+    return true;
   } catch (error) {
-    console.error('Error deleting remittance type:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'deleteRemittanceType', typeId });
+    throw appError;
   }
 };
 
@@ -270,13 +338,25 @@ export const deleteRemittanceType = async (typeId) => {
 // ============================================================================
 
 /**
- * Calcular detalles de una remesa
- * @param {string} typeId - ID del tipo de remesa
- * @param {number} amount - Monto a enviar
- * @returns {Promise<{success: boolean, calculation?: Object, error?: string}>}
+ * Calculate remittance details including exchange rate, commissions, and delivery amount
+ * @param {string} typeId - Remittance type ID
+ * @param {number} amount - Amount to send
+ * @throws {AppError} If type not found, amount invalid, or calculation fails
+ * @returns {Promise<Object>} Calculation details with commission and delivery amount
  */
 export const calculateRemittance = async (typeId, amount) => {
   try {
+    if (!typeId || amount === undefined || amount === null) {
+      throw createValidationError(
+        { typeId: !typeId ? 'Type ID is required' : undefined, amount: !amount ? 'Amount is required' : undefined },
+        'Missing calculation parameters'
+      );
+    }
+
+    if (parseFloat(amount) <= 0) {
+      throw createValidationError({ amount: 'Amount must be greater than 0' });
+    }
+
     const { data: type, error } = await supabase
       .from('remittance_types')
       .select('*')
@@ -284,50 +364,65 @@ export const calculateRemittance = async (typeId, amount) => {
       .eq('is_active', true)
       .single();
 
-    if (error) throw error;
-    if (!type) throw new Error('Tipo de remesa no encontrado');
+    if (error) {
+      const appError = parseSupabaseError(error);
+      if (!type) {
+        throw createNotFoundError('Remittance type', typeId);
+      }
+      logError(appError, { operation: 'calculateRemittance', typeId, amount });
+      throw appError;
+    }
 
-    // Validar límites
+    if (!type) {
+      throw createNotFoundError('Remittance type', typeId);
+    }
+
+    // Validate amount limits
     if (amount < type.min_amount) {
-      throw new Error(`Monto mínimo: ${type.min_amount} ${type.currency_code}`);
+      throw createValidationError(
+        { amount: `Minimum amount is ${type.min_amount} ${type.currency_code}` },
+        'Amount below minimum'
+      );
     }
 
     if (type.max_amount && amount > type.max_amount) {
-      throw new Error(`Monto máximo: ${type.max_amount} ${type.currency_code}`);
+      throw createValidationError(
+        { amount: `Maximum amount is ${type.max_amount} ${type.currency_code}` },
+        'Amount exceeds maximum'
+      );
     }
 
-    // Calcular comisión
+    // Calculate commission - single source of truth formula
     const commissionPercentage = (amount * (type.commission_percentage || 0)) / 100;
     const commissionFixed = type.commission_fixed || 0;
     const totalCommission = commissionPercentage + commissionFixed;
 
-    // Calcular monto a entregar
+    // Calculate delivery amount
     const amountToDeliver = (amount * type.exchange_rate) - (totalCommission * type.exchange_rate);
 
     return {
-      success: true,
-      calculation: {
-        amount,
-        exchangeRate: type.exchange_rate,
-        commissionPercentage: type.commission_percentage || 0,
-        commissionFixed: type.commission_fixed || 0,
-        totalCommission,
-        amountToDeliver,
-        currency: type.currency_code,
-        deliveryCurrency: type.delivery_currency,
-        deliveryMethod: type.delivery_method
-      }
+      amount,
+      exchangeRate: type.exchange_rate,
+      commissionPercentage: type.commission_percentage || 0,
+      commissionFixed: type.commission_fixed || 0,
+      totalCommission,
+      amountToDeliver,
+      currency: type.currency_code,
+      deliveryCurrency: type.delivery_currency,
+      deliveryMethod: type.delivery_method
     };
   } catch (error) {
-    console.error('Error calculating remittance:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'calculateRemittance', typeId, amount });
+    throw appError;
   }
 };
 
 /**
- * Crear nueva remesa (Usuario)
- * @param {Object} remittanceData - Datos de la remesa
- * @returns {Promise<{success: boolean, remittance?: Object, error?: string}>}
+ * Create a new remittance (User)
+ * @param {Object} remittanceData - Remittance creation data
+ * @throws {AppError} If validation fails or creation fails
+ * @returns {Promise<Object>} Created remittance
  */
 export const createRemittance = async (remittanceData) => {
   try {
@@ -342,71 +437,65 @@ export const createRemittance = async (remittanceData) => {
       notes,
       zelle_account_id,
       recipient_id,
-      recipient_bank_account_id // Para remesas off-cash (transfer, card, moneypocket)
+      recipient_bank_account_id
     } = remittanceData;
 
-    // Validaciones básicas
+    // Validate required fields
     if (!remittance_type_id || !amount || !recipient_name || !recipient_phone) {
-      throw new Error('Datos incompletos. Verifique tipo, monto, nombre y teléfono del destinatario.');
+      throw createValidationError({
+        remittance_type_id: !remittance_type_id ? 'Remittance type is required' : undefined,
+        amount: !amount ? 'Amount is required' : undefined,
+        recipient_name: !recipient_name ? 'Recipient name is required' : undefined,
+        recipient_phone: !recipient_phone ? 'Recipient phone is required' : undefined
+      }, 'Missing required remittance fields');
     }
 
-    // Obtener tipo y validar
-    const { data: type, error: typeError } = await supabase
-      .from('remittance_types')
-      .select('*')
-      .eq('id', remittance_type_id)
-      .eq('is_active', true)
-      .single();
-
-    if (typeError) throw typeError;
-    if (!type) throw new Error('Tipo de remesa no válido o inactivo');
-
-    // Validar límites
-    if (amount < type.min_amount) {
-      throw new Error(`Monto mínimo: ${type.min_amount} ${type.currency_code}`);
-    }
-
-    if (type.max_amount && amount > type.max_amount) {
-      throw new Error(`Monto máximo: ${type.max_amount} ${type.currency_code}`);
-    }
-
-    // Calcular montos
+    // Calculate using single source of truth
     const calculation = await calculateRemittance(remittance_type_id, amount);
-    if (!calculation.success) throw new Error(calculation.error);
+    const {
+      commissionPercentage,
+      commissionFixed,
+      totalCommission,
+      amountToDeliver,
+      exchangeRate,
+      currency: currencyCode,
+      deliveryCurrency
+    } = calculation;
 
-    // Obtener usuario actual
+    // Get authenticated user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) throw userError;
-    if (!user) throw new Error('Usuario no autenticado');
+    if (userError) {
+      const appError = parseSupabaseError(userError);
+      logError(appError, { operation: 'createRemittance - auth' });
+      throw appError;
+    }
 
-    // Calcular comisiones según el esquema de la DB
-    const commissionPercentage = type.commission_percentage || 0;
-    const commissionFixed = type.commission_fixed || 0;
-    const commissionTotal = (amount * commissionPercentage / 100) + commissionFixed;
-    const amountToDeliver = (amount * type.exchange_rate) - (commissionTotal * type.exchange_rate);
+    if (!user) {
+      throw new Error('Not authenticated');
+    }
 
-    // Obtener cuenta Zelle - usar la proporcionada o encontrar una disponible
+    // Get or find available Zelle account
     let selectedZelleAccountId = zelle_account_id;
     if (!selectedZelleAccountId) {
       const zelleResult = await getAvailableZelleAccount('remittance', amount);
       if (!zelleResult.success) {
-        throw new Error('No hay cuentas Zelle disponibles. Por favor intente más tarde.');
+        throw new Error('No Zelle accounts available. Please try again later.');
       }
       selectedZelleAccountId = zelleResult.account.id;
     }
 
-    // Crear remesa con los nombres de columnas correctos según el esquema
+    // Create remittance with calculated values (single source of truth)
     const insertData = {
       user_id: user.id,
       remittance_type_id,
       amount_sent: amount,
-      exchange_rate: type.exchange_rate,
+      exchange_rate: exchangeRate,
       commission_percentage: commissionPercentage,
       commission_fixed: commissionFixed,
-      commission_total: commissionTotal,
+      commission_total: totalCommission,
       amount_to_deliver: amountToDeliver,
-      currency_sent: type.currency_code,
-      currency_delivered: type.delivery_currency,
+      currency_sent: currencyCode,
+      currency_delivered: deliveryCurrency,
       recipient_name,
       recipient_phone,
       recipient_address,
@@ -417,7 +506,6 @@ export const createRemittance = async (remittanceData) => {
       zelle_account_id: selectedZelleAccountId
     };
 
-    // Incluir recipient_id si se proporcionó (relación con recipient existente)
     if (recipient_id) {
       insertData.recipient_id = recipient_id;
     }
@@ -428,147 +516,201 @@ export const createRemittance = async (remittanceData) => {
       .select('*, zelle_accounts(*)')
       .single();
 
-    if (error) throw error;
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'createRemittance - insert', amount, recipientName: recipient_name });
+      throw appError;
+    }
 
-    // Registrar transacción en historial de Zelle
-    await registerZelleTransaction({
-      zelle_account_id: selectedZelleAccountId,
-      transaction_type: 'remittance',
-      reference_id: data.id,
-      amount: amount,
-      notes: `Remesa ${data.remittance_number}`
-    });
+    // Register Zelle transaction (graceful fallback if fails)
+    try {
+      await registerZelleTransaction({
+        zelle_account_id: selectedZelleAccountId,
+        transaction_type: 'remittance',
+        reference_id: data.id,
+        amount: amount,
+        notes: `Remesa ${data.remittance_number}`
+      });
+    } catch (zelleError) {
+      logError(zelleError, { operation: 'createRemittance - Zelle registration', remittanceId: data.id });
+      // Don't fail remittance creation if Zelle registration fails
+    }
 
-    // Si es remesa off-cash (transfer, card, moneypocket), crear registro de bank_transfer
-    if (type.delivery_method !== 'cash' && recipient_bank_account_id) {
-      const bankTransferResult = await createBankTransfer(
-        data.id,
-        recipient_bank_account_id,
-        { amount_transferred: amountToDeliver }
-      );
-
-      if (!bankTransferResult.success) {
-        console.error('Error creating bank transfer record:', bankTransferResult.error);
-        // No lanzar error, la remesa ya fue creada, solo log el error
+    // Create bank transfer for off-cash methods (graceful fallback if fails)
+    if (insertData.currency_delivered !== 'cash' && recipient_bank_account_id) {
+      try {
+        await createBankTransfer(
+          data.id,
+          recipient_bank_account_id,
+          { amount_transferred: amountToDeliver }
+        );
+      } catch (bankError) {
+        logError(bankError, { operation: 'createRemittance - bank transfer', remittanceId: data.id });
+        // Don't fail remittance creation if bank transfer creation fails
       }
     }
 
-    return { success: true, remittance: data };
+    return data;
   } catch (error) {
-    console.error('Error creating remittance:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'createRemittance' });
+    throw appError;
   }
 };
 
 /**
- * Subir comprobante de pago (Usuario)
- * @param {string} remittanceId - ID de la remesa
- * @param {File} file - Archivo del comprobante
- * @param {string} reference - Referencia del pago
- * @param {string} notes - Notas adicionales
- * @returns {Promise<{success: boolean, remittance?: Object, error?: string}>}
+ * Upload payment proof for a remittance (User)
+ * Validates remittance state, stores proof file, updates status, notifies admin
+ * @param {string} remittanceId - Remittance ID
+ * @param {File} file - Proof file to upload
+ * @param {string} reference - Payment reference
+ * @param {string} notes - Optional payment notes
+ * @throws {AppError} If validation fails, upload fails, or remittance not found
+ * @returns {Promise<Object>} Updated remittance with proof details
  */
 export const uploadPaymentProof = async (remittanceId, file, reference, notes = '') => {
   try {
-    if (!file) throw new Error('Archivo de comprobante es requerido');
-    if (!reference) throw new Error('Referencia de pago es requerida');
+    if (!remittanceId || !file || !reference) {
+      throw createValidationError({
+        remittanceId: !remittanceId ? 'Remittance ID is required' : undefined,
+        file: !file ? 'Proof file is required' : undefined,
+        reference: !reference ? 'Payment reference is required' : undefined
+      }, 'Missing required fields for proof upload');
+    }
 
-    // Obtener remesa actual
+    // Fetch remittance with its type
     const { data: remittance, error: fetchError } = await supabase
       .from('remittances')
       .select('*, remittance_types(*)')
       .eq('id', remittanceId)
       .single();
 
-    if (fetchError) throw fetchError;
-    if (!remittance) throw new Error('Remesa no encontrada');
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'uploadPaymentProof - fetch', remittanceId });
+      throw appError;
+    }
 
-    // Validar estado
+    if (!remittance) {
+      throw createNotFoundError('Remittance', remittanceId);
+    }
+
+    // Validate remittance state - only allow upload in PAYMENT_PENDING
     if (remittance.status !== REMITTANCE_STATUS.PAYMENT_PENDING) {
-      throw new Error('Solo se puede subir comprobante en estado "Pendiente de Pago"');
+      throw createValidationError(
+        { status: `Current status is ${remittance.status}, but PAYMENT_PENDING is required` },
+        'Payment proof can only be uploaded when remittance is pending payment'
+      );
     }
 
-    // Obtener usuario actual
+    // Get authenticated user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) throw userError;
-
-    // Validar que sea el dueño de la remesa
-    if (remittance.user_id !== user.id) {
-      throw new Error('No tiene permisos para modificar esta remesa');
+    if (userError) {
+      const appError = parseSupabaseError(userError);
+      logError(appError, { operation: 'uploadPaymentProof - getUser' });
+      throw appError;
     }
 
-    // Subir archivo a Supabase Storage (bucket privado)
+    if (!user) {
+      throw new Error('Not authenticated');
+    }
+
+    // Authorize - user must own the remittance
+    if (remittance.user_id !== user.id) {
+      throw createPermissionError('modify this remittance', 'owner');
+    }
+
+    // Prepare file for upload
     const fileExt = file.name.split('.').pop();
     const fileName = `${remittance.remittance_number}.${fileExt}`;
     const filePath = `${user.id}/${fileName}`;
 
+    // Upload file to storage
     const { error: uploadError } = await supabase.storage
       .from('remittance-proofs')
       .upload(filePath, file, { upsert: true });
 
-    if (uploadError) throw uploadError;
+    if (uploadError) {
+      const appError = parseSupabaseError(uploadError);
+      logError(appError, { operation: 'uploadPaymentProof - upload', filePath });
+      throw appError;
+    }
 
-    // Guardar la ruta del archivo (no una URL)
-    // Las URLs firmadas se generarán on-demand cuando sea necesario ver el comprobante
-    // Esto asegura que siempre tengamos URLs válidas incluso para comprobantes antiguos
-
-    // Actualizar remesa con la ruta del archivo
+    // Update remittance with proof details
     const { data: updatedRemittance, error: updateError } = await supabase
       .from('remittances')
       .update({
-        payment_proof_url: filePath,  // Guardar ruta del archivo para generar URLs firmadas on-demand
+        payment_proof_url: filePath,
         payment_reference: reference,
         payment_proof_notes: notes,
         payment_proof_uploaded_at: new Date().toISOString(),
-        status: 'payment_proof_uploaded',
+        status: REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED,
         updated_at: new Date().toISOString()
       })
       .eq('id', remittanceId)
       .select('*, remittance_types(*)')
       .single();
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'uploadPaymentProof - update', remittanceId });
+      throw appError;
+    }
 
-    // Enviar notificación WhatsApp al admin (opcional - requiere número configurado)
+    // Notify admin (graceful fallback if fails - don't block remittance creation)
     try {
-      const { data: settings } = await supabase
-        .from('system_settings')
-        .select('value')
+      const { data: settings, error: settingsError } = await supabase
+        .from('system_config')
+        .select('value_text')
         .eq('key', 'whatsapp_admin_phone')
         .single();
 
-      if (settings?.value) {
-        notifyAdminNewPaymentProof(updatedRemittance, settings.value, 'es');
+      if (!settingsError && settings?.value_text) {
+        await notifyAdminNewPaymentProof(updatedRemittance, settings.value_text, 'es');
       }
-    } catch (notifError) {
-      console.error('Error sending WhatsApp notification:', notifError);
-      // No fallar la operación si falla la notificación
+    } catch (notifyError) {
+      logError(notifyError, { operation: 'uploadPaymentProof - notification', remittanceId });
+      // Don't fail proof upload if notification fails
     }
 
-    return { success: true, remittance: updatedRemittance };
+    return updatedRemittance;
   } catch (error) {
-    console.error('Error uploading payment proof:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
+      operation: 'uploadPaymentProof',
+      remittanceId
+    });
+    throw appError;
   }
 };
 
 /**
- * Obtener mis remesas (Usuario)
- * @param {Object} filters - Filtros opcionales
- * @returns {Promise<{success: boolean, remittances: Array, error?: string}>}
+ * Get user's remittances with optional filters (User)
+ * Returns paginated list of remittances for authenticated user
+ * @param {Object} filters - Optional filters: status, startDate, endDate
+ * @throws {AppError} If user not authenticated or query fails
+ * @returns {Promise<Array>} Array of user's remittances
  */
 export const getMyRemittances = async (filters = {}) => {
   try {
     const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) throw userError;
-    if (!user) throw new Error('Usuario no autenticado');
+
+    if (userError) {
+      const appError = parseSupabaseError(userError);
+      logError(appError, { operation: 'getMyRemittances - auth' });
+      throw appError;
+    }
+
+    if (!user) {
+      throw new Error('Not authenticated');
+    }
 
     let query = supabase
       .from('remittances')
       .select('*, remittance_types(*)')
       .eq('user_id', user.id);
 
-    // Aplicar filtros
+    // Apply optional filters
     if (filters.status) {
       query = query.eq('status', filters.status);
     }
@@ -581,123 +723,182 @@ export const getMyRemittances = async (filters = {}) => {
       query = query.lte('created_at', filters.endDate);
     }
 
-    // Ordenar por fecha más reciente
+    // Sort by most recent
     query = query.order('created_at', { ascending: false });
 
     const { data, error } = await query;
 
-    if (error) throw error;
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'getMyRemittances', userId: user.id, filters });
+      throw appError;
+    }
 
-    return { success: true, remittances: data || [] };
+    return data || [];
   } catch (error) {
-    console.error('Error fetching my remittances:', error);
-    return { success: false, remittances: [], error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getMyRemittances' });
+    throw appError;
   }
 };
 
 /**
- * Obtener detalles de una remesa
- * @param {string} remittanceId - ID de la remesa
- * @returns {Promise<{success: boolean, remittance?: Object, error?: string}>}
+ * Get remittance details with status history (User/Admin)
+ * Retrieves complete remittance data including state change history
+ * @param {string} remittanceId - Remittance ID
+ * @throws {AppError} If remittance not found or query fails
+ * @returns {Promise<Object>} Remittance with history array
  */
 export const getRemittanceDetails = async (remittanceId) => {
   try {
-    const { data, error } = await supabase
+    if (!remittanceId) {
+      throw createValidationError({ remittanceId: 'Remittance ID is required' });
+    }
+
+    const { data: remittance, error: fetchError } = await supabase
       .from('remittances')
       .select('*, remittance_types(*)')
       .eq('id', remittanceId)
       .single();
 
-    if (error) throw error;
-    if (!data) throw new Error('Remesa no encontrada');
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'getRemittanceDetails - fetch', remittanceId });
+      throw appError;
+    }
 
-    // Obtener historial de estados
-    const { data: history, error: historyError } = await supabase
-      .from('remittance_status_history')
-      .select('*')
-      .eq('remittance_id', remittanceId)
-      .order('changed_at', { ascending: true });
+    if (!remittance) {
+      throw createNotFoundError('Remittance', remittanceId);
+    }
 
-    if (historyError) console.error('Error fetching history:', historyError);
+    // Fetch status history (graceful fallback if fails)
+    let history = [];
+    try {
+      const { data: historyData, error: historyError } = await supabase
+        .from('remittance_status_history')
+        .select('*')
+        .eq('remittance_id', remittanceId)
+        .order('created_at', { ascending: true });
+
+      if (historyError) {
+        logError(parseSupabaseError(historyError), { operation: 'getRemittanceDetails - history', remittanceId });
+      } else {
+        history = historyData || [];
+      }
+    } catch (historyFetchError) {
+      logError(historyFetchError, { operation: 'getRemittanceDetails - history fetch', remittanceId });
+    }
 
     return {
-      success: true,
-      remittance: {
-        ...data,
-        history: history || []
-      }
+      ...remittance,
+      history
     };
   } catch (error) {
-    console.error('Error fetching remittance details:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getRemittanceDetails', remittanceId });
+    throw appError;
   }
 };
 
 /**
- * Cancelar remesa (Usuario)
- * @param {string} remittanceId - ID de la remesa
- * @param {string} reason - Razón de cancelación
- * @returns {Promise<{success: boolean, remittance?: Object, error?: string}>}
+ * Cancel a remittance (User)
+ * Only allows cancellation in early states (payment pending, payment rejected)
+ * @param {string} remittanceId - Remittance ID to cancel
+ * @param {string} reason - Cancellation reason
+ * @throws {AppError} If remittance not found, invalid state, or user not authorized
+ * @returns {Promise<Object>} Updated cancelled remittance
  */
 export const cancelRemittance = async (remittanceId, reason = '') => {
   try {
-    // Obtener remesa actual
+    if (!remittanceId) {
+      throw createValidationError({ remittanceId: 'Remittance ID is required' });
+    }
+
+    // Fetch remittance
     const { data: remittance, error: fetchError } = await supabase
       .from('remittances')
       .select('*')
       .eq('id', remittanceId)
       .single();
 
-    if (fetchError) throw fetchError;
-    if (!remittance) throw new Error('Remesa no encontrada');
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'cancelRemittance - fetch', remittanceId });
+      throw appError;
+    }
 
-    // Validar que se pueda cancelar
-    if ([
+    if (!remittance) {
+      throw createNotFoundError('Remittance', remittanceId);
+    }
+
+    // Check cancellation eligibility - cannot cancel completed, delivered, or already cancelled
+    const nonCancellableStatuses = [
       REMITTANCE_STATUS.DELIVERED,
       REMITTANCE_STATUS.COMPLETED,
       REMITTANCE_STATUS.CANCELLED
-    ].includes(remittance.status)) {
-      throw new Error('No se puede cancelar una remesa en este estado');
+    ];
+
+    if (nonCancellableStatuses.includes(remittance.status)) {
+      throw createValidationError(
+        { status: `Cannot cancel remittance in ${remittance.status} state` },
+        'Remittance cannot be cancelled in its current state'
+      );
     }
 
-    // Obtener usuario actual
+    // Get authenticated user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) throw userError;
-
-    // Validar permisos
-    if (remittance.user_id !== user.id) {
-      throw new Error('No tiene permisos para cancelar esta remesa');
+    if (userError) {
+      const appError = parseSupabaseError(userError);
+      logError(appError, { operation: 'cancelRemittance - getUser' });
+      throw appError;
     }
 
-    // Actualizar estado
-    const { data, error } = await supabase
+    if (!user) {
+      throw new Error('Not authenticated');
+    }
+
+    // Authorize - user must own remittance
+    if (remittance.user_id !== user.id) {
+      throw createPermissionError('cancel this remittance', 'owner');
+    }
+
+    // Update to cancelled state
+    const { data: updatedRemittance, error: updateError } = await supabase
       .from('remittances')
       .update({
         status: REMITTANCE_STATUS.CANCELLED,
         cancelled_at: new Date().toISOString(),
-        cancellation_reason: reason
+        cancellation_reason: reason,
+        updated_at: new Date().toISOString()
       })
       .eq('id', remittanceId)
       .select('*, remittance_types(*)')
       .single();
 
-    if (error) throw error;
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'cancelRemittance - update', remittanceId });
+      throw appError;
+    }
 
-    return { success: true, remittance: data };
+    return updatedRemittance;
   } catch (error) {
-    console.error('Error cancelling remittance:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'cancelRemittance', remittanceId });
+    throw appError;
   }
 };
 
 // ============================================================================
-// GESTIÓN DE REMESAS (ADMIN)
+// GESTIÓN DE REMESAS (ADMIN) - MANAGEMENT & WORKFLOW
 // ============================================================================
 
 /**
- * Obtener todas las remesas (Admin)
- * @param {Object} filters - Filtros opcionales
- * @returns {Promise<{success: boolean, remittances: Array, error?: string}>}
+ * Get all remittances with filters (Admin)
+ * Returns all system remittances with advanced filtering and sorting
+ * @param {Object} filters - Optional filters: status, startDate, endDate, search, orderBy, ascending
+ * @throws {AppError} If query fails
+ * @returns {Promise<Array>} Array of remittances
  */
 export const getAllRemittances = async (filters = {}) => {
   try {
@@ -705,7 +906,7 @@ export const getAllRemittances = async (filters = {}) => {
       .from('remittances')
       .select('*, remittance_types(*)');
 
-    // Aplicar filtros
+    // Apply optional filters
     if (filters.status) {
       query = query.eq('status', filters.status);
     }
@@ -722,394 +923,522 @@ export const getAllRemittances = async (filters = {}) => {
       query = query.or(`remittance_number.ilike.%${filters.search}%,recipient_name.ilike.%${filters.search}%,recipient_phone.ilike.%${filters.search}%`);
     }
 
-    // Ordenar
+    // Apply ordering
     const orderBy = filters.orderBy || 'created_at';
-    const ascending = filters.ascending !== undefined ? filters.ascending : false;
+    const ascending = filters.ascending ?? false;
     query = query.order(orderBy, { ascending });
 
     const { data, error } = await query;
 
-    if (error) throw error;
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'getAllRemittances', filters });
+      throw appError;
+    }
 
-    return { success: true, remittances: data || [] };
+    return data || [];
   } catch (error) {
-    console.error('Error fetching all remittances:', error);
-    return { success: false, remittances: [], error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getAllRemittances' });
+    throw appError;
   }
 };
 
 /**
- * Validar pago de remesa (Admin)
- * @param {string} remittanceId - ID de la remesa
- * @param {string} notes - Notas de validación (para referencia del admin)
- * @returns {Promise<{success: boolean, remittance?: Object, error?: string}>}
+ * Validate payment for a remittance (Admin)
+ * Confirms payment and transitions remittance to PAYMENT_VALIDATED state
+ * @param {string} remittanceId - Remittance ID
+ * @param {string} notes - Optional validation notes
+ * @throws {AppError} If remittance not found, invalid state, or update fails
+ * @returns {Promise<Object>} Updated remittance
  */
 export const validatePayment = async (remittanceId, notes = '') => {
   try {
-    // Obtener remesa actual
+    if (!remittanceId) {
+      throw createValidationError({ remittanceId: 'Remittance ID is required' });
+    }
+
+    // Fetch remittance
     const { data: remittance, error: fetchError } = await supabase
       .from('remittances')
       .select('*, remittance_types(*)')
       .eq('id', remittanceId)
       .single();
 
-    if (fetchError) throw fetchError;
-    if (!remittance) throw new Error('Remesa no encontrada');
-
-    // Validar estado
-    if (remittance.status !== REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED) {
-      throw new Error('Solo se puede validar pago cuando hay comprobante subido');
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'validatePayment - fetch', remittanceId });
+      throw appError;
     }
 
-    // Obtener usuario actual (admin que valida)
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) throw userError;
+    if (!remittance) {
+      throw createNotFoundError('Remittance', remittanceId);
+    }
 
-    // Actualizar estado usando columnas que existen en la base de datos
-    const { data, error } = await supabase
+    // Validate state - can only validate when proof is uploaded
+    if (remittance.status !== REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED) {
+      throw createValidationError(
+        { status: `Current status is ${remittance.status}, but PAYMENT_PROOF_UPLOADED is required` },
+        'Payment can only be validated when proof has been uploaded'
+      );
+    }
+
+    // Get authenticated admin user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError) {
+      const appError = parseSupabaseError(userError);
+      logError(appError, { operation: 'validatePayment - getUser' });
+      throw appError;
+    }
+
+    if (!user) {
+      throw new Error('Not authenticated');
+    }
+
+    // Update remittance to payment validated
+    const { data: updatedRemittance, error: updateError } = await supabase
       .from('remittances')
       .update({
         status: REMITTANCE_STATUS.PAYMENT_VALIDATED,
         payment_validated: true,
         payment_validated_at: new Date().toISOString(),
-        payment_validated_by: user.id
+        payment_validated_by: user.id,
+        updated_at: new Date().toISOString()
       })
       .eq('id', remittanceId)
       .select('*, remittance_types(*)')
       .single();
 
-    if (error) throw error;
-
-    console.log('[validatePayment] Payment validated for remittance:', remittanceId, 'by:', user.id, 'notes:', notes);
-
-    // Enviar notificación WhatsApp al usuario
-    try {
-      const notificationMessage = notifyUserPaymentValidated(data, 'es');
-      console.log('[validatePayment] WhatsApp notification generated:', {
-        remittanceId: data.id,
-        remittanceNumber: data.remittance_number,
-        userId: data.user_id,
-        message: notificationMessage
-      });
-      // TODO: Implement actual WhatsApp sending via API (Twilio, WhatsApp Business API, etc.)
-      // or store notification in database for later delivery
-    } catch (notifyError) {
-      console.error('[validatePayment] Error generating notification:', notifyError);
-      // Don't fail the operation if notification fails
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'validatePayment - update', remittanceId });
+      throw appError;
     }
 
-    return { success: true, remittance: data };
+    // Send notification to user (graceful fallback if fails)
+    try {
+      await notifyUserPaymentValidated(updatedRemittance, 'es');
+    } catch (notifyError) {
+      logError(notifyError, { operation: 'validatePayment - notification', remittanceId });
+      // Don't fail validation if notification fails
+    }
+
+    if (notes) {
+      logError(new Error(`Validation notes: ${notes}`), { operation: 'validatePayment - notes', remittanceId });
+    }
+
+    return updatedRemittance;
   } catch (error) {
-    console.error('Error validating payment:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'validatePayment', remittanceId });
+    throw appError;
   }
 };
 
 /**
- * Rechazar pago de remesa (Admin)
- * @param {string} remittanceId - ID de la remesa
- * @param {string} reason - Razón del rechazo
- * @returns {Promise<{success: boolean, remittance?: Object, error?: string}>}
+ * Reject payment for a remittance (Admin)
+ * Rejects payment and returns remittance to payment pending state
+ * @param {string} remittanceId - Remittance ID
+ * @param {string} reason - Rejection reason (required)
+ * @throws {AppError} If validation fails, remittance not found, or update fails
+ * @returns {Promise<Object>} Updated remittance
  */
 export const rejectPayment = async (remittanceId, reason) => {
   try {
-    if (!reason) throw new Error('Debe proporcionar una razón para el rechazo');
+    if (!remittanceId || !reason) {
+      throw createValidationError({
+        remittanceId: !remittanceId ? 'Remittance ID is required' : undefined,
+        reason: !reason ? 'Rejection reason is required' : undefined
+      }, 'Missing required fields for payment rejection');
+    }
 
-    // Obtener remesa actual
+    // Fetch remittance
     const { data: remittance, error: fetchError } = await supabase
       .from('remittances')
       .select('*, remittance_types(*)')
       .eq('id', remittanceId)
       .single();
 
-    if (fetchError) throw fetchError;
-    if (!remittance) throw new Error('Remesa no encontrada');
-
-    // Validar estado
-    if (remittance.status !== REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED) {
-      throw new Error('Solo se puede rechazar pago cuando hay comprobante subido');
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'rejectPayment - fetch', remittanceId });
+      throw appError;
     }
 
-    // Actualizar estado
-    const { data, error } = await supabase
+    if (!remittance) {
+      throw createNotFoundError('Remittance', remittanceId);
+    }
+
+    // Validate state - can only reject when proof is uploaded
+    if (remittance.status !== REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED) {
+      throw createValidationError(
+        { status: `Current status is ${remittance.status}, but PAYMENT_PROOF_UPLOADED is required` },
+        'Payment can only be rejected when proof has been uploaded'
+      );
+    }
+
+    // Update remittance to payment rejected
+    const { data: updatedRemittance, error: updateError } = await supabase
       .from('remittances')
       .update({
         status: REMITTANCE_STATUS.PAYMENT_REJECTED,
         payment_rejected_at: new Date().toISOString(),
-        payment_rejection_reason: reason
+        payment_rejection_reason: reason,
+        updated_at: new Date().toISOString()
       })
       .eq('id', remittanceId)
       .select('*, remittance_types(*)')
       .single();
 
-    if (error) throw error;
-
-    // Enviar notificación WhatsApp al usuario
-    try {
-      const notificationMessage = notifyUserPaymentRejected(data, 'es');
-      console.log('[rejectPayment] WhatsApp notification generated:', {
-        remittanceId: data.id,
-        remittanceNumber: data.remittance_number,
-        userId: data.user_id,
-        reason: reason,
-        message: notificationMessage
-      });
-      // TODO: Implement actual WhatsApp sending via API (Twilio, WhatsApp Business API, etc.)
-      // or store notification in database for later delivery
-    } catch (notifyError) {
-      console.error('[rejectPayment] Error generating notification:', notifyError);
-      // Don't fail the operation if notification fails
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'rejectPayment - update', remittanceId });
+      throw appError;
     }
 
-    return { success: true, remittance: data };
+    // Notify user (graceful fallback if fails)
+    try {
+      await notifyUserPaymentRejected(updatedRemittance, 'es');
+    } catch (notifyError) {
+      logError(notifyError, { operation: 'rejectPayment - notification', remittanceId });
+      // Don't fail rejection if notification fails
+    }
+
+    return updatedRemittance;
   } catch (error) {
-    console.error('Error rejecting payment:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'rejectPayment', remittanceId });
+    throw appError;
   }
 };
 
 /**
- * Iniciar procesamiento de remesa (Admin)
- * @param {string} remittanceId - ID de la remesa
- * @param {string} notes - Notas de procesamiento
- * @returns {Promise<{success: boolean, remittance?: Object, error?: string}>}
+ * Start processing a remittance (Admin)
+ * Transitions validated payment to processing state for delivery preparation
+ * @param {string} remittanceId - Remittance ID
+ * @param {string} notes - Optional processing notes
+ * @throws {AppError} If remittance not found, invalid state, or update fails
+ * @returns {Promise<Object>} Updated remittance
  */
 export const startProcessing = async (remittanceId, notes = '') => {
   try {
-    // Obtener remesa actual
+    if (!remittanceId) {
+      throw createValidationError({ remittanceId: 'Remittance ID is required' });
+    }
+
+    // Fetch remittance
     const { data: remittance, error: fetchError } = await supabase
       .from('remittances')
       .select('*, remittance_types(*)')
       .eq('id', remittanceId)
       .single();
 
-    if (fetchError) throw fetchError;
-    if (!remittance) throw new Error('Remesa no encontrada');
-
-    // Validar estado
-    if (remittance.status !== REMITTANCE_STATUS.PAYMENT_VALIDATED) {
-      throw new Error('Solo se puede procesar remesa con pago validado');
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'startProcessing - fetch', remittanceId });
+      throw appError;
     }
 
-    // Actualizar estado - usar solo campos que existen en la base de datos
-    const { data, error } = await supabase
+    if (!remittance) {
+      throw createNotFoundError('Remittance', remittanceId);
+    }
+
+    // Validate state - can only process when payment is validated
+    if (remittance.status !== REMITTANCE_STATUS.PAYMENT_VALIDATED) {
+      throw createValidationError(
+        { status: `Current status is ${remittance.status}, but PAYMENT_VALIDATED is required` },
+        'Processing can only start when payment has been validated'
+      );
+    }
+
+    // Update remittance to processing
+    const { data: updatedRemittance, error: updateError } = await supabase
       .from('remittances')
       .update({
         status: REMITTANCE_STATUS.PROCESSING,
-        processing_started_at: new Date().toISOString()
+        processing_started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
       .eq('id', remittanceId)
       .select('*, remittance_types(*)')
       .single();
 
-    if (notes) {
-      console.log('[startProcessing] Processing started for remittance:', remittanceId, 'notes:', notes);
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'startProcessing - update', remittanceId });
+      throw appError;
     }
 
-    if (error) throw error;
+    if (notes) {
+      logError(new Error(`Processing notes: ${notes}`), { operation: 'startProcessing - notes', remittanceId });
+    }
 
-    return { success: true, remittance: data };
+    return updatedRemittance;
   } catch (error) {
-    console.error('Error starting processing:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'startProcessing', remittanceId });
+    throw appError;
   }
 };
 
 /**
- * Confirmar entrega de remesa (Admin)
- * @param {string} remittanceId - ID de la remesa
- * @param {File} proofFile - Archivo de evidencia de entrega
- * @param {string} notes - Notas de entrega
- * @returns {Promise<{success: boolean, remittance?: Object, error?: string}>}
+ * Confirm delivery of a remittance (Admin)
+ * Marks remittance as delivered with delivery proof. Requires proof file or existing proof.
+ * @param {string} remittanceId - Remittance ID
+ * @param {File} proofFile - Optional new delivery proof file
+ * @param {string} notes - Optional delivery notes
+ * @throws {AppError} If validation fails, no proof provided, or update fails
+ * @returns {Promise<Object>} Updated remittance
  */
 export const confirmDelivery = async (remittanceId, proofFile = null, notes = '') => {
   try {
-    // Obtener remesa actual
+    if (!remittanceId) {
+      throw createValidationError({ remittanceId: 'Remittance ID is required' });
+    }
+
+    // Fetch remittance
     const { data: remittance, error: fetchError } = await supabase
       .from('remittances')
       .select('*, remittance_types(*)')
       .eq('id', remittanceId)
       .single();
 
-    if (fetchError) throw fetchError;
-    if (!remittance) throw new Error('Remesa no encontrada');
-
-    // Validar estado
-    if (remittance.status !== REMITTANCE_STATUS.PROCESSING) {
-      throw new Error('Solo se puede confirmar entrega de remesa en procesamiento');
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'confirmDelivery - fetch', remittanceId });
+      throw appError;
     }
 
-    let deliveryProofUrl = null;
+    if (!remittance) {
+      throw createNotFoundError('Remittance', remittanceId);
+    }
 
-    // Subir evidencia de entrega si se proporcionó
+    // Validate state - can only confirm delivery when processing
+    if (remittance.status !== REMITTANCE_STATUS.PROCESSING) {
+      throw createValidationError(
+        { status: `Current status is ${remittance.status}, but PROCESSING is required` },
+        'Delivery can only be confirmed when remittance is being processed'
+      );
+    }
+
+    // CRITICAL: Require delivery proof - either new file or existing proof
+    const hasExistingProof = remittance.delivery_proof_url && remittance.delivery_proof_url.trim() !== '';
+    if (!proofFile && !hasExistingProof) {
+      throw new Error('Delivery proof required. Please provide a photo or document as evidence.');
+    }
+
+    let deliveryProofUrl = remittance.delivery_proof_url; // Keep existing proof if not updating
+
+    // Upload new delivery proof if provided
     if (proofFile) {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError) throw userError;
+      if (userError) {
+        const appError = parseSupabaseError(userError);
+        logError(appError, { operation: 'confirmDelivery - getUser' });
+        throw appError;
+      }
 
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+
+      // Prepare file for upload
       const fileExt = proofFile.name.split('.').pop();
       const fileName = `${remittance.remittance_number}_delivery.${fileExt}`;
-      // Use user.id as prefix to comply with RLS policies
       const filePath = `${user.id}/delivery/${fileName}`;
 
+      // Upload file
       const { error: uploadError } = await supabase.storage
         .from('remittance-proofs')
         .upload(filePath, proofFile, { upsert: true });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        const appError = parseSupabaseError(uploadError);
+        logError(appError, { operation: 'confirmDelivery - upload', filePath });
+        throw appError;
+      }
 
-      // Store file path instead of URL for private buckets
-      // Signed URLs will be generated on-demand when needed
       deliveryProofUrl = filePath;
     }
 
-    // Actualizar estado
+    // Update remittance to delivered
+    // CRITICAL: Ensure delivery_proof_url is valid and persisted
+    const trimmedProofUrl = deliveryProofUrl?.trim();
+
+    if (!trimmedProofUrl) {
+      throw createValidationError(
+        { delivery_proof_url: 'Delivery proof URL is required but is empty or invalid' },
+        'Cannot confirm delivery without valid proof URL. This should not happen - proof validation failed.'
+      );
+    }
+
     const updateData = {
       status: REMITTANCE_STATUS.DELIVERED,
       delivered_at: new Date().toISOString(),
-      delivery_notes_admin: notes
+      delivery_notes_admin: notes,
+      delivery_proof_url: trimmedProofUrl,  // ✅ ALWAYS include valid proof URL
+      updated_at: new Date().toISOString()
     };
 
-    if (deliveryProofUrl) {
-      updateData.delivery_proof_url = deliveryProofUrl;
-    }
-
-    const { data, error } = await supabase
+    const { data: updatedRemittance, error: updateError } = await supabase
       .from('remittances')
       .update(updateData)
       .eq('id', remittanceId)
       .select('*, remittance_types(*)')
       .single();
 
-    if (error) throw error;
-
-    // Enviar notificación WhatsApp al usuario
-    try {
-      const notificationMessage = notifyUserRemittanceDelivered(data, 'es');
-      console.log('[confirmDelivery] WhatsApp notification generated:', {
-        remittanceId: data.id,
-        remittanceNumber: data.remittance_number,
-        userId: data.user_id,
-        recipientName: data.recipient_name,
-        message: notificationMessage
-      });
-      // TODO: Implement actual WhatsApp sending via API (Twilio, WhatsApp Business API, etc.)
-      // or store notification in database for later delivery
-    } catch (notifyError) {
-      console.error('[confirmDelivery] Error generating notification:', notifyError);
-      // Don't fail the operation if notification fails
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'confirmDelivery - update', remittanceId });
+      throw appError;
     }
 
-    return { success: true, remittance: data };
+    // Notify user (graceful fallback if fails)
+    try {
+      await notifyUserRemittanceDelivered(updatedRemittance, 'es');
+    } catch (notifyError) {
+      logError(notifyError, { operation: 'confirmDelivery - notification', remittanceId });
+      // Don't fail delivery confirmation if notification fails
+    }
+
+    return updatedRemittance;
   } catch (error) {
-    console.error('Error confirming delivery:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'confirmDelivery', remittanceId });
+    throw appError;
   }
 };
 
 /**
- * Completar remesa (Admin)
- * @param {string} remittanceId - ID de la remesa
- * @param {string} notes - Notas finales
- * @returns {Promise<{success: boolean, remittance?: Object, error?: string}>}
+ * Complete a remittance (Admin)
+ * Marks remittance as completed after delivery confirmation
+ * @param {string} remittanceId - Remittance ID
+ * @param {string} notes - Optional completion notes
+ * @throws {AppError} If remittance not found, invalid state, or update fails
+ * @returns {Promise<Object>} Updated remittance
  */
 export const completeRemittance = async (remittanceId, notes = '') => {
   try {
-    // Obtener remesa actual
+    if (!remittanceId) {
+      throw createValidationError({ remittanceId: 'Remittance ID is required' });
+    }
+
+    // Fetch remittance
     const { data: remittance, error: fetchError } = await supabase
       .from('remittances')
       .select('*, remittance_types(*)')
       .eq('id', remittanceId)
       .single();
 
-    if (fetchError) throw fetchError;
-    if (!remittance) throw new Error('Remesa no encontrada');
-
-    // Validar estado
-    if (remittance.status !== REMITTANCE_STATUS.DELIVERED) {
-      throw new Error('Solo se puede completar remesa ya entregada');
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'completeRemittance - fetch', remittanceId });
+      throw appError;
     }
 
-    // Actualizar estado
+    if (!remittance) {
+      throw createNotFoundError('Remittance', remittanceId);
+    }
+
+    // Validate state - can only complete when delivered
+    if (remittance.status !== REMITTANCE_STATUS.DELIVERED) {
+      throw createValidationError(
+        { status: `Current status is ${remittance.status}, but DELIVERED is required` },
+        'Remittance can only be completed after delivery'
+      );
+    }
+
+    // Update remittance to completed
     const updateData = {
       status: REMITTANCE_STATUS.COMPLETED,
-      completed_at: new Date().toISOString()
+      completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     };
 
     if (notes) {
       updateData.delivery_notes_admin = notes;
     }
 
-    const { data, error } = await supabase
+    const { data: updatedRemittance, error: updateError } = await supabase
       .from('remittances')
       .update(updateData)
       .eq('id', remittanceId)
       .select('*, remittance_types(*)')
       .single();
 
-    if (error) throw error;
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'completeRemittance - update', remittanceId });
+      throw appError;
+    }
 
-    return { success: true, remittance: data };
+    return updatedRemittance;
   } catch (error) {
-    console.error('Error completing remittance:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'completeRemittance', remittanceId });
+    throw appError;
   }
 };
 
 // ============================================================================
-// FUNCIONES AUXILIARES
+// FUNCIONES AUXILIARES - HELPER FUNCTIONS
 // ============================================================================
 
 /**
- * Calcular alerta de tiempo para entrega
- * @param {Object} remittance - Objeto de remesa
- * @returns {Object} Estado de alerta {level: 'success'|'info'|'warning'|'error', message: string}
+ * Calculate delivery alert status based on time remaining
+ * Pure helper function that doesn't interact with database
+ * @param {Object} remittance - Remittance object with timestamps
+ * @returns {Object} Alert object with level and message
  */
 export const calculateDeliveryAlert = (remittance) => {
-  if (!remittance.payment_validated_at || !remittance.max_delivery_date) {
-    return { level: 'info', message: 'Pendiente de validación' };
+  // Not validated yet - no alert needed
+  if (!remittance?.payment_validated_at || !remittance?.max_delivery_date) {
+    return { level: 'info', message: 'Pending validation' };
   }
 
   const now = new Date();
   const validatedAt = new Date(remittance.payment_validated_at);
   const maxDeliveryDate = new Date(remittance.max_delivery_date);
-  const hoursElapsed = (now - validatedAt) / (1000 * 60 * 60);
   const hoursRemaining = (maxDeliveryDate - now) / (1000 * 60 * 60);
 
-  // Ya entregada
+  // Already delivered or completed
   if ([REMITTANCE_STATUS.DELIVERED, REMITTANCE_STATUS.COMPLETED].includes(remittance.status)) {
-    return { level: 'success', message: 'Entregada' };
+    return { level: 'success', message: 'Delivered' };
   }
 
-  // Vencida
+  // Delivery deadline passed
   if (hoursRemaining < 0) {
-    return { level: 'error', message: 'Entrega vencida' };
+    return { level: 'error', message: 'Delivery overdue' };
   }
 
-  // Menos de 24 horas
+  // Less than 24 hours remaining
   if (hoursRemaining < 24) {
-    return { level: 'error', message: `Quedan ${Math.round(hoursRemaining)} horas` };
+    return { level: 'error', message: `${Math.round(hoursRemaining)} hours remaining` };
   }
 
-  // Menos de 48 horas
+  // Less than 48 hours remaining
   if (hoursRemaining < 48) {
-    return { level: 'warning', message: `Quedan ${Math.round(hoursRemaining / 24)} días` };
+    return { level: 'warning', message: `${Math.round(hoursRemaining / 24)} day remaining` };
   }
 
-  // Más de 48 horas
-  return { level: 'info', message: `Quedan ${Math.round(hoursRemaining / 24)} días` };
+  // More than 48 hours remaining
+  return { level: 'info', message: `${Math.round(hoursRemaining / 24)} days remaining` };
 };
 
 /**
- * Obtener estadísticas de remesas (Admin)
- * @param {Object} filters - Filtros de fecha
- * @returns {Promise<{success: boolean, stats?: Object, error?: string}>}
+ * Get remittance statistics (Admin)
+ * Calculates aggregate statistics for dashboard and reporting
+ * @param {Object} filters - Optional date filters: startDate, endDate
+ * @throws {AppError} If query fails
+ * @returns {Promise<Object>} Statistics object with totals, breakdowns, and averages
  */
 export const getRemittanceStats = async (filters = {}) => {
   try {
     let query = supabase
       .from('remittances')
-      .select('status, amount, currency, created_at, completed_at');
+      .select('status, amount_sent, currency_sent, created_at, completed_at');
 
+    // Apply date filters
     if (filters.startDate) {
       query = query.gte('created_at', filters.startDate);
     }
@@ -1120,9 +1449,13 @@ export const getRemittanceStats = async (filters = {}) => {
 
     const { data, error } = await query;
 
-    if (error) throw error;
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'getRemittanceStats', filters });
+      throw appError;
+    }
 
-    // Calcular estadísticas
+    // Calculate aggregate statistics
     const stats = {
       total: data.length,
       byStatus: {},
@@ -1135,17 +1468,18 @@ export const getRemittanceStats = async (filters = {}) => {
     let completedCount = 0;
 
     data.forEach(remittance => {
-      // Por estado
+      // Count by status
       stats.byStatus[remittance.status] = (stats.byStatus[remittance.status] || 0) + 1;
 
-      // Montos
-      stats.totalAmount += parseFloat(remittance.amount);
+      // Sum total amount
+      stats.totalAmount += parseFloat(remittance.amount_sent || 0);
 
+      // Calculate completed statistics
       if (remittance.status === REMITTANCE_STATUS.COMPLETED) {
-        stats.completedAmount += parseFloat(remittance.amount);
+        stats.completedAmount += parseFloat(remittance.amount_sent || 0);
         completedCount++;
 
-        // Tiempo de procesamiento
+        // Calculate processing time for completed remittances
         if (remittance.completed_at && remittance.created_at) {
           const processingTime = new Date(remittance.completed_at) - new Date(remittance.created_at);
           totalProcessingTime += processingTime;
@@ -1153,27 +1487,38 @@ export const getRemittanceStats = async (filters = {}) => {
       }
     });
 
-    // Promedio de tiempo de procesamiento (en horas)
+    // Calculate average processing time in hours
     if (completedCount > 0) {
       stats.avgProcessingTime = (totalProcessingTime / completedCount) / (1000 * 60 * 60);
     }
 
-    return { success: true, stats };
+    return stats;
   } catch (error) {
-    console.error('Error fetching remittance stats:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getRemittanceStats' });
+    throw appError;
   }
 };
 
 /**
- * Verificar permisos de admin
- * @returns {Promise<{success: boolean, isAdmin: boolean, error?: string}>}
+ * Check if user has admin permissions (Helper)
+ * Determines if authenticated user has admin or super_admin role
+ * @throws {AppError} If profile query fails
+ * @returns {Promise<boolean>} True if user is admin or super_admin
  */
 export const checkAdminPermissions = async () => {
   try {
     const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) throw userError;
-    if (!user) return { success: true, isAdmin: false };
+
+    if (userError) {
+      const appError = parseSupabaseError(userError);
+      logError(appError, { operation: 'checkAdminPermissions - getUser' });
+      throw appError;
+    }
+
+    if (!user) {
+      return false; // Not authenticated
+    }
 
     const { data: profile, error: profileError } = await supabase
       .from('user_profiles')
@@ -1181,25 +1526,30 @@ export const checkAdminPermissions = async () => {
       .eq('user_id', user.id)
       .single();
 
-    if (profileError) throw profileError;
+    if (profileError) {
+      const appError = parseSupabaseError(profileError);
+      logError(appError, { operation: 'checkAdminPermissions - profile', userId: user.id });
+      throw appError;
+    }
 
-    const isAdmin = profile && ['admin', 'super_admin'].includes(profile.role);
-
-    return { success: true, isAdmin };
+    return profile && ['admin', 'super_admin'].includes(profile.role);
   } catch (error) {
-    console.error('Error checking admin permissions:', error);
-    return { success: false, isAdmin: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'checkAdminPermissions' });
+    throw appError;
   }
 };
 
 /**
- * Obtener remesas que requieren alerta de tiempo (Admin)
- * @returns {Promise<{success: boolean, remittances: Array, error?: string}>}
+ * Get remittances needing delivery alert (Admin)
+ * Returns remittances within 24 hours of delivery deadline
+ * @throws {AppError} If query fails
+ * @returns {Promise<Array>} Array of remittances requiring attention
  */
 export const getRemittancesNeedingAlert = async () => {
   try {
     const now = new Date();
-    const alertThreshold = new Date(now.getTime() + (24 * 60 * 60 * 1000)); // 24 horas
+    const alertThreshold = new Date(now.getTime() + (24 * 60 * 60 * 1000)); // 24 hours from now
 
     const { data, error } = await supabase
       .from('remittances')
@@ -1211,12 +1561,17 @@ export const getRemittancesNeedingAlert = async () => {
       .lte('max_delivery_date', alertThreshold.toISOString())
       .order('max_delivery_date', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'getRemittancesNeedingAlert' });
+      throw appError;
+    }
 
-    return { success: true, remittances: data || [] };
+    return data || [];
   } catch (error) {
-    console.error('Error fetching remittances needing alert:', error);
-    return { success: false, remittances: [], error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getRemittancesNeedingAlert' });
+    throw appError;
   }
 };
 
@@ -1225,50 +1580,72 @@ export const getRemittancesNeedingAlert = async () => {
 // ============================================================================
 
 /**
- * Create a bank transfer record for a remittance
+ * Create a bank transfer record for a remittance (Admin)
+ * Tracks bank transfer details for non-cash delivery methods
  * @param {string} remittanceId - Remittance ID
  * @param {string} recipientBankAccountId - Recipient bank account ID
- * @param {Object} transferData - { processedByUserId, amountTransferred }
- * @returns {Object} { success, data, error }
+ * @param {Object} transferData - Optional data: processedByUserId, amountTransferred
+ * @throws {AppError} If remittance or account not found, or creation fails
+ * @returns {Promise<Object>} Created bank transfer record
  */
 export const createBankTransfer = async (remittanceId, recipientBankAccountId, transferData = {}) => {
   try {
+    if (!remittanceId || !recipientBankAccountId) {
+      throw createValidationError({
+        remittanceId: !remittanceId ? 'Remittance ID is required' : undefined,
+        recipientBankAccountId: !recipientBankAccountId ? 'Recipient bank account ID is required' : undefined
+      }, 'Missing required fields for bank transfer');
+    }
+
     const { processedByUserId = null, amountTransferred = null } = transferData;
 
     const { data, error } = await supabase
       .from('remittance_bank_transfers')
-      .insert([
-        {
-          remittance_id: remittanceId,
-          recipient_bank_account_id: recipientBankAccountId,
-          status: 'pending',
-          processed_by_user_id: processedByUserId,
-          amount_transferred: amountTransferred
-        }
-      ])
+      .insert([{
+        remittance_id: remittanceId,
+        recipient_bank_account_id: recipientBankAccountId,
+        status: 'pending',
+        processed_by_user_id: processedByUserId,
+        amount_transferred: amountTransferred
+      }])
       .select()
       .single();
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'createBankTransfer', remittanceId, recipientBankAccountId });
+      throw appError;
+    }
+
+    return data;
   } catch (error) {
-    console.error('Error creating bank transfer:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'createBankTransfer', remittanceId });
+    throw appError;
   }
 };
 
 /**
- * Update bank transfer status
- * @param {string} transferId - Transfer ID
- * @param {string} status - New status
- * @param {Object} additionalData - { processedByUserId, processedAt, errorMessage }
- * @returns {Object} { success, data, error }
+ * Update bank transfer status (Admin)
+ * Tracks progression of bank transfer through various states
+ * @param {string} transferId - Bank transfer ID
+ * @param {string} status - New status: pending, confirmed, transferred, failed, reversed
+ * @param {Object} additionalData - Optional: processedByUserId, processedAt, errorMessage
+ * @throws {AppError} If transfer not found, invalid status, or update fails
+ * @returns {Promise<Object>} Updated bank transfer record
  */
 export const updateBankTransferStatus = async (transferId, status, additionalData = {}) => {
   try {
+    if (!transferId || !status) {
+      throw createValidationError({
+        transferId: !transferId ? 'Transfer ID is required' : undefined,
+        status: !status ? 'Status is required' : undefined
+      }, 'Missing required fields for status update');
+    }
+
     const validStatuses = ['pending', 'confirmed', 'transferred', 'failed', 'reversed'];
     if (!validStatuses.includes(status)) {
-      return { success: false, error: `Invalid status: ${status}` };
+      throw createValidationError({ status: `Status must be one of: ${validStatuses.join(', ')}` });
     }
 
     const updateData = {
@@ -1277,7 +1654,7 @@ export const updateBankTransferStatus = async (transferId, status, additionalDat
       ...additionalData
     };
 
-    // Auto-set processed_at if not already set and status is confirmed/transferred
+    // Auto-set processed_at if not provided and status is terminal
     if (['confirmed', 'transferred'].includes(status) && !additionalData.processedAt) {
       updateData.processed_at = new Date().toISOString();
     }
@@ -1289,21 +1666,33 @@ export const updateBankTransferStatus = async (transferId, status, additionalDat
       .select()
       .single();
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'updateBankTransferStatus', transferId, status });
+      throw appError;
+    }
+
+    return data;
   } catch (error) {
-    console.error('Error updating bank transfer status:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'updateBankTransferStatus', transferId });
+    throw appError;
   }
 };
 
 /**
- * Get bank transfer history for a remittance
+ * Get bank transfer history for a remittance (Admin/User)
+ * Retrieves complete transfer tracking history with related data
  * @param {string} remittanceId - Remittance ID
- * @returns {Object} { success, data, error }
+ * @throws {AppError} If query fails
+ * @returns {Promise<Array>} Array of bank transfer records
  */
 export const getBankTransferHistory = async (remittanceId) => {
   try {
+    if (!remittanceId) {
+      throw createValidationError({ remittanceId: 'Remittance ID is required' });
+    }
+
     const { data, error } = await supabase
       .from('remittance_bank_transfers')
       .select(`
@@ -1328,18 +1717,26 @@ export const getBankTransferHistory = async (remittanceId) => {
       .eq('remittance_id', remittanceId)
       .order('created_at', { ascending: false });
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'getBankTransferHistory', remittanceId });
+      throw appError;
+    }
+
+    return data || [];
   } catch (error) {
-    console.error('Error fetching bank transfer history:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getBankTransferHistory', remittanceId });
+    throw appError;
   }
 };
 
 /**
- * Get pending bank transfers for admin review
- * @param {Object} filters - { status }
- * @returns {Object} { success, data, error }
+ * Get pending bank transfers (Admin)
+ * Returns all pending transfers awaiting admin action
+ * @param {Object} filters - Optional filters: status
+ * @throws {AppError} If query fails
+ * @returns {Promise<Array>} Array of pending bank transfers
  */
 export const getPendingBankTransfers = async (filters = {}) => {
   try {
@@ -1358,20 +1755,23 @@ export const getPendingBankTransfers = async (filters = {}) => {
       `)
       .eq('status', 'pending');
 
+    // Apply optional status filter (overrides default)
     if (filters.status) {
       query = query.eq('status', filters.status);
     }
 
     const { data, error } = await query.order('created_at', { ascending: true });
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'getPendingBankTransfers', filters });
+      throw appError;
+    }
+
+    return data || [];
   } catch (error) {
-    console.error('Error fetching pending transfers:', error);
-    return { success: false, error: error.message };
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getPendingBankTransfers' });
+    throw appError;
   }
 };
-
-// ============================================================================
-// END BANK TRANSFER OPERATIONS
-// ============================================================================

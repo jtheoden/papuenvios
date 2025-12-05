@@ -1,0 +1,202 @@
+/**
+ * Tailwind Design Tokens
+ * CSS variables for theming and design system consistency
+ * Import this file in your main.css for theme support
+ */
+
+:root {
+  /* =====================================================================
+     PRIMARY COLORS
+     ===================================================================== */
+  --color-primary-light: #3b82f6;
+  --color-primary: #2563eb;
+  --color-primary-dark: #1d4ed8;
+
+  /* =====================================================================
+     SEMANTIC COLORS
+     ===================================================================== */
+
+  /* Success Colors */
+  --color-success-light: #d1fae5;
+  --color-success: #10b981;
+  --color-success-dark: #059669;
+
+  /* Warning Colors */
+  --color-warning-light: #fef3c7;
+  --color-warning: #f59e0b;
+  --color-warning-dark: #d97706;
+
+  /* Error Colors */
+  --color-error-light: #fee2e2;
+  --color-error: #ef4444;
+  --color-error-dark: #dc2626;
+
+  /* Info Colors */
+  --color-info-light: #e0f2fe;
+  --color-info: #0ea5e9;
+  --color-info-dark: #0284c7;
+
+  /* =====================================================================
+     NEUTRAL/GRAYSCALE
+     ===================================================================== */
+  --color-neutral-50: #f9fafb;
+  --color-neutral-100: #f3f4f6;
+  --color-neutral-200: #e5e7eb;
+  --color-neutral-300: #d1d5db;
+  --color-neutral-400: #9ca3af;
+  --color-neutral-500: #6b7280;
+  --color-neutral-600: #4b5563;
+  --color-neutral-700: #374151;
+  --color-neutral-800: #1f2937;
+  --color-neutral-900: #111827;
+
+  /* Background Colors */
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f9fafb;
+  --color-bg-tertiary: #f3f4f6;
+  --color-bg-hover: #f0f4f8;
+
+  /* =====================================================================
+     SPACING SCALE (4px base unit)
+     ===================================================================== */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+
+  /* =====================================================================
+     BORDER RADIUS SCALE
+     ===================================================================== */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 12px;
+
+  /* =====================================================================
+     SHADOWS
+     ===================================================================== */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+
+  /* =====================================================================
+     TYPOGRAPHY
+     ===================================================================== */
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-lg: 18px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+  --font-size-3xl: 32px;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+
+  /* =====================================================================
+     FORM ELEMENT COLORS
+     ===================================================================== */
+  --form-input-bg: #ffffff;
+  --form-input-border: var(--color-neutral-300);
+  --form-input-border-focus: var(--color-primary);
+  --form-input-text: var(--color-neutral-900);
+  --form-input-placeholder: var(--color-neutral-400);
+
+  --form-label-text: var(--color-neutral-700);
+  --form-label-required: var(--color-error);
+
+  --form-error-bg: var(--color-error-light);
+  --form-error-border: var(--color-error);
+  --form-error-text: var(--color-error-dark);
+
+  /* =====================================================================
+     TABLE COLORS
+     ===================================================================== */
+  --table-header-bg: var(--color-neutral-50);
+  --table-header-text: var(--color-neutral-700);
+  --table-header-border: var(--color-neutral-200);
+
+  --table-row-border: var(--color-neutral-200);
+  --table-row-hover: var(--color-neutral-50);
+  --table-cell-text: var(--color-neutral-900);
+
+  /* =====================================================================
+     CARD/CONTAINER COLORS
+     ===================================================================== */
+  --card-bg: #ffffff;
+  --card-border: var(--color-neutral-200);
+  --card-shadow: var(--shadow-md);
+
+  --modal-overlay: rgba(0, 0, 0, 0.5);
+  --modal-bg: #ffffff;
+  --modal-shadow: var(--shadow-xl);
+
+  /* =====================================================================
+     BUTTON COLORS
+     ===================================================================== */
+  --button-primary-bg: var(--color-primary);
+  --button-primary-bg-hover: var(--color-primary-dark);
+  --button-primary-text: #ffffff;
+
+  --button-secondary-bg: var(--color-neutral-200);
+  --button-secondary-bg-hover: var(--color-neutral-300);
+  --button-secondary-text: var(--color-neutral-900);
+
+  --button-danger-bg: var(--color-error);
+  --button-danger-bg-hover: var(--color-error-dark);
+  --button-danger-text: #ffffff;
+
+  --button-disabled-opacity: 0.5;
+
+  /* =====================================================================
+     STATUS/BADGE COLORS
+     ===================================================================== */
+  --badge-success-bg: var(--color-success-light);
+  --badge-success-text: var(--color-success-dark);
+  --badge-success-icon: var(--color-success);
+
+  --badge-error-bg: var(--color-error-light);
+  --badge-error-text: var(--color-error-dark);
+  --badge-error-icon: var(--color-error);
+
+  --badge-warning-bg: var(--color-warning-light);
+  --badge-warning-text: var(--color-warning-dark);
+  --badge-warning-icon: var(--color-warning);
+
+  --badge-info-bg: var(--color-info-light);
+  --badge-info-text: var(--color-info-dark);
+  --badge-info-icon: var(--color-info);
+}
+
+/* =========================================================================
+   Dark Mode Support (Optional)
+   Uncomment and customize for dark theme support
+   ========================================================================= */
+/*
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg-primary: #1f2937;
+    --color-bg-secondary: #111827;
+    --color-bg-tertiary: #374151;
+
+    --form-input-bg: #374151;
+    --form-input-border: #4b5563;
+    --form-input-text: #f3f4f6;
+
+    --table-header-bg: #111827;
+    --table-row-hover: #374151;
+
+    --card-bg: #1f2937;
+    --modal-bg: #1f2937;
+  }
+}
+*/

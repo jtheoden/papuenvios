@@ -1,9 +1,13 @@
 /**
  * Visual Settings Service
- * Manages application-wide visual configuration
+ * Manages application-wide visual configuration (cache, DB, and DOM)
  */
 
 import { supabase } from '@/lib/supabase';
+import {
+  handleError, logError, createValidationError,
+  parseSupabaseError, ERROR_CODES
+} from './errorHandler';
 
 const CACHE_KEY = 'visual_settings_cache';
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
@@ -23,28 +27,23 @@ const DEFAULT_SETTINGS = {
 
 /**
  * Fetch visual settings from database
- * @returns {Promise<Object>} Settings object
+ * Falls back gracefully to DEFAULT_SETTINGS on connection errors
+ * @returns {Promise<Object>} Settings object (merged with defaults)
+ * @throws {AppError} DB_ERROR on critical failures (but catches to return defaults)
  */
 export async function fetchVisualSettings() {
   try {
-    const { data, error } = await supabase
-      .from('visual_settings')
-      .select('setting_key, setting_value, setting_type')
-      .eq('setting_key', 'app_name') // Fetch at least one to test connection
-      .limit(1);
-
-    if (error && error.code !== 'PGRST116') {
-      console.warn('[VisualSettings] Error fetching settings:', error);
-      return DEFAULT_SETTINGS;
-    }
-
     // Fetch all settings
     const { data: allData, error: allError } = await supabase
       .from('visual_settings')
       .select('setting_key, setting_value, setting_type');
 
     if (allError) {
-      console.warn('[VisualSettings] Error fetching all settings:', allError);
+      // Graceful fallback: Log but don't throw - UI must work without settings
+      logError(
+        handleError(allError, ERROR_CODES.DB_ERROR, { operation: 'fetchVisualSettings' }),
+        { operation: 'fetchVisualSettings' }
+      );
       return DEFAULT_SETTINGS;
     }
 
@@ -65,7 +64,11 @@ export async function fetchVisualSettings() {
 
     return { ...DEFAULT_SETTINGS, ...settings };
   } catch (err) {
-    console.error('[VisualSettings] Error:', err);
+    // Graceful fallback: Log but don't throw
+    logError(
+      handleError(err, ERROR_CODES.DB_ERROR, { operation: 'fetchVisualSettings' }),
+      { operation: 'fetchVisualSettings' }
+    );
     return DEFAULT_SETTINGS;
   }
 }
@@ -120,31 +123,42 @@ export function clearSettingsCache() {
 }
 
 /**
- * Update a visual setting
- * @param {string} key - Setting key
- * @param {string} value - Setting value
+ * Update a visual setting (admin only)
+ * @param {string} key - Setting key identifier
+ * @param {string} value - Setting value (will be stored as string)
  * @returns {Promise<boolean>} Success status
+ * @throws {AppError} VALIDATION_FAILED if key/value invalid, DB_ERROR on failure
  */
 export async function updateVisualSetting(key, value) {
   try {
+    if (!key) {
+      throw createValidationError({ key: 'Setting key is required' }, 'Missing setting key');
+    }
+    if (value === undefined || value === null) {
+      throw createValidationError({ value: 'Setting value is required' }, 'Missing setting value');
+    }
+
     const { error } = await supabase
       .from('visual_settings')
       .upsert(
-        { setting_key: key, setting_value: value },
+        { setting_key: key, setting_value: String(value) },
         { onConflict: 'setting_key' }
       );
 
     if (error) {
-      console.error('[VisualSettings] Update error:', error);
-      return false;
+      const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'updateVisualSetting', key });
+      logError(appError, { operation: 'updateVisualSetting', key });
+      throw appError;
     }
 
     // Clear cache to force refresh
     clearSettingsCache();
     return true;
   } catch (err) {
-    console.error('[VisualSettings] Update error:', err);
-    return false;
+    if (err.code) throw err;
+    const appError = handleError(err, ERROR_CODES.DB_ERROR, { operation: 'updateVisualSetting', key });
+    logError(appError, { operation: 'updateVisualSetting', key });
+    throw appError;
   }
 }
 

@@ -46,13 +46,19 @@ const HomePage = ({ onNavigate }) => {
   ].filter(f => !f.admin || isAdmin);
 
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [testimonialsError, setTestimonialsError] = useState(null);
 
   // Load testimonials from database
   useEffect(() => {
     const loadTestimonials = async () => {
-      const result = await getTestimonials(false);
-      if (result.data) {
-        setDbTestimonials(result.data);
+      try {
+        const testimonials = await getTestimonials(false);
+        setDbTestimonials(testimonials);
+        setTestimonialsError(null);
+      } catch (error) {
+        console.error('Error loading testimonials:', error);
+        setTestimonialsError(error);
+        setDbTestimonials([]);
       }
     };
     loadTestimonials();
@@ -62,9 +68,8 @@ const HomePage = ({ onNavigate }) => {
   useEffect(() => {
     const loadSlides = async () => {
       try {
-        const { data, error } = await getActiveCarouselSlides();
-        if (error) throw error;
-        setCarouselSlides(data || []);
+        const slides = await getActiveCarouselSlides();
+        setCarouselSlides(slides || []);
       } catch (error) {
         console.error('Error loading carousel slides:', error);
         // Fallback to empty array if database fails
@@ -276,6 +281,8 @@ const HomePage = ({ onNavigate }) => {
                   transition={{ duration: 0.5 }}
                   className="glass-effect p-6 rounded-2xl"
                 >
+                  {/* SECURITY: Only displays public author info (avatar + name)
+                      Sensitive user data (email, phone, address, etc.) is never exposed */}
                   <div className="flex items-center mb-4">
                     <img
                       className="w-12 h-12 rounded-full mr-4 object-cover"

@@ -3,10 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
-import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users } from 'lucide-react';
+import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users, Crown, TrendingDown, Gift } from 'lucide-react';
 import { getUserOrders, getOrderById, getAllOrders, validatePayment, rejectPayment } from '@/lib/orderService';
 import { getUserTestimonial, createTestimonial, updateTestimonial } from '@/lib/testimonialService';
 import { getMyRemittances } from '@/lib/remittanceService';
+import { getUserCategory } from '@/lib/userCategorizationService';
 import { getHeadingStyle, getTextStyle, getPillStyle, getStatusStyle } from '@/lib/styleUtils';
 import { generateWhatsAppURL } from '@/lib/whatsappService';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,20 @@ const UserPanel = ({ onNavigate }) => {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [actionOrderId, setActionOrderId] = useState(null);
+  const [userCategory, setUserCategory] = useState(null);
+
+  const loadUserCategory = async () => {
+    if (!user?.id || userRole === 'admin' || userRole === 'super_admin') return;
+
+    try {
+      const category = await getUserCategory(user.id);
+      if (category) {
+        setUserCategory(category);
+      }
+    } catch (error) {
+      console.error('Error loading user category:', error);
+    }
+  };
 
   useEffect(() => {
     if (!user) {
@@ -38,6 +53,7 @@ const UserPanel = ({ onNavigate }) => {
 
     loadUserOrders();
     loadUserRemittances();
+    loadUserCategory();
 
     // Load user testimonial only for regular users
     if (userRole !== 'admin' && userRole !== 'super_admin') {
@@ -69,11 +85,9 @@ const UserPanel = ({ onNavigate }) => {
       // Admin/super_admin see all pending orders, regular users see their own orders
       if (userRole === 'admin' || userRole === 'super_admin') {
         console.log('[UserPanel] Loading pending orders for admin');
-        const result = await getAllOrders({ payment_status: 'pending' });
-        console.log('[UserPanel] Admin orders result:', result);
-        if (result.success) {
-          setOrders(result.orders);
-        }
+        const orders = await getAllOrders({ payment_status: 'pending' });
+        console.log('[UserPanel] Admin orders result:', orders);
+        setOrders(orders || []);
       } else {
         console.log('[UserPanel] Loading user orders for regular user');
         const result = await getUserOrders(user.id);
@@ -107,14 +121,12 @@ const UserPanel = ({ onNavigate }) => {
     setShowOrderDetails(true);
 
     try {
-      const result = await getOrderById(orderId);
-      console.log('[UserPanel] Order details loaded:', result);
-      if (result.success) {
-        setSelectedOrder(result.order);
-        console.log('[UserPanel] Selected order payment_status:', result.order?.payment_status);
-        console.log('[UserPanel] Payment proof URL:', result.order?.payment_proof_url);
-        console.log('[UserPanel] Current userRole:', userRole);
-      }
+      const order = await getOrderById(orderId);
+      console.log('[UserPanel] Order details loaded:', order);
+      setSelectedOrder(order);
+      console.log('[UserPanel] Selected order payment_status:', order?.payment_status);
+      console.log('[UserPanel] Payment proof URL:', order?.payment_proof_url);
+      console.log('[UserPanel] Current userRole:', userRole);
     } catch (error) {
       console.error('Error loading order details:', error);
     } finally {
@@ -284,9 +296,33 @@ const UserPanel = ({ onNavigate }) => {
           <h1 className="text-4xl font-bold mb-4" style={getHeadingStyle(visualSettings)}>
             {t('userPanel.title')}
           </h1>
-          <p className="text-xl" style={getTextStyle(visualSettings, 'secondary')}>
-            {language === 'es' ? `Bienvenido, ${displayName}` : `Welcome, ${displayName}`}
-          </p>
+          <div className="flex flex-col items-center gap-3">
+            <p className="text-xl" style={getTextStyle(visualSettings, 'secondary')}>
+              {language === 'es' ? `Bienvenido, ${displayName}` : `Welcome, ${displayName}`}
+            </p>
+            {userCategory && userRole !== 'admin' && userRole !== 'super_admin' && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full font-medium text-sm"
+                style={{
+                  background: userCategory.category_name === 'vip'
+                    ? '#fbbf2420'
+                    : userCategory.category_name === 'pro'
+                    ? '#3b82f620'
+                    : '#80808020',
+                  color: userCategory.category_name === 'vip'
+                    ? '#d97706'
+                    : userCategory.category_name === 'pro'
+                    ? '#2563eb'
+                    : '#6b7280'
+                }}
+              >
+                {userCategory.category_name === 'vip' && <Crown className="h-4 w-4" />}
+                {userCategory.category_name.charAt(0).toUpperCase() + userCategory.category_name.slice(1)}
+              </motion.div>
+            )}
+          </div>
         </motion.div>
 
         {/* WhatsApp Support Button */}
@@ -522,6 +558,12 @@ const UserPanel = ({ onNavigate }) => {
                       <p className="text-xs" style={getTextStyle(visualSettings, 'muted')}>
                         {order.order_items?.length || 0} {language === 'es' ? 'artículos' : 'items'}
                       </p>
+                      {order.discount_amount > 0 && (
+                        <div className="mt-2 flex items-center justify-end gap-1 text-xs font-semibold text-green-600">
+                          <TrendingDown className="h-3 w-3" />
+                          {language === 'es' ? 'Descuento' : 'Discount'}
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -906,6 +948,29 @@ const UserPanel = ({ onNavigate }) => {
                             ${parseFloat(selectedOrder.subtotal).toFixed(2)}
                           </span>
                         </div>
+
+                        {/* Discount Section */}
+                        {selectedOrder.discount_amount > 0 && (
+                          <div className="p-3 rounded-lg" style={{ backgroundColor: visualSettings.primaryColor ? `${visualSettings.primaryColor}15` : '#dcfce7' }}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <TrendingDown className="h-4 w-4" style={{ color: '#16a34a' }} />
+                                <span className="text-sm font-semibold" style={{ color: '#16a34a' }}>
+                                  {language === 'es' ? 'Descuento' : 'Discount'}
+                                </span>
+                              </div>
+                              <span className="font-semibold" style={{ color: '#16a34a' }}>
+                                -${parseFloat(selectedOrder.discount_amount).toFixed(2)}
+                              </span>
+                            </div>
+                            {selectedOrder.offer_code && (
+                              <p className="text-xs mt-2" style={{ color: '#16a34a' }}>
+                                {language === 'es' ? 'Cupón:' : 'Coupon:'} <code className="font-mono font-bold">{selectedOrder.offer_code}</code>
+                              </p>
+                            )}
+                          </div>
+                        )}
+
                         <div className="flex justify-between text-sm">
                           <span style={getTextStyle(visualSettings, 'secondary')}>
                             {language === 'es' ? 'Envío' : 'Shipping'}

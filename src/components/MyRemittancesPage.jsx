@@ -13,55 +13,94 @@ import {
   cancelRemittance,
   calculateDeliveryAlert,
   generateProofSignedUrl,
+  confirmDelivery,
   REMITTANCE_STATUS
 } from '@/lib/remittanceService';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { useModal } from '@/contexts/ModalContext';
+import FileUploadWithPreview from '@/components/FileUploadWithPreview';
+import TooltipButton from './TooltipButton';
 
 const MyRemittancesPage = ({ onNavigate }) => {
   const { t } = useLanguage();
-  const { user } = useAuth();
+  const { isAdmin, isSuperAdmin } = useAuth();
   const { showModal } = useModal();
 
   const [remittances, setRemittances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedRemittance, setSelectedRemittance] = useState(null);
   const [proofSignedUrl, setProofSignedUrl] = useState(null);
+  const [deliveryProofSignedUrl, setDeliveryProofSignedUrl] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showDeliveryProofModal, setShowDeliveryProofModal] = useState(false);
+  const [deliveryProofFile, setDeliveryProofFile] = useState(null);
   const [uploadData, setUploadData] = useState({
     file: null,
     reference: '',
     notes: ''
   });
+  const [imagePreview, setImagePreview] = useState(null);
+  const [deliveryProofPreview, setDeliveryProofPreview] = useState(null);
 
   useEffect(() => {
     loadRemittances();
   }, []);
 
-  const loadRemittances = async () => {
-    setLoading(true);
-    const result = await getMyRemittances({});
-    if (result.success) {
-      setRemittances(result.remittances);
-    } else {
-      toast({
-        title: t('common.error'),
-        description: result.error,
-        variant: 'destructive'
+  useEffect(() => {
+    if (isAdmin || isSuperAdmin) {
+      showModal({
+        type: 'info',
+        title: t('common.accessDenied'),
+        message: t('remittances.admin.adminCannotViewRemittances'),
+        confirmText: t('common.ok')
+      }).then(() => {
+        onNavigate('dashboard');
       });
     }
-    setLoading(false);
+  }, [isAdmin, isSuperAdmin]);
+
+  const loadRemittances = async () => {
+    setLoading(true);
+    try {
+      const result = await getMyRemittances({});
+      // getMyRemittances returns array directly, not a result object
+      if (Array.isArray(result)) {
+        setRemittances(result);
+      } else {
+        // Handle legacy response format if needed
+        if (result.success) {
+          setRemittances(result.remittances);
+        } else {
+          throw new Error(result.error || 'Failed to load remittances');
+        }
+      }
+    } catch (error) {
+      console.error('Error loading remittances:', error);
+      toast({
+        title: t('common.error'),
+        description: error.message || 'Failed to load remittances',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleViewDetails = async (remittance) => {
-    const result = await getRemittanceDetails(remittance.id);
-    if (result.success) {
-      setSelectedRemittance(result.remittance);
-    } else {
+    try {
+      const result = await getRemittanceDetails(remittance.id);
+      // getRemittanceDetails returns the remittance object directly, not wrapped in { success, remittance }
+      if (result) {
+        setSelectedRemittance(result);
+      } else {
+        throw new Error('No remittance data returned');
+      }
+    } catch (error) {
+      console.error('Error fetching remittance details:', error);
       toast({
         title: t('common.error'),
-        description: result.error,
+        description: error.message || 'Failed to load remittance details',
         variant: 'destructive'
       });
     }
@@ -87,6 +126,23 @@ const MyRemittancesPage = ({ onNavigate }) => {
     loadProofSignedUrl();
   }, [selectedRemittance, showUploadModal]);
 
+  // Generate signed URL for delivery proof
+  useEffect(() => {
+    const loadDeliveryProofUrl = async () => {
+      if (selectedRemittance?.delivery_proof_url && !showDeliveryProofModal) {
+        setDeliveryProofSignedUrl(null);
+        const result = await generateProofSignedUrl(selectedRemittance.delivery_proof_url, 'remittance-delivery-proofs');
+        if (result.success) {
+          setDeliveryProofSignedUrl(result.signedUrl);
+        }
+      } else {
+        setDeliveryProofSignedUrl(null);
+      }
+    };
+
+    loadDeliveryProofUrl();
+  }, [selectedRemittance?.delivery_proof_url, showDeliveryProofModal]);
+
   const handleUploadProof = (remittance) => {
     setSelectedRemittance(remittance);
     setShowUploadModal(true);
@@ -96,6 +152,41 @@ const MyRemittancesPage = ({ onNavigate }) => {
       reference: remittance.remittance_number, // Auto-load remittance ID
       notes: ''
     });
+    setImagePreview(null);
+  };
+
+  // Handle payment proof file change with preview generation
+  const handlePaymentProofChange = (e) => {
+    const file = e.target.files[0];
+    setUploadData({ ...uploadData, file });
+
+    // Generate preview
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setImagePreview(null);
+    }
+  };
+
+  // Handle delivery proof file change with preview generation
+  const handleDeliveryProofChange = (e) => {
+    const file = e.target.files[0];
+    setDeliveryProofFile(file);
+
+    // Generate preview
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setDeliveryProofPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setDeliveryProofPreview(null);
+    }
   };
 
   const handleSubmitProof = async (e) => {
@@ -123,6 +214,12 @@ const MyRemittancesPage = ({ onNavigate }) => {
         description: t('remittances.user.proofUploaded')
       });
       setShowUploadModal(false);
+      setImagePreview(null);
+      setUploadData({
+        file: null,
+        reference: '',
+        notes: ''
+      });
       loadRemittances();
     } else {
       toast({
@@ -159,6 +256,40 @@ const MyRemittancesPage = ({ onNavigate }) => {
       toast({
         title: t('common.error'),
         description: result.error,
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleUploadDeliveryProof = async () => {
+    if (!selectedRemittance || !deliveryProofFile) {
+      toast({
+        title: t('common.error'),
+        description: 'Por favor selecciona una foto de evidencia',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      const result = await confirmDelivery(selectedRemittance.id, deliveryProofFile);
+      if (result.success) {
+        toast({
+          title: t('common.success'),
+          description: 'Evidencia de entrega subida correctamente',
+        });
+        setDeliveryProofFile(null);
+        setDeliveryProofPreview(null);
+        setShowDeliveryProofModal(false);
+        await loadRemittances();
+        setSelectedRemittance(null);
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: error.message,
         variant: 'destructive'
       });
     }
@@ -222,10 +353,10 @@ const MyRemittancesPage = ({ onNavigate }) => {
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className={`${getHeadingStyle()} text-3xl mb-2`}>
-            Mis Remesas
+            {t('remittances.user.myRemittances')}
           </h1>
           <p className="text-gray-600">
-            Consulte el estado de sus envíos de dinero
+            {t('remittances.user.trackRemittances')}
           </p>
         </div>
         <button
@@ -233,7 +364,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
           className={`${getPrimaryButtonStyle()} flex items-center gap-2`}
         >
           <DollarSign className="h-5 w-5" />
-          Nueva Remesa
+          {t('remittances.user.newRemittance')}
         </button>
       </div>
 
@@ -241,17 +372,17 @@ const MyRemittancesPage = ({ onNavigate }) => {
         <div className="text-center py-12 glass-effect rounded-xl">
           <DollarSign className="h-16 w-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-xl font-bold text-gray-700 mb-2">
-            No tiene remesas registradas
+            {t('remittances.user.noRemittances')}
           </h3>
           <p className="text-gray-600 mb-6">
-            Envíe su primera remesa de forma rápida y segura
+            {t('remittances.user.noRemittancesDesc')}
           </p>
           <button
             onClick={() => onNavigate && onNavigate('sendRemittance')}
             className={`${getPrimaryButtonStyle()} inline-flex items-center gap-2`}
           >
             <DollarSign className="h-5 w-5" />
-            Enviar Remesa
+            {t('remittances.user.newRemittance')}
           </button>
         </div>
       ) : (
@@ -287,21 +418,21 @@ const MyRemittancesPage = ({ onNavigate }) => {
                 {/* Amount Display */}
                 <div className="grid md:grid-cols-3 gap-4 mb-4">
                   <div>
-                    <p className="text-xs text-gray-500 mb-1">Enviado</p>
+                    <p className="text-xs text-gray-500 mb-1">{t('remittances.user.amountSent')}</p>
                     <p className="text-lg font-bold text-blue-600">
                       {remittance.amount_sent} {remittance.currency_sent}
                     </p>
                   </div>
 
                   <div>
-                    <p className="text-xs text-gray-500 mb-1">A Entregar</p>
+                    <p className="text-xs text-gray-500 mb-1">{t('remittances.user.toDeliver')}</p>
                     <p className="text-lg font-bold text-green-600">
                       {remittance.amount_to_deliver?.toFixed(2)} {remittance.currency_delivered}
                     </p>
                   </div>
 
                   <div>
-                    <p className="text-xs text-gray-500 mb-1">Destinatario</p>
+                    <p className="text-xs text-gray-500 mb-1">{t('remittances.recipient.fullName')}</p>
                     <p className="font-semibold">{remittance.recipient_name}</p>
                   </div>
                 </div>
@@ -339,7 +470,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                       <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
                       <div>
                         <p className="text-sm font-semibold text-red-800 mb-1">
-                          Razón del rechazo:
+                          {t('remittances.admin.rejectReason')}:
                         </p>
                         <p className="text-sm text-red-700">
                           {remittance.payment_rejection_reason}
@@ -359,41 +490,49 @@ const MyRemittancesPage = ({ onNavigate }) => {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
+                    <TooltipButton
+                      tooltipText={t('remittances.user.viewDetails')}
                       onClick={() => handleViewDetails(remittance)}
-                      className="flex items-center gap-1 px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+                      className="flex items-center gap-1 px-2 sm:px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+                      title={t('remittances.user.viewDetails')}
                     >
                       <Eye className="h-4 w-4" />
-                      Ver Detalles
-                    </button>
+                      <span className="hidden sm:inline">{t('remittances.user.viewDetails')}</span>
+                    </TooltipButton>
 
                     {remittance.status === REMITTANCE_STATUS.PAYMENT_PENDING && (
                       <>
-                        <button
+                        <TooltipButton
+                          tooltipText={t('remittances.user.uploadProof')}
                           onClick={() => handleUploadProof(remittance)}
-                          className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                          className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                          title={t('remittances.user.uploadProof')}
                         >
                           <Upload className="h-4 w-4" />
-                          Subir Comprobante
-                        </button>
-                        <button
+                          <span className="hidden sm:inline">{t('remittances.user.uploadProof')}</span>
+                        </TooltipButton>
+                        <TooltipButton
+                          tooltipText={t('common.cancel')}
                           onClick={() => handleCancel(remittance)}
-                          className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                          className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                          title={t('common.cancel')}
                         >
                           <XCircle className="h-4 w-4" />
-                          Cancelar
-                        </button>
+                          <span className="hidden sm:inline">{t('common.cancel')}</span>
+                        </TooltipButton>
                       </>
                     )}
 
                     {remittance.status === REMITTANCE_STATUS.PAYMENT_REJECTED && (
-                      <button
+                      <TooltipButton
+                        tooltipText={t('remittances.user.reUploadProof')}
                         onClick={() => handleUploadProof(remittance)}
-                        className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                        className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                        title={t('remittances.user.reUploadProof')}
                       >
                         <RefreshCw className="h-4 w-4" />
-                        Reenviar Comprobante
-                      </button>
+                        <span className="hidden sm:inline">{t('remittances.user.reUploadProof')}</span>
+                      </TooltipButton>
                     )}
                   </div>
                 </div>
@@ -412,77 +551,76 @@ const MyRemittancesPage = ({ onNavigate }) => {
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl p-6 max-w-md w-full"
+            className="bg-white rounded-2xl p-4 sm:p-6 max-w-md w-full"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-2xl font-bold gradient-text mb-4">
-              Subir Comprobante de Pago
+            <h2 className="text-xl sm:text-2xl font-bold gradient-text mb-4">
+              {t('remittances.user.uploadProofTitle')}
             </h2>
 
             <form onSubmit={handleSubmitProof} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Remesa
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                  {t('remittances.user.remittanceLabel')}
                 </label>
                 <p className="font-semibold">{selectedRemittance.remittance_number}</p>
-                <p className="text-sm text-gray-600">
+                <p className="text-xs sm:text-sm text-gray-600">
                   {selectedRemittance.amount_sent} {selectedRemittance.currency_sent}
                 </p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Comprobante de pago *
-                </label>
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={(e) => setUploadData({ ...uploadData, file: e.target.files[0] })}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                />
-              </div>
+              <FileUploadWithPreview
+                label={t('remittances.user.paymentProofLabel')}
+                accept="image/*,.pdf"
+                value={uploadData.file}
+                preview={imagePreview}
+                onChange={handlePaymentProofChange}
+                previewPosition="above"
+              />
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Referencia de pago *
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                  {t('remittances.user.paymentReferenceLabel')}
                 </label>
                 <input
                   type="text"
                   value={uploadData.reference}
                   onChange={(e) => setUploadData({ ...uploadData, reference: e.target.value })}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Ej: ZELLE123456"
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  placeholder={t('remittances.user.referenceExample')}
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Notas adicionales
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                  {t('remittances.user.additionalNotesLabel')}
                 </label>
                 <textarea
                   value={uploadData.notes}
                   onChange={(e) => setUploadData({ ...uploadData, notes: e.target.value })}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                   rows="3"
-                  placeholder="Detalles adicionales..."
+                  placeholder={t('remittances.user.additionalDetailsPlaceholder')}
                 />
               </div>
 
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowUploadModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  onClick={() => {
+                    setShowUploadModal(false);
+                    setImagePreview(null);
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm"
                 >
                   {t('common.cancel')}
                 </button>
                 <button
                   type="submit"
-                  className={`flex-1 ${getPrimaryButtonStyle()}`}
+                  className={`flex-1 ${getPrimaryButtonStyle()} text-sm`}
                 >
-                  Enviar
+                  {t('remittances.user.send')}
                 </button>
               </div>
             </form>
@@ -499,11 +637,11 @@ const MyRemittancesPage = ({ onNavigate }) => {
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl p-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-2xl p-4 sm:p-6 max-w-4xl sm:max-w-5xl w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-2xl font-bold gradient-text mb-6">
-              Detalles de Remesa
+            <h2 className="text-xl sm:text-2xl font-bold gradient-text mb-6">
+              {t('remittances.user.detailsTitle')}
             </h2>
 
             {/* Layout 2 columnas: Info izquierda, Comprobante derecha */}
@@ -513,50 +651,50 @@ const MyRemittancesPage = ({ onNavigate }) => {
                 {/* Datos Básicos */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-gray-500">Número</p>
-                    <p className="font-semibold">{selectedRemittance.remittance_number}</p>
+                    <p className="text-xs sm:text-sm text-gray-500">{t('remittances.user.number')}</p>
+                    <p className="font-semibold text-sm sm:text-base">{selectedRemittance.remittance_number}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Estado</p>
-                    <p className="font-semibold">{getStatusLabel(selectedRemittance.status)}</p>
+                    <p className="text-xs sm:text-sm text-gray-500">{t('common.status')}</p>
+                    <p className="font-semibold text-sm sm:text-base">{getStatusLabel(selectedRemittance.status)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Tipo</p>
-                    <p className="font-semibold">{selectedRemittance.remittance_types?.name}</p>
+                    <p className="text-xs sm:text-sm text-gray-500">{t('remittances.user.type')}</p>
+                    <p className="font-semibold text-sm sm:text-base">{selectedRemittance.remittance_types?.name}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Método de Entrega</p>
-                    <p className="font-semibold capitalize">{selectedRemittance.delivery_method}</p>
+                    <p className="text-xs sm:text-sm text-gray-500">{t('remittances.user.deliveryMethod')}</p>
+                    <p className="font-semibold capitalize text-sm sm:text-base">{selectedRemittance.delivery_method}</p>
                   </div>
                 </div>
 
                 {/* Destinatario */}
                 <div className="pt-4 border-t">
-                  <h3 className="font-bold mb-3 flex items-center gap-2">
+                  <h3 className="font-bold mb-3 flex items-center gap-2 text-sm sm:text-base">
                     <User className="w-4 h-4" />
-                    Destinatario
+                    {t('remittances.user.recipient')}
                   </h3>
-                  <div className="space-y-2 bg-gray-50 p-4 rounded-lg">
-                    <p><span className="text-gray-600">Nombre:</span> <span className="font-medium">{selectedRemittance.recipient_name}</span></p>
-                    <p><span className="text-gray-600">Teléfono:</span> <span className="font-medium">{selectedRemittance.recipient_phone}</span></p>
+                  <div className="space-y-2 bg-gray-50 p-3 sm:p-4 rounded-lg text-xs sm:text-sm">
+                    <p><span className="text-gray-600">{t('remittances.user.recipientName')}</span> <span className="font-medium">{selectedRemittance.recipient_name}</span></p>
+                    <p><span className="text-gray-600">{t('remittances.user.recipientPhone')}</span> <span className="font-medium">{selectedRemittance.recipient_phone}</span></p>
                     {selectedRemittance.recipient_city && (
-                      <p><span className="text-gray-600">Ciudad:</span> <span className="font-medium">{selectedRemittance.recipient_city}</span></p>
+                      <p><span className="font-medium">{t('remittances.user.recipientCity')}</span> {selectedRemittance.recipient_city}{selectedRemittance.recipient_province && `, ${selectedRemittance.recipient_province}`}{selectedRemittance.recipient_municipality && `, ${selectedRemittance.recipient_municipality}`}</p>
                     )}
                     {selectedRemittance.recipient_address && (
-                      <p><span className="text-gray-600">Dirección:</span> <span className="font-medium">{selectedRemittance.recipient_address}</span></p>
+                      <p><span className="text-gray-600">{t('remittances.user.recipientAddress')}</span> <span className="font-medium">{selectedRemittance.recipient_address}</span></p>
                     )}
                   </div>
                 </div>
 
                 {/* Montos */}
                 <div className="pt-4 border-t">
-                  <h3 className="font-bold mb-3 flex items-center gap-2">
+                  <h3 className="font-bold mb-3 flex items-center gap-2 text-sm sm:text-base">
                     <DollarSign className="w-4 h-4" />
-                    Montos
+                    {t('remittances.user.amounts')}
                   </h3>
-                  <div className="space-y-2 bg-gray-50 p-4 rounded-lg">
-                    <p><span className="text-gray-600">Monto enviado:</span> <span className="font-medium">${selectedRemittance.amount_sent}</span></p>
-                    <p><span className="text-gray-600">Monto a entregar:</span> <span className="font-bold text-green-600">${selectedRemittance.amount_to_deliver} {selectedRemittance.currency_delivered}</span></p>
+                  <div className="space-y-2 bg-gray-50 p-3 sm:p-4 rounded-lg text-xs sm:text-sm">
+                    <p><span className="text-gray-600">{t('remittances.user.amountSentLabel')}</span> <span className="font-medium">${selectedRemittance.amount_sent}</span></p>
+                    <p><span className="text-gray-600">{t('remittances.user.amountToDeliverLabel')}</span> <span className="font-bold text-green-600">${selectedRemittance.amount_to_deliver} {selectedRemittance.currency_delivered}</span></p>
                   </div>
                 </div>
               </div>
@@ -565,15 +703,15 @@ const MyRemittancesPage = ({ onNavigate }) => {
               <div className="space-y-4">
                 {selectedRemittance.payment_proof_url ? (
                   <div>
-                    <h3 className="font-bold mb-3 flex items-center gap-2">
+                    <h3 className="font-bold mb-3 flex items-center gap-2 text-sm sm:text-base">
                       <FileText className="w-4 h-4" />
-                      Comprobante de Pago
+                      {t('remittances.user.paymentProofSection')}
                     </h3>
                     {proofSignedUrl ? (
                       <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-50">
                         <img
                           src={proofSignedUrl}
-                          alt="Comprobante de pago"
+                          alt={t('remittances.user.paymentProofAlt')}
                           className="w-full h-auto max-h-[500px] object-contain"
                           onError={(e) => {
                             // Si la imagen no carga, mostrar fallback
@@ -583,14 +721,14 @@ const MyRemittancesPage = ({ onNavigate }) => {
                         />
                         <div className="hidden flex-col items-center justify-center p-8 text-gray-500">
                           <FileText className="w-16 h-16 mb-4" />
-                          <p className="text-sm text-center">No se pudo cargar la imagen</p>
+                          <p className="text-xs sm:text-sm text-center">{t('remittances.user.imageLoadError')}</p>
                           <a
                             href={proofSignedUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="mt-4 text-blue-600 hover:underline text-sm"
+                            className="mt-4 text-blue-600 hover:underline text-xs sm:text-sm"
                           >
-                            Abrir en nueva pestaña
+                            {t('remittances.user.openInNewTab')}
                           </a>
                         </div>
                       </div>
@@ -598,39 +736,173 @@ const MyRemittancesPage = ({ onNavigate }) => {
                       <div className="flex items-center justify-center p-8 border-2 border-gray-200 rounded-lg bg-gray-50">
                         <div className="text-center text-gray-500">
                           <Clock className="w-12 h-12 mx-auto mb-2 animate-spin" />
-                          <p className="text-sm">Cargando comprobante...</p>
+                          <p className="text-xs sm:text-sm">{t('remittances.user.deliveryEvidenceLoading')}</p>
                         </div>
                       </div>
                     )}
                     {selectedRemittance.payment_reference && (
                       <div className="mt-3 bg-blue-50 p-3 rounded-lg">
-                        <p className="text-sm text-gray-600">Referencia:</p>
-                        <p className="font-semibold text-blue-900">{selectedRemittance.payment_reference}</p>
+                        <p className="text-xs sm:text-sm text-gray-600">{t('remittances.user.referenceLabel')}</p>
+                        <p className="font-semibold text-blue-900 text-sm">{selectedRemittance.payment_reference}</p>
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center p-12 bg-yellow-50 border-2 border-yellow-200 border-dashed rounded-lg">
+                  <div className="flex flex-col items-center justify-center p-8 sm:p-12 bg-yellow-50 border-2 border-yellow-200 border-dashed rounded-lg">
                     <AlertCircle className="w-12 h-12 text-yellow-600 mb-4" />
-                    <p className="text-sm font-medium text-yellow-800 text-center">
-                      Comprobante de pago pendiente
+                    <p className="text-xs sm:text-sm font-medium text-yellow-800 text-center">
+                      {t('remittances.user.proofPending')}
                     </p>
                     <p className="text-xs text-yellow-700 text-center mt-2">
-                      El comprobante aún no ha sido enviado
+                      {t('remittances.user.proofNotSent')}
                     </p>
                   </div>
                 )}
+
+                {/* Delivery Proof Section */}
+                {[REMITTANCE_STATUS.DELIVERED, REMITTANCE_STATUS.COMPLETED].includes(selectedRemittance.status) ? (
+                  <div>
+                    <h3 className="font-bold mb-3 flex items-center gap-2 text-sm sm:text-base">
+                      <Truck className="w-4 h-4" />
+                      {t('remittances.user.deliveryEvidenceTitle')}
+                    </h3>
+                    {selectedRemittance.delivery_proof_url ? (
+                      <>
+                        {deliveryProofSignedUrl ? (
+                          <div className="border-2 border-green-200 rounded-lg overflow-hidden bg-gray-50">
+                            <img
+                              src={deliveryProofSignedUrl}
+                              alt={t('remittances.user.deliveryEvidenceTitle')}
+                              className="w-full h-auto max-h-[500px] object-contain"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.nextSibling.style.display = 'flex';
+                              }}
+                            />
+                            <div className="hidden flex-col items-center justify-center p-8 text-gray-500">
+                              <FileText className="w-16 h-16 mb-4" />
+                              <p className="text-xs sm:text-sm text-center">{t('remittances.user.imageLoadError')}</p>
+                              <a
+                                href={deliveryProofSignedUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="mt-4 text-blue-600 hover:underline text-xs sm:text-sm"
+                              >
+                                {t('remittances.user.openInNewTab')}
+                              </a>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center p-8 border-2 border-green-200 rounded-lg bg-gray-50">
+                            <div className="text-center text-gray-500">
+                              <Clock className="w-12 h-12 mx-auto mb-2 animate-spin" />
+                              <p className="text-xs sm:text-sm">{t('remittances.user.deliveryEvidenceLoading')}</p>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center p-6 sm:p-12 bg-green-50 border-2 border-green-200 border-dashed rounded-lg">
+                        <Truck className="w-12 h-12 text-green-600 mb-4" />
+                        <p className="text-xs sm:text-sm font-medium text-green-800 text-center">
+                          {t('remittances.user.deliveryEvidencePending')}
+                        </p>
+                        <p className="text-xs text-green-700 text-center mt-2">
+                          {t('remittances.user.uploadDeliveryProof')}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
             </div>
 
-            {/* Botón Cerrar */}
-            <div className="mt-6 pt-6 border-t">
+            {/* Botones de Acción */}
+            <div className="mt-6 pt-6 border-t space-y-3">
+              {/* Upload Delivery Proof Button - Only show if delivered and no proof yet */}
+              {selectedRemittance.status === REMITTANCE_STATUS.DELIVERED && !selectedRemittance.delivery_proof_url && (
+                <button
+                  onClick={() => setShowDeliveryProofModal(true)}
+                  className="w-full py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center justify-center gap-2 text-sm"
+                >
+                  <Upload className="h-4 w-4" />
+                  {t('remittances.user.uploadDeliveryProofButton')}
+                </button>
+              )}
+
               <button
                 onClick={() => setSelectedRemittance(null)}
-                className="w-full py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                className="w-full py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm"
               >
-                Cerrar
+                {t('remittances.user.closeButton')}
               </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Delivery Proof Upload Modal */}
+      {showDeliveryProofModal && selectedRemittance && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowDeliveryProofModal(false)}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl p-4 sm:p-6 max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-xl sm:text-2xl font-bold gradient-text mb-4">
+              {t('remittances.user.uploadDeliveryProofTitle')}
+            </h2>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                  {t('remittances.user.remittanceLabel')}
+                </label>
+                <p className="font-semibold">{selectedRemittance.remittance_number}</p>
+                <p className="text-xs sm:text-sm text-gray-600">
+                  {selectedRemittance.amount_to_deliver} {selectedRemittance.currency_delivered}
+                </p>
+              </div>
+
+              <FileUploadWithPreview
+                label={t('remittances.user.deliveryPhotoLabel')}
+                accept="image/*"
+                value={deliveryProofFile}
+                preview={deliveryProofPreview}
+                onChange={handleDeliveryProofChange}
+                previewPosition="above"
+              />
+
+              <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                <p className="text-xs text-green-800">
+                  {t('remittances.user.deliveryPhotoTip')}
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDeliveryProofModal(false);
+                    setDeliveryProofFile(null);
+                    setDeliveryProofPreview(null);
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+                >
+                  {t('common.cancel')}
+                </button>
+                <button
+                  onClick={handleUploadDeliveryProof}
+                  className={`flex-1 ${getPrimaryButtonStyle()} flex items-center justify-center gap-2 text-sm`}
+                >
+                  <Upload className="h-4 w-4" />
+                  {t('remittances.user.send')}
+                </button>
+              </div>
             </div>
           </motion.div>
         </div>

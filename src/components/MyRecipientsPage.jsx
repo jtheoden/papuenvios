@@ -57,11 +57,30 @@ const MyRecipientsPage = ({ onNavigate }) => {
 
   const loadRecipients = async () => {
     setLoading(true);
-    const result = await getMyRecipients();
-    if (result.success) {
-      setRecipients(result.recipients);
+    try {
+      const result = await getMyRecipients();
+      // getMyRecipients returns array directly, not wrapped object
+      if (Array.isArray(result)) {
+        setRecipients(result);
+      } else {
+        // Handle legacy format if needed
+        if (result.success) {
+          setRecipients(result.recipients);
+        } else {
+          setRecipients([]);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading recipients:', error);
+      toast({
+        title: t('common.error'),
+        description: error.message || 'Failed to load recipients',
+        variant: 'destructive'
+      });
+      setRecipients([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const loadProvinces = async () => {
