@@ -20,6 +20,13 @@ export const logActivity = async ({
   metadata = null
 }) => {
   try {
+    const { data: sessionData } = await supabase.auth.getSession();
+
+    if (!sessionData?.session) {
+      console.warn('[activityLogger] Skipping log - no active session');
+      return;
+    }
+
     if (!action || !entityType) {
       console.warn('[activityLogger] Missing required fields', { action, entityType });
       return;
@@ -38,6 +45,11 @@ export const logActivity = async ({
     const { error } = await supabase.from('activity_logs').insert([payload]);
 
     if (error) {
+      // Avoid noisy logs if RLS blocks the request
+      if (error.code === '42501') {
+        console.warn('[activityLogger] Permission denied when inserting activity');
+        return;
+      }
       console.warn('[activityLogger] Failed to insert activity', error.message);
     }
   } catch (error) {
@@ -47,6 +59,12 @@ export const logActivity = async ({
 
 export const fetchActivityLogs = async ({ search = '', type = 'all', entity = 'all', limit = 200 } = {}) => {
   try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData?.session) {
+      console.warn('[activityLogger] Skipping fetch - no active session');
+      return [];
+    }
+
     let query = supabase.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(limit);
 
     if (type !== 'all') {
