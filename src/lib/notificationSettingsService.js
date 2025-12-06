@@ -1,6 +1,6 @@
 /**
  * Notification Settings Service
- * Manages notification settings stored in system_config table
+ * Manages notification settings stored in system_config table via Edge Function
  * - WhatsApp admin phone
  * - WhatsApp group URL
  * - Admin email
@@ -8,11 +8,7 @@
 
 import { supabase } from '@/lib/supabase';
 
-const NOTIFICATION_KEYS = {
-  WHATSAPP_PHONE: 'whatsapp_admin_phone',
-  WHATSAPP_GROUP: 'whatsapp_group',
-  ADMIN_EMAIL: 'admin_email'
-};
+const NOTIFICATION_ENDPOINT = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notification-settings`;
 
 const DEFAULT_SETTINGS = {
   whatsapp: '',
@@ -20,134 +16,78 @@ const DEFAULT_SETTINGS = {
   adminEmail: ''
 };
 
-/**
- * Initialize notification settings in system_config if they don't exist
- * @returns {Promise<void>}
- */
-async function initializeNotificationSettings() {
-  try {
-    const keysToCreate = Object.values(NOTIFICATION_KEYS);
+async function callNotificationSettings(method = 'GET', payload) {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
 
-    for (const key of keysToCreate) {
-      const { data: existing } = await supabase
-        .from('system_config')
-        .select('id')
-        .eq('key', key)
-        .single();
-
-      if (!existing) {
-        let description = '';
-        switch (key) {
-          case NOTIFICATION_KEYS.WHATSAPP_PHONE:
-            description = 'Número de WhatsApp para notificaciones de administrador';
-            break;
-          case NOTIFICATION_KEYS.WHATSAPP_GROUP:
-            description = 'URL del grupo de WhatsApp para notificaciones de pedidos';
-            break;
-          case NOTIFICATION_KEYS.ADMIN_EMAIL:
-            description = 'Email del administrador para recibir notificaciones de nuevos pedidos';
-            break;
-        }
-
-        await supabase
-          .from('system_config')
-          .insert({
-            key,
-            value_text: '',
-            description
-          });
-      }
-    }
-  } catch (err) {
-    console.error('[NotificationSettings] Initialize error:', err);
+  if (sessionError) {
+    console.error('[NotificationSettings] Session error:', sessionError);
+    throw new Error('No se pudo verificar tu sesión. Intenta iniciar sesión nuevamente.');
   }
+
+  const accessToken = sessionData?.session?.access_token;
+  if (!accessToken) {
+    throw new Error('Debes iniciar sesión para acceder a la configuración.');
+  }
+
+  const response = await fetch(NOTIFICATION_ENDPOINT, {
+    method,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: payload ? JSON.stringify(payload) : undefined
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = data?.message || data?.error || 'No se pudieron procesar las configuraciones.';
+    console.error('[NotificationSettings] API error:', { status: response.status, message, data });
+    throw new Error(message);
+  }
+
+  return data;
 }
 
 /**
- * Load notification settings from system_config
+ * Load notification settings from Edge Function
  * @returns {Promise<Object>} Settings object with whatsapp, whatsappGroup, adminEmail
  */
 export async function loadNotificationSettings() {
   try {
-    // Ensure settings exist
-    await initializeNotificationSettings();
-
-    const { data: configs, error } = await supabase
-      .from('system_config')
-      .select('key, value_text')
-      .in('key', Object.values(NOTIFICATION_KEYS));
-
-    if (error) {
-      console.error('[NotificationSettings] Load error:', error);
-      return DEFAULT_SETTINGS;
-    }
-
-    // Map system_config keys to notification settings keys
-    const settings = { ...DEFAULT_SETTINGS };
-    if (Array.isArray(configs)) {
-      configs.forEach(config => {
-        if (config.key === NOTIFICATION_KEYS.WHATSAPP_PHONE) {
-          settings.whatsapp = config.value_text || '';
-        } else if (config.key === NOTIFICATION_KEYS.WHATSAPP_GROUP) {
-          settings.whatsappGroup = config.value_text || '';
-        } else if (config.key === NOTIFICATION_KEYS.ADMIN_EMAIL) {
-          settings.adminEmail = config.value_text || '';
-        }
-      });
-    }
-
-    return settings;
+    const data = await callNotificationSettings('GET');
+    return {
+      whatsapp: data.whatsapp ?? '',
+      whatsappGroup: data.whatsappGroup ?? '',
+      adminEmail: data.adminEmail ?? ''
+    };
   } catch (err) {
     console.error('[NotificationSettings] Load error:', err);
-    return DEFAULT_SETTINGS;
+    throw err;
   }
 }
 
 /**
- * Save notification settings to system_config
+ * Save notification settings via Edge Function
  * @param {Object} settings - Settings object with whatsapp, whatsappGroup, adminEmail
  * @returns {Promise<boolean>} Success status
  */
 export async function saveNotificationSettings(settings) {
+  if (!settings) {
+    throw new Error('Debes proporcionar configuraciones para guardar.');
+  }
+
   try {
-    if (!settings) {
-      throw new Error('Settings object is required');
-    }
-
-    // Ensure settings exist first
-    await initializeNotificationSettings();
-
-    // Update each setting
-    const updates = [
-      {
-        key: NOTIFICATION_KEYS.WHATSAPP_PHONE,
-        value_text: settings.whatsapp || ''
-      },
-      {
-        key: NOTIFICATION_KEYS.WHATSAPP_GROUP,
-        value_text: settings.whatsappGroup || ''
-      },
-      {
-        key: NOTIFICATION_KEYS.ADMIN_EMAIL,
-        value_text: settings.adminEmail || ''
-      }
-    ];
-
-    for (const update of updates) {
-      const { error } = await supabase
-        .from('system_config')
-        .update({ value_text: update.value_text })
-        .eq('key', update.key);
-
-      if (error) {
-        console.error(`[NotificationSettings] Save error for ${update.key}:`, error);
-        throw error;
-      }
-    }
-
+    await callNotificationSettings('PUT', {
+      whatsapp: settings.whatsapp || '',
+      whatsappGroup: settings.whatsappGroup || '',
+      adminEmail: settings.adminEmail || ''
+    });
     return true;
   } catch (err) {
     console.error('[NotificationSettings] Save error:', err);
     throw err;
   }
 }
+
+export { DEFAULT_SETTINGS };
