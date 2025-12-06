@@ -89,11 +89,19 @@ const AdminOffersTab = () => {
 
   // Load offers on mount
   useEffect(() => {
-    loadOffers();
-  }, []);
+    if (user) {
+      loadOffers();
+    }
+  }, [user]);
 
   const loadOffers = async () => {
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session) {
+        console.warn('Skipping offer load - no active Supabase session');
+        return;
+      }
+
       setLoading(true);
       const { data, error } = await supabase
         .from('offers')
