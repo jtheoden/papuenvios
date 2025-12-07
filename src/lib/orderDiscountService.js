@@ -8,6 +8,7 @@
 
 import { supabase } from './supabase';
 import { calculateOrderTotal, calculateDiscount } from './priceCalculationService';
+import { logActivity } from './activityLogger';
 
 /**
  * Get user category and associated discount
@@ -19,7 +20,7 @@ export const getUserCategoryWithDiscount = async (userId) => {
     // Get user category
     const { data: categoryData, error: categoryError } = await supabase
       .from('user_categories')
-      .select('category_name')
+      .select('category_name, category')
       .eq('user_id', userId)
       .maybeSingle();
 
@@ -32,13 +33,14 @@ export const getUserCategoryWithDiscount = async (userId) => {
       };
     }
 
-    const category = categoryData.category_name;
+    // Support both "category_name" and legacy "category" columns
+    const category = categoryData.category_name || categoryData.category || 'regular';
 
     // Get discount for this category
     const { data: discountData, error: discountError } = await supabase
       .from('category_discounts')
-      .select('discount_percentage, enabled')
-      .eq('category_name', category)
+      .select('discount_percentage, enabled, category_name, category')
+      .or(`category_name.eq.${category},category.eq.${category}`)
       .single();
 
     if (discountError || !discountData) {
@@ -112,14 +114,32 @@ export const validateAndGetOffer = async (offerCode, subtotal = 0, userId = null
       };
     }
 
+    const safeUsageCheck = async (queryFn) => {
+      try {
+        const { data, error } = await queryFn();
+        if (error) {
+          // Gracefully skip usage enforcement on permission errors to avoid blocking checkout
+          if (['42501', 'PGRST301'].includes(error.code) || error.message?.toLowerCase().includes('permission')) {
+            console.warn('[discount] Offer usage check skipped due to permission error:', error.message);
+            return null;
+          }
+          throw error;
+        }
+        return data || [];
+      } catch (usageErr) {
+        console.warn('[discount] Offer usage check failed:', usageErr?.message || usageErr);
+        return null;
+      }
+    };
+
     // Check global usage limit
     if (offers.max_usage_global) {
-      const { data: usageData, error: usageError } = await supabase
+      const usageData = await safeUsageCheck(() => supabase
         .from('offer_usage')
         .select('id')
-        .eq('offer_id', offers.id);
+        .eq('offer_id', offers.id));
 
-      if (!usageError && usageData && usageData.length >= offers.max_usage_global) {
+      if (usageData && usageData.length >= offers.max_usage_global) {
         return {
           valid: false,
           reason: 'Offer has reached its usage limit',
@@ -130,13 +150,13 @@ export const validateAndGetOffer = async (offerCode, subtotal = 0, userId = null
 
     // Check per-user usage limit
     if (userId && offers.max_usage_per_user) {
-      const { data: userUsageData, error: userUsageError } = await supabase
+      const userUsageData = await safeUsageCheck(() => supabase
         .from('offer_usage')
         .select('id')
         .eq('offer_id', offers.id)
-        .eq('user_id', userId);
+        .eq('user_id', userId));
 
-      if (!userUsageError && userUsageData && userUsageData.length >= offers.max_usage_per_user) {
+      if (userUsageData && userUsageData.length >= offers.max_usage_per_user) {
         return {
           valid: false,
           reason: `You have already used this offer ${userUsageData.length} times (limit: ${offers.max_usage_per_user})`,
@@ -184,9 +204,22 @@ export const recordOfferUsage = async (offerId, userId = null, orderId = null) =
       ]);
 
     if (error) {
+      if (['42501', 'PGRST301'].includes(error.code) || error.message?.toLowerCase().includes('permission')) {
+        console.warn('[discount] Offer usage recording skipped due to permission error');
+        return true; // Do not block the flow
+      }
       console.error('Error recording offer usage:', error);
       return false;
     }
+
+    await logActivity({
+      action: 'offer_usage_recorded',
+      entityType: 'offer',
+      entityId: offerId,
+      performedBy: userId || 'anonymous',
+      description: 'User redeemed offer during checkout',
+      metadata: { orderId, userId }
+    });
 
     return true;
   } catch (error) {
