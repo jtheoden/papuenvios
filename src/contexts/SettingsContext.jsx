@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { loadNotificationSettings } from '@/lib/notificationSettingsService';
+import { useAuth } from '@/contexts/AuthContext';
+import { DEFAULT_SETTINGS, loadNotificationSettings } from '@/lib/notificationSettingsService';
 
 const SettingsContext = createContext();
 
@@ -35,6 +36,7 @@ const useLocalStorage = (key, initialValue) => {
  * Only re-renders components that depend on settings
  */
 export const SettingsProvider = ({ children }) => {
+  const { isAuthenticated } = useAuth();
   const [zelleAccounts, setZelleAccounts] = useLocalStorage('zelleAccounts', [
     {
       id: 1,
@@ -72,11 +74,7 @@ export const SettingsProvider = ({ children }) => {
   });
 
   // Notification settings now loaded from Supabase system_config table
-  const [notificationSettings, setNotificationSettings] = useState({
-    whatsapp: '',
-    whatsappGroup: '',
-    adminEmail: ''
-  });
+  const [notificationSettings, setNotificationSettings] = useState(DEFAULT_SETTINGS);
 
   // Load notification settings from Supabase on mount
   useEffect(() => {
@@ -86,10 +84,17 @@ export const SettingsProvider = ({ children }) => {
         setNotificationSettings(settings);
       } catch (err) {
         console.error('Failed to load notification settings:', err);
+        setNotificationSettings(DEFAULT_SETTINGS);
       }
     };
+
+    if (!isAuthenticated) {
+      setNotificationSettings(DEFAULT_SETTINGS);
+      return;
+    }
+
     loadSettings();
-  }, []);
+  }, [isAuthenticated]);
 
   const [visualSettings, setVisualSettings] = useLocalStorage('visualSettings', {
     logo: '',
