@@ -914,24 +914,24 @@ export const validatePayment = async (orderId, adminId) => {
           comboItemsMap.get(item.combo_id).push(item);
         });
 
-        // Batch fetch all products referenced by combo items
+        // Batch fetch inventory records for all products referenced by combo items
         const productIds = [...new Set(comboItems.map(item => item.product_id))];
         if (productIds.length > 0) {
-          const { data: products, error: productsError } = await supabase
-            .from('products')
-            .select('id, inventory_id')
-            .in('id', productIds);
+          const { data: inventories, error: inventoriesError } = await supabase
+            .from('inventory')
+            .select('id, product_id')
+            .in('product_id', productIds);
 
-          if (productsError) {
-            const appError = parseSupabaseError(productsError);
-            logError(appError, { operation: 'validatePayment - fetch products', orderId });
+          if (inventoriesError) {
+            const appError = parseSupabaseError(inventoriesError);
+            logError(appError, { operation: 'validatePayment - fetch inventory', orderId });
             throw appError;
           }
 
-          // Build map of product_id => product for efficient lookup
-          if (products) {
-            products.forEach(product => {
-              productsMap.set(product.id, product);
+          // Build map of product_id => inventory for efficient lookup
+          if (inventories) {
+            inventories.forEach(inventory => {
+              productsMap.set(inventory.product_id, { inventory_id: inventory.id });
             });
           }
         }
