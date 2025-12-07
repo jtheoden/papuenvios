@@ -498,7 +498,7 @@ const VendorInventoryTab = ({
           >
             <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-lg">
               <h3 className="text-xl font-bold text-gray-900">
-                {t('vendor.inventory.productDetails')} - {selectedProduct.name_es || selectedProduct.name}
+                {t('vendor.inventory.productDetails')} - {language === 'es' ? selectedProduct.name_es : selectedProduct.name_en}
               </h3>
               <button
                 onClick={() => setShowProductDetails(false)}
