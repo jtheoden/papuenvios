@@ -373,8 +373,9 @@ const CartPage = ({ onNavigate }) => {
     });
   };
 
+  const whatsappTarget = notificationSettings?.whatsapp || businessInfo?.whatsapp;
+
   const handleContactSupport = () => {
-    const whatsappTarget = notificationSettings?.whatsapp || businessInfo?.whatsapp;
     if (!whatsappTarget) {
       toast({
         title: t('common.error'),
@@ -966,21 +967,21 @@ const CartPage = ({ onNavigate }) => {
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className={`mb-6 p-4 rounded-lg border-2 ${
-              notificationSettings?.whatsapp
+          className={`mb-6 p-4 rounded-lg border-2 ${
+              whatsappTarget
                 ? 'bg-green-50 border-green-200'
                 : 'bg-yellow-50 border-yellow-200'
             }`}
           >
             <div className="flex items-start gap-3">
               <MessageCircle className={`h-5 w-5 flex-shrink-0 mt-1 ${
-                notificationSettings?.whatsapp ? 'text-green-600' : 'text-yellow-600'
+                whatsappTarget ? 'text-green-600' : 'text-yellow-600'
               }`} />
               <div className="flex-1">
                 <p className={`text-sm font-medium mb-3 ${
-                  notificationSettings?.whatsapp ? 'text-gray-700' : 'text-yellow-800'
+                  whatsappTarget ? 'text-gray-700' : 'text-yellow-800'
                 }`}>
-                  {notificationSettings?.whatsapp
+                  {whatsappTarget
                     ? (language === 'es'
                         ? '¿Tienes dudas sobre el pago? Contáctanos por WhatsApp'
                         : 'Questions about payment? Contact us via WhatsApp')
@@ -988,7 +989,7 @@ const CartPage = ({ onNavigate }) => {
                         ? 'Número de WhatsApp de soporte no configurado'
                         : 'WhatsApp support number not configured')}
                 </p>
-                {notificationSettings?.whatsapp && (
+                {whatsappTarget && (
                   <Button
                     onClick={handleContactSupport}
                     className="w-full bg-green-600 hover:bg-green-700 text-white"
