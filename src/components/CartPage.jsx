@@ -16,12 +16,15 @@ import { generateWhatsAppURL, notifyAdminNewPayment, openWhatsAppChat } from '@/
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
-import { calculateDiscount } from '@/lib/priceCalculationService';
-import { calculateOrderWithDiscounts, validateAndGetOffer, recordOfferUsage } from '@/lib/orderDiscountService';
+import { calculateOrderTotal } from '@/lib/priceCalculationService';
+import { validateAndGetOffer, recordOfferUsage } from '@/lib/orderDiscountService';
+import { buildDiscountBreakdown } from '@/lib/discountDisplayService';
+import { logActivity } from '@/lib/activityLogger';
 import RecipientSelector from '@/components/RecipientSelector';
 import ZelleAccountSelector from '@/components/ZelleAccountSelector';
 import FileUploadWithPreview from '@/components/FileUploadWithPreview';
 import CurrencySelector from '@/components/CurrencySelector';
+import { useUserDiscounts } from '@/hooks/useUserDiscounts';
 
 const CartPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
@@ -49,12 +52,13 @@ const CartPage = ({ onNavigate }) => {
   const [municipalities, setMunicipalities] = useState([]);
   const [shippingCost, setShippingCost] = useState(0);
   const [convertedSubtotal, setConvertedSubtotal] = useState(null);
+  const [convertedDiscountedSubtotal, setConvertedDiscountedSubtotal] = useState(null);
   const [convertedShipping, setConvertedShipping] = useState(null);
-
-  // User category discount state
-  const [userCategory, setUserCategory] = useState('regular');
-  const [userCategoryDiscount, setUserCategoryDiscount] = useState(0);
   const [convertedTotal, setConvertedTotal] = useState(null);
+
+  const { categoryInfo, categoryDiscountPercent } = useUserDiscounts();
+  const userCategory = categoryInfo.category || 'regular';
+  const userCategoryDiscount = categoryDiscountPercent;
 
   // Coupon/offer code state
   const [couponCode, setCouponCode] = useState('');
@@ -103,27 +107,27 @@ const CartPage = ({ onNavigate }) => {
     }, 0);
   }, [cart, getItemPrice]);
 
-  // Load shipping zones and user category discount
+  // Calculate discount amount and final total (category + offers)
+  const orderTotals = useMemo(() => calculateOrderTotal({
+    subtotal,
+    categoryDiscount: userCategoryDiscount,
+    offer: appliedOffer,
+    shippingCost
+  }), [appliedOffer, shippingCost, subtotal, userCategoryDiscount]);
+
+  const categoryDiscountAmount = orderTotals?.categoryDiscountAmount || 0;
+  const offerDiscountAmount = orderTotals?.offerDiscountAmount || 0;
+  const totalDiscountAmount = orderTotals?.totalDiscount || 0;
+  const discountedSubtotal = orderTotals?.afterAllDiscounts ?? (subtotal - totalDiscountAmount);
+  const totalAmount = orderTotals?.total ?? (discountedSubtotal + shippingCost);
+  const totalDisplay = totalAmount.toFixed(2);
+  const effectiveDiscountPercent = subtotal > 0 ? ((totalDiscountAmount / subtotal) * 100).toFixed(2) : '0.00';
+  const discountBreakdown = buildDiscountBreakdown({ amount: subtotal, categoryPercent: userCategoryDiscount, offer: appliedOffer });
+
+  // Load shipping zones once
   useEffect(() => {
     loadShippingZones();
-    loadUserCategoryDiscount();
   }, []);
-
-  // Load user category discount
-  const loadUserCategoryDiscount = async () => {
-    if (user && user.id) {
-      try {
-        const { getUserCategoryWithDiscount } = await import('@/lib/orderDiscountService');
-        const categoryInfo = await getUserCategoryWithDiscount(user.id);
-        setUserCategory(categoryInfo.category || 'regular');
-        setUserCategoryDiscount(categoryInfo.discountPercent || 0);
-      } catch (error) {
-        console.error('Error loading user category discount:', error);
-        setUserCategory('regular');
-        setUserCategoryDiscount(0);
-      }
-    }
-  };
 
   // Load municipalities when province changes
   useEffect(() => {
@@ -149,7 +153,7 @@ const CartPage = ({ onNavigate }) => {
   useEffect(() => {
     convertAmounts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currencyCode, subtotal, shippingCost]);
+  }, [currencyCode, subtotal, discountedSubtotal, shippingCost, totalAmount]);
 
   const loadShippingZones = async () => {
     try {
@@ -174,32 +178,43 @@ const CartPage = ({ onNavigate }) => {
     // If selected currency is USD (base currency), no conversion needed
     if (currencyCode === 'USD') {
       setConvertedSubtotal(subtotal);
+      setConvertedDiscountedSubtotal(discountedSubtotal);
       setConvertedShipping(shippingCost);
-      setConvertedTotal(subtotal + shippingCost);
+      setConvertedTotal(totalAmount);
       return;
     }
 
     try {
       // convertCurrency returns a numeric value (not an object), so keep a strict numeric fallback
       const convertedSub = await convertCurrency(subtotal, 'USD', currencyCode);
+      const convertedDiscounted = await convertCurrency(discountedSubtotal, 'USD', currencyCode);
       const convertedShip = await convertCurrency(shippingCost, 'USD', currencyCode);
+      const convertedGrandTotal = await convertCurrency(totalAmount, 'USD', currencyCode);
 
       const safeConvertedSub = typeof convertedSub === 'number' && !Number.isNaN(convertedSub)
         ? convertedSub
         : subtotal;
+      const safeConvertedDiscounted = typeof convertedDiscounted === 'number' && !Number.isNaN(convertedDiscounted)
+        ? convertedDiscounted
+        : discountedSubtotal;
       const safeConvertedShip = typeof convertedShip === 'number' && !Number.isNaN(convertedShip)
         ? convertedShip
         : shippingCost;
+      const safeConvertedGrandTotal = typeof convertedGrandTotal === 'number' && !Number.isNaN(convertedGrandTotal)
+        ? convertedGrandTotal
+        : totalAmount;
 
       setConvertedSubtotal(safeConvertedSub);
+      setConvertedDiscountedSubtotal(safeConvertedDiscounted);
       setConvertedShipping(safeConvertedShip);
-      setConvertedTotal(safeConvertedSub + safeConvertedShip);
+      setConvertedTotal(safeConvertedGrandTotal);
     } catch (error) {
       console.error('Error converting currency:', error);
       // Fallback to original values
       setConvertedSubtotal(subtotal);
+      setConvertedDiscountedSubtotal(discountedSubtotal);
       setConvertedShipping(shippingCost);
-      setConvertedTotal(subtotal + shippingCost);
+      setConvertedTotal(totalAmount);
     }
   };
 
@@ -215,19 +230,60 @@ const CartPage = ({ onNavigate }) => {
     }
   };
 
-  // Calculate discount amount and final total
-  const discountAmount = calculateDiscount(subtotal, userCategoryDiscount);
-  const subtotalAfterDiscount = subtotal - discountAmount;
-  const total = (subtotalAfterDiscount + shippingCost).toFixed(2);
   const purchaseId = `PO-${Date.now()}`;
 
   const activeZelleAccount = zelleAccounts.find(acc => acc.forProducts && acc.active);
 
-  const handleCheckout = () => {
+  const exchangeRateForDisplay = useMemo(() => {
+    if (subtotal > 0 && convertedSubtotal !== null) {
+      return convertedSubtotal / subtotal;
+    }
+    return 1;
+  }, [convertedSubtotal, subtotal]);
+
+  const displayValues = {
+    subtotal: convertedSubtotal !== null ? convertedSubtotal : subtotal,
+    discountedSubtotal: convertedDiscountedSubtotal !== null ? convertedDiscountedSubtotal : discountedSubtotal,
+    shipping: convertedShipping !== null ? convertedShipping : shippingCost,
+    total: convertedTotal !== null ? convertedTotal : totalAmount,
+    categoryDiscount: categoryDiscountAmount * exchangeRateForDisplay,
+    offerDiscount: offerDiscountAmount * exchangeRateForDisplay
+  };
+
+  const handleCheckout = async () => {
     if (!isAuthenticated) {
       toast({ title: t('auth.loginRequired'), description: t('auth.loginToCheckout'), variant: 'destructive' });
       return;
     }
+
+    await logActivity({
+      action: 'checkout_initiated',
+      entityType: 'cart',
+      entityId: user?.id || null,
+      performedBy: user?.email || 'anonymous',
+      description: language === 'es'
+        ? 'Usuario inició el flujo de pago desde el carrito'
+        : 'User started checkout from cart',
+      metadata: {
+        subtotal,
+        discountedSubtotal,
+        shippingCost,
+        total: totalAmount,
+        currency: currencyCode,
+        userCategory,
+        userCategoryDiscount,
+        categoryDiscountAmount,
+        appliedOffer: appliedOffer ? {
+          id: appliedOffer.id,
+          code: appliedOffer.code,
+          type: appliedOffer.discount_type,
+          value: appliedOffer.discount_value
+        } : null,
+        offerDiscountAmount,
+        effectiveDiscountPercent
+      }
+    });
+
     setView('recipient');
   };
 
@@ -438,9 +494,9 @@ const CartPage = ({ onNavigate }) => {
         userId: user.id,
         orderType: 'product',
         subtotal: parseFloat(subtotal.toFixed(2)),
-        discountAmount: parseFloat(discountAmount.toFixed(2)),  // Apply user category discount
+        discountAmount: parseFloat(totalDiscountAmount.toFixed(2)),
         shippingCost: parseFloat(shippingCost.toFixed(2)),
-        totalAmount: parseFloat(total),  // Already includes discount and shipping
+        totalAmount: parseFloat(totalAmount.toFixed(2)),
         currencyId: currency.id,
         recipientInfo: JSON.stringify(recipientDetails),
         paymentMethod: 'zelle',
@@ -504,8 +560,8 @@ const CartPage = ({ onNavigate }) => {
                 orderNumber: createdOrder.order_number,
                 customerName: recipientDetails.fullName,
                 subtotal: subtotal.toFixed(2),
-                discountAmount: discountAmount.toFixed(2),
-                total: total,  // Includes discount and shipping
+                discountAmount: totalDiscountAmount.toFixed(2),
+                total: totalDisplay,  // Includes discount and shipping
                 currency: selectedCurrency,
                 couponCode: appliedOffer?.code || null,  // Include coupon if applied
                 paymentProofUrl: uploadResult?.url || createdOrder.payment_proof_url || null
@@ -757,10 +813,29 @@ const CartPage = ({ onNavigate }) => {
                 <span>{language === 'es' ? 'Subtotal' : 'Subtotal'}:</span>
                 <span>${subtotal.toFixed(2)}</span>
               </div>
-              {discountAmount > 0 && (
+              {discountBreakdown.category.amount > 0 && (
                 <div className="flex justify-between text-sm text-green-600">
-                  <span>{language === 'es' ? 'Descuento categoría' : 'Category discount'} ({userCategoryDiscount}%):</span>
-                  <span>-${discountAmount.toFixed(2)}</span>
+                  <span>
+                    {language === 'es' ? 'Descuento categoría' : 'Category discount'} ({userCategory} · {discountBreakdown.category.percent}%):
+                  </span>
+                  <span>-{currencySymbol}{discountBreakdown.category.amount.toFixed(2)}</span>
+                </div>
+              )}
+              {discountBreakdown.offer.amount > 0 && appliedOffer && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>
+                    {language === 'es' ? 'Descuento por oferta' : 'Offer discount'} ({appliedOffer.code} · {appliedOffer.discount_type === 'percentage'
+                      ? `${appliedOffer.discount_value}%`
+                      : `${currencySymbol}${appliedOffer.discount_value}`
+                    }):
+                  </span>
+                  <span>-{currencySymbol}{discountBreakdown.offer.amount.toFixed(2)}</span>
+                </div>
+              )}
+              {totalDiscountAmount > 0 && (
+                <div className="flex justify-between text-sm border-t pt-2 font-semibold text-green-700">
+                  <span>{language === 'es' ? 'Subtotal con descuentos' : 'Discounted subtotal'}:</span>
+                  <span>${discountedSubtotal.toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm border-t pt-2">
@@ -769,12 +844,12 @@ const CartPage = ({ onNavigate }) => {
               </div>
               <div className="flex justify-between text-lg font-bold border-t pt-2">
                 <span>{t('cart.payment.amount')}:</span>
-                <span style={{ color: visualSettings.successColor || '#10b981' }}>${total}</span>
+                <span style={{ color: visualSettings.successColor || '#10b981' }}>${totalDisplay}</span>
               </div>
             </div>
 
             <div className="flex justify-end">
-              <Button onClick={() => copyToClipboard(total)} variant="outline" size="sm">
+              <Button onClick={() => copyToClipboard(totalDisplay)} variant="outline" size="sm">
                 <Copy className="mr-2 h-4 w-4" />{t('cart.payment.copy')}
               </Button>
             </div>
@@ -1009,6 +1084,27 @@ const CartPage = ({ onNavigate }) => {
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-effect p-6 rounded-2xl space-y-6">
                 <h2 className="text-2xl font-semibold">{t('cart.summary')}</h2>
 
+                {totalDiscountAmount > 0 && (
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
+                    <Tag className="h-5 w-5 text-green-600 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-semibold text-green-700">
+                        {language === 'es' ? 'Descuento activo' : 'Active discount'} · {discountBreakdown.total.percent.toFixed(2)}%
+                      </p>
+                      {discountBreakdown.category.amount > 0 && (
+                        <p className="text-xs text-green-800">
+                          {language === 'es' ? 'Categoría' : 'Category'}: {userCategory} ({discountBreakdown.category.percent}% · -{currencySymbol}{discountBreakdown.category.amount.toFixed(2)})
+                        </p>
+                      )}
+                      {discountBreakdown.offer.amount > 0 && appliedOffer && (
+                        <p className="text-xs text-green-800">
+                          {language === 'es' ? 'Oferta' : 'Offer'}: {appliedOffer.code} ({appliedOffer.discount_type === 'percentage' ? `${appliedOffer.discount_value}%` : `${currencySymbol}${appliedOffer.discount_value}`} · -{currencySymbol}{discountBreakdown.offer.amount.toFixed(2)})
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Selector de moneda */}
                 <CurrencySelector
                   selectedCurrency={selectedCurrency}
@@ -1023,15 +1119,36 @@ const CartPage = ({ onNavigate }) => {
                     <span>{t('cart.subtotal')}</span>
                     <span className="font-semibold">
                       {currencySymbol}
-                      {convertedSubtotal !== null ? convertedSubtotal.toFixed(2) : subtotal.toFixed(2)} {currencyCode}
+                      {displayValues.subtotal.toFixed(2)} {currencyCode}
                     </span>
                   </div>
+                  {discountBreakdown.category.amount > 0 && (
+                    <div className="flex justify-between text-sm text-green-700">
+                      <span>{language === 'es' ? 'Descuento categoría' : 'Category discount'} ({discountBreakdown.category.percent}%):</span>
+                      <span>-{currencySymbol}{displayValues.categoryDiscount.toFixed(2)} {currencyCode}</span>
+                    </div>
+                  )}
+                  {discountBreakdown.offer.amount > 0 && appliedOffer && (
+                    <div className="flex justify-between text-sm text-green-700">
+                      <span>{language === 'es' ? 'Descuento por oferta' : 'Offer discount'} ({discountBreakdown.offer.percent}%):</span>
+                      <span>-{currencySymbol}{displayValues.offerDiscount.toFixed(2)} {currencyCode}</span>
+                    </div>
+                  )}
+                  {totalDiscountAmount > 0 && (
+                    <div className="flex justify-between text-sm font-semibold text-green-800 border-t pt-2">
+                      <span>{language === 'es' ? 'Subtotal con descuentos' : 'Discounted subtotal'}</span>
+                      <span>
+                        {currencySymbol}
+                        {displayValues.discountedSubtotal.toFixed(2)} {currencyCode}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span>{t('cart.shipping')}</span>
                     <span className="text-sm font-semibold">
-                      {(convertedShipping !== null ? convertedShipping : shippingCost) === 0
+                      {displayValues.shipping === 0
                         ? (language === 'es' ? 'Gratis' : 'Free')
-                        : `${currencySymbol}${(convertedShipping !== null ? convertedShipping : shippingCost).toFixed(2)} ${currencyCode}`
+                        : `${currencySymbol}${displayValues.shipping.toFixed(2)} ${currencyCode}`
                       }
                     </span>
                   </div>
@@ -1040,7 +1157,7 @@ const CartPage = ({ onNavigate }) => {
                     <span>{t('cart.total')}</span>
                     <span style={{ color: visualSettings.primaryColor || '#2563eb' }}>
                       {currencySymbol}
-                      {convertedTotal !== null ? convertedTotal.toFixed(2) : (subtotal + shippingCost).toFixed(2)} {currencyCode}
+                      {displayValues.total.toFixed(2)} {currencyCode}
                     </span>
                   </div>
                 </div>
