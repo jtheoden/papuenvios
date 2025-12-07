@@ -454,7 +454,8 @@
     },
     "actions": {
       "addProduct": "Agregar Producto",
-      "createCombo": "Crear Combo"
+      "createCombo": "Crear Combo",
+      "edit": "Editar"
     },
     "addProduct": {
       "title": "Agregar Nuevo Producto",
@@ -488,7 +489,10 @@
       "currency": "Moneda",
       "receivedDate": "Fecha de Recepción",
       "supplierReference": "Referencia del Proveedor",
-      "batchNumber": "Número de Lote"
+      "batchNumber": "Número de Lote",
+      "productDetails": "Detalles del Producto",
+      "minStock": "Stock Mínimo",
+      "displayCurrency": "Moneda de visualización"
     },
     "categories": {
       "manage": "Gestionar Categorías",

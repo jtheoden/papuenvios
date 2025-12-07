@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Save, Edit, AlertTriangle, AlertCircle, X } from 'lucide-react';
+import { Plus, Save, Edit, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
@@ -20,6 +20,9 @@ const VendorInventoryTab = ({
   currencies,
   visualSettings,
   baseCurrencyId,
+  selectedCurrency,
+  exchangeRates,
+  onSelectedCurrencyChange,
   onProductsRefresh
 }) => {
   const { t, language } = useLanguage();
@@ -35,7 +38,8 @@ const VendorInventoryTab = ({
   const openNewProductForm = () => {
     setProductForm({
       id: null,
-      name: '',
+      name_es: '',
+      name_en: '',
       description_es: '',
       description_en: '',
       basePrice: '',
@@ -52,7 +56,8 @@ const VendorInventoryTab = ({
   const openEditProductForm = (product) => {
     setProductForm({
       id: product.id,
-      name: product.name_es || product.name,
+      name_es: product.name_es || product.name || '',
+      name_en: product.name_en || product.name || '',
       description_es: product.description_es || '',
       description_en: product.description_en || '',
       basePrice: product.base_price || product.basePrice || '',
@@ -107,7 +112,7 @@ const VendorInventoryTab = ({
   };
 
   const handleSubmitProduct = async () => {
-    if (!productForm.name || !productForm.basePrice || !productForm.category) {
+    if (!productForm.name_es || !productForm.basePrice || !productForm.category) {
       toast({
         title: t('vendor.validation.error'),
         description: t('vendor.validation.fillFields'),
@@ -137,7 +142,8 @@ const VendorInventoryTab = ({
       }
 
       const productData = {
-        name: productForm.name,
+        name_es: productForm.name_es,
+        name_en: productForm.name_en || productForm.name_es,
         description_es: productForm.description_es || '',
         description_en: productForm.description_en || '',
         basePrice: parseFloat(productForm.basePrice),
@@ -148,7 +154,7 @@ const VendorInventoryTab = ({
         base_currency_id: productForm.base_currency_id,
         image: productForm.image || '',
         sku: productForm.sku || `SKU-${Date.now()}`,
-        slug: productForm.name.toLowerCase().replace(/\s+/g, '-'),
+        slug: productForm.name_es.toLowerCase().replace(/\s+/g, '-'),
         expiryDate: productForm.expiryDate || null
       };
 
@@ -175,46 +181,72 @@ const VendorInventoryTab = ({
     }
   };
 
-  const getExpiryStatus = (expiryDate) => {
-    if (!expiryDate) return null;
+  // Función para convertir precio según moneda seleccionada
+  const convertPrice = (price, fromCurrencyId, toCurrencyId) => {
+    if (!price || fromCurrencyId === toCurrencyId) return price;
 
-    const today = new Date();
-    const expiry = new Date(expiryDate);
-    const daysUntilExpiry = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
-    const monthsUntilExpiry = daysUntilExpiry / 30;
+    const rateKey = `${fromCurrencyId}-${toCurrencyId}`;
+    const rate = exchangeRates[rateKey];
 
-    if (daysUntilExpiry < 0) {
-      return {
-        status: 'expired',
-        color: 'bg-red-50',
-        icon: AlertCircle,
-        iconColor: 'text-red-600',
-        days: daysUntilExpiry
-      };
-    } else if (monthsUntilExpiry <= 1) {
-      return {
-        status: 'critical',
-        color: 'bg-pink-50',
-        icon: AlertCircle,
-        iconColor: 'text-red-500',
-        days: daysUntilExpiry
-      };
-    } else if (monthsUntilExpiry <= 3) {
-      return {
-        status: 'warning',
-        color: 'bg-yellow-50',
-        icon: AlertTriangle,
-        iconColor: 'text-yellow-600',
-        days: daysUntilExpiry
-      };
+    if (rate) {
+      return price * rate;
     }
 
-    return { status: 'ok', color: '', icon: null, iconColor: '', days: daysUntilExpiry };
+    // Si no existe tasa directa, intentar inversa
+    const inverseRateKey = `${toCurrencyId}-${fromCurrencyId}`;
+    const inverseRate = exchangeRates[inverseRateKey];
+
+    if (inverseRate && inverseRate !== 0) {
+      return price / inverseRate;
+    }
+
+    return price; // Retornar precio original si no hay tasa disponible
   };
+
+  // Productos con precios convertidos
+  const productsWithConvertedPrices = products.map(product => {
+    const convertedBasePrice = convertPrice(
+      product.base_price,
+      product.base_currency_id || baseCurrencyId,
+      selectedCurrency || baseCurrencyId
+    );
+
+    const convertedFinalPrice = convertPrice(
+      product.final_price,
+      product.base_currency_id || baseCurrencyId,
+      selectedCurrency || baseCurrencyId
+    );
+
+    return {
+      ...product,
+      base_price: convertedBasePrice,
+      final_price: convertedFinalPrice,
+      display_currency_id: selectedCurrency || baseCurrencyId
+    };
+  });
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-      <div className="flex justify-end mb-6">
+      {/* Header con selector de moneda y botón agregar */}
+      <div className="flex justify-between items-center mb-6">
+        {/* Currency Selector */}
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-medium text-gray-700">
+            {t('vendor.inventory.displayCurrency')}:
+          </label>
+          <select
+            value={selectedCurrency || baseCurrencyId}
+            onChange={(e) => onSelectedCurrencyChange(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+          >
+            {currencies.map(currency => (
+              <option key={currency.id} value={currency.id}>
+                {currency.code} - {language === 'es' ? currency.name_es : currency.name_en}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <Button onClick={openNewProductForm} style={getPrimaryButtonStyle(visualSettings)}>
           <Plus className="mr-2 h-4 w-4" />
           {t('vendor.actions.addProduct')}
@@ -231,18 +263,32 @@ const VendorInventoryTab = ({
             {productForm.id ? t('vendor.addProduct.editTitle') : t('vendor.addProduct.title')}
           </h2>
           <div className="grid md:grid-cols-2 gap-6">
-            {/* Product Name */}
+            {/* Product Name (Spanish) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {t('vendor.addProduct.name')} *
+                {language === 'es' ? 'Nombre del Producto (ES)' : 'Product Name (ES)'} *
               </label>
               <input
                 type="text"
-                value={productForm.name}
-                onChange={e => handleInputChange('name', e.target.value)}
+                value={productForm.name_es}
+                onChange={e => handleInputChange('name_es', e.target.value)}
                 placeholder={t('vendor.addProduct.namePlaceholder')}
                 className="w-full input-style"
                 required
+              />
+            </div>
+
+            {/* Product Name (English) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {language === 'es' ? 'Nombre del Producto (EN)' : 'Product Name (EN)'}
+              </label>
+              <input
+                type="text"
+                value={productForm.name_en}
+                onChange={e => handleInputChange('name_en', e.target.value)}
+                placeholder={language === 'es' ? 'Ej: iPhone 15 Pro Max' : 'E.g.: iPhone 15 Pro Max'}
+                className="w-full input-style"
               />
             </div>
 
@@ -354,7 +400,7 @@ const VendorInventoryTab = ({
             {/* Minimum Stock Alert */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {language === 'es' ? 'Alerta de Stock Mínimo' : 'Minimum Stock Alert'}
+                {t('vendor.inventory.minStock')}
               </label>
               <input
                 type="number"
@@ -426,7 +472,7 @@ const VendorInventoryTab = ({
 
       {/* Responsive Products Table */}
       <ResponsiveTableWrapper
-        data={products}
+        data={productsWithConvertedPrices}
         columns={getTableColumns(t, language, currencies)}
         onRowClick={handleViewProductDetails}
         modalTitle="vendor.inventory.productDetails"
@@ -468,12 +514,12 @@ const VendorInventoryTab = ({
                 {/* Product Info */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <ProductInfoItem label={t('vendor.inventory.product')} value={selectedProduct.name_es || selectedProduct.name} />
-                  <ProductInfoItem label={language === 'es' ? 'Categoría' : 'Category'} value={selectedProduct.category ? (language === 'es' ? selectedProduct.category.name_es : selectedProduct.category.name_en) : 'Sin categoría'} />
+                  <ProductInfoItem label={t('vendor.addProduct.category')} value={selectedProduct.category ? (language === 'es' ? selectedProduct.category.name_es : selectedProduct.category.name_en) : 'Sin categoría'} />
                   <ProductInfoItem label={t('vendor.inventory.stock')} value={selectedProduct.stock || 0} />
-                  <ProductInfoItem label={language === 'es' ? 'Moneda' : 'Currency'} value={currencies.find(c => c.id === selectedProduct.base_currency_id)?.code || 'USD'} />
-                  <ProductInfoItem label={t('vendor.inventory.basePrice')} value={`${currencies.find(c => c.id === selectedProduct.base_currency_id)?.symbol || '$'}${Number(selectedProduct.base_price || 0).toFixed(2)}`} />
-                  <ProductInfoItem label={t('vendor.inventory.finalPrice')} value={`${currencies.find(c => c.id === selectedProduct.base_currency_id)?.symbol || '$'}${Number(selectedProduct.final_price || 0).toFixed(2)}`} />
-                  <ProductInfoItem label={language === 'es' ? 'Stock Mínimo' : 'Min Stock'} value={selectedProduct.min_stock_alert || 10} />
+                  <ProductInfoItem label={t('vendor.inventory.currency')} value={currencies.find(c => c.id === (selectedProduct.display_currency_id || selectedProduct.base_currency_id))?.code || 'USD'} />
+                  <ProductInfoItem label={t('vendor.inventory.basePrice')} value={`${currencies.find(c => c.id === (selectedProduct.display_currency_id || selectedProduct.base_currency_id))?.symbol || '$'}${Number(selectedProduct.base_price || 0).toFixed(2)}`} />
+                  <ProductInfoItem label={t('vendor.inventory.price')} value={`${currencies.find(c => c.id === (selectedProduct.display_currency_id || selectedProduct.base_currency_id))?.symbol || '$'}${Number(selectedProduct.final_price || 0).toFixed(2)}`} />
+                  <ProductInfoItem label={t('vendor.inventory.minStock')} value={selectedProduct.min_stock_alert || 10} />
                   <ProductInfoItem label={t('vendor.inventory.expiryDate')} value={selectedProduct.expiry_date ? new Date(selectedProduct.expiry_date).toLocaleDateString() : 'N/A'} />
                 </div>
 

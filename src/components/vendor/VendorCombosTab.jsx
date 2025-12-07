@@ -171,30 +171,45 @@ const VendorCombosTab = ({
     }
   };
 
+  // Función para convertir precio entre monedas usando tasas de cambio
+  const convertPrice = (price, fromCurrencyId, toCurrencyId) => {
+    if (!price || fromCurrencyId === toCurrencyId) return price;
+
+    const rateKey = `${fromCurrencyId}-${toCurrencyId}`;
+    const rate = exchangeRates[rateKey];
+
+    if (rate) {
+      return price * rate;
+    }
+
+    // Si no existe tasa directa, intentar inversa
+    const inverseRateKey = `${toCurrencyId}-${fromCurrencyId}`;
+    const inverseRate = exchangeRates[inverseRateKey];
+
+    if (inverseRate && inverseRate !== 0) {
+      return price / inverseRate;
+    }
+
+    return price; // Retornar precio original si no hay tasa disponible
+  };
+
   const getComboCalculatedPrices = (combo) => {
     if (!combo || !selectedCurrency) return { base: 0, final: 0 };
 
     const baseCurrencyId = currencies.find(c => c.is_base)?.id;
-    const selectedCurrencyCode = currencies.find(c => c.id === selectedCurrency)?.code || 'USD';
-    const baseCurrencyCode = currencies.find(c => c.is_base)?.code || 'USD';
 
-    // Map to use currency codes for calculation
+    // Calcular precio base total del combo en moneda seleccionada
     let totalBasePrice = 0;
 
     (combo.products || []).forEach(productId => {
       const product = products.find(p => p.id === productId);
       if (product) {
         const basePrice = parseFloat(product.base_price || 0);
-        const productCurrencyId = product.base_currency_id;
-        const productCurrencyCode = currencies.find(c => c.id === productCurrencyId)?.code || 'USD';
+        const productCurrencyId = product.base_currency_id || baseCurrencyId;
         const quantity = combo.productQuantities?.[productId] || 1;
 
-        let convertedPrice = basePrice;
-        if (productCurrencyCode !== selectedCurrencyCode && exchangeRates[`${productCurrencyCode}-${selectedCurrencyCode}`]) {
-          const rate = exchangeRates[`${productCurrencyCode}-${selectedCurrencyCode}`];
-          convertedPrice = basePrice * rate;
-        }
-
+        // Convertir precio del producto a la moneda seleccionada
+        const convertedPrice = convertPrice(basePrice, productCurrencyId, selectedCurrency);
         totalBasePrice += convertedPrice * quantity;
       }
     });
