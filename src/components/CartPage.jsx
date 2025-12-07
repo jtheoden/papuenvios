@@ -180,30 +180,20 @@ const CartPage = ({ onNavigate }) => {
     }
 
     try {
-      // Convert subtotal
-      const { data: convertedSub, error: subError } = await convertCurrency(
-        subtotal,
-        'USD',
-        currencyCode
-      );
+      // convertCurrency returns a numeric value (not an object), so keep a strict numeric fallback
+      const convertedSub = await convertCurrency(subtotal, 'USD', currencyCode);
+      const convertedShip = await convertCurrency(shippingCost, 'USD', currencyCode);
 
-      // Convert shipping cost
-      const { data: convertedShip, error: shipError } = await convertCurrency(
-        shippingCost,
-        'USD',
-        currencyCode
-      );
+      const safeConvertedSub = typeof convertedSub === 'number' && !Number.isNaN(convertedSub)
+        ? convertedSub
+        : subtotal;
+      const safeConvertedShip = typeof convertedShip === 'number' && !Number.isNaN(convertedShip)
+        ? convertedShip
+        : shippingCost;
 
-      if (!subError && !shipError) {
-        setConvertedSubtotal(convertedSub);
-        setConvertedShipping(convertedShip);
-        setConvertedTotal(convertedSub + convertedShip);
-      } else {
-        // If conversion fails, fallback to original values
-        setConvertedSubtotal(subtotal);
-        setConvertedShipping(shippingCost);
-        setConvertedTotal(subtotal + shippingCost);
-      }
+      setConvertedSubtotal(safeConvertedSub);
+      setConvertedShipping(safeConvertedShip);
+      setConvertedTotal(safeConvertedSub + safeConvertedShip);
     } catch (error) {
       console.error('Error converting currency:', error);
       // Fallback to original values
