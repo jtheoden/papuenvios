@@ -50,13 +50,21 @@ const ProductThumbnail = ({ product, selectedCurrency, currencySymbol, currencyC
         >
           <img
             src={product.image_url || "https://images.unsplash.com/photo-1646193186132-7976c1670e81"}
-            alt={product.name_es || product.name}
+            alt={language === 'es'
+              ? (product.name_es || product.name)
+              : (product.name_en || product.name_es || product.name)
+            }
             className="w-full h-full object-cover"
           />
         </motion.div>
       </motion.div>
       <div className="flex-1">
-        <p className="font-medium text-gray-800">{product.name_es || product.name}</p>
+        <p className="font-medium text-gray-800">
+          {language === 'es'
+            ? (product.name_es || product.name)
+            : (product.name_en || product.name_es || product.name)
+          }
+        </p>
         {product.category && (
           <p className="text-xs text-gray-500">
             {language === 'es' ? product.category.name_es : product.category.name_en}
@@ -235,9 +243,12 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
     };
 
     addToCart(itemWithPrice);
+    const itemName = language === 'es'
+      ? (currentItem.name_es || currentItem.name)
+      : (currentItem.name_en || currentItem.name_es || currentItem.name);
     toast({
       title: t('products.addedToCart'),
-      description: `${currentItem.name_es || currentItem.name} ${t('products.addedToCartDesc')}`,
+      description: `${itemName} ${t('products.addedToCartDesc')}`,
     });
   };
 
@@ -363,7 +374,12 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
             className="space-y-6"
           >
             <div>
-              <h1 className="text-3xl md:text-4xl font-bold mb-2" style={getHeadingStyle(visualSettings)}>{currentItem.name_es || currentItem.name}</h1>
+              <h1 className="text-3xl md:text-4xl font-bold mb-2" style={getHeadingStyle(visualSettings)}>
+                {language === 'es'
+                  ? (currentItem.name_es || currentItem.name)
+                  : (currentItem.name_en || currentItem.name_es || currentItem.name)
+                }
+              </h1>
               {isProduct && (currentItem.category_id || currentItem.category) && (
                 <div className="flex items-center gap-2 text-gray-600 mb-4">
                   <Tag className="w-4 h-4" />
@@ -395,7 +411,7 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
                 <p className="text-gray-600">
                   {language === 'es'
                     ? (currentItem.description_es || currentItem.description)
-                    : (currentItem.description_en || currentItem.description)}
+                    : (currentItem.description_en || currentItem.description_es || currentItem.description)}
                 </p>
               </div>
             )}
@@ -459,7 +475,12 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
 
                         return (
                           <div key={productId} className="flex justify-between text-xs text-gray-600">
-                            <span>{product.name_es || product.name} × {quantity}</span>
+                            <span>
+                              {language === 'es'
+                                ? (product.name_es || product.name)
+                                : (product.name_en || product.name_es || product.name)
+                              } × {quantity}
+                            </span>
                             <span>{currencySymbol}{total.toFixed(2)}</span>
                           </div>
                         );

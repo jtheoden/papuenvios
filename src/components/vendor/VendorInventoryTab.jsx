@@ -513,7 +513,13 @@ const VendorInventoryTab = ({
               <div className="lg:col-span-2 space-y-6">
                 {/* Product Info */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <ProductInfoItem label={t('vendor.inventory.product')} value={selectedProduct.name_es || selectedProduct.name} />
+                  <ProductInfoItem
+                    label={t('vendor.inventory.product')}
+                    value={language === 'es'
+                      ? (selectedProduct.name_es || selectedProduct.name)
+                      : (selectedProduct.name_en || selectedProduct.name_es || selectedProduct.name)
+                    }
+                  />
                   <ProductInfoItem label={t('vendor.addProduct.category')} value={selectedProduct.category ? (language === 'es' ? selectedProduct.category.name_es : selectedProduct.category.name_en) : 'Sin categoría'} />
                   <ProductInfoItem label={t('vendor.inventory.stock')} value={selectedProduct.stock || 0} />
                   <ProductInfoItem label={t('vendor.inventory.currency')} value={currencies.find(c => c.id === (selectedProduct.display_currency_id || selectedProduct.base_currency_id))?.code || 'USD'} />
@@ -523,18 +529,18 @@ const VendorInventoryTab = ({
                   <ProductInfoItem label={t('vendor.inventory.expiryDate')} value={selectedProduct.expiry_date ? new Date(selectedProduct.expiry_date).toLocaleDateString() : 'N/A'} />
                 </div>
 
-                {/* Description */}
-                {selectedProduct.description_es && (
+                {/* Description - Based on active language */}
+                {(language === 'es' ? selectedProduct.description_es : selectedProduct.description_en || selectedProduct.description_es) && (
                   <div>
-                    <h4 className="text-lg font-semibold text-gray-900 mb-3">{language === 'es' ? 'Descripción (Español)' : 'Description (Spanish)'}</h4>
-                    <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-4">{selectedProduct.description_es}</p>
-                  </div>
-                )}
-
-                {selectedProduct.description_en && (
-                  <div>
-                    <h4 className="text-lg font-semibold text-gray-900 mb-3">{language === 'es' ? 'Descripción (Inglés)' : 'Description (English)'}</h4>
-                    <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-4">{selectedProduct.description_en}</p>
+                    <h4 className="text-lg font-semibold text-gray-900 mb-3">
+                      {t('vendor.addProduct.description')}
+                    </h4>
+                    <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-4">
+                      {language === 'es'
+                        ? (selectedProduct.description_es || selectedProduct.description_en)
+                        : (selectedProduct.description_en || selectedProduct.description_es)
+                      }
+                    </p>
                   </div>
                 )}
               </div>
