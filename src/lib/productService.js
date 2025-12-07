@@ -97,9 +97,9 @@ export const getProducts = async () => {
 export const createProduct = async (productData) => {
   try {
     // Validate required fields
-    if (!productData.name) {
+    if (!productData.name_es) {
       throw createValidationError(
-        { name: 'Product name is required' },
+        { name_es: 'Product name in Spanish is required' },
         'Missing required product fields'
       );
     }
@@ -120,15 +120,15 @@ export const createProduct = async (productData) => {
 
     logError(
       { message: 'Creating product' },
-      { operation: 'createProduct', productName: productData.name }
+      { operation: 'createProduct', productName: productData.name_es }
     );
 
     const { data, error } = await supabase
       .from('products')
       .insert([{
         sku: productData.sku || `SKU-${Date.now()}`,
-        name_es: productData.name,
-        name_en: productData.name,
+        name_es: productData.name_es,
+        name_en: productData.name_en || productData.name_es,
         description_es: productData.description_es || '',
         description_en: productData.description_en || '',
         category_id: productData.category_id,
@@ -145,7 +145,7 @@ export const createProduct = async (productData) => {
 
     if (error) {
       const appError = parseSupabaseError(error);
-      logError(appError, { operation: 'createProduct - insert', productName: productData.name });
+      logError(appError, { operation: 'createProduct - insert', productName: productData.name_es });
       throw appError;
     }
 
@@ -199,8 +199,8 @@ export const updateProduct = async (productId, productData) => {
     }
 
     const updateData = {
-      name_es: productData.name,
-      name_en: productData.name,
+      name_es: productData.name_es,
+      name_en: productData.name_en || productData.name_es,
       description_es: productData.description_es || '',
       description_en: productData.description_en || '',
       category_id: productData.category_id,
