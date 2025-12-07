@@ -74,11 +74,9 @@ const UserPanel = ({ onNavigate }) => {
         setOrders(orders || []);
       } else {
         console.log('[UserPanel] Loading user orders for regular user');
-        const result = await getUserOrders(user.id);
-        console.log('[UserPanel] User orders result:', result);
-        if (result.success) {
-          setOrders(result.orders);
-        }
+        const userOrders = await getUserOrders(user.id);
+        console.log('[UserPanel] User orders result:', userOrders);
+        setOrders(userOrders || []);
       }
     } catch (error) {
       console.error('Error loading orders:', error);
