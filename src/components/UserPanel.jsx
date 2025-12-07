@@ -197,16 +197,16 @@ const UserPanel = ({ onNavigate }) => {
     }
   };
 
-  const handleMarkShipped = async () => {
+  const handleMarkDispatched = async () => {
     if (!selectedOrder?.id) return;
     setProcessingAction(true);
     try {
-      await markOrderAsShipped(selectedOrder.id, user.id, trackingInfo.trim());
+      await markOrderAsDispatched(selectedOrder.id, user.id, trackingInfo.trim());
       await loadUserOrders();
       const refreshed = await getOrderById(selectedOrder.id);
       setSelectedOrder(refreshed);
     } catch (error) {
-      console.error('Error marking order as shipped:', error);
+      console.error('Error marking order as dispatched:', error);
     } finally {
       setProcessingAction(false);
     }
@@ -302,7 +302,7 @@ const UserPanel = ({ onNavigate }) => {
     if (paymentStatus === 'validated' || status === 'completed') {
       return <CheckCircle className="h-5 w-5" style={{ color: visualSettings.successColor || '#10b981' }} />;
     }
-    if (status === 'shipped') {
+    if (status === 'dispatched') {
       return <Truck className="h-5 w-5" style={{ color: visualSettings.primaryColor || '#2563eb' }} />;
     }
     if (status === 'delivered') {
@@ -321,8 +321,8 @@ const UserPanel = ({ onNavigate }) => {
     if (paymentStatus === 'validated') {
       return language === 'es' ? 'Validado' : 'Validated';
     }
-    if (status === 'shipped') {
-      return language === 'es' ? 'Enviado' : 'Shipped';
+    if (status === 'dispatched') {
+      return language === 'es' ? 'Despachado' : 'Dispatched';
     }
     if (status === 'delivered') {
       return language === 'es' ? 'Entregado' : 'Delivered';
