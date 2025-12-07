@@ -11,10 +11,10 @@ import { uploadProductImage, deleteProductImage } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { getHeadingStyle } from '@/lib/styleUtils';
-import { getDisplayPrice as formatPrice, convertPrice, calculateDiscount } from '@/lib/priceCalculationService';
-import { getUserCategoryWithDiscount } from '@/lib/orderDiscountService';
 import CurrencySelector from '@/components/CurrencySelector';
 import PriceDisplay from '@/components/PriceDisplay';
+import { useUserDiscounts } from '@/hooks/useUserDiscounts';
+import { buildDiscountBreakdown } from '@/lib/discountDisplayService';
 
 const ProductsPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
@@ -33,9 +33,9 @@ const ProductsPage = ({ onNavigate }) => {
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
 
-  // User pricing and discount state
-  const [userCategory, setUserCategory] = useState('regular');
-  const [userCategoryDiscount, setUserCategoryDiscount] = useState(0);
+  const { categoryInfo, categoryDiscountPercent } = useUserDiscounts();
+  const userCategory = categoryInfo.category || 'regular';
+  const userCategoryDiscount = categoryDiscountPercent;
 
   const handleImageUpload = useCallback(async (event, productId) => {
     const file = event.target.files[0];
@@ -215,25 +215,6 @@ const ProductsPage = ({ onNavigate }) => {
     }
   }, [filteredCombos]);
 
-  // Load user category discount on mount and when user changes
-  useEffect(() => {
-    const loadUserDiscount = async () => {
-      if (user && user.id) {
-        try {
-          const categoryInfo = await getUserCategoryWithDiscount(user.id);
-          setUserCategory(categoryInfo.category || 'regular');
-          setUserCategoryDiscount(categoryInfo.discountPercent || 0);
-        } catch (error) {
-          console.error('Error loading user category discount:', error);
-          setUserCategory('regular');
-          setUserCategoryDiscount(0);
-        }
-      }
-    };
-
-    loadUserDiscount();
-  }, [user?.id]);
-
   /**
    * Calculate combo display price (synchronous version)
    * For use in calculations and displays without async/await
@@ -266,11 +247,9 @@ const ProductsPage = ({ onNavigate }) => {
     // OR calculate if not stored
     const comboFinalPrice = combo.final_price || (totalBasePrice * (1 + (parseFloat(combo.profitMargin || financialSettings.comboProfit) / 100)));
 
-    // Apply user category discount
-    const discountAmount = calculateDiscount(comboFinalPrice, userCategoryDiscount);
-    const finalPrice = comboFinalPrice - discountAmount;
+    const breakdown = buildDiscountBreakdown({ amount: comboFinalPrice, categoryPercent: userCategoryDiscount });
 
-    return finalPrice.toFixed(2);
+    return breakdown.finalAmount.toFixed(2);
   }, [products, financialSettings, selectedCurrency, convertAmount, userCategoryDiscount]);
 
   /**
@@ -298,14 +277,14 @@ const ProductsPage = ({ onNavigate }) => {
     });
 
     const comboFinalPrice = combo.final_price || (totalBasePrice * (1 + (parseFloat(combo.profitMargin || financialSettings.comboProfit) / 100)));
-    const discountAmount = calculateDiscount(comboFinalPrice, userCategoryDiscount);
-    const finalPrice = comboFinalPrice - discountAmount;
+    const breakdown = buildDiscountBreakdown({ amount: comboFinalPrice, categoryPercent: userCategoryDiscount });
 
     return {
       original: comboFinalPrice.toFixed(2),
-      discount: discountAmount.toFixed(2),
-      final: finalPrice.toFixed(2),
-      hasDiscount: userCategoryDiscount > 0
+      discount: breakdown.total.amount.toFixed(2),
+      final: breakdown.finalAmount.toFixed(2),
+      hasDiscount: breakdown.total.amount > 0,
+      percent: breakdown.total.percent
     };
   }, [products, financialSettings, selectedCurrency, convertAmount, userCategoryDiscount]);
 
@@ -327,11 +306,9 @@ const ProductsPage = ({ onNavigate }) => {
       convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
     }
 
-    // Apply user category discount (not double margin)
-    const discountAmount = calculateDiscount(convertedPrice, userCategoryDiscount);
-    const finalPrice = convertedPrice - discountAmount;
+    const breakdown = buildDiscountBreakdown({ amount: convertedPrice, categoryPercent: userCategoryDiscount });
 
-    return finalPrice.toFixed(2);
+    return breakdown.finalAmount.toFixed(2);
   }, [selectedCurrency, convertAmount, userCategoryDiscount]);
 
   /**
@@ -348,14 +325,14 @@ const ProductsPage = ({ onNavigate }) => {
       convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
     }
 
-    const discountAmount = calculateDiscount(convertedPrice, userCategoryDiscount);
-    const finalPrice = convertedPrice - discountAmount;
+    const breakdown = buildDiscountBreakdown({ amount: convertedPrice, categoryPercent: userCategoryDiscount });
 
     return {
       original: convertedPrice.toFixed(2),
-      discount: discountAmount.toFixed(2),
-      final: finalPrice.toFixed(2),
-      hasDiscount: userCategoryDiscount > 0
+      discount: breakdown.total.amount.toFixed(2),
+      final: breakdown.finalAmount.toFixed(2),
+      hasDiscount: breakdown.total.amount > 0,
+      percent: breakdown.total.percent
     };
   }, [selectedCurrency, convertAmount, userCategoryDiscount]);
 
@@ -553,7 +530,7 @@ const ProductsPage = ({ onNavigate }) => {
                             </div>
                             <div className="text-xs text-green-600 font-semibold flex items-center gap-1">
                               <Tag className="w-3 h-3" />
-                              {language === 'es' ? 'Descuento' : 'Discount'} {userCategoryDiscount}%: -{currencySymbol}{getComboPriceBreakdown(combo).discount}
+                              {language === 'es' ? 'Descuento' : 'Discount'} {getComboPriceBreakdown(combo).percent?.toFixed(2) || userCategoryDiscount}%: -{currencySymbol}{getComboPriceBreakdown(combo).discount}
                             </div>
                           </div>
                         )}
@@ -708,7 +685,7 @@ const ProductsPage = ({ onNavigate }) => {
                         </div>
                         <div className="text-xs text-green-600 font-semibold flex items-center gap-1">
                           <Tag className="w-3 h-3" />
-                          {language === 'es' ? 'Descuento' : 'Discount'} {userCategoryDiscount}%: -{currencySymbol}{getPriceBreakdown(product).discount}
+                          {language === 'es' ? 'Descuento' : 'Discount'} {getPriceBreakdown(product).percent?.toFixed(2) || userCategoryDiscount}%: -{currencySymbol}{getPriceBreakdown(product).discount}
                         </div>
                       </div>
                     )}
