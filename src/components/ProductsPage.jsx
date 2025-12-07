@@ -173,9 +173,12 @@ const ProductsPage = ({ onNavigate }) => {
 
   const handleAddToCart = (product) => {
     addToCart(product);
+    const productName = language === 'es'
+      ? (product.name_es || product.name)
+      : (product.name_en || product.name_es || product.name);
     toast({
       title: t('products.addedToCart'),
-      description: `${product.name_es || product.name} ${t('products.addedToCartDesc')}`,
+      description: `${productName} ${t('products.addedToCartDesc')}`,
     });
   };
 
@@ -685,7 +688,12 @@ const ProductsPage = ({ onNavigate }) => {
               </div>
 
               <div className="p-6">
-                <h3 className="text-lg font-semibold mb-2">{product.name_es || product.name}</h3>
+                <h3 className="text-lg font-semibold mb-2">
+                  {language === 'es'
+                    ? (product.name_es || product.name)
+                    : (product.name_en || product.name_es || product.name)
+                  }
+                </h3>
                 {product.category && (
                   <p className="text-sm text-gray-500 mb-2">
                     {language === 'es' ? product.category.name_es : product.category.name_en}

@@ -15,14 +15,17 @@ import { AlertCircle, AlertTriangle, AlertOctagon, CheckCircle } from 'lucide-re
  */
 export const getTableColumns = (t, language, currencies) => [
   {
-    key: 'name_es',
+    key: language === 'es' ? 'name_es' : 'name_en',
     label: t('vendor.inventory.product'),
     width: '200px',
     render: (value, row) => {
       const isOutOfStock = row.stock === 0;
+      const productName = language === 'es'
+        ? (row.name_es || row.name)
+        : (row.name_en || row.name_es || row.name);
       return (
         <div className={isOutOfStock ? 'line-through text-gray-400' : 'font-medium text-gray-900'}>
-          {value || row.name || 'Sin nombre'}
+          {productName || 'Sin nombre'}
         </div>
       );
     }
@@ -134,9 +137,14 @@ export const getTableColumns = (t, language, currencies) => [
  */
 export const getModalColumns = (t, language, currencies) => [
   {
-    key: 'name_es',
+    key: language === 'es' ? 'name_es' : 'name_en',
     label: t('vendor.inventory.product'),
-    render: (value, row) => value || row.name || 'Sin nombre'
+    render: (value, row) => {
+      const productName = language === 'es'
+        ? (row.name_es || row.name)
+        : (row.name_en || row.name_es || row.name);
+      return productName || 'Sin nombre';
+    }
   },
   {
     key: 'category',
@@ -186,9 +194,14 @@ export const getModalColumns = (t, language, currencies) => [
     }
   },
   {
-    key: 'description_es',
-    label: language === 'es' ? 'Descripción' : 'Description',
-    render: (value, row) => value || row.description || 'N/A'
+    key: language === 'es' ? 'description_es' : 'description_en',
+    label: t('vendor.addProduct.description'),
+    render: (value, row) => {
+      const description = language === 'es'
+        ? (row.description_es || row.description)
+        : (row.description_en || row.description_es || row.description);
+      return description || 'N/A';
+    }
   }
 ];
 

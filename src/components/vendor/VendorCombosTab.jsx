@@ -443,7 +443,7 @@ const VendorCombosTab = ({
               </Button>
 
               <h3 className={`font-bold pr-8 ${isDeactivated ? 'line-through text-gray-500 mt-8' : ''}`}>
-                {c.name_es || c.name}
+                {language === 'es' ? (c.name_es || c.name) : (c.name_en || c.name_es || c.name)}
               </h3>
               <p className="text-sm text-gray-600">
                 {totalItems} {language === 'es' ? 'elementos' : 'items'} ({c.products?.length || 0} {language === 'es' ? 'productos' : 'products'})
