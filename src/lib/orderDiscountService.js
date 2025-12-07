@@ -38,7 +38,7 @@ export const getUserCategoryWithDiscount = async (userId) => {
     // Get discount for this category
     const { data: discountData, error: discountError } = await supabase
       .from('category_discounts')
-      .select('discount_percentage, enabled, category_name')
+      .select('discount_percentage, enabled, category_name, discount_description')
       .eq('category_name', category)
       .maybeSingle();
 
@@ -51,11 +51,19 @@ export const getUserCategoryWithDiscount = async (userId) => {
       };
     }
 
+    const effectiveDiscount = discountData.enabled ? (discountData.discount_percentage || 0) : 0;
+
     return {
       category,
-      discountPercent: discountData.enabled ? (discountData.discount_percentage || 0) : 0,
+      discountPercent: effectiveDiscount,
       enabled: discountData.enabled,
-      categoryFound: true
+      categoryFound: true,
+      categoryDiscount: {
+        percentage: discountData.discount_percentage || 0,
+        description: discountData.discount_description || '',
+        enabled: discountData.enabled,
+        categoryName: discountData.category_name || category
+      }
     };
   } catch (error) {
     console.error('Error getting user category discount:', error);
