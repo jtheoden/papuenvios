@@ -14,6 +14,22 @@ import {
   createPermissionError,
   ERROR_CODES
 } from './errorHandler';
+import { logActivity } from './activityLogger';
+
+const logOrderActivity = async ({ action, entityId, performedBy, description, metadata }) => {
+  try {
+    await logActivity({
+      action,
+      entityType: 'order',
+      entityId,
+      performedBy,
+      description,
+      metadata
+    });
+  } catch (err) {
+    console.warn('[orderService] Failed to log activity', err?.message || err);
+  }
+};
 
 // ============================================================================
 // STATE MACHINE CONSTANTS
@@ -352,6 +368,24 @@ export const createOrder = async (orderData, items) => {
         // Don't fail order creation if logging fails
       }
     }
+
+    // Activity log (best effort)
+    logOrderActivity({
+      action: 'order_created',
+      entityId: createdOrder.id,
+      performedBy: orderData.userId,
+      description: `Order ${orderNumber} created`,
+      metadata: {
+        orderNumber,
+        subtotal: orderData.subtotal,
+        discountAmount: orderData.discountAmount,
+        shippingCost: orderData.shippingCost,
+        totalAmount: orderData.totalAmount,
+        currencyId: orderData.currencyId,
+        paymentMethod: orderData.paymentMethod,
+        offerId: orderData.offerId
+      }
+    });
 
     return {
       ...createdOrder,
@@ -883,6 +917,13 @@ export const validatePayment = async (orderId, adminId) => {
       throw appError;
     }
 
+    logOrderActivity({
+      action: 'payment_validated',
+      entityId: orderId,
+      performedBy: adminId,
+      description: 'Payment validated and order moved to processing'
+    });
+
     // OPTIMIZE: Fix N³ problem - batch fetch all combo items and products at once
     // instead of nested loops within order items
     const comboItemIds = order.order_items
@@ -1060,12 +1101,12 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
       );
     }
 
-    // ATOMIC: Update order status
+    // ATOMIC: Update order status (keep pending so user can retry with new proof)
     const { data: updatedOrder, error: updateError } = await supabase
       .from('orders')
       .update({
         payment_status: PAYMENT_STATUS.REJECTED,
-        status: ORDER_STATUS.CANCELLED,
+        status: ORDER_STATUS.PENDING,
         validated_by: adminId,
         validated_at: new Date().toISOString(),
         rejection_reason: rejectionReason
@@ -1080,15 +1121,6 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
       throw appError;
     }
 
-    // ATOMIC: Release reserved inventory for all product items in parallel
-    const releasePromises = order.order_items
-      .filter(item => item.item_type === 'product' && item.inventory_id)
-      .map(item => releaseInventory(item.inventory_id, item.quantity));
-
-    if (releasePromises.length > 0) {
-      await Promise.all(releasePromises);
-    }
-
     // Log status change (graceful fallback if fails)
     try {
       await supabase
@@ -1096,13 +1128,21 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
         .insert({
           order_id: orderId,
           previous_status: order.status,
-          new_status: ORDER_STATUS.CANCELLED,
+          new_status: ORDER_STATUS.PENDING,
           changed_by: adminId,
           notes: `Payment rejected: ${rejectionReason}`
         });
     } catch (historyError) {
       logError(historyError, { operation: 'rejectPayment - log history', orderId });
     }
+
+    logOrderActivity({
+      action: 'payment_rejected',
+      entityId: orderId,
+      performedBy: adminId,
+      description: 'Payment rejected by admin',
+      metadata: { rejectionReason }
+    });
 
     return updatedOrder;
   } catch (error) {
@@ -1190,6 +1230,14 @@ export const updateOrderStatus = async (orderId, newStatus, adminId, notes = '')
       logError(historyError, { operation: 'updateOrderStatus - log history', orderId });
     }
 
+    logOrderActivity({
+      action: 'order_status_updated',
+      entityId: orderId,
+      performedBy: adminId,
+      description: `Order status changed to ${newStatus}`,
+      metadata: { previousStatus: order.status, newStatus, notes }
+    });
+
     return updatedOrder;
   } catch (error) {
     if (error.code) throw error;
@@ -1241,7 +1289,7 @@ export const uploadPaymentProof = async (file, orderId, userId) => {
       throw createPermissionError('upload proof for this order', 'owner');
     }
 
-    // Validate order state - can only upload proof for pending orders
+    // Validate order state - can only upload proof for pending orders (including rejected payments)
     if (order.status !== ORDER_STATUS.PENDING) {
       throw createValidationError(
         { status: `Current order status is ${order.status}, but must be ${ORDER_STATUS.PENDING}` },
@@ -1292,6 +1340,7 @@ export const uploadPaymentProof = async (file, orderId, userId) => {
       .update({
         payment_proof_url: urlData.publicUrl,
         payment_status: PAYMENT_STATUS.PROOF_UPLOADED,
+        rejection_reason: null,
         updated_at: new Date().toISOString()
       })
       .eq('id', orderId);
@@ -1301,6 +1350,14 @@ export const uploadPaymentProof = async (file, orderId, userId) => {
       logError(appError, { operation: 'uploadPaymentProof - update', orderId });
       throw appError;
     }
+
+    logOrderActivity({
+      action: 'payment_proof_uploaded',
+      entityId: orderId,
+      performedBy: userId,
+      description: 'User uploaded payment proof',
+      metadata: { paymentProofUrl: urlData.publicUrl }
+    });
 
     return urlData.publicUrl;
   } catch (error) {
@@ -1450,6 +1507,14 @@ export const markOrderAsShipped = async (orderId, adminId, trackingInfo = '') =>
       throw appError;
     }
 
+    logOrderActivity({
+      action: 'order_shipped',
+      entityId: orderId,
+      performedBy: adminId,
+      description: 'Order marked as shipped',
+      metadata: { trackingInfo }
+    });
+
     return updatedOrder;
   } catch (error) {
     if (error.code) throw error;
@@ -1548,6 +1613,14 @@ export const markOrderAsDelivered = async (orderId, proofFile, adminId) => {
       throw appError;
     }
 
+    logOrderActivity({
+      action: 'order_delivered',
+      entityId: orderId,
+      performedBy: adminId,
+      description: 'Order marked as delivered with proof',
+      metadata: { deliveryProofUrl: urlData.publicUrl }
+    });
+
     return updatedOrder;
   } catch (error) {
     if (error.code) throw error;
@@ -1616,6 +1689,14 @@ export const completeOrder = async (orderId, notes = '') => {
       logError(appError, { operation: 'completeOrder - update', orderId });
       throw appError;
     }
+
+    logOrderActivity({
+      action: 'order_completed',
+      entityId: orderId,
+      performedBy: 'system',
+      description: 'Order marked as completed',
+      metadata: { notes }
+    });
 
     return updatedOrder;
   } catch (error) {
@@ -1728,11 +1809,97 @@ export const cancelOrder = async (orderId, adminId, reason) => {
       logError(historyError, { operation: 'cancelOrder - log history', orderId });
     }
 
+    logOrderActivity({
+      action: 'order_cancelled',
+      entityId: orderId,
+      performedBy: adminId,
+      description: `Order cancelled by admin (${reason})`,
+      metadata: { reason }
+    });
+
     return updatedOrder;
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
       operation: 'cancelOrder',
+      orderId
+    });
+    throw appError;
+  }
+};
+
+/**
+ * Allow order owner to cancel while pending
+ */
+export const cancelOrderByUser = async (orderId, userId, reason = 'cancelled_by_user') => {
+  try {
+    if (!orderId || !userId) {
+      throw createValidationError({ orderId: !orderId ? 'Order ID is required' : undefined, userId: !userId ? 'User ID is required' : undefined });
+    }
+
+    const { data: order, error: fetchError } = await supabase
+      .from('orders')
+      .select('id, user_id, status, order_number, order_items(*)')
+      .eq('id', orderId)
+      .single();
+
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'cancelOrderByUser - fetch', orderId });
+      throw appError;
+    }
+
+    if (!order) {
+      throw createNotFoundError('Order', orderId);
+    }
+
+    if (order.user_id !== userId) {
+      throw createPermissionError('cancel this order', 'owner');
+    }
+
+    if (order.status !== ORDER_STATUS.PENDING) {
+      throw createValidationError({ status: `Order is in ${order.status} state` }, 'Only pending orders can be cancelled by the user');
+    }
+
+    const releasePromises = order.order_items
+      .filter(item => item.inventory_id)
+      .map(item => releaseInventory(item.inventory_id, item.quantity));
+
+    if (releasePromises.length > 0) {
+      await Promise.all(releasePromises);
+    }
+
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from('orders')
+      .update({
+        status: ORDER_STATUS.CANCELLED,
+        payment_status: PAYMENT_STATUS.REJECTED,
+        rejection_reason: reason,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .select()
+      .single();
+
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'cancelOrderByUser - update', orderId });
+      throw appError;
+    }
+
+    logOrderActivity({
+      action: 'order_cancelled',
+      entityId: orderId,
+      performedBy: userId,
+      description: `User cancelled order ${order.order_number}`,
+      metadata: { reason }
+    });
+
+    return updatedOrder;
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
+      operation: 'cancelOrderByUser',
       orderId
     });
     throw appError;

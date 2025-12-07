@@ -46,8 +46,6 @@ const mapSettingsFromRows = (rows = []) => {
  */
 export async function loadNotificationSettings() {
   try {
-    await ensureAuthenticated();
-
     const { data, error } = await supabase
       .from('system_config')
       .select('key, value_text')
@@ -55,13 +53,13 @@ export async function loadNotificationSettings() {
 
     if (error) {
       console.error('[NotificationSettings] Load error:', error);
-      throw new Error('No se pudieron obtener las configuraciones.');
+      return DEFAULT_SETTINGS;
     }
 
     return mapSettingsFromRows(data || []);
   } catch (err) {
     console.error('[NotificationSettings] Load error:', err);
-    throw err;
+    return DEFAULT_SETTINGS;
   }
 }
 
