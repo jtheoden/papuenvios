@@ -20,7 +20,7 @@ export const getUserCategoryWithDiscount = async (userId) => {
     // Get user category
     const { data: categoryData, error: categoryError } = await supabase
       .from('user_categories')
-      .select('category_name, category')
+      .select('category_name')
       .eq('user_id', userId)
       .maybeSingle();
 
@@ -33,15 +33,14 @@ export const getUserCategoryWithDiscount = async (userId) => {
       };
     }
 
-    // Support both "category_name" and legacy "category" columns
-    const category = categoryData.category_name || categoryData.category || 'regular';
+    const category = categoryData.category_name || 'regular';
 
     // Get discount for this category
     const { data: discountData, error: discountError } = await supabase
       .from('category_discounts')
-      .select('discount_percentage, enabled, category_name, category')
-      .or(`category_name.eq.${category},category.eq.${category}`)
-      .single();
+      .select('discount_percentage, enabled, category_name')
+      .eq('category_name', category)
+      .maybeSingle();
 
     if (discountError || !discountData) {
       return {
