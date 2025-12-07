@@ -5,7 +5,7 @@ import { toast } from '@/components/ui/use-toast';
 import AuthLoadingScreen from '@/components/AuthLoadingScreen';
 import { SUPER_ADMIN_EMAILS, TIMEOUTS, RETRY_CONFIG } from '@/lib/constants';
 import { getUserCategory } from '@/lib/userCategorizationService';
-import { logActivity } from '@/lib/activityLogger';
+import { flushQueuedActivityLogs, logActivity } from '@/lib/activityLogger';
 
 const AuthContext = createContext();
 
@@ -457,6 +457,12 @@ export const AuthProvider = ({ children }) => {
       setHasLoggedSession(false);
     }
   }, [hasLoggedSession, user]);
+
+  useEffect(() => {
+    if (user?.id) {
+      flushQueuedActivityLogs();
+    }
+  }, [user?.id]);
 
   const checkRole = (requiredRole) => {
     if (!requiredRole) return true;
