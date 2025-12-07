@@ -437,6 +437,8 @@
       "editTitle": "Edit Product",
       "cancel": "Cancel",
       "name": "Product Name",
+      "nameSpanish": "Product Name (Spanish)",
+      "nameEnglish": "Product Name (English)",
       "namePlaceholder": "E.g.: iPhone 15 Pro Max",
       "description": "Description",
       "descriptionPlaceholder": "Describe the main features...",
