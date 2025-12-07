@@ -532,14 +532,8 @@ const CartPage = ({ onNavigate }) => {
         offerId: appliedOffer?.id || null
       };
 
-      // Create order
-      const orderResult = await createOrder(orderData, orderItems);
-
-      if (!orderResult.success) {
-        throw new Error(orderResult.error || 'Error creating order');
-      }
-
-      const createdOrder = orderResult.order;
+      // Create order (returns order object directly, throws on error)
+      const createdOrder = await createOrder(orderData, orderItems);
 
       // Record offer usage if coupon was applied
       if (appliedOffer?.id) {
@@ -557,6 +551,27 @@ const CartPage = ({ onNavigate }) => {
       if (!uploadResult.success) {
         console.error('Error uploading payment proof:', uploadResult.error);
         // Continue anyway - order is created
+        await logActivity({
+          action: 'payment_proof_upload_failed',
+          entityType: 'order',
+          entityId: createdOrder.id,
+          performedBy: user?.email || 'anonymous',
+          description: `Payment proof upload failed for order ${createdOrder.order_number}`,
+          metadata: { error: uploadResult.error }
+        });
+      } else {
+        await logActivity({
+          action: 'payment_proof_uploaded',
+          entityType: 'order',
+          entityId: createdOrder.id,
+          performedBy: user?.email || 'anonymous',
+          description: `Payment proof uploaded for order ${createdOrder.order_number}`,
+          metadata: {
+            orderId: createdOrder.id,
+            orderNumber: createdOrder.order_number,
+            uploadUrl: uploadResult?.url || null
+          }
+        });
       }
 
       // Notify admin via WhatsApp using optimized function
