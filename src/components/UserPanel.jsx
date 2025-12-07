@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
-import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users, Crown, TrendingDown, Gift } from 'lucide-react';
-import { getUserOrders, getOrderById, getAllOrders, validatePayment, rejectPayment } from '@/lib/orderService';
+import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users, Crown, TrendingDown, Gift, Truck, Upload } from 'lucide-react';
+import { getUserOrders, getOrderById, getAllOrders, validatePayment, rejectPayment, cancelOrderByUser, uploadPaymentProof, markOrderAsShipped, markOrderAsDelivered, completeOrder } from '@/lib/orderService';
 import { getUserTestimonial, createTestimonial, updateTestimonial } from '@/lib/testimonialService';
 import { getMyRemittances } from '@/lib/remittanceService';
 import { getHeadingStyle, getTextStyle, getPillStyle, getStatusStyle } from '@/lib/styleUtils';
@@ -34,6 +34,10 @@ const UserPanel = ({ onNavigate }) => {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [actionOrderId, setActionOrderId] = useState(null);
+  const [trackingInfo, setTrackingInfo] = useState('');
+  const [deliveryProofFile, setDeliveryProofFile] = useState(null);
+  const [retryProofFile, setRetryProofFile] = useState(null);
+  const [processingAction, setProcessingAction] = useState(false);
   const selectedOrderBaseTotal = selectedOrder ? (parseFloat(selectedOrder.total_amount) || 0) : 0;
   const selectedOrderCategoryDiscountAmount = selectedOrder && isRegularUser && categoryDiscountPercent > 0
     ? parseFloat(((selectedOrderBaseTotal * categoryDiscountPercent) / 100).toFixed(2))
@@ -110,6 +114,9 @@ const UserPanel = ({ onNavigate }) => {
   const handleOrderClick = async (orderId) => {
     setLoadingDetails(true);
     setShowOrderDetails(true);
+    setTrackingInfo('');
+    setDeliveryProofFile(null);
+    setRetryProofFile(null);
 
     try {
       const order = await getOrderById(orderId);
@@ -175,6 +182,81 @@ const UserPanel = ({ onNavigate }) => {
     }
   };
 
+  const handleCancelOrderUser = async (orderId) => {
+    if (!orderId) return;
+    setProcessingAction(true);
+    try {
+      await cancelOrderByUser(orderId, user.id, 'cancelled_by_user');
+      await loadUserOrders();
+      setShowOrderDetails(false);
+      setSelectedOrder(null);
+    } catch (error) {
+      console.error('Error cancelling order:', error);
+    } finally {
+      setProcessingAction(false);
+    }
+  };
+
+  const handleMarkShipped = async () => {
+    if (!selectedOrder?.id) return;
+    setProcessingAction(true);
+    try {
+      await markOrderAsShipped(selectedOrder.id, user.id, trackingInfo.trim());
+      await loadUserOrders();
+      const refreshed = await getOrderById(selectedOrder.id);
+      setSelectedOrder(refreshed);
+    } catch (error) {
+      console.error('Error marking order as shipped:', error);
+    } finally {
+      setProcessingAction(false);
+    }
+  };
+
+  const handleMarkDelivered = async () => {
+    if (!selectedOrder?.id || !deliveryProofFile) return;
+    setProcessingAction(true);
+    try {
+      await markOrderAsDelivered(selectedOrder.id, deliveryProofFile, user.id);
+      await loadUserOrders();
+      const refreshed = await getOrderById(selectedOrder.id);
+      setSelectedOrder(refreshed);
+    } catch (error) {
+      console.error('Error marking order as delivered:', error);
+    } finally {
+      setProcessingAction(false);
+    }
+  };
+
+  const handleCompleteOrder = async () => {
+    if (!selectedOrder?.id) return;
+    setProcessingAction(true);
+    try {
+      await completeOrder(selectedOrder.id, 'Order completed after delivery proof');
+      await loadUserOrders();
+      const refreshed = await getOrderById(selectedOrder.id);
+      setSelectedOrder(refreshed);
+    } catch (error) {
+      console.error('Error completing order:', error);
+    } finally {
+      setProcessingAction(false);
+    }
+  };
+
+  const handleRetryPaymentProof = async () => {
+    if (!selectedOrder?.id || !retryProofFile) return;
+    setProcessingAction(true);
+    try {
+      await uploadPaymentProof(retryProofFile, selectedOrder.id, user.id);
+      await loadUserOrders();
+      const refreshed = await getOrderById(selectedOrder.id);
+      setSelectedOrder(refreshed);
+    } catch (error) {
+      console.error('Error uploading new payment proof:', error);
+    } finally {
+      setProcessingAction(false);
+    }
+  };
+
   const handleSaveTestimonial = async () => {
     if (rating === 0) {
       alert(language === 'es'
@@ -220,6 +302,12 @@ const UserPanel = ({ onNavigate }) => {
     if (paymentStatus === 'validated' || status === 'completed') {
       return <CheckCircle className="h-5 w-5" style={{ color: visualSettings.successColor || '#10b981' }} />;
     }
+    if (status === 'shipped') {
+      return <Truck className="h-5 w-5" style={{ color: visualSettings.primaryColor || '#2563eb' }} />;
+    }
+    if (status === 'delivered') {
+      return <Package className="h-5 w-5" style={{ color: visualSettings.primaryColor || '#2563eb' }} />;
+    }
     if (paymentStatus === 'rejected' || status === 'cancelled') {
       return <XCircle className="h-5 w-5" style={{ color: visualSettings.errorColor || '#ef4444' }} />;
     }
@@ -232,6 +320,12 @@ const UserPanel = ({ onNavigate }) => {
   const getStatusText = (status, paymentStatus) => {
     if (paymentStatus === 'validated') {
       return language === 'es' ? 'Validado' : 'Validated';
+    }
+    if (status === 'shipped') {
+      return language === 'es' ? 'Enviado' : 'Shipped';
+    }
+    if (status === 'delivered') {
+      return language === 'es' ? 'Entregado' : 'Delivered';
     }
     if (paymentStatus === 'rejected') {
       return language === 'es' ? 'Rechazado' : 'Rejected';
@@ -1094,8 +1188,46 @@ const UserPanel = ({ onNavigate }) => {
                       </div>
                     )}
 
+                    {/* User actions: cancel pending order */}
+                    {isRegularUser && selectedOrder.status === 'pending' && selectedOrder.payment_status === 'pending' && (
+                      <div className="flex gap-3 pt-4 border-t" style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}>
+                        <Button
+                          onClick={() => handleCancelOrderUser(selectedOrder.id)}
+                          disabled={processingAction}
+                          variant="destructive"
+                          className="flex-1"
+                        >
+                          <XCircle className="h-4 w-4 mr-2" />
+                          {language === 'es' ? 'Cancelar pedido' : 'Cancel order'}
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* User actions: retry payment proof after rejection */}
+                    {isRegularUser && selectedOrder.payment_status === 'rejected' && selectedOrder.status === 'pending' && (
+                      <div className="mt-4 p-4 rounded-lg border" style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}>
+                        <p className="font-semibold mb-2" style={getTextStyle(visualSettings, 'primary')}>
+                          {language === 'es' ? 'Subir nuevo comprobante de pago' : 'Upload new payment proof'}
+                        </p>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => setRetryProofFile(e.target.files?.[0] || null)}
+                          className="mb-3"
+                        />
+                        <Button
+                          onClick={handleRetryPaymentProof}
+                          disabled={processingAction || !retryProofFile}
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          {processingAction ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
+                          {language === 'es' ? 'Reintentar pago' : 'Retry payment'}
+                        </Button>
+                      </div>
+                    )}
+
                     {/* Admin Action Buttons */}
-                    {(userRole === 'admin' || userRole === 'super_admin') && selectedOrder.payment_status === 'pending' && (
+                    {(userRole === 'admin' || userRole === 'super_admin') && ['pending', 'proof_uploaded'].includes(selectedOrder.payment_status) && (
                       <div className="flex gap-3 pt-4 border-t" style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}>
                         <Button
                           onClick={() => handleValidatePayment(selectedOrder.id)}
@@ -1113,6 +1245,67 @@ const UserPanel = ({ onNavigate }) => {
                         >
                           <XCircle className="h-4 w-4 mr-2" />
                           {language === 'es' ? 'Rechazar' : 'Reject'}
+                        </Button>
+                      </div>
+                    )}
+
+                    {(userRole === 'admin' || userRole === 'super_admin') && selectedOrder.status === 'processing' && (
+                      <div className="mt-4 p-4 rounded-lg border" style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}>
+                        <p className="font-semibold mb-2" style={getTextStyle(visualSettings, 'primary')}>
+                          {language === 'es' ? 'Marcar como enviado' : 'Mark as shipped'}
+                        </p>
+                        <input
+                          value={trackingInfo}
+                          onChange={(e) => setTrackingInfo(e.target.value)}
+                          placeholder={language === 'es' ? 'Información de tracking (opcional)' : 'Tracking info (optional)'}
+                          className="w-full p-3 border rounded-lg mb-3"
+                          style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}
+                        />
+                        <Button
+                          onClick={handleMarkShipped}
+                          disabled={processingAction}
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          {processingAction ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Truck className="h-4 w-4 mr-2" />}
+                          {language === 'es' ? 'Enviar pedido' : 'Ship order'}
+                        </Button>
+                      </div>
+                    )}
+
+                    {(userRole === 'admin' || userRole === 'super_admin') && selectedOrder.status === 'shipped' && (
+                      <div className="mt-4 p-4 rounded-lg border" style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}>
+                        <p className="font-semibold mb-2" style={getTextStyle(visualSettings, 'primary')}>
+                          {language === 'es' ? 'Confirmar entrega' : 'Confirm delivery'}
+                        </p>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => setDeliveryProofFile(e.target.files?.[0] || null)}
+                          className="mb-3"
+                        />
+                        <Button
+                          onClick={handleMarkDelivered}
+                          disabled={processingAction || !deliveryProofFile}
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          {processingAction ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
+                          {language === 'es' ? 'Marcar como entregado' : 'Mark delivered'}
+                        </Button>
+                      </div>
+                    )}
+
+                    {(userRole === 'admin' || userRole === 'super_admin') && selectedOrder.status === 'delivered' && (
+                      <div className="mt-4 p-4 rounded-lg border" style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}>
+                        <p className="font-semibold mb-2" style={getTextStyle(visualSettings, 'primary')}>
+                          {language === 'es' ? 'Completar pedido' : 'Complete order'}
+                        </p>
+                        <Button
+                          onClick={handleCompleteOrder}
+                          disabled={processingAction}
+                          className="bg-purple-600 hover:bg-purple-700 text-white"
+                        >
+                          {processingAction ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
+                          {language === 'es' ? 'Completar' : 'Complete'}
                         </Button>
                       </div>
                     )}
