@@ -606,9 +606,10 @@ const UserPanel = ({ onNavigate }) => {
                     </div>
                   </div>
                 </motion.div>
-              ))}
-            </div>
-          ) : (
+                );
+              })}
+              </div>
+            ) : (
             <div className="text-center py-12">
               <ShoppingBag className="h-16 w-16 mx-auto mb-4 opacity-30" />
               <p className="text-lg mb-2" style={getTextStyle(visualSettings, 'secondary')}>
