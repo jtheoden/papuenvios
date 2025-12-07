@@ -97,6 +97,9 @@ const VendorPage = () => {
                 currencies={currencies}
                 visualSettings={visualSettings}
                 baseCurrencyId={baseCurrencyId}
+                selectedCurrency={selectedCurrency}
+                exchangeRates={exchangeRates}
+                onSelectedCurrencyChange={setSelectedCurrency}
                 onProductsRefresh={refreshProducts}
               />
             )

@@ -429,7 +429,8 @@
     },
     "actions": {
       "addProduct": "Add Product",
-      "createCombo": "Create Combo"
+      "createCombo": "Create Combo",
+      "edit": "Edit"
     },
     "addProduct": {
       "title": "Add New Product",
@@ -463,7 +464,10 @@
       "currency": "Currency",
       "receivedDate": "Received Date",
       "supplierReference": "Supplier Reference",
-      "batchNumber": "Batch Number"
+      "batchNumber": "Batch Number",
+      "productDetails": "Product Details",
+      "minStock": "Min Stock",
+      "displayCurrency": "Display Currency"
     },
     "categories": {
       "manage": "Manage Categories",
