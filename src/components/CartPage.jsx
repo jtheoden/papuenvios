@@ -962,11 +962,11 @@ const CartPage = ({ onNavigate }) => {
                         <p className="text-sm text-gray-500 mb-2">
                           {language === 'es' ? 'Precio unitario: ' : 'Unit price: '}
                           <span className="font-semibold" style={{ color: visualSettings.accentColor || '#9333ea' }}>
-                            {currencySymbol}{convertedItemPrice.toFixed(2)} {selectedCurrency}
+                            {currencySymbol}{convertedItemPrice.toFixed(2)} {currencyCode}
                           </span>
                         </p>
                         <p className="text-base font-bold text-gray-900">
-                          {language === 'es' ? 'Subtotal: ' : 'Subtotal: '}{currencySymbol}{convertedItemTotal.toFixed(2)} {selectedCurrency}
+                          {language === 'es' ? 'Subtotal: ' : 'Subtotal: '}{currencySymbol}{convertedItemTotal.toFixed(2)} {currencyCode}
                         </p>
                       </div>
 
