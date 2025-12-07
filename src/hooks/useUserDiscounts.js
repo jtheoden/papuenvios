@@ -25,10 +25,16 @@ export const useUserDiscounts = () => {
       const fallbackCategory = userCategory?.category_name || userCategory?.category || userCategory?.categoryName;
       const fallbackDiscount = userCategory?.discount_percentage || userCategory?.discountPercent;
 
+      const resolvedCategory = info.category || fallbackCategory || 'regular';
+      const resolvedDiscount = info.enabled === false
+        ? 0
+        : (info.discountPercent ?? fallbackDiscount ?? 0);
+
       setCategoryInfo({
-        category: info.category || fallbackCategory || 'regular',
-        discountPercent: (info.discountPercent ?? fallbackDiscount ?? 0),
-        enabled: Boolean((info.discountPercent ?? fallbackDiscount ?? 0) > 0 && info.enabled !== false)
+        category: resolvedCategory,
+        discountPercent: resolvedDiscount,
+        enabled: Boolean(resolvedDiscount > 0 && info.enabled !== false),
+        categoryDiscount: info.categoryDiscount || null
       });
     } catch (error) {
       console.error('Error loading user discount info:', error);
