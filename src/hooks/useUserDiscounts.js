@@ -7,7 +7,7 @@ import { getUserCategoryWithDiscount } from '@/lib/orderDiscountService';
  * so all views (cart, products, combos, orders) display consistent data.
  */
 export const useUserDiscounts = () => {
-  const { user } = useAuth();
+  const { user, userCategory } = useAuth();
   const [categoryInfo, setCategoryInfo] = useState({ category: 'regular', discountPercent: 0, enabled: false });
   const [loading, setLoading] = useState(false);
 
@@ -20,10 +20,15 @@ export const useUserDiscounts = () => {
     try {
       setLoading(true);
       const info = await getUserCategoryWithDiscount(user.id);
+
+      // Fallback to category provided by AuthContext if Supabase query returns nothing
+      const fallbackCategory = userCategory?.category_name || userCategory?.category || userCategory?.categoryName;
+      const fallbackDiscount = userCategory?.discount_percentage || userCategory?.discountPercent;
+
       setCategoryInfo({
-        category: info.category || 'regular',
-        discountPercent: info.discountPercent || 0,
-        enabled: Boolean(info.discountPercent > 0 && info.enabled !== false)
+        category: info.category || fallbackCategory || 'regular',
+        discountPercent: (info.discountPercent ?? fallbackDiscount ?? 0),
+        enabled: Boolean((info.discountPercent ?? fallbackDiscount ?? 0) > 0 && info.enabled !== false)
       });
     } catch (error) {
       console.error('Error loading user discount info:', error);

@@ -330,12 +330,28 @@ const CartPage = ({ onNavigate }) => {
       }
 
       setAppliedOffer(validation.offer);
+      await logActivity({
+        action: 'coupon_applied',
+        entityType: 'offer',
+        entityId: validation.offer.id,
+        performedBy: user?.email || 'anonymous',
+        description: `Coupon ${validation.offer.code} applied`,
+        metadata: { subtotal, discount: validation.offer.discount_value, type: validation.offer.discount_type }
+      });
       toast({
         title: language === 'es' ? '✅ Cupón aplicado' : '✅ Coupon applied',
         description: `${validation.offer.discount_value}${validation.offer.discount_type === 'percentage' ? '%' : '$'} ${language === 'es' ? 'descuento' : 'discount'}`
       });
     } catch (error) {
       console.error('Error validating coupon:', error);
+      logActivity({
+        action: 'coupon_validation_failed',
+        entityType: 'offer',
+        entityId: couponCode,
+        performedBy: user?.email || 'anonymous',
+        description: 'Coupon validation failed',
+        metadata: { error: error.message }
+      });
       setCouponError(error.message || (language === 'es' ? 'Error al validar cupón' : 'Error validating coupon'));
       setAppliedOffer(null);
     }
@@ -348,10 +364,18 @@ const CartPage = ({ onNavigate }) => {
     setCouponCode('');
     setAppliedOffer(null);
     setCouponError('');
+    logActivity({
+      action: 'coupon_removed',
+      entityType: 'offer',
+      entityId: couponCode || appliedOffer?.id,
+      performedBy: user?.email || 'anonymous',
+      description: 'Coupon removed from cart'
+    });
   };
 
   const handleContactSupport = () => {
-    if (!notificationSettings?.whatsapp) {
+    const whatsappTarget = notificationSettings?.whatsapp || businessInfo?.whatsapp;
+    if (!whatsappTarget) {
       toast({
         title: t('common.error'),
         description: language === 'es'
@@ -366,7 +390,7 @@ const CartPage = ({ onNavigate }) => {
       ? `Hola! Tengo una pregunta sobre mi pedido.\n\nNúmero de pedido: ${purchaseId}`
       : `Hello! I have a question about my order.\n\nOrder number: ${purchaseId}`;
 
-    openWhatsAppChat(notificationSettings.whatsapp, message);
+    openWhatsAppChat(whatsappTarget, message);
   };
 
   const copyToClipboard = (text) => {
@@ -527,7 +551,7 @@ const CartPage = ({ onNavigate }) => {
       }
 
       // Upload payment proof
-      const uploadResult = await uploadPaymentProof(paymentProof, createdOrder.id);
+      const uploadResult = await uploadPaymentProof(paymentProof, createdOrder.id, user.id);
 
       if (!uploadResult.success) {
         console.error('Error uploading payment proof:', uploadResult.error);
@@ -592,6 +616,22 @@ const CartPage = ({ onNavigate }) => {
       });
 
       // Clear cart and navigate
+      await logActivity({
+        action: 'order_submitted',
+        entityType: 'order',
+        entityId: createdOrder.id,
+        performedBy: user?.email || 'anonymous',
+        description: `Order ${createdOrder.order_number} submitted from cart`,
+        metadata: {
+          total: totalAmount,
+          subtotal,
+          discount: totalDiscountAmount,
+          shippingCost,
+          paymentStatus: createdOrder.payment_status,
+          offerId: appliedOffer?.id || null
+        }
+      });
+
       clearCart();
       onNavigate('user-panel');
 
