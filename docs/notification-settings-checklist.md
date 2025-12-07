@@ -22,3 +22,7 @@ Use this checklist to manually verify the new notification-settings Edge Functio
 1. Using the regular user's session token, call `GET https://<project>.supabase.co/functions/v1/notification-settings`; expect a 403 response.
 2. Using the admin's token, call the same endpoint; expect a 200 response with the three keys only.
 3. From the SQL editor, verify `system_config` RLS policies block non-`service_role` access to the notification keys while leaving other keys readable by admins.
+
+## Merge/Conflict guidance
+- Prefer the Edge Function + `system_config` RLS changes over any legacy client-side direct table access. Those server-side updates enforce admin validation and service-role access to the notification keys and avoid the old anonymous insert path.
+- Keep the `notificationSettingsService` version that calls `/functions/v1/notification-settings`; discard versions that read/write `system_config` directly from the browser.
