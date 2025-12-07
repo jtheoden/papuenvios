@@ -10,10 +10,10 @@ const Footer = () => {
       <div className="container mx-auto px-4 py-6 flex flex-col md:flex-row items-center justify-between gap-3 text-sm">
         <span className="text-slate-200">{t('footer.date', { date: currentDate })}</span>
         <a
-          href="mailto:contacto@papuenvios.com"
+          href="https://www.linkedin.com/in/juan-a-centelles-geides/"
           className="text-indigo-200 hover:text-white font-semibold"
         >
-          {t('footer.developedBy', { name: 'PapuEnvíos Dev' })}
+          {t('footer.developedBy', { name: 'Juan A. Centelles', email: 'jtheoden@gmail.com' })}
         </a>
       </div>
     </footer>
