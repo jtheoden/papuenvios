@@ -235,7 +235,7 @@ const VendorInventoryTab = ({
             {t('vendor.inventory.displayCurrency')}:
           </label>
           <select
-            value={selectedCurrency || baseCurrencyId}
+            value={selectedCurrency ?? baseCurrencyId ?? ''}
             onChange={(e) => onSelectedCurrencyChange(e.target.value)}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
           >
