@@ -266,7 +266,7 @@ const VendorInventoryTab = ({
             {/* Product Name (Spanish) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {language === 'es' ? 'Nombre del Producto (ES)' : 'Product Name (ES)'} *
+                {t('vendor.addProduct.nameSpanish')} *
               </label>
               <input
                 type="text"
@@ -281,13 +281,13 @@ const VendorInventoryTab = ({
             {/* Product Name (English) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {language === 'es' ? 'Nombre del Producto (EN)' : 'Product Name (EN)'}
+                {t('vendor.addProduct.nameEnglish')}
               </label>
               <input
                 type="text"
                 value={productForm.name_en}
                 onChange={e => handleInputChange('name_en', e.target.value)}
-                placeholder={language === 'es' ? 'Ej: iPhone 15 Pro Max' : 'E.g.: iPhone 15 Pro Max'}
+                placeholder={t('vendor.addProduct.namePlaceholder')}
                 className="w-full input-style"
               />
             </div>
