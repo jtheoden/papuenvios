@@ -11,11 +11,15 @@ import { getHeadingStyle, getTextStyle, getPillStyle, getStatusStyle } from '@/l
 import { generateWhatsAppURL } from '@/lib/whatsappService';
 import { Button } from '@/components/ui/button';
 import CategoryBadge from '@/components/CategoryBadge';
+import { derivePercentFromAmount } from '@/lib/discountDisplayService';
+import { useUserDiscounts } from '@/hooks/useUserDiscounts';
 
 const UserPanel = ({ onNavigate }) => {
   const { user, userRole, userCategory } = useAuth();
   const { t, language } = useLanguage();
   const { visualSettings, businessInfo } = useBusiness();
+  const { categoryDiscountPercent } = useUserDiscounts();
+  const isRegularUser = userRole === 'user';
   const [orders, setOrders] = useState([]);
   const [remittances, setRemittances] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,6 +34,11 @@ const UserPanel = ({ onNavigate }) => {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [actionOrderId, setActionOrderId] = useState(null);
+  const selectedOrderBaseTotal = selectedOrder ? (parseFloat(selectedOrder.total_amount) || 0) : 0;
+  const selectedOrderCategoryDiscountAmount = selectedOrder && isRegularUser && categoryDiscountPercent > 0
+    ? parseFloat(((selectedOrderBaseTotal * categoryDiscountPercent) / 100).toFixed(2))
+    : 0;
+  const selectedOrderTotalAfterCategory = selectedOrderBaseTotal - selectedOrderCategoryDiscountAmount;
   useEffect(() => {
     if (!user) {
       onNavigate('login');
@@ -489,15 +498,24 @@ const UserPanel = ({ onNavigate }) => {
             </div>
           ) : orders.length > 0 ? (
             <div className="space-y-4">
-              {orders.map(order => (
-                <motion.div
-                  key={order.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="p-4 border rounded-lg hover:shadow-md transition-all cursor-pointer"
-                  style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}
-                  onClick={() => handleOrderClick(order.id)}
-                >
+              {orders.map(order => {
+                const orderDiscountPercent = derivePercentFromAmount(order.subtotal, order.discount_amount);
+                const baseOrderTotal = parseFloat(order.total_amount) || 0;
+                const categoryPercent = isRegularUser ? categoryDiscountPercent : 0;
+                const categoryDiscountAmount = categoryPercent > 0
+                  ? parseFloat(((baseOrderTotal * categoryPercent) / 100).toFixed(2))
+                  : 0;
+                const orderTotalAfterCategory = baseOrderTotal - categoryDiscountAmount;
+
+                return (
+                  <motion.div
+                    key={order.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 border rounded-lg hover:shadow-md transition-all cursor-pointer"
+                    style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}
+                    onClick={() => handleOrderClick(order.id)}
+                  >
                   <div className="flex flex-wrap justify-between items-center gap-4">
                     <div className="flex-1 min-w-[200px]">
                       <p className="font-semibold mb-1" style={getTextStyle(visualSettings, 'primary')}>
@@ -524,16 +542,31 @@ const UserPanel = ({ onNavigate }) => {
                     </div>
 
                     <div className="text-right">
-                      <div className="text-lg font-bold mb-1" style={{ color: visualSettings.primaryColor }}>
-                        ${parseFloat(order.total_amount).toFixed(2)} {order.currencies?.code || 'USD'}
-                      </div>
+                      {categoryPercent > 0 ? (
+                        <>
+                          <div className="text-xs line-through" style={getTextStyle(visualSettings, 'muted')}>
+                            ${baseOrderTotal.toFixed(2)} {order.currencies?.code || 'USD'}
+                          </div>
+                          <div className="text-lg font-bold mb-1" style={{ color: visualSettings.primaryColor }}>
+                            ${orderTotalAfterCategory.toFixed(2)} {order.currencies?.code || 'USD'}
+                          </div>
+                          <div className="mt-1 flex items-center justify-end gap-1 text-xs font-semibold text-green-600">
+                            <TrendingDown className="h-3 w-3" />
+                            {language === 'es' ? 'Descuento categoría' : 'Category discount'} · -${categoryDiscountAmount.toFixed(2)} ({categoryPercent.toFixed(1)}%)
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-lg font-bold mb-1" style={{ color: visualSettings.primaryColor }}>
+                          ${parseFloat(order.total_amount).toFixed(2)} {order.currencies?.code || 'USD'}
+                        </div>
+                      )}
                       <p className="text-xs" style={getTextStyle(visualSettings, 'muted')}>
                         {order.order_items?.length || 0} {language === 'es' ? 'artículos' : 'items'}
                       </p>
                       {order.discount_amount > 0 && (
                         <div className="mt-2 flex items-center justify-end gap-1 text-xs font-semibold text-green-600">
                           <TrendingDown className="h-3 w-3" />
-                          {language === 'es' ? 'Descuento' : 'Discount'}
+                          {language === 'es' ? 'Descuento' : 'Discount'} · -${parseFloat(order.discount_amount).toFixed(2)} ({orderDiscountPercent.toFixed(1)}%)
                         </div>
                       )}
                     </div>
@@ -845,9 +878,22 @@ const UserPanel = ({ onNavigate }) => {
                         <p className="text-xs font-medium mb-1" style={getTextStyle(visualSettings, 'muted')}>
                           {language === 'es' ? 'Total' : 'Total'}
                         </p>
-                        <p className="text-lg font-bold" style={{ color: visualSettings.primaryColor }}>
-                          ${parseFloat(selectedOrder.total_amount).toFixed(2)} {selectedOrder.currencies?.code || 'USD'}
-                        </p>
+                        <div className="text-right">
+                          {isRegularUser && categoryDiscountPercent > 0 ? (
+                            <>
+                              <div className="text-xs line-through" style={getTextStyle(visualSettings, 'muted')}>
+                                ${selectedOrderBaseTotal.toFixed(2)} {selectedOrder.currencies?.code || 'USD'}
+                              </div>
+                              <p className="text-lg font-bold" style={{ color: visualSettings.primaryColor }}>
+                                {selectedOrderTotalAfterCategory.toFixed(2)} {selectedOrder.currencies?.code || 'USD'}
+                              </p>
+                            </>
+                          ) : (
+                            <p className="text-lg font-bold" style={{ color: visualSettings.primaryColor }}>
+                              ${parseFloat(selectedOrder.total_amount).toFixed(2)} {selectedOrder.currencies?.code || 'USD'}
+                            </p>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -928,7 +974,7 @@ const UserPanel = ({ onNavigate }) => {
                               <div className="flex items-center gap-2">
                                 <TrendingDown className="h-4 w-4" style={{ color: '#16a34a' }} />
                                 <span className="text-sm font-semibold" style={{ color: '#16a34a' }}>
-                                  {language === 'es' ? 'Descuento' : 'Discount'}
+                                  {language === 'es' ? 'Descuento' : 'Discount'} ({derivePercentFromAmount(selectedOrder.subtotal, selectedOrder.discount_amount).toFixed(1)}%)
                                 </span>
                               </div>
                               <span className="font-semibold" style={{ color: '#16a34a' }}>
@@ -940,6 +986,22 @@ const UserPanel = ({ onNavigate }) => {
                                 {language === 'es' ? 'Cupón:' : 'Coupon:'} <code className="font-mono font-bold">{selectedOrder.offer_code}</code>
                               </p>
                             )}
+                          </div>
+                        )}
+
+                        {isRegularUser && categoryDiscountPercent > 0 && (
+                          <div className="p-3 rounded-lg" style={{ backgroundColor: visualSettings.primaryColor ? `${visualSettings.primaryColor}12` : '#ecfdf3' }}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <TrendingDown className="h-4 w-4" style={{ color: '#16a34a' }} />
+                                <span className="text-sm font-semibold" style={{ color: '#16a34a' }}>
+                                  {language === 'es' ? 'Descuento por categoría' : 'Category discount'} ({categoryDiscountPercent.toFixed(1)}%)
+                                </span>
+                              </div>
+                              <span className="font-semibold" style={{ color: '#16a34a' }}>
+                                -${selectedOrderCategoryDiscountAmount.toFixed(2)}
+                              </span>
+                            </div>
                           </div>
                         )}
 
@@ -959,9 +1021,22 @@ const UserPanel = ({ onNavigate }) => {
                             <span className="text-lg font-bold" style={getTextStyle(visualSettings, 'primary')}>
                               {language === 'es' ? 'Total' : 'Total'}
                             </span>
-                            <span className="text-xl font-bold" style={{ color: visualSettings.primaryColor }}>
-                              ${parseFloat(selectedOrder.total_amount).toFixed(2)} {selectedOrder.currencies?.code || 'USD'}
-                            </span>
+                            <div className="text-right">
+                              {isRegularUser && categoryDiscountPercent > 0 ? (
+                                <>
+                                  <div className="text-xs line-through" style={getTextStyle(visualSettings, 'muted')}>
+                                    ${selectedOrderBaseTotal.toFixed(2)} {selectedOrder.currencies?.code || 'USD'}
+                                  </div>
+                                  <div className="text-xl font-bold" style={{ color: visualSettings.primaryColor }}>
+                                    {selectedOrderTotalAfterCategory.toFixed(2)} {selectedOrder.currencies?.code || 'USD'}
+                                  </div>
+                                </>
+                              ) : (
+                                <span className="text-xl font-bold" style={{ color: visualSettings.primaryColor }}>
+                                  ${parseFloat(selectedOrder.total_amount).toFixed(2)} {selectedOrder.currencies?.code || 'USD'}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
