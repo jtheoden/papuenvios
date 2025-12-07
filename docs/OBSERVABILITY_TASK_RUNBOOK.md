@@ -2,6 +2,8 @@
 
 Este runbook define una tarea independiente para ejecutar, paso a paso, el plan de observabilidad ya documentado. Se alinea con los estándares del proyecto y exige que cada agente revise el código antes de intervenir y trabaje en una rama paralela.
 
+> **Nota de coordinación**: este plan se ejecuta como tarea paralela según `docs/PLANES_PARALELOS.md`. Abre una rama dedicada (`feature/observability-task-<n>`) y coordina merges si hay otros planes activos.
+
 ## Preparación obligatoria (antes de tocar código)
 1. **Revisar el proyecto**: leer `DEVELOPMENT_STANDARDS.md`, `ERROR_HANDLING_STANDARD.md`, `OBSERVABILITY_PLAN.md` y `PAYMENT_VALIDATION_DIAGNOSTIC.md` para entender convenciones, flujos y diagnósticos vigentes.
 2. **Sincronizar rama base**: actualizar `work` desde `origin/work` y crear una rama paralela `feature/observability-task-<n>` para aislar cambios.
