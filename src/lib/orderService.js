@@ -40,8 +40,8 @@ const logOrderActivity = async ({ action, entityId, performedBy, description, me
  */
 export const ORDER_STATUS = {
   PENDING: 'pending',           // Initial state - waiting for payment validation
-  PROCESSING: 'processing',     // Payment validated - preparing for shipment
-  SHIPPED: 'shipped',           // Order shipped - in transit
+  PROCESSING: 'processing',     // Payment validated - preparing for dispatch
+  DISPATCHED: 'dispatched',     // Order dispatched - in transit
   DELIVERED: 'delivered',       // Order delivered - awaiting completion
   COMPLETED: 'completed',       // Fully completed - no further actions
   CANCELLED: 'cancelled'        // Cancelled - no longer valid
@@ -67,10 +67,10 @@ const ORDER_TRANSITIONS = {
     ORDER_STATUS.CANCELLED
   ],
   [ORDER_STATUS.PROCESSING]: [
-    ORDER_STATUS.SHIPPED,
+    ORDER_STATUS.DISPATCHED,
     ORDER_STATUS.CANCELLED
   ],
-  [ORDER_STATUS.SHIPPED]: [
+  [ORDER_STATUS.DISPATCHED]: [
     ORDER_STATUS.DELIVERED
   ],
   [ORDER_STATUS.DELIVERED]: [
@@ -1452,7 +1452,7 @@ export const startProcessingOrder = async (orderId, adminId) => {
  * @throws {AppError} If order not found, invalid state, or update fails
  * @returns {Promise<Object>} Updated order in shipped state
  */
-export const markOrderAsShipped = async (orderId, adminId, trackingInfo = '') => {
+export const markOrderAsDispatched = async (orderId, adminId, trackingInfo = '') => {
   try {
     if (!orderId || !adminId) {
       throw createValidationError({
@@ -1470,7 +1470,7 @@ export const markOrderAsShipped = async (orderId, adminId, trackingInfo = '') =>
 
     if (fetchError) {
       const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'markOrderAsShipped - fetch', orderId });
+      logError(appError, { operation: 'markOrderAsDispatched - fetch', orderId });
       throw appError;
     }
 
@@ -1479,12 +1479,13 @@ export const markOrderAsShipped = async (orderId, adminId, trackingInfo = '') =>
     }
 
     // Validate state machine
-    validateOrderTransition(order.status, ORDER_STATUS.SHIPPED);
+    validateOrderTransition(order.status, ORDER_STATUS.DISPATCHED);
 
     // Update order status
     const updateData = {
-      status: ORDER_STATUS.SHIPPED,
-      shipped_at: new Date().toISOString(),
+      status: ORDER_STATUS.DISPATCHED,
+      dispatched_at: new Date().toISOString(),
+      dispatched_by: adminId,
       updated_at: new Date().toISOString()
     };
 
@@ -1503,28 +1504,31 @@ export const markOrderAsShipped = async (orderId, adminId, trackingInfo = '') =>
 
     if (updateError) {
       const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'markOrderAsShipped - update', orderId });
+      logError(appError, { operation: 'markOrderAsDispatched - update', orderId });
       throw appError;
     }
 
     logOrderActivity({
-      action: 'order_shipped',
+      action: 'order_dispatched',
       entityId: orderId,
       performedBy: adminId,
-      description: 'Order marked as shipped',
-      metadata: { trackingInfo }
+      description: `Order ${order.order_number} marked as dispatched`,
+      metadata: { trackingInfo, orderNumber: order.order_number }
     });
 
     return updatedOrder;
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'markOrderAsShipped',
+      operation: 'markOrderAsDispatched',
       orderId
     });
     throw appError;
   }
 };
+
+// Backward compatibility alias
+export const markOrderAsShipped = markOrderAsDispatched;
 
 /**
  * Mark order as delivered with proof (Shipped → Delivered)

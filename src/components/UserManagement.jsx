@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Shield, UserCheck, UserX, Trash2, AlertCircle, BarChart3, Settings } from 'lucide-react';
+import { Users, Shield, UserCheck, UserX, Trash2, AlertCircle, BarChart3, Settings, Edit, Save, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -14,7 +14,7 @@ import UserAvatar from '@/components/avatars/UserAvatar';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import TableDetailModal from '@/components/modals/TableDetailModal';
 import { getUserTableColumns, getUserModalColumns } from '@/components/admin/UserTableConfig';
-import { getCategoryRules, getCategoryDiscounts, recalculateAllCategories } from '@/lib/userCategorizationService';
+import { getCategoryRules, getCategoryDiscounts, recalculateAllCategories, updateCategoryDiscount } from '@/lib/userCategorizationService';
 
 const SUPER_ADMIN_EMAILS = ['jtheoden@googlemail.com', 'elpapuedition@gmail.com'];
 
@@ -29,6 +29,8 @@ const UserManagement = () => {
   const [categoryDiscounts, setCategoryDiscounts] = useState([]);
   const [recalculatingAll, setRecalculatingAll] = useState(false);
   const [lastRecalculateTime, setLastRecalculateTime] = useState(null);
+  const [editingDiscountId, setEditingDiscountId] = useState(null);
+  const [editingDiscountData, setEditingDiscountData] = useState(null);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -278,6 +280,48 @@ const UserManagement = () => {
       });
     } finally {
       setRecalculatingAll(false);
+    }
+  };
+
+  const handleEditDiscount = (discount) => {
+    setEditingDiscountId(discount.id);
+    setEditingDiscountData({
+      discount_percentage: discount.discount_percentage,
+      discount_description: discount.discount_description || '',
+      enabled: discount.enabled
+    });
+  };
+
+  const handleCancelEditDiscount = () => {
+    setEditingDiscountId(null);
+    setEditingDiscountData(null);
+  };
+
+  const handleSaveDiscount = async (categoryName) => {
+    if (!editingDiscountData) return;
+
+    try {
+      await updateCategoryDiscount(categoryName, editingDiscountData);
+
+      toast({
+        title: t('common.success'),
+        description: t('users.categories.discountUpdated') || 'Discount updated successfully'
+      });
+
+      // Reload discounts
+      const discountsData = await getCategoryDiscounts();
+      setCategoryDiscounts(discountsData || []);
+
+      // Clear editing state
+      setEditingDiscountId(null);
+      setEditingDiscountData(null);
+    } catch (error) {
+      console.error('Error updating discount:', error);
+      toast({
+        title: t('common.error'),
+        description: error.message,
+        variant: 'destructive'
+      });
     }
   };
 
@@ -637,29 +681,117 @@ const UserManagement = () => {
                     <th className="px-4 py-2 text-left font-semibold text-gray-700">
                       {t('users.categories.status')}
                     </th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700">
+                      {t('common.actions')}
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {categoryDiscounts.map((discount) => (
-                    <tr key={discount.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <CategoryBadge categoryName={discount.category_name} readOnly />
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-green-600">
-                        {discount.discount_percentage}%
-                      </td>
-                      <td className="px-4 py-3 text-gray-600">{discount.discount_description || '-'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
-                          discount.enabled
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {discount.enabled ? t('common.active') : t('common.inactive')}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {categoryDiscounts.map((discount) => {
+                    const isEditing = editingDiscountId === discount.id;
+
+                    return (
+                      <tr key={discount.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <CategoryBadge categoryName={discount.category_name} readOnly />
+                        </td>
+                        <td className="px-4 py-3">
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              value={editingDiscountData?.discount_percentage || 0}
+                              onChange={(e) => setEditingDiscountData({
+                                ...editingDiscountData,
+                                discount_percentage: parseFloat(e.target.value) || 0
+                              })}
+                              className="w-20 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                            />
+                          ) : (
+                            <span className="font-semibold text-green-600">
+                              {discount.discount_percentage}%
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={editingDiscountData?.discount_description || ''}
+                              onChange={(e) => setEditingDiscountData({
+                                ...editingDiscountData,
+                                discount_description: e.target.value
+                              })}
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                              placeholder={t('users.categories.description')}
+                            />
+                          ) : (
+                            <span className="text-gray-600">{discount.discount_description || '-'}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {isEditing ? (
+                            <label className="inline-flex items-center cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={editingDiscountData?.enabled || false}
+                                onChange={(e) => setEditingDiscountData({
+                                  ...editingDiscountData,
+                                  enabled: e.target.checked
+                                })}
+                                className="sr-only peer"
+                              />
+                              <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                              <span className="ms-3 text-sm font-medium text-gray-900">
+                                {editingDiscountData?.enabled ? t('common.active') : t('common.inactive')}
+                              </span>
+                            </label>
+                          ) : (
+                            <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                              discount.enabled
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {discount.enabled ? t('common.active') : t('common.inactive')}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {isEditing ? (
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleSaveDiscount(discount.category_name)}
+                                className="bg-green-600 hover:bg-green-700 text-white"
+                              >
+                                <Save className="w-4 h-4 mr-1" />
+                                {t('common.save')}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={handleCancelEditDiscount}
+                              >
+                                <X className="w-4 h-4 mr-1" />
+                                {t('common.cancel')}
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleEditDiscount(discount)}
+                            >
+                              <Edit className="w-4 h-4 mr-1" />
+                              {t('common.edit')}
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -96,7 +96,9 @@
   },
   "footer": {
     "date": "Hoy es {date}",
-    "developedBy": "Desarrollado por {name} (contacto@papuenvios.com)"
+    "developedBy": "Desarrollado por {name} ({email})",
+    "to": "Para",
+    "copyright": "Todos los derechos reservados"
   },
   "products": {
     "title": "Catálogo de Productos",
