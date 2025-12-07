@@ -1,6 +1,11 @@
 import { supabase } from '@/lib/supabase';
 
 const STORAGE_KEY = 'pending_activity_logs';
+const MAX_QUEUE_SIZE = 100;
+
+const logMetric = (event, payload = {}) => {
+  console.info(`[activityLogger][metric] ${event}`, payload);
+};
 
 const safeMetadata = (metadata) => {
   if (!metadata || typeof metadata !== 'object') return null;
@@ -42,9 +47,19 @@ const writeQueue = (items) => {
 
 const enqueuePayload = (payload, reason = 'pending') => {
   const queue = readQueue();
-  queue.push({ ...payload, _queued_at: new Date().toISOString(), _queue_reason: reason });
+  const enrichedPayload = { ...payload, _queued_at: new Date().toISOString(), _queue_reason: reason };
+
+  queue.push(enrichedPayload);
+
+  if (queue.length > MAX_QUEUE_SIZE) {
+    const trimmed = queue.slice(queue.length - MAX_QUEUE_SIZE);
+    logMetric('queue_trimmed', { removed: queue.length - trimmed.length, reason });
+    writeQueue(trimmed);
+    return;
+  }
+
   writeQueue(queue);
-};
+}; 
 
 const buildPayload = ({ action, entityType, entityId, performedBy, description, metadata }) => {
   const metadataPayload = safeMetadata(metadata) || {};
@@ -71,11 +86,17 @@ const buildPayload = ({ action, entityType, entityId, performedBy, description, 
 export const flushQueuedActivityLogs = async () => {
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData?.session) {
+    logMetric('flush_skipped_no_session');
     return false;
   }
 
   const queued = readQueue();
-  if (!queued.length) return true;
+  if (!queued.length) {
+    logMetric('flush_noop_empty_queue');
+    return true;
+  }
+
+  logMetric('flush_started', { queued: queued.length });
 
   const { error } = await supabase.from('activity_logs').insert(queued.map(({ _queue_reason, _queued_at, ...rest }) => rest));
 
@@ -85,10 +106,12 @@ export const flushQueuedActivityLogs = async () => {
     } else {
       console.warn('[activityLogger] Failed to flush queued activities', error.message);
     }
+    logMetric('flush_failed', { queued: queued.length, code: error.code || 'unknown' });
     return false;
   }
 
   writeQueue([]);
+  logMetric('flush_success', { inserted: queued.length });
   return true;
 };
 
@@ -112,6 +135,7 @@ export const logActivity = async ({
     if (!sessionData?.session) {
       console.warn('[activityLogger] No active session, queueing activity');
       enqueuePayload(payload, 'no_session');
+      logMetric('queued', { reason: 'no_session' });
       return;
     }
 
@@ -122,10 +146,12 @@ export const logActivity = async ({
       if (error.code === '42501') {
         console.warn('[activityLogger] Permission denied when inserting activity');
         enqueuePayload(payload, 'rls_denied');
+        logMetric('queued', { reason: 'rls_denied' });
         return;
       }
       console.warn('[activityLogger] Failed to insert activity, queued for retry', error.message);
       enqueuePayload(payload, 'insert_error');
+      logMetric('queued', { reason: 'insert_error' });
       return;
     }
 
