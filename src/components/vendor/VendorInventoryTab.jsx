@@ -516,8 +516,8 @@ const VendorInventoryTab = ({
                   <ProductInfoItem
                     label={t('vendor.inventory.product')}
                     value={language === 'es'
-                      ? (selectedProduct.name_es || selectedProduct.name)
-                      : (selectedProduct.name_en || selectedProduct.name_es || selectedProduct.name)
+                      ? (selectedProduct.name_es || selectedProduct.name_en)
+                      : (selectedProduct.name_en || selectedProduct.name_es)
                     }
                   />
                   <ProductInfoItem label={t('vendor.addProduct.category')} value={selectedProduct.category ? (language === 'es' ? selectedProduct.category.name_es : selectedProduct.category.name_en) : 'Sin categoría'} />

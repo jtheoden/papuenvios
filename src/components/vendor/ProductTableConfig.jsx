@@ -21,8 +21,8 @@ export const getTableColumns = (t, language, currencies) => [
     render: (value, row) => {
       const isOutOfStock = row.stock === 0;
       const productName = language === 'es'
-        ? (row.name_es || row.name)
-        : (row.name_en || row.name_es || row.name);
+        ? (row.name_es || row.name_en)
+        : (row.name_en || row.name_es);
       return (
         <div className={isOutOfStock ? 'line-through text-gray-400' : 'font-medium text-gray-900'}>
           {productName || 'Sin nombre'}
@@ -141,8 +141,8 @@ export const getModalColumns = (t, language, currencies) => [
     label: t('vendor.inventory.product'),
     render: (value, row) => {
       const productName = language === 'es'
-        ? (row.name_es || row.name)
-        : (row.name_en || row.name_es || row.name);
+        ? (row.name_es || row.name_en)
+        : (row.name_en || row.name_es);
       return productName || 'Sin nombre';
     }
   },
