@@ -158,7 +158,7 @@ const DashboardPage = ({ onNavigate }) => {
         supabase.from('combo_products').select('id', { count: 'exact', head: true }),
         supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
         supabase.from('orders').select('id, status, payment_status, total_amount, created_at'),
-        supabase.from('remittances').select('id, status, commission_total, amount, created_at')
+        supabase.from('remittances').select('id, status, commission_total, amount_sent, created_at')
       ]);
 
       const totalProducts = productsRes.count || 0;
@@ -213,11 +213,11 @@ const DashboardPage = ({ onNavigate }) => {
 
       const dailyRemittanceVolume = remittances
         .filter(r => new Date(r.created_at) >= oneDayAgo && r.status === 'completed')
-        .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+        .reduce((sum, r) => sum + (parseFloat(r.amount_sent) || 0), 0);
 
       const monthlyRemittanceVolume = remittances
         .filter(r => new Date(r.created_at) >= oneMonthAgo && r.status === 'completed')
-        .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+        .reduce((sum, r) => sum + (parseFloat(r.amount_sent) || 0), 0);
 
       setStats({
         totalProducts,

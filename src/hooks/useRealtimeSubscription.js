@@ -46,16 +46,21 @@ export const useRealtimeSubscription = ({
         const channelName = `realtime:${table}`;
 
         // Build subscription
+        const changeOptions = {
+          event: event,
+          schema: 'public',
+          table: table
+        };
+
+        if (filter) {
+          changeOptions.filter = filter;
+        }
+
         let subscription = supabase
           .channel(channelName)
           .on(
             'postgres_changes',
-            {
-              event: event,
-              schema: 'public',
-              table: table,
-              filter: filter
-            },
+            changeOptions,
             (payload) => {
               setLastUpdate(new Date());
 
