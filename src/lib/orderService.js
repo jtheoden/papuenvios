@@ -630,7 +630,9 @@ const reduceInventory = async (inventoryId, quantity) => {
       throw createNotFoundError('Inventory', inventoryId);
     }
 
-    const availableStock = inventory.available_quantity ?? inventory.quantity ?? 0;
+    const availableStock =
+      inventory.available_quantity ??
+      (inventory.quantity ?? 0) - (inventory.reserved_quantity ?? 0);
 
     // Validate sufficient stock
     if (availableStock < quantity) {
@@ -643,14 +645,12 @@ const reduceInventory = async (inventoryId, quantity) => {
     // Reduce both actual and reserved quantities
     const newQuantity = (inventory.quantity ?? availableStock) - quantity;
     const newReserved = Math.max(0, (inventory.reserved_quantity || 0) - quantity);
-    const newAvailable = Math.max(0, availableStock - quantity);
 
     const { error: updateError } = await supabase
       .from('inventory')
       .update({
         quantity: newQuantity,
         reserved_quantity: newReserved,
-        available_quantity: newAvailable,
         updated_at: new Date().toISOString()
       })
       .eq('id', inventoryId);
