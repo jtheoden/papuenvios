@@ -42,8 +42,13 @@ export const useRealtimeSubscription = ({
 
     const subscribe = async () => {
       try {
-        // Create channel name
-        const channelName = `realtime:${table}`;
+        const sanitizedFilter =
+          typeof filter === 'string' && filter.trim().length > 0 ? filter.trim() : null;
+
+        // Create channel name (unique per table/filter/event to avoid collisions)
+        const channelName = sanitizedFilter
+          ? `realtime:${table}:${event}:${sanitizedFilter}`
+          : `realtime:${table}:${event}`;
 
         // Build subscription
         const changeOptions = {
@@ -52,8 +57,8 @@ export const useRealtimeSubscription = ({
           table: table
         };
 
-        if (filter) {
-          changeOptions.filter = filter;
+        if (sanitizedFilter) {
+          changeOptions.filter = sanitizedFilter;
         }
 
         let subscription = supabase
@@ -74,22 +79,32 @@ export const useRealtimeSubscription = ({
               }
             }
           )
-          .subscribe((status) => {
+          .subscribe((status, err) => {
             if (status === 'SUBSCRIBED') {
               setIsSubscribed(true);
               console.log(`[Realtime] Subscribed to ${table}`);
-            } else if (status === 'CHANNEL_ERROR') {
+              return;
+            }
+
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
               setIsSubscribed(false);
-              if (onError) {
-                onError(new Error(`Subscription error for ${table}`));
+              if (channel) {
+                supabase.removeChannel(channel);
               }
-              console.error(`[Realtime] Subscription error for ${table}`);
-            } else if (status === 'TIMED_OUT') {
-              setIsSubscribed(false);
+
+              const error =
+                err instanceof Error
+                  ? err
+                  : new Error(`Subscription ${status.toLowerCase()} for ${table}`);
+
               if (onError) {
-                onError(new Error(`Subscription timeout for ${table}`));
+                onError(error);
               }
-              console.error(`[Realtime] Subscription timeout for ${table}`);
+
+              console.error(`[Realtime] Subscription ${status.toLowerCase()} for ${table}`, {
+                filter: sanitizedFilter || undefined,
+                event
+              });
             }
           });
 
