@@ -6,6 +6,7 @@ import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { getHeadingStyle } from '@/lib/styleUtils';
+import { useRealtimeOrders, useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import TabsResponsive from './TabsResponsive';
 import AdminOrdersTab from './AdminOrdersTab';
 import AdminRemittancesTab from './AdminRemittancesTab';
@@ -36,6 +37,8 @@ const DashboardPage = ({ onNavigate }) => {
     completedRemittances: 0,
     dailyRemittanceIncome: 0,
     monthlyRemittanceIncome: 0,
+    dailyRemittanceVolume: 0,
+    monthlyRemittanceVolume: 0,
     loading: true
   });
 
@@ -155,7 +158,7 @@ const DashboardPage = ({ onNavigate }) => {
         supabase.from('combo_products').select('id', { count: 'exact', head: true }),
         supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
         supabase.from('orders').select('id, status, payment_status, total_amount, created_at'),
-        supabase.from('remittances').select('id, status, commission_total, created_at')
+        supabase.from('remittances').select('id, status, commission_total, amount, created_at')
       ]);
 
       const totalProducts = productsRes.count || 0;
@@ -208,6 +211,14 @@ const DashboardPage = ({ onNavigate }) => {
         .filter(r => new Date(r.created_at) >= oneMonthAgo && r.status === 'completed')
         .reduce((sum, r) => sum + (parseFloat(r.commission_total) || 0), 0);
 
+      const dailyRemittanceVolume = remittances
+        .filter(r => new Date(r.created_at) >= oneDayAgo && r.status === 'completed')
+        .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+
+      const monthlyRemittanceVolume = remittances
+        .filter(r => new Date(r.created_at) >= oneMonthAgo && r.status === 'completed')
+        .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+
       setStats({
         totalProducts,
         totalCombos,
@@ -229,6 +240,8 @@ const DashboardPage = ({ onNavigate }) => {
         completedRemittances,
         dailyRemittanceIncome,
         monthlyRemittanceIncome,
+        dailyRemittanceVolume,
+        monthlyRemittanceVolume,
         loading: false
       });
     } catch (error) {
@@ -236,6 +249,16 @@ const DashboardPage = ({ onNavigate }) => {
       setStats(prev => ({ ...prev, loading: false }));
     }
   };
+
+  useRealtimeOrders({
+    enabled: isAdmin || isSuperAdmin,
+    onUpdate: fetchStats
+  });
+
+  useRealtimeRemittances({
+    enabled: isAdmin || isSuperAdmin,
+    onUpdate: fetchStats
+  });
 
   useEffect(() => {
     if (user && (isAdmin || isSuperAdmin)) {
@@ -255,9 +278,15 @@ const DashboardPage = ({ onNavigate }) => {
   const dailyProfit = stats.dailyRevenue * (financialSettings.productProfit / 100);
   const monthlyProfit = stats.monthlyRevenue * (financialSettings.productProfit / 100);
 
-  // Calculate remittance profits
-  const dailyRemittanceProfit = stats.dailyRemittanceIncome * (financialSettings.remittanceProfit / 100);
-  const monthlyRemittanceProfit = stats.monthlyRemittanceIncome * (financialSettings.remittanceProfit / 100);
+  // Calculate remittance metrics
+  const dailyRemittanceCommission = stats.dailyRemittanceIncome || 0;
+  const monthlyRemittanceCommission = stats.monthlyRemittanceIncome || 0;
+  const dailyRemittanceVolumeValue = stats.dailyRemittanceVolume || 0;
+  const monthlyRemittanceVolumeValue = stats.monthlyRemittanceVolume || 0;
+  const dailyRemittanceProfit = dailyRemittanceCommission * (financialSettings.remittanceProfit / 100);
+  const monthlyRemittanceProfit = monthlyRemittanceCommission * (financialSettings.remittanceProfit / 100);
+  const dailyRemittancePayout = Math.max(0, dailyRemittanceVolumeValue - dailyRemittanceCommission);
+  const monthlyRemittancePayout = Math.max(0, monthlyRemittanceVolumeValue - monthlyRemittanceCommission);
 
   // Get current currency symbol and code
   const currentCurrency = currencies.find(c => c.id === selectedCurrency);
@@ -544,11 +573,11 @@ const DashboardPage = ({ onNavigate }) => {
                         <div className="space-y-2 text-sm">
                           <div className="flex justify-between">
                             <span>{t('dashboard.grossRevenue')} (Remesas):</span>
-                            <span className="font-semibold">{currencySymbol}{formatCurrency(stats.dailyRemittanceIncome)} {currencyCode}</span>
+                            <span className="font-semibold">{currencySymbol}{formatCurrency(dailyRemittanceVolumeValue)} {currencyCode}</span>
                           </div>
                           <div className="flex justify-between">
                             <span>{t('dashboard.costs')}:</span>
-                            <span className="font-semibold text-red-600">-{currencySymbol}{formatCurrency(stats.dailyRemittanceIncome - dailyRemittanceProfit)} {currencyCode}</span>
+                            <span className="font-semibold text-red-600">-{currencySymbol}{formatCurrency(dailyRemittancePayout)} {currencyCode}</span>
                           </div>
                           <div className="flex justify-between border-t pt-2 mt-1">
                             <span>{t('dashboard.netProfit')}:</span>
@@ -571,11 +600,11 @@ const DashboardPage = ({ onNavigate }) => {
                         <div className="space-y-2 text-sm">
                           <div className="flex justify-between">
                             <span>{t('dashboard.grossRevenue')} (Remesas):</span>
-                            <span className="font-semibold">{currencySymbol}{formatCurrency(stats.monthlyRemittanceIncome)} {currencyCode}</span>
+                            <span className="font-semibold">{currencySymbol}{formatCurrency(monthlyRemittanceVolumeValue)} {currencyCode}</span>
                           </div>
                           <div className="flex justify-between">
                             <span>{t('dashboard.costs')}:</span>
-                            <span className="font-semibold text-red-600">-{currencySymbol}{formatCurrency(stats.monthlyRemittanceIncome - monthlyRemittanceProfit)} {currencyCode}</span>
+                            <span className="font-semibold text-red-600">-{currencySymbol}{formatCurrency(monthlyRemittancePayout)} {currencyCode}</span>
                           </div>
                           <div className="flex justify-between border-t pt-2 mt-1">
                             <span>{t('dashboard.netProfit')}:</span>

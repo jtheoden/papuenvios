@@ -7,6 +7,7 @@ import {
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useModal } from '@/contexts/ModalContext';
+import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import {
   getAllRemittances,
   validatePayment,
@@ -43,6 +44,11 @@ const AdminRemittancesTab = () => {
   useEffect(() => {
     loadRemittances();
   }, []);
+
+  useRealtimeRemittances({
+    enabled: true,
+    onUpdate: () => loadRemittances()
+  });
 
   useEffect(() => {
     filterRemittances();
