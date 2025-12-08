@@ -46,9 +46,10 @@ export const useRealtimeSubscription = ({
           typeof filter === 'string' && filter.trim().length > 0 ? filter.trim() : null;
 
         // Create channel name (unique per table/filter/event to avoid collisions)
+        const uniqueToken = Math.random().toString(36).slice(2, 8);
         const channelName = sanitizedFilter
-          ? `realtime:${table}:${event}:${sanitizedFilter}`
-          : `realtime:${table}:${event}`;
+          ? `realtime:${table}:${event}:${sanitizedFilter}:${uniqueToken}`
+          : `realtime:${table}:${event}:${uniqueToken}`;
 
         // Build subscription
         const changeOptions = {
@@ -103,7 +104,8 @@ export const useRealtimeSubscription = ({
 
               console.error(`[Realtime] Subscription ${status.toLowerCase()} for ${table}`, {
                 filter: sanitizedFilter || undefined,
-                event
+                event,
+                error: err || undefined
               });
             }
           });
