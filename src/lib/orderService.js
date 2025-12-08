@@ -95,7 +95,9 @@ const ORDER_TRANSITIONS = {
     ORDER_STATUS.COMPLETED
   ],
   [ORDER_STATUS.COMPLETED]: [],     // Terminal state
-  [ORDER_STATUS.CANCELLED]: []      // Terminal state
+  [ORDER_STATUS.CANCELLED]: [
+    ORDER_STATUS.PENDING  // Allow reopening cancelled orders
+  ]
 };
 
 /**
@@ -214,6 +216,37 @@ export const generateOrderNumber = async () => {
       operation: 'generateOrderNumber'
     });
     throw appError;
+  }
+};
+
+// ============================================================================
+// USER EMAIL HELPER (for activity logging)
+// ============================================================================
+
+/**
+ * Get user email by user ID for activity logging
+ * @param {string} userId - User ID
+ * @returns {Promise<string>} User email or userId as fallback
+ */
+const getUserEmail = async (userId) => {
+  if (!userId) return 'system';
+
+  try {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('email')
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !data) {
+      console.warn(`[getUserEmail] Could not fetch email for user ${userId}:`, error);
+      return userId; // Fallback to ID if email not found
+    }
+
+    return data.email;
+  } catch (err) {
+    console.warn(`[getUserEmail] Error fetching email for ${userId}:`, err);
+    return userId; // Fallback to ID on error
   }
 };
 
@@ -387,12 +420,13 @@ export const createOrder = async (orderData, items) => {
       }
     }
 
-    // Activity log (best effort)
+    // Activity log (best effort) - get email for proper logging
+    const userEmail = await getUserEmail(orderData.userId);
     logOrderActivity({
       action: 'order_created',
       entityId: createdOrder.id,
-      performedBy: orderData.userId,
-      description: `Order ${orderNumber} created`,
+      performedBy: userEmail,
+      description: `Orden ${orderNumber} creada`,
       metadata: {
         orderNumber,
         subtotal: orderData.subtotal,
@@ -1052,13 +1086,15 @@ export const validatePayment = async (orderId, adminId) => {
       throw appError;
     }
 
+    // Get admin email for logging
+    const adminEmail = await getUserEmail(adminId);
     logOrderActivity({
       action: 'payment_validated',
       entityId: orderId,
-      performedBy: adminId,
-      description: `Payment validated (order)`,
+      performedBy: adminEmail,
+      description: `Pago validado y orden movida a procesamiento`,
       metadata: buildOrderPaymentMetadata(updatedOrder, {
-        validatedBy: adminId,
+        validatedBy: adminEmail,
         validatedAt: updatedOrder?.validated_at
       })
     });
@@ -1233,10 +1269,12 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
       );
     }
 
-    if (order.payment_status !== PAYMENT_STATUS.PROOF_UPLOADED) {
+    // Allow rejecting payments that are either PENDING or have PROOF_UPLOADED
+    if (order.payment_status !== PAYMENT_STATUS.PROOF_UPLOADED &&
+        order.payment_status !== PAYMENT_STATUS.PENDING) {
       throw createValidationError(
-        { payment_status: `Current payment status is ${order.payment_status}, but must be ${PAYMENT_STATUS.PROOF_UPLOADED}` },
-        'Payment can only be rejected when proof has been uploaded'
+        { payment_status: `Cannot reject payment with status ${order.payment_status}` },
+        'El pago solo puede rechazarse si está pendiente o tiene comprobante subido'
       );
     }
 
@@ -1275,14 +1313,16 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
       logError(historyError, { operation: 'rejectPayment - log history', orderId });
     }
 
+    // Get admin email for logging
+    const adminEmail = await getUserEmail(adminId);
     logOrderActivity({
       action: 'payment_rejected',
       entityId: orderId,
-      performedBy: adminId,
-      description: 'Payment rejected (order)',
+      performedBy: adminEmail,
+      description: 'Pago rechazado por administrador',
       metadata: buildOrderPaymentMetadata(updatedOrder, {
         rejectionReason,
-        validatedBy: adminId,
+        validatedBy: adminEmail,
         validatedAt: updatedOrder?.validated_at
       })
     });
@@ -1373,11 +1413,13 @@ export const updateOrderStatus = async (orderId, newStatus, adminId, notes = '')
       logError(historyError, { operation: 'updateOrderStatus - log history', orderId });
     }
 
+    // Get admin email for logging
+    const adminEmail = await getUserEmail(adminId);
     logOrderActivity({
       action: 'order_status_updated',
       entityId: orderId,
-      performedBy: adminId,
-      description: `Order status changed to ${newStatus}`,
+      performedBy: adminEmail,
+      description: `Estado de orden cambiado a ${newStatus}`,
       metadata: { previousStatus: order.status, newStatus, notes }
     });
 
@@ -1494,11 +1536,13 @@ export const uploadPaymentProof = async (file, orderId, userId) => {
       throw appError;
     }
 
+    // Get user email for logging
+    const userEmail = await getUserEmail(userId);
     logOrderActivity({
       action: 'payment_proof_uploaded',
       entityId: orderId,
-      performedBy: userId,
-      description: `Payment proof uploaded (order)`,
+      performedBy: userEmail,
+      description: `Comprobante de pago subido`,
       metadata: buildOrderPaymentMetadata(
         { ...order, payment_status: PAYMENT_STATUS.PROOF_UPLOADED },
         { paymentProofUrl: urlData.publicUrl }
@@ -1654,11 +1698,13 @@ export const markOrderAsDispatched = async (orderId, adminId, trackingInfo = '')
       throw appError;
     }
 
+    // Get admin email for logging
+    const adminEmail = await getUserEmail(adminId);
     logOrderActivity({
       action: 'order_dispatched',
       entityId: orderId,
-      performedBy: adminId,
-      description: `Order ${order.order_number} marked as dispatched`,
+      performedBy: adminEmail,
+      description: `Orden ${order.order_number} marcada como despachada`,
       metadata: { trackingInfo, orderNumber: order.order_number }
     });
 
@@ -1763,11 +1809,13 @@ export const markOrderAsDelivered = async (orderId, proofFile, adminId) => {
       throw appError;
     }
 
+    // Get admin email for logging
+    const adminEmail = await getUserEmail(adminId);
     logOrderActivity({
       action: 'order_delivered',
       entityId: orderId,
-      performedBy: adminId,
-      description: 'Order marked as delivered with proof',
+      performedBy: adminEmail,
+      description: 'Orden marcada como entregada con evidencia',
       metadata: { deliveryProofUrl: urlData.publicUrl }
     });
 
@@ -1844,7 +1892,7 @@ export const completeOrder = async (orderId, notes = '') => {
       action: 'order_completed',
       entityId: orderId,
       performedBy: 'system',
-      description: 'Order marked as completed',
+      description: 'Orden marcada como completada',
       metadata: { notes }
     });
 
@@ -1959,11 +2007,13 @@ export const cancelOrder = async (orderId, adminId, reason) => {
       logError(historyError, { operation: 'cancelOrder - log history', orderId });
     }
 
+    // Get admin email for logging
+    const adminEmail = await getUserEmail(adminId);
     logOrderActivity({
       action: 'order_cancelled',
       entityId: orderId,
-      performedBy: adminId,
-      description: `Order cancelled by admin (${reason})`,
+      performedBy: adminEmail,
+      description: `Orden cancelada por administrador (${reason})`,
       metadata: { reason }
     });
 
@@ -2037,11 +2087,13 @@ export const cancelOrderByUser = async (orderId, userId, reason = 'cancelled_by_
       throw appError;
     }
 
+    // Get user email for logging
+    const userEmail = await getUserEmail(userId);
     logOrderActivity({
       action: 'order_cancelled',
       entityId: orderId,
-      performedBy: userId,
-      description: `User cancelled order ${order.order_number}`,
+      performedBy: userEmail,
+      description: `Usuario canceló orden ${order.order_number}`,
       metadata: { reason }
     });
 
@@ -2077,4 +2129,193 @@ export const getDaysInProcessing = (order) => {
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
   return diffDays;
+};
+
+// ============================================================================
+// ORDER REOPENING
+// ============================================================================
+
+/**
+ * Reopen a cancelled order (user action)
+ * Allows users to reopen their own cancelled orders to retry payment
+ * @param {string} orderId - Order ID to reopen
+ * @param {string} userId - User ID performing the action
+ * @returns {Promise<Object>} Reopened order
+ */
+export const reopenOrder = async (orderId, userId) => {
+  try {
+    if (!orderId || !userId) {
+      throw createValidationError({
+        orderId: !orderId ? 'Order ID is required' : undefined,
+        userId: !userId ? 'User ID is required' : undefined
+      }, 'Missing required fields for order reopening');
+    }
+
+    // Fetch order to verify existence and ownership
+    const { data: order, error: fetchError } = await supabase
+      .from('orders')
+      .select('id, order_number, user_id, status, payment_status')
+      .eq('id', orderId)
+      .single();
+
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'reopenOrder - fetch', orderId });
+      throw appError;
+    }
+
+    if (!order) {
+      throw createNotFoundError('Order', orderId);
+    }
+
+    // Verify user ownership
+    if (order.user_id !== userId) {
+      throw createValidationError(
+        { userId: 'User does not own this order' },
+        'Solo puedes reabrir tus propias órdenes'
+      );
+    }
+
+    // Verify order is cancelled
+    if (order.status !== ORDER_STATUS.CANCELLED) {
+      throw createValidationError(
+        { status: `Order status is ${order.status}, must be cancelled` },
+        'Solo puedes reabrir órdenes canceladas'
+      );
+    }
+
+    // Validate state transition
+    validateOrderTransition(order.status, ORDER_STATUS.PENDING);
+
+    // Reopen order - reset to pending status
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from('orders')
+      .update({
+        status: ORDER_STATUS.PENDING,
+        payment_status: PAYMENT_STATUS.PENDING,
+        cancelled_by: null,
+        cancelled_at: null,
+        cancellation_reason: null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .select()
+      .single();
+
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'reopenOrder - update', orderId });
+      throw appError;
+    }
+
+    // Log activity
+    const userEmail = await getUserEmail(userId);
+    logOrderActivity({
+      action: 'order_reopened',
+      entityId: orderId,
+      performedBy: userEmail,
+      description: `Usuario reabrió orden ${order.order_number}`,
+      metadata: { orderNumber: order.order_number, reason: 'user_request' }
+    });
+
+    return updatedOrder;
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
+      operation: 'reopenOrder',
+      orderId,
+      userId
+    });
+    logError(appError);
+    throw appError;
+  }
+};
+
+/**
+ * Reopen a cancelled order (admin action)
+ * Allows admins to reopen any cancelled order with a reason
+ * @param {string} orderId - Order ID to reopen
+ * @param {string} adminId - Admin user ID performing the action
+ * @param {string} reason - Reason for reopening
+ * @returns {Promise<Object>} Reopened order
+ */
+export const reopenOrderByAdmin = async (orderId, adminId, reason = 'Reapertura administrativa') => {
+  try {
+    if (!orderId || !adminId) {
+      throw createValidationError({
+        orderId: !orderId ? 'Order ID is required' : undefined,
+        adminId: !adminId ? 'Admin ID is required' : undefined
+      }, 'Missing required fields for order reopening');
+    }
+
+    // Fetch order to verify existence
+    const { data: order, error: fetchError } = await supabase
+      .from('orders')
+      .select('id, order_number, status, payment_status')
+      .eq('id', orderId)
+      .single();
+
+    if (fetchError) {
+      const appError = parseSupabaseError(fetchError);
+      logError(appError, { operation: 'reopenOrderByAdmin - fetch', orderId });
+      throw appError;
+    }
+
+    if (!order) {
+      throw createNotFoundError('Order', orderId);
+    }
+
+    // Verify order is cancelled
+    if (order.status !== ORDER_STATUS.CANCELLED) {
+      throw createValidationError(
+        { status: `Order status is ${order.status}, must be cancelled` },
+        'Solo puedes reabrir órdenes canceladas'
+      );
+    }
+
+    // Validate state transition
+    validateOrderTransition(order.status, ORDER_STATUS.PENDING);
+
+    // Reopen order - reset to pending status
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from('orders')
+      .update({
+        status: ORDER_STATUS.PENDING,
+        payment_status: PAYMENT_STATUS.PENDING,
+        cancelled_by: null,
+        cancelled_at: null,
+        cancellation_reason: null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .select()
+      .single();
+
+    if (updateError) {
+      const appError = parseSupabaseError(updateError);
+      logError(appError, { operation: 'reopenOrderByAdmin - update', orderId });
+      throw appError;
+    }
+
+    // Log activity
+    const adminEmail = await getUserEmail(adminId);
+    logOrderActivity({
+      action: 'order_reopened',
+      entityId: orderId,
+      performedBy: adminEmail,
+      description: `Administrador reabrió orden ${order.order_number}: ${reason}`,
+      metadata: { orderNumber: order.order_number, reason, reopenedBy: 'admin' }
+    });
+
+    return updatedOrder;
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
+      operation: 'reopenOrderByAdmin',
+      orderId,
+      adminId
+    });
+    logError(appError);
+    throw appError;
+  }
 };

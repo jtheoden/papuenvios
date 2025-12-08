@@ -170,11 +170,11 @@ const DashboardPage = ({ onNavigate }) => {
       const paymentPending = orders.filter(o => o.payment_status === 'pending').length;
       const paymentValidated = orders.filter(o => o.payment_status === 'validated' && o.status === 'pending').length;
       const processing = orders.filter(o => o.status === 'processing').length;
-      const shipped = orders.filter(o => o.status === 'shipped').length;
+      const dispatched = orders.filter(o => o.status === 'dispatched').length;
       const delivered = orders.filter(o => o.status === 'delivered').length;
       const completedOrders = orders.filter(o => o.status === 'completed').length;
       const cancelled = orders.filter(o => o.status === 'cancelled').length;
-      const totalActive = paymentPending + paymentValidated + processing + shipped + delivered;
+      const totalActive = paymentPending + paymentValidated + processing + dispatched + delivered;
 
       // Legacy field for compatibility
       const pendingOrders = paymentPending + paymentValidated;
@@ -217,7 +217,7 @@ const DashboardPage = ({ onNavigate }) => {
         paymentPending,
         paymentValidated,
         processing,
-        shipped,
+        dispatched,
         delivered,
         cancelled,
         totalActive,
@@ -499,8 +499,8 @@ const DashboardPage = ({ onNavigate }) => {
                           <span className="text-lg font-bold text-blue-600">{stats.processing || 0}</span>
                         </div>
                         <div className="flex justify-between items-center bg-purple-50 p-3 rounded-lg border-l-4 border-purple-500">
-                          <span className="font-semibold">🟣 {t('dashboard.orderStatus.shipped')}</span>
-                          <span className="text-lg font-bold text-purple-600">{stats.shipped || 0}</span>
+                          <span className="font-semibold">🟣 {t('dashboard.orderStatus.dispatched')}</span>
+                          <span className="text-lg font-bold text-purple-600">{stats.dispatched || 0}</span>
                         </div>
                         <div className="flex justify-between items-center bg-teal-50 p-3 rounded-lg border-l-4 border-teal-500">
                           <span className="font-semibold">🟢 {t('dashboard.orderStatus.delivered')}</span>
@@ -529,8 +529,8 @@ const DashboardPage = ({ onNavigate }) => {
                     transition={{ delay: 1.0 }}
                     className="mb-12 mt-12"
                   >
-                    <h2 className="text-2xl font-bold mb-6" style={getHeadingStyle(visualSettings)}>
-                      {t('dashboard.remittancesBreakdown')} 💰
+                    <h2 className="text-2xl font-bold mb-6" >
+                     💰 <span style={getHeadingStyle(visualSettings)}>{t('dashboard.remittancesBreakdown')}</span> 
                     </h2>
 
                     <div className="grid md:grid-cols-2 gap-8">

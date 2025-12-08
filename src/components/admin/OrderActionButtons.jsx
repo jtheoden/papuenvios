@@ -11,7 +11,7 @@ const OrderActionButtons = ({
   order,
   onView,
   onStartProcessing,
-  onMarkAsShipped,
+  onMarkAsDispatched,
   onUploadDeliveryProof,
   onCompleteOrder,
   onCancelOrder,
@@ -42,15 +42,15 @@ const OrderActionButtons = ({
     if (status === 'processing') {
       return {
         icon: <Truck className="h-4 w-4" />,
-        label: t('adminOrders.action.markAsShipped'),
-        onClick: () => onMarkAsShipped(order),
+        label: t('adminOrders.action.markAsDispatched'),
+        onClick: () => onMarkAsDispatched(order),
         disabled: isLoading,
         color: 'bg-blue-500 hover:bg-blue-600 text-white',
-        tooltip: t('adminOrders.action.markAsShipped')
+        tooltip: t('adminOrders.action.markAsDispatched')
       };
     }
 
-    if (status === 'shipped') {
+    if (status === 'dispatched') {
       return {
         icon: <Camera className="h-4 w-4" />,
         label: t('adminOrders.action.uploadProof'),

@@ -53,10 +53,10 @@ export const STORAGE_BUCKETS = {
 export const ORDER_STATUS = {
   PENDING: 'pending',           // Orden creada, esperando validación de pago
   PROCESSING: 'processing',     // Pago validado, orden siendo procesada
-  SHIPPED: 'shipped',          // Orden enviada/despachada
-  DELIVERED: 'delivered',      // Orden entregada (con evidencia)
-  COMPLETED: 'completed',      // Orden completada (confirmada por usuario)
-  CANCELLED: 'cancelled',      // Orden cancelada
+  DISPATCHED: 'dispatched',     // Orden despachada/en tránsito
+  DELIVERED: 'delivered',       // Orden entregada (con evidencia)
+  COMPLETED: 'completed',       // Orden completada (confirmada por usuario)
+  CANCELLED: 'cancelled',       // Orden cancelada
 };
 
 // Payment Status

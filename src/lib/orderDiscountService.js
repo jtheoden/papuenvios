@@ -11,6 +11,31 @@ import { calculateOrderTotal, calculateDiscount } from './priceCalculationServic
 import { logActivity } from './activityLogger';
 
 /**
+ * Get user email by user ID for activity logging
+ * @param {string} userId - User ID
+ * @returns {Promise<string>} User email or userId as fallback
+ */
+const getUserEmail = async (userId) => {
+  if (!userId) return 'anonymous';
+
+  try {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('email')
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !data) {
+      return userId; // Fallback to ID if email not found
+    }
+
+    return data.email;
+  } catch (err) {
+    return userId; // Fallback to ID on error
+  }
+};
+
+/**
  * Get user category and associated discount
  * @param {string} userId - User ID
  * @returns {object} User category and discount info
@@ -246,12 +271,14 @@ export const recordOfferUsage = async (offerId, userId = null, orderId = null) =
       return false;
     }
 
+    // Get user email for logging
+    const userEmail = await getUserEmail(userId);
     await logActivity({
       action: 'offer_usage_recorded',
       entityType: 'offer',
       entityId: offerId,
-      performedBy: userId || 'anonymous',
-      description: 'User redeemed offer during checkout',
+      performedBy: userEmail,
+      description: 'Usuario canjeó oferta durante el checkout',
       metadata: { orderId, userId }
     });
 
