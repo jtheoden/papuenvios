@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Search, Filter, ShoppingCart, Plus, Package, Upload, X, ChevronLeft, ChevronRight, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -15,12 +15,13 @@ import CurrencySelector from '@/components/CurrencySelector';
 import PriceDisplay from '@/components/PriceDisplay';
 import { useUserDiscounts } from '@/hooks/useUserDiscounts';
 import { buildDiscountBreakdown } from '@/lib/discountDisplayService';
+import { computeComboPricing } from '@/lib/comboUtils';
 
 const ProductsPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { user, isAdmin } = useAuth();
   const { products, combos, categories, addToCart, financialSettings, refreshProducts, visualSettings } = useBusiness();
-  const { selectedCurrency, setSelectedCurrency, currencySymbol, currencyCode, convertAmount } = useCurrency();
+  const { selectedCurrency, setSelectedCurrency, currencySymbol, currencyCode, convertAmount, currencyMap } = useCurrency();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [filteredProducts, setFilteredProducts] = useState([]);
@@ -36,6 +37,16 @@ const ProductsPage = ({ onNavigate }) => {
   const { categoryInfo, categoryDiscountPercent } = useUserDiscounts();
   const userCategory = categoryInfo.category || 'regular';
   const userCategoryDiscount = categoryDiscountPercent;
+
+  const baseCurrencyId = useMemo(() => {
+    let baseId = null;
+    currencyMap?.forEach(cur => {
+      if (!baseId && cur?.is_base) {
+        baseId = cur.id;
+      }
+    });
+    return baseId || selectedCurrency;
+  }, [currencyMap, selectedCurrency]);
 
   const handleImageUpload = useCallback(async (event, productId) => {
     const file = event.target.files[0];
@@ -220,37 +231,27 @@ const ProductsPage = ({ onNavigate }) => {
    * For use in calculations and displays without async/await
    * Applies user category discounts to combos as well
    */
+  const getComboBaseAndFinal = useCallback((combo) => {
+    const pricing = computeComboPricing({
+      combo,
+      products,
+      convert: convertAmount,
+      selectedCurrencyId: selectedCurrency,
+      baseCurrencyId,
+      defaultProfitMargin: financialSettings.comboProfit
+    });
+
+    return pricing;
+  }, [products, convertAmount, selectedCurrency, baseCurrencyId, financialSettings.comboProfit]);
+
   const getComboDisplayPrice = useCallback((combo) => {
     if (!combo) return '0.00';
 
-    let totalBasePrice = 0;
-
-    (combo.products || []).forEach(productId => {
-      const product = products.find(p => p.id === productId);
-      if (product) {
-        // Use final_price to get price with margin already applied
-        const basePrice = parseFloat(product.final_price || product.base_price || 0);
-        const productCurrencyId = product.base_currency_id;
-        const quantity = combo.productQuantities?.[productId] || 1;
-
-        // Convert to selected currency first
-        let convertedPrice = basePrice;
-        if (productCurrencyId && productCurrencyId !== selectedCurrency) {
-          convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
-        }
-
-        totalBasePrice += convertedPrice * quantity;
-      }
-    });
-
-    // Apply combo profit margin from database (combo.final_price if available)
-    // OR calculate if not stored
-    const comboFinalPrice = combo.final_price || (totalBasePrice * (1 + (parseFloat(combo.profitMargin || financialSettings.comboProfit) / 100)));
-
-    const breakdown = buildDiscountBreakdown({ amount: comboFinalPrice, categoryPercent: userCategoryDiscount });
+    const { finalPrice } = getComboBaseAndFinal(combo);
+    const breakdown = buildDiscountBreakdown({ amount: finalPrice, categoryPercent: userCategoryDiscount });
 
     return breakdown.finalAmount.toFixed(2);
-  }, [products, financialSettings, selectedCurrency, convertAmount, userCategoryDiscount]);
+  }, [getComboBaseAndFinal, userCategoryDiscount]);
 
   /**
    * Get combo price breakdown for display (original + discount)
@@ -258,35 +259,17 @@ const ProductsPage = ({ onNavigate }) => {
   const getComboPriceBreakdown = useCallback((combo) => {
     if (!combo) return { original: '0.00', discount: '0.00', final: '0.00' };
 
-    let totalBasePrice = 0;
-
-    (combo.products || []).forEach(productId => {
-      const product = products.find(p => p.id === productId);
-      if (product) {
-        const basePrice = parseFloat(product.final_price || product.base_price || 0);
-        const productCurrencyId = product.base_currency_id;
-        const quantity = combo.productQuantities?.[productId] || 1;
-
-        let convertedPrice = basePrice;
-        if (productCurrencyId && productCurrencyId !== selectedCurrency) {
-          convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
-        }
-
-        totalBasePrice += convertedPrice * quantity;
-      }
-    });
-
-    const comboFinalPrice = combo.final_price || (totalBasePrice * (1 + (parseFloat(combo.profitMargin || financialSettings.comboProfit) / 100)));
-    const breakdown = buildDiscountBreakdown({ amount: comboFinalPrice, categoryPercent: userCategoryDiscount });
+    const { finalPrice } = getComboBaseAndFinal(combo);
+    const breakdown = buildDiscountBreakdown({ amount: finalPrice, categoryPercent: userCategoryDiscount });
 
     return {
-      original: comboFinalPrice.toFixed(2),
+      original: finalPrice.toFixed(2),
       discount: breakdown.total.amount.toFixed(2),
       final: breakdown.finalAmount.toFixed(2),
       hasDiscount: breakdown.total.amount > 0,
       percent: breakdown.total.percent
     };
-  }, [products, financialSettings, selectedCurrency, convertAmount, userCategoryDiscount]);
+  }, [getComboBaseAndFinal, userCategoryDiscount]);
 
   /**
    * Get display price for a product with discount applied

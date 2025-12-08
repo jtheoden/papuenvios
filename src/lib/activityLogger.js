@@ -61,6 +61,81 @@ const enqueuePayload = (payload, reason = 'pending') => {
   writeQueue(queue);
 }; 
 
+const resolveActor = (providedActor, sessionData) => {
+  const sessionUser = sessionData?.session?.user;
+  const sessionActor = sessionUser?.email || sessionUser?.id;
+  const sessionUserId = sessionUser?.id;
+
+  const isPlaceholder = !providedActor || ['anonymous', 'vendor_panel'].includes(providedActor);
+  const explicitActorMismatch = sessionActor && providedActor && !isPlaceholder && providedActor !== sessionActor;
+
+  // Prefer the explicit actor when provided to avoid cross-session misattribution, but capture mismatch context
+  if (providedActor && !isPlaceholder) {
+    return {
+      actor: providedActor,
+      actorSource: explicitActorMismatch ? 'explicit_mismatch' : 'explicit',
+      originalActor: explicitActorMismatch ? providedActor : undefined,
+      mismatchedSessionActor: explicitActorMismatch ? sessionActor : undefined,
+      sessionUserId
+    };
+  }
+
+  // Fall back to current session identity when available
+  if (sessionActor) {
+    return { actor: sessionActor, actorSource: 'session', sessionUserId };
+  }
+
+  return { actor: providedActor || 'anonymous', actorSource: 'placeholder', sessionUserId: null };
+};
+
+const stringifyValue = (value) => {
+  if (value === null || value === undefined) return String(value);
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  try {
+    const serialized = JSON.stringify(value);
+    return serialized.length > 300 ? `${serialized.slice(0, 297)}...` : serialized;
+  } catch (error) {
+    console.warn('[activityLogger] Failed to serialize value for description', error);
+    return String(value);
+  }
+};
+
+const appendUpdateSummaryToDescription = (action, description, metadata) => {
+  const actionLabel = (action || '').toLowerCase();
+  if (!actionLabel.includes('update')) return description;
+
+  const metadataEntries = metadata && typeof metadata === 'object'
+    ? Object.entries(metadata).filter(([key, value]) => !key.startsWith('_') && value !== undefined)
+    : [];
+
+  if (!metadataEntries.length) return description;
+
+  const finalState = metadataEntries.map(([key, value]) => `${key}: ${stringifyValue(value)}`).join('; ');
+  const baseDescription = description && description.trim() ? description.trim() : 'Update performed';
+
+  return `${baseDescription} | Final state: ${finalState}`;
+};
+
+const withActorMetadata = (metadata, actorInfo) => {
+  if (!metadata || typeof metadata !== 'object') {
+    return {
+      _actor_source: actorInfo?.actorSource,
+      _session_user_id: actorInfo?.sessionUserId,
+      _session_actor: actorInfo?.mismatchedSessionActor,
+      _original_actor: actorInfo?.originalActor
+    };
+  }
+
+  return {
+    ...metadata,
+    _actor_source: actorInfo?.actorSource,
+    _session_user_id: actorInfo?.sessionUserId,
+    _session_actor: actorInfo?.mismatchedSessionActor,
+    _original_actor: actorInfo?.originalActor
+  };
+};
+
 const buildPayload = ({ action, entityType, entityId, performedBy, description, metadata }) => {
   const metadataPayload = safeMetadata(metadata) || {};
 
@@ -98,7 +173,35 @@ export const flushQueuedActivityLogs = async () => {
 
   logMetric('flush_started', { queued: queued.length });
 
-  const { error } = await supabase.from('activity_logs').insert(queued.map(({ _queue_reason, _queued_at, ...rest }) => rest));
+  const sessionActor = sessionData.session.user?.email || sessionData.session.user?.id;
+  const sessionUserId = sessionData.session.user?.id;
+
+  const payloads = queued.map(({
+    _queue_reason,
+    _queued_at,
+    _queued_session_user_id,
+    _queued_session_actor,
+    _actor_source,
+    _original_actor,
+    performed_by,
+    ...rest
+  }) => {
+    const isPlaceholder = !performed_by || ['anonymous', 'vendor_panel'].includes(performed_by);
+    const sessionMatchesQueue = _queued_session_user_id && sessionUserId
+      ? _queued_session_user_id === sessionUserId
+      : false;
+
+    const shouldUseSessionActor = isPlaceholder && sessionActor && sessionMatchesQueue;
+
+    return {
+      ...rest,
+      performed_by: shouldUseSessionActor
+        ? sessionActor
+        : performed_by || 'anonymous'
+    };
+  });
+
+  const { error } = await supabase.from('activity_logs').insert(payloads);
 
   if (error) {
     if (error.code === '42501') {
@@ -129,12 +232,29 @@ export const logActivity = async ({
       return;
     }
 
-    const payload = buildPayload({ action, entityType, entityId, performedBy, description, metadata });
     const { data: sessionData } = await supabase.auth.getSession();
+    const resolvedActorInfo = resolveActor(performedBy, sessionData);
+    const metadataWithActor = withActorMetadata(metadata, resolvedActorInfo);
+    const finalDescription = appendUpdateSummaryToDescription(action, description, metadataWithActor);
+    const payload = buildPayload({
+      action,
+      entityType,
+      entityId,
+      performedBy: resolvedActorInfo.actor,
+      description: finalDescription,
+      metadata: metadataWithActor
+    });
+
+    const queueMetadata = {
+      _queued_session_user_id: resolvedActorInfo.sessionUserId || null,
+      _queued_session_actor: resolvedActorInfo.mismatchedSessionActor || resolvedActorInfo.actor,
+      _actor_source: resolvedActorInfo.actorSource,
+      _original_actor: resolvedActorInfo.originalActor
+    };
 
     if (!sessionData?.session) {
       console.warn('[activityLogger] No active session, queueing activity');
-      enqueuePayload(payload, 'no_session');
+      enqueuePayload({ ...payload, ...queueMetadata }, 'no_session');
       logMetric('queued', { reason: 'no_session' });
       return;
     }
@@ -145,12 +265,12 @@ export const logActivity = async ({
       // Avoid noisy logs if RLS blocks the request
       if (error.code === '42501') {
         console.warn('[activityLogger] Permission denied when inserting activity');
-        enqueuePayload(payload, 'rls_denied');
+        enqueuePayload({ ...payload, ...queueMetadata }, 'rls_denied');
         logMetric('queued', { reason: 'rls_denied' });
         return;
       }
       console.warn('[activityLogger] Failed to insert activity, queued for retry', error.message);
-      enqueuePayload(payload, 'insert_error');
+      enqueuePayload({ ...payload, ...queueMetadata }, 'insert_error');
       logMetric('queued', { reason: 'insert_error' });
       return;
     }

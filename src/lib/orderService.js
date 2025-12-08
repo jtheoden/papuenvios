@@ -15,6 +15,12 @@ import {
   ERROR_CODES
 } from './errorHandler';
 import { logActivity } from './activityLogger';
+import { getUserCategoryWithDiscount } from './orderDiscountService';
+
+const isValidUUID = (value) => {
+  if (!value || typeof value !== 'string') return false;
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(value);
+};
 
 const logOrderActivity = async ({ action, entityId, performedBy, description, metadata }) => {
   try {
@@ -30,6 +36,18 @@ const logOrderActivity = async ({ action, entityId, performedBy, description, me
     console.warn('[orderService] Failed to log activity', err?.message || err);
   }
 };
+
+const buildOrderPaymentMetadata = (order, metadata = {}) => ({
+  paymentType: 'order',
+  orderId: order?.id,
+  orderNumber: order?.order_number,
+  paymentStatus: order?.payment_status,
+  orderStatus: order?.status,
+  paymentMethod: order?.payment_method,
+  paymentReference: order?.payment_reference || null,
+  totalAmount: order?.total_amount,
+  ...metadata
+});
 
 // ============================================================================
 // STATE MACHINE CONSTANTS
@@ -670,7 +688,69 @@ export const getUserOrders = async (userId, filters = {}) => {
       throw appError;
     }
 
-    return data || [];
+    const orders = data || [];
+
+    // Enrich orders with category discount and offer info (for accurate UI breakdowns)
+    const categoryInfo = await getUserCategoryWithDiscount(userId);
+    const categoryDiscount = categoryInfo?.enabled
+      ? {
+          category_name: categoryInfo.category,
+          discount_percentage: categoryInfo.discountPercent || 0,
+          discount_description: categoryInfo.categoryDiscount?.description || '',
+          enabled: true
+        }
+      : null;
+
+    const offerIds = Array.from(
+      new Set(
+        orders
+          .map(order => order.offer_id)
+          .filter(id => !!id && isValidUUID(id))
+      )
+    );
+
+    let offersMap = {};
+    if (offerIds.length > 0) {
+      const baseOfferSelect = supabase
+        .from('offers')
+        .select('id, code, discount_type, discount_value, description, is_active');
+
+      const { data: offersData, error: offersError } = await baseOfferSelect.in('id', offerIds);
+
+      if (!offersError && Array.isArray(offersData)) {
+        offersMap = offersData.reduce((acc, offer) => {
+          acc[offer.id] = offer;
+          return acc;
+        }, {});
+      } else {
+        // Some Supabase deployments return 400 for `in` queries with uuid arrays. Fall back to per-id fetches.
+        if (offersError) {
+          console.warn('[orderService] Failed to enrich offers via IN query', offersError.message);
+        }
+
+        const fallbackOffers = await Promise.all(
+          offerIds.map(async (offerId) => {
+            const { data, error } = await baseOfferSelect.eq('id', offerId).maybeSingle();
+            if (!error && data) {
+              return data;
+            }
+            console.warn('[orderService] Failed to fetch offer info for order list', offerId, error?.message);
+            return null;
+          })
+        );
+
+        offersMap = fallbackOffers.filter(Boolean).reduce((acc, offer) => {
+          acc[offer.id] = offer;
+          return acc;
+        }, {});
+      }
+    }
+
+    return orders.map(order => ({
+      ...order,
+      user_category_discount: categoryDiscount && categoryDiscount.enabled ? categoryDiscount : null,
+      offer_info: offersMap[order.offer_id] || null
+    }));
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, {
@@ -754,14 +834,29 @@ export const getOrderById = async (orderId) => {
       // Fetch offer info if offer was applied
       let offerInfo = null;
       if (order.offer_id) {
-        const { data: offer, error: offerError } = await supabase
+        const baseOfferQuery = supabase
           .from('offers')
-          .select('code, discount_type, discount_value, description')
-          .eq('id', order.offer_id)
-          .maybeSingle();
+          .select('id, code, discount_type, discount_value, description, is_active')
+          .limit(1);
+
+        let offer;
+        let offerError;
+
+        if (isValidUUID(order.offer_id)) {
+          ({ data: offer, error: offerError } = await baseOfferQuery
+            .eq('id', order.offer_id)
+            .maybeSingle());
+        } else {
+          // Legacy data may store the coupon code instead of UUID; avoid breaking with a 400 error
+          ({ data: offer, error: offerError } = await baseOfferQuery
+            .eq('code', order.offer_id)
+            .maybeSingle());
+        }
 
         if (!offerError && offer) {
           offerInfo = offer;
+        } else if (offerError) {
+          console.warn('[orderService] Failed to fetch offer info for order', order.id, offerError.message);
         }
       }
 
@@ -961,7 +1056,11 @@ export const validatePayment = async (orderId, adminId) => {
       action: 'payment_validated',
       entityId: orderId,
       performedBy: adminId,
-      description: 'Payment validated and order moved to processing'
+      description: `Payment validated (order)`,
+      metadata: buildOrderPaymentMetadata(updatedOrder, {
+        validatedBy: adminId,
+        validatedAt: updatedOrder?.validated_at
+      })
     });
 
     // OPTIMIZE: Fix N³ problem - batch fetch all combo items and products at once
@@ -1180,8 +1279,12 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
       action: 'payment_rejected',
       entityId: orderId,
       performedBy: adminId,
-      description: 'Payment rejected by admin',
-      metadata: { rejectionReason }
+      description: 'Payment rejected (order)',
+      metadata: buildOrderPaymentMetadata(updatedOrder, {
+        rejectionReason,
+        validatedBy: adminId,
+        validatedAt: updatedOrder?.validated_at
+      })
     });
 
     return updatedOrder;
@@ -1310,7 +1413,7 @@ export const uploadPaymentProof = async (file, orderId, userId) => {
     // Fetch order to validate ownership and state
     const { data: order, error: fetchError } = await supabase
       .from('orders')
-      .select('id, user_id, status, payment_status')
+      .select('id, order_number, user_id, status, payment_status, payment_method, total_amount, payment_reference')
       .eq('id', orderId)
       .single();
 
@@ -1395,8 +1498,11 @@ export const uploadPaymentProof = async (file, orderId, userId) => {
       action: 'payment_proof_uploaded',
       entityId: orderId,
       performedBy: userId,
-      description: 'User uploaded payment proof',
-      metadata: { paymentProofUrl: urlData.publicUrl }
+      description: `Payment proof uploaded (order)`,
+      metadata: buildOrderPaymentMetadata(
+        { ...order, payment_status: PAYMENT_STATUS.PROOF_UPLOADED },
+        { paymentProofUrl: urlData.publicUrl }
+      )
     });
 
     return urlData.publicUrl;

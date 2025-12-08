@@ -11,20 +11,34 @@
  * @param {object} exchangeRates - Exchange rates map
  * @returns {number} Converted amount
  */
-export const convertPrice = (amount, fromCurrency, toCurrency, exchangeRates) => {
+export const convertPrice = (amount, fromCurrency, toCurrency, exchangeRates, baseCurrency = 'USD') => {
   if (!amount || fromCurrency === toCurrency) return amount;
 
-  // Get exchange rate from source to USD first
-  const rateKey = `${fromCurrency}/USD`;
-  const rateToUSD = exchangeRates[rateKey] || 1;
-  const amountInUSD = amount / rateToUSD;
+  // Anchor conversions to the configured base currency to avoid double-application errors
+  const toBaseKey = `${fromCurrency}/${baseCurrency}`;
+  const fromBaseKey = `${toCurrency}/${baseCurrency}`;
 
-  // Convert from USD to target currency
-  const targetRateKey = `${toCurrency}/USD`;
-  const rateFromUSD = exchangeRates[targetRateKey] || 1;
-  const result = amountInUSD * rateFromUSD;
+  const rateToBase = exchangeRates?.[toBaseKey];
+  const rateFromBase = exchangeRates?.[fromBaseKey];
 
-  return Math.round(result * 100) / 100;
+  const amountInBase = rateToBase ? amount / rateToBase : amount;
+  const converted = rateFromBase ? amountInBase * rateFromBase : amountInBase;
+
+  // Fallback to direct/inverse pair if base-anchored rates are missing
+  if (!rateToBase || !rateFromBase) {
+    const directKey = `${fromCurrency}/${toCurrency}`;
+    const inverseKey = `${toCurrency}/${fromCurrency}`;
+
+    if (exchangeRates?.[directKey]) {
+      return Math.round(amount * exchangeRates[directKey] * 100) / 100;
+    }
+
+    if (exchangeRates?.[inverseKey]) {
+      return Math.round((amount / exchangeRates[inverseKey]) * 100) / 100;
+    }
+  }
+
+  return Math.round(converted * 100) / 100;
 };
 
 /**
@@ -58,7 +72,7 @@ export const calculateComboPrices = (
 
       // Convert product price to selected currency if needed
       const convertedPrice = selectedCurrency !== baseCurrency
-        ? convertPrice(productPrice, baseCurrency, selectedCurrency, exchangeRates)
+        ? convertPrice(productPrice, baseCurrency, selectedCurrency, exchangeRates, baseCurrency)
         : productPrice;
 
       basePrice += convertedPrice * quantity;
@@ -77,6 +91,60 @@ export const calculateComboPrices = (
     base: basePrice,
     final: roundedFinalPrice
   };
+};
+
+/**
+ * Compute combo pricing using stored base totals (when available) and
+ * a caller-provided currency converter to keep user/admin views in sync.
+ *
+ * @param {Object} params
+ * @param {Object} params.combo - Combo object (expects base_total_price/profit_margin)
+ * @param {Array} [params.products=[]] - Product catalog for price lookups
+ * @param {Function} params.convert - Conversion fn(amount, fromCurrencyId, toCurrencyId)
+ * @param {string} params.selectedCurrencyId - Target currency UUID
+ * @param {string} params.baseCurrencyId - Base currency UUID
+ * @param {number} [params.defaultProfitMargin=0] - Default combo margin when absent
+ * @returns {{ basePrice: number, finalPrice: number }}
+ */
+export const computeComboPricing = ({
+  combo,
+  products = [],
+  convert,
+  selectedCurrencyId,
+  baseCurrencyId,
+  defaultProfitMargin = 0
+}) => {
+  if (!combo) return { basePrice: 0, finalPrice: 0 };
+
+  const storedBaseTotal = parseFloat(combo.baseTotalPrice ?? combo.base_total_price ?? 0) || 0;
+  const profitMargin = parseFloat(combo.profitMargin ?? combo.profit_margin ?? defaultProfitMargin) || 0;
+
+  // Normalize product prices to base currency when possible to avoid drift
+  let computedBaseTotal = 0;
+  (combo.products || []).forEach(productId => {
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+
+    const quantity = combo.productQuantities?.[productId] || 1;
+    const basePrice = parseFloat(product.base_price ?? 0) || 0;
+
+    let normalizedPrice = basePrice;
+    if (convert && baseCurrencyId && product.base_currency_id && product.base_currency_id !== baseCurrencyId) {
+      normalizedPrice = convert(basePrice, product.base_currency_id, baseCurrencyId);
+    }
+
+    computedBaseTotal += normalizedPrice * quantity;
+  });
+
+  const baseTotal = computedBaseTotal > 0 ? computedBaseTotal : storedBaseTotal;
+  const baseInSelected = convert && selectedCurrencyId && baseCurrencyId && selectedCurrencyId !== baseCurrencyId
+    ? convert(baseTotal, baseCurrencyId, selectedCurrencyId)
+    : baseTotal;
+
+  const roundedBase = Math.round((baseInSelected || 0) * 100) / 100;
+  const finalPrice = Math.round(roundedBase * (1 + profitMargin / 100) * 100) / 100;
+
+  return { basePrice: roundedBase, finalPrice };
 };
 
 /**

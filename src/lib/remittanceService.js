@@ -5,6 +5,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { logActivity } from '@/lib/activityLogger';
 import {
   handleError,
   logError,
@@ -85,6 +86,34 @@ export const REMITTANCE_STATUS = {
   DELIVERED: 'delivered',
   COMPLETED: 'completed',
   CANCELLED: 'cancelled'
+};
+
+const logRemittancePaymentActivity = async ({ action, remittance, performedBy, description, metadata = {} }) => {
+  try {
+    const paymentMetadata = {
+      paymentType: 'remittance',
+      remittanceId: remittance?.id,
+      remittanceNumber: remittance?.remittance_number,
+      remittanceType: remittance?.remittance_types?.name,
+      status: remittance?.status,
+      amountToDeliver: remittance?.amount_to_deliver,
+      currencySent: remittance?.currency_sent,
+      currencyDelivered: remittance?.currency_delivered,
+      paymentReference: remittance?.payment_reference || null,
+      ...metadata
+    };
+
+    await logActivity({
+      action,
+      entityType: 'remittance',
+      entityId: remittance?.id || null,
+      performedBy,
+      description,
+      metadata: paymentMetadata
+    });
+  } catch (error) {
+    console.warn('[remittanceService] Failed to log payment activity', error);
+  }
 };
 
 export const DELIVERY_METHODS = {
@@ -657,6 +686,18 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
       throw appError;
     }
 
+    // Log payment proof upload for observability
+    await logRemittancePaymentActivity({
+      action: 'payment_proof_uploaded',
+      remittance: { ...updatedRemittance, payment_reference: reference },
+      performedBy: user?.email || user?.id,
+      description: 'Payment proof uploaded (remittance)',
+      metadata: {
+        paymentProofUrl: filePath,
+        paymentNotes: notes
+      }
+    });
+
     // Notify admin (graceful fallback if fails - don't block remittance creation)
     try {
       const { data: settings, error: settingsError } = await supabase
@@ -1015,6 +1056,18 @@ export const validatePayment = async (remittanceId, notes = '') => {
       throw appError;
     }
 
+    await logRemittancePaymentActivity({
+      action: 'payment_validated',
+      remittance: updatedRemittance,
+      performedBy: user?.email || user?.id,
+      description: 'Payment validated (remittance)',
+      metadata: {
+        validationNotes: notes || null,
+        validatedAt: updatedRemittance?.payment_validated_at,
+        validatedBy: user?.id
+      }
+    });
+
     // Send notification to user (graceful fallback if fails)
     try {
       await notifyUserPaymentValidated(updatedRemittance, 'es');
@@ -1077,6 +1130,17 @@ export const rejectPayment = async (remittanceId, reason) => {
       );
     }
 
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError) {
+      const appError = parseSupabaseError(userError);
+      logError(appError, { operation: 'rejectPayment - getUser' });
+      throw appError;
+    }
+
+    if (!user) {
+      throw new Error('Not authenticated');
+    }
+
     // Update remittance to payment rejected
     const { data: updatedRemittance, error: updateError } = await supabase
       .from('remittances')
@@ -1103,6 +1167,18 @@ export const rejectPayment = async (remittanceId, reason) => {
       logError(notifyError, { operation: 'rejectPayment - notification', remittanceId });
       // Don't fail rejection if notification fails
     }
+
+    await logRemittancePaymentActivity({
+      action: 'payment_rejected',
+      remittance: updatedRemittance,
+      performedBy: user?.email || user?.id,
+      description: 'Payment rejected (remittance)',
+      metadata: {
+        rejectionReason: reason,
+        rejectedAt: updatedRemittance?.payment_rejected_at,
+        rejectedBy: user?.id
+      }
+    });
 
     return updatedRemittance;
   } catch (error) {

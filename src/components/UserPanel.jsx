@@ -38,11 +38,24 @@ const UserPanel = ({ onNavigate }) => {
   const [deliveryProofFile, setDeliveryProofFile] = useState(null);
   const [retryProofFile, setRetryProofFile] = useState(null);
   const [processingAction, setProcessingAction] = useState(false);
-  const selectedOrderBaseTotal = selectedOrder ? (parseFloat(selectedOrder.total_amount) || 0) : 0;
-  const selectedOrderCategoryDiscountAmount = selectedOrder && isRegularUser && categoryDiscountPercent > 0
-    ? parseFloat(((selectedOrderBaseTotal * categoryDiscountPercent) / 100).toFixed(2))
+  const selectedOrderSubtotal = selectedOrder ? (parseFloat(selectedOrder.subtotal) || 0) : 0;
+  const selectedOrderTotal = selectedOrder ? (parseFloat(selectedOrder.total_amount) || 0) : 0;
+  const selectedOrderDiscountTotal = selectedOrder ? (parseFloat(selectedOrder.discount_amount) || 0) : 0;
+  const selectedOrderShipping = selectedOrder ? (parseFloat(selectedOrder.shipping_cost) || 0) : 0;
+  const selectedOrderCategoryPercent = selectedOrder
+    ? (selectedOrder?.user_category_discount?.enabled === false
+      ? 0
+      : selectedOrder?.user_category_discount?.discount_percentage ?? (isRegularUser ? categoryDiscountPercent : 0))
     : 0;
-  const selectedOrderTotalAfterCategory = selectedOrderBaseTotal - selectedOrderCategoryDiscountAmount;
+  const selectedOrderCategoryDiscountAmount = selectedOrderCategoryPercent > 0
+    ? parseFloat(((selectedOrderSubtotal * selectedOrderCategoryPercent) / 100).toFixed(2))
+    : 0;
+  const selectedOrderCouponDiscountAmount = Math.max(
+    selectedOrderDiscountTotal - selectedOrderCategoryDiscountAmount,
+    0
+  );
+  const selectedOrderBaseTotal = selectedOrderSubtotal + selectedOrderShipping;
+  const selectedOrderTotalAfterCategory = Math.max(selectedOrderBaseTotal - selectedOrderCategoryDiscountAmount, 0);
   useEffect(() => {
     if (!user) {
       onNavigate('login');
@@ -596,13 +609,18 @@ const UserPanel = ({ onNavigate }) => {
           ) : orders.length > 0 ? (
             <div className="space-y-4">
               {orders.map(order => {
-                const orderDiscountPercent = derivePercentFromAmount(order.subtotal, order.discount_amount);
-                const baseOrderTotal = parseFloat(order.total_amount) || 0;
-                const categoryPercent = isRegularUser ? categoryDiscountPercent : 0;
+                const orderSubtotal = parseFloat(order.subtotal) || 0;
+                const orderTotal = parseFloat(order.total_amount) || 0;
+                const orderDiscountTotal = parseFloat(order.discount_amount) || 0;
+                const categoryPercent = order?.user_category_discount?.enabled === false
+                  ? 0
+                  : order?.user_category_discount?.discount_percentage ?? (isRegularUser ? categoryDiscountPercent : 0);
                 const categoryDiscountAmount = categoryPercent > 0
-                  ? parseFloat(((baseOrderTotal * categoryPercent) / 100).toFixed(2))
+                  ? parseFloat(((orderSubtotal * categoryPercent) / 100).toFixed(2))
                   : 0;
-                const orderTotalAfterCategory = baseOrderTotal - categoryDiscountAmount;
+                const couponDiscountAmount = Math.max(orderDiscountTotal - categoryDiscountAmount, 0);
+                const effectiveSubtotal = orderSubtotal || (orderTotal + orderDiscountTotal);
+                const showDiscountStrike = orderDiscountTotal > 0 && effectiveSubtotal > 0;
 
                 return (
                   <motion.div
@@ -639,31 +657,35 @@ const UserPanel = ({ onNavigate }) => {
                     </div>
 
                     <div className="text-right">
-                      {categoryPercent > 0 ? (
-                        <>
-                          <div className="text-xs line-through" style={getTextStyle(visualSettings, 'muted')}>
-                            ${baseOrderTotal.toFixed(2)} {order.currencies?.code || 'USD'}
-                          </div>
-                          <div className="text-lg font-bold mb-1" style={{ color: visualSettings.primaryColor }}>
-                            ${orderTotalAfterCategory.toFixed(2)} {order.currencies?.code || 'USD'}
-                          </div>
-                          <div className="mt-1 flex items-center justify-end gap-1 text-xs font-semibold text-green-600">
-                            <TrendingDown className="h-3 w-3" />
-                            {language === 'es' ? 'Descuento categoría' : 'Category discount'} · -${categoryDiscountAmount.toFixed(2)} ({categoryPercent.toFixed(1)}%)
-                          </div>
-                        </>
-                      ) : (
-                        <div className="text-lg font-bold mb-1" style={{ color: visualSettings.primaryColor }}>
-                          ${parseFloat(order.total_amount).toFixed(2)} {order.currencies?.code || 'USD'}
+                      {showDiscountStrike && (
+                        <div className="text-xs line-through" style={getTextStyle(visualSettings, 'muted')}>
+                          ${effectiveSubtotal.toFixed(2)} {order.currencies?.code || 'USD'}
                         </div>
                       )}
+                      <div className="text-lg font-bold mb-1" style={{ color: visualSettings.primaryColor }}>
+                        ${orderTotal.toFixed(2)} {order.currencies?.code || 'USD'}
+                      </div>
                       <p className="text-xs" style={getTextStyle(visualSettings, 'muted')}>
                         {order.order_items?.length || 0} {language === 'es' ? 'artículos' : 'items'}
                       </p>
-                      {order.discount_amount > 0 && (
-                        <div className="mt-2 flex items-center justify-end gap-1 text-xs font-semibold text-green-600">
-                          <TrendingDown className="h-3 w-3" />
-                          {language === 'es' ? 'Descuento' : 'Discount'} · -${parseFloat(order.discount_amount).toFixed(2)} ({orderDiscountPercent.toFixed(1)}%)
+                      {orderDiscountTotal > 0 && (
+                        <div className="mt-2 space-y-1 text-xs font-semibold text-green-600">
+                          <div className="flex items-center justify-end gap-1">
+                            <TrendingDown className="h-3 w-3" />
+                            {language === 'es' ? 'Descuento total' : 'Total discount'} · -${orderDiscountTotal.toFixed(2)} ({derivePercentFromAmount(effectiveSubtotal, orderDiscountTotal).toFixed(1)}%)
+                          </div>
+                          {categoryDiscountAmount > 0 && (
+                            <div className="flex items-center justify-end gap-1 text-[11px] text-emerald-700">
+                              <Crown className="h-3 w-3" />
+                              {language === 'es' ? 'Categoría' : 'Category'} · -${categoryDiscountAmount.toFixed(2)} ({categoryPercent.toFixed(1)}%)
+                            </div>
+                          )}
+                          {couponDiscountAmount > 0 && (
+                            <div className="flex items-center justify-end gap-1 text-[11px] text-emerald-700">
+                              <Gift className="h-3 w-3" />
+                              {language === 'es' ? 'Cupón' : 'Coupon'} · -${couponDiscountAmount.toFixed(2)}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1066,18 +1088,38 @@ const UserPanel = ({ onNavigate }) => {
                         </div>
 
                         {/* Discount Section - Enhanced for Admins */}
-                        {selectedOrder.discount_amount > 0 && (
+                        {selectedOrderDiscountTotal > 0 && (
                           <div className="p-3 rounded-lg" style={{ backgroundColor: visualSettings.primaryColor ? `${visualSettings.primaryColor}15` : '#dcfce7' }}>
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <TrendingDown className="h-4 w-4" style={{ color: '#16a34a' }} />
                                 <span className="text-sm font-semibold" style={{ color: '#16a34a' }}>
-                                  {language === 'es' ? 'Descuento' : 'Discount'} ({derivePercentFromAmount(selectedOrder.subtotal, selectedOrder.discount_amount).toFixed(1)}%)
+                                  {language === 'es' ? 'Descuento' : 'Discount'} ({derivePercentFromAmount(selectedOrderSubtotal, selectedOrderDiscountTotal).toFixed(1)}%)
                                 </span>
                               </div>
                               <span className="font-semibold" style={{ color: '#16a34a' }}>
-                                -${parseFloat(selectedOrder.discount_amount).toFixed(2)}
+                                -${selectedOrderDiscountTotal.toFixed(2)}
                               </span>
+                            </div>
+                            <div className="mt-2 space-y-1 text-xs font-semibold" style={{ color: '#059669' }}>
+                              {selectedOrderCategoryDiscountAmount > 0 && (
+                                <div className="flex items-center justify-between">
+                                  <span className="flex items-center gap-1">
+                                    <Crown className="h-3 w-3" />
+                                    {language === 'es' ? 'Descuento por categoría' : 'Category discount'} ({selectedOrderCategoryPercent.toFixed(1)}%)
+                                  </span>
+                                  <span>- ${selectedOrderCategoryDiscountAmount.toFixed(2)}</span>
+                                </div>
+                              )}
+                              {selectedOrderCouponDiscountAmount > 0 && (
+                                <div className="flex items-center justify-between">
+                                  <span className="flex items-center gap-1">
+                                    <Gift className="h-3 w-3" />
+                                    {language === 'es' ? 'Cupón aplicado' : 'Coupon applied'}
+                                  </span>
+                                  <span>- ${selectedOrderCouponDiscountAmount.toFixed(2)}</span>
+                                </div>
+                              )}
                             </div>
                             {selectedOrder.offer_info && (
                               <div className="mt-2 pt-2 border-t border-green-200">
@@ -1163,20 +1205,14 @@ const UserPanel = ({ onNavigate }) => {
                               {language === 'es' ? 'Total' : 'Total'}
                             </span>
                             <div className="text-right">
-                              {isRegularUser && categoryDiscountPercent > 0 ? (
-                                <>
-                                  <div className="text-xs line-through" style={getTextStyle(visualSettings, 'muted')}>
-                                    ${selectedOrderBaseTotal.toFixed(2)} {selectedOrder.currencies?.code || 'USD'}
-                                  </div>
-                                  <div className="text-xl font-bold" style={{ color: visualSettings.primaryColor }}>
-                                    {selectedOrderTotalAfterCategory.toFixed(2)} {selectedOrder.currencies?.code || 'USD'}
-                                  </div>
-                                </>
-                              ) : (
-                                <span className="text-xl font-bold" style={{ color: visualSettings.primaryColor }}>
-                                  ${parseFloat(selectedOrder.total_amount).toFixed(2)} {selectedOrder.currencies?.code || 'USD'}
-                                </span>
+                              {selectedOrderDiscountTotal > 0 && selectedOrderSubtotal > 0 && (
+                                <div className="text-xs line-through" style={getTextStyle(visualSettings, 'muted')}>
+                                  ${selectedOrderSubtotal.toFixed(2)} {selectedOrder.currencies?.code || 'USD'}
+                                </div>
                               )}
+                              <span className="text-xl font-bold" style={{ color: visualSettings.primaryColor }}>
+                                ${selectedOrderTotal.toFixed(2)} {selectedOrder.currencies?.code || 'USD'}
+                              </span>
                             </div>
                           </div>
                         </div>
