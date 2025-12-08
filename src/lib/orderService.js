@@ -25,7 +25,7 @@ const isValidUUID = (value) => {
 
 const logOrderActivity = async ({ action, entityId, performedBy, description, metadata }) => {
   try {
-    await logActivity({
+    return await logActivity({
       action,
       entityType: 'order',
       entityId,
@@ -35,6 +35,7 @@ const logOrderActivity = async ({ action, entityId, performedBy, description, me
     });
   } catch (err) {
     console.warn('[orderService] Failed to log activity', err?.message || err);
+    return { status: 'error', error: err };
   }
 };
 
@@ -1095,7 +1096,7 @@ export const validatePayment = async (orderId, adminId) => {
 
     // Get admin email for logging
     const adminEmail = await getUserEmail(adminId);
-    logOrderActivity({
+    const activityResult = await logOrderActivity({
       action: 'payment_validated',
       entityId: orderId,
       performedBy: adminEmail,
@@ -1209,7 +1210,7 @@ export const validatePayment = async (orderId, adminId) => {
     }
 
     // Sync Zelle transaction history for observabilidad (graceful fallback)
-    if (order.zelle_account_id) {
+    if (order.zelle_account_id && activityResult?.status === 'inserted') {
       try {
         await upsertZelleTransactionStatus({
           referenceId: orderId,
@@ -1340,7 +1341,7 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
 
     // Get admin email for logging
     const adminEmail = await getUserEmail(adminId);
-    logOrderActivity({
+    const activityResult = await logOrderActivity({
       action: 'payment_rejected',
       entityId: orderId,
       performedBy: adminEmail,
@@ -1353,19 +1354,21 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
     });
 
     // Sync Zelle transaction history (graceful fallback)
-    try {
-      await upsertZelleTransactionStatus({
-        referenceId: orderId,
-        transactionType: order.order_type === 'combo'
-          ? ZELLE_TRANSACTION_TYPES.COMBO
-          : ZELLE_TRANSACTION_TYPES.PRODUCT,
-        status: ZELLE_STATUS.REJECTED,
-        amount: order.total_amount || 0,
-        zelleAccountId: order.zelle_account_id || null,
-        validatedBy: adminId
-      });
-    } catch (zelleError) {
-      logError(zelleError, { operation: 'rejectPayment - zelle sync', orderId });
+    if (order.zelle_account_id && activityResult?.status === 'inserted') {
+      try {
+        await upsertZelleTransactionStatus({
+          referenceId: orderId,
+          transactionType: order.order_type === 'combo'
+            ? ZELLE_TRANSACTION_TYPES.COMBO
+            : ZELLE_TRANSACTION_TYPES.PRODUCT,
+          status: ZELLE_STATUS.REJECTED,
+          amount: order.total_amount || 0,
+          zelleAccountId: order.zelle_account_id,
+          validatedBy: adminId
+        });
+      } catch (zelleError) {
+        logError(zelleError, { operation: 'rejectPayment - zelle sync', orderId });
+      }
     }
 
     return updatedOrder;

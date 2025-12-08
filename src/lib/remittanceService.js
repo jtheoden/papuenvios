@@ -109,7 +109,7 @@ const logRemittancePaymentActivity = async ({ action, remittance, performedBy, d
       ...metadata
     };
 
-    await logActivity({
+    return await logActivity({
       action,
       entityType: 'remittance',
       entityId: remittance?.id || null,
@@ -119,6 +119,7 @@ const logRemittancePaymentActivity = async ({ action, remittance, performedBy, d
     });
   } catch (error) {
     console.warn('[remittanceService] Failed to log payment activity', error);
+    return { status: 'error', error };
   }
 };
 
@@ -1062,7 +1063,7 @@ export const validatePayment = async (remittanceId, notes = '') => {
       throw appError;
     }
 
-    await logRemittancePaymentActivity({
+    const activityResult = await logRemittancePaymentActivity({
       action: 'payment_validated',
       remittance: updatedRemittance,
       performedBy: user?.email || user?.id,
@@ -1075,17 +1076,19 @@ export const validatePayment = async (remittanceId, notes = '') => {
     });
 
     // Sync Zelle transaction history (graceful fallback)
-    try {
-      await upsertZelleTransactionStatus({
-        referenceId: remittanceId,
-        transactionType: ZELLE_TRANSACTION_TYPES.REMITTANCE,
-        status: ZELLE_STATUS.VALIDATED,
-        amount: remittance.amount || remittance.amount_to_deliver || 0,
-        zelleAccountId: remittance.zelle_account_id || null,
-        validatedBy: user.id
-      });
-    } catch (zelleError) {
-      logError(zelleError, { operation: 'validatePayment - zelle sync', remittanceId });
+    if (remittance.zelle_account_id && activityResult?.status === 'inserted') {
+      try {
+        await upsertZelleTransactionStatus({
+          referenceId: remittanceId,
+          transactionType: ZELLE_TRANSACTION_TYPES.REMITTANCE,
+          status: ZELLE_STATUS.VALIDATED,
+          amount: remittance.amount || remittance.amount_to_deliver || 0,
+          zelleAccountId: remittance.zelle_account_id,
+          validatedBy: user.id
+        });
+      } catch (zelleError) {
+        logError(zelleError, { operation: 'validatePayment - zelle sync', remittanceId });
+      }
     }
 
     // Send notification to user (graceful fallback if fails)
@@ -1188,7 +1191,7 @@ export const rejectPayment = async (remittanceId, reason) => {
       // Don't fail rejection if notification fails
     }
 
-    await logRemittancePaymentActivity({
+    const activityResult = await logRemittancePaymentActivity({
       action: 'payment_rejected',
       remittance: updatedRemittance,
       performedBy: user?.email || user?.id,
@@ -1201,17 +1204,19 @@ export const rejectPayment = async (remittanceId, reason) => {
     });
 
     // Sync Zelle transaction history (graceful fallback)
-    try {
-      await upsertZelleTransactionStatus({
-        referenceId: remittanceId,
-        transactionType: ZELLE_TRANSACTION_TYPES.REMITTANCE,
-        status: ZELLE_STATUS.REJECTED,
-        amount: remittance.amount || remittance.amount_to_deliver || 0,
-        zelleAccountId: remittance.zelle_account_id || null,
-        validatedBy: user.id
-      });
-    } catch (zelleError) {
-      logError(zelleError, { operation: 'rejectPayment - zelle sync', remittanceId });
+    if (remittance.zelle_account_id && activityResult?.status === 'inserted') {
+      try {
+        await upsertZelleTransactionStatus({
+          referenceId: remittanceId,
+          transactionType: ZELLE_TRANSACTION_TYPES.REMITTANCE,
+          status: ZELLE_STATUS.REJECTED,
+          amount: remittance.amount || remittance.amount_to_deliver || 0,
+          zelleAccountId: remittance.zelle_account_id,
+          validatedBy: user.id
+        });
+      } catch (zelleError) {
+        logError(zelleError, { operation: 'rejectPayment - zelle sync', remittanceId });
+      }
     }
 
     return updatedRemittance;
