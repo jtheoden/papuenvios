@@ -160,7 +160,7 @@ const UserPanel = ({ onNavigate }) => {
     setShowValidateModal(false);
     try {
       const result = await validatePayment(actionOrderId, user.id);
-      if (result.success) {
+      if (result && !result.error) {
         await loadUserOrders();
         setShowOrderDetails(false);
         setSelectedOrder(null);
@@ -186,7 +186,7 @@ const UserPanel = ({ onNavigate }) => {
     setShowRejectModal(false);
     try {
       const result = await rejectPayment(actionOrderId, user.id, rejectionReason);
-      if (result.success) {
+      if (result && !result.error) {
         await loadUserOrders();
         setShowOrderDetails(false);
         setSelectedOrder(null);
