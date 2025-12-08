@@ -42,7 +42,9 @@ const UserPanel = ({ onNavigate }) => {
   const selectedOrderTotal = selectedOrder ? (parseFloat(selectedOrder.total_amount) || 0) : 0;
   const selectedOrderDiscountTotal = selectedOrder ? (parseFloat(selectedOrder.discount_amount) || 0) : 0;
   const selectedOrderCategoryPercent = selectedOrder
-    ? (isRegularUser ? categoryDiscountPercent : selectedOrder?.user_category_discount?.discount_percentage || 0)
+    ? (selectedOrder?.user_category_discount?.enabled === false
+      ? 0
+      : selectedOrder?.user_category_discount?.discount_percentage ?? (isRegularUser ? categoryDiscountPercent : 0))
     : 0;
   const selectedOrderCategoryDiscountAmount = selectedOrderCategoryPercent > 0
     ? parseFloat(((selectedOrderSubtotal * selectedOrderCategoryPercent) / 100).toFixed(2))
@@ -607,7 +609,9 @@ const UserPanel = ({ onNavigate }) => {
                 const orderSubtotal = parseFloat(order.subtotal) || 0;
                 const orderTotal = parseFloat(order.total_amount) || 0;
                 const orderDiscountTotal = parseFloat(order.discount_amount) || 0;
-                const categoryPercent = isRegularUser ? categoryDiscountPercent : 0;
+                const categoryPercent = order?.user_category_discount?.enabled === false
+                  ? 0
+                  : order?.user_category_discount?.discount_percentage ?? (isRegularUser ? categoryDiscountPercent : 0);
                 const categoryDiscountAmount = categoryPercent > 0
                   ? parseFloat(((orderSubtotal * categoryPercent) / 100).toFixed(2))
                   : 0;

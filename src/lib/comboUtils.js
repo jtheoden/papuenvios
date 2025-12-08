@@ -11,20 +11,34 @@
  * @param {object} exchangeRates - Exchange rates map
  * @returns {number} Converted amount
  */
-export const convertPrice = (amount, fromCurrency, toCurrency, exchangeRates) => {
+export const convertPrice = (amount, fromCurrency, toCurrency, exchangeRates, baseCurrency = 'USD') => {
   if (!amount || fromCurrency === toCurrency) return amount;
 
-  // Get exchange rate from source to USD first
-  const rateKey = `${fromCurrency}/USD`;
-  const rateToUSD = exchangeRates[rateKey] || 1;
-  const amountInUSD = amount / rateToUSD;
+  // Anchor conversions to the configured base currency to avoid double-application errors
+  const toBaseKey = `${fromCurrency}/${baseCurrency}`;
+  const fromBaseKey = `${toCurrency}/${baseCurrency}`;
 
-  // Convert from USD to target currency
-  const targetRateKey = `${toCurrency}/USD`;
-  const rateFromUSD = exchangeRates[targetRateKey] || 1;
-  const result = amountInUSD * rateFromUSD;
+  const rateToBase = exchangeRates?.[toBaseKey];
+  const rateFromBase = exchangeRates?.[fromBaseKey];
 
-  return Math.round(result * 100) / 100;
+  const amountInBase = rateToBase ? amount / rateToBase : amount;
+  const converted = rateFromBase ? amountInBase * rateFromBase : amountInBase;
+
+  // Fallback to direct/inverse pair if base-anchored rates are missing
+  if (!rateToBase || !rateFromBase) {
+    const directKey = `${fromCurrency}/${toCurrency}`;
+    const inverseKey = `${toCurrency}/${fromCurrency}`;
+
+    if (exchangeRates?.[directKey]) {
+      return Math.round(amount * exchangeRates[directKey] * 100) / 100;
+    }
+
+    if (exchangeRates?.[inverseKey]) {
+      return Math.round((amount / exchangeRates[inverseKey]) * 100) / 100;
+    }
+  }
+
+  return Math.round(converted * 100) / 100;
 };
 
 /**
@@ -58,7 +72,7 @@ export const calculateComboPrices = (
 
       // Convert product price to selected currency if needed
       const convertedPrice = selectedCurrency !== baseCurrency
-        ? convertPrice(productPrice, baseCurrency, selectedCurrency, exchangeRates)
+        ? convertPrice(productPrice, baseCurrency, selectedCurrency, exchangeRates, baseCurrency)
         : productPrice;
 
       basePrice += convertedPrice * quantity;
