@@ -85,14 +85,12 @@ const SendRemittancePage = ({ onNavigate }) => {
 
   const loadShippingZones = async () => {
     try {
-      const result = await getActiveShippingZones();
-      if (result.success) {
-        const availableZones = (result.zones || []).filter(zone => {
-          const cost = parseFloat(zone.shipping_cost || 0);
-          return zone.free_shipping === true || cost > 0;
-        });
-        setShippingZones(availableZones);
-      }
+      const zones = await getActiveShippingZones();
+      const availableZones = (zones || []).filter(zone => {
+        const cost = parseFloat(zone.shipping_cost || 0);
+        return zone.free_shipping === true || cost > 0;
+      });
+      setShippingZones(availableZones);
     } catch (error) {
       console.error('Error loading shipping zones:', error);
     }
