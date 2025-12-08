@@ -3,12 +3,14 @@ import { motion } from 'framer-motion';
 import { Plus, Save, Edit, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { createProduct, updateProduct as updateProductDB } from '@/lib/productService';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import { getTableColumns, getModalColumns } from './ProductTableConfig';
+import { logActivity } from '@/lib/activityLogger';
 
 /**
  * Vendor Inventory Tab Component
@@ -26,10 +28,26 @@ const VendorInventoryTab = ({
   onProductsRefresh
 }) => {
   const { t, language } = useLanguage();
+  const { user } = useAuth();
   const [productForm, setProductForm] = useState(null);
   const [productImagePreview, setProductImagePreview] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [showProductDetails, setShowProductDetails] = useState(false);
+
+  const logProductActivity = async (action, productId, description, metadata = {}) => {
+    try {
+      await logActivity({
+        action,
+        entityType: 'product',
+        entityId: productId,
+        performedBy: user?.email || user?.id || 'anonymous',
+        description,
+        metadata
+      });
+    } catch (error) {
+      console.warn('[VendorInventoryTab] Failed to log product activity', error?.message || error);
+    }
+  };
 
   const handleInputChange = (field, value) => {
     setProductForm(prev => ({ ...prev, [field]: value }));
@@ -159,12 +177,36 @@ const VendorInventoryTab = ({
       };
 
       if (productForm.id) {
-        const { error } = await updateProductDB(productForm.id, productData);
-        if (error) throw error;
+        await updateProductDB(productForm.id, productData);
+        await logProductActivity('product_updated', productForm.id, `Product ${productData.name_es} updated`, {
+          name_es: productData.name_es,
+          name_en: productData.name_en,
+          category_id: productData.category_id,
+          basePrice: productData.basePrice,
+          profitMargin: productData.profitMargin,
+          stock: productData.stock,
+          min_stock_alert: productData.min_stock_alert,
+          base_currency_id: productData.base_currency_id,
+          expiryDate: productData.expiryDate || null,
+          sku: productData.sku,
+          imageUpdated: Boolean(productData.image)
+        });
         toast({ title: t('vendor.productUpdated') });
       } else {
-        const { error } = await createProduct(productData);
-        if (error) throw error;
+        const createdProduct = await createProduct(productData);
+        await logProductActivity('product_created', createdProduct?.id || productData.slug || productData.name_es, `Product ${productData.name_es} created`, {
+          name_es: productData.name_es,
+          name_en: productData.name_en,
+          category_id: productData.category_id,
+          basePrice: productData.basePrice,
+          profitMargin: productData.profitMargin,
+          stock: productData.stock,
+          min_stock_alert: productData.min_stock_alert,
+          base_currency_id: productData.base_currency_id,
+          expiryDate: productData.expiryDate || null,
+          sku: productData.sku,
+          imageUpdated: Boolean(productData.image)
+        });
         toast({ title: t('vendor.productAdded') });
       }
 
