@@ -59,6 +59,20 @@ const UserPanel = ({ onNavigate }) => {
   );
   const selectedOrderBaseTotal = selectedOrderSubtotal + selectedOrderShipping;
   const selectedOrderTotalAfterCategory = Math.max(selectedOrderBaseTotal - selectedOrderCategoryDiscountAmount, 0);
+
+  const loadUserRemittances = useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      const result = await getMyRemittances();
+      if (result.success) {
+        setRemittances(result.remittances || []);
+      }
+    } catch (error) {
+      console.error('Error loading remittances:', error);
+    }
+  }, [user?.id]);
+
   useEffect(() => {
     if (!user) {
       onNavigate('login');
@@ -116,19 +130,6 @@ const UserPanel = ({ onNavigate }) => {
       setLoading(false);
     }
   };
-
-  const loadUserRemittances = useCallback(async () => {
-    if (!user?.id) return;
-
-    try {
-      const result = await getMyRemittances();
-      if (result.success) {
-        setRemittances(result.remittances || []);
-      }
-    } catch (error) {
-      console.error('Error loading remittances:', error);
-    }
-  }, [user?.id]);
 
   useRealtimeRemittances({
     enabled: userRole === 'user' && !!user?.id,
