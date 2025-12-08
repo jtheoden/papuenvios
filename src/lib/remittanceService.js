@@ -21,6 +21,7 @@ import {
   notifyUserRemittanceDelivered
 } from '@/lib/whatsappService';
 import { getAvailableZelleAccount, registerZelleTransaction } from '@/lib/zelleService';
+import { logActivity } from './activityLogger';
 
 /**
  * Generate a signed URL for accessing a proof from private storage
@@ -91,6 +92,16 @@ export const DELIVERY_METHODS = {
   CASH: 'cash',
   TRANSFER: 'transfer',
   CARD: 'card'
+};
+
+const getCurrentUserId = async () => {
+  const { data: sessionData, error } = await supabase.auth.getUser();
+
+  if (error) {
+    throw parseSupabaseError(error);
+  }
+
+  return sessionData?.user?.id || null;
 };
 
 // ============================================================================
@@ -459,7 +470,8 @@ export const createRemittance = async (remittanceData) => {
       amountToDeliver,
       exchangeRate,
       currency: currencyCode,
-      deliveryCurrency
+      deliveryCurrency,
+      deliveryMethod
     } = calculation;
 
     // Get authenticated user
@@ -496,6 +508,7 @@ export const createRemittance = async (remittanceData) => {
       amount_to_deliver: amountToDeliver,
       currency_sent: currencyCode,
       currency_delivered: deliveryCurrency,
+      delivery_method: deliveryMethod,
       recipient_name,
       recipient_phone,
       recipient_address,
@@ -534,6 +547,25 @@ export const createRemittance = async (remittanceData) => {
     } catch (zelleError) {
       logError(zelleError, { operation: 'createRemittance - Zelle registration', remittanceId: data.id });
       // Don't fail remittance creation if Zelle registration fails
+    }
+
+    // Audit trail for remittance creation
+    try {
+      await logActivity({
+        action: 'remittance_created',
+        entityType: 'remittance',
+        entityId: data.id,
+        performedBy: user.id,
+        description: `Nueva remesa ${data.remittance_number} creada`,
+        metadata: {
+          remittance_type_id,
+          amount_sent: amount,
+          currency_sent: currencyCode,
+          delivery_method: deliveryMethod
+        }
+      });
+    } catch (activityError) {
+      console.warn('Failed to log remittance creation', activityError);
     }
 
     // Create bank transfer for off-cash methods (graceful fallback if fails)
@@ -671,6 +703,22 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
     } catch (notifyError) {
       logError(notifyError, { operation: 'uploadPaymentProof - notification', remittanceId });
       // Don't fail proof upload if notification fails
+    }
+
+    try {
+      await logActivity({
+        action: 'payment_proof_uploaded',
+        entityType: 'remittance',
+        entityId: remittanceId,
+        performedBy: user.id,
+        description: `Comprobante cargado para ${remittance.remittance_number}`,
+        metadata: {
+          payment_reference: reference,
+          payment_proof_url: filePath
+        }
+      });
+    } catch (activityError) {
+      console.warn('Failed to log payment proof upload', activityError);
     }
 
     return updatedRemittance;
@@ -1027,6 +1075,19 @@ export const validatePayment = async (remittanceId, notes = '') => {
       logError(new Error(`Validation notes: ${notes}`), { operation: 'validatePayment - notes', remittanceId });
     }
 
+    try {
+      await logActivity({
+        action: 'remittance_payment_validated',
+        entityType: 'remittance',
+        entityId: remittanceId,
+        performedBy: user.id,
+        description: `Pago validado para ${remittance.remittance_number}`,
+        metadata: notes ? { notes } : undefined
+      });
+    } catch (activityError) {
+      console.warn('Failed to log payment validation', activityError);
+    }
+
     return updatedRemittance;
   } catch (error) {
     if (error.code) throw error;
@@ -1077,6 +1138,8 @@ export const rejectPayment = async (remittanceId, reason) => {
       );
     }
 
+    const adminId = await getCurrentUserId();
+
     // Update remittance to payment rejected
     const { data: updatedRemittance, error: updateError } = await supabase
       .from('remittances')
@@ -1102,6 +1165,19 @@ export const rejectPayment = async (remittanceId, reason) => {
     } catch (notifyError) {
       logError(notifyError, { operation: 'rejectPayment - notification', remittanceId });
       // Don't fail rejection if notification fails
+    }
+
+    try {
+      await logActivity({
+        action: 'remittance_payment_rejected',
+        entityType: 'remittance',
+        entityId: remittanceId,
+        performedBy: adminId,
+        description: `Pago rechazado para ${remittance.remittance_number}`,
+        metadata: { reason }
+      });
+    } catch (activityError) {
+      console.warn('Failed to log payment rejection', activityError);
     }
 
     return updatedRemittance;
@@ -1151,12 +1227,15 @@ export const startProcessing = async (remittanceId, notes = '') => {
       );
     }
 
+    const adminId = await getCurrentUserId();
+
     // Update remittance to processing
     const { data: updatedRemittance, error: updateError } = await supabase
       .from('remittances')
       .update({
         status: REMITTANCE_STATUS.PROCESSING,
         processing_started_at: new Date().toISOString(),
+        processing_notes: notes,
         updated_at: new Date().toISOString()
       })
       .eq('id', remittanceId)
@@ -1171,6 +1250,19 @@ export const startProcessing = async (remittanceId, notes = '') => {
 
     if (notes) {
       logError(new Error(`Processing notes: ${notes}`), { operation: 'startProcessing - notes', remittanceId });
+    }
+
+    try {
+      await logActivity({
+        action: 'remittance_processing_started',
+        entityType: 'remittance',
+        entityId: remittanceId,
+        performedBy: adminId,
+        description: `Procesamiento iniciado para ${remittance.remittance_number}`,
+        metadata: notes ? { notes } : undefined
+      });
+    } catch (activityError) {
+      console.warn('Failed to log remittance processing start', activityError);
     }
 
     return updatedRemittance;
@@ -1226,6 +1318,8 @@ export const confirmDelivery = async (remittanceId, proofFile = null, notes = ''
     if (!proofFile && !hasExistingProof) {
       throw new Error('Delivery proof required. Please provide a photo or document as evidence.');
     }
+
+    const adminId = await getCurrentUserId();
 
     let deliveryProofUrl = remittance.delivery_proof_url; // Keep existing proof if not updating
 
@@ -1301,6 +1395,22 @@ export const confirmDelivery = async (remittanceId, proofFile = null, notes = ''
       // Don't fail delivery confirmation if notification fails
     }
 
+    try {
+      await logActivity({
+        action: 'remittance_delivered',
+        entityType: 'remittance',
+        entityId: remittanceId,
+        performedBy: adminId,
+        description: `Entrega confirmada para ${remittance.remittance_number}`,
+        metadata: {
+          delivery_proof_url: trimmedProofUrl,
+          notes
+        }
+      });
+    } catch (activityError) {
+      console.warn('Failed to log delivery confirmation', activityError);
+    }
+
     return updatedRemittance;
   } catch (error) {
     if (error.code) throw error;
@@ -1370,6 +1480,21 @@ export const completeRemittance = async (remittanceId, notes = '') => {
       const appError = parseSupabaseError(updateError);
       logError(appError, { operation: 'completeRemittance - update', remittanceId });
       throw appError;
+    }
+
+    try {
+      const adminId = await getCurrentUserId();
+
+      await logActivity({
+        action: 'remittance_completed',
+        entityType: 'remittance',
+        entityId: remittanceId,
+        performedBy: adminId,
+        description: `Remesa completada ${remittance.remittance_number}`,
+        metadata: notes ? { notes } : undefined
+      });
+    } catch (activityError) {
+      console.warn('Failed to log remittance completion', activityError);
     }
 
     return updatedRemittance;

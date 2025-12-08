@@ -16,6 +16,7 @@ import {
   completeRemittance,
   calculateDeliveryAlert,
   generateProofSignedUrl,
+  getRemittanceDetails,
   REMITTANCE_STATUS
 } from '@/lib/remittanceService';
 import { toast } from '@/components/ui/use-toast';
@@ -128,6 +129,19 @@ const AdminRemittancesTab = () => {
     }
 
     setFilteredRemittances(filtered);
+  };
+
+  const handleViewDetails = async (remittance) => {
+    try {
+      const details = await getRemittanceDetails(remittance.id);
+      setSelectedRemittance(details);
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: error?.message || 'No se pudieron cargar los detalles de la remesa',
+        variant: 'destructive'
+      });
+    }
   };
 
   const handleValidatePayment = async (remittance) => {
@@ -714,7 +728,7 @@ const AdminRemittancesTab = () => {
                 <div className="flex items-center gap-2">
                   <TooltipButton
                     tooltipText={t('remittances.admin.viewDetails')}
-                    onClick={() => setSelectedRemittance(remittance)}
+                    onClick={() => handleViewDetails(remittance)}
                     className="flex items-center gap-1 px-2 sm:px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm"
                     title={t('remittances.admin.viewDetails')}
                   >
@@ -786,11 +800,11 @@ const AdminRemittancesTab = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.amountSent')}</p>
-                      <p className="text-base sm:text-lg font-bold text-blue-600">{selectedRemittance.amount} {selectedRemittance.currency}</p>
+                      <p className="text-base sm:text-lg font-bold text-blue-600">{selectedRemittance.amount_sent} {selectedRemittance.currency_sent}</p>
                     </div>
                     <div>
                       <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.toDeliver')}</p>
-                      <p className="text-base sm:text-lg font-bold text-green-600">{selectedRemittance.amount_to_deliver?.toFixed(2)} {selectedRemittance.delivery_currency}</p>
+                      <p className="text-base sm:text-lg font-bold text-green-600">{selectedRemittance.amount_to_deliver?.toFixed(2)} {selectedRemittance.currency_delivered}</p>
                     </div>
                   </div>
                 </div>

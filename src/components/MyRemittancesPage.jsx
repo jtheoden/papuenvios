@@ -201,18 +201,19 @@ const MyRemittancesPage = ({ onNavigate }) => {
       return;
     }
 
-    const result = await uploadPaymentProof(
-      selectedRemittance.id,
-      uploadData.file,
-      uploadData.reference,
-      uploadData.notes
-    );
+    try {
+      const result = await uploadPaymentProof(
+        selectedRemittance.id,
+        uploadData.file,
+        uploadData.reference,
+        uploadData.notes
+      );
 
-    if (result.success) {
       toast({
         title: t('common.success'),
         description: t('remittances.user.proofUploaded')
       });
+      setSelectedRemittance(result);
       setShowUploadModal(false);
       setImagePreview(null);
       setUploadData({
@@ -221,10 +222,10 @@ const MyRemittancesPage = ({ onNavigate }) => {
         notes: ''
       });
       loadRemittances();
-    } else {
+    } catch (error) {
       toast({
         title: t('common.error'),
-        description: result.error,
+        description: error?.message || 'No pudimos subir el comprobante. Intenta nuevamente.',
         variant: 'destructive'
       });
     }
@@ -662,10 +663,6 @@ const MyRemittancesPage = ({ onNavigate }) => {
                     <p className="text-xs sm:text-sm text-gray-500">{t('remittances.user.type')}</p>
                     <p className="font-semibold text-sm sm:text-base">{selectedRemittance.remittance_types?.name}</p>
                   </div>
-                  <div>
-                    <p className="text-xs sm:text-sm text-gray-500">{t('remittances.user.deliveryMethod')}</p>
-                    <p className="font-semibold capitalize text-sm sm:text-base">{selectedRemittance.delivery_method}</p>
-                  </div>
                 </div>
 
                 {/* Destinatario */}
@@ -693,8 +690,8 @@ const MyRemittancesPage = ({ onNavigate }) => {
                     {t('remittances.user.amounts')}
                   </h3>
                   <div className="space-y-2 bg-gray-50 p-3 sm:p-4 rounded-lg text-xs sm:text-sm">
-                    <p><span className="text-gray-600">{t('remittances.user.amountSentLabel')}</span> <span className="font-medium">${selectedRemittance.amount_sent}</span></p>
-                    <p><span className="text-gray-600">{t('remittances.user.amountToDeliverLabel')}</span> <span className="font-bold text-green-600">${selectedRemittance.amount_to_deliver} {selectedRemittance.currency_delivered}</span></p>
+                    <p><span className="text-gray-600">{t('remittances.user.amountSentLabel')}</span> <span className="font-medium">{selectedRemittance.amount_sent} {selectedRemittance.currency_sent}</span></p>
+                    <p><span className="text-gray-600">{t('remittances.user.amountToDeliverLabel')}</span> <span className="font-bold text-green-600">{selectedRemittance.amount_to_deliver} {selectedRemittance.currency_delivered}</span></p>
                   </div>
                 </div>
               </div>

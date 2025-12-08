@@ -253,6 +253,7 @@ export const registerZelleTransaction = async (transactionData) => {
         transaction_type: transactionData.transaction_type,
         reference_id: transactionData.reference_id,
         amount: transactionData.amount,
+        transaction_date: new Date().toISOString(),
         status: ZELLE_STATUS.PENDING,
         notes: transactionData.notes || null
       }])
