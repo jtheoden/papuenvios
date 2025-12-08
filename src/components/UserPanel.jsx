@@ -100,7 +100,7 @@ const UserPanel = ({ onNavigate }) => {
         console.log('[UserPanel] Loading orders needing admin attention');
         // Fetch all orders with pending status (regardless of payment_status)
         // This includes: proof_uploaded (needs validation), pending (waiting for proof), rejected (needs retry)
-        const orders = await getAllOrders({ status: 'pending' });
+        const orders = await getAllOrders();
         console.log('[UserPanel] Admin orders result:', orders);
         setOrders(orders || []);
       } else {

@@ -1209,19 +1209,21 @@ export const validatePayment = async (orderId, adminId) => {
     }
 
     // Sync Zelle transaction history for observabilidad (graceful fallback)
-    try {
-      await upsertZelleTransactionStatus({
-        referenceId: orderId,
-        transactionType: order.order_type === 'combo'
-          ? ZELLE_TRANSACTION_TYPES.COMBO
-          : ZELLE_TRANSACTION_TYPES.PRODUCT,
-        status: ZELLE_STATUS.VALIDATED,
-        amount: order.total_amount || 0,
-        zelleAccountId: order.zelle_account_id || null,
-        validatedBy: adminId
-      });
-    } catch (zelleError) {
-      logError(zelleError, { operation: 'validatePayment - zelle sync', orderId });
+    if (order.zelle_account_id) {
+      try {
+        await upsertZelleTransactionStatus({
+          referenceId: orderId,
+          transactionType: order.order_type === 'combo'
+            ? ZELLE_TRANSACTION_TYPES.COMBO
+            : ZELLE_TRANSACTION_TYPES.PRODUCT,
+          status: ZELLE_STATUS.VALIDATED,
+          amount: order.total_amount || 0,
+          zelleAccountId: order.zelle_account_id,
+          validatedBy: adminId
+        });
+      } catch (zelleError) {
+        logError(zelleError, { operation: 'validatePayment - zelle sync', orderId });
+      }
     }
 
     return updatedOrder;
