@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Plus, Edit, Save, AlertCircle, AlertTriangle, Box, Trash2, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { createCombo, updateCombo as updateComboDB, deleteCombo, setComboActiveState } from '@/lib/comboService';
@@ -26,6 +27,7 @@ const VendorCombosTab = ({
   onCombosRefresh
 }) => {
   const { t, language } = useLanguage();
+  const { user } = useAuth();
 
   const [comboForm, setComboForm] = useState(null);
   const [comboImagePreview, setComboImagePreview] = useState(null);
@@ -162,7 +164,7 @@ const VendorCombosTab = ({
         action,
         entityType: 'combo',
         entityId: comboId,
-        performedBy: 'vendor_panel',
+        performedBy: user?.email || user?.id || 'anonymous',
         description,
         metadata
       });
