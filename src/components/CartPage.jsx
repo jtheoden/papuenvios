@@ -335,6 +335,18 @@ const CartPage = ({ onNavigate }) => {
       const validation = await validateAndGetOffer(couponCode, subtotal, user?.id);
 
       if (!validation.valid) {
+        await logActivity({
+          action: 'coupon_validation_blocked',
+          entityType: 'offer',
+          entityId: validation.code || couponCode,
+          performedBy: user?.email || 'anonymous',
+          description: `Coupon ${couponCode} rejected`,
+          metadata: {
+            reason: validation.reason,
+            subtotal,
+            usage: validation.usage || null
+          }
+        });
         setCouponError(validation.reason || (language === 'es' ? 'Cupón inválido' : 'Invalid coupon'));
         setAppliedOffer(null);
         setValidatingCoupon(false);
@@ -352,7 +364,11 @@ const CartPage = ({ onNavigate }) => {
           subtotal,
           discount: validation.offer.discount_value,
           type: validation.offer.discount_type,
-          usage: validation.usage || null
+          usage: validation.usage || null,
+          limits: {
+            global: validation.offer.max_usage_global || null,
+            perUser: validation.offer.max_usage_per_user || null
+          }
         }
       });
       toast({

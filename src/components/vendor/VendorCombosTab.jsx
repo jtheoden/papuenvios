@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Edit, Save, AlertCircle, AlertTriangle, Box } from 'lucide-react';
+import { Plus, Edit, Save, AlertCircle, AlertTriangle, Box, Trash2, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
-import { createCombo, updateCombo as updateComboDB } from '@/lib/comboService';
+import { createCombo, updateCombo as updateComboDB, deleteCombo, setComboActiveState } from '@/lib/comboService';
 import { calculateComboPrices, checkComboStockIssues } from '@/lib/comboUtils';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
+import { logActivity } from '@/lib/activityLogger';
 
 /**
  * Vendor Combos Tab Component
@@ -28,6 +29,35 @@ const VendorCombosTab = ({
 
   const [comboForm, setComboForm] = useState(null);
   const [comboImagePreview, setComboImagePreview] = useState(null);
+  const [processingComboId, setProcessingComboId] = useState(null);
+
+  const currencyCodeById = useMemo(() => {
+    return (currencies || []).reduce((acc, currency) => {
+      acc[currency.id] = currency.code;
+      return acc;
+    }, {});
+  }, [currencies]);
+
+  const baseCurrencyCode = useMemo(() => {
+    const baseCurrency = (currencies || []).find(c => c.is_base);
+    return baseCurrency?.code || 'USD';
+  }, [currencies]);
+
+  const selectedCurrencyCode = currencyCodeById[selectedCurrency] || baseCurrencyCode;
+
+  const normalizedExchangeRates = useMemo(() => {
+    const map = {};
+    Object.entries(exchangeRates || {}).forEach(([key, rate]) => {
+      const [fromId, toId] = key.split('-');
+      const fromCode = currencyCodeById[fromId];
+      const toCode = currencyCodeById[toId];
+
+      if (fromCode && toCode) {
+        map[`${fromCode}/${toCode}`] = rate;
+      }
+    });
+    return map;
+  }, [currencyCodeById, exchangeRates]);
 
   const openNewComboForm = () => {
     setComboForm({
@@ -123,6 +153,83 @@ const VendorCombosTab = ({
     }));
   };
 
+  const logComboAudit = async (action, comboId, description, metadata = {}) => {
+    try {
+      await logActivity({
+        action,
+        entityType: 'combo',
+        entityId: comboId,
+        performedBy: 'vendor_panel',
+        description,
+        metadata
+      });
+    } catch (error) {
+      console.warn('[VendorCombosTab] Failed to log combo activity', error?.message || error);
+    }
+  };
+
+  const handleToggleComboActive = async (combo, nextActive) => {
+    setProcessingComboId(combo.id);
+    try {
+      await setComboActiveState(combo.id, nextActive);
+      await logComboAudit(
+        nextActive ? 'combo_activated' : 'combo_deactivated',
+        combo.id,
+        `${nextActive ? 'Activated' : 'Deactivated'} combo ${combo.name || combo.name_es || combo.name_en || combo.id}`,
+        { isActive: nextActive, products: combo.products?.length || 0 }
+      );
+      toast({
+        title: nextActive ? (language === 'es' ? 'Combo activado' : 'Combo activated') : (language === 'es' ? 'Combo desactivado' : 'Combo deactivated'),
+        description: combo.name || combo.name_es || ''
+      });
+      await onCombosRefresh(true);
+    } catch (error) {
+      console.error('Error toggling combo state:', error);
+      toast({
+        title: t('common.error'),
+        description: error.message,
+        variant: 'destructive'
+      });
+    } finally {
+      setProcessingComboId(null);
+    }
+  };
+
+  const handleDeleteCombo = async (combo) => {
+    const confirmed = window.confirm(
+      language === 'es'
+        ? '¿Eliminar este combo? Esta acción lo desactivará para los usuarios.'
+        : 'Delete this combo? This will deactivate it for users.'
+    );
+
+    if (!confirmed) return;
+
+    setProcessingComboId(combo.id);
+    try {
+      await deleteCombo(combo.id);
+      await logComboAudit(
+        'combo_deleted',
+        combo.id,
+        `Combo ${combo.name || combo.name_es || combo.id} deleted from VendorPage`,
+        { products: combo.products || [], quantities: combo.productQuantities }
+      );
+      toast({
+        title: language === 'es' ? 'Combo eliminado' : 'Combo deleted',
+        description: combo.name || combo.name_es || ''
+      });
+      await onCombosRefresh(true);
+    } catch (error) {
+      console.error('Error deleting combo:', error);
+      toast({
+        title: t('common.error'),
+        description: error.message,
+        variant: 'destructive'
+      });
+    } finally {
+      setProcessingComboId(null);
+    }
+  };
+
   const handleComboSubmit = async () => {
     if (!comboForm.name) {
       toast({
@@ -133,6 +240,7 @@ const VendorCombosTab = ({
       return;
     }
 
+    setProcessingComboId(comboForm.id || 'new');
     try {
       const productsWithQuantities = (comboForm.products || []).map(productId => ({
         productId,
@@ -149,12 +257,19 @@ const VendorCombosTab = ({
       };
 
       if (comboForm.id) {
-        const { error } = await updateComboDB(comboForm.id, comboData);
-        if (error) throw error;
+        await updateComboDB(comboForm.id, comboData);
+        await logComboAudit('combo_updated', comboForm.id, `Combo ${comboForm.name} updated`, {
+          profitMargin: comboData.profitMargin,
+          products: productsWithQuantities,
+          imageUpdated: Boolean(comboData.image)
+        });
         toast({ title: t('vendor.comboUpdated') });
       } else {
-        const { error } = await createCombo(comboData);
-        if (error) throw error;
+        const createdCombo = await createCombo(comboData);
+        await logComboAudit('combo_created', createdCombo?.id || comboForm.name, `Combo ${comboForm.name} created`, {
+          profitMargin: comboData.profitMargin,
+          products: productsWithQuantities
+        });
         toast({ title: t('vendor.comboAdded') });
       }
 
@@ -168,64 +283,31 @@ const VendorCombosTab = ({
         description: error.message,
         variant: 'destructive'
       });
+    } finally {
+      setProcessingComboId(null);
     }
-  };
-
-  // Función para convertir precio entre monedas usando tasas de cambio
-  const convertPrice = (price, fromCurrencyId, toCurrencyId) => {
-    if (!price || fromCurrencyId === toCurrencyId) return price;
-
-    const rateKey = `${fromCurrencyId}-${toCurrencyId}`;
-    const rate = exchangeRates[rateKey];
-
-    if (rate) {
-      return price * rate;
-    }
-
-    // Si no existe tasa directa, intentar inversa
-    const inverseRateKey = `${toCurrencyId}-${fromCurrencyId}`;
-    const inverseRate = exchangeRates[inverseRateKey];
-
-    if (inverseRate && inverseRate !== 0) {
-      return price / inverseRate;
-    }
-
-    return price; // Retornar precio original si no hay tasa disponible
   };
 
   const getComboCalculatedPrices = (combo) => {
-    if (!combo || !selectedCurrency) return { base: 0, final: 0 };
+    if (!combo) return { base: 0, final: 0 };
 
-    const baseCurrencyId = currencies.find(c => c.is_base)?.id;
-
-    // Calcular precio base total del combo en moneda seleccionada
-    let totalBasePrice = 0;
-
-    (combo.products || []).forEach(productId => {
-      const product = products.find(p => p.id === productId);
-      if (product) {
-        const basePrice = parseFloat(product.base_price || 0);
-        const productCurrencyId = product.base_currency_id || baseCurrencyId;
-        const quantity = combo.productQuantities?.[productId] || 1;
-
-        // Convertir precio del producto a la moneda seleccionada
-        const convertedPrice = convertPrice(basePrice, productCurrencyId, selectedCurrency);
-        totalBasePrice += convertedPrice * quantity;
-      }
-    });
-
-    const profitMargin = parseFloat(combo.profitMargin || financialSettings.comboProfit) / 100;
-    const finalPrice = totalBasePrice * (1 + profitMargin);
+    const prices = calculateComboPrices(
+      combo,
+      products,
+      normalizedExchangeRates,
+      selectedCurrencyCode,
+      baseCurrencyCode
+    );
 
     return {
-      base: totalBasePrice.toFixed(2),
-      final: finalPrice.toFixed(2)
+      base: prices.base.toFixed(2),
+      final: prices.final.toFixed(2)
     };
   };
 
   const selectedCurrencyObj = currencies.find(c => c.id === selectedCurrency);
   const currencySymbol = selectedCurrencyObj?.symbol || '$';
-  const currencyCode = selectedCurrencyObj?.code || 'USD';
+  const currencyCode = selectedCurrencyObj?.code || selectedCurrencyCode || 'USD';
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
@@ -433,14 +515,32 @@ const VendorCombosTab = ({
                   {language === 'es' ? 'DESACTIVADO' : 'DEACTIVATED'}
                 </div>
               )}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => openEditComboForm(c)}
-                className="absolute top-2 right-2"
-              >
-                <Edit className="h-4 w-4" />
-              </Button>
+              <div className="absolute top-2 right-2 flex gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => openEditComboForm(c)}
+                  disabled={processingComboId === c.id}
+                >
+                  <Edit className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleToggleComboActive(c, !c.is_active)}
+                  disabled={processingComboId === c.id}
+                >
+                  {c.is_active ? <EyeOff className="h-4 w-4 text-red-600" /> : <Eye className="h-4 w-4 text-green-600" />}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleDeleteCombo(c)}
+                  disabled={processingComboId === c.id}
+                >
+                  <Trash2 className="h-4 w-4 text-red-600" />
+                </Button>
+              </div>
 
               <h3 className={`font-bold pr-8 ${isDeactivated ? 'line-through text-gray-500 mt-8' : ''}`}>
                 {language === 'es' ? (c.name_es || c.name) : (c.name_en || c.name_es || c.name)}

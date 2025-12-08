@@ -15,6 +15,12 @@ import {
   ERROR_CODES
 } from './errorHandler';
 import { logActivity } from './activityLogger';
+import { getUserCategoryWithDiscount } from './orderDiscountService';
+
+const isValidUUID = (value) => {
+  if (!value || typeof value !== 'string') return false;
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(value);
+};
 
 const logOrderActivity = async ({ action, entityId, performedBy, description, metadata }) => {
   try {
@@ -670,7 +676,49 @@ export const getUserOrders = async (userId, filters = {}) => {
       throw appError;
     }
 
-    return data || [];
+    const orders = data || [];
+
+    // Enrich orders with category discount and offer info (for accurate UI breakdowns)
+    const categoryInfo = await getUserCategoryWithDiscount(userId);
+    const categoryDiscount = categoryInfo?.enabled
+      ? {
+          category_name: categoryInfo.category,
+          discount_percentage: categoryInfo.discountPercent || 0,
+          discount_description: categoryInfo.categoryDiscount?.description || '',
+          enabled: true
+        }
+      : null;
+
+    const offerIds = Array.from(
+      new Set(
+        orders
+          .map(order => order.offer_id)
+          .filter(id => !!id && isValidUUID(id))
+      )
+    );
+
+    let offersMap = {};
+    if (offerIds.length > 0) {
+      const { data: offersData, error: offersError } = await supabase
+        .from('offers')
+        .select('id, code, discount_type, discount_value, description, is_active')
+        .in('id', offerIds);
+
+      if (!offersError && Array.isArray(offersData)) {
+        offersMap = offersData.reduce((acc, offer) => {
+          acc[offer.id] = offer;
+          return acc;
+        }, {});
+      } else if (offersError) {
+        console.warn('[orderService] Failed to enrich offers for orders', offersError.message);
+      }
+    }
+
+    return orders.map(order => ({
+      ...order,
+      user_category_discount: categoryDiscount && categoryDiscount.enabled ? categoryDiscount : null,
+      offer_info: offersMap[order.offer_id] || null
+    }));
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, {
@@ -754,14 +802,29 @@ export const getOrderById = async (orderId) => {
       // Fetch offer info if offer was applied
       let offerInfo = null;
       if (order.offer_id) {
-        const { data: offer, error: offerError } = await supabase
+        const baseOfferQuery = supabase
           .from('offers')
-          .select('code, discount_type, discount_value, description')
-          .eq('id', order.offer_id)
-          .maybeSingle();
+          .select('id, code, discount_type, discount_value, description, is_active')
+          .limit(1);
+
+        let offer;
+        let offerError;
+
+        if (isValidUUID(order.offer_id)) {
+          ({ data: offer, error: offerError } = await baseOfferQuery
+            .eq('id', order.offer_id)
+            .maybeSingle());
+        } else {
+          // Legacy data may store the coupon code instead of UUID; avoid breaking with a 400 error
+          ({ data: offer, error: offerError } = await baseOfferQuery
+            .eq('code', order.offer_id)
+            .maybeSingle());
+        }
 
         if (!offerError && offer) {
           offerInfo = offer;
+        } else if (offerError) {
+          console.warn('[orderService] Failed to fetch offer info for order', order.id, offerError.message);
         }
       }
 
