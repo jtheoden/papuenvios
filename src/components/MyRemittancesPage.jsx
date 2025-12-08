@@ -44,10 +44,6 @@ const MyRemittancesPage = ({ onNavigate }) => {
   const [imagePreview, setImagePreview] = useState(null);
   const [deliveryProofPreview, setDeliveryProofPreview] = useState(null);
 
-  useEffect(() => {
-    loadRemittances();
-  }, [loadRemittances]);
-
   const loadRemittances = useCallback(async () => {
     setLoading(true);
     try {
@@ -74,6 +70,10 @@ const MyRemittancesPage = ({ onNavigate }) => {
       setLoading(false);
     }
   }, [t]);
+
+  useEffect(() => {
+    loadRemittances();
+  }, [loadRemittances]);
 
   const handleRealtimeRemittance = useCallback(async () => {
     await loadRemittances();
