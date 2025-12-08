@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users, Crown, TrendingDown, Gift, Truck, Upload } from 'lucide-react';
-import { getUserOrders, getOrderById, getAllOrders, validatePayment, rejectPayment, cancelOrderByUser, uploadPaymentProof, markOrderAsDispatched, markOrderAsDelivered, completeOrder, ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderService';
+import { getUserOrders, getOrderById, getAllOrders, validatePayment, rejectPayment, cancelOrderByUser, uploadPaymentProof, markOrderAsDispatched, markOrderAsDelivered, completeOrder, reopenOrder, ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderService';
 import { getUserTestimonial, createTestimonial, updateTestimonial } from '@/lib/testimonialService';
 import { getMyRemittances } from '@/lib/remittanceService';
 import { getHeadingStyle, getTextStyle, getPillStyle, getStatusStyle } from '@/lib/styleUtils';
@@ -208,6 +208,35 @@ const UserPanel = ({ onNavigate }) => {
       setSelectedOrder(null);
     } catch (error) {
       console.error('Error cancelling order:', error);
+    } finally {
+      setProcessingAction(false);
+    }
+  };
+
+  const handleReopenOrder = async (orderId) => {
+    if (!orderId) return;
+
+    // Confirm with user
+    const confirmMessage = language === 'es'
+      ? '¿Estás seguro que deseas reabrir esta orden? Podrás volver a subir un comprobante de pago.'
+      : 'Are you sure you want to reopen this order? You will be able to upload a new payment proof.';
+
+    if (!window.confirm(confirmMessage)) return;
+
+    setProcessingAction(true);
+    try {
+      await reopenOrder(orderId, user.id);
+      await loadUserOrders();
+      // Refresh order details if viewing
+      if (selectedOrder?.id === orderId) {
+        const refreshed = await getOrderById(orderId);
+        setSelectedOrder(refreshed);
+      }
+    } catch (error) {
+      console.error('Error reopening order:', error);
+      alert(language === 'es'
+        ? 'Error al reabrir la orden. Por favor intenta nuevamente.'
+        : 'Error reopening order. Please try again.');
     } finally {
       setProcessingAction(false);
     }
@@ -1172,22 +1201,6 @@ const UserPanel = ({ onNavigate }) => {
                           </div>
                         )}
 
-                        {isRegularUser && categoryDiscountPercent > 0 && (
-                          <div className="p-3 rounded-lg" style={{ backgroundColor: visualSettings.primaryColor ? `${visualSettings.primaryColor}12` : '#ecfdf3' }}>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <TrendingDown className="h-4 w-4" style={{ color: '#16a34a' }} />
-                                <span className="text-sm font-semibold" style={{ color: '#16a34a' }}>
-                                  {language === 'es' ? 'Descuento por categoría' : 'Category discount'} ({categoryDiscountPercent.toFixed(1)}%)
-                                </span>
-                              </div>
-                              <span className="font-semibold" style={{ color: '#16a34a' }}>
-                                -${selectedOrderCategoryDiscountAmount.toFixed(2)}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-
                         <div className="flex justify-between text-sm">
                           <span style={getTextStyle(visualSettings, 'secondary')}>
                             {language === 'es' ? 'Envío' : 'Shipping'}
@@ -1304,6 +1317,34 @@ const UserPanel = ({ onNavigate }) => {
                         >
                           {processingAction ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
                           {language === 'es' ? 'Reintentar pago' : 'Retry payment'}
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* User actions: reopen cancelled order */}
+                    {isRegularUser && selectedOrder.status === 'cancelled' && (
+                      <div className="mt-4 p-4 rounded-lg border-2" style={{ borderColor: visualSettings.primaryColor || '#3b82f6', backgroundColor: `${visualSettings.primaryColor}08` || '#eff6ff' }}>
+                        <div className="flex items-start gap-3 mb-3">
+                          <XCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <p className="font-semibold text-red-600 mb-1">
+                              {language === 'es' ? 'Orden Cancelada' : 'Order Cancelled'}
+                            </p>
+                            <p className="text-sm" style={getTextStyle(visualSettings, 'secondary')}>
+                              {language === 'es'
+                                ? 'Esta orden fue cancelada. Puedes reabrirla para continuar con el proceso de pago.'
+                                : 'This order was cancelled. You can reopen it to continue with the payment process.'}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          onClick={() => handleReopenOrder(selectedOrder.id)}
+                          disabled={processingAction}
+                          className="w-full"
+                          style={{ backgroundColor: visualSettings.primaryColor || '#3b82f6' }}
+                        >
+                          {processingAction ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Package className="h-4 w-4 mr-2" />}
+                          {language === 'es' ? 'Reabrir Orden' : 'Reopen Order'}
                         </Button>
                       </div>
                     )}

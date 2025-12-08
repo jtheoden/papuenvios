@@ -35,7 +35,7 @@ import {
 import {
   getAllOrders,
   startProcessingOrder,
-  markOrderAsShipped,
+  markOrderAsDispatched,
   markOrderAsDelivered,
   completeOrder,
   getDaysInProcessing,
@@ -146,8 +146,8 @@ const AdminOrdersTab = () => {
           case 'processing':
             apiFilters.status = ORDER_STATUS.PROCESSING;
             break;
-          case 'shipped':
-            apiFilters.status = ORDER_STATUS.SHIPPED;
+          case 'dispatched':
+            apiFilters.status = ORDER_STATUS.DISPATCHED;
             break;
           case 'delivered':
             apiFilters.status = ORDER_STATUS.DELIVERED;
@@ -308,8 +308,8 @@ const AdminOrdersTab = () => {
     );
   };
 
-  // Handler: Mark Order as Shipped
-  const handleMarkAsShipped = async (order) => {
+  // Handler: Mark Order as Dispatched
+  const handleMarkAsDispatched = async (order) => {
     showInput(
       t('adminOrders.modals.trackingTitle'),
       t('adminOrders.messages.enterTracking').replace('{orderNumber}', order.order_number),
@@ -317,15 +317,15 @@ const AdminOrdersTab = () => {
       async (trackingInfo) => {
         setActionLoading(order.id);
         try {
-          const result = await markOrderAsShipped(order.id, user.id, trackingInfo);
+          const result = await markOrderAsDispatched(order.id, user.id, trackingInfo);
           if (result.success) {
-            showToast(t('adminOrders.messages.shipSuccess'), 'success');
+            showToast(t('adminOrders.messages.dispatchSuccess'), 'success');
             loadOrders(); // Refresh orders
           } else {
             showToast(`${t('adminOrders.messages.error')}: ${result.error}`, 'error');
           }
         } catch (err) {
-          console.error('Error marking as shipped:', err);
+          console.error('Error marking as dispatched:', err);
           showToast(t('adminOrders.messages.error'), 'error');
         } finally {
           setActionLoading(null);
@@ -369,6 +369,17 @@ const AdminOrdersTab = () => {
   const handleSubmitDeliveryProof = async () => {
     if (!deliveryProofFile || !selectedOrder) {
       showToast(t('adminOrders.messages.selectImage'), 'error');
+      return;
+    }
+
+    // Validate order status - only allow uploading proof for dispatched orders
+    if (selectedOrder.status !== 'dispatched') {
+      showToast(
+        language === 'es'
+          ? `Solo puedes subir evidencia para órdenes despachadas (estado actual: ${selectedOrder.status})`
+          : `You can only upload delivery proof for dispatched orders (current status: ${selectedOrder.status})`,
+        'error'
+      );
       return;
     }
 
@@ -526,7 +537,7 @@ const AdminOrdersTab = () => {
             order={order}
             onView={() => viewOrderDetails(order)}
             onStartProcessing={() => handleStartProcessing(order)}
-            onMarkAsShipped={() => handleMarkAsShipped(order)}
+            onMarkAsDispatched={() => handleMarkAsDispatched(order)}
             onUploadDeliveryProof={() => handleUploadDeliveryProof(order)}
             onCompleteOrder={() => handleCompleteOrder(order)}
             onCancelOrder={() => handleCancelOrder(order)}
@@ -666,7 +677,7 @@ const AdminOrdersTab = () => {
                   <option value="payment_pending">{t('adminOrders.table.paymentStatus.pending')}</option>
                   <option value="payment_validated">{t('adminOrders.table.paymentStatus.validated')}</option>
                   <option value="processing">{t('adminOrders.table.orderStatus.processing')}</option>
-                  <option value="shipped">{t('adminOrders.table.orderStatus.shipped')}</option>
+                  <option value="dispatched">{t('adminOrders.table.orderStatus.dispatched')}</option>
                   <option value="delivered">{t('adminOrders.table.orderStatus.delivered')}</option>
                   <option value="completed">{t('adminOrders.table.orderStatus.completed')}</option>
                   <option value="cancelled">{t('adminOrders.table.orderStatus.cancelled')}</option>

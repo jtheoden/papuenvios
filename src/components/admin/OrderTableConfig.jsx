@@ -150,7 +150,7 @@ function renderOrderStatusBadge(status, row) {
   const statusMap = {
     pending: 'pending',
     processing: 'pending',
-    shipped: 'info',
+    dispatched: 'info',
     delivered: 'success',
     completed: 'success',
     cancelled: 'error'
@@ -160,7 +160,7 @@ function renderOrderStatusBadge(status, row) {
   const labelMap = {
     pending: 'Pendiente',
     processing: 'En proceso',
-    shipped: 'Enviado',
+    dispatched: 'Despachado',
     delivered: 'Entregado',
     completed: 'Completado',
     cancelled: 'Cancelado'
