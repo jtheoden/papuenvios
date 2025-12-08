@@ -64,18 +64,31 @@ const enqueuePayload = (payload, reason = 'pending') => {
 const resolveActor = (providedActor, sessionData) => {
   const sessionUser = sessionData?.session?.user;
   const sessionActor = sessionUser?.email || sessionUser?.id;
+  const sessionUserId = sessionUser?.id;
+
+  const isPlaceholder = !providedActor || ['anonymous', 'vendor_panel'].includes(providedActor);
+
+  // If the caller provided an explicit actor that doesn't match the active session, avoid misattribution
+  if (sessionActor && providedActor && !isPlaceholder && providedActor !== sessionActor) {
+    return {
+      actor: sessionActor,
+      actorSource: 'session_override',
+      originalActor: providedActor,
+      sessionUserId
+    };
+  }
 
   // Prefer explicit actor unless it is a known placeholder
-  if (providedActor && !['anonymous', 'vendor_panel'].includes(providedActor)) {
-    return providedActor;
+  if (providedActor && !isPlaceholder) {
+    return { actor: providedActor, actorSource: 'explicit', sessionUserId };
   }
 
   // Fall back to current session identity when available
   if (sessionActor) {
-    return sessionActor;
+    return { actor: sessionActor, actorSource: 'session', sessionUserId };
   }
 
-  return providedActor || 'anonymous';
+  return { actor: providedActor || 'anonymous', actorSource: 'placeholder', sessionUserId: null };
 };
 
 const buildPayload = ({ action, entityType, entityId, performedBy, description, metadata }) => {
@@ -116,13 +129,23 @@ export const flushQueuedActivityLogs = async () => {
   logMetric('flush_started', { queued: queued.length });
 
   const sessionActor = sessionData.session.user?.email || sessionData.session.user?.id;
+  const sessionUserId = sessionData.session.user?.id;
 
-  const payloads = queued.map(({ _queue_reason, _queued_at, performed_by, ...rest }) => ({
-    ...rest,
-    performed_by: (!performed_by || ['anonymous', 'vendor_panel'].includes(performed_by)) && sessionActor
-      ? sessionActor
-      : performed_by || sessionActor || 'anonymous'
-  }));
+  const payloads = queued.map(({ _queue_reason, _queued_at, _queued_session_user_id, _actor_source, _original_actor, performed_by, ...rest }) => {
+    const isPlaceholder = !performed_by || ['anonymous', 'vendor_panel'].includes(performed_by);
+    const sessionMatchesQueue = _queued_session_user_id && sessionUserId
+      ? _queued_session_user_id === sessionUserId
+      : false;
+
+    const shouldUseSessionActor = isPlaceholder && sessionActor && sessionMatchesQueue;
+
+    return {
+      ...rest,
+      performed_by: shouldUseSessionActor
+        ? sessionActor
+        : performed_by || 'anonymous'
+    };
+  });
 
   const { error } = await supabase.from('activity_logs').insert(payloads);
 
@@ -156,12 +179,18 @@ export const logActivity = async ({
     }
 
     const { data: sessionData } = await supabase.auth.getSession();
-    const resolvedActor = resolveActor(performedBy, sessionData);
-    const payload = buildPayload({ action, entityType, entityId, performedBy: resolvedActor, description, metadata });
+    const resolvedActorInfo = resolveActor(performedBy, sessionData);
+    const payload = buildPayload({ action, entityType, entityId, performedBy: resolvedActorInfo.actor, description, metadata });
+
+    const queueMetadata = {
+      _queued_session_user_id: resolvedActorInfo.sessionUserId || null,
+      _actor_source: resolvedActorInfo.actorSource,
+      _original_actor: resolvedActorInfo.originalActor
+    };
 
     if (!sessionData?.session) {
       console.warn('[activityLogger] No active session, queueing activity');
-      enqueuePayload(payload, 'no_session');
+      enqueuePayload({ ...payload, ...queueMetadata }, 'no_session');
       logMetric('queued', { reason: 'no_session' });
       return;
     }
@@ -172,12 +201,12 @@ export const logActivity = async ({
       // Avoid noisy logs if RLS blocks the request
       if (error.code === '42501') {
         console.warn('[activityLogger] Permission denied when inserting activity');
-        enqueuePayload(payload, 'rls_denied');
+        enqueuePayload({ ...payload, ...queueMetadata }, 'rls_denied');
         logMetric('queued', { reason: 'rls_denied' });
         return;
       }
       console.warn('[activityLogger] Failed to insert activity, queued for retry', error.message);
-      enqueuePayload(payload, 'insert_error');
+      enqueuePayload({ ...payload, ...queueMetadata }, 'insert_error');
       logMetric('queued', { reason: 'insert_error' });
       return;
     }
