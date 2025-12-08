@@ -23,6 +23,7 @@ const ZellePaymentHistoryTab = () => {
 
   // State
   const [transactions, setTransactions] = useState([]);
+  const [zelleAccounts, setZelleAccounts] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -30,13 +31,24 @@ const ZellePaymentHistoryTab = () => {
   // Filters
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [accountFilter, setAccountFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
-  // Fetch transactions on mount
+  // Fetch transactions and accounts on mount
   useEffect(() => {
     fetchTransactions();
+    fetchZelleAccounts();
   }, []);
+
+  const fetchZelleAccounts = async () => {
+    try {
+      const accounts = await zelleService.getAllZelleAccounts();
+      setZelleAccounts(accounts || []);
+    } catch (error) {
+      console.error('Error loading Zelle accounts:', error);
+    }
+  };
 
   const fetchTransactions = async () => {
     setIsLoading(true);
@@ -69,6 +81,11 @@ const ZellePaymentHistoryTab = () => {
         return false;
       }
 
+      // Account filter
+      if (accountFilter && transaction.zelle_account_id !== accountFilter) {
+        return false;
+      }
+
       // Search filter - search by user name, email, account name, or transaction ID
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
@@ -89,10 +106,11 @@ const ZellePaymentHistoryTab = () => {
 
       return true;
     });
-  }, [transactions, statusFilter, typeFilter, searchQuery]);
+  }, [transactions, statusFilter, typeFilter, accountFilter, searchQuery]);
 
   const financialSummary = useMemo(() => {
-    const dataset = filteredTransactions.length ? filteredTransactions : transactions;
+    // Always use filtered transactions for calculations
+    const dataset = filteredTransactions;
     const totalAmount = dataset.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
     const validatedAmount = dataset
       .filter(t => t.status === 'validated')
@@ -104,9 +122,10 @@ const ZellePaymentHistoryTab = () => {
     return {
       total: totalAmount,
       validated: validatedAmount,
-      pending: pendingAmount
+      pending: pendingAmount,
+      count: dataset.length
     };
-  }, [filteredTransactions, transactions]);
+  }, [filteredTransactions]);
 
   // Table columns definition
   const columns = [
@@ -376,6 +395,23 @@ const ZellePaymentHistoryTab = () => {
               </select>
             </div>
 
+            {/* Zelle Account Filter */}
+            <div>
+              <label className="block text-sm font-medium mb-2">{t('zelleHistory.account') || 'Zelle Account'}</label>
+              <select
+                value={accountFilter}
+                onChange={(e) => setAccountFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2"
+              >
+                <option value="">{t('common.all') || 'All'}</option>
+                {zelleAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.account_name || account.email || 'N/A'}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Clear Filters */}
             <div className="flex items-end">
               <button
@@ -383,6 +419,7 @@ const ZellePaymentHistoryTab = () => {
                   setSearchQuery('');
                   setStatusFilter('');
                   setTypeFilter('');
+                  setAccountFilter('');
                 }}
                 className="w-full px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-100 transition-colors text-sm font-medium"
               >

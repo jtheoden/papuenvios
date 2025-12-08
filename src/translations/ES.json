@@ -30,7 +30,10 @@
     "processing": "Procesando...",
     "active": "Activo",
     "inactive": "Inactivo",
-    "notes": "Notas"
+    "notes": "Notas",
+    "view": "Ver",
+    "filters": "Filtros",
+    "clearFilters": "Limpiar Filtros"
   },
   "nav": {
     "home": "Inicio",
@@ -284,6 +287,7 @@
       "adminCannotSendRemittance": "Esta página es solo para usuarios. Los administradores deben usar el panel de gestión de remesas.",
       "amountInfoTitle": "Información de Monto",
       "amountSent": "Monto Enviado:",
+      "noPendingDeliveryProof": "Evidencia de entrega pendiente",
       "toDeliver": "A Entregar:",
       "recipientInfoTitle": "Información del Destinatario",
       "recipientName": "Nombre:",
@@ -604,6 +608,7 @@
       "paymentPending": "Pago Pendiente",
       "paymentValidated": "Pago Validado",
       "processing": "En Procesamiento",
+      "dispatched": "Despachado",
       "shipped": "Enviado",
       "delivered": "Entregado",
       "cancelled": "Cancelado",
@@ -718,6 +723,17 @@
     "free": "Gratis",
     "total": "Total",
     "checkout": "Proceder al Pago",
+    "validation": {
+      "selectRecipient": "Selecciona un destinatario",
+      "selectZelleAccount": "Selecciona una cuenta Zelle"
+    },
+    "coupon": {
+      "enterCode": "Ingresa un código de cupón",
+      "invalid": "Cupón inválido",
+      "applied": "Cupón aplicado",
+      "appliedDescription": "Descuento aplicado exitosamente",
+      "validationError": "Error al validar cupón"
+    },
     "payment": {
       "title": "Realizar Pago",
       "instructionsTitle": "Instrucciones de Pago",
@@ -728,7 +744,8 @@
       "amount": "Monto a Pagar",
       "uploadProof": "Subir Comprobante de Pago",
       "confirm": "Confirmar Pago",
-      "recipientTitle": "Datos de Entrega/Destinatario"
+      "recipientTitle": "Datos de Entrega/Destinatario",
+      "whatsappNotConfigured": "Número de WhatsApp no configurado"
     }
   },
   "auth": {
@@ -763,7 +780,15 @@
       "pending": "Pendiente",
       "validated": "Validado",
       "rejected": "Rechazado"
-    }
+    },
+    "reopenOrder": "Reabrir Orden",
+    "reopenOrderTitle": "¿Reabrir orden cancelada?",
+    "reopenOrderMessage": "Al reabrir esta orden podrás volver a subir un comprobante de pago y continuar con el proceso de compra.",
+    "reopenOrderSuccess": "Orden reabierta exitosamente",
+    "reopenOrderError": "Error al reabrir la orden",
+    "orderCancelled": "Orden Cancelada",
+    "orderCancelledMessage": "Esta orden fue cancelada. Puedes reabrirla para continuar con el proceso de pago.",
+    "reopenOrderButton": "Reabrir Orden"
   },
   "adminOrders": {
     "title": "Historial de Órdenes",
@@ -822,6 +847,7 @@
       "viewDetails": "Ver Detalles",
       "startProcessing": "Iniciar Procesamiento",
       "markAsShipped": "Marcar como Enviado",
+      "markAsDispatched": "Marcar como Despachado",
       "uploadProof": "Subir Evidencia",
       "completeOrder": "Completar Orden",
       "cancelOrder": "Cancelar Orden"
@@ -870,7 +896,8 @@
       "error": "Error",
       "selectImage": "Seleccione una imagen de evidencia",
       "invalidImage": "Por favor seleccione una imagen válida",
-      "imageTooLarge": "El archivo es muy grande. Máximo 5MB"
+      "imageTooLarge": "El archivo es muy grande. Máximo 5MB",
+      "onlyDispatchedOrders": "Solo puedes subir evidencia para órdenes despachadas"
     },
     "modals": {
       "startTitle": "Comenzar Procesamiento",
@@ -954,7 +981,8 @@
       "noOffers": "No se encontraron ofertas",
       "invalidCode": "Por favor ingrese un código válido",
       "codeAlreadyExists": "Este código ya existe",
-      "requiredFields": "Por favor completa todos los campos requeridos"
+      "requiredFields": "Por favor completa todos los campos requeridos",
+      "codeCopied": "Código copiado al portapapeles"
     },
     "activity": {
       "create": "Oferta creada",
@@ -1118,7 +1146,8 @@
     "recipientCreated": "Destinatario creado exitosamente",
     "recipientUpdated": "Destinatario actualizado exitosamente",
     "recipientDeleted": "Destinatario eliminado exitosamente",
-    "fillNameAndPhone": "Por favor completa el nombre y teléfono del destinatario"
+    "fillNameAndPhone": "Por favor completa el nombre y teléfono del destinatario",
+    "updateButton": "Actualizar Destinatario"
   },
   "zelle": {
     "accounts": "Cuentas Zelle",

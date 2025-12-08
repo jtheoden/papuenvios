@@ -298,7 +298,7 @@ const CartPage = ({ onNavigate }) => {
     if (!selectedRecipientData) {
       toast({
         title: t('common.error'),
-        description: language === 'es' ? 'Selecciona un destinatario' : 'Select a recipient',
+        description: t('cart.validation.selectRecipient'),
         variant: 'destructive'
       });
       return;
@@ -307,7 +307,7 @@ const CartPage = ({ onNavigate }) => {
     if (!selectedZelle) {
       toast({
         title: t('common.error'),
-        description: language === 'es' ? 'Selecciona una cuenta Zelle' : 'Select a Zelle account',
+        description: t('cart.validation.selectZelleAccount'),
         variant: 'destructive'
       });
       return;
@@ -319,7 +319,7 @@ const CartPage = ({ onNavigate }) => {
   // Apply coupon code
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) {
-      setCouponError(language === 'es' ? 'Ingresa un código de cupón' : 'Enter a coupon code');
+      setCouponError(t('cart.coupon.enterCode'));
       return;
     }
 
@@ -342,7 +342,7 @@ const CartPage = ({ onNavigate }) => {
             usage: validation.usage || null
           }
         });
-        setCouponError(validation.reason || (language === 'es' ? 'Cupón inválido' : 'Invalid coupon'));
+        setCouponError(validation.reason || t('cart.coupon.invalid'));
         setAppliedOffer(null);
         setValidatingCoupon(false);
         return;
@@ -367,8 +367,8 @@ const CartPage = ({ onNavigate }) => {
         }
       });
       toast({
-        title: language === 'es' ? '✅ Cupón aplicado' : '✅ Coupon applied',
-        description: `${validation.offer.discount_value}${validation.offer.discount_type === 'percentage' ? '%' : '$'} ${language === 'es' ? 'descuento' : 'discount'}`
+        title: t('cart.coupon.applied'),
+        description: t('cart.coupon.appliedDescription')
       });
     } catch (error) {
       console.error('Error validating coupon:', error);
@@ -380,7 +380,7 @@ const CartPage = ({ onNavigate }) => {
         description: 'Coupon validation failed',
         metadata: { error: error.message }
       });
-      setCouponError(error.message || (language === 'es' ? 'Error al validar cupón' : 'Error validating coupon'));
+      setCouponError(error.message || t('cart.coupon.validationError'));
       setAppliedOffer(null);
     }
 
@@ -407,9 +407,7 @@ const CartPage = ({ onNavigate }) => {
     if (!whatsappTarget) {
       toast({
         title: t('common.error'),
-        description: language === 'es'
-          ? 'Número de WhatsApp no configurado'
-          : 'WhatsApp number not configured',
+        description: t('cart.payment.whatsappNotConfigured'),
         variant: 'destructive'
       });
       return;

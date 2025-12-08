@@ -84,16 +84,22 @@ const MyRecipientsPage = ({ onNavigate }) => {
   };
 
   const loadProvinces = async () => {
-    const result = await getCubanProvinces();
-    if (result.success) {
-      setProvinces(result.provinces);
+    try {
+      const provinces = await getCubanProvinces();
+      setProvinces(provinces || []);
+    } catch (error) {
+      console.error('Error loading provinces:', error);
+      setProvinces([]);
     }
   };
 
   const loadMunicipalities = async (province) => {
-    const result = await getMunicipalitiesByProvince(province);
-    if (result.success) {
-      setMunicipalities(result.municipalities);
+    try {
+      const municipalities = await getMunicipalitiesByProvince(province);
+      setMunicipalities(municipalities || []);
+    } catch (error) {
+      console.error('Error loading municipalities:', error);
+      setMunicipalities([]);
     }
   };
 

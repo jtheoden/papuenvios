@@ -150,11 +150,14 @@ const AdminOffersTab = () => {
           // Get unique users who used coupons
           const { data: usageData, error: usageError } = await supabase
             .from('offer_usage')
-            .select('user_id')
-            .distinct();
+            .select('user_id');
 
-          const uniqueUsers = usageError ? 0 : (usageData?.length || 0);
+          // Extract unique user IDs
+          const uniqueUserIds = usageError || !usageData
+            ? []
+            : [...new Set(usageData.map(u => u.user_id))];
 
+          const uniqueUsers = uniqueUserIds.length;
           const totalUses = Object.values(statsMap).reduce((sum, stat) => sum + stat.totalUses, 0);
           const activeCount = (data || []).filter(o => o.is_active).length;
 
@@ -185,8 +188,8 @@ const AdminOffersTab = () => {
     } catch (err) {
       console.error('Error loading offers:', err);
       toast({
-        title: language === 'es' ? '❌ Error' : '❌ Error',
-        description: language === 'es' ? 'Error al cargar ofertas' : 'Error loading offers'
+        title: t('common.error'),
+        description: t('common.error')
       });
     } finally {
       setLoading(false);
@@ -199,16 +202,16 @@ const AdminOffersTab = () => {
     // Validation
     if (!formData.code.trim()) {
       toast({
-        title: language === 'es' ? '⚠️ Validación' : '⚠️ Validation',
-        description: language === 'es' ? 'El código es requerido' : 'Code is required'
+        title: t('offers.messages.invalidCode'),
+        description: t('offers.messages.invalidCode')
       });
       return;
     }
 
     if (!formData.discountValue || isNaN(formData.discountValue) || parseFloat(formData.discountValue) <= 0) {
       toast({
-        title: language === 'es' ? '⚠️ Validación' : '⚠️ Validation',
-        description: language === 'es' ? 'El descuento debe ser mayor a 0' : 'Discount must be greater than 0'
+        title: t('offers.messages.requiredFields'),
+        description: t('offers.messages.requiredFields')
       });
       return;
     }
@@ -239,8 +242,8 @@ const AdminOffersTab = () => {
         if (error) throw error;
 
         toast({
-          title: language === 'es' ? '✅ Actualizado' : '✅ Updated',
-          description: language === 'es' ? 'Oferta actualizada exitosamente' : 'Offer updated successfully'
+          title: t('common.success'),
+          description: t('offers.messages.offerUpdated')
         });
 
         recordActivity('update', { ...offerData, id: editingOffer.id });
@@ -253,8 +256,8 @@ const AdminOffersTab = () => {
         if (error) throw error;
 
         toast({
-          title: language === 'es' ? '✅ Creado' : '✅ Created',
-          description: language === 'es' ? 'Oferta creada exitosamente' : 'Offer created successfully'
+          title: t('common.success'),
+          description: t('offers.messages.offerCreated')
         });
 
         recordActivity('create', offerData);
@@ -266,8 +269,8 @@ const AdminOffersTab = () => {
     } catch (err) {
       console.error('Error saving offer:', err);
       toast({
-        title: language === 'es' ? '❌ Error' : '❌ Error',
-        description: language === 'es' ? 'Error al guardar la oferta' : 'Error saving offer'
+        title: t('common.error'),
+        description: t('common.error')
       });
     }
   };
@@ -287,8 +290,8 @@ const AdminOffersTab = () => {
       if (error) throw error;
 
       toast({
-        title: language === 'es' ? '✅ Eliminado' : '✅ Deleted',
-        description: language === 'es' ? 'Oferta eliminada exitosamente' : 'Offer deleted successfully'
+        title: t('common.success'),
+        description: t('offers.messages.offerDeleted')
       });
 
       recordActivity('delete', offerToDelete);
@@ -297,8 +300,8 @@ const AdminOffersTab = () => {
     } catch (err) {
       console.error('Error deleting offer:', err);
       toast({
-        title: language === 'es' ? '❌ Error' : '❌ Error',
-        description: language === 'es' ? 'Error al eliminar la oferta' : 'Error deleting offer'
+        title: t('common.error'),
+        description: t('common.error')
       });
     }
   };
@@ -371,8 +374,8 @@ const AdminOffersTab = () => {
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
     toast({
-      title: language === 'es' ? '✅ Copiado' : '✅ Copied',
-      description: language === 'es' ? 'Código copiado al portapapeles' : 'Code copied to clipboard'
+      title: t('common.success'),
+      description: t('offers.messages.codeCopied')
     });
   };
 
