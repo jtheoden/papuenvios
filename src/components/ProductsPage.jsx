@@ -228,8 +228,8 @@ const ProductsPage = ({ onNavigate }) => {
     (combo.products || []).forEach(productId => {
       const product = products.find(p => p.id === productId);
       if (product) {
-        // Use final_price to get price with margin already applied
-        const basePrice = parseFloat(product.final_price || product.base_price || 0);
+        // Use raw base price to avoid double-applying product margins
+        const basePrice = parseFloat(product.base_price || 0);
         const productCurrencyId = product.base_currency_id;
         const quantity = combo.productQuantities?.[productId] || 1;
 
@@ -245,7 +245,11 @@ const ProductsPage = ({ onNavigate }) => {
 
     // Apply combo profit margin from database (combo.final_price if available)
     // OR calculate if not stored
-    const comboFinalPrice = combo.final_price || (totalBasePrice * (1 + (parseFloat(combo.profitMargin || financialSettings.comboProfit) / 100)));
+    const profitMargin = parseFloat(combo.profitMargin || financialSettings.comboProfit) || 0;
+    const comboBaseAmount = totalBasePrice > 0
+      ? totalBasePrice
+      : parseFloat(combo.baseTotalPrice || 0);
+    const comboFinalPrice = combo.final_price || (comboBaseAmount * (1 + profitMargin / 100));
 
     const breakdown = buildDiscountBreakdown({ amount: comboFinalPrice, categoryPercent: userCategoryDiscount });
 
@@ -263,7 +267,7 @@ const ProductsPage = ({ onNavigate }) => {
     (combo.products || []).forEach(productId => {
       const product = products.find(p => p.id === productId);
       if (product) {
-        const basePrice = parseFloat(product.final_price || product.base_price || 0);
+        const basePrice = parseFloat(product.base_price || 0);
         const productCurrencyId = product.base_currency_id;
         const quantity = combo.productQuantities?.[productId] || 1;
 
@@ -276,7 +280,11 @@ const ProductsPage = ({ onNavigate }) => {
       }
     });
 
-    const comboFinalPrice = combo.final_price || (totalBasePrice * (1 + (parseFloat(combo.profitMargin || financialSettings.comboProfit) / 100)));
+    const profitMargin = parseFloat(combo.profitMargin || financialSettings.comboProfit) || 0;
+    const comboBaseAmount = totalBasePrice > 0
+      ? totalBasePrice
+      : parseFloat(combo.baseTotalPrice || 0);
+    const comboFinalPrice = combo.final_price || (comboBaseAmount * (1 + profitMargin / 100));
     const breakdown = buildDiscountBreakdown({ amount: comboFinalPrice, categoryPercent: userCategoryDiscount });
 
     return {
