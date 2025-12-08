@@ -61,6 +61,23 @@ const enqueuePayload = (payload, reason = 'pending') => {
   writeQueue(queue);
 }; 
 
+const resolveActor = (providedActor, sessionData) => {
+  const sessionUser = sessionData?.session?.user;
+  const sessionActor = sessionUser?.email || sessionUser?.id;
+
+  // Prefer explicit actor unless it is a known placeholder
+  if (providedActor && !['anonymous', 'vendor_panel'].includes(providedActor)) {
+    return providedActor;
+  }
+
+  // Fall back to current session identity when available
+  if (sessionActor) {
+    return sessionActor;
+  }
+
+  return providedActor || 'anonymous';
+};
+
 const buildPayload = ({ action, entityType, entityId, performedBy, description, metadata }) => {
   const metadataPayload = safeMetadata(metadata) || {};
 
@@ -98,7 +115,16 @@ export const flushQueuedActivityLogs = async () => {
 
   logMetric('flush_started', { queued: queued.length });
 
-  const { error } = await supabase.from('activity_logs').insert(queued.map(({ _queue_reason, _queued_at, ...rest }) => rest));
+  const sessionActor = sessionData.session.user?.email || sessionData.session.user?.id;
+
+  const payloads = queued.map(({ _queue_reason, _queued_at, performed_by, ...rest }) => ({
+    ...rest,
+    performed_by: (!performed_by || ['anonymous', 'vendor_panel'].includes(performed_by)) && sessionActor
+      ? sessionActor
+      : performed_by || sessionActor || 'anonymous'
+  }));
+
+  const { error } = await supabase.from('activity_logs').insert(payloads);
 
   if (error) {
     if (error.code === '42501') {
@@ -129,8 +155,9 @@ export const logActivity = async ({
       return;
     }
 
-    const payload = buildPayload({ action, entityType, entityId, performedBy, description, metadata });
     const { data: sessionData } = await supabase.auth.getSession();
+    const resolvedActor = resolveActor(performedBy, sessionData);
+    const payload = buildPayload({ action, entityType, entityId, performedBy: resolvedActor, description, metadata });
 
     if (!sessionData?.session) {
       console.warn('[activityLogger] No active session, queueing activity');
