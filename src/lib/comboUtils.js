@@ -94,6 +94,60 @@ export const calculateComboPrices = (
 };
 
 /**
+ * Compute combo pricing using stored base totals (when available) and
+ * a caller-provided currency converter to keep user/admin views in sync.
+ *
+ * @param {Object} params
+ * @param {Object} params.combo - Combo object (expects base_total_price/profit_margin)
+ * @param {Array} [params.products=[]] - Product catalog for price lookups
+ * @param {Function} params.convert - Conversion fn(amount, fromCurrencyId, toCurrencyId)
+ * @param {string} params.selectedCurrencyId - Target currency UUID
+ * @param {string} params.baseCurrencyId - Base currency UUID
+ * @param {number} [params.defaultProfitMargin=0] - Default combo margin when absent
+ * @returns {{ basePrice: number, finalPrice: number }}
+ */
+export const computeComboPricing = ({
+  combo,
+  products = [],
+  convert,
+  selectedCurrencyId,
+  baseCurrencyId,
+  defaultProfitMargin = 0
+}) => {
+  if (!combo) return { basePrice: 0, finalPrice: 0 };
+
+  const storedBaseTotal = parseFloat(combo.baseTotalPrice ?? combo.base_total_price ?? 0) || 0;
+  const profitMargin = parseFloat(combo.profitMargin ?? combo.profit_margin ?? defaultProfitMargin) || 0;
+
+  // Normalize product prices to base currency when possible to avoid drift
+  let computedBaseTotal = 0;
+  (combo.products || []).forEach(productId => {
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+
+    const quantity = combo.productQuantities?.[productId] || 1;
+    const basePrice = parseFloat(product.base_price ?? 0) || 0;
+
+    let normalizedPrice = basePrice;
+    if (convert && baseCurrencyId && product.base_currency_id && product.base_currency_id !== baseCurrencyId) {
+      normalizedPrice = convert(basePrice, product.base_currency_id, baseCurrencyId);
+    }
+
+    computedBaseTotal += normalizedPrice * quantity;
+  });
+
+  const baseTotal = computedBaseTotal > 0 ? computedBaseTotal : storedBaseTotal;
+  const baseInSelected = convert && selectedCurrencyId && baseCurrencyId && selectedCurrencyId !== baseCurrencyId
+    ? convert(baseTotal, baseCurrencyId, selectedCurrencyId)
+    : baseTotal;
+
+  const roundedBase = Math.round((baseInSelected || 0) * 100) / 100;
+  const finalPrice = Math.round(roundedBase * (1 + profitMargin / 100) * 100) / 100;
+
+  return { basePrice: roundedBase, finalPrice };
+};
+
+/**
  * Check for stock issues in combo products
  * @param {object} combo - Combo object
  * @param {array} products - Available products

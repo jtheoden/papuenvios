@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, Edit, Save, AlertCircle, AlertTriangle, Box, Trash2, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -6,7 +6,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { createCombo, updateCombo as updateComboDB, deleteCombo, setComboActiveState } from '@/lib/comboService';
-import { calculateComboPrices, checkComboStockIssues } from '@/lib/comboUtils';
+import { checkComboStockIssues, computeComboPricing } from '@/lib/comboUtils';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { logActivity } from '@/lib/activityLogger';
 
@@ -38,6 +38,11 @@ const VendorCombosTab = ({
     }, {});
   }, [currencies]);
 
+  const baseCurrencyId = useMemo(() => {
+    const baseCurrency = (currencies || []).find(c => c.is_base);
+    return baseCurrency?.id;
+  }, [currencies]);
+
   const baseCurrencyCode = useMemo(() => {
     const baseCurrency = (currencies || []).find(c => c.is_base);
     return baseCurrency?.code || 'USD';
@@ -45,19 +50,17 @@ const VendorCombosTab = ({
 
   const selectedCurrencyCode = currencyCodeById[selectedCurrency] || baseCurrencyCode;
 
-  const normalizedExchangeRates = useMemo(() => {
-    const map = {};
-    Object.entries(exchangeRates || {}).forEach(([key, rate]) => {
-      const [fromId, toId] = key.split('-');
-      const fromCode = currencyCodeById[fromId];
-      const toCode = currencyCodeById[toId];
+  const convertPrice = useCallback((amount, fromCurrencyId, toCurrencyId) => {
+    if (!amount || !fromCurrencyId || !toCurrencyId || fromCurrencyId === toCurrencyId) return amount;
 
-      if (fromCode && toCode) {
-        map[`${fromCode}/${toCode}`] = rate;
-      }
-    });
-    return map;
-  }, [currencyCodeById, exchangeRates]);
+    const direct = exchangeRates?.[`${fromCurrencyId}-${toCurrencyId}`];
+    if (direct) return amount * direct;
+
+    const inverse = exchangeRates?.[`${toCurrencyId}-${fromCurrencyId}`];
+    if (inverse) return amount / inverse;
+
+    return amount;
+  }, [exchangeRates]);
 
   const openNewComboForm = () => {
     setComboForm({
@@ -291,17 +294,18 @@ const VendorCombosTab = ({
   const getComboCalculatedPrices = (combo) => {
     if (!combo) return { base: 0, final: 0 };
 
-    const prices = calculateComboPrices(
+    const prices = computeComboPricing({
       combo,
       products,
-      normalizedExchangeRates,
-      selectedCurrencyCode,
-      baseCurrencyCode
-    );
+      convert: convertPrice,
+      selectedCurrencyId: selectedCurrency || baseCurrencyId,
+      baseCurrencyId,
+      defaultProfitMargin: financialSettings.comboProfit
+    });
 
     return {
-      base: prices.base.toFixed(2),
-      final: prices.final.toFixed(2)
+      base: prices.basePrice.toFixed(2),
+      final: prices.finalPrice.toFixed(2)
     };
   };
 
