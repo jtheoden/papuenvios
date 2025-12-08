@@ -44,12 +44,11 @@ export const useRealtimeSubscription = ({
       try {
         const sanitizedFilter =
           typeof filter === 'string' && filter.trim().length > 0 ? filter.trim() : null;
+        const effectiveFilter = sanitizedFilter ?? 'id=not.is.null';
 
         // Create channel name (unique per table/filter/event to avoid collisions)
         const uniqueToken = Math.random().toString(36).slice(2, 8);
-        const channelName = sanitizedFilter
-          ? `realtime:${table}:${event}:${sanitizedFilter}:${uniqueToken}`
-          : `realtime:${table}:${event}:${uniqueToken}`;
+        const channelName = `realtime:${table}:${event}:${effectiveFilter}:${uniqueToken}`;
 
         // Build subscription
         const changeOptions = {
@@ -58,9 +57,7 @@ export const useRealtimeSubscription = ({
           table: table
         };
 
-        if (sanitizedFilter) {
-          changeOptions.filter = sanitizedFilter;
-        }
+        changeOptions.filter = effectiveFilter;
 
         let subscription = supabase
           .channel(channelName)
