@@ -79,10 +79,13 @@ const UserPanel = ({ onNavigate }) => {
     console.log('[UserPanel] Loading orders for role:', userRole);
     setLoading(true);
     try {
-      // Admin/super_admin see all pending orders, regular users see their own orders
+      // Admin/super_admin see orders needing attention (pending payment, proof uploaded, or rejected)
+      // Regular users see their own orders
       if (userRole === 'admin' || userRole === 'super_admin') {
-        console.log('[UserPanel] Loading pending orders for admin');
-        const orders = await getAllOrders({ payment_status: 'pending' });
+        console.log('[UserPanel] Loading orders needing admin attention');
+        // Fetch all orders with pending status (regardless of payment_status)
+        // This includes: proof_uploaded (needs validation), pending (waiting for proof), rejected (needs retry)
+        const orders = await getAllOrders({ status: 'pending' });
         console.log('[UserPanel] Admin orders result:', orders);
         setOrders(orders || []);
       } else {
@@ -1062,7 +1065,7 @@ const UserPanel = ({ onNavigate }) => {
                           </span>
                         </div>
 
-                        {/* Discount Section */}
+                        {/* Discount Section - Enhanced for Admins */}
                         {selectedOrder.discount_amount > 0 && (
                           <div className="p-3 rounded-lg" style={{ backgroundColor: visualSettings.primaryColor ? `${visualSettings.primaryColor}15` : '#dcfce7' }}>
                             <div className="flex items-center justify-between">
@@ -1076,11 +1079,54 @@ const UserPanel = ({ onNavigate }) => {
                                 -${parseFloat(selectedOrder.discount_amount).toFixed(2)}
                               </span>
                             </div>
-                            {selectedOrder.offer_code && (
-                              <p className="text-xs mt-2" style={{ color: '#16a34a' }}>
-                                {language === 'es' ? 'Cupón:' : 'Coupon:'} <code className="font-mono font-bold">{selectedOrder.offer_code}</code>
-                              </p>
+                            {selectedOrder.offer_info && (
+                              <div className="mt-2 pt-2 border-t border-green-200">
+                                <p className="text-xs font-medium" style={{ color: '#16a34a' }}>
+                                  {language === 'es' ? 'Cupón aplicado:' : 'Coupon applied:'} <code className="font-mono font-bold">{selectedOrder.offer_info.code}</code>
+                                </p>
+                                {selectedOrder.offer_info.description && (
+                                  <p className="text-xs mt-1" style={{ color: '#059669' }}>
+                                    {selectedOrder.offer_info.description}
+                                  </p>
+                                )}
+                                <p className="text-xs mt-1" style={{ color: '#059669' }}>
+                                  {selectedOrder.offer_info.discount_type === 'percentage'
+                                    ? `${selectedOrder.offer_info.discount_value}% ${language === 'es' ? 'de descuento' : 'discount'}`
+                                    : `$${selectedOrder.offer_info.discount_value} ${language === 'es' ? 'de descuento' : 'discount'}`
+                                  }
+                                </p>
+                              </div>
                             )}
+                          </div>
+                        )}
+
+                        {/* Category Discount Section - Show for Admins */}
+                        {(userRole === 'admin' || userRole === 'super_admin') && selectedOrder.user_category_discount && selectedOrder.user_category_discount.enabled && (
+                          <div className="p-3 rounded-lg" style={{ backgroundColor: visualSettings.accentColor ? `${visualSettings.accentColor}12` : '#f3e8ff' }}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Crown className="h-4 w-4" style={{ color: '#9333ea' }} />
+                                <span className="text-sm font-semibold" style={{ color: '#9333ea' }}>
+                                  {language === 'es' ? 'Descuento de Categoría' : 'Category Discount'}
+                                </span>
+                              </div>
+                              <span className="font-semibold" style={{ color: '#9333ea' }}>
+                                {selectedOrder.user_category_discount.discount_percentage}%
+                              </span>
+                            </div>
+                            <div className="mt-2 pt-2 border-t border-purple-200">
+                              <p className="text-xs font-medium" style={{ color: '#7c3aed' }}>
+                                {language === 'es' ? 'Categoría:' : 'Category:'} <span className="font-bold uppercase">{selectedOrder.user_category_discount.category_name}</span>
+                              </p>
+                              {selectedOrder.user_category_discount.discount_description && (
+                                <p className="text-xs mt-1" style={{ color: '#7c3aed' }}>
+                                  {selectedOrder.user_category_discount.discount_description}
+                                </p>
+                              )}
+                              <p className="text-xs mt-1 font-semibold" style={{ color: '#7c3aed' }}>
+                                {language === 'es' ? 'Ahorro:' : 'Savings:'} -${((parseFloat(selectedOrder.subtotal) * selectedOrder.user_category_discount.discount_percentage) / 100).toFixed(2)}
+                              </p>
+                            </div>
                           </div>
                         )}
 
@@ -1252,7 +1298,7 @@ const UserPanel = ({ onNavigate }) => {
                     {(userRole === 'admin' || userRole === 'super_admin') && selectedOrder.status === 'processing' && (
                       <div className="mt-4 p-4 rounded-lg border" style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}>
                         <p className="font-semibold mb-2" style={getTextStyle(visualSettings, 'primary')}>
-                          {language === 'es' ? 'Marcar como enviado' : 'Mark as shipped'}
+                          {language === 'es' ? 'Marcar como despachado' : 'Mark as dispatched'}
                         </p>
                         <input
                           value={trackingInfo}
@@ -1262,17 +1308,17 @@ const UserPanel = ({ onNavigate }) => {
                           style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}
                         />
                         <Button
-                          onClick={handleMarkShipped}
+                          onClick={handleMarkDispatched}
                           disabled={processingAction}
                           className="bg-blue-600 hover:bg-blue-700 text-white"
                         >
                           {processingAction ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Truck className="h-4 w-4 mr-2" />}
-                          {language === 'es' ? 'Enviar pedido' : 'Ship order'}
+                          {language === 'es' ? 'Despachar pedido' : 'Dispatch order'}
                         </Button>
                       </div>
                     )}
 
-                    {(userRole === 'admin' || userRole === 'super_admin') && selectedOrder.status === 'shipped' && (
+                    {(userRole === 'admin' || userRole === 'super_admin') && selectedOrder.status === 'dispatched' && (
                       <div className="mt-4 p-4 rounded-lg border" style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}>
                         <p className="font-semibold mb-2" style={getTextStyle(visualSettings, 'primary')}>
                           {language === 'es' ? 'Confirmar entrega' : 'Confirm delivery'}

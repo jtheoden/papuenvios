@@ -717,20 +717,60 @@ export const getOrderById = async (orderId) => {
       throw createNotFoundError('Order', orderId);
     }
 
-    // Enrich order with user profile data if order exists
+    // Enrich order with user profile, category, and offer data if order exists
     if (order && order.user_id) {
+      // Fetch user profile
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
         .select('user_id, full_name, email')
         .eq('user_id', order.user_id)
         .single();
 
-      if (!profileError && profile) {
-        return {
-          ...order,
-          user_profiles: profile
-        };
+      // Fetch user category with discount info
+      const { data: userCategory, error: categoryError } = await supabase
+        .from('user_categories')
+        .select('category_name')
+        .eq('user_id', order.user_id)
+        .maybeSingle();
+
+      let categoryDiscount = null;
+      if (!categoryError && userCategory) {
+        const { data: discount, error: discountError } = await supabase
+          .from('category_discounts')
+          .select('discount_percentage, discount_description, enabled')
+          .eq('category_name', userCategory.category_name)
+          .maybeSingle();
+
+        if (!discountError && discount) {
+          categoryDiscount = {
+            category_name: userCategory.category_name,
+            discount_percentage: discount.discount_percentage || 0,
+            discount_description: discount.discount_description,
+            enabled: discount.enabled
+          };
+        }
       }
+
+      // Fetch offer info if offer was applied
+      let offerInfo = null;
+      if (order.offer_id) {
+        const { data: offer, error: offerError } = await supabase
+          .from('offers')
+          .select('code, discount_type, discount_value, description')
+          .eq('id', order.offer_id)
+          .maybeSingle();
+
+        if (!offerError && offer) {
+          offerInfo = offer;
+        }
+      }
+
+      return {
+        ...order,
+        user_profiles: profile || null,
+        user_category_discount: categoryDiscount,
+        offer_info: offerInfo
+      };
     }
 
     return order;

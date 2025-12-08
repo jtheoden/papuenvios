@@ -219,13 +219,25 @@ const CartPage = ({ onNavigate }) => {
   };
 
   const updateShippingCost = async (provinceName) => {
+    if (!provinceName) {
+      console.log('[CartPage] No province provided for shipping calculation');
+      setShippingCost(0);
+      return;
+    }
+
+    console.log('[CartPage] Calculating shipping for province:', provinceName, 'subtotal:', subtotal);
     try {
       const result = await calculateShippingCost(provinceName, subtotal);
+      console.log('[CartPage] Shipping calculation result:', result);
       if (result.success) {
         setShippingCost(result.cost);
+        console.log('[CartPage] Shipping cost set to:', result.cost);
+      } else {
+        console.warn('[CartPage] Shipping calculation failed:', result.error);
+        setShippingCost(0);
       }
     } catch (error) {
-      console.error('Error calculating shipping:', error);
+      console.error('[CartPage] Error calculating shipping:', error);
       setShippingCost(0);
     }
   };
