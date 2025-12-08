@@ -132,7 +132,7 @@ const RecipientSelector = React.forwardRef((
     if (!formData.full_name || !formData.phone) {
       toast({
         title: t('common.error'),
-        description: language === 'es' ? 'Nombre y teléfono requeridos' : 'Name and phone required',
+        description: t('recipients.fillNameAndPhone'),
         variant: 'destructive'
       });
       return;
@@ -181,7 +181,7 @@ const RecipientSelector = React.forwardRef((
 
         toast({
           title: t('common.success'),
-          description: language === 'es' ? 'Destinatario creado' : 'Recipient created'
+          description: t('recipients.recipientCreated')
         });
       }
 
@@ -206,7 +206,7 @@ const RecipientSelector = React.forwardRef((
     } catch (error) {
       toast({
         title: t('common.error'),
-        description: error.message || (language === 'es' ? 'Error al crear destinatario' : 'Error creating recipient'),
+        description: error.message || t('common.error'),
         variant: 'destructive'
       });
     } finally {

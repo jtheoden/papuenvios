@@ -931,7 +931,7 @@ const AdminRemittancesTab = () => {
                           <div className="bg-gray-50 rounded-lg border border-green-200 p-2">
                             <img
                               src={deliveryProofSignedUrl}
-                              alt="Evidencia de entrega"
+                              alt={t('remittances.user.deliveryEvidenceTitle')}
                               className="w-full h-auto rounded-lg max-h-[400px] object-contain"
                               onError={(e) => {
                                 e.target.style.display = 'none';
@@ -940,7 +940,7 @@ const AdminRemittancesTab = () => {
                             />
                             <div className="hidden flex-col items-center justify-center p-4 text-gray-500">
                               <FileText className="w-8 h-8 mb-2" />
-                              <p className="text-xs text-center">No se pudo cargar la imagen</p>
+                              <p className="text-xs text-center">{t('remittances.user.imageLoadError')}</p>
                             </div>
                           </div>
                         ) : (
@@ -952,7 +952,7 @@ const AdminRemittancesTab = () => {
                     ) : (
                       <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                         <p className="text-sm text-green-800 font-medium">
-                          Evidencia de entrega pendiente
+                          {t('remittances.admin.noPendingDeliveryProof')}
                         </p>
                       </div>
                     )}

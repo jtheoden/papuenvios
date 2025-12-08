@@ -44,6 +44,7 @@ import {
 import { ORDER_STATUS, PAYMENT_STATUS, ITEM_TYPES } from '@/lib/constants';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRealtimeOrders } from '@/hooks/useRealtimeSubscription';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import OrderActionButtons from '@/components/admin/OrderActionButtons';
 import { getTableColumns, getModalColumns } from '@/components/admin/OrderTableConfig';
@@ -56,23 +57,23 @@ import {
 import ToastNotification from '@/components/ToastNotification';
 
 // Helper functions
-const getStatusText = (status, paymentStatus, language = 'es') => {
+const getStatusText = (status, paymentStatus, t) => {
   if (paymentStatus === PAYMENT_STATUS.VALIDATED) {
-    return language === 'es' ? 'Validado' : 'Validated';
+    return t('adminOrders.stats.validated');
   }
   if (paymentStatus === PAYMENT_STATUS.REJECTED) {
-    return language === 'es' ? 'Rechazado' : 'Rejected';
+    return t('adminOrders.stats.rejected');
   }
   if (paymentStatus === PAYMENT_STATUS.PENDING) {
-    return language === 'es' ? 'Pendiente' : 'Pending';
+    return t('adminOrders.stats.pending');
   }
   if (status === ORDER_STATUS.PROCESSING) {
-    return language === 'es' ? 'En proceso' : 'Processing';
+    return t('adminOrders.table.orderStatus.processing');
   }
   if (status === ORDER_STATUS.COMPLETED) {
-    return language === 'es' ? 'Completado' : 'Completed';
+    return t('adminOrders.stats.completed');
   }
-  return language === 'es' ? 'Pendiente' : 'Pending';
+  return t('adminOrders.stats.pending');
 };
 
 const getStatusIcon = (status, paymentStatus) => {
@@ -125,6 +126,16 @@ const AdminOrdersTab = () => {
   useEffect(() => {
     loadOrders();
   }, []);
+
+  // Real-time subscription for order updates
+  useRealtimeOrders({
+    enabled: true,
+    onUpdate: (payload) => {
+      console.log('[Realtime] Order update:', payload.eventType);
+      // Reload orders when any change occurs
+      loadOrders();
+    }
+  });
 
   const loadOrders = async () => {
     setLoading(true);
@@ -374,12 +385,7 @@ const AdminOrdersTab = () => {
 
     // Validate order status - only allow uploading proof for dispatched orders
     if (selectedOrder.status !== 'dispatched') {
-      showToast(
-        language === 'es'
-          ? `Solo puedes subir evidencia para órdenes despachadas (estado actual: ${selectedOrder.status})`
-          : `You can only upload delivery proof for dispatched orders (current status: ${selectedOrder.status})`,
-        'error'
-      );
+      showToast(t('adminOrders.messages.onlyDispatchedOrders'), 'error');
       return;
     }
 

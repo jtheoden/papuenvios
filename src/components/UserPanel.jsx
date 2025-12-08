@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
+import { useModal } from '@/contexts/ModalContext';
 import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users, Crown, TrendingDown, Gift, Truck, Upload } from 'lucide-react';
 import { getUserOrders, getOrderById, getAllOrders, validatePayment, rejectPayment, cancelOrderByUser, uploadPaymentProof, markOrderAsDispatched, markOrderAsDelivered, completeOrder, reopenOrder, ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderService';
 import { getUserTestimonial, createTestimonial, updateTestimonial } from '@/lib/testimonialService';
@@ -18,6 +19,7 @@ const UserPanel = ({ onNavigate }) => {
   const { user, userRole, userCategory } = useAuth();
   const { t, language } = useLanguage();
   const { visualSettings, businessInfo } = useBusiness();
+  const { showModal } = useModal();
   const { categoryDiscountPercent } = useUserDiscounts();
   const isRegularUser = userRole === 'user';
   const [orders, setOrders] = useState([]);
@@ -216,16 +218,30 @@ const UserPanel = ({ onNavigate }) => {
   const handleReopenOrder = async (orderId) => {
     if (!orderId) return;
 
-    // Confirm with user
-    const confirmMessage = language === 'es'
-      ? '¿Estás seguro que deseas reabrir esta orden? Podrás volver a subir un comprobante de pago.'
-      : 'Are you sure you want to reopen this order? You will be able to upload a new payment proof.';
+    // Confirm with user using modal
+    const confirmed = await showModal({
+      title: t('userPanel.reopenOrderTitle'),
+      message: t('userPanel.reopenOrderMessage'),
+      type: 'info',
+      confirmText: t('userPanel.reopenOrder'),
+      cancelText: t('common.cancel')
+    });
 
-    if (!window.confirm(confirmMessage)) return;
+    if (!confirmed) return;
 
     setProcessingAction(true);
     try {
       await reopenOrder(orderId, user.id);
+
+      // Show success message
+      await showModal({
+        title: t('common.success'),
+        message: t('userPanel.reopenOrderSuccess'),
+        type: 'success',
+        confirmText: t('common.ok'),
+        cancelText: null
+      });
+
       await loadUserOrders();
       // Refresh order details if viewing
       if (selectedOrder?.id === orderId) {
@@ -234,9 +250,13 @@ const UserPanel = ({ onNavigate }) => {
       }
     } catch (error) {
       console.error('Error reopening order:', error);
-      alert(language === 'es'
-        ? 'Error al reabrir la orden. Por favor intenta nuevamente.'
-        : 'Error reopening order. Please try again.');
+      await showModal({
+        title: t('common.error'),
+        message: error.message || t('userPanel.reopenOrderError'),
+        type: 'danger',
+        confirmText: t('common.ok'),
+        cancelText: null
+      });
     } finally {
       setProcessingAction(false);
     }
@@ -1323,30 +1343,48 @@ const UserPanel = ({ onNavigate }) => {
 
                     {/* User actions: reopen cancelled order */}
                     {isRegularUser && selectedOrder.status === 'cancelled' && (
-                      <div className="mt-4 p-4 rounded-lg border-2" style={{ borderColor: visualSettings.primaryColor || '#3b82f6', backgroundColor: `${visualSettings.primaryColor}08` || '#eff6ff' }}>
-                        <div className="flex items-start gap-3 mb-3">
-                          <XCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mt-4 p-5 rounded-xl border-2 shadow-sm"
+                        style={{
+                          borderColor: visualSettings.primaryColor || '#3b82f6',
+                          backgroundColor: `${visualSettings.primaryColor}10` || '#eff6ff'
+                        }}
+                      >
+                        <div className="flex items-start gap-3 mb-4">
+                          <div
+                            className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center"
+                            style={{ backgroundColor: `${visualSettings.primaryColor}20` || '#dbeafe' }}
+                          >
+                            <XCircle className="h-5 w-5 text-red-500" />
+                          </div>
                           <div className="flex-1">
-                            <p className="font-semibold text-red-600 mb-1">
-                              {language === 'es' ? 'Orden Cancelada' : 'Order Cancelled'}
+                            <p className="font-bold text-red-600 mb-1.5 text-base">
+                              {t('userPanel.orderCancelled')}
                             </p>
-                            <p className="text-sm" style={getTextStyle(visualSettings, 'secondary')}>
-                              {language === 'es'
-                                ? 'Esta orden fue cancelada. Puedes reabrirla para continuar con el proceso de pago.'
-                                : 'This order was cancelled. You can reopen it to continue with the payment process.'}
+                            <p className="text-sm leading-relaxed" style={getTextStyle(visualSettings, 'secondary')}>
+                              {t('userPanel.orderCancelledMessage')}
                             </p>
                           </div>
                         </div>
                         <Button
                           onClick={() => handleReopenOrder(selectedOrder.id)}
                           disabled={processingAction}
-                          className="w-full"
-                          style={{ backgroundColor: visualSettings.primaryColor || '#3b82f6' }}
+                          className="w-full font-semibold transition-all hover:shadow-md"
+                          style={{
+                            backgroundColor: visualSettings.primaryColor || '#3b82f6',
+                            opacity: processingAction ? 0.7 : 1
+                          }}
                         >
-                          {processingAction ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Package className="h-4 w-4 mr-2" />}
-                          {language === 'es' ? 'Reabrir Orden' : 'Reopen Order'}
+                          {processingAction ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          ) : (
+                            <Package className="h-4 w-4 mr-2" />
+                          )}
+                          {t('userPanel.reopenOrderButton')}
                         </Button>
-                      </div>
+                      </motion.div>
                     )}
 
                     {/* Admin Action Buttons */}

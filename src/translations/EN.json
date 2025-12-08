@@ -30,7 +30,10 @@
     "processing": "Processing...",
     "active": "Active",
     "inactive": "Inactive",
-    "notes": "Notes"
+    "notes": "Notes",
+    "view": "View",
+    "filters": "Filters",
+    "clearFilters": "Clear Filters"
   },
   "nav": {
     "home": "Home",
@@ -284,6 +287,7 @@
       "adminCannotSendRemittance": "This page is only for users. Admins should use the remittance management panel.",
       "amountInfoTitle": "Amount Information",
       "amountSent": "Amount Sent:",
+      "noPendingDeliveryProof": "Delivery proof pending",
       "toDeliver": "To Deliver:",
       "recipientInfoTitle": "Recipient Information",
       "recipientName": "Name:",
@@ -579,6 +583,7 @@
       "paymentPending": "Payment Pending",
       "paymentValidated": "Payment Validated",
       "processing": "Processing",
+      "dispatched": "Dispatched",
       "shipped": "Shipped",
       "delivered": "Delivered",
       "cancelled": "Cancelled",
@@ -693,6 +698,17 @@
     "free": "Free",
     "total": "Total",
     "checkout": "Proceed to Checkout",
+    "validation": {
+      "selectRecipient": "Select a recipient",
+      "selectZelleAccount": "Select a Zelle account"
+    },
+    "coupon": {
+      "enterCode": "Enter a coupon code",
+      "invalid": "Invalid coupon",
+      "applied": "Coupon applied",
+      "appliedDescription": "Discount applied successfully",
+      "validationError": "Error validating coupon"
+    },
     "payment": {
       "title": "Make Payment",
       "instructionsTitle": "Payment Instructions",
@@ -703,7 +719,8 @@
       "amount": "Amount to Pay",
       "uploadProof": "Upload Payment Proof",
       "confirm": "Confirm Payment",
-      "recipientTitle": "Delivery/Recipient Details"
+      "recipientTitle": "Delivery/Recipient Details",
+      "whatsappNotConfigured": "WhatsApp number not configured"
     }
   },
   "auth": {
@@ -738,7 +755,15 @@
       "pending": "Pending",
       "validated": "Validated",
       "rejected": "Rejected"
-    }
+    },
+    "reopenOrder": "Reopen Order",
+    "reopenOrderTitle": "Reopen cancelled order?",
+    "reopenOrderMessage": "By reopening this order you will be able to upload a new payment proof and continue with the purchase process.",
+    "reopenOrderSuccess": "Order reopened successfully",
+    "reopenOrderError": "Error reopening order",
+    "orderCancelled": "Order Cancelled",
+    "orderCancelledMessage": "This order was cancelled. You can reopen it to continue with the payment process.",
+    "reopenOrderButton": "Reopen Order"
   },
   "adminOrders": {
     "title": "Orders History",
@@ -797,6 +822,7 @@
       "viewDetails": "View Details",
       "startProcessing": "Start Processing",
       "markAsShipped": "Mark as Shipped",
+      "markAsDispatched": "Mark as Dispatched",
       "uploadProof": "Upload Proof",
       "completeOrder": "Complete Order",
       "cancelOrder": "Cancel Order"
@@ -845,7 +871,8 @@
       "error": "Error",
       "selectImage": "Select a proof image",
       "invalidImage": "Please select a valid image",
-      "imageTooLarge": "File is too large. Max 5MB"
+      "imageTooLarge": "File is too large. Max 5MB",
+      "onlyDispatchedOrders": "You can only upload proof for dispatched orders"
     },
     "modals": {
       "startTitle": "Start Processing",
@@ -929,7 +956,8 @@
       "noOffers": "No offers found",
       "invalidCode": "Please enter a valid code",
       "codeAlreadyExists": "This code already exists",
-      "requiredFields": "Please fill all required fields"
+      "requiredFields": "Please fill all required fields",
+      "codeCopied": "Code copied to clipboard"
     },
     "activity": {
       "create": "Offer created",
@@ -1093,7 +1121,8 @@
     "recipientCreated": "Recipient created successfully",
     "recipientUpdated": "Recipient updated successfully",
     "recipientDeleted": "Recipient deleted successfully",
-    "fillNameAndPhone": "Please complete recipient name and phone"
+    "fillNameAndPhone": "Please complete recipient name and phone",
+    "updateButton": "Update Recipient"
   },
   "zelle": {
     "accounts": "Zelle Accounts",
