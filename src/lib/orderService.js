@@ -745,11 +745,12 @@ export const getUserOrders = async (userId, filters = {}) => {
 
     let offersMap = {};
     if (offerIds.length > 0) {
-      const baseOfferSelect = supabase
-        .from('offers')
-        .select('id, code, discount_type, discount_value, description, is_active');
+      const createOfferSelect = () =>
+        supabase
+          .from('offers')
+          .select('id, code, discount_type, discount_value, description, is_active');
 
-      const { data: offersData, error: offersError } = await baseOfferSelect.in('id', offerIds);
+      const { data: offersData, error: offersError } = await createOfferSelect().in('id', offerIds);
 
       if (!offersError && Array.isArray(offersData)) {
         offersMap = offersData.reduce((acc, offer) => {
@@ -764,7 +765,7 @@ export const getUserOrders = async (userId, filters = {}) => {
 
         const fallbackOffers = await Promise.all(
           offerIds.map(async (offerId) => {
-            const { data, error } = await baseOfferSelect.eq('id', offerId).maybeSingle();
+            const { data, error } = await createOfferSelect().eq('id', offerId).maybeSingle();
             if (!error && data) {
               return data;
             }
