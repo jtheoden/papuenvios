@@ -296,6 +296,46 @@ export const updateCombo = async (comboId, comboData) => {
 };
 
 /**
+ * Toggle combo active state
+ * @param {string} comboId - Combo ID
+ * @param {boolean} isActive - Target active state
+ * @returns {Promise<Object>} Updated combo row
+ */
+export const setComboActiveState = async (comboId, isActive = true) => {
+  try {
+    if (!comboId) {
+      throw createValidationError({ comboId: 'Combo ID is required' });
+    }
+
+    const { data, error } = await supabase
+      .from('combo_products')
+      .update({ is_active: isActive, updated_at: getCurrentTimestamp() })
+      .eq('id', comboId)
+      .select()
+      .single();
+
+    if (error) {
+      const appError = parseSupabaseError(error);
+      if (!data) {
+        throw createNotFoundError('Combo', comboId);
+      }
+      logError(appError, { operation: 'setComboActiveState', comboId, isActive });
+      throw appError;
+    }
+
+    return data;
+  } catch (error) {
+    if (error.code) throw error; // Already an AppError
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'setComboActiveState',
+      comboId,
+      isActive
+    });
+    throw appError;
+  }
+};
+
+/**
  * Delete a combo (soft delete by setting is_active to false)
  * @param {string} comboId - Combo ID to delete
  * @throws {AppError} If deletion fails

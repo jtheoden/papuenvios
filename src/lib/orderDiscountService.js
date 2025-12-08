@@ -139,6 +139,9 @@ export const validateAndGetOffer = async (offerCode, subtotal = 0, userId = null
       }
     };
 
+    let globalUsageCount = 0;
+    let userUsageCount = 0;
+
     // Check global usage limit
     if (offers.max_usage_global) {
       const usageData = await safeUsageCheck(() => supabase
@@ -147,12 +150,21 @@ export const validateAndGetOffer = async (offerCode, subtotal = 0, userId = null
         .eq('offer_id', offers.id));
 
       if (usageData && usageData.length >= offers.max_usage_global) {
+        globalUsageCount = usageData.length;
         return {
           valid: false,
           reason: 'Offer has reached its usage limit',
-          code: offerCode
+          code: offerCode,
+          usage: {
+            globalCount: globalUsageCount,
+            userCount: userUsageCount,
+            globalLimit: offers.max_usage_global,
+            userLimit: offers.max_usage_per_user || null
+          }
         };
       }
+
+      globalUsageCount = usageData?.length || 0;
     }
 
     // Check per-user usage limit
@@ -164,20 +176,35 @@ export const validateAndGetOffer = async (offerCode, subtotal = 0, userId = null
         .eq('user_id', userId));
 
       if (userUsageData && userUsageData.length >= offers.max_usage_per_user) {
+        userUsageCount = userUsageData.length;
         return {
           valid: false,
           reason: `You have already used this offer ${userUsageData.length} times (limit: ${offers.max_usage_per_user})`,
           userUsageCount: userUsageData.length,
-          code: offerCode
+          code: offerCode,
+          usage: {
+            globalCount: globalUsageCount,
+            userCount: userUsageCount,
+            globalLimit: offers.max_usage_global || null,
+            userLimit: offers.max_usage_per_user
+          }
         };
       }
+
+      userUsageCount = userUsageData?.length || 0;
     }
 
     return {
       valid: true,
       offer: offers,
       code: offerCode,
-      applicable: true
+      applicable: true,
+      usage: {
+        globalCount: globalUsageCount,
+        userCount: userUsageCount,
+        globalLimit: offers.max_usage_global || null,
+        userLimit: offers.max_usage_per_user || null
+      }
     };
   } catch (error) {
     console.error('Error validating offer code:', error);
