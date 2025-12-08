@@ -157,18 +157,17 @@ const CartPage = ({ onNavigate }) => {
 
   const loadShippingZones = async () => {
     try {
-      const result = await getActiveShippingZones();
-      console.log('Shipping zones loaded:', result);
-      if (result.success) {
-        // Filter zones: exclude zones with shipping_cost = 0 UNLESS they are marked as free_shipping
-        const availableZones = (result.zones || []).filter(zone => {
-          const cost = parseFloat(zone.shipping_cost || 0);
-          // Show if: free_shipping is true OR shipping_cost > 0
-          return zone.free_shipping === true || cost > 0;
-        });
-        setShippingZones(availableZones);
-        console.log('Zones set:', availableZones.length);
-      }
+      const zones = await getActiveShippingZones();
+      console.log('Shipping zones loaded:', zones);
+
+      // Filter zones: exclude zones with shipping_cost = 0 UNLESS they are marked as free_shipping
+      const availableZones = (zones || []).filter(zone => {
+        const cost = parseFloat(zone.shipping_cost || 0);
+        // Show if: free_shipping is true OR shipping_cost > 0
+        return zone.free_shipping === true || cost > 0;
+      });
+      setShippingZones(availableZones);
+      console.log('Zones set:', availableZones.length);
     } catch (error) {
       console.error('Error loading shipping zones:', error);
     }
@@ -229,13 +228,9 @@ const CartPage = ({ onNavigate }) => {
     try {
       const result = await calculateShippingCost(provinceName, subtotal);
       console.log('[CartPage] Shipping calculation result:', result);
-      if (result.success) {
-        setShippingCost(result.cost);
-        console.log('[CartPage] Shipping cost set to:', result.cost);
-      } else {
-        console.warn('[CartPage] Shipping calculation failed:', result.error);
-        setShippingCost(0);
-      }
+      const cost = typeof result?.cost === 'number' ? result.cost : 0;
+      setShippingCost(cost);
+      console.log('[CartPage] Shipping cost set to:', cost);
     } catch (error) {
       console.error('[CartPage] Error calculating shipping:', error);
       setShippingCost(0);
