@@ -1,5 +1,5 @@
 import React from 'react';
-import { Eye, Play, Truck, Camera, Check, Ban } from 'lucide-react';
+import { Eye, Play, Truck, Camera, Check, Ban, CheckCircle, XCircle } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 /**
@@ -11,6 +11,8 @@ const OrderActionButtons = ({
   order,
   onView,
   onStartProcessing,
+  onValidatePayment,
+  onRejectPayment,
   onMarkAsDispatched,
   onUploadDeliveryProof,
   onCompleteOrder,
@@ -77,6 +79,28 @@ const OrderActionButtons = ({
 
   const primaryAction = getPrimaryAction();
 
+  const paymentActions =
+    order.status === 'pending' && order.payment_status === 'proof_uploaded'
+      ? [
+          {
+            icon: <CheckCircle className="h-4 w-4" />,
+            label: t('adminOrders.action.validatePayment'),
+            onClick: () => onValidatePayment(order),
+            disabled: isLoading,
+            color: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+            tooltip: t('adminOrders.action.validatePayment')
+          },
+          {
+            icon: <XCircle className="h-4 w-4" />,
+            label: t('adminOrders.action.rejectPayment'),
+            onClick: () => onRejectPayment(order),
+            disabled: isLoading,
+            color: 'bg-red-500 hover:bg-red-600 text-white',
+            tooltip: t('adminOrders.action.rejectPayment')
+          }
+        ]
+      : [];
+
   // Helper function to render individual button with styling
   const renderButton = (button) => (
     <button
@@ -104,6 +128,9 @@ const OrderActionButtons = ({
         color: 'bg-slate-500 hover:bg-slate-600 text-white',
         tooltip: t('adminOrders.action.viewDetails')
       })}
+
+      {/* Payment actions when proof has been uploaded */}
+      {paymentActions.map(renderButton)}
 
       {/* Primary Action Button - Status dependent */}
       {primaryAction && renderButton(primaryAction)}
