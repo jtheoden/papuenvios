@@ -153,11 +153,12 @@ export const useRealtimeOrders = ({ onUpdate, enabled = true }) => {
  * useRealtimeRemittances Hook
  * Specialized hook for real-time remittance updates
  */
-export const useRealtimeRemittances = ({ onUpdate, enabled = true }) => {
+export const useRealtimeRemittances = ({ onUpdate, enabled = true, filter = null }) => {
   return useRealtimeSubscription({
     table: 'remittances',
     event: '*',
     enabled,
+    filter,
     onInsert: onUpdate,
     onUpdate: onUpdate,
     onDelete: onUpdate
