@@ -41,6 +41,7 @@ const UserPanel = ({ onNavigate }) => {
   const selectedOrderSubtotal = selectedOrder ? (parseFloat(selectedOrder.subtotal) || 0) : 0;
   const selectedOrderTotal = selectedOrder ? (parseFloat(selectedOrder.total_amount) || 0) : 0;
   const selectedOrderDiscountTotal = selectedOrder ? (parseFloat(selectedOrder.discount_amount) || 0) : 0;
+  const selectedOrderShipping = selectedOrder ? (parseFloat(selectedOrder.shipping_cost) || 0) : 0;
   const selectedOrderCategoryPercent = selectedOrder
     ? (selectedOrder?.user_category_discount?.enabled === false
       ? 0
@@ -53,6 +54,8 @@ const UserPanel = ({ onNavigate }) => {
     selectedOrderDiscountTotal - selectedOrderCategoryDiscountAmount,
     0
   );
+  const selectedOrderBaseTotal = selectedOrderSubtotal + selectedOrderShipping;
+  const selectedOrderTotalAfterCategory = Math.max(selectedOrderBaseTotal - selectedOrderCategoryDiscountAmount, 0);
   useEffect(() => {
     if (!user) {
       onNavigate('login');

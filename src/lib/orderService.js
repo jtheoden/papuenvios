@@ -699,18 +699,38 @@ export const getUserOrders = async (userId, filters = {}) => {
 
     let offersMap = {};
     if (offerIds.length > 0) {
-      const { data: offersData, error: offersError } = await supabase
+      const baseOfferSelect = supabase
         .from('offers')
-        .select('id, code, discount_type, discount_value, description, is_active')
-        .in('id', offerIds);
+        .select('id, code, discount_type, discount_value, description, is_active');
+
+      const { data: offersData, error: offersError } = await baseOfferSelect.in('id', offerIds);
 
       if (!offersError && Array.isArray(offersData)) {
         offersMap = offersData.reduce((acc, offer) => {
           acc[offer.id] = offer;
           return acc;
         }, {});
-      } else if (offersError) {
-        console.warn('[orderService] Failed to enrich offers for orders', offersError.message);
+      } else {
+        // Some Supabase deployments return 400 for `in` queries with uuid arrays. Fall back to per-id fetches.
+        if (offersError) {
+          console.warn('[orderService] Failed to enrich offers via IN query', offersError.message);
+        }
+
+        const fallbackOffers = await Promise.all(
+          offerIds.map(async (offerId) => {
+            const { data, error } = await baseOfferSelect.eq('id', offerId).maybeSingle();
+            if (!error && data) {
+              return data;
+            }
+            console.warn('[orderService] Failed to fetch offer info for order list', offerId, error?.message);
+            return null;
+          })
+        );
+
+        offersMap = fallbackOffers.filter(Boolean).reduce((acc, offer) => {
+          acc[offer.id] = offer;
+          return acc;
+        }, {});
       }
     }
 
