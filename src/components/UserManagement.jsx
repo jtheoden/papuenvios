@@ -32,7 +32,21 @@ const UserManagement = () => {
   const [editingDiscountId, setEditingDiscountId] = useState(null);
   const [editingDiscountData, setEditingDiscountData] = useState(null);
 
+  const logUserManagementAction = (action, details = {}, tab = activeTab) => {
+    const logPayload = {
+      scope: 'UserManagement',
+      action,
+      tab,
+      timestamp: new Date().toISOString(),
+      userEmail: user?.email || 'unknown',
+      ...details
+    };
+
+    console.info('[OBS]', logPayload);
+  };
+
   const fetchUsers = async () => {
+    logUserManagementAction('fetch_users_start');
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -67,8 +81,11 @@ const UserManagement = () => {
       } else {
         setUsers(data || []);
       }
+
+      logUserManagementAction('fetch_users_success', { userCount: data?.length || 0 });
     } catch (error) {
       console.error('Error fetching users:', error);
+      logUserManagementAction('fetch_users_error', { message: error.message });
       toast({
         title: t('users.fetchError'),
         description: error.message,
@@ -87,8 +104,13 @@ const UserManagement = () => {
       ]);
       setCategoryRules(rulesData || []);
       setCategoryDiscounts(discountsData || []);
+      logUserManagementAction('fetch_categories_success', {
+        rulesCount: rulesData?.length || 0,
+        discountsCount: discountsData?.length || 0
+      }, 'categories');
     } catch (error) {
       console.error('Error fetching categorization data:', error);
+      logUserManagementAction('fetch_categories_error', { message: error.message }, 'categories');
       // Set empty arrays to prevent UI errors
       setCategoryRules([]);
       setCategoryDiscounts([]);
@@ -115,6 +137,8 @@ const UserManagement = () => {
         throw new Error(t('users.cannotModifySuperAdmin'));
       }
 
+      logUserManagementAction('update_role_start', { userId, newRole });
+
       const { error } = await supabase
         .from('user_profiles')
         .update({ role: newRole })
@@ -123,12 +147,14 @@ const UserManagement = () => {
       if (error) throw error;
 
       await fetchUsers();
+      logUserManagementAction('update_role_success', { userId, newRole });
       toast({
         title: t('users.roleUpdated'),
         description: t('users.roleUpdatedSuccess'),
       });
     } catch (error) {
       console.error('Error updating user role:', error);
+      logUserManagementAction('update_role_error', { userId, message: error.message });
       toast({
         title: t('users.roleUpdateError'),
         description: error.message,
@@ -144,6 +170,8 @@ const UserManagement = () => {
         throw new Error(t('users.cannotModifySuperAdmin'));
       }
 
+      logUserManagementAction('toggle_user_status_start', { userId, enable: isEnabled });
+
       const { error } = await supabase
         .from('user_profiles')
         .update({ is_enabled: isEnabled })
@@ -152,12 +180,14 @@ const UserManagement = () => {
       if (error) throw error;
 
       await fetchUsers();
+      logUserManagementAction('toggle_user_status_success', { userId, enable: isEnabled });
       toast({
         title: isEnabled ? t('users.userEnabled') : t('users.userDisabled'),
         description: t('users.statusUpdateSuccess'),
       });
     } catch (error) {
       console.error('Error updating user status:', error);
+      logUserManagementAction('toggle_user_status_error', { userId, message: error.message });
       toast({
         title: t('users.statusUpdateError'),
         description: error.message,
@@ -171,6 +201,7 @@ const UserManagement = () => {
 
     // Prevent deletion of super admin
     if (SUPER_ADMIN_EMAILS.includes(targetUser?.email)) {
+      logUserManagementAction('delete_user_blocked_super_admin', { userId });
       toast({
         title: t('users.deleteError'),
         description: t('users.cannotModifySuperAdmin'),
@@ -182,10 +213,13 @@ const UserManagement = () => {
     // Confirm deletion
     const confirmMessage = t('users.confirmDelete', { email: targetUser?.email });
     if (!window.confirm(confirmMessage)) {
+      logUserManagementAction('delete_user_cancelled', { userId });
       return;
     }
 
     try {
+      logUserManagementAction('delete_user_start', { userId });
+
       // Delete from user_profiles
       const { error: profileError } = await supabase
         .from('user_profiles')
@@ -203,12 +237,14 @@ const UserManagement = () => {
       }
 
       await fetchUsers();
+      logUserManagementAction('delete_user_success', { userId });
       toast({
         title: t('users.userDeleted'),
         description: t('users.userDeletedSuccess'),
       });
     } catch (error) {
       console.error('Error deleting user:', error);
+      logUserManagementAction('delete_user_error', { userId, message: error.message });
       toast({
         title: t('users.deleteError'),
         description: error.message,
@@ -222,6 +258,8 @@ const UserManagement = () => {
       if (!newCategoryName) {
         throw new Error(t('users.categories.selectCategory'));
       }
+
+      logUserManagementAction('update_category_start', { userId, category: newCategoryName }, 'categories');
 
       const { error } = await supabase
         .from('user_categories')
@@ -238,12 +276,14 @@ const UserManagement = () => {
       if (error) throw error;
 
       await fetchUsers();
+      logUserManagementAction('update_category_success', { userId, category: newCategoryName }, 'categories');
       toast({
         title: t('users.categories.categoryUpdated'),
         description: t('users.categories.categoryUpdateSuccess'),
       });
     } catch (error) {
       console.error('Error updating user category:', error);
+      logUserManagementAction('update_category_error', { userId, message: error.message }, 'categories');
       toast({
         title: t('users.categories.categoryUpdateError'),
         description: error.message,
@@ -254,11 +294,13 @@ const UserManagement = () => {
 
   const handleRecalculateAll = async () => {
     if (!window.confirm(t('users.categories.confirmRecalculateAll'))) {
+      logUserManagementAction('recalculate_all_cancelled', {}, 'categories');
       return;
     }
 
     setRecalculatingAll(true);
     try {
+      logUserManagementAction('recalculate_all_start', {}, 'categories');
       const result = await recalculateAllCategories();
       setLastRecalculateTime(new Date());
 
@@ -270,9 +312,15 @@ const UserManagement = () => {
         }),
       });
 
+      logUserManagementAction('recalculate_all_success', {
+        processed: result.processed,
+        total: result.total
+      }, 'categories');
+
       await fetchUsers();
     } catch (error) {
       console.error('Error recalculating categories:', error);
+      logUserManagementAction('recalculate_all_error', { message: error.message }, 'categories');
       toast({
         title: t('users.categories.recalculateError'),
         description: error.message,
@@ -290,15 +338,19 @@ const UserManagement = () => {
       discount_description: discount.discount_description || '',
       enabled: discount.enabled
     });
+    logUserManagementAction('edit_discount_start', { category: discount.category_name }, 'categories');
   };
 
   const handleCancelEditDiscount = () => {
     setEditingDiscountId(null);
     setEditingDiscountData(null);
+    logUserManagementAction('edit_discount_cancelled', {}, 'categories');
   };
 
   const handleSaveDiscount = async (categoryName) => {
     if (!editingDiscountData) return;
+
+    logUserManagementAction('save_discount_start', { category: categoryName }, 'categories');
 
     try {
       await updateCategoryDiscount(categoryName, editingDiscountData);
@@ -307,6 +359,8 @@ const UserManagement = () => {
         title: t('common.success'),
         description: t('users.categories.discountUpdated') || 'Discount updated successfully'
       });
+
+      logUserManagementAction('save_discount_success', { category: categoryName }, 'categories');
 
       // Reload discounts
       const discountsData = await getCategoryDiscounts();
@@ -317,6 +371,7 @@ const UserManagement = () => {
       setEditingDiscountData(null);
     } catch (error) {
       console.error('Error updating discount:', error);
+      logUserManagementAction('save_discount_error', { category: categoryName, message: error.message }, 'categories');
       toast({
         title: t('common.error'),
         description: error.message,
@@ -493,6 +548,7 @@ const UserManagement = () => {
           data={users}
           columns={userTableColumns}
           onRowClick={(user) => {
+            logUserManagementAction('open_user_modal', { userId: user.id });
             setSelectedUser(user);
             setShowUserModal(true);
           }}
@@ -842,7 +898,10 @@ const UserManagement = () => {
               }
             ]}
             activeTab={activeTab}
-            onTabChange={setActiveTab}
+            onTabChange={(tab) => {
+              logUserManagementAction('tab_change', { to: tab }, tab);
+              setActiveTab(tab);
+            }}
           />
         </motion.div>
       </div>
