@@ -16,6 +16,7 @@ import {
 } from './errorHandler';
 import { logActivity } from './activityLogger';
 import { getUserCategoryWithDiscount } from './orderDiscountService';
+import { ZELLE_STATUS, ZELLE_TRANSACTION_TYPES, upsertZelleTransactionStatus } from './zelleService';
 
 const isValidUUID = (value) => {
   if (!value || typeof value !== 'string') return false;
@@ -614,7 +615,7 @@ const reduceInventory = async (inventoryId, quantity) => {
     // Get current inventory
     const { data: inventory, error: fetchError } = await supabase
       .from('inventory')
-      .select('quantity, reserved_quantity')
+      .select('quantity, reserved_quantity, available_quantity')
       .eq('id', inventoryId)
       .single();
 
@@ -628,23 +629,28 @@ const reduceInventory = async (inventoryId, quantity) => {
       throw createNotFoundError('Inventory', inventoryId);
     }
 
+    const availableStock = inventory.available_quantity ?? inventory.quantity ?? 0;
+
     // Validate sufficient stock
-    if (inventory.quantity < quantity) {
+    if (availableStock < quantity) {
       throw createValidationError(
-        { quantity: `Insufficient stock. Available: ${inventory.quantity}, Requested: ${quantity}` },
+        { quantity: `Insufficient stock. Available: ${availableStock}, Requested: ${quantity}` },
         ERROR_CODES.INSUFFICIENT_STOCK
       );
     }
 
     // Reduce both actual and reserved quantities
-    const newQuantity = inventory.quantity - quantity;
+    const newQuantity = (inventory.quantity ?? availableStock) - quantity;
     const newReserved = Math.max(0, (inventory.reserved_quantity || 0) - quantity);
+    const newAvailable = Math.max(0, availableStock - quantity);
 
     const { error: updateError } = await supabase
       .from('inventory')
       .update({
         quantity: newQuantity,
-        reserved_quantity: newReserved
+        reserved_quantity: newReserved,
+        available_quantity: newAvailable,
+        updated_at: new Date().toISOString()
       })
       .eq('id', inventoryId);
 
@@ -1202,6 +1208,22 @@ export const validatePayment = async (orderId, adminId) => {
       logError(historyError, { operation: 'validatePayment - log history', orderId });
     }
 
+    // Sync Zelle transaction history for observabilidad (graceful fallback)
+    try {
+      await upsertZelleTransactionStatus({
+        referenceId: orderId,
+        transactionType: order.order_type === 'combo'
+          ? ZELLE_TRANSACTION_TYPES.COMBO
+          : ZELLE_TRANSACTION_TYPES.PRODUCT,
+        status: ZELLE_STATUS.VALIDATED,
+        amount: order.total_amount || 0,
+        zelleAccountId: order.zelle_account_id || null,
+        validatedBy: adminId
+      });
+    } catch (zelleError) {
+      logError(zelleError, { operation: 'validatePayment - zelle sync', orderId });
+    }
+
     return updatedOrder;
   } catch (error) {
     if (error.code) throw error;
@@ -1327,6 +1349,22 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
         validatedAt: updatedOrder?.validated_at
       })
     });
+
+    // Sync Zelle transaction history (graceful fallback)
+    try {
+      await upsertZelleTransactionStatus({
+        referenceId: orderId,
+        transactionType: order.order_type === 'combo'
+          ? ZELLE_TRANSACTION_TYPES.COMBO
+          : ZELLE_TRANSACTION_TYPES.PRODUCT,
+        status: ZELLE_STATUS.REJECTED,
+        amount: order.total_amount || 0,
+        zelleAccountId: order.zelle_account_id || null,
+        validatedBy: adminId
+      });
+    } catch (zelleError) {
+      logError(zelleError, { operation: 'rejectPayment - zelle sync', orderId });
+    }
 
     return updatedOrder;
   } catch (error) {

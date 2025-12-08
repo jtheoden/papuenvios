@@ -166,7 +166,7 @@ export const useRealtimeOffers = ({ onUpdate, enabled = true }) => {
  */
 export const useRealtimeZelleTransactions = ({ onUpdate, enabled = true }) => {
   return useRealtimeSubscription({
-    table: 'zelle_payment_history',
+    table: 'zelle_transaction_history',
     event: '*',
     enabled,
     onInsert: onUpdate,
