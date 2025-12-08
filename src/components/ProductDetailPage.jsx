@@ -450,8 +450,8 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
               <div className="space-y-4">
                 {/* Price Comparison for Customers */}
                 <div className="glass-effect p-6 rounded-xl bg-gradient-to-r from-purple-50 to-pink-50">
-                  <h3 className="font-semibold text-lg mb-3" style={getHeadingStyle(visualSettings)}>
-                    {language === 'es' ? '💰 ¡Ahorra con este combo!' : '💰 Save with this combo!'}
+                  <h3 className="font-semibold text-lg mb-3" >💰
+                   <span style={getHeadingStyle(visualSettings)}> {language === 'es' ? '¡Ahorra con este combo!' : 'Save with this combo!'}</span>
                   </h3>
                   <div className="space-y-3">
                     {/* Individual products breakdown with individual profit margins */}

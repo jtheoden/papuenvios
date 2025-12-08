@@ -407,7 +407,7 @@ const ProductsPage = ({ onNavigate }) => {
               className="mb-4"
             >
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold" style={getHeadingStyle(visualSettings)}>🎁 Combos Especiales</h2>
+                <h2 className="text-2xl font-bold" >🎁 <span style={getHeadingStyle(visualSettings)}>Combos Especiales</span></h2>
                 {filteredCombos.length > 3 && (
                   <div className="flex gap-2">
                     <Button
@@ -577,7 +577,7 @@ const ProductsPage = ({ onNavigate }) => {
             animate={{ opacity: 1, y: 0 }}
             className="mb-4"
           >
-            <h2 className="text-2xl font-bold mb-4" style={getHeadingStyle(visualSettings)}>📦 Productos</h2>
+            <h2 className="text-2xl font-bold mb-4">📦 <span  style={getHeadingStyle(visualSettings)}>Productos</span></h2>
           </motion.div>
         )}
 
