@@ -53,6 +53,7 @@ import {
   ConfirmDialog,
   InputDialog
 } from '@/components/admin/modals';
+import ToastNotification from '@/components/ToastNotification';
 
 // Helper functions
 const getStatusText = (status, paymentStatus, language = 'es') => {
