@@ -37,6 +37,18 @@ const logOrderActivity = async ({ action, entityId, performedBy, description, me
   }
 };
 
+const buildOrderPaymentMetadata = (order, metadata = {}) => ({
+  paymentType: 'order',
+  orderId: order?.id,
+  orderNumber: order?.order_number,
+  paymentStatus: order?.payment_status,
+  orderStatus: order?.status,
+  paymentMethod: order?.payment_method,
+  paymentReference: order?.payment_reference || null,
+  totalAmount: order?.total_amount,
+  ...metadata
+});
+
 // ============================================================================
 // STATE MACHINE CONSTANTS
 // ============================================================================
@@ -1044,7 +1056,11 @@ export const validatePayment = async (orderId, adminId) => {
       action: 'payment_validated',
       entityId: orderId,
       performedBy: adminId,
-      description: 'Payment validated and order moved to processing'
+      description: `Payment validated (order)`,
+      metadata: buildOrderPaymentMetadata(updatedOrder, {
+        validatedBy: adminId,
+        validatedAt: updatedOrder?.validated_at
+      })
     });
 
     // OPTIMIZE: Fix N³ problem - batch fetch all combo items and products at once
@@ -1263,8 +1279,12 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
       action: 'payment_rejected',
       entityId: orderId,
       performedBy: adminId,
-      description: 'Payment rejected by admin',
-      metadata: { rejectionReason }
+      description: 'Payment rejected (order)',
+      metadata: buildOrderPaymentMetadata(updatedOrder, {
+        rejectionReason,
+        validatedBy: adminId,
+        validatedAt: updatedOrder?.validated_at
+      })
     });
 
     return updatedOrder;
@@ -1393,7 +1413,7 @@ export const uploadPaymentProof = async (file, orderId, userId) => {
     // Fetch order to validate ownership and state
     const { data: order, error: fetchError } = await supabase
       .from('orders')
-      .select('id, user_id, status, payment_status')
+      .select('id, order_number, user_id, status, payment_status, payment_method, total_amount, payment_reference')
       .eq('id', orderId)
       .single();
 
@@ -1478,8 +1498,11 @@ export const uploadPaymentProof = async (file, orderId, userId) => {
       action: 'payment_proof_uploaded',
       entityId: orderId,
       performedBy: userId,
-      description: 'User uploaded payment proof',
-      metadata: { paymentProofUrl: urlData.publicUrl }
+      description: `Payment proof uploaded (order)`,
+      metadata: buildOrderPaymentMetadata(
+        { ...order, payment_status: PAYMENT_STATUS.PROOF_UPLOADED },
+        { paymentProofUrl: urlData.publicUrl }
+      )
     });
 
     return urlData.publicUrl;
