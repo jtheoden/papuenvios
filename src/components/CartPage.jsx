@@ -348,7 +348,12 @@ const CartPage = ({ onNavigate }) => {
         entityId: validation.offer.id,
         performedBy: user?.email || 'anonymous',
         description: `Coupon ${validation.offer.code} applied`,
-        metadata: { subtotal, discount: validation.offer.discount_value, type: validation.offer.discount_type }
+        metadata: {
+          subtotal,
+          discount: validation.offer.discount_value,
+          type: validation.offer.discount_type,
+          usage: validation.usage || null
+        }
       });
       toast({
         title: language === 'es' ? '✅ Cupón aplicado' : '✅ Coupon applied',
