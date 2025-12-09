@@ -755,7 +755,7 @@ export const getUserOrders = async (userId, filters = {}) => {
       const createOfferSelect = () =>
         supabase
           .from('offers')
-          .select('id, code, discount_type, discount_value, description, is_active');
+          .select('id, code, discount_type, discount_value, name_es, name_en, is_active');
 
       const { data: offersData, error: offersError } = await createOfferSelect().in('id', offerIds);
 
@@ -878,7 +878,7 @@ export const getOrderById = async (orderId) => {
       if (order.offer_id) {
         const baseOfferQuery = supabase
           .from('offers')
-          .select('id, code, discount_type, discount_value, description, is_active')
+          .select('id, code, discount_type, discount_value, name_es, name_en, is_active')
           .limit(1);
 
         let offer;
@@ -2237,9 +2237,7 @@ export const reopenOrder = async (orderId, userId) => {
       .update({
         status: ORDER_STATUS.PENDING,
         payment_status: PAYMENT_STATUS.PENDING,
-        cancelled_by: null,
-        cancelled_at: null,
-        cancellation_reason: null,
+        rejection_reason: null,
         updated_at: new Date().toISOString()
       })
       .eq('id', orderId)
@@ -2326,9 +2324,7 @@ export const reopenOrderByAdmin = async (orderId, adminId, reason = 'Reapertura 
       .update({
         status: ORDER_STATUS.PENDING,
         payment_status: PAYMENT_STATUS.PENDING,
-        cancelled_by: null,
-        cancelled_at: null,
-        cancellation_reason: null,
+        rejection_reason: null,
         updated_at: new Date().toISOString()
       })
       .eq('id', orderId)
