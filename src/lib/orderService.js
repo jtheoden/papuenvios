@@ -16,6 +16,7 @@ import {
 } from './errorHandler';
 import { logActivity } from './activityLogger';
 import { getUserCategoryWithDiscount } from './orderDiscountService';
+import { ZELLE_STATUS, ZELLE_TRANSACTION_TYPES, upsertZelleTransactionStatus } from './zelleService';
 
 const isValidUUID = (value) => {
   if (!value || typeof value !== 'string') return false;
@@ -24,7 +25,7 @@ const isValidUUID = (value) => {
 
 const logOrderActivity = async ({ action, entityId, performedBy, description, metadata }) => {
   try {
-    await logActivity({
+    return await logActivity({
       action,
       entityType: 'order',
       entityId,
@@ -34,6 +35,7 @@ const logOrderActivity = async ({ action, entityId, performedBy, description, me
     });
   } catch (err) {
     console.warn('[orderService] Failed to log activity', err?.message || err);
+    return { status: 'error', error: err };
   }
 };
 
@@ -614,7 +616,7 @@ const reduceInventory = async (inventoryId, quantity) => {
     // Get current inventory
     const { data: inventory, error: fetchError } = await supabase
       .from('inventory')
-      .select('quantity, reserved_quantity')
+      .select('quantity, reserved_quantity, available_quantity')
       .eq('id', inventoryId)
       .single();
 
@@ -628,23 +630,28 @@ const reduceInventory = async (inventoryId, quantity) => {
       throw createNotFoundError('Inventory', inventoryId);
     }
 
+    const availableStock =
+      inventory.available_quantity ??
+      (inventory.quantity ?? 0) - (inventory.reserved_quantity ?? 0);
+
     // Validate sufficient stock
-    if (inventory.quantity < quantity) {
+    if (availableStock < quantity) {
       throw createValidationError(
-        { quantity: `Insufficient stock. Available: ${inventory.quantity}, Requested: ${quantity}` },
+        { quantity: `Insufficient stock. Available: ${availableStock}, Requested: ${quantity}` },
         ERROR_CODES.INSUFFICIENT_STOCK
       );
     }
 
     // Reduce both actual and reserved quantities
-    const newQuantity = inventory.quantity - quantity;
+    const newQuantity = (inventory.quantity ?? availableStock) - quantity;
     const newReserved = Math.max(0, (inventory.reserved_quantity || 0) - quantity);
 
     const { error: updateError } = await supabase
       .from('inventory')
       .update({
         quantity: newQuantity,
-        reserved_quantity: newReserved
+        reserved_quantity: newReserved,
+        updated_at: new Date().toISOString()
       })
       .eq('id', inventoryId);
 
@@ -745,11 +752,12 @@ export const getUserOrders = async (userId, filters = {}) => {
 
     let offersMap = {};
     if (offerIds.length > 0) {
-      const baseOfferSelect = supabase
-        .from('offers')
-        .select('id, code, discount_type, discount_value, description, is_active');
+      const createOfferSelect = () =>
+        supabase
+          .from('offers')
+          .select('id, code, discount_type, discount_value, description, is_active');
 
-      const { data: offersData, error: offersError } = await baseOfferSelect.in('id', offerIds);
+      const { data: offersData, error: offersError } = await createOfferSelect().in('id', offerIds);
 
       if (!offersError && Array.isArray(offersData)) {
         offersMap = offersData.reduce((acc, offer) => {
@@ -764,7 +772,7 @@ export const getUserOrders = async (userId, filters = {}) => {
 
         const fallbackOffers = await Promise.all(
           offerIds.map(async (offerId) => {
-            const { data, error } = await baseOfferSelect.eq('id', offerId).maybeSingle();
+            const { data, error } = await createOfferSelect().eq('id', offerId).maybeSingle();
             if (!error && data) {
               return data;
             }
@@ -1088,7 +1096,7 @@ export const validatePayment = async (orderId, adminId) => {
 
     // Get admin email for logging
     const adminEmail = await getUserEmail(adminId);
-    logOrderActivity({
+    const activityResult = await logOrderActivity({
       action: 'payment_validated',
       entityId: orderId,
       performedBy: adminEmail,
@@ -1199,6 +1207,24 @@ export const validatePayment = async (orderId, adminId) => {
         });
     } catch (historyError) {
       logError(historyError, { operation: 'validatePayment - log history', orderId });
+    }
+
+    // Sync Zelle transaction history for observabilidad (graceful fallback)
+    if (order.zelle_account_id && activityResult?.status === 'inserted') {
+      try {
+        await upsertZelleTransactionStatus({
+          referenceId: orderId,
+          transactionType: order.order_type === 'combo'
+            ? ZELLE_TRANSACTION_TYPES.COMBO
+            : ZELLE_TRANSACTION_TYPES.PRODUCT,
+          status: ZELLE_STATUS.VALIDATED,
+          amount: order.total_amount || 0,
+          zelleAccountId: order.zelle_account_id,
+          validatedBy: adminId
+        });
+      } catch (zelleError) {
+        logError(zelleError, { operation: 'validatePayment - zelle sync', orderId });
+      }
     }
 
     return updatedOrder;
@@ -1315,7 +1341,7 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
 
     // Get admin email for logging
     const adminEmail = await getUserEmail(adminId);
-    logOrderActivity({
+    const activityResult = await logOrderActivity({
       action: 'payment_rejected',
       entityId: orderId,
       performedBy: adminEmail,
@@ -1326,6 +1352,24 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
         validatedAt: updatedOrder?.validated_at
       })
     });
+
+    // Sync Zelle transaction history (graceful fallback)
+    if (order.zelle_account_id && activityResult?.status === 'inserted') {
+      try {
+        await upsertZelleTransactionStatus({
+          referenceId: orderId,
+          transactionType: order.order_type === 'combo'
+            ? ZELLE_TRANSACTION_TYPES.COMBO
+            : ZELLE_TRANSACTION_TYPES.PRODUCT,
+          status: ZELLE_STATUS.REJECTED,
+          amount: order.total_amount || 0,
+          zelleAccountId: order.zelle_account_id,
+          validatedBy: adminId
+        });
+      } catch (zelleError) {
+        logError(zelleError, { operation: 'rejectPayment - zelle sync', orderId });
+      }
+    }
 
     return updatedOrder;
   } catch (error) {

@@ -42,20 +42,28 @@ export const useRealtimeSubscription = ({
 
     const subscribe = async () => {
       try {
-        // Create channel name
-        const channelName = `realtime:${table}`;
+        const sanitizedFilter =
+          typeof filter === 'string' && filter.trim().length > 0 ? filter.trim() : null;
+        const effectiveFilter = sanitizedFilter ?? 'id=not.is.null';
+
+        // Create channel name (unique per table/filter/event to avoid collisions)
+        const uniqueToken = Math.random().toString(36).slice(2, 8);
+        const channelName = `realtime:${table}:${event}:${effectiveFilter}:${uniqueToken}`;
 
         // Build subscription
+        const changeOptions = {
+          event: event,
+          schema: 'public',
+          table: table
+        };
+
+        changeOptions.filter = effectiveFilter;
+
         let subscription = supabase
           .channel(channelName)
           .on(
             'postgres_changes',
-            {
-              event: event,
-              schema: 'public',
-              table: table,
-              filter: filter
-            },
+            changeOptions,
             (payload) => {
               setLastUpdate(new Date());
 
@@ -69,22 +77,33 @@ export const useRealtimeSubscription = ({
               }
             }
           )
-          .subscribe((status) => {
+          .subscribe((status, err) => {
             if (status === 'SUBSCRIBED') {
               setIsSubscribed(true);
               console.log(`[Realtime] Subscribed to ${table}`);
-            } else if (status === 'CHANNEL_ERROR') {
+              return;
+            }
+
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
               setIsSubscribed(false);
-              if (onError) {
-                onError(new Error(`Subscription error for ${table}`));
+              if (channel) {
+                supabase.removeChannel(channel);
               }
-              console.error(`[Realtime] Subscription error for ${table}`);
-            } else if (status === 'TIMED_OUT') {
-              setIsSubscribed(false);
+
+              const error =
+                err instanceof Error
+                  ? err
+                  : new Error(`Subscription ${status.toLowerCase()} for ${table}`);
+
               if (onError) {
-                onError(new Error(`Subscription timeout for ${table}`));
+                onError(error);
               }
-              console.error(`[Realtime] Subscription timeout for ${table}`);
+
+              console.error(`[Realtime] Subscription ${status.toLowerCase()} for ${table}`, {
+                filter: sanitizedFilter || undefined,
+                event,
+                error: err || undefined
+              });
             }
           });
 
@@ -134,11 +153,12 @@ export const useRealtimeOrders = ({ onUpdate, enabled = true }) => {
  * useRealtimeRemittances Hook
  * Specialized hook for real-time remittance updates
  */
-export const useRealtimeRemittances = ({ onUpdate, enabled = true }) => {
+export const useRealtimeRemittances = ({ onUpdate, enabled = true, filter = null }) => {
   return useRealtimeSubscription({
     table: 'remittances',
     event: '*',
     enabled,
+    filter,
     onInsert: onUpdate,
     onUpdate: onUpdate,
     onDelete: onUpdate
@@ -166,7 +186,7 @@ export const useRealtimeOffers = ({ onUpdate, enabled = true }) => {
  */
 export const useRealtimeZelleTransactions = ({ onUpdate, enabled = true }) => {
   return useRealtimeSubscription({
-    table: 'zelle_payment_history',
+    table: 'zelle_transaction_history',
     event: '*',
     enabled,
     onInsert: onUpdate,

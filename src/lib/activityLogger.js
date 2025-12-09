@@ -229,7 +229,7 @@ export const logActivity = async ({
   try {
     if (!action || !entityType) {
       console.warn('[activityLogger] Missing required fields', { action, entityType });
-      return;
+      return { status: 'skipped', reason: 'missing_fields' };
     }
 
     const { data: sessionData } = await supabase.auth.getSession();
@@ -256,7 +256,7 @@ export const logActivity = async ({
       console.warn('[activityLogger] No active session, queueing activity');
       enqueuePayload({ ...payload, ...queueMetadata }, 'no_session');
       logMetric('queued', { reason: 'no_session' });
-      return;
+      return { status: 'queued', reason: 'no_session' };
     }
 
     const { error } = await supabase.from('activity_logs').insert([payload]);
@@ -267,18 +267,20 @@ export const logActivity = async ({
         console.warn('[activityLogger] Permission denied when inserting activity');
         enqueuePayload({ ...payload, ...queueMetadata }, 'rls_denied');
         logMetric('queued', { reason: 'rls_denied' });
-        return;
+        return { status: 'queued', reason: 'rls_denied', error };
       }
       console.warn('[activityLogger] Failed to insert activity, queued for retry', error.message);
       enqueuePayload({ ...payload, ...queueMetadata }, 'insert_error');
       logMetric('queued', { reason: 'insert_error' });
-      return;
+      return { status: 'queued', reason: 'insert_error', error };
     }
 
     // Best-effort flush of any pending entries once the current insert succeeded
     flushQueuedActivityLogs();
+    return { status: 'inserted', payload };
   } catch (error) {
     console.warn('[activityLogger] Unexpected error while logging activity', error);
+    return { status: 'error', error };
   }
 };
 

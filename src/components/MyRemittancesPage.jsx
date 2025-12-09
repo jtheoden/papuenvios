@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   Calendar, DollarSign, User, FileText, AlertCircle, CheckCircle,
@@ -21,10 +21,11 @@ import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { useModal } from '@/contexts/ModalContext';
 import FileUploadWithPreview from '@/components/FileUploadWithPreview';
 import TooltipButton from './TooltipButton';
+import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 
 const MyRemittancesPage = ({ onNavigate }) => {
   const { t } = useLanguage();
-  const { isAdmin, isSuperAdmin } = useAuth();
+  const { user, isAdmin, isSuperAdmin } = useAuth();
   const { showModal } = useModal();
 
   const [remittances, setRemittances] = useState([]);
@@ -43,24 +44,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
   const [imagePreview, setImagePreview] = useState(null);
   const [deliveryProofPreview, setDeliveryProofPreview] = useState(null);
 
-  useEffect(() => {
-    loadRemittances();
-  }, []);
-
-  useEffect(() => {
-    if (isAdmin || isSuperAdmin) {
-      showModal({
-        type: 'info',
-        title: t('common.accessDenied'),
-        message: t('remittances.admin.adminCannotViewRemittances'),
-        confirmText: t('common.ok')
-      }).then(() => {
-        onNavigate('dashboard');
-      });
-    }
-  }, [isAdmin, isSuperAdmin]);
-
-  const loadRemittances = async () => {
+  const loadRemittances = useCallback(async () => {
     setLoading(true);
     try {
       const result = await getMyRemittances({});
@@ -85,7 +69,45 @@ const MyRemittancesPage = ({ onNavigate }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
+
+  useEffect(() => {
+    loadRemittances();
+  }, [loadRemittances]);
+
+  const handleRealtimeRemittance = useCallback(async () => {
+    await loadRemittances();
+
+    if (selectedRemittance?.id) {
+      try {
+        const updated = await getRemittanceDetails(selectedRemittance.id);
+        if (updated) {
+          setSelectedRemittance(updated);
+        }
+      } catch (error) {
+        console.error('Error refreshing remittance details:', error);
+      }
+    }
+  }, [loadRemittances, selectedRemittance]);
+
+  useEffect(() => {
+    if (isAdmin || isSuperAdmin) {
+      showModal({
+        type: 'info',
+        title: t('common.accessDenied'),
+        message: t('remittances.admin.adminCannotViewRemittances'),
+        confirmText: t('common.ok')
+      }).then(() => {
+        onNavigate('dashboard');
+      });
+    }
+  }, [isAdmin, isSuperAdmin]);
+
+  useRealtimeRemittances({
+    enabled: !!user && !isAdmin && !isSuperAdmin,
+    filter: user ? `user_id=eq.${user.id}` : null,
+    onUpdate: handleRealtimeRemittance
+  });
 
   const handleViewDetails = async (remittance) => {
     try {
