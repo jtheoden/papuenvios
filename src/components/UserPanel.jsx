@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import CategoryBadge from '@/components/CategoryBadge';
 import { derivePercentFromAmount } from '@/lib/discountDisplayService';
 import { useUserDiscounts } from '@/hooks/useUserDiscounts';
+import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 
 const UserPanel = ({ onNavigate }) => {
   const { user, userRole, userCategory } = useAuth();
@@ -58,6 +59,20 @@ const UserPanel = ({ onNavigate }) => {
   );
   const selectedOrderBaseTotal = selectedOrderSubtotal + selectedOrderShipping;
   const selectedOrderTotalAfterCategory = Math.max(selectedOrderBaseTotal - selectedOrderCategoryDiscountAmount, 0);
+
+  const loadUserRemittances = useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      const result = await getMyRemittances();
+      if (result.success) {
+        setRemittances(result.remittances || []);
+      }
+    } catch (error) {
+      console.error('Error loading remittances:', error);
+    }
+  }, [user?.id]);
+
   useEffect(() => {
     if (!user) {
       onNavigate('login');
@@ -71,7 +86,7 @@ const UserPanel = ({ onNavigate }) => {
     if (userRole !== 'admin' && userRole !== 'super_admin') {
       loadUserTestimonial();
     }
-  }, [user, userRole]);
+  }, [user, userRole, loadUserRemittances]);
 
   const loadUserTestimonial = async () => {
     if (!user?.id) return;
@@ -100,7 +115,7 @@ const UserPanel = ({ onNavigate }) => {
         console.log('[UserPanel] Loading orders needing admin attention');
         // Fetch all orders with pending status (regardless of payment_status)
         // This includes: proof_uploaded (needs validation), pending (waiting for proof), rejected (needs retry)
-        const orders = await getAllOrders({ status: 'pending' });
+        const orders = await getAllOrders();
         console.log('[UserPanel] Admin orders result:', orders);
         setOrders(orders || []);
       } else {
@@ -116,18 +131,11 @@ const UserPanel = ({ onNavigate }) => {
     }
   };
 
-  const loadUserRemittances = async () => {
-    if (!user?.id) return;
-
-    try {
-      const result = await getMyRemittances();
-      if (result.success) {
-        setRemittances(result.remittances || []);
-      }
-    } catch (error) {
-      console.error('Error loading remittances:', error);
-    }
-  };
+  useRealtimeRemittances({
+    enabled: userRole === 'user' && !!user?.id,
+    filter: user ? `user_id=eq.${user.id}` : null,
+    onUpdate: loadUserRemittances
+  });
 
   const handleOrderClick = async (orderId) => {
     setLoadingDetails(true);
@@ -160,7 +168,7 @@ const UserPanel = ({ onNavigate }) => {
     setShowValidateModal(false);
     try {
       const result = await validatePayment(actionOrderId, user.id);
-      if (result.success) {
+      if (result && !result.error) {
         await loadUserOrders();
         setShowOrderDetails(false);
         setSelectedOrder(null);
@@ -186,7 +194,7 @@ const UserPanel = ({ onNavigate }) => {
     setShowRejectModal(false);
     try {
       const result = await rejectPayment(actionOrderId, user.id, rejectionReason);
-      if (result.success) {
+      if (result && !result.error) {
         await loadUserOrders();
         setShowOrderDetails(false);
         setSelectedOrder(null);
@@ -405,6 +413,30 @@ const UserPanel = ({ onNavigate }) => {
       return language === 'es' ? 'Completado' : 'Completed';
     }
     return language === 'es' ? 'Pendiente' : 'Pending';
+  };
+
+  const getOrderStatusLabel = (status) => {
+    const labels = {
+      [ORDER_STATUS.PENDING]: language === 'es' ? 'Pendiente' : 'Pending',
+      [ORDER_STATUS.PROCESSING]: language === 'es' ? 'En proceso' : 'Processing',
+      [ORDER_STATUS.DISPATCHED]: language === 'es' ? 'Despachado' : 'Dispatched',
+      [ORDER_STATUS.DELIVERED]: language === 'es' ? 'Entregado' : 'Delivered',
+      [ORDER_STATUS.COMPLETED]: language === 'es' ? 'Completado' : 'Completed',
+      [ORDER_STATUS.CANCELLED]: language === 'es' ? 'Cancelado' : 'Cancelled'
+    };
+
+    return labels[status] || (language === 'es' ? 'Desconocido' : 'Unknown');
+  };
+
+  const getPaymentStatusLabel = (paymentStatus) => {
+    const labels = {
+      [PAYMENT_STATUS.PENDING]: language === 'es' ? 'Pago pendiente' : 'Payment pending',
+      [PAYMENT_STATUS.PROOF_UPLOADED]: language === 'es' ? 'Comprobante cargado' : 'Proof uploaded',
+      [PAYMENT_STATUS.VALIDATED]: language === 'es' ? 'Pago validado' : 'Payment validated',
+      [PAYMENT_STATUS.REJECTED]: language === 'es' ? 'Pago rechazado' : 'Payment rejected'
+    };
+
+    return labels[paymentStatus] || (language === 'es' ? 'Desconocido' : 'Unknown');
   };
 
   const getItemTypeIcon = (itemType) => {
@@ -1015,7 +1047,7 @@ const UserPanel = ({ onNavigate }) => {
                     )}
 
                     {/* Order Info */}
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
                         <p className="text-xs font-medium mb-1" style={getTextStyle(visualSettings, 'muted')}>
                           {language === 'es' ? 'Fecha' : 'Date'}
@@ -1026,13 +1058,24 @@ const UserPanel = ({ onNavigate }) => {
                       </div>
                       <div>
                         <p className="text-xs font-medium mb-1" style={getTextStyle(visualSettings, 'muted')}>
-                          {language === 'es' ? 'Estado' : 'Status'}
+                          {language === 'es' ? 'Estado de la orden' : 'Order status'}
                         </p>
                         <div
                           className="inline-flex px-2 py-1 rounded-full text-xs font-medium"
-                          style={getStatusStyle(selectedOrder.payment_status || selectedOrder.status, visualSettings)}
+                          style={getStatusStyle(selectedOrder.status, visualSettings)}
                         >
-                          {getStatusText(selectedOrder.status, selectedOrder.payment_status)}
+                          {getOrderStatusLabel(selectedOrder.status)}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium mb-1" style={getTextStyle(visualSettings, 'muted')}>
+                          {language === 'es' ? 'Estado del pago' : 'Payment status'}
+                        </p>
+                        <div
+                          className="inline-flex px-2 py-1 rounded-full text-xs font-medium"
+                          style={getStatusStyle(selectedOrder.payment_status, visualSettings)}
+                        >
+                          {getPaymentStatusLabel(selectedOrder.payment_status)}
                         </div>
                       </div>
                       <div>

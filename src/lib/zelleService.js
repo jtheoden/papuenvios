@@ -303,6 +303,105 @@ export const registerZelleTransaction = async (transactionData) => {
 };
 
 /**
+ * Upsert Zelle transaction status by reference
+ * Ensures the transaction history table always reflects the latest status
+ * for remittances or orders even if the initial registration failed.
+ *
+ * @param {Object} params
+ * @param {string} params.referenceId - Reference ID (order/remittance ID)
+ * @param {string} params.transactionType - One of ZELLE_TRANSACTION_TYPES
+ * @param {string} params.status - One of ZELLE_STATUS
+ * @param {number} [params.amount] - Transaction amount (fallback when creating)
+ * @param {string} [params.zelleAccountId] - Account used for the payment
+ * @param {string} [params.validatedBy] - Admin/user ID who validated/rejected
+ * @returns {Promise<object|null>} Updated or created transaction
+ */
+export const upsertZelleTransactionStatus = async ({
+  referenceId,
+  transactionType,
+  status,
+  amount = 0,
+  zelleAccountId = null,
+  validatedBy = null
+}) => {
+  try {
+    if (!referenceId || !transactionType || !status) {
+      throw createValidationError({
+        referenceId: !referenceId ? 'Reference ID is required' : undefined,
+        transactionType: !transactionType ? 'Transaction type is required' : undefined,
+        status: !status ? 'Status is required' : undefined
+      });
+    }
+
+    // Try to find an existing transaction for this reference
+    const { data: existingTx, error: fetchError } = await supabase
+      .from('zelle_transaction_history')
+      .select('*')
+      .eq('reference_id', referenceId)
+      .eq('transaction_type', transactionType)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (fetchError) {
+      throw parseSupabaseError(fetchError);
+    }
+
+    const now = new Date().toISOString();
+
+    if (existingTx) {
+      const { data, error } = await supabase
+        .from('zelle_transaction_history')
+        .update({
+          status,
+          amount: amount || existingTx.amount,
+          zelle_account_id: zelleAccountId || existingTx.zelle_account_id,
+          validated_by: validatedBy || existingTx.validated_by,
+          validated_at: now
+        })
+        .eq('id', existingTx.id)
+        .select()
+        .single();
+
+      if (error) {
+        throw parseSupabaseError(error);
+      }
+
+      return data;
+    }
+
+    const { data, error } = await supabase
+      .from('zelle_transaction_history')
+      .insert([{
+        reference_id: referenceId,
+        transaction_type: transactionType,
+        status,
+        amount,
+        zelle_account_id: zelleAccountId,
+        validated_by: validatedBy,
+        validated_at: status === ZELLE_STATUS.VALIDATED ? now : null
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return data;
+  } catch (error) {
+    if (error instanceof AppError) {
+      logError(error, { operation: 'upsertZelleTransactionStatus', referenceId, transactionType, status });
+      throw error;
+    }
+
+    const appError = parseSupabaseError(error);
+    logError(appError, { operation: 'upsertZelleTransactionStatus', referenceId, transactionType, status });
+    throw appError;
+  }
+};
+
+/**
  * Validar transacción de Zelle (Admin only)
  * Marks a pending transaction as validated by an admin
  *
@@ -1095,6 +1194,7 @@ export const zelleService = {
   getZelleAccountStats,
   resetZelleCounters,
   getAllZellePaymentHistory,
+  upsertZelleTransactionStatus,
   ZELLE_STATUS,
   ZELLE_TRANSACTION_TYPES
 };

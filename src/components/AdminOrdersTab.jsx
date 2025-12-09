@@ -38,6 +38,8 @@ import {
   markOrderAsDispatched,
   markOrderAsDelivered,
   completeOrder,
+  validatePayment,
+  rejectPayment,
   getDaysInProcessing,
   cancelOrder
 } from '@/lib/orderService';
@@ -121,6 +123,8 @@ const AdminOrdersTab = () => {
   const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
   const [inputModal, setInputModal] = useState({ show: false, title: '', message: '', defaultValue: '', onConfirm: null });
   const [toastMessage, setToastMessage] = useState(null);
+
+  const operationSucceeded = (result) => result && !result.error;
 
   // Load orders
   useEffect(() => {
@@ -294,6 +298,60 @@ const AdminOrdersTab = () => {
     setShowOrderModal(true);
   };
 
+  const handleValidatePayment = async (order) => {
+    showConfirm(
+      t('adminOrders.modals.validateTitle'),
+      t('adminOrders.messages.confirmValidate').replace('{orderNumber}', order.order_number),
+      async () => {
+        setActionLoading(order.id);
+        try {
+          const result = await validatePayment(order.id, user.id);
+          if (operationSucceeded(result)) {
+            showToast(t('adminOrders.messages.validateSuccess'), 'success');
+            loadOrders();
+          } else {
+            showToast(`${t('adminOrders.messages.error')}: ${result.error}`, 'error');
+          }
+        } catch (err) {
+          console.error('Error validating payment:', err);
+          showToast(t('adminOrders.messages.error'), 'error');
+        } finally {
+          setActionLoading(null);
+        }
+      }
+    );
+  };
+
+  const handleRejectPayment = async (order) => {
+    showInput(
+      t('adminOrders.modals.rejectTitle'),
+      t('adminOrders.messages.enterRejectReason').replace('{orderNumber}', order.order_number),
+      '',
+      async (reason) => {
+        if (!reason || reason.trim() === '') {
+          showToast(t('adminOrders.messages.rejectReasonRequired'), 'error');
+          return;
+        }
+
+        setActionLoading(order.id);
+        try {
+          const result = await rejectPayment(order.id, user.id, reason.trim());
+          if (operationSucceeded(result)) {
+            showToast(t('adminOrders.messages.rejectSuccess'), 'success');
+            loadOrders();
+          } else {
+            showToast(`${t('adminOrders.messages.error')}: ${result.error}`, 'error');
+          }
+        } catch (err) {
+          console.error('Error rejecting payment:', err);
+          showToast(t('adminOrders.messages.error'), 'error');
+        } finally {
+          setActionLoading(null);
+        }
+      }
+    );
+  };
+
   // Handler: Start Processing Order
   const handleStartProcessing = async (order) => {
     showConfirm(
@@ -303,7 +361,7 @@ const AdminOrdersTab = () => {
         setActionLoading(order.id);
         try {
           const result = await startProcessingOrder(order.id, user.id);
-          if (result.success) {
+          if (operationSucceeded(result)) {
             showToast(t('adminOrders.messages.startSuccess'), 'success');
             loadOrders(); // Refresh orders
           } else {
@@ -329,7 +387,7 @@ const AdminOrdersTab = () => {
         setActionLoading(order.id);
         try {
           const result = await markOrderAsDispatched(order.id, user.id, trackingInfo);
-          if (result.success) {
+          if (operationSucceeded(result)) {
             showToast(t('adminOrders.messages.dispatchSuccess'), 'success');
             loadOrders(); // Refresh orders
           } else {
@@ -392,7 +450,7 @@ const AdminOrdersTab = () => {
     setActionLoading(selectedOrder.id);
     try {
       const result = await markOrderAsDelivered(selectedOrder.id, deliveryProofFile, user.id);
-      if (result.success) {
+      if (operationSucceeded(result)) {
         showToast(t('adminOrders.messages.deliverSuccess'), 'success');
         setShowDeliveryModal(false);
         setDeliveryProofFile(null);
@@ -419,7 +477,7 @@ const AdminOrdersTab = () => {
         setActionLoading(order.id);
         try {
           const result = await completeOrder(order.id);
-          if (result.success) {
+          if (operationSucceeded(result)) {
             showToast(t('adminOrders.messages.completeSuccess'), 'success');
             loadOrders(); // Refresh orders
           } else {
@@ -454,7 +512,7 @@ const AdminOrdersTab = () => {
             setActionLoading(order.id);
             try {
               const result = await cancelOrder(order.id, user.id, reason);
-              if (result.success) {
+              if (operationSucceeded(result)) {
                 showToast(t('adminOrders.messages.cancelSuccess'), 'success');
                 loadOrders(); // Refresh orders
               } else {
@@ -542,6 +600,8 @@ const AdminOrdersTab = () => {
           <OrderActionButtons
             order={order}
             onView={() => viewOrderDetails(order)}
+            onValidatePayment={() => handleValidatePayment(order)}
+            onRejectPayment={() => handleRejectPayment(order)}
             onStartProcessing={() => handleStartProcessing(order)}
             onMarkAsDispatched={() => handleMarkAsDispatched(order)}
             onUploadDeliveryProof={() => handleUploadDeliveryProof(order)}
@@ -552,7 +612,21 @@ const AdminOrdersTab = () => {
         )
       }
     ];
-  }, [t, actionLoading]);
+  }, [
+    t,
+    actionLoading,
+    viewOrderDetails,
+    handleValidatePayment,
+    handleRejectPayment,
+    handleStartProcessing,
+    handleMarkAsDispatched,
+    handleUploadDeliveryProof,
+    handleCompleteOrder,
+    handleCancelOrder,
+    formatDate,
+    formatCurrency,
+    renderTypeIcon
+  ]);
 
   return (
     <div className="space-y-6">
