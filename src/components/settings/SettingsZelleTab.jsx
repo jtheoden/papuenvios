@@ -64,8 +64,21 @@ const SettingsZelleTab = () => {
   const loadAccounts = async () => {
     setLoading(true);
     try {
-      const data = await zelleService.getAllZelleAccounts();
-      setAccounts(data || []);
+      const [data, usageSummary] = await Promise.all([
+        zelleService.getAllZelleAccounts(),
+        zelleService.getZelleAccountUsageSummary()
+      ]);
+
+      const enriched = (data || []).map((account) => {
+        const usage = usageSummary?.[account.id] || {};
+        return {
+          ...account,
+          current_daily_amount: usage.dailyAmount ?? account.current_daily_amount ?? 0,
+          current_monthly_amount: usage.monthlyAmount ?? account.current_monthly_amount ?? 0
+        };
+      });
+
+      setAccounts(enriched);
     } catch (error) {
       console.error('Error loading Zelle accounts:', error);
       toast({

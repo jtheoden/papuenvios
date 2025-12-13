@@ -4,6 +4,7 @@
  * Pure functions - message generation and URL construction (minimal validation)
  */
 
+import { supabase } from '@/lib/supabase';
 import { logError } from './errorHandler';
 
 /**
@@ -429,7 +430,7 @@ export const isValidPhoneNumber = (phone) => {
  * @param {string} adminPhone - Admin phone from settings
  * @param {string} language - Language for message ('es' or 'en')
  */
-export const notifyAdminNewPaymentProof = (remittance, adminPhone, language = 'es') => {
+export const notifyAdminNewPaymentProof = async (remittance, adminPhone, language = 'es') => {
   if (!adminPhone) {
     console.error('Admin WhatsApp number not configured');
     alert('Número de WhatsApp del administrador no configurado. Contacte al soporte.');
@@ -438,12 +439,33 @@ export const notifyAdminNewPaymentProof = (remittance, adminPhone, language = 'e
 
   const config = getWhatsAppConfig();
   const type = remittance.remittance_types || remittance.remittance_type;
+  const userEmail = remittance.user_email || remittance?.user?.email || remittance?.email || 'Desconocido';
+
+  let proofLink = remittance.payment_proof_url || '';
+  if (proofLink && !proofLink.startsWith('http')) {
+    try {
+      const { data, error } = await supabase
+        .storage
+        .from('remittance-proofs')
+        .createSignedUrl(proofLink, 3600);
+
+      if (!error && data?.signedUrl) {
+        proofLink = data.signedUrl;
+      }
+    } catch (storageError) {
+      logError(storageError, { operation: 'notifyAdminNewPaymentProof - signedUrl', proofLink });
+    }
+  }
+
+  const systemLink = `${window.location.origin}/dashboard?tab=remittances`;
+  const formattedProofLink = proofLink || systemLink;
 
   const messages = {
     es: `💸 *NUEVO COMPROBANTE DE REMESA*\n` +
         `════════════════════════════════\n\n` +
         `📋 *ID Remesa:* ${remittance.remittance_number}\n` +
         `🆔 *Número interno:* ${remittance.id}\n\n` +
+        `📧 *Usuario:* ${userEmail}\n` +
         `💰 *Detalles del Pago*\n` +
         `┌─────────────────────\n` +
         `│ Monto enviado: ${remittance.amount_sent} ${remittance.currency_sent}\n` +
@@ -457,16 +479,17 @@ export const notifyAdminNewPaymentProof = (remittance, adminPhone, language = 'e
         `│ 📍 ${remittance.recipient_province || 'N/A'}\n` +
         `└─────────────────────\n\n` +
         `📸 *Comprobante de Pago*\n` +
-        `🔗 Ver/descargar en el sistema\n\n` +
+        `🔗 ${formattedProofLink}\n\n` +
         `📝 Referencia bancaria: ${remittance.payment_reference || 'Pendiente'}\n\n` +
         `─────────────────────────────────\n` +
-        `✅ Revisar en sistema: ${window.location.origin}/dashboard?tab=remittances\n` +
+        `✅ Revisar en sistema: ${systemLink}\n` +
         `─────────────────────────────────`,
 
     en: `💸 *NEW REMITTANCE PAYMENT PROOF*\n` +
         `════════════════════════════════\n\n` +
         `📋 *Remittance ID:* ${remittance.remittance_number}\n` +
         `🆔 *Internal Number:* ${remittance.id}\n\n` +
+        `📧 *User:* ${userEmail}\n` +
         `💰 *Payment Details*\n` +
         `┌─────────────────────\n` +
         `│ Amount Sent: ${remittance.amount_sent} ${remittance.currency_sent}\n` +
@@ -480,10 +503,10 @@ export const notifyAdminNewPaymentProof = (remittance, adminPhone, language = 'e
         `│ 📍 ${remittance.recipient_province || 'N/A'}\n` +
         `└─────────────────────\n\n` +
         `📸 *Payment Proof*\n` +
-        `🔗 View/download in system\n\n` +
+        `🔗 ${formattedProofLink}\n\n` +
         `📝 Bank Reference: ${remittance.payment_reference || 'Pending'}\n\n` +
         `─────────────────────────────────\n` +
-        `✅ Check in system: ${window.location.origin}/dashboard?tab=remittances\n` +
+        `✅ Check in system: ${systemLink}\n` +
         `─────────────────────────────────`
   };
 
