@@ -189,28 +189,27 @@ const SendRemittancePage = ({ onNavigate }) => {
   const handleConfirmRemittance = async () => {
     setSubmitting(true);
 
-    const remittanceData = {
-      remittance_type_id: selectedType.id,
-      amount: parseFloat(amount),
-      recipient_name: recipientData.name,
-      recipient_phone: recipientData.phone,
-      recipient_address: recipientData.address,
-      recipient_city: recipientData.city,
-      recipient_id_number: recipientData.id_number,
-      notes: recipientData.notes,
-      zelle_account_id: selectedZelle?.id,
-      recipient_id: selectedRecipientData?.recipientId
-    };
+    try {
+      const remittanceData = {
+        remittance_type_id: selectedType.id,
+        amount: parseFloat(amount),
+        recipient_name: recipientData.name,
+        recipient_phone: recipientData.phone,
+        recipient_address: recipientData.address,
+        recipient_city: recipientData.city,
+        recipient_id_number: recipientData.id_number,
+        notes: recipientData.notes,
+        zelle_account_id: selectedZelle?.id,
+        recipient_id: selectedRecipientData?.recipientId
+      };
 
-    // Si es remesa off-cash, incluir recipient_bank_account_id
-    if (selectedType?.delivery_method !== 'cash' && selectedBankAccount) {
-      remittanceData.recipient_bank_account_id = selectedBankAccount;
-    }
+      // Si es remesa off-cash, incluir recipient_bank_account_id
+      if (selectedType?.delivery_method !== 'cash' && selectedBankAccount) {
+        remittanceData.recipient_bank_account_id = selectedBankAccount;
+      }
 
-    const result = await createRemittance(remittanceData);
-
-    if (result.success) {
-      setCreatedRemittance(result.remittance);
+      const created = await createRemittance(remittanceData);
+      setCreatedRemittance(created);
       toast({
         title: t('common.success'),
         description: t('remittances.wizard.remittanceCreatedSuccess')
@@ -228,15 +227,16 @@ const SendRemittancePage = ({ onNavigate }) => {
       } else {
         setStep(4);
       }
-    } else {
+    } catch (error) {
+      console.error('Error creating remittance:', error);
       toast({
         title: t('common.error'),
-        description: result.error,
+        description: error?.message || t('common.error'),
         variant: 'destructive'
       });
+    } finally {
+      setSubmitting(false);
     }
-
-    setSubmitting(false);
   };
 
   const handleCopyToClipboard = (text, label) => {
