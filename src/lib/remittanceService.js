@@ -166,6 +166,8 @@ export const getAllRemittanceTypes = async () => {
  */
 export const getActiveRemittanceTypes = async () => {
   try {
+    console.log('[getActiveRemittanceTypes] Fetching active remittance types...');
+
     const { data, error } = await supabase
       .from('remittance_types')
       .select('*')
@@ -173,13 +175,18 @@ export const getActiveRemittanceTypes = async () => {
       .order('display_order', { ascending: true });
 
     if (error) {
+      console.error('[getActiveRemittanceTypes] Database error:', error);
       const appError = parseSupabaseError(error);
       logError(appError, { operation: 'getActiveRemittanceTypes' });
       throw appError;
     }
 
+    console.log('[getActiveRemittanceTypes] Types loaded:', data?.length || 0);
+    console.log('[getActiveRemittanceTypes] Types:', data);
+
     return data || [];
   } catch (error) {
+    console.error('[getActiveRemittanceTypes] Fatal error:', error);
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getActiveRemittanceTypes' });
     throw appError;
@@ -461,6 +468,8 @@ export const calculateRemittance = async (typeId, amount) => {
  * @returns {Promise<Object>} Created remittance
  */
 export const createRemittance = async (remittanceData) => {
+  console.log('[createRemittance] START - Input data:', remittanceData);
+
   try {
     const {
       remittance_type_id,
@@ -476,8 +485,23 @@ export const createRemittance = async (remittanceData) => {
       recipient_bank_account_id
     } = remittanceData;
 
+    console.log('[createRemittance] STEP 1 - Extracted fields:', {
+      remittance_type_id,
+      amount,
+      recipient_name,
+      recipient_phone,
+      has_zelle_account_id: !!zelle_account_id,
+      has_recipient_bank_account_id: !!recipient_bank_account_id
+    });
+
     // Validate required fields
     if (!remittance_type_id || !amount || !recipient_name || !recipient_phone) {
+      console.error('[createRemittance] VALIDATION ERROR - Missing fields:', {
+        remittance_type_id: !!remittance_type_id,
+        amount: !!amount,
+        recipient_name: !!recipient_name,
+        recipient_phone: !!recipient_phone
+      });
       throw createValidationError({
         remittance_type_id: !remittance_type_id ? 'Remittance type is required' : undefined,
         amount: !amount ? 'Amount is required' : undefined,
@@ -485,6 +509,8 @@ export const createRemittance = async (remittanceData) => {
         recipient_phone: !recipient_phone ? 'Recipient phone is required' : undefined
       }, 'Missing required remittance fields');
     }
+
+    console.log('[createRemittance] STEP 2 - Validation passed, calculating remittance...');
 
     // Calculate using single source of truth
     const calculation = await calculateRemittance(remittance_type_id, amount);
@@ -499,26 +525,48 @@ export const createRemittance = async (remittanceData) => {
       deliveryMethod
     } = calculation;
 
+    console.log('[createRemittance] STEP 3 - Calculation complete:', {
+      commissionPercentage,
+      commissionFixed,
+      totalCommission,
+      amountToDeliver,
+      exchangeRate,
+      currencyCode,
+      deliveryCurrency,
+      deliveryMethod
+    });
+
     // Get authenticated user
+    console.log('[createRemittance] STEP 4 - Getting authenticated user...');
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError) {
+      console.error('[createRemittance] AUTH ERROR:', userError);
       const appError = parseSupabaseError(userError);
       logError(appError, { operation: 'createRemittance - auth' });
       throw appError;
     }
 
     if (!user) {
+      console.error('[createRemittance] AUTH ERROR: User not authenticated');
       throw new Error('Not authenticated');
     }
+
+    console.log('[createRemittance] STEP 5 - User authenticated:', { userId: user.id, email: user.email });
 
     // Get or find available Zelle account
     let selectedZelleAccountId = zelle_account_id;
     if (!selectedZelleAccountId) {
+      console.log('[createRemittance] STEP 6a - No Zelle account provided, finding available account...');
       const zelleResult = await getAvailableZelleAccount('remittance', amount);
+      console.log('[createRemittance] Zelle account result:', zelleResult);
       if (!zelleResult.success) {
+        console.error('[createRemittance] ZELLE ERROR: No accounts available');
         throw new Error('No Zelle accounts available. Please try again later.');
       }
       selectedZelleAccountId = zelleResult.account.id;
+      console.log('[createRemittance] Auto-assigned Zelle account:', selectedZelleAccountId);
+    } else {
+      console.log('[createRemittance] STEP 6b - Using provided Zelle account:', selectedZelleAccountId);
     }
 
     // Create remittance with calculated values (single source of truth)
@@ -547,6 +595,12 @@ export const createRemittance = async (remittanceData) => {
       insertData.recipient_id = recipient_id;
     }
 
+    console.log('[createRemittance] STEP 7 - Insert data prepared:', {
+      ...insertData,
+      delivery_notes: notes ? 'Present' : 'Empty'
+    });
+
+    console.log('[createRemittance] STEP 8 - Inserting into database...');
     const { data, error } = await supabase
       .from('remittances')
       .insert([insertData])
@@ -554,12 +608,19 @@ export const createRemittance = async (remittanceData) => {
       .single();
 
     if (error) {
+      console.error('[createRemittance] DATABASE INSERT ERROR:', error);
       const appError = parseSupabaseError(error);
       logError(appError, { operation: 'createRemittance - insert', amount, recipientName: recipient_name });
       throw appError;
     }
 
+    console.log('[createRemittance] STEP 9 - Database insert successful:', {
+      remittanceId: data.id,
+      remittanceNumber: data.remittance_number
+    });
+
     // Register Zelle transaction (graceful fallback if fails)
+    console.log('[createRemittance] STEP 10 - Registering Zelle transaction...');
     try {
       await registerZelleTransaction({
         zelle_account_id: selectedZelleAccountId,
@@ -568,27 +629,43 @@ export const createRemittance = async (remittanceData) => {
         amount: amount,
         notes: `Remesa ${data.remittance_number}`
       });
+      console.log('[createRemittance] Zelle transaction registered successfully');
     } catch (zelleError) {
+      console.error('[createRemittance] Zelle registration error (non-fatal):', zelleError);
       logError(zelleError, { operation: 'createRemittance - Zelle registration', remittanceId: data.id });
       // Don't fail remittance creation if Zelle registration fails
     }
 
     // Create bank transfer for off-cash methods (graceful fallback if fails)
     if (deliveryMethod !== 'cash' && recipient_bank_account_id) {
+      console.log('[createRemittance] STEP 11 - Creating bank transfer for non-cash delivery...');
       try {
         await createBankTransfer(
           data.id,
           recipient_bank_account_id,
           { amount_transferred: amountToDeliver }
         );
+        console.log('[createRemittance] Bank transfer created successfully');
       } catch (bankError) {
+        console.error('[createRemittance] Bank transfer creation error (non-fatal):', bankError);
         logError(bankError, { operation: 'createRemittance - bank transfer', remittanceId: data.id });
         // Don't fail remittance creation if bank transfer creation fails
       }
+    } else {
+      console.log('[createRemittance] STEP 11 - Skipping bank transfer (cash delivery or no account)');
     }
 
+    console.log('[createRemittance] SUCCESS - Remittance created:', data);
     return data;
   } catch (error) {
+    console.error('[createRemittance] FATAL ERROR:', error);
+    console.error('[createRemittance] Error details:', {
+      message: error?.message,
+      code: error?.code,
+      details: error?.details,
+      hint: error?.hint,
+      stack: error?.stack
+    });
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'createRemittance' });
     throw appError;

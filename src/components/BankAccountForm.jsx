@@ -45,36 +45,29 @@ const BankAccountForm = ({
     try {
       console.log('🔄 Cargando bancos y monedas...');
 
-      const [banksResult, currenciesResult] = await Promise.all([
+      const [banksData, currenciesData] = await Promise.all([
         getAllBanks(),
         getAllCurrencies()
       ]);
 
-      console.log('📊 Resultado de bancos:', banksResult);
-      console.log('💰 Resultado de monedas:', currenciesResult);
+      console.log('📊 Bancos cargados:', banksData?.length || 0, banksData);
+      console.log('💰 Monedas cargadas:', currenciesData?.length || 0, currenciesData);
 
-      if (banksResult.success) {
-        console.log('✅ Bancos cargados:', banksResult.data?.length || 0);
-        setBanks(banksResult.data || []);
-      } else {
-        console.error('❌ Error al cargar bancos:', banksResult.error);
+      setBanks(banksData || []);
+      setCurrencies(currenciesData || []);
+
+      if (!banksData || banksData.length === 0) {
+        console.warn('⚠️ No se encontraron bancos en la base de datos');
         toast({
-          title: language === 'es' ? 'Error' : 'Error',
+          title: language === 'es' ? 'Advertencia' : 'Warning',
           description: language === 'es'
-            ? `No se pudieron cargar los bancos: ${banksResult.error}`
-            : `Failed to load banks: ${banksResult.error}`,
+            ? 'No hay bancos disponibles en el sistema'
+            : 'No banks available in the system',
           variant: 'destructive'
         });
       }
-
-      if (currenciesResult.success) {
-        console.log('✅ Monedas cargadas:', currenciesResult.data?.length || 0);
-        setCurrencies(currenciesResult.data || []);
-      } else {
-        console.error('❌ Error al cargar monedas:', currenciesResult.error);
-      }
     } catch (error) {
-      console.error('💥 Error inesperado loading bank data:', error);
+      console.error('💥 Error loading bank data:', error);
       toast({
         title: language === 'es' ? 'Error' : 'Error',
         description: language === 'es'
