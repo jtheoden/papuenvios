@@ -755,7 +755,7 @@ export const getUserOrders = async (userId, filters = {}) => {
       const createOfferSelect = () =>
         supabase
           .from('offers')
-          .select('id, code, discount_type, discount_value, description, is_active');
+          .select('id, code, discount_type, discount_value, name_es, name_en, is_active');
 
       const { data: offersData, error: offersError } = await createOfferSelect().in('id', offerIds);
 
@@ -878,7 +878,7 @@ export const getOrderById = async (orderId) => {
       if (order.offer_id) {
         const baseOfferQuery = supabase
           .from('offers')
-          .select('id, code, discount_type, discount_value, description, is_active')
+          .select('id, code, discount_type, discount_value, name_es, name_en, is_active')
           .limit(1);
 
         let offer;
@@ -1072,8 +1072,13 @@ export const validatePayment = async (orderId, adminId) => {
     }
 
     // CRITICAL: Validate state machine - only pending orders with proof uploaded
-    validateOrderTransition(order.status, ORDER_STATUS.PROCESSING);
-    validatePaymentTransition(order.payment_status, PAYMENT_STATUS.VALIDATED);
+    // Only validate transition if we're not already in the target state
+    if (order.status !== ORDER_STATUS.PROCESSING) {
+      validateOrderTransition(order.status, ORDER_STATUS.PROCESSING);
+    }
+    if (order.payment_status !== PAYMENT_STATUS.VALIDATED) {
+      validatePaymentTransition(order.payment_status, PAYMENT_STATUS.VALIDATED);
+    }
 
     // ATOMIC: Update order status
     const { data: updatedOrder, error: updateError } = await supabase
@@ -1096,7 +1101,7 @@ export const validatePayment = async (orderId, adminId) => {
 
     // Get admin email for logging
     const adminEmail = await getUserEmail(adminId);
-    const activityResult = await logOrderActivity({
+    await logOrderActivity({
       action: 'payment_validated',
       entityId: orderId,
       performedBy: adminEmail,
@@ -1210,7 +1215,8 @@ export const validatePayment = async (orderId, adminId) => {
     }
 
     // Sync Zelle transaction history for observabilidad (graceful fallback)
-    if (order.zelle_account_id && activityResult?.status === 'inserted') {
+    // CRITICAL: Always register Zelle transaction when validating payment, independent of activity log status
+    if (order.zelle_account_id) {
       try {
         await upsertZelleTransactionStatus({
           referenceId: orderId,
