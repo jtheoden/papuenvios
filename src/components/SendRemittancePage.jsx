@@ -271,7 +271,7 @@ const SendRemittancePage = ({ onNavigate }) => {
     }
   };
 
-  const handleNotifyAdminWhatsApp = () => {
+  const handleNotifyAdminWhatsApp = async () => {
     if (!notificationSettings?.whatsapp) {
       toast({
         title: t('common.error'),
@@ -290,10 +290,11 @@ const SendRemittancePage = ({ onNavigate }) => {
         currency: calculation?.currency || 'USD',
         amount_to_deliver: calculation?.amountToDeliver,
         delivery_currency: calculation?.deliveryCurrency,
+        user_email: user?.email,
         payment_reference: paymentData.reference || '(Pendiente)'
       };
       const locale = language || 'es';
-      notifyAdminNewPaymentProof(enrichedRemittance, notificationSettings.whatsapp, locale);
+      await notifyAdminNewPaymentProof(enrichedRemittance, notificationSettings.whatsapp, locale);
 
       toast({
         title: t('common.success'),

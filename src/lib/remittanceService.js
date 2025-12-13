@@ -714,7 +714,11 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
         .single();
 
       if (!settingsError && settings?.value_text) {
-        await notifyAdminNewPaymentProof(updatedRemittance, settings.value_text, 'es');
+        const remittanceForNotify = {
+          ...updatedRemittance,
+          user_email: user.email
+        };
+        await notifyAdminNewPaymentProof(remittanceForNotify, settings.value_text, 'es');
       }
     } catch (notifyError) {
       logError(notifyError, { operation: 'uploadPaymentProof - notification', remittanceId });

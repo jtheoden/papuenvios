@@ -198,26 +198,28 @@ const DashboardPage = ({ onNavigate }) => {
       // Calculate remittance stats
       const totalRemittances = remittances.length;
       const pendingRemittances = remittances.filter(r =>
-        ['payment_pending', 'payment_proof_uploaded', 'payment_rejected'].includes(r.status)
+        ['payment_pending', 'payment_proof_uploaded', 'payment_rejected', 'payment_validated', 'processing'].includes(r.status)
       ).length;
-      const completedRemittances = remittances.filter(r => r.status === 'completed').length;
+      const completedRemittances = remittances.filter(r => ['delivered', 'completed'].includes(r.status)).length;
 
       // Calculate remittance income (commission earned)
+      const completedStatuses = ['delivered', 'completed'];
+
       const dailyRemittanceIncome = remittances
-        .filter(r => new Date(r.created_at) >= oneDayAgo && r.status === 'completed')
+        .filter(r => new Date(r.created_at) >= oneDayAgo && completedStatuses.includes(r.status))
         .reduce((sum, r) => sum + (parseFloat(r.commission_total) || 0), 0);
 
       const monthlyRemittanceIncome = remittances
-        .filter(r => new Date(r.created_at) >= oneMonthAgo && r.status === 'completed')
+        .filter(r => new Date(r.created_at) >= oneMonthAgo && completedStatuses.includes(r.status))
         .reduce((sum, r) => sum + (parseFloat(r.commission_total) || 0), 0);
 
       const dailyRemittanceVolume = remittances
-        .filter(r => new Date(r.created_at) >= oneDayAgo && r.status === 'completed')
-        .reduce((sum, r) => sum + (parseFloat(r.amount_sent) || 0), 0);
+        .filter(r => new Date(r.created_at) >= oneDayAgo && completedStatuses.includes(r.status))
+        .reduce((sum, r) => sum + (parseFloat(r.amount_to_deliver || r.amount_sent) || 0), 0);
 
       const monthlyRemittanceVolume = remittances
-        .filter(r => new Date(r.created_at) >= oneMonthAgo && r.status === 'completed')
-        .reduce((sum, r) => sum + (parseFloat(r.amount_sent) || 0), 0);
+        .filter(r => new Date(r.created_at) >= oneMonthAgo && completedStatuses.includes(r.status))
+        .reduce((sum, r) => sum + (parseFloat(r.amount_to_deliver || r.amount_sent) || 0), 0);
 
       setStats({
         totalProducts,

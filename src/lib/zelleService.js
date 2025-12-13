@@ -253,6 +253,7 @@ export const registerZelleTransaction = async (transactionData) => {
         transaction_type: transactionData.transaction_type,
         reference_id: transactionData.reference_id,
         amount: transactionData.amount,
+        transaction_date: new Date().toISOString(),
         status: ZELLE_STATUS.PENDING,
         notes: transactionData.notes || null
       }])
@@ -567,6 +568,62 @@ export const rejectZelleTransaction = async (transactionId, reason = null) => {
 
     const appError = parseSupabaseError(error);
     logError(appError, { operation: 'rejectZelleTransaction', transactionId, reason });
+    throw appError;
+  }
+};
+
+/**
+ * Get usage summary (daily/monthly) for all Zelle accounts based on transaction history
+ * Aggregates validated and pending transactions (ignores rejected reversals)
+ * @returns {Promise<Object>} Map keyed by accountId with dailyAmount and monthlyAmount
+ */
+export const getZelleAccountUsageSummary = async () => {
+  try {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const { data, error } = await supabase
+      .from('zelle_transaction_history')
+      .select('zelle_account_id, amount, status, transaction_date, created_at')
+      .gte('created_at', startOfMonth.toISOString());
+
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    const transactions = data || [];
+    const summary = {};
+
+    transactions.forEach((tx) => {
+      if (tx.status === ZELLE_STATUS.REJECTED) return;
+
+      const accountId = tx.zelle_account_id;
+      if (!summary[accountId]) {
+        summary[accountId] = { dailyAmount: 0, monthlyAmount: 0 };
+      }
+
+      const amount = parseFloat(tx.amount) || 0;
+      const txDate = new Date(tx.transaction_date || tx.created_at);
+
+      if (txDate >= startOfMonth) {
+        summary[accountId].monthlyAmount += amount;
+      }
+
+      if (txDate >= startOfDay) {
+        summary[accountId].dailyAmount += amount;
+      }
+    });
+
+    return summary;
+  } catch (error) {
+    if (error instanceof AppError) {
+      logError(error, { operation: 'getZelleAccountUsageSummary' });
+      throw error;
+    }
+
+    const appError = parseSupabaseError(error);
+    logError(appError, { operation: 'getZelleAccountUsageSummary' });
     throw appError;
   }
 };
@@ -1192,6 +1249,7 @@ export const zelleService = {
   deleteZelleAccount,
   getZelleAccountTransactions,
   getZelleAccountStats,
+  getZelleAccountUsageSummary,
   resetZelleCounters,
   getAllZellePaymentHistory,
   upsertZelleTransactionStatus,
