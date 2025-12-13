@@ -492,6 +492,8 @@ export const getMunicipalitiesByProvince = async (province) => {
  */
 export const createBankAccount = async (userId, bankData) => {
   try {
+    console.log('[createBankAccount] START - Input data:', { userId, bankData });
+
     const { bankId, accountTypeId, currencyId, accountNumber, accountHolderName } = bankData;
 
     // Validate required inputs
@@ -508,18 +510,32 @@ export const createBankAccount = async (userId, bankData) => {
     let finalCurrencyId = currencyId;
     let finalAccountTypeId = accountTypeId;
 
-    // Auto-convert currency code (e.g., 'USD') to UUID if needed
+    // Auto-convert currency code (e.g., 'USD', 'MLC') to UUID if needed
     if (typeof currencyId === 'string' && currencyId.length <= 4) {
-      const { getCurrencyByCode } = await import('@/lib/bankService');
-      const currencyData = await getCurrencyByCode(currencyId);
-      finalCurrencyId = currencyData.id;
+      console.log('[createBankAccount] Converting currency code to ID:', currencyId);
+      try {
+        const { getCurrencyByCode } = await import('@/lib/bankService');
+        const currencyData = await getCurrencyByCode(currencyId);
+        finalCurrencyId = currencyData.id;
+        console.log('[createBankAccount] Currency found:', { code: currencyId, id: finalCurrencyId });
+      } catch (error) {
+        console.error('[createBankAccount] Currency lookup failed:', error);
+        throw new Error(`La moneda '${currencyId}' no está disponible en el sistema. Por favor, contacta al administrador para agregar esta moneda.`);
+      }
     }
 
     // Auto-detect account type based on currency if not provided
     if (!accountTypeId) {
-      const { getDefaultAccountTypeForCurrency } = await import('@/lib/bankService');
-      const accountTypeData = await getDefaultAccountTypeForCurrency(currencyId);
-      finalAccountTypeId = accountTypeData.id;
+      console.log('[createBankAccount] Auto-detecting account type for currency:', currencyId);
+      try {
+        const { getDefaultAccountTypeForCurrency } = await import('@/lib/bankService');
+        const accountTypeData = await getDefaultAccountTypeForCurrency(currencyId);
+        finalAccountTypeId = accountTypeData.id;
+        console.log('[createBankAccount] Account type found:', finalAccountTypeId);
+      } catch (error) {
+        console.error('[createBankAccount] Account type lookup failed:', error);
+        throw new Error(`No se encontró un tipo de cuenta para la moneda '${currencyId}'. Por favor, contacta al administrador.`);
+      }
     }
 
     if (!finalAccountTypeId) {

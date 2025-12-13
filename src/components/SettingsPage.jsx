@@ -108,15 +108,20 @@ const SettingsPage = () => {
 
   // Load official exchange rates
   const loadOfficialRates = async () => {
+    console.log('[loadOfficialRates] START - Loading official exchange rates');
     setLoadingRates(true);
     try {
+      console.log('[loadOfficialRates] Fetching rates from API...');
       const rates = await fetchOfficialRates();
+      console.log('[loadOfficialRates] SUCCESS - Rates loaded:', { count: rates?.length || 0, rates });
       setOfficialRates(rates || []);
     } catch (error) {
-      console.error('Error loading official rates:', error);
+      console.error('[loadOfficialRates] ERROR:', error);
+      console.error('[loadOfficialRates] Error details:', { message: error?.message, code: error?.code });
       setOfficialRates([]);
     } finally {
       setLoadingRates(false);
+      console.log('[loadOfficialRates] Loading state set to false');
     }
   };
 
@@ -133,11 +138,15 @@ const SettingsPage = () => {
 
   // Load currencies from database
   const loadCurrencies = async () => {
+    console.log('[loadCurrencies] START - Loading currencies from database');
     try {
+      console.log('[loadCurrencies] Fetching currencies...');
       const currencies = await getCurrencies();
+      console.log('[loadCurrencies] SUCCESS - Currencies loaded:', { count: currencies?.length || 0, currencies });
       setCurrencies(currencies || []);
     } catch (error) {
-      console.error('Error loading currencies:', error);
+      console.error('[loadCurrencies] ERROR:', error);
+      console.error('[loadCurrencies] Error details:', { message: error?.message, code: error?.code });
       setCurrencies([]);
       toast({
         title: 'Error',
@@ -150,13 +159,24 @@ const SettingsPage = () => {
   };
 
   const handleFinancialSave = () => {
-    setFinancialSettings(localFinancial);
-    toast({ title: t('settings.saveSuccess') });
+    console.log('[handleFinancialSave] START - Input:', localFinancial);
+    try {
+      setFinancialSettings(localFinancial);
+      console.log('[handleFinancialSave] SUCCESS - Financial settings saved');
+      toast({ title: t('settings.saveSuccess') });
+    } catch (error) {
+      console.error('[handleFinancialSave] ERROR:', error);
+      console.error('[handleFinancialSave] Error details:', { message: error?.message, code: error?.code });
+      throw error;
+    }
   };
 
   // Handle currency form submission (create or update)
   const handleCurrencySubmit = async () => {
+    console.log('[handleCurrencySubmit] START - Input:', { currencyForm, editingCurrency });
+
     if (!currencyForm.code || !currencyForm.name_es || !currencyForm.name_en || !currencyForm.symbol) {
+      console.log('[handleCurrencySubmit] VALIDATION ERROR - Missing required fields');
       toast({
         title: language === 'es' ? 'Error' : 'Error',
         description: language === 'es'
@@ -172,6 +192,7 @@ const SettingsPage = () => {
 
       // If setting as base currency, unset any previous base currency
       if (currencyForm.is_base) {
+        console.log('[handleCurrencySubmit] Unsetting previous base currency...');
         await supabase.from('currencies')
           .update({ is_base: false })
           .eq('is_base', true)
@@ -181,9 +202,11 @@ const SettingsPage = () => {
       let savedCurrency;
       if (editingCurrency) {
         // Update existing currency
+        console.log('[handleCurrencySubmit] Updating existing currency:', editingCurrency.id);
         const { data, error } = await updateCurrency(editingCurrency.id, currencyForm);
         if (error) throw error;
         savedCurrency = data;
+        console.log('[handleCurrencySubmit] Currency updated successfully:', savedCurrency);
 
         toast({
           title: language === 'es' ? 'Moneda actualizada' : 'Currency Updated',
@@ -193,9 +216,11 @@ const SettingsPage = () => {
         });
       } else {
         // Create new currency
+        console.log('[handleCurrencySubmit] Creating new currency');
         const { data, error } = await createCurrency(currencyForm);
         if (error) throw error;
         savedCurrency = data;
+        console.log('[handleCurrencySubmit] Currency created successfully:', savedCurrency);
 
         toast({
           title: language === 'es' ? 'Moneda creada' : 'Currency Created',
@@ -206,11 +231,14 @@ const SettingsPage = () => {
       }
 
       // Reset form and reload
+      console.log('[handleCurrencySubmit] Resetting form and reloading currencies...');
       setCurrencyForm({ code: '', name_es: '', name_en: '', symbol: '', is_base: false });
       setEditingCurrency(null);
       await loadCurrencies();
+      console.log('[handleCurrencySubmit] SUCCESS - Currency submission completed');
     } catch (error) {
-      console.error('Error saving currency:', error);
+      console.error('[handleCurrencySubmit] ERROR:', error);
+      console.error('[handleCurrencySubmit] Error details:', { message: error?.message, code: error?.code });
       toast({
         title: 'Error',
         description: error.message,
@@ -220,33 +248,49 @@ const SettingsPage = () => {
   };
 
   const handleEditCurrency = async (currency) => {
-    setEditingCurrency(currency);
-    setCurrencyForm({
-      code: currency.code,
-      name_es: currency.name_es,
-      name_en: currency.name_en,
-      symbol: currency.symbol,
-      is_base: currency.is_base || false
-    });
+    console.log('[handleEditCurrency] START - Input:', currency);
+    try {
+      setEditingCurrency(currency);
+      setCurrencyForm({
+        code: currency.code,
+        name_es: currency.name_es,
+        name_en: currency.name_en,
+        symbol: currency.symbol,
+        is_base: currency.is_base || false
+      });
+      console.log('[handleEditCurrency] SUCCESS - Currency form populated for editing');
+    } catch (error) {
+      console.error('[handleEditCurrency] ERROR:', error);
+      console.error('[handleEditCurrency] Error details:', { message: error?.message, code: error?.code });
+      throw error;
+    }
   };
 
   const handleRemoveCurrency = async (currencyId) => {
+    console.log('[handleRemoveCurrency] START - Input:', { currencyId });
+
     const confirmMessage = language === 'es'
       ? '¿Está seguro de que desea eliminar esta moneda? Esto también eliminará sus tasas de cambio.'
       : 'Are you sure you want to delete this currency? This will also remove its exchange rates.';
 
-    if (!confirm(confirmMessage)) return;
+    if (!confirm(confirmMessage)) {
+      console.log('[handleRemoveCurrency] User cancelled deletion');
+      return;
+    }
 
     try {
       // First, deactivate all exchange rates for this currency
+      console.log('[handleRemoveCurrency] Deactivating exchange rates for currency:', currencyId);
       await supabase.from('exchange_rates')
         .update({ is_active: false })
         .or(`from_currency_id.eq.${currencyId},to_currency_id.eq.${currencyId}`);
 
       // Then delete the currency (soft delete)
+      console.log('[handleRemoveCurrency] Deleting currency:', currencyId);
       const { error } = await deleteCurrency(currencyId);
       if (error) throw error;
 
+      console.log('[handleRemoveCurrency] SUCCESS - Currency deleted');
       toast({
         title: language === 'es' ? 'Moneda eliminada' : 'Currency Deleted',
         description: language === 'es'
@@ -256,7 +300,8 @@ const SettingsPage = () => {
 
       await loadCurrencies();
     } catch (error) {
-      console.error('Error deleting currency:', error);
+      console.error('[handleRemoveCurrency] ERROR:', error);
+      console.error('[handleRemoveCurrency] Error details:', { message: error?.message, code: error?.code });
       toast({
         title: 'Error',
         description: error.message,
@@ -271,12 +316,16 @@ const SettingsPage = () => {
   };
 
   const handleNotificationSave = async () => {
+    console.log('[handleNotificationSave] START - Input:', localNotifications);
     try {
+      console.log('[handleNotificationSave] Saving notification settings...');
       await saveNotificationSettings(localNotifications);
       setNotificationSettings(localNotifications);
+      console.log('[handleNotificationSave] SUCCESS - Notification settings saved');
       toast({ title: t('settings.saveSuccess') });
     } catch (err) {
-      console.error('Failed to save notification settings:', err);
+      console.error('[handleNotificationSave] ERROR:', err);
+      console.error('[handleNotificationSave] Error details:', { message: err?.message, code: err?.code });
       toast({
         title: t('common.error'),
         description: 'Failed to save notification settings'
@@ -286,16 +335,20 @@ const SettingsPage = () => {
 
   // Shipping zones functions
   const loadShippingZones = async () => {
+    console.log('[loadShippingZones] START - Loading shipping zones');
     setLoadingZones(true);
     try {
+      console.log('[loadShippingZones] Fetching zones from database...');
       const zones = await getAllShippingZones();
       // getAllShippingZones returns array directly
       const existingZones = zones || [];
+      console.log('[loadShippingZones] Existing zones loaded:', { count: existingZones.length, zones: existingZones });
 
       // Ensure all Cuban provinces are represented
       const provinceNames = getProvinceNames();
       const existingProvinces = existingZones.map(z => z.province_name);
       const missingProvinces = provinceNames.filter(p => !existingProvinces.includes(p));
+      console.log('[loadShippingZones] Missing provinces:', { count: missingProvinces.length, provinces: missingProvinces });
 
       // Add missing provinces with 0 cost
       const allZones = [
@@ -311,8 +364,10 @@ const SettingsPage = () => {
       ];
 
       setShippingZones(allZones.sort((a, b) => a.province_name.localeCompare(b.province_name)));
+      console.log('[loadShippingZones] SUCCESS - Shipping zones loaded:', { totalCount: allZones.length });
     } catch (error) {
-      console.error('Error loading shipping zones:', error);
+      console.error('[loadShippingZones] ERROR:', error);
+      console.error('[loadShippingZones] Error details:', { message: error?.message, code: error?.code });
       toast({
         title: language === 'es' ? 'Error al cargar zonas' : 'Error loading zones',
         description: error.message,
@@ -320,49 +375,59 @@ const SettingsPage = () => {
       });
     } finally {
       setLoadingZones(false);
+      console.log('[loadShippingZones] Loading state set to false');
     }
   };
 
   const handleShippingZoneUpdate = async (zoneId, updates) => {
+    console.log('[handleShippingZoneUpdate] START - Input:', { zoneId, updates });
     setSavingZone(zoneId);
     try {
       const zone = shippingZones.find(z => z.id === zoneId);
+      console.log('[handleShippingZoneUpdate] Zone found:', zone);
 
       if (zone.is_new) {
         // Create new zone
+        console.log('[handleShippingZoneUpdate] Creating new zone...');
         const result = await createShippingZone({
           provinceName: zone.province_name,
           shippingCost: updates.shipping_cost ?? zone.shipping_cost,
           isActive: updates.is_active ?? zone.is_active ?? true,
           freeShipping: updates.free_shipping ?? zone.free_shipping ?? false
         });
+        console.log('[handleShippingZoneUpdate] Create result:', result);
 
         if (result.success) {
           // Reload zones to get the real ID
           await loadShippingZones();
+          console.log('[handleShippingZoneUpdate] SUCCESS - Zone created');
           toast({
             title: language === 'es' ? '✅ Zona creada' : '✅ Zone created'
           });
         }
       } else {
         // Update existing zone
+        console.log('[handleShippingZoneUpdate] Updating existing zone...');
         const result = await updateShippingZone(zoneId, {
           shippingCost: updates.shipping_cost,
           isActive: updates.is_active,
           freeShipping: updates.free_shipping
         });
+        console.log('[handleShippingZoneUpdate] Update result:', result);
 
         if (result.success) {
           setShippingZones(prev =>
             prev.map(z => z.id === zoneId ? { ...z, ...updates } : z)
           );
+          console.log('[handleShippingZoneUpdate] SUCCESS - Zone updated');
           toast({
             title: language === 'es' ? '✅ Zona actualizada' : '✅ Zone updated'
           });
         }
       }
     } catch (error) {
-      console.error('Error updating shipping zone:', error);
+      console.error('[handleShippingZoneUpdate] ERROR:', error);
+      console.error('[handleShippingZoneUpdate] Error details:', { message: error?.message, code: error?.code });
       toast({
         title: language === 'es' ? 'Error al guardar' : 'Save error',
         description: error.message,
@@ -370,25 +435,34 @@ const SettingsPage = () => {
       });
     } finally {
       setSavingZone(null);
+      console.log('[handleShippingZoneUpdate] Saving state cleared');
     }
   };
 
   // Exchange Rates functions
   const loadExchangeRates = async () => {
+    console.log('[loadExchangeRates] START - Loading exchange rates');
     setLoadingRates2(true);
     try {
+      console.log('[loadExchangeRates] Fetching rates from database...');
       const rates = await getAllExchangeRates();
+      console.log('[loadExchangeRates] SUCCESS - Rates loaded:', { count: rates?.length || 0, rates });
       setExchangeRates(rates || []);
     } catch (error) {
-      console.error('Error loading exchange rates:', error);
+      console.error('[loadExchangeRates] ERROR:', error);
+      console.error('[loadExchangeRates] Error details:', { message: error?.message, code: error?.code });
       setExchangeRates([]);
     } finally {
       setLoadingRates2(false);
+      console.log('[loadExchangeRates] Loading state set to false');
     }
   };
 
   const handleSaveRate = async () => {
+    console.log('[handleSaveRate] START - Input:', newRate);
+
     if (!newRate.fromCurrencyId || !newRate.toCurrencyId || !newRate.rate) {
+      console.log('[handleSaveRate] VALIDATION ERROR - Missing required fields');
       toast({
         title: language === 'es' ? 'Datos incompletos' : 'Incomplete data',
         description: language === 'es'
@@ -400,6 +474,7 @@ const SettingsPage = () => {
     }
 
     if (newRate.fromCurrencyId === newRate.toCurrencyId) {
+      console.log('[handleSaveRate] VALIDATION ERROR - Same currencies selected');
       toast({
         title: language === 'es' ? 'Error' : 'Error',
         description: language === 'es'
@@ -412,8 +487,10 @@ const SettingsPage = () => {
 
     try {
       // Save direct rate (from -> to)
+      console.log('[handleSaveRate] Saving direct rate...');
       const result = await saveExchangeRate(newRate);
       if (result.error) throw result.error;
+      console.log('[handleSaveRate] Direct rate saved:', result);
 
       // Save inverse rate (to -> from)
       const inverseRate = {
@@ -422,8 +499,10 @@ const SettingsPage = () => {
         rate: (1 / parseFloat(newRate.rate)).toString(),
         effectiveDate: newRate.effectiveDate
       };
+      console.log('[handleSaveRate] Saving inverse rate:', inverseRate);
       const inverseResult = await saveExchangeRate(inverseRate);
       if (inverseResult.error) throw inverseResult.error;
+      console.log('[handleSaveRate] Inverse rate saved:', inverseResult);
 
       await loadExchangeRates();
       setShowAddRate(false);
@@ -434,6 +513,7 @@ const SettingsPage = () => {
         effectiveDate: new Date().toISOString().split('T')[0]
       });
 
+      console.log('[handleSaveRate] SUCCESS - Exchange rates saved');
       toast({
         title: language === 'es' ? '✅ Tasas guardadas' : '✅ Rates saved',
         description: language === 'es'
@@ -441,7 +521,8 @@ const SettingsPage = () => {
           : 'Exchange rate and its inverse saved successfully'
       });
     } catch (error) {
-      console.error('Error saving rate:', error);
+      console.error('[handleSaveRate] ERROR:', error);
+      console.error('[handleSaveRate] Error details:', { message: error?.message, code: error?.code });
       toast({
         title: language === 'es' ? 'Error al guardar' : 'Save error',
         description: error.message,
@@ -451,20 +532,27 @@ const SettingsPage = () => {
   };
 
   const handleDeleteRate = async (rateId) => {
+    console.log('[handleDeleteRate] START - Input:', { rateId });
+
     if (!confirm(language === 'es' ? '¿Eliminar esta tasa?' : 'Delete this rate?')) {
+      console.log('[handleDeleteRate] User cancelled deletion');
       return;
     }
 
     try {
+      console.log('[handleDeleteRate] Deleting exchange rate:', rateId);
       const result = await deleteExchangeRate(rateId);
       if (result.error) throw result.error;
+      console.log('[handleDeleteRate] Delete result:', result);
 
       await loadExchangeRates();
+      console.log('[handleDeleteRate] SUCCESS - Exchange rate deleted');
       toast({
         title: language === 'es' ? '✅ Tasa eliminada' : '✅ Rate deleted'
       });
     } catch (error) {
-      console.error('Error deleting rate:', error);
+      console.error('[handleDeleteRate] ERROR:', error);
+      console.error('[handleDeleteRate] Error details:', { message: error?.message, code: error?.code });
       toast({
         title: language === 'es' ? 'Error' : 'Error',
         description: error.message,
@@ -474,19 +562,36 @@ const SettingsPage = () => {
   };
 
   const handleVisualSave = async () => {
-    setVisualSettings(localVisual);
-    toast({ title: t('settings.saveSuccess') });
+    console.log('[handleVisualSave] START - Input:', localVisual);
+    try {
+      setVisualSettings(localVisual);
+      console.log('[handleVisualSave] SUCCESS - Visual settings saved');
+      toast({ title: t('settings.saveSuccess') });
+    } catch (error) {
+      console.error('[handleVisualSave] ERROR:', error);
+      console.error('[handleVisualSave] Error details:', { message: error?.message, code: error?.code });
+      throw error;
+    }
   };
 
   const handleLogoUpload = async (e) => {
+    console.log('[handleLogoUpload] START - File upload initiated');
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      console.log('[handleLogoUpload] No file selected');
+      return;
+    }
+
+    console.log('[handleLogoUpload] File selected:', { name: file.name, size: file.size, type: file.type });
 
     try {
       // Validate and process logo image
+      console.log('[handleLogoUpload] Validating and processing image...');
       const result = await validateAndProcessImage(file, 'logo');
+      console.log('[handleLogoUpload] Validation result:', result);
 
       if (!result.success) {
+        console.log('[handleLogoUpload] VALIDATION ERROR:', result.errors);
         toast({
           title: language === 'es' ? 'Error de validación' : 'Validation error',
           description: result.errors.join('\n'),
@@ -499,6 +604,7 @@ const SettingsPage = () => {
       setLogoPreview(result.base64);
       setAppearance(prev => ({ ...prev, logo: result.base64 }));
 
+      console.log('[handleLogoUpload] SUCCESS - Logo uploaded and processed');
       toast({
         title: language === 'es' ? 'Logo cargado' : 'Logo uploaded',
         description: language === 'es'
@@ -506,7 +612,8 @@ const SettingsPage = () => {
           : `${result.metadata.originalDimensions} → ${result.metadata.finalDimensions}`,
       });
     } catch (error) {
-      console.error('Error processing logo:', error);
+      console.error('[handleLogoUpload] ERROR:', error);
+      console.error('[handleLogoUpload] Error details:', { message: error?.message, code: error?.code });
       toast({
         title: language === 'es' ? 'Error al procesar imagen' : 'Error processing image',
         description: error.message,
@@ -516,30 +623,42 @@ const SettingsPage = () => {
   };
 
   const handleAppearanceSave = () => {
-    setVisualSettings({
-      ...visualSettings,
-      ...appearance
-    });
+    console.log('[handleAppearanceSave] START - Input:', appearance);
+    try {
+      setVisualSettings({
+        ...visualSettings,
+        ...appearance
+      });
 
-    // Update document title
-    document.title = appearance.companyName;
+      // Update document title
+      document.title = appearance.companyName;
 
-    toast({
-      title: t('settings.saveSuccess'),
-      description: language === 'es'
-        ? 'Personalización guardada. Recarga la página para ver todos los cambios.'
-        : 'Customization saved. Reload the page to see all changes.'
-    });
+      console.log('[handleAppearanceSave] SUCCESS - Appearance settings saved');
+      toast({
+        title: t('settings.saveSuccess'),
+        description: language === 'es'
+          ? 'Personalización guardada. Recarga la página para ver todos los cambios.'
+          : 'Customization saved. Reload the page to see all changes.'
+      });
+    } catch (error) {
+      console.error('[handleAppearanceSave] ERROR:', error);
+      console.error('[handleAppearanceSave] Error details:', { message: error?.message, code: error?.code });
+      throw error;
+    }
   };
 
   // Load carousel slides from database
   const loadCarouselSlides = async () => {
+    console.log('[loadCarouselSlides] START - Loading carousel slides');
     setLoadingSlides(true);
     try {
+      console.log('[loadCarouselSlides] Fetching slides from database...');
       const slides = await getCarouselSlides();
+      console.log('[loadCarouselSlides] SUCCESS - Slides loaded:', { count: slides?.length || 0, slides });
       setCarouselSlides(slides || []);
     } catch (error) {
-      console.error('Error loading carousel slides:', error);
+      console.error('[loadCarouselSlides] ERROR:', error);
+      console.error('[loadCarouselSlides] Error details:', { message: error?.message, code: error?.code });
       setCarouselSlides([]);
       toast({
         title: t('settings.visual.errorLoadingSlides'),
@@ -548,13 +667,15 @@ const SettingsPage = () => {
       });
     } finally {
       setLoadingSlides(false);
+      console.log('[loadCarouselSlides] Loading state set to false');
     }
   };
 
   // Create new slide
   const handleAddSlide = async () => {
+    console.log('[handleAddSlide] START - Creating new carousel slide');
     try {
-      await createCarouselSlide({
+      const newSlideData = {
         title_es: '',
         title_en: '',
         subtitle_es: '',
@@ -562,15 +683,20 @@ const SettingsPage = () => {
         image_url: '',
         link_url: '',
         is_active: false
-      });
+      };
+      console.log('[handleAddSlide] Slide data:', newSlideData);
+
+      await createCarouselSlide(newSlideData);
 
       await loadCarouselSlides();
+      console.log('[handleAddSlide] SUCCESS - Slide created');
       toast({
         title: language === 'es' ? 'Diapositiva creada' : 'Slide created',
         description: language === 'es' ? 'Nueva diapositiva agregada exitosamente' : 'New slide added successfully'
       });
     } catch (error) {
-      console.error('Error creating slide:', error);
+      console.error('[handleAddSlide] ERROR:', error);
+      console.error('[handleAddSlide] Error details:', { message: error?.message, code: error?.code });
       toast({
         title: 'Error',
         description: error.message,
@@ -581,10 +707,12 @@ const SettingsPage = () => {
 
   // Update slide field (immediate for non-text fields)
   const handleSlideChange = async (id, updates) => {
+    console.log('[handleSlideChange] START - Input:', { id, updates });
     try {
       setSavingSlide(id);
       setSavedSlide(null);
 
+      console.log('[handleSlideChange] Updating slide in database...');
       const { error } = await updateCarouselSlide(id, updates);
       if (error) throw error;
 
@@ -597,8 +725,10 @@ const SettingsPage = () => {
       setSavingSlide(null);
       setSavedSlide(id);
       setTimeout(() => setSavedSlide(null), 1500);
+      console.log('[handleSlideChange] SUCCESS - Slide updated');
     } catch (error) {
-      console.error('Error updating slide:', error);
+      console.error('[handleSlideChange] ERROR:', error);
+      console.error('[handleSlideChange] Error details:', { message: error?.message, code: error?.code });
       setSavingSlide(null);
       toast({
         title: t('settings.visual.errorUpdating'),
@@ -610,31 +740,45 @@ const SettingsPage = () => {
 
   // Debounced update for text fields to prevent cursor jumping
   const handleSlideTextChange = (id, field, value) => {
-    // Update local state immediately for responsive UI
-    setCarouselSlides(prev =>
-      prev.map(slide => (slide.id === id ? { ...slide, [field]: value } : slide))
-    );
+    console.log('[handleSlideTextChange] START - Input:', { id, field, valueLength: value?.length });
+    try {
+      // Update local state immediately for responsive UI
+      setCarouselSlides(prev =>
+        prev.map(slide => (slide.id === id ? { ...slide, [field]: value } : slide))
+      );
 
-    // Clear existing timer for this slide
-    if (slideDebounceTimers[id]) {
-      clearTimeout(slideDebounceTimers[id]);
+      // Clear existing timer for this slide
+      if (slideDebounceTimers[id]) {
+        console.log('[handleSlideTextChange] Clearing existing debounce timer');
+        clearTimeout(slideDebounceTimers[id]);
+      }
+
+      // Set new timer to save after user stops typing
+      const timer = setTimeout(() => {
+        console.log('[handleSlideTextChange] Debounce timer expired, triggering save');
+        handleSlideChange(id, { [field]: value });
+      }, 800);
+
+      setSlideDebounceTimers(prev => ({ ...prev, [id]: timer }));
+      console.log('[handleSlideTextChange] SUCCESS - Debounce timer set (800ms)');
+    } catch (error) {
+      console.error('[handleSlideTextChange] ERROR:', error);
+      console.error('[handleSlideTextChange] Error details:', { message: error?.message, code: error?.code });
+      throw error;
     }
-
-    // Set new timer to save after user stops typing
-    const timer = setTimeout(() => {
-      handleSlideChange(id, { [field]: value });
-    }, 800);
-
-    setSlideDebounceTimers(prev => ({ ...prev, [id]: timer }));
   };
 
   // Delete slide
   const handleRemoveSlide = async (id) => {
+    console.log('[handleRemoveSlide] START - Input:', { id });
+
     if (!confirm(language === 'es' ? '¿Eliminar esta diapositiva?' : 'Delete this slide?')) {
+      console.log('[handleRemoveSlide] User cancelled deletion');
       return;
     }
 
     try {
+      console.log('[handleRemoveSlide] Deleting slide from database...');
       const { error } = await hardDeleteCarouselSlide(id);
       if (error) throw error;
 
@@ -645,12 +789,14 @@ const SettingsPage = () => {
         return newPreviews;
       });
 
+      console.log('[handleRemoveSlide] SUCCESS - Slide deleted');
       toast({
         title: language === 'es' ? 'Diapositiva eliminada' : 'Slide deleted',
         description: language === 'es' ? 'La diapositiva fue eliminada exitosamente' : 'Slide was deleted successfully'
       });
     } catch (error) {
-      console.error('Error deleting slide:', error);
+      console.error('[handleRemoveSlide] ERROR:', error);
+      console.error('[handleRemoveSlide] Error details:', { message: error?.message, code: error?.code });
       toast({
         title: 'Error',
         description: error.message,
@@ -661,10 +807,12 @@ const SettingsPage = () => {
 
   // Update slide order
   const handleSlideOrderChange = async (id, newOrder) => {
+    console.log('[handleSlideOrderChange] START - Input:', { id, newOrder });
     try {
       setSavingSlide(id);
       setSavedSlide(null);
 
+      console.log('[handleSlideOrderChange] Updating slide order in database...');
       const { error } = await updateCarouselSlide(id, { display_order: parseInt(newOrder) });
       if (error) throw error;
 
@@ -678,8 +826,10 @@ const SettingsPage = () => {
       setSavingSlide(null);
       setSavedSlide(id);
       setTimeout(() => setSavedSlide(null), 1500);
+      console.log('[handleSlideOrderChange] SUCCESS - Slide order updated');
     } catch (error) {
-      console.error('Error updating slide order:', error);
+      console.error('[handleSlideOrderChange] ERROR:', error);
+      console.error('[handleSlideOrderChange] Error details:', { message: error?.message, code: error?.code });
       setSavingSlide(null);
       toast({
         title: 'Error',
@@ -690,14 +840,23 @@ const SettingsPage = () => {
   };
 
   const handleSlideImageUpload = async (slideId, e) => {
+    console.log('[handleSlideImageUpload] START - Input:', { slideId });
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      console.log('[handleSlideImageUpload] No file selected');
+      return;
+    }
+
+    console.log('[handleSlideImageUpload] File selected:', { name: file.name, size: file.size, type: file.type });
 
     try {
       // Validate and process image
+      console.log('[handleSlideImageUpload] Validating and processing image...');
       const result = await validateAndProcessImage(file, 'carousel');
+      console.log('[handleSlideImageUpload] Validation result:', result);
 
       if (!result.success) {
+        console.log('[handleSlideImageUpload] VALIDATION ERROR:', result.errors);
         toast({
           title: t('settings.visual.validationError'),
           description: result.errors.join('\n'),
@@ -707,15 +866,18 @@ const SettingsPage = () => {
       }
 
       // Update slide image in database
+      console.log('[handleSlideImageUpload] Updating slide image in database...');
       await handleSlideChange(slideId, { image_url: result.base64 });
       setSlidePreviews(prev => ({ ...prev, [slideId]: result.base64 }));
 
+      console.log('[handleSlideImageUpload] SUCCESS - Slide image uploaded and processed');
       toast({
         title: t('settings.visual.imageOptimized'),
         description: `${result.metadata.originalDimensions} → ${result.metadata.finalDimensions} (${result.metadata.compression} ${language === 'es' ? 'compresión' : 'compression'})`,
       });
     } catch (error) {
-      console.error('Error processing slide image:', error);
+      console.error('[handleSlideImageUpload] ERROR:', error);
+      console.error('[handleSlideImageUpload] Error details:', { message: error?.message, code: error?.code });
       toast({
         title: t('settings.visual.errorProcessingImage'),
         description: error.message,

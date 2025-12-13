@@ -16,7 +16,7 @@ import ZellePaymentHistoryTab from './admin/ZellePaymentHistoryTab';
 import ActivityLogTab from './ActivityLogTab';
 
 const DashboardPage = ({ onNavigate }) => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { products, combos, financialSettings, visualSettings } = useBusiness();
   const { user, isAdmin, isSuperAdmin } = useAuth();
 
@@ -158,7 +158,7 @@ const DashboardPage = ({ onNavigate }) => {
         supabase.from('combo_products').select('id', { count: 'exact', head: true }),
         supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
         supabase.from('orders').select('id, status, payment_status, total_amount, created_at'),
-        supabase.from('remittances').select('id, status, commission_total, amount_sent, created_at')
+        supabase.from('remittances').select('id, status, commission_total, amount_sent, amount_to_deliver, created_at')
       ]);
 
       const totalProducts = productsRes.count || 0;
@@ -574,11 +574,15 @@ const DashboardPage = ({ onNavigate }) => {
                         <h3 className="text-2xl font-semibold mb-6">{t('dashboard.dailyBreakdown')}</h3>
                         <div className="space-y-2 text-sm">
                           <div className="flex justify-between">
-                            <span>{t('dashboard.grossRevenue')} (Remesas):</span>
-                            <span className="font-semibold">{currencySymbol}{formatCurrency(dailyRemittanceVolumeValue)} {currencyCode}</span>
+                            <span>{language === 'es' ? 'Volumen Entregado' : 'Volume Delivered'}:</span>
+                            <span className="font-semibold text-blue-600">{currencySymbol}{formatCurrency(dailyRemittanceVolumeValue)} {currencyCode}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span>{t('dashboard.costs')}:</span>
+                            <span>{language === 'es' ? 'Comisión Ganada' : 'Commission Earned'}:</span>
+                            <span className="font-semibold text-green-600">{currencySymbol}{formatCurrency(dailyRemittanceCommission)} {currencyCode}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>{language === 'es' ? 'Costos de Pago' : 'Payout Costs'}:</span>
                             <span className="font-semibold text-red-600">-{currencySymbol}{formatCurrency(dailyRemittancePayout)} {currencyCode}</span>
                           </div>
                           <div className="flex justify-between border-t pt-2 mt-1">
@@ -601,11 +605,15 @@ const DashboardPage = ({ onNavigate }) => {
                         <h3 className="text-2xl font-semibold mb-6">{t('dashboard.monthlyBreakdown')}</h3>
                         <div className="space-y-2 text-sm">
                           <div className="flex justify-between">
-                            <span>{t('dashboard.grossRevenue')} (Remesas):</span>
-                            <span className="font-semibold">{currencySymbol}{formatCurrency(monthlyRemittanceVolumeValue)} {currencyCode}</span>
+                            <span>{language === 'es' ? 'Volumen Entregado' : 'Volume Delivered'}:</span>
+                            <span className="font-semibold text-blue-600">{currencySymbol}{formatCurrency(monthlyRemittanceVolumeValue)} {currencyCode}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span>{t('dashboard.costs')}:</span>
+                            <span>{language === 'es' ? 'Comisión Ganada' : 'Commission Earned'}:</span>
+                            <span className="font-semibold text-green-600">{currencySymbol}{formatCurrency(monthlyRemittanceCommission)} {currencyCode}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>{language === 'es' ? 'Costos de Pago' : 'Payout Costs'}:</span>
                             <span className="font-semibold text-red-600">-{currencySymbol}{formatCurrency(monthlyRemittancePayout)} {currencyCode}</span>
                           </div>
                           <div className="flex justify-between border-t pt-2 mt-1">

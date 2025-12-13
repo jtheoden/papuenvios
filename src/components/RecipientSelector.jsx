@@ -5,9 +5,9 @@
  * Adapts based on use case (remittances, orders, etc)
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Home } from 'lucide-react';
+import { Plus, Home, Search, X } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
 import { getMyRecipients, createRecipient, addRecipientAddress } from '@/lib/recipientService';
@@ -36,6 +36,7 @@ const RecipientSelector = React.forwardRef((
   const [municipalities, setMunicipalities] = useState([]);
   const [creatingRecipient, setCreatingRecipient] = useState(false);
   const [selectedBankAccountId, setSelectedBankAccountId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const [formData, setFormData] = useState({
     full_name: '',
@@ -91,6 +92,17 @@ const RecipientSelector = React.forwardRef((
     });
     setMunicipalities([]);
   };
+
+  // Filter recipients based on search term
+  const filteredRecipients = useMemo(() => {
+    if (!searchTerm) return recipients;
+    const term = searchTerm.toLowerCase();
+    return recipients.filter(r =>
+      r.full_name.toLowerCase().includes(term) ||
+      r.phone.includes(term) ||
+      r.email?.toLowerCase().includes(term)
+    );
+  }, [recipients, searchTerm]);
 
   const handleRecipientSelect = (recipient) => {
     setSelectedRecipient(recipient);
@@ -226,23 +238,55 @@ const RecipientSelector = React.forwardRef((
           <label className="block text-sm font-semibold mb-3">
             {language === 'es' ? 'Selecciona un Destinatario' : 'Select a Recipient'}
           </label>
-          <div className="space-y-2">
-            {recipients.map((recipient) => (
-              <motion.button
-                key={recipient.id}
-                onClick={() => handleRecipientSelect(recipient)}
-                className={`w-full text-left p-3 rounded-lg border-2 transition-all ${
-                  selectedRecipient?.id === recipient.id
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.99 }}
-              >
-                <p className="font-medium">{recipient.full_name}</p>
-                <p className="text-xs text-gray-500">{recipient.phone}</p>
-              </motion.button>
-            ))}
+
+          {/* Search Input */}
+          {recipients.length > 7 && (
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder={language === 'es' ? 'Buscar por nombre, teléfono o email...' : 'Search by name, phone or email...'}
+                className="w-full pl-10 pr-10 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none text-sm"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Recipients List */}
+          <div className={`space-y-2 ${recipients.length > 7 ? 'max-h-[400px] overflow-y-auto pr-1' : ''}`}>
+            {filteredRecipients.length > 0 ? (
+              filteredRecipients.map((recipient) => (
+                <motion.button
+                  key={recipient.id}
+                  onClick={() => handleRecipientSelect(recipient)}
+                  className={`w-full text-left p-3 rounded-lg border-2 transition-all ${
+                    selectedRecipient?.id === recipient.id
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                >
+                  <p className="font-medium">{recipient.full_name}</p>
+                  <p className="text-xs text-gray-500">{recipient.phone}</p>
+                </motion.button>
+              ))
+            ) : (
+              <div className="p-4 bg-gray-50 rounded-lg text-center">
+                <p className="text-sm text-gray-600">
+                  {language === 'es' ? 'No se encontraron destinatarios' : 'No recipients found'}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}

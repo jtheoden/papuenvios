@@ -129,19 +129,20 @@ const SendRemittancePage = ({ onNavigate }) => {
     }
 
     setCalculating(true);
-    const result = await calculateRemittance(selectedType.id, parseFloat(amount));
-
-    if (result.success) {
-      setCalculation(result.calculation);
+    try {
+      const calculation = await calculateRemittance(selectedType.id, parseFloat(amount));
+      setCalculation(calculation);
       setStep(2);
-    } else {
+    } catch (error) {
+      console.error('Error calculating remittance:', error);
       toast({
         title: t('common.error'),
-        description: result.error,
+        description: error?.message || t('remittances.wizard.errorCalculating') || 'Error al calcular la remesa',
         variant: 'destructive'
       });
+    } finally {
+      setCalculating(false);
     }
-    setCalculating(false);
   };
 
   const handleRecipientSubmit = () => {
@@ -325,14 +326,14 @@ const SendRemittancePage = ({ onNavigate }) => {
 
     setSubmitting(true);
 
-    const result = await uploadPaymentProof(
-      createdRemittance.id,
-      paymentData.file,
-      paymentData.reference,
-      paymentData.notes
-    );
+    try {
+      await uploadPaymentProof(
+        createdRemittance.id,
+        paymentData.file,
+        paymentData.reference,
+        paymentData.notes
+      );
 
-    if (result.success) {
       toast({
         title: t('common.success'),
         description: t('remittances.wizard.proofSentSuccess')
@@ -366,15 +367,16 @@ const SendRemittancePage = ({ onNavigate }) => {
           onNavigate('myRemittances');
         }
       }, 2000);
-    } else {
+    } catch (error) {
+      console.error('Error uploading payment proof:', error);
       toast({
         title: t('common.error'),
-        description: result.error,
+        description: error?.message || t('remittances.wizard.errorUploadingProof') || 'Error al subir el comprobante',
         variant: 'destructive'
       });
+    } finally {
+      setSubmitting(false);
     }
-
-    setSubmitting(false);
   };
 
   const renderStepIndicator = () => (

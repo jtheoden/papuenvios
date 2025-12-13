@@ -1161,6 +1161,8 @@
   },
   "zelle": {
     "accounts": "Cuentas Zelle",
+    "selectAccount": "Seleccionar Cuenta Zelle",
+    "selectAccountRequired": "Debe seleccionar una cuenta Zelle para continuar",
     "accountName": "Nombre de la Cuenta",
     "accountNamePlaceholder": "Ej: Zelle Principal",
     "phoneNumber": "Número de Teléfono",
