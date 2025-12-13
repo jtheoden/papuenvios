@@ -1187,11 +1187,47 @@ export const getAllZellePaymentHistory = async (filters = {}) => {
       }, {});
     }
 
-    const userIds = Array.from(new Set(
-      Object.values(remittanceMap)
-        .map(remittance => remittance.user_id)
-        .filter(Boolean)
-    ));
+    // Fetch order details for transactions that reference orders (products/combos)
+    const orderIds = transactions
+      .filter(tx => (tx.transaction_type === 'product' || tx.transaction_type === 'combo') && tx.reference_id)
+      .map(tx => tx.reference_id);
+
+    let orderMap = {};
+    if (orderIds.length > 0) {
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .select('id, order_number, user_id, recipient_info, total_amount')
+        .in('id', orderIds);
+
+      if (orderError) {
+        throw parseSupabaseError(orderError);
+      }
+
+      orderMap = (orderData || []).reduce((acc, order) => {
+        // Parse recipient_info JSON to get recipient name
+        let recipientName = 'N/A';
+        try {
+          const recipientInfo = typeof order.recipient_info === 'string'
+            ? JSON.parse(order.recipient_info)
+            : order.recipient_info;
+          recipientName = recipientInfo?.fullName || recipientInfo?.name || 'N/A';
+        } catch (e) {
+          console.error('Error parsing recipient_info:', e);
+        }
+
+        acc[order.id] = {
+          ...order,
+          recipient_name: recipientName
+        };
+        return acc;
+      }, {});
+    }
+
+    // Collect all user IDs from both remittances and orders
+    const userIds = Array.from(new Set([
+      ...Object.values(remittanceMap).map(r => r.user_id).filter(Boolean),
+      ...Object.values(orderMap).map(o => o.user_id).filter(Boolean)
+    ]));
 
     let userMap = {};
     if (userIds.length > 0) {
@@ -1215,11 +1251,20 @@ export const getAllZellePaymentHistory = async (filters = {}) => {
         ? remittanceMap[transaction.reference_id]
         : null;
 
-      const userData = remittance ? userMap[remittance.user_id] : null;
+      const order = (transaction.transaction_type === 'product' || transaction.transaction_type === 'combo')
+        ? orderMap[transaction.reference_id]
+        : null;
+
+      const userData = remittance
+        ? userMap[remittance.user_id]
+        : order
+          ? userMap[order.user_id]
+          : null;
 
       return {
         ...transaction,
         remittances: remittance || null,
+        orders: order || null,
         user: userData || null,
         account_name: transaction.zelle_accounts?.account_name || 'N/A'
       };

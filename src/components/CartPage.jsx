@@ -14,6 +14,7 @@ import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
 import { convertCurrency } from '@/lib/currencyService';
 import { generateWhatsAppURL, notifyAdminNewPayment, openWhatsAppChat } from '@/lib/whatsappService';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
+import { getAvailableZelleAccount } from '@/lib/zelleService';
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
 import { calculateOrderTotal } from '@/lib/priceCalculationService';
@@ -520,12 +521,32 @@ const CartPage = ({ onNavigate }) => {
       // Get shipping zone ID
       const shippingZone = shippingZones.find(z => z.province_name === recipientDetails.province);
 
+      // Get Zelle account: prioritize user selection, fallback to automatic assignment
+      let selectedZelleAccountId = selectedZelle?.id || null;
+
+      if (!selectedZelleAccountId) {
+        // User didn't select a Zelle account, assign one automatically
+        try {
+          const zelleResult = await getAvailableZelleAccount('order', totalAmount);
+          if (zelleResult.success && zelleResult.account) {
+            selectedZelleAccountId = zelleResult.account.id;
+            console.log('[CartPage] Auto-assigned Zelle account:', selectedZelleAccountId);
+          } else {
+            console.warn('[CartPage] No Zelle accounts available:', zelleResult.error);
+          }
+        } catch (zelleError) {
+          console.error('[CartPage] Error getting Zelle account:', zelleError);
+        }
+      } else {
+        console.log('[CartPage] Using user-selected Zelle account:', selectedZelleAccountId);
+      }
+
       // Debug logs
       console.log('Creating order with:', {
         userId: user.id,
         currencyId: currency.id,
         shippingZoneId: shippingZone?.id,
-        zelleAccountId: zelleAccounts?.[0]?.id
+        zelleAccountId: selectedZelleAccountId
       });
 
       // Prepare order items
@@ -552,8 +573,7 @@ const CartPage = ({ onNavigate }) => {
         recipientInfo: JSON.stringify(recipientDetails),
         paymentMethod: 'zelle',
         shippingZoneId: shippingZone?.id || null,
-        // TODO: Fix zelle_accounts table to use UUID instead of integer IDs
-        zelleAccountId: null,
+        zelleAccountId: selectedZelleAccountId,
         // Offer/coupon code - added from Phase 3.13
         offerId: appliedOffer?.id || null
       };

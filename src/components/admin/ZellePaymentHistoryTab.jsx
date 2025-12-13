@@ -93,7 +93,7 @@ const ZellePaymentHistoryTab = () => {
         const userEmail = transaction.user?.email?.toLowerCase() || '';
         const accountName = transaction.account_name?.toLowerCase() || '';
         const transactionId = transaction.id?.toLowerCase() || '';
-        const recipientName = transaction.remittances?.recipient_name?.toLowerCase() || '';
+        const recipientName = (transaction.remittances?.recipient_name || transaction.orders?.recipient_name || '').toLowerCase();
 
         return (
           userName.includes(query) ||
@@ -209,12 +209,18 @@ const ZellePaymentHistoryTab = () => {
       }
     },
     {
-      key: 'remittances',
+      key: 'recipient',
       label: t('zelleHistory.recipient') || 'Recipient',
       width: 'w-32',
       render: (value, row) => {
-        const recipientName = row.remittances?.recipient_name || 'N/A';
-        return <span className="text-sm">{recipientName}</span>;
+        const recipientName = row.remittances?.recipient_name || row.orders?.recipient_name || 'N/A';
+        const referenceNumber = row.remittances?.remittance_number || row.orders?.order_number || '';
+        return (
+          <div>
+            <div className="text-sm font-medium">{recipientName}</div>
+            {referenceNumber && <div className="text-xs text-gray-500">{referenceNumber}</div>}
+          </div>
+        );
       }
     }
   ];
@@ -288,15 +294,17 @@ const ZellePaymentHistoryTab = () => {
       }
     },
     {
-      key: 'remittances',
+      key: 'recipient',
       label: t('zelleHistory.recipient') || 'Recipient',
       render: (value, row) => {
-        const recipientName = row.remittances?.recipient_name || 'N/A';
-        const recipientAmount = row.remittances?.amount_to_deliver;
+        const recipientName = row.remittances?.recipient_name || row.orders?.recipient_name || 'N/A';
+        const referenceNumber = row.remittances?.remittance_number || row.orders?.order_number || '';
+        const recipientAmount = row.remittances?.amount_to_deliver || row.orders?.total_amount;
         return (
           <div>
-            <div>{recipientName}</div>
-            {recipientAmount && <div className="text-sm text-gray-500">{t('zelleHistory.amountToDeliver') || 'Amount to deliver'}: {formatCurrency(recipientAmount)}</div>}
+            <div className="font-medium">{recipientName}</div>
+            {referenceNumber && <div className="text-sm text-gray-500">{referenceNumber}</div>}
+            {recipientAmount && <div className="text-sm text-gray-500">{formatCurrency(recipientAmount)}</div>}
           </div>
         );
       }
