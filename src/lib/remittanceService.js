@@ -169,7 +169,7 @@ export const getActiveRemittanceTypes = async () => {
     const { data, error } = await supabase
       .from('remittance_types')
       .select('*')
-      .eq('is_active', true)
+      .or('is_active.eq.true,is_active.is.null')
       .order('display_order', { ascending: true });
 
     if (error) {
@@ -397,7 +397,7 @@ export const calculateRemittance = async (typeId, amount) => {
       .from('remittance_types')
       .select('*')
       .eq('id', typeId)
-      .eq('is_active', true)
+      .or('is_active.eq.true,is_active.is.null')
       .single();
 
     if (error) {
