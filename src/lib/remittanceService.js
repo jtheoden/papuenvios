@@ -495,7 +495,8 @@ export const createRemittance = async (remittanceData) => {
       amountToDeliver,
       exchangeRate,
       currency: currencyCode,
-      deliveryCurrency
+      deliveryCurrency,
+      deliveryMethod
     } = calculation;
 
     // Get authenticated user
@@ -573,7 +574,7 @@ export const createRemittance = async (remittanceData) => {
     }
 
     // Create bank transfer for off-cash methods (graceful fallback if fails)
-    if (insertData.currency_delivered !== 'cash' && recipient_bank_account_id) {
+    if (deliveryMethod !== 'cash' && recipient_bank_account_id) {
       try {
         await createBankTransfer(
           data.id,
