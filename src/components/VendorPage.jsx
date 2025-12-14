@@ -32,43 +32,84 @@ const VendorPage = () => {
 
   useEffect(() => {
     const fetchCurrencies = async () => {
-      const { data } = await supabase
-        .from('currencies')
-        .select('*')
-        .eq('is_active', true)
-        .order('code', { ascending: true});
+      console.log('[fetchCurrencies] START - Loading currencies and exchange rates');
+      try {
+        console.log('[fetchCurrencies] Fetching active currencies...');
+        const { data, error } = await supabase
+          .from('currencies')
+          .select('*')
+          .eq('is_active', true)
+          .order('code', { ascending: true});
 
-      if (data) {
-        setCurrencies(data);
-        const baseCurrency = data.find(c => c.is_base);
-        if (baseCurrency) {
-          setBaseCurrencyId(baseCurrency.id);
-          setSelectedCurrency(baseCurrency.id);
+        if (error) {
+          console.error('[fetchCurrencies] ERROR fetching currencies:', error);
+          console.error('[fetchCurrencies] Error details:', { message: error?.message, code: error?.code });
+          throw error;
         }
-      }
 
-      // Load exchange rates
-      const { data: ratesData } = await supabase
-        .from('exchange_rates')
-        .select('*')
-        .eq('is_active', true);
+        if (data) {
+          console.log('[fetchCurrencies] Currencies loaded:', { count: data.length, currencies: data });
+          setCurrencies(data);
+          const baseCurrency = data.find(c => c.is_base);
+          if (baseCurrency) {
+            console.log('[fetchCurrencies] Base currency found:', { id: baseCurrency.id, code: baseCurrency.code });
+            setBaseCurrencyId(baseCurrency.id);
+            setSelectedCurrency(baseCurrency.id);
+          } else {
+            console.log('[fetchCurrencies] No base currency found in data');
+          }
+        }
 
-      if (ratesData) {
-        const ratesMap = {};
-        ratesData.forEach(rate => {
-          ratesMap[`${rate.from_currency_id}-${rate.to_currency_id}`] = rate.rate;
-        });
-        setExchangeRates(ratesMap);
+        // Load exchange rates
+        console.log('[fetchCurrencies] Fetching exchange rates...');
+        const { data: ratesData, error: ratesError } = await supabase
+          .from('exchange_rates')
+          .select('*')
+          .eq('is_active', true);
+
+        if (ratesError) {
+          console.error('[fetchCurrencies] ERROR fetching exchange rates:', ratesError);
+          console.error('[fetchCurrencies] Error details:', { message: ratesError?.message, code: ratesError?.code });
+          throw ratesError;
+        }
+
+        if (ratesData) {
+          console.log('[fetchCurrencies] Exchange rates loaded:', { count: ratesData.length });
+          const ratesMap = {};
+          ratesData.forEach(rate => {
+            ratesMap[`${rate.from_currency_id}-${rate.to_currency_id}`] = rate.rate;
+          });
+          console.log('[fetchCurrencies] Exchange rates map created:', { pairsCount: Object.keys(ratesMap).length });
+          setExchangeRates(ratesMap);
+        }
+
+        console.log('[fetchCurrencies] SUCCESS - All currency data loaded');
+      } catch (error) {
+        console.error('[fetchCurrencies] FATAL ERROR:', error);
+        console.error('[fetchCurrencies] Error details:', { message: error?.message, code: error?.code, stack: error?.stack });
       }
     };
 
     const fetchAdminData = async () => {
-      // Load testimonials with admin view
-      await refreshTestimonials(true);
-      // Load all combos including inactive ones for admin view
-      await refreshCombos(true);
-      // Load all carousel slides
-      // await refreshCarouselSlides(false); // Will implement when updating HomePage
+      console.log('[fetchAdminData] START - Loading admin-specific data');
+      try {
+        // Load testimonials with admin view
+        console.log('[fetchAdminData] Loading testimonials (admin view)...');
+        await refreshTestimonials(true);
+        console.log('[fetchAdminData] Testimonials loaded successfully');
+
+        // Load all combos including inactive ones for admin view
+        console.log('[fetchAdminData] Loading combos (admin view)...');
+        await refreshCombos(true);
+        console.log('[fetchAdminData] Combos loaded successfully');
+
+        // Load all carousel slides
+        // await refreshCarouselSlides(false); // Will implement when updating HomePage
+        console.log('[fetchAdminData] SUCCESS - All admin data loaded');
+      } catch (error) {
+        console.error('[fetchAdminData] ERROR:', error);
+        console.error('[fetchAdminData] Error details:', { message: error?.message, code: error?.code, stack: error?.stack });
+      }
     };
 
     fetchCurrencies();

@@ -1075,6 +1075,48 @@ export const getAllRemittances = async (filters = {}) => {
 };
 
 /**
+ * Get bank account details for a remittance
+ * @param {string} recipientBankAccountId - Recipient bank account ID
+ * @returns {Promise<Object>} Bank account details
+ */
+export const getRemittanceBankAccountDetails = async (recipientBankAccountId) => {
+  try {
+    if (!recipientBankAccountId) {
+      return null;
+    }
+
+    const { data, error } = await supabase
+      .from('recipient_bank_accounts')
+      .select(`
+        id,
+        is_default,
+        bank_accounts!bank_account_id(
+          id,
+          account_number_last4,
+          account_number_hash,
+          account_number_full,
+          account_holder_name,
+          banks!bank_id(name, swift_code),
+          account_types!account_type_id(name),
+          currencies!currency_id(code, name_es, name_en)
+        )
+      `)
+      .eq('id', recipientBankAccountId)
+      .single();
+
+    if (error) {
+      console.error('[getRemittanceBankAccountDetails] Error:', error);
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('[getRemittanceBankAccountDetails] Exception:', error);
+    return null;
+  }
+};
+
+/**
  * Validate payment for a remittance (Admin)
  * Confirms payment and transitions remittance to PAYMENT_VALIDATED state
  * @param {string} remittanceId - Remittance ID

@@ -35,6 +35,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/supabase';
 import { logActivity } from '@/lib/activityLogger';
+import { useRealtimeOffers } from '@/hooks/useRealtimeSubscription';
 
 const AdminOffersTab = () => {
   const { t, language } = useLanguage();
@@ -96,6 +97,16 @@ const AdminOffersTab = () => {
       loadOffers();
     }
   }, [user]);
+
+  // Real-time subscription for offer updates
+  useRealtimeOffers({
+    enabled: true,
+    onUpdate: (payload) => {
+      console.log('[Realtime] Offer update:', payload.eventType);
+      // Reload offers when any change occurs
+      loadOffers();
+    }
+  });
 
   const loadOffers = async () => {
     try {

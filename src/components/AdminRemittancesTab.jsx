@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Search, Filter, Eye, CheckCircle, XCircle, Clock, Package, Truck,
-  AlertTriangle, Download, FileText, Image as ImageIcon, Calendar, X
+  Search, Filter, Eye, EyeOff, CheckCircle, XCircle, Clock, Package, Truck,
+  AlertTriangle, Download, FileText, Image as ImageIcon, Calendar, X, CreditCard
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,8 +17,10 @@ import {
   completeRemittance,
   calculateDeliveryAlert,
   generateProofSignedUrl,
+  getRemittanceBankAccountDetails,
   REMITTANCE_STATUS
 } from '@/lib/remittanceService';
+import { decryptData } from '@/lib/encryption';
 import { toast } from '@/components/ui/use-toast';
 import ImageProofModal from './ImageProofModal';
 import TooltipButton from './TooltipButton';
@@ -36,6 +38,10 @@ const AdminRemittancesTab = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedRemittance, setSelectedRemittance] = useState(null);
+  const [bankAccountDetails, setBankAccountDetails] = useState(null);
+  const [showFullAccountNumber, setShowFullAccountNumber] = useState(false);
+  const [decryptedAccountNumber, setDecryptedAccountNumber] = useState(null);
+  const [decrypting, setDecrypting] = useState(false);
   const [proofSignedUrl, setProofSignedUrl] = useState(null);
   const [deliveryProofSignedUrl, setDeliveryProofSignedUrl] = useState(null);
   const [showPaymentProofModal, setShowPaymentProofModal] = useState(false);
@@ -86,6 +92,24 @@ const AdminRemittancesTab = () => {
     };
     loadDeliveryProofUrl();
   }, [selectedRemittance?.delivery_proof_url]);
+
+  // Load bank account details when modal opens
+  useEffect(() => {
+    const loadBankAccountDetails = async () => {
+      if (selectedRemittance?.recipient_bank_account_id) {
+        setBankAccountDetails(null);
+        setShowFullAccountNumber(false);
+        setDecryptedAccountNumber(null);
+        const details = await getRemittanceBankAccountDetails(selectedRemittance.recipient_bank_account_id);
+        setBankAccountDetails(details);
+      } else {
+        setBankAccountDetails(null);
+        setShowFullAccountNumber(false);
+        setDecryptedAccountNumber(null);
+      }
+    };
+    loadBankAccountDetails();
+  }, [selectedRemittance?.recipient_bank_account_id]);
 
   const loadRemittances = async () => {
     setLoading(true);
@@ -842,18 +866,109 @@ const AdminRemittancesTab = () => {
                 )}
 
                 {/* Bank Account Information - For Bank Transfer/Card */}
-                {selectedRemittance.delivery_method !== 'cash' && selectedRemittance.recipient_bank_account && (
+                {selectedRemittance.delivery_method !== 'cash' && bankAccountDetails?.bank_accounts && (
                   <div className="border-l-4 border-blue-500 bg-blue-50 rounded-lg p-3 sm:p-4">
                     <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2 text-sm sm:text-base">
-                      <span className="inline-block w-3 h-3 bg-blue-500 rounded-full"></span>
+                      <CreditCard className="w-4 h-4 text-blue-600" />
                       {selectedRemittance.delivery_method === 'transfer' ? t('remittances.admin.bankInfoTitle') : t('remittances.admin.cardInfoTitle')}
                     </h3>
-                    <div className="space-y-2 text-xs sm:text-sm font-mono bg-white rounded p-3 border border-blue-200">
-                      <p>{selectedRemittance.recipient_bank_account}</p>
+                    <div className="bg-white rounded-lg p-3 border border-blue-200 space-y-2">
+                      <div className="flex items-center justify-between text-xs sm:text-sm">
+                        <span className="font-medium text-gray-600">
+                          {language === 'es' ? 'Banco:' : 'Bank:'}
+                        </span>
+                        <span className="font-semibold text-gray-900">
+                          {bankAccountDetails.bank_accounts.banks?.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs sm:text-sm">
+                        <span className="font-medium text-gray-600">
+                          {language === 'es' ? 'Tipo de Cuenta:' : 'Account Type:'}
+                        </span>
+                        <span className="text-gray-900">
+                          {bankAccountDetails.bank_accounts.account_types?.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs sm:text-sm">
+                        <span className="font-medium text-gray-600">
+                          {language === 'es' ? 'Moneda:' : 'Currency:'}
+                        </span>
+                        <span className="font-semibold text-gray-900">
+                          {bankAccountDetails.bank_accounts.currencies?.code}
+                        </span>
+                      </div>
+                      <div className="border-t border-blue-200 pt-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="font-medium text-gray-600 text-xs sm:text-sm">
+                            {language === 'es' ? 'Número de Cuenta:' : 'Account Number:'}
+                          </span>
+                          <div className="flex flex-col items-end gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-base bg-blue-50 px-3 py-1 rounded border border-blue-300 text-gray-900">
+                                {showFullAccountNumber && decryptedAccountNumber
+                                  ? decryptedAccountNumber
+                                  : `****${bankAccountDetails.bank_accounts.account_number_last4}`}
+                              </span>
+                              {(isAdmin || isSuperAdmin) && bankAccountDetails.bank_accounts.account_number_full && (
+                                <button
+                                  onClick={async () => {
+                                    if (showFullAccountNumber) {
+                                      setShowFullAccountNumber(false);
+                                      setDecryptedAccountNumber(null);
+                                    } else {
+                                      setDecrypting(true);
+                                      try {
+                                        const decrypted = await decryptData(bankAccountDetails.bank_accounts.account_number_full);
+                                        setDecryptedAccountNumber(decrypted);
+                                        setShowFullAccountNumber(true);
+                                      } catch (error) {
+                                        console.error('Error decrypting account number:', error);
+                                        toast({
+                                          title: language === 'es' ? 'Error' : 'Error',
+                                          description: language === 'es'
+                                            ? 'No se pudo desencriptar el número de cuenta'
+                                            : 'Failed to decrypt account number',
+                                          variant: 'destructive'
+                                        });
+                                      } finally {
+                                        setDecrypting(false);
+                                      }
+                                    }
+                                  }}
+                                  disabled={decrypting}
+                                  className="p-1.5 hover:bg-blue-100 rounded transition-colors disabled:opacity-50"
+                                  title={showFullAccountNumber
+                                    ? (language === 'es' ? 'Ocultar número completo' : 'Hide full number')
+                                    : (language === 'es' ? 'Mostrar número completo' : 'Show full number')}
+                                >
+                                  {decrypting ? (
+                                    <Clock className="h-4 w-4 text-gray-600 animate-spin" />
+                                  ) : showFullAccountNumber ? (
+                                    <EyeOff className="h-4 w-4 text-gray-600" />
+                                  ) : (
+                                    <Eye className="h-4 w-4 text-gray-600" />
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                            {showFullAccountNumber && (
+                              <p className="text-xs text-orange-600 flex items-center gap-1">
+                                <AlertTriangle className="h-3 w-3" />
+                                {language === 'es' ? 'Información sensible' : 'Sensitive information'}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between text-xs sm:text-sm">
+                        <span className="font-medium text-gray-600">
+                          {language === 'es' ? 'Titular:' : 'Holder:'}
+                        </span>
+                        <span className="text-gray-900">
+                          {bankAccountDetails.bank_accounts.account_holder_name}
+                        </span>
+                      </div>
                     </div>
-                    {selectedRemittance.recipient_bank_name && (
-                      <p className="text-xs sm:text-sm mt-2"><span className="font-medium">{t('remittances.admin.bankName')}</span> {selectedRemittance.recipient_bank_name}</p>
-                    )}
                   </div>
                 )}
 

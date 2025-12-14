@@ -46,6 +46,7 @@ const SendRemittancePage = ({ onNavigate }) => {
   const [shippingZones, setShippingZones] = useState([]);
   const [municipalities, setMunicipalities] = useState([]);
   const [selectedBankAccount, setSelectedBankAccount] = useState(null);
+  const [selectedBankAccountDetails, setSelectedBankAccountDetails] = useState(null);
 
   const [recipientData, setRecipientData] = useState({
     name: '',
@@ -586,9 +587,10 @@ const SendRemittancePage = ({ onNavigate }) => {
                 onSelect={(recipientData) => {
                   setSelectedRecipientData(recipientData);
 
-                  // Guardar bank_account_id si es una remesa off-cash
+                  // Guardar bank_account_id y detalles si es una remesa off-cash
                   if (recipientData.bank_account_id) {
                     setSelectedBankAccount(recipientData.bank_account_id);
+                    setSelectedBankAccountDetails(recipientData.bank_account_details || null);
                   }
 
                   if (recipientData.recipientData) {
@@ -690,6 +692,68 @@ const SendRemittancePage = ({ onNavigate }) => {
                     )}
                   </div>
                 </div>
+
+                {/* Bank Account Info (for off-cash remittances) */}
+                {selectedType?.delivery_method !== 'cash' && selectedBankAccountDetails && (
+                  <div className="pt-4 border-t">
+                    <h3 className="font-semibold mb-3 flex items-center gap-2">
+                      <CreditCard className="h-5 w-5 text-blue-600" />
+                      {language === 'es' ? 'Cuenta Bancaria de Destino' : 'Destination Bank Account'}
+                    </h3>
+                    <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">
+                          {language === 'es' ? 'Banco:' : 'Bank:'}
+                        </span>
+                        <span className="text-sm text-gray-900 font-semibold">
+                          {selectedBankAccountDetails.bank?.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">
+                          {language === 'es' ? 'Tipo de Cuenta:' : 'Account Type:'}
+                        </span>
+                        <span className="text-sm text-gray-900">
+                          {selectedBankAccountDetails.account_type?.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">
+                          {language === 'es' ? 'Moneda:' : 'Currency:'}
+                        </span>
+                        <span className="text-sm text-gray-900 font-semibold">
+                          {selectedBankAccountDetails.currency?.code}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">
+                          {language === 'es' ? 'Últimos 4 Dígitos:' : 'Last 4 Digits:'}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg text-gray-900 font-mono font-bold bg-white px-3 py-1 rounded border-2 border-blue-300">
+                            ****{selectedBankAccountDetails.account_number_last4}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">
+                          {language === 'es' ? 'Titular:' : 'Holder:'}
+                        </span>
+                        <span className="text-sm text-gray-900">
+                          {selectedBankAccountDetails.account_holder_name}
+                        </span>
+                      </div>
+                      <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                        <p className="text-xs text-yellow-800 flex items-start gap-1">
+                          <AlertCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                          {language === 'es'
+                            ? 'Verifica que los datos sean correctos antes de confirmar la remesa.'
+                            : 'Verify the information is correct before confirming the remittance.'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

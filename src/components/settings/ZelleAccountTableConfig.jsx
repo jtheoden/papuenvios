@@ -35,10 +35,10 @@ export const getZelleTableColumns = (t, formatCurrency) => [
     render: (value) => <span className="text-sm">{value || '-'}</span>
   },
   {
-    key: 'phone',
+    key: 'phone_number',
     label: t('zelle.phoneNumber'),
     width: 'w-28',
-    render: (value) => <span className="font-mono text-sm">{value}</span>
+    render: (value, row) => <span className="font-mono text-sm">{value || row.phone || '-'}</span>
   },
   {
     key: 'is_active',
@@ -171,9 +171,9 @@ export const getZelleModalColumns = (t, formatCurrency) => [
     render: (value) => <span className="text-sm">{value || '-'}</span>
   },
   {
-    key: 'phone',
+    key: 'phone_number',
     label: t('zelle.phoneNumber'),
-    render: (value) => <span className="font-mono">{value}</span>
+    render: (value, row) => <span className="font-mono">{value || row.phone || '-'}</span>
   },
   {
     key: 'daily_limit',

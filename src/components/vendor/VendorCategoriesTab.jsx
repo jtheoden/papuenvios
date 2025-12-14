@@ -23,10 +23,12 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
   });
 
   const handleCategorySubmit = async (e) => {
+    console.log('[handleCategorySubmit] START - Input:', { categoryForm, hasId: !!categoryForm.dbId });
     e?.preventDefault?.();
 
     // Validation
     if (!categoryForm.es?.trim() || !categoryForm.en?.trim()) {
+      console.log('[handleCategorySubmit] VALIDATION ERROR - Missing required fields');
       toast({
         title: t('vendor.validation.error'),
         description: t('vendor.validation.fillFields'),
@@ -36,6 +38,7 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
     }
 
     try {
+      console.log('[handleCategorySubmit] Validation passed, processing submission...');
       // TODO: Connect to productService for create/update
       // if (categoryForm.dbId) {
       //   await updateCategory(categoryForm);
@@ -43,6 +46,7 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
       //   await createCategory(categoryForm);
       // }
 
+      console.log('[handleCategorySubmit] SUCCESS - Category saved');
       toast({
         title: t('vendor.categoryAdded')
       });
@@ -54,7 +58,10 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
         description_es: '',
         description_en: ''
       });
+      console.log('[handleCategorySubmit] Form reset complete');
     } catch (error) {
+      console.error('[handleCategorySubmit] ERROR:', error);
+      console.error('[handleCategorySubmit] Error details:', { message: error?.message, code: error?.code });
       toast({
         title: t('vendor.validation.error'),
         description: error.message,
@@ -64,28 +71,43 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
   };
 
   const handleEditCategory = (category) => {
-    setCategoryForm({
-      dbId: category.id,
-      es: category.name_es || category.es || '',
-      en: category.name_en || category.en || '',
-      description_es: category.description_es || '',
-      description_en: category.description_en || ''
-    });
+    console.log('[handleEditCategory] START - Input:', { categoryId: category.id, categoryName: category.name_es || category.es });
+    try {
+      setCategoryForm({
+        dbId: category.id,
+        es: category.name_es || category.es || '',
+        en: category.name_en || category.en || '',
+        description_es: category.description_es || '',
+        description_en: category.description_en || ''
+      });
+      console.log('[handleEditCategory] SUCCESS - Form populated for editing');
+    } catch (error) {
+      console.error('[handleEditCategory] ERROR:', error);
+      console.error('[handleEditCategory] Error details:', { message: error?.message, code: error?.code });
+      throw error;
+    }
   };
 
   const handleRemoveCategory = async (categoryId) => {
+    console.log('[handleRemoveCategory] START - Input:', { categoryId });
+
     if (!window.confirm(language === 'es' ? '¿Eliminar categoría?' : 'Delete category?')) {
+      console.log('[handleRemoveCategory] User cancelled deletion');
       return;
     }
 
+    console.log('[handleRemoveCategory] Confirmation received, proceeding with deletion...');
     try {
       // TODO: Connect to productService for delete
       // await deleteCategory(categoryId);
 
+      console.log('[handleRemoveCategory] SUCCESS - Category deleted');
       toast({
         title: t('vendor.categoryRemoved')
       });
     } catch (error) {
+      console.error('[handleRemoveCategory] ERROR:', error);
+      console.error('[handleRemoveCategory] Error details:', { message: error?.message, code: error?.code });
       toast({
         title: t('vendor.validation.error'),
         description: error.message,

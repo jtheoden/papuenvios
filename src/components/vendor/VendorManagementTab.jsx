@@ -14,10 +14,16 @@ const VendorManagementTab = ({ testimonials, onTestimonialsRefresh }) => {
   const { t, language } = useLanguage();
 
   const handleToggleTestimonialVisibility = async (id, currentVisibility) => {
+    console.log('[handleToggleTestimonialVisibility] START - Input:', { id, currentVisibility, newVisibility: !currentVisibility });
     try {
+      console.log('[handleToggleTestimonialVisibility] Toggling visibility...');
       const { error } = await toggleTestimonialVisibility(id, !currentVisibility);
-      if (error) throw error;
+      if (error) {
+        console.error('[handleToggleTestimonialVisibility] Service returned error:', error);
+        throw error;
+      }
 
+      console.log('[handleToggleTestimonialVisibility] SUCCESS - Visibility toggled');
       toast({
         title: language === 'es' ? 'Actualizado' : 'Updated',
         description: language === 'es'
@@ -25,9 +31,12 @@ const VendorManagementTab = ({ testimonials, onTestimonialsRefresh }) => {
           : `Testimonial ${!currentVisibility ? 'visible' : 'hidden'}`
       });
 
+      console.log('[handleToggleTestimonialVisibility] Refreshing testimonials list...');
       await onTestimonialsRefresh(true);
+      console.log('[handleToggleTestimonialVisibility] Testimonials refreshed');
     } catch (error) {
-      console.error('Error toggling testimonial visibility:', error);
+      console.error('[handleToggleTestimonialVisibility] ERROR:', error);
+      console.error('[handleToggleTestimonialVisibility] Error details:', { message: error?.message, code: error?.code });
       toast({
         title: 'Error',
         description: error.message || (language === 'es'
@@ -39,10 +48,16 @@ const VendorManagementTab = ({ testimonials, onTestimonialsRefresh }) => {
   };
 
   const handleToggleTestimonialFeatured = async (id, currentFeatured) => {
+    console.log('[handleToggleTestimonialFeatured] START - Input:', { id, currentFeatured, newFeatured: !currentFeatured });
     try {
+      console.log('[handleToggleTestimonialFeatured] Toggling featured status...');
       const { error } = await toggleTestimonialVerification(id, !currentFeatured);
-      if (error) throw error;
+      if (error) {
+        console.error('[handleToggleTestimonialFeatured] Service returned error:', error);
+        throw error;
+      }
 
+      console.log('[handleToggleTestimonialFeatured] SUCCESS - Featured status toggled');
       toast({
         title: language === 'es' ? 'Actualizado' : 'Updated',
         description: language === 'es'
@@ -50,9 +65,12 @@ const VendorManagementTab = ({ testimonials, onTestimonialsRefresh }) => {
           : `Testimonial ${!currentFeatured ? 'featured' : 'unfeatured'}`
       });
 
+      console.log('[handleToggleTestimonialFeatured] Refreshing testimonials list...');
       await onTestimonialsRefresh(true);
+      console.log('[handleToggleTestimonialFeatured] Testimonials refreshed');
     } catch (error) {
-      console.error('Error toggling testimonial featured status:', error);
+      console.error('[handleToggleTestimonialFeatured] ERROR:', error);
+      console.error('[handleToggleTestimonialFeatured] Error details:', { message: error?.message, code: error?.code });
       toast({
         title: 'Error',
         description: error.message || (language === 'es'

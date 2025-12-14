@@ -99,16 +99,21 @@ const DashboardPage = ({ onNavigate }) => {
 
   // Fetch visit statistics
   const fetchVisitStats = async () => {
+    console.log('[fetchVisitStats] START');
+
     try {
+      console.log('[fetchVisitStats] Setting loading state...');
       setVisitStats(prev => ({ ...prev, loading: true }));
 
+      console.log('[fetchVisitStats] Querying site_visits table...');
       const { data: visitsData, error } = await supabase
         .from('site_visits')
         .select('visit_time');
 
       // Handle RLS policy errors gracefully
       if (error) {
-        console.warn('Visit tracking not configured:', error.message);
+        console.warn('[fetchVisitStats] Visit tracking not configured:', error.message);
+        console.warn('[fetchVisitStats] Error code:', error?.code);
         // Set default/mock values when table is not accessible
         setVisitStats({
           weekly: 0,
@@ -118,24 +123,42 @@ const DashboardPage = ({ onNavigate }) => {
           loading: false,
           unavailable: true
         });
+        console.log('[fetchVisitStats] Set unavailable state (RLS error)');
         return;
       }
 
       if (visitsData) {
+        console.log('[fetchVisitStats] Visits data received:', { count: visitsData.length });
+
         const now = new Date();
         const oneWeekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
         const oneMonthAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
         const oneYearAgo = new Date(now - 365 * 24 * 60 * 60 * 1000);
 
+        console.log('[fetchVisitStats] Calculating visit metrics...');
         const weekly = visitsData.filter(v => new Date(v.visit_time) >= oneWeekAgo).length;
         const monthly = visitsData.filter(v => new Date(v.visit_time) >= oneMonthAgo).length;
         const yearly = visitsData.filter(v => new Date(v.visit_time) >= oneYearAgo).length;
         const total = visitsData.length;
 
+        console.log('[fetchVisitStats] SUCCESS - Visit stats calculated:', {
+          weekly,
+          monthly,
+          yearly,
+          total
+        });
+
         setVisitStats({ weekly, monthly, yearly, total, loading: false, unavailable: false });
+      } else {
+        console.log('[fetchVisitStats] No visits data returned');
       }
     } catch (error) {
-      console.error('Error fetching visit stats:', error);
+      console.error('[fetchVisitStats] ERROR:', error);
+      console.error('[fetchVisitStats] Error details:', {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack
+      });
       setVisitStats({
         weekly: 0,
         monthly: 0,
@@ -144,14 +167,19 @@ const DashboardPage = ({ onNavigate }) => {
         loading: false,
         unavailable: true
       });
+      console.log('[fetchVisitStats] Set unavailable state (catch error)');
     }
   };
 
   // Fetch real stats from Supabase
   const fetchStats = async () => {
+    console.log('[fetchStats] START');
+
     try {
+      console.log('[fetchStats] Setting loading state...');
       setStats(prev => ({ ...prev, loading: true }));
 
+      console.log('[fetchStats] Fetching data from multiple tables...');
       // Get counts
       const [productsRes, combosRes, usersRes, ordersRes, remittancesRes] = await Promise.all([
         supabase.from('products').select('id', { count: 'exact', head: true }),
@@ -161,15 +189,27 @@ const DashboardPage = ({ onNavigate }) => {
         supabase.from('remittances').select('id, status, commission_total, amount_sent, amount_to_deliver, created_at')
       ]);
 
+      console.log('[fetchStats] Database queries completed');
+
       const totalProducts = productsRes.count || 0;
       const totalCombos = combosRes.count || 0;
       const totalUsers = usersRes.count || 0;
 
+      console.log('[fetchStats] Counts received:', {
+        totalProducts,
+        totalCombos,
+        totalUsers
+      });
+
       // Calculate order stats by status
       const orders = ordersRes.data || [];
+      console.log('[fetchStats] Orders data received:', { count: orders.length });
 
       // Calculate remittance stats by status
       const remittances = remittancesRes.data || [];
+      console.log('[fetchStats] Remittances data received:', { count: remittances.length });
+
+      console.log('[fetchStats] Calculating order metrics by status...');
       const paymentPending = orders.filter(o => o.payment_status === 'pending').length;
       const paymentValidated = orders.filter(o => o.payment_status === 'validated' && o.status === 'pending').length;
       const processing = orders.filter(o => o.status === 'processing').length;
@@ -179,10 +219,22 @@ const DashboardPage = ({ onNavigate }) => {
       const cancelled = orders.filter(o => o.status === 'cancelled').length;
       const totalActive = paymentPending + paymentValidated + processing + dispatched + delivered;
 
+      console.log('[fetchStats] Order metrics calculated:', {
+        paymentPending,
+        paymentValidated,
+        processing,
+        dispatched,
+        delivered,
+        completedOrders,
+        cancelled,
+        totalActive
+      });
+
       // Legacy field for compatibility
       const pendingOrders = paymentPending + paymentValidated;
 
       // Calculate revenue (last 24 hours and last 30 days)
+      console.log('[fetchStats] Calculating revenue metrics...');
       const now = new Date();
       const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
       const oneMonthAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
@@ -195,16 +247,29 @@ const DashboardPage = ({ onNavigate }) => {
         .filter(o => new Date(o.created_at) >= oneMonthAgo && ['delivered', 'completed', 'processing'].includes(o.status))
         .reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
 
+      console.log('[fetchStats] Revenue metrics calculated:', {
+        dailyRevenue: dailyRevenue.toFixed(2),
+        monthlyRevenue: monthlyRevenue.toFixed(2)
+      });
+
       // Calculate remittance stats
+      console.log('[fetchStats] Calculating remittance metrics...');
       const totalRemittances = remittances.length;
       const pendingRemittances = remittances.filter(r =>
         ['payment_pending', 'payment_proof_uploaded', 'payment_rejected', 'payment_validated', 'processing'].includes(r.status)
       ).length;
       const completedRemittances = remittances.filter(r => ['delivered', 'completed'].includes(r.status)).length;
 
+      console.log('[fetchStats] Remittance counts:', {
+        totalRemittances,
+        pendingRemittances,
+        completedRemittances
+      });
+
       // Calculate remittance income (commission earned)
       const completedStatuses = ['delivered', 'completed'];
 
+      console.log('[fetchStats] Calculating remittance income and volume...');
       const dailyRemittanceIncome = remittances
         .filter(r => new Date(r.created_at) >= oneDayAgo && completedStatuses.includes(r.status))
         .reduce((sum, r) => sum + (parseFloat(r.commission_total) || 0), 0);
@@ -221,6 +286,14 @@ const DashboardPage = ({ onNavigate }) => {
         .filter(r => new Date(r.created_at) >= oneMonthAgo && completedStatuses.includes(r.status))
         .reduce((sum, r) => sum + (parseFloat(r.amount_to_deliver || r.amount_sent) || 0), 0);
 
+      console.log('[fetchStats] Remittance financial metrics calculated:', {
+        dailyRemittanceIncome: dailyRemittanceIncome.toFixed(2),
+        monthlyRemittanceIncome: monthlyRemittanceIncome.toFixed(2),
+        dailyRemittanceVolume: dailyRemittanceVolume.toFixed(2),
+        monthlyRemittanceVolume: monthlyRemittanceVolume.toFixed(2)
+      });
+
+      console.log('[fetchStats] Setting final state...');
       setStats({
         totalProducts,
         totalCombos,
@@ -246,9 +319,17 @@ const DashboardPage = ({ onNavigate }) => {
         monthlyRemittanceVolume,
         loading: false
       });
+
+      console.log('[fetchStats] SUCCESS - All stats updated');
     } catch (error) {
-      console.error('Error fetching dashboard stats:', error);
+      console.error('[fetchStats] ERROR:', error);
+      console.error('[fetchStats] Error details:', {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack
+      });
       setStats(prev => ({ ...prev, loading: false }));
+      console.log('[fetchStats] Loading state reset after error');
     }
   };
 
@@ -804,6 +885,20 @@ const DashboardPage = ({ onNavigate }) => {
                 </motion.div>
               )
             },
+             {
+              id: 'remittance-types',
+              label: 'dashboard.remittancesKindTab',
+              icon: <Settings className="h-5 w-5" />,
+              content: (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                >
+                  <RemittanceTypesConfig />
+                </motion.div>
+              )
+            },
             {
               id: 'offers',
               label: 'dashboard.offersTab',
@@ -832,20 +927,7 @@ const DashboardPage = ({ onNavigate }) => {
                 </motion.div>
               )
             }] : []),
-            {
-              id: 'remittance-types',
-              label: 'dashboard.remittancesKindTab',
-              icon: <Settings className="h-5 w-5" />,
-              content: (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                >
-                  <RemittanceTypesConfig />
-                </motion.div>
-              )
-            },
+           
             {
               id: 'zelle-history',
               label: 'dashboard.zelleHistoryTab',
