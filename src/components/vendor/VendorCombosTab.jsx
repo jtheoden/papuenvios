@@ -65,6 +65,7 @@ const VendorCombosTab = ({
   }, [exchangeRates]);
 
   const openNewComboForm = () => {
+    console.log('[openNewComboForm] START - Opening new combo form');
     setComboForm({
       id: null,
       name: '',
@@ -75,9 +76,11 @@ const VendorCombosTab = ({
       image: ''
     });
     setComboImagePreview(null);
+    console.log('[openNewComboForm] SUCCESS - Form initialized');
   };
 
   const openEditComboForm = (combo) => {
+    console.log('[openEditComboForm] START - Input:', { comboId: combo.id, comboName: combo.name, itemsCount: combo.items?.length || 0 });
     const productQuantities = {};
     const productIds = [];
 
@@ -88,22 +91,31 @@ const VendorCombosTab = ({
       });
     }
 
+    console.log('[openEditComboForm] Parsed products:', { productCount: productIds.length, quantities: productQuantities });
     setComboForm({
       ...combo,
       products: productIds,
       productQuantities: productQuantities
     });
     setComboImagePreview(combo.image_url || combo.image || null);
+    console.log('[openEditComboForm] SUCCESS - Form populated for editing');
   };
 
   const handleComboImageUpload = async (e) => {
+    console.log('[handleComboImageUpload] START - Image upload initiated');
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      console.log('[handleComboImageUpload] No file selected');
+      return;
+    }
 
+    console.log('[handleComboImageUpload] File selected:', { name: file.name, size: file.size, type: file.type });
     try {
+      console.log('[handleComboImageUpload] Validating and processing image...');
       const result = await validateAndProcessImage(file, 'combo');
 
       if (!result.success) {
+        console.log('[handleComboImageUpload] VALIDATION ERROR:', result.errors);
         toast({
           title: 'Error de validación',
           description: result.errors.join('\n'),
@@ -112,6 +124,7 @@ const VendorCombosTab = ({
         return;
       }
 
+      console.log('[handleComboImageUpload] Image processed successfully:', result.metadata);
       setComboImagePreview(result.base64);
       setComboForm(prev => ({ ...prev, image: result.base64 }));
 
@@ -119,8 +132,10 @@ const VendorCombosTab = ({
         title: 'Imagen optimizada',
         description: `${result.metadata.originalDimensions} → ${result.metadata.finalDimensions} (${result.metadata.compression} compresión)`,
       });
+      console.log('[handleComboImageUpload] SUCCESS - Image uploaded and preview set');
     } catch (error) {
-      console.error('Error processing combo image:', error);
+      console.error('[handleComboImageUpload] ERROR:', error);
+      console.error('[handleComboImageUpload] Error details:', { message: error?.message, code: error?.code });
       toast({
         title: 'Error al procesar imagen',
         description: error.message,
@@ -174,22 +189,29 @@ const VendorCombosTab = ({
   };
 
   const handleToggleComboActive = async (combo, nextActive) => {
+    console.log('[handleToggleComboActive] START - Input:', { comboId: combo.id, comboName: combo.name, currentActive: combo.is_active, nextActive });
     setProcessingComboId(combo.id);
     try {
+      console.log('[handleToggleComboActive] Setting combo active state...');
       await setComboActiveState(combo.id, nextActive);
+      console.log('[handleToggleComboActive] Active state updated, logging audit...');
       await logComboAudit(
         nextActive ? 'combo_activated' : 'combo_deactivated',
         combo.id,
         `${nextActive ? 'Activated' : 'Deactivated'} combo ${combo.name || combo.name_es || combo.name_en || combo.id}`,
         { isActive: nextActive, products: combo.products?.length || 0 }
       );
+      console.log('[handleToggleComboActive] SUCCESS - Combo state toggled');
       toast({
         title: nextActive ? (language === 'es' ? 'Combo activado' : 'Combo activated') : (language === 'es' ? 'Combo desactivado' : 'Combo deactivated'),
         description: combo.name || combo.name_es || ''
       });
+      console.log('[handleToggleComboActive] Refreshing combos list...');
       await onCombosRefresh(true);
+      console.log('[handleToggleComboActive] Combos refreshed');
     } catch (error) {
-      console.error('Error toggling combo state:', error);
+      console.error('[handleToggleComboActive] ERROR:', error);
+      console.error('[handleToggleComboActive] Error details:', { message: error?.message, code: error?.code });
       toast({
         title: t('common.error'),
         description: error.message,
@@ -197,34 +219,46 @@ const VendorCombosTab = ({
       });
     } finally {
       setProcessingComboId(null);
+      console.log('[handleToggleComboActive] Processing state cleared');
     }
   };
 
   const handleDeleteCombo = async (combo) => {
+    console.log('[handleDeleteCombo] START - Input:', { comboId: combo.id, comboName: combo.name });
     const confirmed = window.confirm(
       language === 'es'
         ? '¿Eliminar este combo? Esta acción lo desactivará para los usuarios.'
         : 'Delete this combo? This will deactivate it for users.'
     );
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      console.log('[handleDeleteCombo] User cancelled deletion');
+      return;
+    }
 
+    console.log('[handleDeleteCombo] Confirmation received, proceeding with deletion...');
     setProcessingComboId(combo.id);
     try {
+      console.log('[handleDeleteCombo] Deleting combo...');
       await deleteCombo(combo.id);
+      console.log('[handleDeleteCombo] Combo deleted, logging audit...');
       await logComboAudit(
         'combo_deleted',
         combo.id,
         `Combo ${combo.name || combo.name_es || combo.id} deleted from VendorPage`,
         { products: combo.products || [], quantities: combo.productQuantities }
       );
+      console.log('[handleDeleteCombo] SUCCESS - Combo deleted');
       toast({
         title: language === 'es' ? 'Combo eliminado' : 'Combo deleted',
         description: combo.name || combo.name_es || ''
       });
+      console.log('[handleDeleteCombo] Refreshing combos list...');
       await onCombosRefresh(true);
+      console.log('[handleDeleteCombo] Combos refreshed');
     } catch (error) {
-      console.error('Error deleting combo:', error);
+      console.error('[handleDeleteCombo] ERROR:', error);
+      console.error('[handleDeleteCombo] Error details:', { message: error?.message, code: error?.code });
       toast({
         title: t('common.error'),
         description: error.message,
@@ -232,11 +266,15 @@ const VendorCombosTab = ({
       });
     } finally {
       setProcessingComboId(null);
+      console.log('[handleDeleteCombo] Processing state cleared');
     }
   };
 
   const handleComboSubmit = async () => {
+    console.log('[handleComboSubmit] START - Input:', { comboForm, hasId: !!comboForm.id, productCount: comboForm.products?.length || 0 });
+
     if (!comboForm.name) {
+      console.log('[handleComboSubmit] VALIDATION ERROR - Missing combo name');
       toast({
         title: t('vendor.validation.error'),
         description: t('vendor.validation.fillFields'),
@@ -245,12 +283,15 @@ const VendorCombosTab = ({
       return;
     }
 
+    console.log('[handleComboSubmit] Validation passed, processing submission...');
     setProcessingComboId(comboForm.id || 'new');
     try {
       const productsWithQuantities = (comboForm.products || []).map(productId => ({
         productId,
         quantity: comboForm.productQuantities[productId] || 1
       }));
+
+      console.log('[handleComboSubmit] Products with quantities:', productsWithQuantities);
 
       const comboData = {
         name: comboForm.name,
@@ -261,28 +302,39 @@ const VendorCombosTab = ({
         slug: comboForm.name.toLowerCase().replace(/\s+/g, '-')
       };
 
+      console.log('[handleComboSubmit] Combo data prepared:', { ...comboData, imageLength: comboData.image?.length || 0 });
+
       if (comboForm.id) {
+        console.log('[handleComboSubmit] Updating existing combo:', comboForm.id);
         await updateComboDB(comboForm.id, comboData);
+        console.log('[handleComboSubmit] Combo updated, logging audit...');
         await logComboAudit('combo_updated', comboForm.id, `Combo ${comboForm.name} updated`, {
           profitMargin: comboData.profitMargin,
           products: productsWithQuantities,
           imageUpdated: Boolean(comboData.image)
         });
+        console.log('[handleComboSubmit] SUCCESS - Combo updated');
         toast({ title: t('vendor.comboUpdated') });
       } else {
+        console.log('[handleComboSubmit] Creating new combo');
         const createdCombo = await createCombo(comboData);
+        console.log('[handleComboSubmit] Combo created:', { id: createdCombo?.id });
         await logComboAudit('combo_created', createdCombo?.id || comboForm.name, `Combo ${comboForm.name} created`, {
           profitMargin: comboData.profitMargin,
           products: productsWithQuantities
         });
+        console.log('[handleComboSubmit] SUCCESS - Combo created');
         toast({ title: t('vendor.comboAdded') });
       }
 
+      console.log('[handleComboSubmit] Refreshing combos list...');
       await onCombosRefresh(true);
       setComboForm(null);
       setComboImagePreview(null);
+      console.log('[handleComboSubmit] Form reset and combos refreshed');
     } catch (error) {
-      console.error('Error saving combo:', error);
+      console.error('[handleComboSubmit] ERROR:', error);
+      console.error('[handleComboSubmit] Error details:', { message: error?.message, code: error?.code, stack: error?.stack });
       toast({
         title: 'Error',
         description: error.message,
@@ -290,6 +342,7 @@ const VendorCombosTab = ({
       });
     } finally {
       setProcessingComboId(null);
+      console.log('[handleComboSubmit] Processing state cleared');
     }
   };
 

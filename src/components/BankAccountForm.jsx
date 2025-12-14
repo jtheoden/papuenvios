@@ -109,17 +109,14 @@ const BankAccountForm = ({
     setLoading(true);
 
     try {
-      const result = await createBankAccount(userId, {
+      // createBankAccount returns the account data directly or throws exception
+      const accountData = await createBankAccount(userId, {
         bankId: formData.bankId,
         accountTypeId: null, // account_type no es necesario
         currencyId: formData.currencyId,
         accountNumber: formData.accountNumber.replace(/\s/g, ''),
         accountHolderName: formData.accountHolderName.trim()
       });
-
-      if (!result.success) {
-        throw new Error(result.error);
-      }
 
       toast({
         title: language === 'es' ? 'Éxito' : 'Success',
@@ -131,7 +128,7 @@ const BankAccountForm = ({
 
       // Call success callback with created account
       if (onSuccess) {
-        onSuccess(result.data);
+        onSuccess(accountData);
       }
     } catch (error) {
       console.error('Error creating bank account:', error);

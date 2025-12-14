@@ -16,8 +16,6 @@ import TableDetailModal from '@/components/modals/TableDetailModal';
 import { getUserTableColumns, getUserModalColumns } from '@/components/admin/UserTableConfig';
 import { getCategoryRules, getCategoryDiscounts, recalculateAllCategories, updateCategoryDiscount } from '@/lib/userCategorizationService';
 
-const SUPER_ADMIN_EMAILS = ['jtheoden@googlemail.com', 'elpapuedition@gmail.com'];
-
 const UserManagement = () => {
   const { t } = useLanguage();
   const { user } = useAuth();
@@ -32,7 +30,7 @@ const UserManagement = () => {
   const [editingDiscountId, setEditingDiscountId] = useState(null);
   const [editingDiscountData, setEditingDiscountData] = useState(null);
 
-  const logUserManagementAction = (action, details = {}, tab = activeTab) => {
+  const logUserManagementAction = async (action, details = {}, tab = activeTab) => {
     const logPayload = {
       scope: 'UserManagement',
       action,
@@ -43,12 +41,25 @@ const UserManagement = () => {
     };
 
     console.info('[OBS]', logPayload);
+
+    // Store activity in database
+    const { logActivity } = await import('@/lib/activityLogger');
+    await logActivity({
+      action: `user_management_${action}`,
+      entityType: 'user_management',
+      entityId: details.userId || null,
+      performedBy: user?.email || user?.id,
+      description: `User Management: ${action} on ${tab} tab`,
+      metadata: details
+    });
   };
 
   const fetchUsers = async () => {
+    console.log('[fetchUsers] START - Loading users from database');
     logUserManagementAction('fetch_users_start');
     setLoading(true);
     try {
+      console.log('[fetchUsers] Fetching user profiles...');
       const { data, error } = await supabase
         .from('user_profiles')
         .select('id, email, role, is_enabled, full_name, avatar_url, created_at')
@@ -56,12 +67,17 @@ const UserManagement = () => {
 
       if (error) throw error;
 
+      console.log('[fetchUsers] User profiles fetched:', { count: data?.length || 0 });
+
       // Fetch categories for each user
       if (data && data.length > 0) {
+        console.log('[fetchUsers] Fetching user categories...');
         const { data: categoriesData } = await supabase
           .from('user_categories')
           .select('user_id, category_name')
           .in('user_id', data.map(u => u.id));
+
+        console.log('[fetchUsers] User categories fetched:', { count: categoriesData?.length || 0 });
 
         // Map categories to users
         const categoryMap = {};
@@ -71,6 +87,7 @@ const UserManagement = () => {
           });
         }
 
+        console.log('[fetchUsers] Mapping categories to users...');
         // Add category_name to each user
         const usersWithCategories = data.map(user => ({
           ...user,
@@ -78,13 +95,17 @@ const UserManagement = () => {
         }));
 
         setUsers(usersWithCategories);
+        console.log('[fetchUsers] Users with categories set:', { count: usersWithCategories.length });
       } else {
         setUsers(data || []);
+        console.log('[fetchUsers] No users found or empty data');
       }
 
+      console.log('[fetchUsers] SUCCESS - Users loaded successfully');
       logUserManagementAction('fetch_users_success', { userCount: data?.length || 0 });
     } catch (error) {
-      console.error('Error fetching users:', error);
+      console.error('[fetchUsers] ERROR:', error);
+      console.error('[fetchUsers] Error details:', { message: error?.message, code: error?.code });
       logUserManagementAction('fetch_users_error', { message: error.message });
       toast({
         title: t('users.fetchError'),
@@ -93,23 +114,32 @@ const UserManagement = () => {
       });
     } finally {
       setLoading(false);
+      console.log('[fetchUsers] Loading state set to false');
     }
   };
 
   const fetchCategoryData = async () => {
+    console.log('[fetchCategoryData] START - Loading category data');
     try {
+      console.log('[fetchCategoryData] Fetching rules and discounts in parallel...');
       const [rulesData, discountsData] = await Promise.all([
         getCategoryRules(),
         getCategoryDiscounts()
       ]);
+      console.log('[fetchCategoryData] Data fetched:', {
+        rulesCount: rulesData?.length || 0,
+        discountsCount: discountsData?.length || 0
+      });
       setCategoryRules(rulesData || []);
       setCategoryDiscounts(discountsData || []);
+      console.log('[fetchCategoryData] SUCCESS - Category data loaded');
       logUserManagementAction('fetch_categories_success', {
         rulesCount: rulesData?.length || 0,
         discountsCount: discountsData?.length || 0
       }, 'categories');
     } catch (error) {
-      console.error('Error fetching categorization data:', error);
+      console.error('[fetchCategoryData] ERROR:', error);
+      console.error('[fetchCategoryData] Error details:', { message: error?.message, code: error?.code });
       logUserManagementAction('fetch_categories_error', { message: error.message }, 'categories');
       // Set empty arrays to prevent UI errors
       setCategoryRules([]);
@@ -131,14 +161,24 @@ const UserManagement = () => {
   }, []);
 
   const handleRoleChange = async (userId, newRole) => {
+    console.log('[handleRoleChange] START - Input:', { userId, newRole });
     try {
+      console.log('[handleRoleChange] Finding target user...');
       const targetUser = users.find(u => u.id === userId);
-      if (SUPER_ADMIN_EMAILS.includes(targetUser?.email)) {
+      console.log('[handleRoleChange] Target user found:', {
+        userId,
+        email: targetUser?.email,
+        currentRole: targetUser?.role
+      });
+
+      if (targetUser?.role === 'super_admin') {
+        console.warn('[handleRoleChange] BLOCKED - Cannot modify super admin:', targetUser?.email);
         throw new Error(t('users.cannotModifySuperAdmin'));
       }
 
       logUserManagementAction('update_role_start', { userId, newRole });
 
+      console.log('[handleRoleChange] Updating user role in database...');
       const { error } = await supabase
         .from('user_profiles')
         .update({ role: newRole })
@@ -146,14 +186,17 @@ const UserManagement = () => {
 
       if (error) throw error;
 
+      console.log('[handleRoleChange] Database update successful, refreshing users...');
       await fetchUsers();
+      console.log('[handleRoleChange] SUCCESS - Role updated from', targetUser?.role, 'to', newRole);
       logUserManagementAction('update_role_success', { userId, newRole });
       toast({
         title: t('users.roleUpdated'),
         description: t('users.roleUpdatedSuccess'),
       });
     } catch (error) {
-      console.error('Error updating user role:', error);
+      console.error('[handleRoleChange] ERROR:', error);
+      console.error('[handleRoleChange] Error details:', { message: error?.message, code: error?.code, userId, newRole });
       logUserManagementAction('update_role_error', { userId, message: error.message });
       toast({
         title: t('users.roleUpdateError'),
@@ -164,14 +207,24 @@ const UserManagement = () => {
   };
 
   const handleToggleUserStatus = async (userId, isEnabled) => {
+    console.log('[handleToggleUserStatus] START - Input:', { userId, isEnabled });
     try {
+      console.log('[handleToggleUserStatus] Finding target user...');
       const targetUser = users.find(u => u.id === userId);
-      if (SUPER_ADMIN_EMAILS.includes(targetUser?.email)) {
+      console.log('[handleToggleUserStatus] Target user found:', {
+        userId,
+        email: targetUser?.email,
+        currentStatus: targetUser?.is_enabled
+      });
+
+      if (targetUser?.role === 'super_admin') {
+        console.warn('[handleToggleUserStatus] BLOCKED - Cannot modify super admin:', targetUser?.email);
         throw new Error(t('users.cannotModifySuperAdmin'));
       }
 
       logUserManagementAction('toggle_user_status_start', { userId, enable: isEnabled });
 
+      console.log('[handleToggleUserStatus] Updating user status in database...');
       const { error } = await supabase
         .from('user_profiles')
         .update({ is_enabled: isEnabled })
@@ -179,14 +232,17 @@ const UserManagement = () => {
 
       if (error) throw error;
 
+      console.log('[handleToggleUserStatus] Database update successful, refreshing users...');
       await fetchUsers();
+      console.log('[handleToggleUserStatus] SUCCESS - Status updated from', targetUser?.is_enabled, 'to', isEnabled);
       logUserManagementAction('toggle_user_status_success', { userId, enable: isEnabled });
       toast({
         title: isEnabled ? t('users.userEnabled') : t('users.userDisabled'),
         description: t('users.statusUpdateSuccess'),
       });
     } catch (error) {
-      console.error('Error updating user status:', error);
+      console.error('[handleToggleUserStatus] ERROR:', error);
+      console.error('[handleToggleUserStatus] Error details:', { message: error?.message, code: error?.code, userId, isEnabled });
       logUserManagementAction('toggle_user_status_error', { userId, message: error.message });
       toast({
         title: t('users.statusUpdateError'),
@@ -197,10 +253,18 @@ const UserManagement = () => {
   };
 
   const handleDeleteUser = async (userId) => {
+    console.log('[handleDeleteUser] START - Input:', { userId });
     const targetUser = users.find(u => u.id === userId);
+    console.log('[handleDeleteUser] Target user found:', {
+      userId,
+      email: targetUser?.email,
+      role: targetUser?.role,
+      isEnabled: targetUser?.is_enabled
+    });
 
     // Prevent deletion of super admin
-    if (SUPER_ADMIN_EMAILS.includes(targetUser?.email)) {
+    if (targetUser?.role === 'super_admin') {
+      console.warn('[handleDeleteUser] BLOCKED - Cannot delete super admin:', targetUser?.email);
       logUserManagementAction('delete_user_blocked_super_admin', { userId });
       toast({
         title: t('users.deleteError'),
@@ -213,37 +277,51 @@ const UserManagement = () => {
     // Confirm deletion
     const confirmMessage = t('users.confirmDelete', { email: targetUser?.email });
     if (!window.confirm(confirmMessage)) {
+      console.log('[handleDeleteUser] User cancelled deletion');
       logUserManagementAction('delete_user_cancelled', { userId });
       return;
     }
 
     try {
+      console.log('[handleDeleteUser] User confirmed deletion, proceeding...');
       logUserManagementAction('delete_user_start', { userId });
 
       // Delete from user_profiles
+      console.log('[handleDeleteUser] Deleting from user_profiles table...');
       const { error: profileError } = await supabase
         .from('user_profiles')
         .delete()
         .eq('id', userId);
 
       if (profileError) throw profileError;
+      console.log('[handleDeleteUser] User profile deleted successfully');
 
       // Delete from auth.users (admin API)
+      console.log('[handleDeleteUser] Deleting from auth.users...');
       const { error: authError } = await supabase.auth.admin.deleteUser(userId);
 
       if (authError) {
-        console.warn('Could not delete from auth.users:', authError);
+        console.warn('[handleDeleteUser] Could not delete from auth.users:', authError);
+        console.warn('[handleDeleteUser] Error details:', {
+          message: authError?.message,
+          code: authError?.code
+        });
         // Continue anyway as profile was deleted
+      } else {
+        console.log('[handleDeleteUser] Auth user deleted successfully');
       }
 
+      console.log('[handleDeleteUser] Refreshing users list...');
       await fetchUsers();
+      console.log('[handleDeleteUser] SUCCESS - User deleted:', { userId, email: targetUser?.email });
       logUserManagementAction('delete_user_success', { userId });
       toast({
         title: t('users.userDeleted'),
         description: t('users.userDeletedSuccess'),
       });
     } catch (error) {
-      console.error('Error deleting user:', error);
+      console.error('[handleDeleteUser] ERROR:', error);
+      console.error('[handleDeleteUser] Error details:', { message: error?.message, code: error?.code, userId });
       logUserManagementAction('delete_user_error', { userId, message: error.message });
       toast({
         title: t('users.deleteError'),
@@ -254,13 +332,24 @@ const UserManagement = () => {
   };
 
   const handleCategoryChange = async (userId, newCategoryName) => {
+    console.log('[handleCategoryChange] START - Input:', { userId, newCategoryName });
     try {
       if (!newCategoryName) {
+        console.warn('[handleCategoryChange] VALIDATION ERROR - No category name provided');
         throw new Error(t('users.categories.selectCategory'));
       }
 
+      console.log('[handleCategoryChange] Validation passed, finding target user...');
+      const targetUser = users.find(u => u.id === userId);
+      console.log('[handleCategoryChange] Target user:', {
+        userId,
+        email: targetUser?.email,
+        currentCategory: targetUser?.category_name
+      });
+
       logUserManagementAction('update_category_start', { userId, category: newCategoryName }, 'categories');
 
+      console.log('[handleCategoryChange] Upserting category assignment...');
       const { error } = await supabase
         .from('user_categories')
         .upsert({
@@ -274,15 +363,19 @@ const UserManagement = () => {
         }, { onConflict: 'user_id' });
 
       if (error) throw error;
+      console.log('[handleCategoryChange] Category assignment successful');
 
+      console.log('[handleCategoryChange] Refreshing users list...');
       await fetchUsers();
+      console.log('[handleCategoryChange] SUCCESS - Category updated from', targetUser?.category_name, 'to', newCategoryName);
       logUserManagementAction('update_category_success', { userId, category: newCategoryName }, 'categories');
       toast({
         title: t('users.categories.categoryUpdated'),
         description: t('users.categories.categoryUpdateSuccess'),
       });
     } catch (error) {
-      console.error('Error updating user category:', error);
+      console.error('[handleCategoryChange] ERROR:', error);
+      console.error('[handleCategoryChange] Error details:', { message: error?.message, code: error?.code, userId, newCategoryName });
       logUserManagementAction('update_category_error', { userId, message: error.message }, 'categories');
       toast({
         title: t('users.categories.categoryUpdateError'),
@@ -293,15 +386,24 @@ const UserManagement = () => {
   };
 
   const handleRecalculateAll = async () => {
+    console.log('[handleRecalculateAll] START - User requested category recalculation');
     if (!window.confirm(t('users.categories.confirmRecalculateAll'))) {
+      console.log('[handleRecalculateAll] User cancelled recalculation');
       logUserManagementAction('recalculate_all_cancelled', {}, 'categories');
       return;
     }
 
+    console.log('[handleRecalculateAll] User confirmed, starting recalculation...');
     setRecalculatingAll(true);
     try {
       logUserManagementAction('recalculate_all_start', {}, 'categories');
+      console.log('[handleRecalculateAll] Calling recalculateAllCategories service...');
       const result = await recalculateAllCategories();
+      console.log('[handleRecalculateAll] Recalculation complete:', {
+        processed: result.processed,
+        total: result.total,
+        successRate: `${Math.round((result.processed / result.total) * 100)}%`
+      });
       setLastRecalculateTime(new Date());
 
       toast({
@@ -317,9 +419,12 @@ const UserManagement = () => {
         total: result.total
       }, 'categories');
 
+      console.log('[handleRecalculateAll] Refreshing users list...');
       await fetchUsers();
+      console.log('[handleRecalculateAll] SUCCESS - Recalculation completed');
     } catch (error) {
-      console.error('Error recalculating categories:', error);
+      console.error('[handleRecalculateAll] ERROR:', error);
+      console.error('[handleRecalculateAll] Error details:', { message: error?.message, code: error?.code });
       logUserManagementAction('recalculate_all_error', { message: error.message }, 'categories');
       toast({
         title: t('users.categories.recalculateError'),
@@ -328,32 +433,56 @@ const UserManagement = () => {
       });
     } finally {
       setRecalculatingAll(false);
+      console.log('[handleRecalculateAll] Recalculation state reset');
     }
   };
 
   const handleEditDiscount = (discount) => {
+    console.log('[handleEditDiscount] START - Input:', {
+      discountId: discount.id,
+      category: discount.category_name,
+      currentPercentage: discount.discount_percentage
+    });
     setEditingDiscountId(discount.id);
     setEditingDiscountData({
       discount_percentage: discount.discount_percentage,
       discount_description: discount.discount_description || '',
       enabled: discount.enabled
     });
+    console.log('[handleEditDiscount] Edit mode activated for discount:', discount.id);
     logUserManagementAction('edit_discount_start', { category: discount.category_name }, 'categories');
   };
 
   const handleCancelEditDiscount = () => {
+    console.log('[handleCancelEditDiscount] START - Cancelling discount edit');
+    console.log('[handleCancelEditDiscount] Clearing editing state');
     setEditingDiscountId(null);
     setEditingDiscountData(null);
+    console.log('[handleCancelEditDiscount] SUCCESS - Edit cancelled');
     logUserManagementAction('edit_discount_cancelled', {}, 'categories');
   };
 
   const handleSaveDiscount = async (categoryName) => {
-    if (!editingDiscountData) return;
+    console.log('[handleSaveDiscount] START - Input:', { categoryName, editingDiscountData });
+    if (!editingDiscountData) {
+      console.warn('[handleSaveDiscount] No discount data to save, returning');
+      return;
+    }
+
+    console.log('[handleSaveDiscount] Validating discount data...');
+    console.log('[handleSaveDiscount] Data to save:', {
+      category: categoryName,
+      percentage: editingDiscountData.discount_percentage,
+      description: editingDiscountData.discount_description,
+      enabled: editingDiscountData.enabled
+    });
 
     logUserManagementAction('save_discount_start', { category: categoryName }, 'categories');
 
     try {
+      console.log('[handleSaveDiscount] Calling updateCategoryDiscount service...');
       await updateCategoryDiscount(categoryName, editingDiscountData);
+      console.log('[handleSaveDiscount] Discount update successful');
 
       toast({
         title: t('common.success'),
@@ -363,14 +492,19 @@ const UserManagement = () => {
       logUserManagementAction('save_discount_success', { category: categoryName }, 'categories');
 
       // Reload discounts
+      console.log('[handleSaveDiscount] Reloading category discounts...');
       const discountsData = await getCategoryDiscounts();
+      console.log('[handleSaveDiscount] Discounts reloaded:', { count: discountsData?.length || 0 });
       setCategoryDiscounts(discountsData || []);
 
       // Clear editing state
+      console.log('[handleSaveDiscount] Clearing editing state...');
       setEditingDiscountId(null);
       setEditingDiscountData(null);
+      console.log('[handleSaveDiscount] SUCCESS - Discount saved and edit mode cleared');
     } catch (error) {
-      console.error('Error updating discount:', error);
+      console.error('[handleSaveDiscount] ERROR:', error);
+      console.error('[handleSaveDiscount] Error details:', { message: error?.message, code: error?.code, categoryName });
       logUserManagementAction('save_discount_error', { category: categoryName, message: error.message }, 'categories');
       toast({
         title: t('common.error'),
@@ -380,7 +514,7 @@ const UserManagement = () => {
     }
   };
 
-  const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(user?.email);
+  const isSuperAdmin = user?.role === 'super_admin';
   const [selectedUser, setSelectedUser] = useState(null);
   const [showUserModal, setShowUserModal] = useState(false);
 
@@ -394,7 +528,7 @@ const UserManagement = () => {
       baseColumns[roleColumnIndex] = {
         ...baseColumns[roleColumnIndex],
         render: (value, row) => {
-          const isSuperAdminUser = SUPER_ADMIN_EMAILS.includes(row.email);
+          const isSuperAdminUser = row.role === 'super_admin';
           if (isSuperAdminUser) {
             return (
               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
@@ -406,7 +540,14 @@ const UserManagement = () => {
           return (
             <select
               value={value || 'user'}
-              onChange={(e) => handleRoleChange(row.id, e.target.value)}
+              onChange={(e) => {
+                console.log('[RoleSelect onChange] Role change requested:', {
+                  userId: row.id,
+                  oldRole: value,
+                  newRole: e.target.value
+                });
+                handleRoleChange(row.id, e.target.value);
+              }}
               className="px-3 py-1 rounded-full text-xs font-medium border-0 focus:ring-2 focus:ring-blue-500 bg-gray-100 text-gray-800"
             >
               <option value="user">{t('users.roles.user')}</option>
@@ -423,7 +564,7 @@ const UserManagement = () => {
       baseColumns[categoryColumnIndex] = {
         ...baseColumns[categoryColumnIndex],
         render: (value, row) => {
-          const isSuperAdminUser = SUPER_ADMIN_EMAILS.includes(row.email);
+          const isSuperAdminUser = row.role === 'super_admin';
           if (isSuperAdminUser) {
             return (
               <span className="text-xs text-gray-400 italic">
@@ -456,7 +597,7 @@ const UserManagement = () => {
         baseColumns[actionsColumnIndex] = {
           ...baseColumns[actionsColumnIndex],
           render: (_, row) => {
-            const isSuperAdminUser = SUPER_ADMIN_EMAILS.includes(row.email);
+            const isSuperAdminUser = row.role === 'super_admin';
             if (isSuperAdminUser) {
               return (
                 <div className="flex items-center gap-2">
@@ -534,7 +675,7 @@ const UserManagement = () => {
         </div>
         <div className="glass-effect p-3 sm:p-4 rounded-xl">
           <div className="text-xs sm:text-sm text-gray-600 mb-1">{t('users.superAdmin')}</div>
-          <div className="text-lg sm:text-2xl font-bold text-purple-600">{users.filter(u => SUPER_ADMIN_EMAILS.includes(u.email)).length}</div>
+          <div className="text-lg sm:text-2xl font-bold text-purple-600">{users.filter(u => u.role === 'super_admin').length}</div>
         </div>
       </div>
 
@@ -548,9 +689,15 @@ const UserManagement = () => {
           data={users}
           columns={userTableColumns}
           onRowClick={(user) => {
+            console.log('[onRowClick] User row clicked:', {
+              userId: user.id,
+              email: user.email,
+              role: user.role
+            });
             logUserManagementAction('open_user_modal', { userId: user.id });
             setSelectedUser(user);
             setShowUserModal(true);
+            console.log('[onRowClick] User modal opened');
           }}
           isLoading={loading}
           modalTitle={t('users.detail')}
@@ -564,8 +711,10 @@ const UserManagement = () => {
         <TableDetailModal
           isOpen={showUserModal}
           onClose={() => {
+            console.log('[UserModal onClose] Closing user detail modal for user:', selectedUser.id);
             setShowUserModal(false);
             setTimeout(() => setSelectedUser(null), 300);
+            console.log('[UserModal onClose] Modal closed');
           }}
           title={t('users.detail') || 'User Details'}
           data={selectedUser}
@@ -899,6 +1048,7 @@ const UserManagement = () => {
             ]}
             activeTab={activeTab}
             onTabChange={(tab) => {
+              console.log('[onTabChange] Tab changed from', activeTab, 'to', tab);
               logUserManagementAction('tab_change', { to: tab }, tab);
               setActiveTab(tab);
             }}

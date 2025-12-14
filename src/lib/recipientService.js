@@ -9,6 +9,7 @@ import {
   handleError, logError, createValidationError,
   createNotFoundError, createPermissionError, parseSupabaseError, ERROR_CODES
 } from './errorHandler';
+import { encryptData } from '@/lib/encryption';
 
 // ============================================================================
 // DESTINATARIOS
@@ -542,7 +543,7 @@ export const createBankAccount = async (userId, bankData) => {
       throw new Error('Account type could not be determined');
     }
 
-    // Hash account number for security
+    // Hash account number for security (for duplicate detection)
     const encoder = new TextEncoder();
     const dataToHash = encoder.encode(accountNumber + userId);
     const hashBuffer = await crypto.subtle.digest('SHA-256', dataToHash);
@@ -550,6 +551,52 @@ export const createBankAccount = async (userId, bankData) => {
     const accountNumberHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     const accountNumberLast4 = accountNumber.slice(-4);
 
+    // Encrypt full account number for admin access
+    console.log('[createBankAccount] Encrypting account number...');
+    const encryptedAccountNumber = await encryptData(accountNumber);
+
+    // Check if account already exists (including soft-deleted ones)
+    console.log('[createBankAccount] Checking for existing account with hash:', accountNumberHash);
+    const { data: existingAccount } = await supabase
+      .from('bank_accounts')
+      .select('id, is_active, deleted_at')
+      .eq('account_number_hash', accountNumberHash)
+      .eq('user_id', userId)
+      .single();
+
+    // If account exists and is soft-deleted, reactivate it
+    if (existingAccount && existingAccount.deleted_at) {
+      console.log('[createBankAccount] Reactivating soft-deleted account:', existingAccount.id);
+      const { data: reactivatedAccount, error: reactivateError } = await supabase
+        .from('bank_accounts')
+        .update({
+          is_active: true,
+          deleted_at: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingAccount.id)
+        .select()
+        .single();
+
+      if (reactivateError) {
+        throw parseSupabaseError(reactivateError);
+      }
+
+      console.log('[createBankAccount] Account reactivated successfully');
+      return reactivatedAccount;
+    }
+
+    // If account exists and is active, return error
+    if (existingAccount && !existingAccount.deleted_at) {
+      console.warn('[createBankAccount] Account already exists:', existingAccount.id);
+      throw createValidationError(
+        { accountNumber: 'Esta cuenta bancaria ya está registrada para este usuario' },
+        'Duplicate bank account'
+      );
+    }
+
+    // Create new account
+    console.log('[createBankAccount] Creating new bank account...');
     const { data, error } = await supabase
       .from('bank_accounts')
       .insert([
@@ -560,6 +607,7 @@ export const createBankAccount = async (userId, bankData) => {
           currency_id: finalCurrencyId,
           account_number_last4: accountNumberLast4,
           account_number_hash: accountNumberHash,
+          account_number_full: encryptedAccountNumber,
           account_holder_name: accountHolderName,
           is_active: true
         }
@@ -571,6 +619,7 @@ export const createBankAccount = async (userId, bankData) => {
       throw parseSupabaseError(error);
     }
 
+    console.log('[createBankAccount] Bank account created successfully:', data.id);
     return data;
   } catch (error) {
     if (error.code) throw error;

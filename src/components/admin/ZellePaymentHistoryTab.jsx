@@ -7,6 +7,7 @@ import { toast } from '@/components/ui/use-toast';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import TableDetailModal from '@/components/modals/TableDetailModal';
 import { zelleService } from '@/lib/zelleService';
+import { useRealtimeZelleTransactions } from '@/hooks/useRealtimeSubscription';
 
 const ZellePaymentHistoryTab = () => {
   const { t, language } = useLanguage();
@@ -40,6 +41,16 @@ const ZellePaymentHistoryTab = () => {
     fetchTransactions();
     fetchZelleAccounts();
   }, []);
+
+  // Real-time subscription for Zelle transaction updates
+  useRealtimeZelleTransactions({
+    enabled: true,
+    onUpdate: (payload) => {
+      console.log('[Realtime] Zelle transaction update:', payload.eventType);
+      // Reload transactions when any change occurs
+      fetchTransactions();
+    }
+  });
 
   const fetchZelleAccounts = async () => {
     try {
