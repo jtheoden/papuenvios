@@ -3,7 +3,7 @@ import React, { createContext, useContext, useEffect, useState, useRef } from 'r
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/components/ui/use-toast';
 import AuthLoadingScreen from '@/components/AuthLoadingScreen';
-import { SUPER_ADMIN_EMAILS, TIMEOUTS, RETRY_CONFIG } from '@/lib/constants';
+import { TIMEOUTS, RETRY_CONFIG } from '@/lib/constants';
 import { getUserCategory } from '@/lib/userCategorizationService';
 import { flushQueuedActivityLogs, logActivity } from '@/lib/activityLogger';
 
@@ -478,9 +478,6 @@ export const AuthProvider = ({ children }) => {
     return userRole === requiredRole;
   };
 
-  // Check if user email is in super admin list (for UI convenience only, not security)
-  const isSuperAdminEmail = SUPER_ADMIN_EMAILS.includes(user?.email);
-
   const value = {
     user,
     loading,
@@ -488,8 +485,8 @@ export const AuthProvider = ({ children }) => {
     userRole,
     userCategory,
     isEnabled,
-    isSuperAdmin: userRole === 'super_admin' || isSuperAdminEmail,
-    isAdmin: userRole === 'admin' || userRole === 'super_admin' || isSuperAdminEmail,
+    isSuperAdmin: userRole === 'super_admin',
+    isAdmin: userRole === 'admin' || userRole === 'super_admin',
     checkRole,
     login,
     signInWithGoogle,

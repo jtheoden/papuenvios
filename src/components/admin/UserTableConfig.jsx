@@ -8,8 +8,6 @@ import UserAvatar from '@/components/avatars/UserAvatar';
  * Shared configuration for responsive user management table display
  */
 
-const SUPER_ADMIN_EMAILS = ['jtheoden@googlemail.com', 'elpapuedition@gmail.com'];
-
 /**
  * Get table columns for responsive user display
  * @param {function} t - Translation function
@@ -43,7 +41,7 @@ export const getUserTableColumns = (t, isSuperAdmin, currentUserEmail) => {
       label: t('users.table.role'),
       width: '20%',
       render: (value, row) => {
-        const isSuperAdminUser = SUPER_ADMIN_EMAILS.includes(row.email);
+        const isSuperAdminUser = row.role === 'super_admin';
         if (isSuperAdminUser) {
           return (
             <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
@@ -76,7 +74,7 @@ export const getUserTableColumns = (t, isSuperAdmin, currentUserEmail) => {
       label: t('users.table.category'),
       width: '15%',
       render: (value, row) => {
-        const isSuperAdminUser = SUPER_ADMIN_EMAILS.includes(row.email);
+        const isSuperAdminUser = row.role === 'super_admin';
         if (isSuperAdminUser) {
           return (
             <span className="text-xs text-gray-400 italic">
@@ -119,7 +117,7 @@ export const getUserTableColumns = (t, isSuperAdmin, currentUserEmail) => {
       label: t('users.table.actions'),
       width: '20%',
       render: (value, row) => {
-        const isSuperAdminUser = SUPER_ADMIN_EMAILS.includes(row.email);
+        const isSuperAdminUser = row.role === 'super_admin';
         if (isSuperAdminUser) {
           return (
             <div className="flex items-center gap-2">

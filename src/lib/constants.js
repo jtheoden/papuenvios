@@ -3,11 +3,6 @@
  * Centralized configuration values to eliminate magic numbers and duplicate strings
  */
 
-// Super Admin Configuration
-// NOTE: This should ideally be handled server-side with RLS policies
-// Client-side email checks are for UI convenience only, NOT security
-export const SUPER_ADMIN_EMAILS = ['jtheoden@gmail.com', 'jtheoden@googlemail.com'];
-
 // File Upload Limits
 export const FILE_SIZE_LIMITS = {
   PAYMENT_PROOF: 5 * 1024 * 1024, // 5MB
