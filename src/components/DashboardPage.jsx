@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart3, TrendingUp, DollarSign, Package, Users, AlertTriangle, Eye, Users2, RefreshCw, FileText, List, Send, Settings, Clock, CheckCircle, Ticket, CreditCard, ShieldCheck } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -98,7 +98,7 @@ const DashboardPage = ({ onNavigate }) => {
   }, [selectedCurrency, currencies]);
 
   // Fetch visit statistics
-  const fetchVisitStats = async () => {
+  const fetchVisitStats = useCallback(async () => {
     console.log('[fetchVisitStats] START');
 
     try {
@@ -169,10 +169,10 @@ const DashboardPage = ({ onNavigate }) => {
       });
       console.log('[fetchVisitStats] Set unavailable state (catch error)');
     }
-  };
+  }, []);
 
   // Fetch real stats from Supabase
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     console.log('[fetchStats] START');
 
     try {
@@ -186,10 +186,16 @@ const DashboardPage = ({ onNavigate }) => {
         supabase.from('combo_products').select('id', { count: 'exact', head: true }),
         supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
         supabase.from('orders').select('id, status, payment_status, total_amount, created_at'),
-        supabase.from('remittances').select('id, status, commission_total, amount_sent, amount_to_deliver, created_at')
+        supabase.from('remittances').select('id, status, commission_total, amount_sent, amount_to_deliver, created_at, delivered_at, completed_at, updated_at')
       ]);
 
       console.log('[fetchStats] Database queries completed');
+
+      if (productsRes.error) throw productsRes.error;
+      if (combosRes.error) throw combosRes.error;
+      if (usersRes.error) throw usersRes.error;
+      if (ordersRes.error) throw ordersRes.error;
+      if (remittancesRes.error) throw remittancesRes.error;
 
       const totalProducts = productsRes.count || 0;
       const totalCombos = combosRes.count || 0;
@@ -270,21 +276,38 @@ const DashboardPage = ({ onNavigate }) => {
       const completedStatuses = ['delivered', 'completed'];
 
       console.log('[fetchStats] Calculating remittance income and volume...');
+      const getRemittanceCompletionDate = (remittance) => {
+        const timestamp = remittance.completed_at || remittance.delivered_at || remittance.updated_at || remittance.created_at;
+        return timestamp ? new Date(timestamp) : null;
+      };
+
       const dailyRemittanceIncome = remittances
-        .filter(r => new Date(r.created_at) >= oneDayAgo && completedStatuses.includes(r.status))
+        .filter(r => {
+          const completedAt = getRemittanceCompletionDate(r);
+          return completedAt && completedAt >= oneDayAgo && completedStatuses.includes(r.status);
+        })
         .reduce((sum, r) => sum + (parseFloat(r.commission_total) || 0), 0);
 
       const monthlyRemittanceIncome = remittances
-        .filter(r => new Date(r.created_at) >= oneMonthAgo && completedStatuses.includes(r.status))
+        .filter(r => {
+          const completedAt = getRemittanceCompletionDate(r);
+          return completedAt && completedAt >= oneMonthAgo && completedStatuses.includes(r.status);
+        })
         .reduce((sum, r) => sum + (parseFloat(r.commission_total) || 0), 0);
 
       const dailyRemittanceVolume = remittances
-        .filter(r => new Date(r.created_at) >= oneDayAgo && completedStatuses.includes(r.status))
-        .reduce((sum, r) => sum + (parseFloat(r.amount_to_deliver || r.amount_sent) || 0), 0);
+        .filter(r => {
+          const completedAt = getRemittanceCompletionDate(r);
+          return completedAt && completedAt >= oneDayAgo && completedStatuses.includes(r.status);
+        })
+        .reduce((sum, r) => sum + (parseFloat(r.amount_to_deliver ?? r.amount_sent) || 0), 0);
 
       const monthlyRemittanceVolume = remittances
-        .filter(r => new Date(r.created_at) >= oneMonthAgo && completedStatuses.includes(r.status))
-        .reduce((sum, r) => sum + (parseFloat(r.amount_to_deliver || r.amount_sent) || 0), 0);
+        .filter(r => {
+          const completedAt = getRemittanceCompletionDate(r);
+          return completedAt && completedAt >= oneMonthAgo && completedStatuses.includes(r.status);
+        })
+        .reduce((sum, r) => sum + (parseFloat(r.amount_to_deliver ?? r.amount_sent) || 0), 0);
 
       console.log('[fetchStats] Remittance financial metrics calculated:', {
         dailyRemittanceIncome: dailyRemittanceIncome.toFixed(2),
@@ -331,7 +354,7 @@ const DashboardPage = ({ onNavigate }) => {
       setStats(prev => ({ ...prev, loading: false }));
       console.log('[fetchStats] Loading state reset after error');
     }
-  };
+  }, []);
 
   useRealtimeOrders({
     enabled: isAdmin || isSuperAdmin,
@@ -355,7 +378,7 @@ const DashboardPage = ({ onNavigate }) => {
 
       return () => clearInterval(statsInterval);
     }
-  }, [user, isAdmin, isSuperAdmin]);
+  }, [user, isAdmin, isSuperAdmin, fetchStats, fetchVisitStats]);
 
   // Calculate profits and apply exchange rate
   const dailyProfit = stats.dailyRevenue * (financialSettings.productProfit / 100);

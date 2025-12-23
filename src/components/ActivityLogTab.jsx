@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Activity, Clock, Filter, Search, Shield } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { fetchActivityLogs } from '@/lib/activityLogger';
+import { useRealtimeActivityLogs } from '@/hooks/useRealtimeSubscription';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 
 const ACTION_OPTIONS = [
@@ -42,12 +43,7 @@ const ActivityLogTab = () => {
   const [entityFilter, setEntityFilter] = useState('all');
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (!isSuperAdmin) return;
-    loadLogs();
-  }, [isSuperAdmin, actionFilter, entityFilter, search]);
-
-  const loadLogs = async () => {
+  const loadLogs = useCallback(async () => {
     setLoading(true);
     const data = await fetchActivityLogs({
       search,
@@ -56,7 +52,20 @@ const ActivityLogTab = () => {
     });
     setLogs(data);
     setLoading(false);
-  };
+  }, [actionFilter, entityFilter, search]);
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    loadLogs();
+  }, [isSuperAdmin, loadLogs]);
+
+  useRealtimeActivityLogs({
+    enabled: isSuperAdmin,
+    onUpdate: () => {
+      if (!isSuperAdmin) return;
+      loadLogs();
+    }
+  });
 
   const columns = useMemo(() => ([
     {
