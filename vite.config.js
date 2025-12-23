@@ -14,7 +14,7 @@ export default defineConfig({
     host: true,
     port: 5173,               // SIGUE SIENDO 5173
     allowedHosts: [
-      '.trycloudflare.com',   // cualquier subdominio de trycloudflare
+      '.vercel.app',   // cualquier subdominio de vercel
     ],
   },
 });
