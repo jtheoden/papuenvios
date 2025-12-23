@@ -49,3 +49,6 @@ Thumbs.db
 
 # Local development
 .cache/
+
+# OAuth client secrets (never commit)
+client_secret_*.json
