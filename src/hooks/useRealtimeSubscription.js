@@ -19,7 +19,7 @@
  * });
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 
 export const useRealtimeSubscription = ({
@@ -34,6 +34,26 @@ export const useRealtimeSubscription = ({
 }) => {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(null);
+  const onInsertRef = useRef(onInsert);
+  const onUpdateRef = useRef(onUpdate);
+  const onDeleteRef = useRef(onDelete);
+  const onErrorRef = useRef(onError);
+
+  useEffect(() => {
+    onInsertRef.current = onInsert;
+  }, [onInsert]);
+
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+  }, [onUpdate]);
+
+  useEffect(() => {
+    onDeleteRef.current = onDelete;
+  }, [onDelete]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
 
   useEffect(() => {
     if (!enabled || !table) return;
@@ -68,12 +88,14 @@ export const useRealtimeSubscription = ({
               setLastUpdate(new Date());
 
               // Call specific handlers based on event type
-              if (payload.eventType === 'INSERT' && onInsert) {
-                onInsert(payload);
-              } else if (payload.eventType === 'UPDATE' && onUpdate) {
-                onUpdate(payload);
-              } else if (payload.eventType === 'DELETE' && onDelete) {
-                onDelete(payload);
+              if (payload.eventType === 'INSERT') {
+                const handler = onInsertRef.current || onUpdateRef.current;
+                if (handler) handler(payload);
+              } else if (payload.eventType === 'UPDATE') {
+                if (onUpdateRef.current) onUpdateRef.current(payload);
+              } else if (payload.eventType === 'DELETE') {
+                const handler = onDeleteRef.current || onUpdateRef.current;
+                if (handler) handler(payload);
               }
             }
           )
@@ -95,8 +117,8 @@ export const useRealtimeSubscription = ({
                   ? err
                   : new Error(`Subscription ${status.toLowerCase()} for ${table}`);
 
-              if (onError) {
-                onError(error);
+              if (onErrorRef.current) {
+                onErrorRef.current(error);
               }
 
               console.error(`[Realtime] Subscription ${status.toLowerCase()} for ${table}`, {
@@ -110,8 +132,8 @@ export const useRealtimeSubscription = ({
         channel = subscription;
       } catch (error) {
         console.error(`[Realtime] Error subscribing to ${table}:`, error);
-        if (onError) {
-          onError(error);
+        if (onErrorRef.current) {
+          onErrorRef.current(error);
         }
       }
     };
@@ -126,7 +148,7 @@ export const useRealtimeSubscription = ({
         console.log(`[Realtime] Unsubscribed from ${table}`);
       }
     };
-  }, [table, event, filter, enabled, onInsert, onUpdate, onDelete, onError]);
+  }, [table, event, filter, enabled]);
 
   return {
     isSubscribed,
@@ -187,6 +209,21 @@ export const useRealtimeOffers = ({ onUpdate, enabled = true }) => {
 export const useRealtimeZelleTransactions = ({ onUpdate, enabled = true }) => {
   return useRealtimeSubscription({
     table: 'zelle_transaction_history',
+    event: '*',
+    enabled,
+    onInsert: onUpdate,
+    onUpdate: onUpdate,
+    onDelete: onUpdate
+  });
+};
+
+/**
+ * useRealtimeActivityLogs Hook
+ * Specialized hook for real-time activity log updates
+ */
+export const useRealtimeActivityLogs = ({ onUpdate, enabled = true }) => {
+  return useRealtimeSubscription({
+    table: 'activity_logs',
     event: '*',
     enabled,
     onInsert: onUpdate,
