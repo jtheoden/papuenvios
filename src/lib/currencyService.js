@@ -4,6 +4,12 @@ import {
   createNotFoundError, parseSupabaseError, ERROR_CODES
 } from './errorHandler';
 
+const OFFICIAL_RATE_FALLBACKS = {
+  USD: 1,
+  MLC: 1,
+  CUP: 0.041
+};
+
 /**
  * Currency Service - Manages currency CRUD operations and rate conversions
  * Currencies: USD, EUR, CUP (Cuba market focus)
@@ -261,7 +267,7 @@ export const getConversionRate = async (fromCurrencyId, toCurrencyId) => {
       return 1 / parseFloat(inverseRateData.rate);
     }
 
-    // 3. Fallback: Official currency rates
+    // 3. Fallback: Official currency rates (table or static defaults)
     const { data: fromCurr, error: err1 } = await supabase
       .from('currencies')
       .select('code')
@@ -278,26 +284,43 @@ export const getConversionRate = async (fromCurrencyId, toCurrencyId) => {
       throw createNotFoundError('Currency', fromCurrencyId || toCurrencyId);
     }
 
-    // Get official rates
-    const { data: fromRate } = await supabase
-      .from('official_currency_rates')
-      .select('rate_to_usd')
-      .eq('currency_code', fromCurr.code)
-      .single();
+    const fetchOfficialRate = async (currencyCode) => {
+      try {
+        const { data, error } = await supabase
+          .from('official_currency_rates')
+          .select('rate_to_usd')
+          .eq('currency_code', currencyCode)
+          .maybeSingle();
 
-    const { data: toRate } = await supabase
-      .from('official_currency_rates')
-      .select('rate_to_usd')
-      .eq('currency_code', toCurr.code)
-      .single();
+        if (error) {
+          const parsed = parseSupabaseError(error);
+          // If table is missing or inaccessible, gracefully fall back
+          if (['42P01', 'PGRST116', 'PGRST204'].includes(parsed?.code)) {
+            return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
+          }
+          throw parsed;
+        }
 
-    if (!fromRate || !toRate) {
-      throw new Error(`Official rates not found for ${fromCurr.code} or ${toCurr.code}`);
+        if (data?.rate_to_usd !== undefined && data?.rate_to_usd !== null) {
+          return parseFloat(data.rate_to_usd);
+        }
+
+        return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
+      } catch (rateError) {
+        logError(rateError, { operation: 'getConversionRate - officialRateFallback', currency: currencyCode });
+        return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
+      }
+    };
+
+    const fromRate = await fetchOfficialRate(fromCurr.code);
+    const toRate = await fetchOfficialRate(toCurr.code);
+
+    if (fromRate !== null && fromRate !== undefined && toRate !== null && toRate !== undefined) {
+      // Calculate: (1 from_currency = X USD) / (1 to_currency = Y USD) = conversion rate
+      return fromRate / toRate;
     }
 
-    // Calculate: (1 from_currency = X USD) / (1 to_currency = Y USD) = conversion rate
-    const conversionRate = fromRate.rate_to_usd / toRate.rate_to_usd;
-    return conversionRate;
+    throw new Error(`Official rates not found for ${fromCurr.code} or ${toCurr.code}`);
 
   } catch (error) {
     if (error.code) throw error;
