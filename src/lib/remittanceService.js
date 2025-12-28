@@ -709,11 +709,16 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
       throw createNotFoundError('Remittance', remittanceId);
     }
 
-    // Validate remittance state - only allow upload in PAYMENT_PENDING
-    if (remittance.status !== REMITTANCE_STATUS.PAYMENT_PENDING) {
+    // Validate remittance state - allow uploads while pending or after rejection
+    const allowedStatuses = [
+      REMITTANCE_STATUS.PAYMENT_PENDING,
+      REMITTANCE_STATUS.PAYMENT_REJECTED
+    ];
+
+    if (!allowedStatuses.includes(remittance.status)) {
       throw createValidationError(
-        { status: `Current status is ${remittance.status}, but PAYMENT_PENDING is required` },
-        'Payment proof can only be uploaded when remittance is pending payment'
+        { status: `Current status is ${remittance.status}, allowed: ${allowedStatuses.join(', ')}` },
+        'Payment proof can only be uploaded when remittance is pending payment or was rejected'
       );
     }
 
