@@ -553,6 +553,20 @@ export const createRemittance = async (remittanceData) => {
 
     console.log('[createRemittance] STEP 5 - User authenticated:', { userId: user.id, email: user.email });
 
+    // Check if user has admin privileges to create backend transfer records
+    let isAdminUser = false;
+    try {
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('role')
+        .eq('user_id', user.id)
+        .single();
+
+      isAdminUser = profile && ['admin', 'super_admin'].includes(profile.role);
+    } catch (roleError) {
+      console.warn('[createRemittance] Unable to verify admin role, continuing as standard user', roleError);
+    }
+
     // Get or find available Zelle account
     let selectedZelleAccountId = zelle_account_id;
     if (!selectedZelleAccountId) {
@@ -590,6 +604,10 @@ export const createRemittance = async (remittanceData) => {
       status: REMITTANCE_STATUS.PAYMENT_PENDING,
       zelle_account_id: selectedZelleAccountId
     };
+
+    if (recipient_bank_account_id) {
+      insertData.recipient_bank_account_id = recipient_bank_account_id;
+    }
 
     if (recipient_id) {
       insertData.recipient_id = recipient_id;
@@ -638,18 +656,22 @@ export const createRemittance = async (remittanceData) => {
 
     // Create bank transfer for off-cash methods (graceful fallback if fails)
     if (deliveryMethod !== 'cash' && recipient_bank_account_id) {
-      console.log('[createRemittance] STEP 11 - Creating bank transfer for non-cash delivery...');
-      try {
-        await createBankTransfer(
-          data.id,
-          recipient_bank_account_id,
-          { amount_transferred: amountToDeliver }
-        );
-        console.log('[createRemittance] Bank transfer created successfully');
-      } catch (bankError) {
-        console.error('[createRemittance] Bank transfer creation error (non-fatal):', bankError);
-        logError(bankError, { operation: 'createRemittance - bank transfer', remittanceId: data.id });
-        // Don't fail remittance creation if bank transfer creation fails
+      if (isAdminUser) {
+        console.log('[createRemittance] STEP 11 - Creating bank transfer for non-cash delivery as admin...');
+        try {
+          await createBankTransfer(
+            data.id,
+            recipient_bank_account_id,
+            { amount_transferred: amountToDeliver }
+          );
+          console.log('[createRemittance] Bank transfer created successfully');
+        } catch (bankError) {
+          console.error('[createRemittance] Bank transfer creation error (non-fatal):', bankError);
+          logError(bankError, { operation: 'createRemittance - bank transfer', remittanceId: data.id });
+          // Don't fail remittance creation if bank transfer creation fails
+        }
+      } else {
+        console.log('[createRemittance] STEP 11 - Skipping bank transfer creation (user lacks admin permissions)');
       }
     } else {
       console.log('[createRemittance] STEP 11 - Skipping bank transfer (cash delivery or no account)');

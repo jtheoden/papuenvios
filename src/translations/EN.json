@@ -401,6 +401,10 @@
       "calculating": "Calculating...",
       "continue": "Continue",
       "back": "Back",
+      "selectBankAccountRequired": "Please select a bank account for this remittance type",
+      "errorCalculating": "Error calculating remittance",
+      "errorCreatingRemittance": "Error creating remittance",
+      "errorUploadingProof": "Error uploading payment proof",
       "creating": "Creating...",
       "sending": "Sending...",
       "minAmount": "Minimum",
@@ -421,7 +425,10 @@
       "zelleAccountInfo": "Assigned Zelle account",
       "zelleEmail": "Zelle email",
       "zellePhone": "Phone number",
-      "zelleAccountMissing": "We couldn't load the Zelle account details. Please contact support before sending the transfer."
+      "zelleAccountMissing": "We couldn't load the Zelle account details. Please contact support before sending the transfer.",
+      "transferDescription": "Details to complete your transfer",
+      "remittanceIdForTransfer": "Remittance ID",
+      "useThisInTransfer": "Use this ID in your transfer reference or payment note"
     }
   },
   "vendor": {
