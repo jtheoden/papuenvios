@@ -224,7 +224,7 @@ const SendRemittancePage = ({ onNavigate }) => {
         // Redirigir después de un breve delay para que el usuario vea el toast
         setTimeout(() => {
           if (onNavigate) {
-            onNavigate('myRemittances');
+            onNavigate('my-remittances');
           }
         }, 1500);
       } else {
@@ -365,7 +365,7 @@ const SendRemittancePage = ({ onNavigate }) => {
       // Redirect to my remittances
       setTimeout(() => {
         if (onNavigate) {
-          onNavigate('myRemittances');
+          onNavigate('my-remittances');
         }
       }, 2000);
     } catch (error) {
@@ -1047,7 +1047,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                   type="button"
                   onClick={() => {
                     if (onNavigate) {
-                      onNavigate('myRemittances');
+                      onNavigate('my-remittances');
                     }
                   }}
                   className="flex-1 px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
