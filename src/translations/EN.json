@@ -411,6 +411,7 @@
       "maxAmount": "Maximum",
       "remittanceNumber": "Remittance number",
       "selectTypeAndAmount": "Please select a type and amount",
+      "selectRecipient": "Select a recipient",
       "fillRecipientInfo": "Please complete recipient name and phone",
       "remittanceCreatedSuccess": "Remittance created successfully",
       "uploadProofAndReference": "Please upload the payment proof and reference",
