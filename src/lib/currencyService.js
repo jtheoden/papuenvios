@@ -294,8 +294,9 @@ export const getConversionRate = async (fromCurrencyId, toCurrencyId) => {
 
         if (error) {
           const parsed = parseSupabaseError(error);
+          const supabaseCode = error?.code || parsed?.context?.originalError?.code || parsed?.context?.postgresCode || parsed?.code;
           // If table is missing or inaccessible, gracefully fall back
-          if (['42P01', 'PGRST116', 'PGRST204'].includes(parsed?.code)) {
+          if (['42P01', 'PGRST116', 'PGRST204'].includes(supabaseCode)) {
             return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
           }
           throw parsed;
