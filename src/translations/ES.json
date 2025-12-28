@@ -426,6 +426,10 @@
       "calculating": "Calculando...",
       "continue": "Continuar",
       "back": "Atrás",
+      "selectBankAccountRequired": "Debes seleccionar una cuenta bancaria para este tipo de remesa",
+      "errorCalculating": "Error al calcular la remesa",
+      "errorCreatingRemittance": "Error al crear la remesa",
+      "errorUploadingProof": "Error al subir el comprobante",
       "creating": "Creando...",
       "sending": "Enviando...",
       "minAmount": "Monto mínimo",
@@ -446,7 +450,10 @@
       "zelleAccountInfo": "Cuenta Zelle asignada",
       "zelleEmail": "Correo Zelle",
       "zellePhone": "Teléfono Zelle",
-      "zelleAccountMissing": "No pudimos cargar los datos de la cuenta Zelle. Contacta soporte antes de enviar la transferencia."
+      "zelleAccountMissing": "No pudimos cargar los datos de la cuenta Zelle. Contacta soporte antes de enviar la transferencia.",
+      "transferDescription": "Datos para realizar tu transferencia",
+      "remittanceIdForTransfer": "ID de la remesa",
+      "useThisInTransfer": "Usa este ID en la referencia de tu transferencia o en la nota del pago"
     }
   },
   "vendor": {

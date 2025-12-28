@@ -223,14 +223,14 @@ const MyRemittancesPage = ({ onNavigate }) => {
       return;
     }
 
-    const result = await uploadPaymentProof(
-      selectedRemittance.id,
-      uploadData.file,
-      uploadData.reference,
-      uploadData.notes
-    );
+    try {
+      const result = await uploadPaymentProof(
+        selectedRemittance.id,
+        uploadData.file,
+        uploadData.reference,
+        uploadData.notes
+      );
 
-    if (result.success) {
       toast({
         title: t('common.success'),
         description: t('remittances.user.proofUploaded')
@@ -242,11 +242,13 @@ const MyRemittancesPage = ({ onNavigate }) => {
         reference: '',
         notes: ''
       });
-      loadRemittances();
-    } else {
+      await loadRemittances();
+      setSelectedRemittance(result);
+    } catch (error) {
+      console.error('Error uploading payment proof:', error);
       toast({
         title: t('common.error'),
-        description: result.error,
+        description: error?.message || t('remittances.wizard.errorUploadingProof') || t('common.error'),
         variant: 'destructive'
       });
     }
@@ -266,18 +268,18 @@ const MyRemittancesPage = ({ onNavigate }) => {
 
     if (reason === false) return;
 
-    const result = await cancelRemittance(remittance.id, reason || '');
-
-    if (result.success) {
+    try {
+      await cancelRemittance(remittance.id, reason || '');
       toast({
         title: t('common.success'),
         description: t('remittances.user.remittanceCancelled')
       });
-      loadRemittances();
-    } else {
+      await loadRemittances();
+    } catch (error) {
+      console.error('Error cancelling remittance:', error);
       toast({
         title: t('common.error'),
-        description: result.error,
+        description: error?.message || t('common.error'),
         variant: 'destructive'
       });
     }
@@ -295,20 +297,17 @@ const MyRemittancesPage = ({ onNavigate }) => {
 
     try {
       const result = await confirmDelivery(selectedRemittance.id, deliveryProofFile);
-      if (result.success) {
-        toast({
-          title: t('common.success'),
-          description: 'Evidencia de entrega subida correctamente',
-        });
-        setDeliveryProofFile(null);
-        setDeliveryProofPreview(null);
-        setShowDeliveryProofModal(false);
-        await loadRemittances();
-        setSelectedRemittance(null);
-      } else {
-        throw new Error(result.error);
-      }
+      toast({
+        title: t('common.success'),
+        description: 'Evidencia de entrega subida correctamente',
+      });
+      setDeliveryProofFile(null);
+      setDeliveryProofPreview(null);
+      setShowDeliveryProofModal(false);
+      await loadRemittances();
+      setSelectedRemittance(result);
     } catch (error) {
+      console.error('Error uploading delivery proof:', error);
       toast({
         title: t('common.error'),
         description: error.message,
