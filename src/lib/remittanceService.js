@@ -636,24 +636,8 @@ export const createRemittance = async (remittanceData) => {
       // Don't fail remittance creation if Zelle registration fails
     }
 
-    // Create bank transfer for off-cash methods (graceful fallback if fails)
-    if (deliveryMethod !== 'cash' && recipient_bank_account_id) {
-      console.log('[createRemittance] STEP 11 - Creating bank transfer for non-cash delivery...');
-      try {
-        await createBankTransfer(
-          data.id,
-          recipient_bank_account_id,
-          { amount_transferred: amountToDeliver }
-        );
-        console.log('[createRemittance] Bank transfer created successfully');
-      } catch (bankError) {
-        console.error('[createRemittance] Bank transfer creation error (non-fatal):', bankError);
-        logError(bankError, { operation: 'createRemittance - bank transfer', remittanceId: data.id });
-        // Don't fail remittance creation if bank transfer creation fails
-      }
-    } else {
-      console.log('[createRemittance] STEP 11 - Skipping bank transfer (cash delivery or no account)');
-    }
+    // Skip client-side bank transfer creation to avoid RLS/permission issues; admins manage transfers
+    console.log('[createRemittance] STEP 11 - Skipping client-side bank transfer creation (handled by admins)');
 
     console.log('[createRemittance] SUCCESS - Remittance created:', data);
     return data;
@@ -709,11 +693,17 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
       throw createNotFoundError('Remittance', remittanceId);
     }
 
-    // Validate remittance state - only allow upload in PAYMENT_PENDING
-    if (remittance.status !== REMITTANCE_STATUS.PAYMENT_PENDING) {
+    // Validate remittance state - allow uploads while pending or after rejection
+    const allowedStatuses = [
+      REMITTANCE_STATUS.PAYMENT_PENDING,
+      REMITTANCE_STATUS.PAYMENT_REJECTED,
+      REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED
+    ];
+
+    if (!allowedStatuses.includes(remittance.status)) {
       throw createValidationError(
-        { status: `Current status is ${remittance.status}, but PAYMENT_PENDING is required` },
-        'Payment proof can only be uploaded when remittance is pending payment'
+        { status: `Current status is ${remittance.status}, allowed: ${allowedStatuses.join(', ')}` },
+        'Payment proof can only be uploaded when remittance is pending payment or was rejected'
       );
     }
 

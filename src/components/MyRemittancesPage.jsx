@@ -567,13 +567,13 @@ const MyRemittancesPage = ({ onNavigate }) => {
       {/* Upload Proof Modal */}
       {showUploadModal && selectedRemittance && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 sm:p-6 overflow-y-auto"
           onClick={() => setShowUploadModal(false)}
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl p-4 sm:p-6 max-w-md w-full"
+            className="bg-white rounded-2xl p-4 sm:p-6 max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-xl sm:text-2xl font-bold gradient-text mb-4">
@@ -866,13 +866,13 @@ const MyRemittancesPage = ({ onNavigate }) => {
       {/* Delivery Proof Upload Modal */}
       {showDeliveryProofModal && selectedRemittance && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 sm:p-6 overflow-y-auto"
           onClick={() => setShowDeliveryProofModal(false)}
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl p-4 sm:p-6 max-w-md w-full"
+            className="bg-white rounded-2xl p-4 sm:p-6 max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-xl sm:text-2xl font-bold gradient-text mb-4">

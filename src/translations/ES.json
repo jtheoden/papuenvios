@@ -434,6 +434,7 @@
       "selectTypeAndAmount": "Por favor seleccione un tipo y monto",
       "fillRecipientInfo": "Por favor complete nombre y teléfono del destinatario",
       "remittanceCreatedSuccess": "Remesa creada exitosamente",
+      "selectRecipient": "Selecciona un destinatario",
       "uploadProofAndReference": "Por favor suba el comprobante y la referencia de pago",
       "proofSentSuccess": "Comprobante enviado. Recibirá notificación cuando se valide el pago.",
       "paymentReferencePlaceholder": "Ej: ZELLE123456",
