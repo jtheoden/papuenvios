@@ -13,7 +13,8 @@ import {
   createNotFoundError,
   parseSupabaseError,
   createPermissionError,
-  ERROR_CODES
+  ERROR_CODES,
+  isSchemaMissingError
 } from './errorHandler';
 import {
   notifyAdminNewPaymentProof,
@@ -619,11 +620,23 @@ export const createRemittance = async (remittanceData) => {
     });
 
     console.log('[createRemittance] STEP 8 - Inserting into database...');
-    const { data, error } = await supabase
+    const performInsert = async (payload) => supabase
       .from('remittances')
-      .insert([insertData])
+      .insert([payload])
       .select('*, zelle_accounts(*)')
       .single();
+
+    let schemaSupportsRecipientBankAccount = true;
+    let { data, error } = await performInsert(insertData);
+
+    if (error && insertData.recipient_bank_account_id && isSchemaMissingError(error)) {
+      // Gracefully degrade if the backend schema has not been updated yet
+      console.warn('[createRemittance] Schema missing recipient_bank_account_id, retrying without the column');
+      schemaSupportsRecipientBankAccount = false;
+      const fallbackData = { ...insertData };
+      delete fallbackData.recipient_bank_account_id;
+      ({ data, error } = await performInsert(fallbackData));
+    }
 
     if (error) {
       console.error('[createRemittance] DATABASE INSERT ERROR:', error);
@@ -655,7 +668,7 @@ export const createRemittance = async (remittanceData) => {
     }
 
     // Create bank transfer for off-cash methods (graceful fallback if fails)
-    if (deliveryMethod !== 'cash' && recipient_bank_account_id) {
+    if (deliveryMethod !== 'cash' && recipient_bank_account_id && schemaSupportsRecipientBankAccount) {
       if (isAdminUser) {
         console.log('[createRemittance] STEP 11 - Creating bank transfer for non-cash delivery as admin...');
         try {

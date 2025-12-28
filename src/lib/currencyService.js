@@ -1,7 +1,12 @@
 import { supabase } from './supabase';
 import {
-  handleError, logError, createValidationError,
-  createNotFoundError, parseSupabaseError, ERROR_CODES
+  handleError,
+  logError,
+  createValidationError,
+  createNotFoundError,
+  parseSupabaseError,
+  ERROR_CODES,
+  isSchemaMissingError
 } from './errorHandler';
 
 const OFFICIAL_RATE_FALLBACKS = {
@@ -295,8 +300,8 @@ export const getConversionRate = async (fromCurrencyId, toCurrencyId) => {
         if (error) {
           const parsed = parseSupabaseError(error);
           const supabaseCode = error?.code || parsed?.context?.originalError?.code || parsed?.context?.postgresCode || parsed?.code;
-          // If table is missing or inaccessible, gracefully fall back
-          if (['42P01', 'PGRST116', 'PGRST204'].includes(supabaseCode)) {
+          // If table/column is missing or inaccessible, gracefully fall back
+          if (isSchemaMissingError(error) || isSchemaMissingError(parsed) || ['42P01', 'PGRST116', 'PGRST204', '42703'].includes(supabaseCode)) {
             return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
           }
           throw parsed;
