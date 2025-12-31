@@ -15,8 +15,32 @@ const OFFICIAL_RATE_FALLBACKS = {
   CUP: 0.041
 };
 
+const OFFICIAL_RATES_STORAGE_KEY = 'officialRatesUnavailable';
+const isBrowser = typeof window !== 'undefined';
+const officialRatesDisabledByEnv = typeof import.meta !== 'undefined' && import.meta.env?.VITE_DISABLE_OFFICIAL_RATES === 'true';
+
+const getPersistedOfficialRatesUnavailable = () => {
+  if (!isBrowser) return false;
+  try {
+    return window.localStorage.getItem(OFFICIAL_RATES_STORAGE_KEY) === 'true';
+  } catch (error) {
+    console.warn('[currencyService] Unable to read official rates availability from storage:', error);
+    return false;
+  }
+};
+
+const markOfficialRatesUnavailable = () => {
+  officialRatesUnavailable = true;
+  if (!isBrowser) return;
+  try {
+    window.localStorage.setItem(OFFICIAL_RATES_STORAGE_KEY, 'true');
+  } catch (error) {
+    console.warn('[currencyService] Unable to persist official rates availability flag:', error);
+  }
+};
+
 // Circuit breaker to avoid spamming Supabase when the table/columns are missing
-let officialRatesUnavailable = false;
+let officialRatesUnavailable = officialRatesDisabledByEnv || getPersistedOfficialRatesUnavailable();
 
 /**
  * Currency Service - Manages currency CRUD operations and rate conversions
@@ -306,10 +330,14 @@ export const getConversionRate = async (fromCurrencyId, toCurrencyId) => {
 
         if (error) {
           const parsed = parseSupabaseError(error);
-          const supabaseCode = error?.code || parsed?.context?.originalError?.code || parsed?.context?.postgresCode || parsed?.code;
+          const supabaseCode = error?.code || parsed?.context?.originalError?.code || parsed?.context?.postgresCode || parsed?.code || error?.status;
           // If table/column is missing or inaccessible, gracefully fall back
-          if (isSchemaMissingError(error) || isSchemaMissingError(parsed) || ['42P01', 'PGRST116', 'PGRST204', '42703'].includes(supabaseCode)) {
-            officialRatesUnavailable = true;
+          if (isSchemaMissingError(error) ||
+              isSchemaMissingError(parsed) ||
+              ['42P01', 'PGRST116', 'PGRST204', '42703', 404, '404'].includes(supabaseCode) ||
+              error?.status === 404 ||
+              parsed?.context?.originalError?.status === 404) {
+            markOfficialRatesUnavailable();
             return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
           }
           throw parsed;
@@ -322,8 +350,8 @@ export const getConversionRate = async (fromCurrencyId, toCurrencyId) => {
         return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
       } catch (rateError) {
         logError(rateError, { operation: 'getConversionRate - officialRateFallback', currency: currencyCode });
-        if (isSchemaMissingError(rateError)) {
-          officialRatesUnavailable = true;
+        if (isSchemaMissingError(rateError) || rateError?.status === 404) {
+          markOfficialRatesUnavailable();
         }
         return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
       }
