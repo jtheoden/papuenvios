@@ -591,21 +591,10 @@ const CartPage = ({ onNavigate }) => {
         }
       }
 
-      // Upload payment proof
-      const uploadResult = await uploadPaymentProof(paymentProof, createdOrder.id, user.id);
-
-      if (!uploadResult.success) {
-        console.error('Error uploading payment proof:', uploadResult.error);
-        // Continue anyway - order is created
-        await logActivity({
-          action: 'payment_proof_upload_failed',
-          entityType: 'order',
-          entityId: createdOrder.id,
-          performedBy: user?.email || 'anonymous',
-          description: `Payment proof upload failed for order ${createdOrder.order_number}`,
-          metadata: { error: uploadResult.error }
-        });
-      } else {
+      // Upload payment proof (throws on failure)
+      let uploadedProofUrl = null;
+      try {
+        uploadedProofUrl = await uploadPaymentProof(paymentProof, createdOrder.id, user.id);
         await logActivity({
           action: 'payment_proof_uploaded',
           entityType: 'order',
@@ -615,8 +604,19 @@ const CartPage = ({ onNavigate }) => {
           metadata: {
             orderId: createdOrder.id,
             orderNumber: createdOrder.order_number,
-            uploadUrl: uploadResult?.url || null
+            uploadUrl: uploadedProofUrl
           }
+        });
+      } catch (uploadErr) {
+        console.error('Error uploading payment proof:', uploadErr);
+        // Continue anyway - order is created
+        await logActivity({
+          action: 'payment_proof_upload_failed',
+          entityType: 'order',
+          entityId: createdOrder.id,
+          performedBy: user?.email || 'anonymous',
+          description: `Payment proof upload failed for order ${createdOrder.order_number}`,
+          metadata: { error: uploadErr?.message || uploadErr }
         });
       }
 
@@ -650,7 +650,7 @@ const CartPage = ({ onNavigate }) => {
                 total: totalDisplay,  // Includes discount and shipping
                 currency: selectedCurrency,
                 couponCode: appliedOffer?.code || null,  // Include coupon if applied
-                paymentProofUrl: uploadResult?.url || createdOrder.payment_proof_url || null
+                paymentProofUrl: uploadedProofUrl || createdOrder.payment_proof_url || null
               },
               notificationSettings
             }
