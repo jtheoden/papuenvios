@@ -130,6 +130,9 @@ export const DELIVERY_METHODS = {
   CARD: 'card'
 };
 
+// Cache-friendly flag to avoid retrying schema-missing inserts on every request
+let hasRecipientBankAccountColumn = true;
+
 // ============================================================================
 // GESTIÓN DE TIPOS DE REMESAS (ADMIN)
 // ============================================================================
@@ -472,6 +475,13 @@ export const createRemittance = async (remittanceData) => {
   console.log('[createRemittance] START - Input data:', remittanceData);
 
   try {
+    // Cache-aware guard: if the backend schema is still missing the column, skip it entirely
+    let recipientBankAccountColumnSupported = true;
+    if (!hasRecipientBankAccountColumn && remittanceData.recipient_bank_account_id) {
+      recipientBankAccountColumnSupported = false;
+      console.warn('[createRemittance] Skipping recipient_bank_account_id because schema cache previously reported it missing');
+    }
+
     const {
       remittance_type_id,
       amount,
@@ -606,7 +616,7 @@ export const createRemittance = async (remittanceData) => {
       zelle_account_id: selectedZelleAccountId
     };
 
-    if (recipient_bank_account_id) {
+    if (recipient_bank_account_id && recipientBankAccountColumnSupported) {
       insertData.recipient_bank_account_id = recipient_bank_account_id;
     }
 
@@ -626,16 +636,23 @@ export const createRemittance = async (remittanceData) => {
       .select('*, zelle_accounts(*)')
       .single();
 
-    let schemaSupportsRecipientBankAccount = true;
+    let schemaSupportsRecipientBankAccount = recipientBankAccountColumnSupported;
     let { data, error } = await performInsert(insertData);
 
-    if (error && insertData.recipient_bank_account_id && isSchemaMissingError(error)) {
-      // Gracefully degrade if the backend schema has not been updated yet
-      console.warn('[createRemittance] Schema missing recipient_bank_account_id, retrying without the column');
-      schemaSupportsRecipientBankAccount = false;
-      const fallbackData = { ...insertData };
-      delete fallbackData.recipient_bank_account_id;
-      ({ data, error } = await performInsert(fallbackData));
+    if (error && insertData.recipient_bank_account_id) {
+      const parsedError = parseSupabaseError(error);
+      if (
+        schemaSupportsRecipientBankAccount &&
+        (isSchemaMissingError(error) || isSchemaMissingError(parsedError))
+      ) {
+        // Gracefully degrade if the backend schema has not been updated yet
+        console.warn('[createRemittance] Schema missing recipient_bank_account_id, retrying without the column');
+        schemaSupportsRecipientBankAccount = false;
+        hasRecipientBankAccountColumn = false;
+        const fallbackData = { ...insertData };
+        delete fallbackData.recipient_bank_account_id;
+        ({ data, error } = await performInsert(fallbackData));
+      }
     }
 
     if (error) {
