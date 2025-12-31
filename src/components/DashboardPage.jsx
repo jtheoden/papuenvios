@@ -6,7 +6,7 @@ import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { getHeadingStyle } from '@/lib/styleUtils';
-import { useRealtimeOrders, useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
+import { useRealtimeOrders, useRealtimeRemittances, useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import TabsResponsive from './TabsResponsive';
 import AdminOrdersTab from './AdminOrdersTab';
 import AdminRemittancesTab from './AdminRemittancesTab';
@@ -364,6 +364,15 @@ const DashboardPage = ({ onNavigate }) => {
   useRealtimeRemittances({
     enabled: isAdmin || isSuperAdmin,
     onUpdate: fetchStats
+  });
+
+  useRealtimeSubscription({
+    table: 'site_visits',
+    event: '*',
+    enabled: isAdmin || isSuperAdmin,
+    onInsert: fetchVisitStats,
+    onUpdate: fetchVisitStats,
+    onDelete: fetchVisitStats
   });
 
   useEffect(() => {
