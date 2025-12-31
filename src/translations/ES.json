@@ -87,9 +87,10 @@
     },
     "stats": {
       "title": "Impacto de un vistazo",
-      "subtitle": "Métricas reales de la comunidad que siguen creciendo",
+      "subtitle": "Métricas en tiempo real de la comunidad que siguen creciendo",
       "users": "Usuarios registrados",
       "remittances": "Remesas exitosas",
+      "orders": "Órdenes completadas",
       "years": "Años operando"
     },
     "testimonials": {

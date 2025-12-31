@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingBag, DollarSign, TrendingUp, Users, ChevronLeft, ChevronRight, Star, Gift } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,10 @@ import { getActiveCarouselSlides } from '@/lib/carouselService';
 import { getTestimonials } from '@/lib/testimonialService';
 import { getHeadingStyle } from '@/lib/styleUtils';
 import { supabase } from '@/lib/supabase';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+
+const COMPLETED_REMITTANCE_STATUSES = ['delivered', 'completed'];
+const COMPLETED_ORDER_STATUS = 'completed';
 
 const HomePage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
@@ -19,7 +23,12 @@ const HomePage = ({ onNavigate }) => {
   const [carouselSlides, setCarouselSlides] = useState([]);
   const [dbTestimonials, setDbTestimonials] = useState([]);
   const [activeOffers, setActiveOffers] = useState([]);
-  const [landingStats, setLandingStats] = useState({ users: 0, remittances: 0, years: 1 });
+  const [landingStats, setLandingStats] = useState({
+    users: 0,
+    remittancesCompleted: 0,
+    ordersCompleted: 0,
+    years: 1
+  });
   const [testimonialIndex, setTestimonialIndex] = useState(0);
 
   const features = [
@@ -53,6 +62,70 @@ const HomePage = ({ onNavigate }) => {
 
   const [currentSlide, setCurrentSlide] = useState(0);
   const [testimonialsError, setTestimonialsError] = useState(null);
+
+  const updateCompletedCounts = useCallback((type, delta) => {
+    if (!delta) return;
+
+    setLandingStats(prev => {
+      if (type === 'remittance') {
+        const nextValue = Math.max(0, (prev.remittancesCompleted || 0) + delta);
+        return { ...prev, remittancesCompleted: nextValue };
+      }
+
+      if (type === 'order') {
+        const nextValue = Math.max(0, (prev.ordersCompleted || 0) + delta);
+        return { ...prev, ordersCompleted: nextValue };
+      }
+
+      return prev;
+    });
+  }, []);
+
+  const handleRemittanceRealtime = useCallback((payload) => {
+    const wasCompleted = COMPLETED_REMITTANCE_STATUSES.includes(payload?.old?.status);
+    const isCompleted = COMPLETED_REMITTANCE_STATUSES.includes(payload?.new?.status);
+
+    if (payload.eventType === 'INSERT' && isCompleted) {
+      updateCompletedCounts('remittance', 1);
+      return;
+    }
+
+    if (payload.eventType === 'UPDATE') {
+      if (!wasCompleted && isCompleted) {
+        updateCompletedCounts('remittance', 1);
+      } else if (wasCompleted && !isCompleted) {
+        updateCompletedCounts('remittance', -1);
+      }
+      return;
+    }
+
+    if (payload.eventType === 'DELETE' && wasCompleted) {
+      updateCompletedCounts('remittance', -1);
+    }
+  }, [updateCompletedCounts]);
+
+  const handleOrderRealtime = useCallback((payload) => {
+    const wasCompleted = payload?.old?.status === COMPLETED_ORDER_STATUS;
+    const isCompleted = payload?.new?.status === COMPLETED_ORDER_STATUS;
+
+    if (payload.eventType === 'INSERT' && isCompleted) {
+      updateCompletedCounts('order', 1);
+      return;
+    }
+
+    if (payload.eventType === 'UPDATE') {
+      if (!wasCompleted && isCompleted) {
+        updateCompletedCounts('order', 1);
+      } else if (wasCompleted && !isCompleted) {
+        updateCompletedCounts('order', -1);
+      }
+      return;
+    }
+
+    if (payload.eventType === 'DELETE' && wasCompleted) {
+      updateCompletedCounts('order', -1);
+    }
+  }, [updateCompletedCounts]);
 
   // Load testimonials from database
   useEffect(() => {
@@ -102,10 +175,11 @@ const HomePage = ({ onNavigate }) => {
     const fetchLandingData = async () => {
       try {
         const now = new Date();
-        const [offersRes, usersRes, remittancesRes] = await Promise.all([
+        const [offersRes, usersRes, remittancesRes, ordersRes] = await Promise.all([
           supabase.from('offers').select('*').eq('is_active', true),
           supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
-          supabase.from('remittances').select('id, status, created_at')
+          supabase.from('remittances').select('id, status, created_at'),
+          supabase.from('orders').select('id, status, created_at')
         ]);
 
         const offersList = (offersRes.data || []).filter((offer) => {
@@ -117,18 +191,35 @@ const HomePage = ({ onNavigate }) => {
         setActiveOffers(offersList);
 
         const remittances = remittancesRes.data || [];
-        const completed = remittances.filter(r => r.status === 'completed').length;
-        const earliest = remittances.reduce((earliestItem, current) => {
+        const orders = ordersRes.data || [];
+
+        const completedRemittances = remittances.filter(r => COMPLETED_REMITTANCE_STATUSES.includes(r.status)).length;
+        const completedOrders = orders.filter(o => o.status === COMPLETED_ORDER_STATUS).length;
+
+        const earliestRemittance = remittances.reduce((earliestItem, current) => {
           if (!current.created_at) return earliestItem;
           if (!earliestItem) return current;
           return new Date(current.created_at) < new Date(earliestItem.created_at) ? current : earliestItem;
         }, null);
-        const startYear = earliest ? new Date(earliest.created_at).getFullYear() : 2020;
+
+        const earliestOrder = orders.reduce((earliestItem, current) => {
+          if (!current.created_at) return earliestItem;
+          if (!earliestItem) return current;
+          return new Date(current.created_at) < new Date(earliestItem.created_at) ? current : earliestItem;
+        }, null);
+
+        const earliestDate = [earliestRemittance?.created_at, earliestOrder?.created_at]
+          .filter(Boolean)
+          .map(date => new Date(date))
+          .sort((a, b) => a - b)[0];
+
+        const startYear = earliestDate ? earliestDate.getFullYear() : 2020;
         const years = Math.max(1, new Date().getFullYear() - startYear + 1);
 
         setLandingStats({
           users: usersRes.count || 0,
-          remittances: completed,
+          remittancesCompleted: completedRemittances,
+          ordersCompleted: completedOrders,
           years
         });
       } catch (error) {
@@ -139,6 +230,24 @@ const HomePage = ({ onNavigate }) => {
 
     fetchLandingData();
   }, []);
+
+  useRealtimeSubscription({
+    table: 'remittances',
+    event: '*',
+    enabled: true,
+    onInsert: handleRemittanceRealtime,
+    onUpdate: handleRemittanceRealtime,
+    onDelete: handleRemittanceRealtime
+  });
+
+  useRealtimeSubscription({
+    table: 'orders',
+    event: '*',
+    enabled: true,
+    onInsert: handleOrderRealtime,
+    onUpdate: handleOrderRealtime,
+    onDelete: handleOrderRealtime
+  });
 
   const nextSlide = () => {
     setCurrentSlide(prev => (prev === carouselSlides.length - 1 ? 0 : prev + 1));
@@ -338,15 +447,19 @@ const HomePage = ({ onNavigate }) => {
             <p className="text-gray-600">{t('home.stats.subtitle')}</p>
           </motion.div>
 
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             {[{
+              label: t('home.stats.remittances'),
+              value: landingStats.remittancesCompleted,
+              color: 'from-emerald-500 to-green-600'
+            }, {
+              label: t('home.stats.orders'),
+              value: landingStats.ordersCompleted,
+              color: 'from-blue-500 to-cyan-600'
+            }, {
               label: t('home.stats.users'),
               value: landingStats.users,
               color: 'from-purple-500 to-indigo-600'
-            }, {
-              label: t('home.stats.remittances'),
-              value: landingStats.remittances,
-              color: 'from-emerald-500 to-green-600'
             }, {
               label: t('home.stats.years'),
               value: landingStats.years,
