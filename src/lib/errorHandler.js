@@ -259,6 +259,25 @@ export const createPermissionError = (action = 'perform this action', requiredRo
 export const parseSupabaseError = (error) => {
   if (!error) return null;
 
+  // Normalize common Supabase REST errors for schema cache misses
+  const supabaseCode = [
+    error?.code,
+    error?.status,
+    error?.context?.postgresCode,
+    error?.context?.code,
+    error?.context?.originalError?.code,
+    error?.context?.originalError?.status
+  ].find(Boolean);
+
+  if (supabaseCode && ['PGRST204', 'PGRST116', '42P01', '42703'].includes(String(supabaseCode))) {
+    return new AppError(
+      error.message || 'Database object not available',
+      ERROR_CODES.DB_ERROR,
+      500,
+      { postgresCode: supabaseCode, originalError: error }
+    );
+  }
+
   // PostgreSQL unique constraint violation
   if (error.code === '23505') {
     return new AppError(
@@ -304,6 +323,29 @@ export const parseSupabaseError = (error) => {
 };
 
 /**
+ * Detect Supabase/Postgres errors caused by missing tables/columns in schema cache
+ * Useful to gracefully degrade when database migrations are pending
+ */
+export const isSchemaMissingError = (error) => {
+  if (!error) return false;
+  const code = [
+    error?.code,
+    error?.status,
+    error?.context?.postgresCode,
+    error?.context?.code,
+    error?.context?.originalError?.code,
+    error?.context?.originalError?.status
+  ].find(Boolean);
+
+  if (code && ['PGRST204', 'PGRST116', '42P01', '42703'].includes(String(code))) {
+    return true;
+  }
+
+  const message = (error?.message || error?.context?.originalError?.message || '').toLowerCase();
+  return message.includes('schema cache') || message.includes('does not exist');
+};
+
+/**
  * Export for convenience
  */
 export default {
@@ -318,5 +360,6 @@ export default {
   createNotFoundError,
   createConflictError,
   createPermissionError,
-  parseSupabaseError
+  parseSupabaseError,
+  isSchemaMissingError
 };
