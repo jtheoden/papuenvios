@@ -1289,7 +1289,7 @@ export const validatePayment = async (remittanceId, notes = '') => {
     }
 
     if (notes) {
-      logError(new Error(`Validation notes: ${notes}`), { operation: 'validatePayment - notes', remittanceId });
+      console.info('[validatePayment] Validation notes provided', { remittanceId, notes });
     }
 
     return updatedRemittance;
@@ -1474,7 +1474,7 @@ export const startProcessing = async (remittanceId, notes = '') => {
     }
 
     if (notes) {
-      logError(new Error(`Processing notes: ${notes}`), { operation: 'startProcessing - notes', remittanceId });
+      console.info('[startProcessing] Processing notes provided', { remittanceId, notes });
     }
 
     return updatedRemittance;
