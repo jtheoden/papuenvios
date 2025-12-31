@@ -15,6 +15,9 @@ const OFFICIAL_RATE_FALLBACKS = {
   CUP: 0.041
 };
 
+// Circuit breaker to avoid spamming Supabase when the table/columns are missing
+let officialRatesUnavailable = false;
+
 /**
  * Currency Service - Manages currency CRUD operations and rate conversions
  * Currencies: USD, EUR, CUP (Cuba market focus)
@@ -291,6 +294,10 @@ export const getConversionRate = async (fromCurrencyId, toCurrencyId) => {
 
     const fetchOfficialRate = async (currencyCode) => {
       try {
+        if (officialRatesUnavailable) {
+          return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
+        }
+
         const { data, error } = await supabase
           .from('official_currency_rates')
           .select('rate_to_usd')
@@ -302,6 +309,7 @@ export const getConversionRate = async (fromCurrencyId, toCurrencyId) => {
           const supabaseCode = error?.code || parsed?.context?.originalError?.code || parsed?.context?.postgresCode || parsed?.code;
           // If table/column is missing or inaccessible, gracefully fall back
           if (isSchemaMissingError(error) || isSchemaMissingError(parsed) || ['42P01', 'PGRST116', 'PGRST204', '42703'].includes(supabaseCode)) {
+            officialRatesUnavailable = true;
             return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
           }
           throw parsed;
@@ -314,6 +322,9 @@ export const getConversionRate = async (fromCurrencyId, toCurrencyId) => {
         return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
       } catch (rateError) {
         logError(rateError, { operation: 'getConversionRate - officialRateFallback', currency: currencyCode });
+        if (isSchemaMissingError(rateError)) {
+          officialRatesUnavailable = true;
+        }
         return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
       }
     };
