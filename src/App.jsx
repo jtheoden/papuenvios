@@ -28,6 +28,8 @@ import { BusinessProvider, useBusiness } from '@/contexts/BusinessContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ModalProvider } from '@/contexts/ModalContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { trackPageVisit } from '@/lib/analyticsService';
 
 // Component to dynamically update page title
 function DynamicTitle() {
@@ -44,6 +46,17 @@ function DynamicTitle() {
     </Helmet>
   );
 }
+
+const PageAnalyticsTracker = ({ currentPage }) => {
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    trackPageVisit({ pageUrl: window.location.pathname, userId: user?.id });
+  }, [currentPage, user?.id]);
+
+  return null;
+};
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -230,6 +243,7 @@ function App() {
                 <ModalProvider>
                 <div className="min-h-screen">
                   <DynamicTitle />
+                  <PageAnalyticsTracker currentPage={currentPage} />
 
                 <AnimatePresence mode="wait">
                   {isLoading ? (

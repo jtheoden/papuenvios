@@ -87,9 +87,10 @@
     },
     "stats": {
       "title": "Impact at a glance",
-      "subtitle": "Real community metrics that keep growing",
+      "subtitle": "Real-time community metrics that keep growing",
       "users": "Registered users",
       "remittances": "Successful remittances",
+      "orders": "Completed orders",
       "years": "Years operating"
     },
     "testimonials": {
