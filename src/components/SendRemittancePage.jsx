@@ -53,6 +53,8 @@ const SendRemittancePage = ({ onNavigate }) => {
     phone: '',
     address: '',
     city: '',
+    province: '',
+    municipality: '',
     id_number: '',
     notes: ''
   });
@@ -199,10 +201,13 @@ const SendRemittancePage = ({ onNavigate }) => {
         recipient_phone: recipientData.phone,
         recipient_address: recipientData.address,
         recipient_city: recipientData.city,
+        recipient_province: recipientData.province,
+        recipient_municipality: recipientData.municipality,
         recipient_id_number: recipientData.id_number,
         notes: recipientData.notes,
         zelle_account_id: selectedZelle?.id,
-        recipient_id: selectedRecipientData?.recipientId
+        recipient_id: selectedRecipientData?.recipientId,
+        recipient_address_id: selectedRecipientData?.addressId
       };
 
       // Si es remesa off-cash, incluir recipient_bank_account_id
@@ -595,11 +600,14 @@ const SendRemittancePage = ({ onNavigate }) => {
 
                   if (recipientData.recipientData) {
                     // Existing recipient selected
+                    const primaryAddress = recipientData.recipientData.addresses?.[0];
                     setRecipientData({
                       name: recipientData.recipientData.full_name || '',
                       phone: recipientData.recipientData.phone || '',
-                      address: recipientData.recipientData.addresses?.[0]?.address_line_1 || '',
-                      city: recipientData.recipientData.addresses?.[0]?.municipality || '',
+                      address: primaryAddress?.address_line_1 || '',
+                      city: primaryAddress?.municipality || '',
+                      province: primaryAddress?.province || '',
+                      municipality: primaryAddress?.municipality || '',
                       id_number: recipientData.recipientData.id_number || '',
                       notes: ''
                     });
@@ -610,6 +618,8 @@ const SendRemittancePage = ({ onNavigate }) => {
                       phone: recipientData.formData.phone || '',
                       address: recipientData.formData.address_line_1 || '',
                       city: recipientData.formData.municipality || '',
+                      province: recipientData.formData.province || '',
+                      municipality: recipientData.formData.municipality || '',
                       id_number: '',
                       notes: ''
                     });

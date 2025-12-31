@@ -489,10 +489,13 @@ export const createRemittance = async (remittanceData) => {
       recipient_phone,
       recipient_address,
       recipient_city,
+      recipient_province,
+      recipient_municipality,
       recipient_id_number,
       notes,
       zelle_account_id,
       recipient_id,
+      recipient_address_id,
       recipient_bank_account_id
     } = remittanceData;
 
@@ -609,7 +612,8 @@ export const createRemittance = async (remittanceData) => {
       recipient_name,
       recipient_phone,
       recipient_address,
-      recipient_province: recipient_city,
+      recipient_province: recipient_province || recipient_city || null,
+      recipient_municipality: recipient_municipality || recipient_city || null,
       recipient_id_number,
       delivery_notes: notes,
       status: REMITTANCE_STATUS.PAYMENT_PENDING,
@@ -622,6 +626,10 @@ export const createRemittance = async (remittanceData) => {
 
     if (recipient_id) {
       insertData.recipient_id = recipient_id;
+    }
+
+    if (recipient_address_id) {
+      insertData.recipient_address_id = recipient_address_id;
     }
 
     console.log('[createRemittance] STEP 7 - Insert data prepared:', {
