@@ -10,18 +10,27 @@ const NOTIFICATION_KEYS = {
   adminEmail: "admin_email",
 };
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+function buildCorsHeaders(req: Request) {
+  const origin = req.headers.get("Origin") ?? "*";
+
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, prefer",
+    "Access-Control-Max-Age": "86400",
+    ...(origin !== "*" ? { Vary: "Origin" } : {}),
+  };
+}
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error("Missing Supabase configuration. Ensure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set.");
 }
 
 serve(async (req: Request) => {
+  const corsHeaders = buildCorsHeaders(req);
+
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders, status: 200 });
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -40,22 +49,22 @@ serve(async (req: Request) => {
 
     const isAdmin = await checkIsAdmin(supabase, user.id);
     if (!isAdmin) {
-      return json({ message: "Solo los administradores pueden gestionar estas configuraciones." }, 403);
+      return json({ message: "Solo los administradores pueden gestionar estas configuraciones." }, 403, corsHeaders);
     }
 
     if (req.method === "GET") {
-      return await handleGetSettings(supabase);
+      return await handleGetSettings(supabase, corsHeaders);
     }
 
     if (req.method === "PUT") {
       const payload = await req.json().catch(() => null);
-      return await handleUpdateSettings(supabase, payload);
+      return await handleUpdateSettings(supabase, payload, corsHeaders);
     }
 
-    return json({ message: "Método no permitido" }, 405);
+    return json({ message: "Método no permitido" }, 405, corsHeaders);
   } catch (err) {
     console.error("[notification-settings] Unexpected error", err);
-    return json({ message: "Ocurrió un error inesperado al procesar la solicitud." }, 500);
+    return json({ message: "Ocurrió un error inesperado al procesar la solicitud." }, 500, corsHeaders);
   }
 });
 
@@ -83,7 +92,10 @@ async function checkIsAdmin(supabaseClient: ReturnType<typeof createClient>, use
   return data?.role === "admin" || data?.role === "super_admin";
 }
 
-async function handleGetSettings(supabaseClient: ReturnType<typeof createClient>) {
+async function handleGetSettings(
+  supabaseClient: ReturnType<typeof createClient>,
+  corsHeaders: HeadersInit,
+) {
   const { data, error } = await supabaseClient
     .from("system_config")
     .select("key, value_text")
@@ -91,12 +103,16 @@ async function handleGetSettings(supabaseClient: ReturnType<typeof createClient>
 
   if (error) {
     console.error("[notification-settings] Error loading settings", error);
-    return json({ message: "No se pudieron cargar las configuraciones." }, 500);
+    return json({ message: "No se pudieron cargar las configuraciones." }, 500, corsHeaders);
   }
 
   if (!data || data.length !== Object.keys(NOTIFICATION_KEYS).length) {
     console.error("[notification-settings] Missing notification config keys", data);
-    return json({ message: "Faltan configuraciones de notificaciones. Ejecuta la migración o inicializa los valores en system_config." }, 500);
+    return json(
+      { message: "Faltan configuraciones de notificaciones. Ejecuta la migración o inicializa los valores en system_config." },
+      500,
+      corsHeaders,
+    );
   }
 
   const settings = {
@@ -105,12 +121,16 @@ async function handleGetSettings(supabaseClient: ReturnType<typeof createClient>
     adminEmail: data.find((item) => item.key === NOTIFICATION_KEYS.adminEmail)?.value_text || "",
   };
 
-  return json(settings);
+  return json(settings, 200, corsHeaders);
 }
 
-async function handleUpdateSettings(supabaseClient: ReturnType<typeof createClient>, payload: any) {
+async function handleUpdateSettings(
+  supabaseClient: ReturnType<typeof createClient>,
+  payload: any,
+  corsHeaders: HeadersInit,
+) {
   if (!payload || typeof payload !== "object") {
-    return json({ message: "El cuerpo de la solicitud es inválido." }, 400);
+    return json({ message: "El cuerpo de la solicitud es inválido." }, 400, corsHeaders);
   }
 
   const updates = [
@@ -126,7 +146,7 @@ async function handleUpdateSettings(supabaseClient: ReturnType<typeof createClie
 
   if (existingError) {
     console.error("[notification-settings] Error verifying existing keys", existingError);
-    return json({ message: "No se pudieron verificar las configuraciones actuales." }, 500);
+    return json({ message: "No se pudieron verificar las configuraciones actuales." }, 500, corsHeaders);
   }
 
   const existingKeySet = new Set(existingKeys?.map((item) => item.key));
@@ -136,7 +156,7 @@ async function handleUpdateSettings(supabaseClient: ReturnType<typeof createClie
     return json({
       message: "Faltan llaves de configuración. Ejecuta las migraciones o crea las entradas requeridas en system_config.",
       missingKeys,
-    }, 500);
+    }, 500, corsHeaders);
   }
 
   for (const update of updates) {
@@ -147,14 +167,14 @@ async function handleUpdateSettings(supabaseClient: ReturnType<typeof createClie
 
     if (error) {
       console.error(`[notification-settings] Error updating ${update.key}`, error);
-      return json({ message: "No se pudieron guardar las configuraciones." }, 500);
+      return json({ message: "No se pudieron guardar las configuraciones." }, 500, corsHeaders);
     }
   }
 
-  return json({ message: "Configuraciones actualizadas correctamente." });
+  return json({ message: "Configuraciones actualizadas correctamente." }, 200, corsHeaders);
 }
 
-function json(data: unknown, status = 200) {
+function json(data: unknown, status = 200, corsHeaders: HeadersInit) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { "Content-Type": "application/json", ...corsHeaders },
