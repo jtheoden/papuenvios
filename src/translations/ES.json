@@ -509,7 +509,19 @@
       "batchNumber": "Número de Lote",
       "productDetails": "Detalles del Producto",
       "minStock": "Stock Mínimo",
-      "displayCurrency": "Moneda de visualización"
+      "displayCurrency": "Moneda de visualización",
+      "active": "Activo",
+      "inactive": "Inactivo",
+      "activateProduct": "Activar producto",
+      "deactivateProduct": "Desactivar producto",
+      "productActivated": "Producto activado",
+      "productDeactivated": "Producto desactivado",
+      "toggleBlockedOrders": "No se puede desactivar este producto porque existe al menos una orden en proceso que lo incluye.",
+      "toggleBlockedCombos": "El producto también está presente en combos que tienen órdenes en proceso.",
+      "deleteProduct": "Eliminar producto",
+      "deleteConfirmTitle": "Confirmar eliminación",
+      "deleteConfirmMessage": "¿Seguro que deseas eliminar el producto \"{name}\"? Esta acción lo desactivará para los usuarios.",
+      "productDeleted": "Producto eliminado"
     },
     "categories": {
       "manage": "Gestionar Categorías",

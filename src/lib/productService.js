@@ -8,30 +8,43 @@ import { supabase } from './supabase';
 import { generateSlug, getCurrentTimestamp } from './queryHelpers';
 import { DEFAULTS } from './constants';
 import {
+  AppError,
   handleError,
   logError,
   createValidationError,
-  createConflictError,
   createNotFoundError,
   parseSupabaseError,
   ERROR_CODES
 } from './errorHandler';
+import { ORDER_STATUS } from './orderService';
+
+const IN_PROGRESS_ORDER_STATUSES = [
+  ORDER_STATUS.PENDING,
+  ORDER_STATUS.PROCESSING,
+  ORDER_STATUS.DISPATCHED,
+  ORDER_STATUS.DELIVERED
+];
 
 /**
  * Get all active products with their categories
  * @throws {AppError} If database query fails
  * @returns {Promise<Array>} Array of products with inventory data
  */
-export const getProducts = async () => {
+export const getProducts = async (includeInactive = false) => {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('products')
       .select(`
         *,
         category:product_categories(id, name_es, name_en, slug)
       `)
-      .eq('is_active', true)
       .order('created_at', { ascending: false });
+
+    if (!includeInactive) {
+      query = query.eq('is_active', true);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       const appError = parseSupabaseError(error);
@@ -84,6 +97,123 @@ export const getProducts = async () => {
   } catch (error) {
     if (error.code) throw error; // Already an AppError
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getProducts' });
+    throw appError;
+  }
+};
+
+/**
+ * Find in-progress orders that include a specific product directly or through combos
+ * @param {string} productId - Product ID
+ * @returns {Promise<{directOrders: Array, comboOrders: Array}>}
+ */
+const findInProgressOrdersForProduct = async (productId) => {
+  const statusFilter = IN_PROGRESS_ORDER_STATUSES;
+
+  const { data: directOrders, error: directOrdersError } = await supabase
+    .from('order_items')
+    .select('order_id, item_id, item_type, orders!inner(order_number, status)')
+    .eq('item_type', 'product')
+    .eq('item_id', productId)
+    .in('orders.status', statusFilter);
+
+  if (directOrdersError) {
+    const appError = parseSupabaseError(directOrdersError);
+    logError(appError, { operation: 'findInProgressOrdersForProduct - direct', productId });
+    throw appError;
+  }
+
+  const { data: comboItems, error: comboItemsError } = await supabase
+    .from('combo_items')
+    .select('combo_id')
+    .eq('product_id', productId);
+
+  if (comboItemsError) {
+    const appError = parseSupabaseError(comboItemsError);
+    logError(appError, { operation: 'findInProgressOrdersForProduct - comboItems', productId });
+    throw appError;
+  }
+
+  const comboIds = (comboItems || []).map(item => item.combo_id);
+  let comboOrders = [];
+
+  if (comboIds.length > 0) {
+    const { data: comboOrdersData, error: comboOrdersError } = await supabase
+      .from('order_items')
+      .select('order_id, item_id, item_type, orders!inner(order_number, status)')
+      .eq('item_type', 'combo')
+      .in('item_id', comboIds)
+      .in('orders.status', statusFilter);
+
+    if (comboOrdersError) {
+      const appError = parseSupabaseError(comboOrdersError);
+      logError(appError, { operation: 'findInProgressOrdersForProduct - comboOrders', productId, comboCount: comboIds.length });
+      throw appError;
+    }
+
+    comboOrders = comboOrdersData || [];
+  }
+
+  return {
+    directOrders: directOrders || [],
+    comboOrders
+  };
+};
+
+/**
+ * Toggle product active state with validation against in-progress orders
+ * @param {string} productId - Product ID
+ * @param {boolean} isActive - Desired active state
+ * @returns {Promise<Object>} Updated product
+ */
+export const setProductActiveState = async (productId, isActive) => {
+  try {
+    if (!productId) {
+      throw createValidationError({ productId: 'Product ID is required' });
+    }
+
+    if (!isActive) {
+      const { directOrders, comboOrders } = await findInProgressOrdersForProduct(productId);
+      const hasBlockingOrders = (directOrders?.length || 0) > 0 || (comboOrders?.length || 0) > 0;
+
+      if (hasBlockingOrders) {
+        throw new AppError(
+          'Cannot deactivate product with in-progress orders',
+          ERROR_CODES.CONFLICT,
+          409,
+          {
+            directOrders,
+            comboOrders
+          }
+        );
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('products')
+      .update({
+        is_active: isActive,
+        updated_at: getCurrentTimestamp()
+      })
+      .eq('id', productId)
+      .select()
+      .single();
+
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'setProductActiveState', productId, isActive });
+      throw appError;
+    }
+
+    return data;
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = new AppError(
+      error?.message || 'Failed to update product active state',
+      ERROR_CODES.DB_ERROR,
+      500,
+      { operation: 'setProductActiveState', productId, isActive }
+    );
+    logError(appError, appError.context);
     throw appError;
   }
 };

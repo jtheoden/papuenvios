@@ -24,10 +24,10 @@ export const ProductProvider = ({ children }) => {
   const [error, setError] = useState(null);
 
   // Fetch products from Supabase
-  const refreshProducts = async () => {
+  const refreshProducts = async (includeInactive = false) => {
     try {
       setError(null);
-      const data = await getProducts();
+      const data = await getProducts(includeInactive);
       setProducts(data || []);
     } catch (error) {
       console.error('Error refreshing products:', error);

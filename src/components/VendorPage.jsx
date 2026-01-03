@@ -93,6 +93,10 @@ const VendorPage = () => {
     const fetchAdminData = async () => {
       console.log('[fetchAdminData] START - Loading admin-specific data');
       try {
+        console.log('[fetchAdminData] Loading products (admin view)...');
+        await refreshProducts(true);
+        console.log('[fetchAdminData] Products loaded successfully');
+
         // Load testimonials with admin view
         console.log('[fetchAdminData] Loading testimonials (admin view)...');
         await refreshTestimonials(true);
