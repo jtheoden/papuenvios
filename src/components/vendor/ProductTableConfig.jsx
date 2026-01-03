@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertCircle, AlertTriangle, AlertOctagon, CheckCircle } from 'lucide-react';
+import { AlertCircle, AlertTriangle, AlertOctagon, CheckCircle, Eye, EyeOff, Loader2, Trash2 } from 'lucide-react';
 
 /**
  * Product Table Column Configuration
@@ -11,9 +11,12 @@ import { AlertCircle, AlertTriangle, AlertOctagon, CheckCircle } from 'lucide-re
  * @param {function} t - Translation function
  * @param {function} language - Current language (es/en)
  * @param {array} currencies - Available currencies
+ * @param {object} options - Additional render options (toggle handlers, states)
  * @returns {array} Column configuration array
  */
-export const getTableColumns = (t, language, currencies) => [
+export const getTableColumns = (t, language, currencies, options = {}) => {
+  const { onToggleActive, togglingId, onDelete, deletingId } = options || {};
+  return [
   {
     key: language === 'es' ? 'name_es' : 'name_en',
     label: t('vendor.inventory.product'),
@@ -26,6 +29,59 @@ export const getTableColumns = (t, language, currencies) => [
       return (
         <div className={isOutOfStock ? 'line-through text-gray-400' : 'font-medium text-gray-900'}>
           {productName || 'Sin nombre'}
+        </div>
+      );
+    }
+  },
+  {
+    key: 'actions',
+    label: t('common.status'),
+    width: '180px',
+    render: (value, row) => {
+      const isProcessing = togglingId === row.id;
+      const isActive = row.is_active !== false;
+      const toggleLabel = isActive ? t('vendor.inventory.deactivateProduct') : t('vendor.inventory.activateProduct');
+      const isDeleting = deletingId === row.id;
+
+      return (
+        <div className="flex items-center gap-2">
+          <span className={`text-xs font-semibold px-2 py-1 rounded-full ${isActive ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+            {isActive ? t('vendor.inventory.active') : t('vendor.inventory.inactive')}
+          </span>
+          {onToggleActive && (
+            <button
+              type="button"
+              className={`p-2 rounded-md border transition-colors ${isActive ? 'border-red-200 hover:bg-red-50' : 'border-green-200 hover:bg-green-50'} ${isProcessing ? 'opacity-60 cursor-not-allowed' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleActive(row, !isActive);
+              }}
+              disabled={isProcessing}
+              title={toggleLabel}
+            >
+              {isProcessing ? (
+                <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+              ) : isActive ? (
+                <EyeOff className="h-4 w-4 text-red-600" />
+              ) : (
+                <Eye className="h-4 w-4 text-green-600" />
+              )}
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              className={`p-2 rounded-md border border-red-200 hover:bg-red-50 transition-colors ${isDeleting ? 'opacity-60 cursor-not-allowed' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(row);
+              }}
+              disabled={isDeleting}
+              title={t('vendor.inventory.deleteProduct')}
+            >
+              {isDeleting ? <Loader2 className="h-4 w-4 animate-spin text-gray-500" /> : <Trash2 className="h-4 w-4 text-red-600" />}
+            </button>
+          )}
         </div>
       );
     }
@@ -127,6 +183,7 @@ export const getTableColumns = (t, language, currencies) => [
     }
   }
 ];
+};
 
 /**
  * Get modal columns for detailed product view
