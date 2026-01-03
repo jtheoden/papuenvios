@@ -17,7 +17,7 @@ const NOTIFICATION_KEYS = {
   adminEmail: 'admin_email'
 };
 
-const ensureAuthenticated = async () => {
+const getSessionToken = async () => {
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
 
   if (sessionError) {
@@ -25,9 +25,33 @@ const ensureAuthenticated = async () => {
     throw new Error('No se pudo verificar tu sesión. Intenta iniciar sesión nuevamente.');
   }
 
-  if (!sessionData?.session?.access_token) {
+  const token = sessionData?.session?.access_token;
+  if (!token) {
     throw new Error('Debes iniciar sesión para acceder a la configuración.');
   }
+
+  return token;
+};
+
+const callNotificationFunction = async (method, payload) => {
+  const accessToken = await getSessionToken();
+
+  const { data, error } = await supabase.functions.invoke('notification-settings', {
+    method,
+    body: payload,
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+
+  if (error) {
+    console.error(`[NotificationSettings] Function error (${method})`, error);
+    const message = error?.message || 'No se pudieron procesar las configuraciones.';
+    throw new Error(message);
+  }
+
+  // Edge function may respond with { message } for success cases
+  return data;
 };
 
 const mapSettingsFromRows = (rows = []) => {
@@ -46,19 +70,16 @@ const mapSettingsFromRows = (rows = []) => {
  */
 export async function loadNotificationSettings() {
   try {
-    await ensureAuthenticated();
-
-    const { data, error } = await supabase
-      .from('system_config')
-      .select('key, value_text')
-      .in('key', Object.values(NOTIFICATION_KEYS));
-
-    if (error) {
-      console.error('[NotificationSettings] Load error:', error);
-      throw new Error('No se pudieron obtener las configuraciones.');
+    const data = await callNotificationFunction('GET');
+    // If edge function returns array-like fallback, map it; otherwise expect object with fields
+    if (Array.isArray(data)) {
+      return mapSettingsFromRows(data);
     }
-
-    return mapSettingsFromRows(data || []);
+    return {
+      whatsapp: data?.whatsapp ?? '',
+      whatsappGroup: data?.whatsappGroup ?? '',
+      adminEmail: data?.adminEmail ?? ''
+    };
   } catch (err) {
     console.error('[NotificationSettings] Load error:', err);
     throw err;
@@ -76,36 +97,11 @@ export async function saveNotificationSettings(settings) {
   }
 
   try {
-    await ensureAuthenticated();
-
-    const now = new Date().toISOString();
-    const rows = [
-      {
-        key: NOTIFICATION_KEYS.whatsapp,
-        value_text: settings.whatsapp || '',
-        updated_at: now
-      },
-      {
-        key: NOTIFICATION_KEYS.whatsappGroup,
-        value_text: settings.whatsappGroup || '',
-        updated_at: now
-      },
-      {
-        key: NOTIFICATION_KEYS.adminEmail,
-        value_text: settings.adminEmail || '',
-        updated_at: now
-      }
-    ];
-
-    const { error } = await supabase
-      .from('system_config')
-      .upsert(rows, { onConflict: 'key' });
-
-    if (error) {
-      console.error('[NotificationSettings] Save error:', error);
-      throw new Error('No se pudieron guardar las configuraciones.');
-    }
-
+    await callNotificationFunction('PUT', {
+      whatsapp: settings.whatsapp || '',
+      whatsappGroup: settings.whatsappGroup || '',
+      adminEmail: settings.adminEmail || ''
+    });
     return true;
   } catch (err) {
     console.error('[NotificationSettings] Save error:', err);
