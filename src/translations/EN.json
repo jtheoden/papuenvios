@@ -484,7 +484,19 @@
       "batchNumber": "Batch Number",
       "productDetails": "Product Details",
       "minStock": "Min Stock",
-      "displayCurrency": "Display Currency"
+      "displayCurrency": "Display Currency",
+      "active": "Active",
+      "inactive": "Inactive",
+      "activateProduct": "Activate product",
+      "deactivateProduct": "Deactivate product",
+      "productActivated": "Product activated",
+      "productDeactivated": "Product deactivated",
+      "toggleBlockedOrders": "This product cannot be deactivated because there is at least one in-progress order that includes it.",
+      "toggleBlockedCombos": "The product is also part of combos with in-progress orders.",
+      "deleteProduct": "Delete product",
+      "deleteConfirmTitle": "Confirm deletion",
+      "deleteConfirmMessage": "Are you sure you want to delete the product \"{name}\"? This will deactivate it for users.",
+      "productDeleted": "Product deleted"
     },
     "categories": {
       "manage": "Manage Categories",

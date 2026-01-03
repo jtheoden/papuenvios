@@ -6,7 +6,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
-import { createProduct, updateProduct as updateProductDB } from '@/lib/productService';
+import { createProduct, deleteProduct, setProductActiveState, updateProduct as updateProductDB } from '@/lib/productService';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import { getTableColumns, getModalColumns } from './ProductTableConfig';
@@ -33,6 +33,9 @@ const VendorInventoryTab = ({
   const [productImagePreview, setProductImagePreview] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [showProductDetails, setShowProductDetails] = useState(false);
+  const [processingProductId, setProcessingProductId] = useState(null);
+  const [deletingProductId, setDeletingProductId] = useState(null);
+  const [productToDelete, setProductToDelete] = useState(null);
 
   const logProductActivity = async (action, productId, description, metadata = {}) => {
     try {
@@ -243,7 +246,7 @@ const VendorInventoryTab = ({
       }
 
       console.log('[handleSubmitProduct] Refreshing products list...');
-      await onProductsRefresh();
+      await onProductsRefresh(true);
       setProductForm(null);
       setProductImagePreview(null);
       console.log('[handleSubmitProduct] Form reset and products refreshed');
@@ -255,6 +258,88 @@ const VendorInventoryTab = ({
         description: error.message,
         variant: 'destructive'
       });
+    }
+  };
+
+  const handleToggleProductActive = async (product, nextActive) => {
+    console.log('[handleToggleProductActive] START - Input:', { productId: product.id, nextActive });
+    setProcessingProductId(product.id);
+    try {
+      await setProductActiveState(product.id, nextActive);
+      await logProductActivity(
+        nextActive ? 'product_activated' : 'product_deactivated',
+        product.id,
+        `Product ${product.name_es || product.name_en || product.id} ${nextActive ? 'activated' : 'deactivated'}`,
+        { isActive: nextActive }
+      );
+
+      toast({
+        title: nextActive ? t('vendor.inventory.productActivated') : t('vendor.inventory.productDeactivated'),
+        description: language === 'es'
+          ? `${product.name_es || product.name_en || product.id} ${nextActive ? 'activado' : 'desactivado'}`
+          : `${product.name_en || product.name_es || product.id} ${nextActive ? 'activated' : 'deactivated'}`
+      });
+
+      await onProductsRefresh(true);
+      console.log('[handleToggleProductActive] SUCCESS - Product state updated and list refreshed');
+    } catch (error) {
+      console.error('[handleToggleProductActive] ERROR:', error);
+      console.error('[handleToggleProductActive] Error details:', { message: error?.message, code: error?.code, context: error?.context });
+      const directOrders = error?.context?.directOrders || [];
+      const comboOrders = error?.context?.comboOrders || [];
+      const hasBlockingOrders = directOrders.length > 0 || comboOrders.length > 0;
+
+      let description = error?.message || (language === 'es'
+        ? 'No se pudo actualizar el estado del producto.'
+        : 'Could not update the product status.');
+
+      if (hasBlockingOrders) {
+        description = t('vendor.inventory.toggleBlockedOrders');
+        if (comboOrders.length > 0) {
+          description = `${description} ${t('vendor.inventory.toggleBlockedCombos')}`;
+        }
+      }
+
+      toast({
+        title: t('common.error'),
+        description,
+        variant: 'destructive'
+      });
+    } finally {
+      setProcessingProductId(null);
+    }
+  };
+
+  const handleDeleteProduct = async () => {
+    if (!productToDelete) return;
+    console.log('[handleDeleteProduct] START - Input:', { productId: productToDelete.id });
+    setDeletingProductId(productToDelete.id);
+    try {
+      await deleteProduct(productToDelete.id);
+      await logProductActivity(
+        'product_deleted',
+        productToDelete.id,
+        `Product ${productToDelete.name_es || productToDelete.name_en || productToDelete.id} deleted from inventory`,
+        { name_es: productToDelete.name_es, name_en: productToDelete.name_en }
+      );
+      toast({
+        title: t('vendor.inventory.productDeleted'),
+        description: language === 'es'
+          ? `${productToDelete.name_es || productToDelete.name_en || productToDelete.id} eliminado`
+          : `${productToDelete.name_en || productToDelete.name_es || productToDelete.id} deleted`
+      });
+      await onProductsRefresh(true);
+      setProductToDelete(null);
+      console.log('[handleDeleteProduct] SUCCESS - Product deleted and list refreshed');
+    } catch (error) {
+      console.error('[handleDeleteProduct] ERROR:', error);
+      toast({
+        title: t('common.error'),
+        description: error?.message || (language === 'es' ? 'No se pudo eliminar el producto.' : 'Could not delete the product.'),
+        variant: 'destructive'
+      });
+    } finally {
+      setDeletingProductId(null);
     }
   };
 
@@ -550,12 +635,56 @@ const VendorInventoryTab = ({
       {/* Responsive Products Table */}
       <ResponsiveTableWrapper
         data={productsWithConvertedPrices}
-        columns={getTableColumns(t, language, currencies)}
+        columns={getTableColumns(t, language, currencies, {
+          onToggleActive: handleToggleProductActive,
+          togglingId: processingProductId,
+          onDelete: setProductToDelete,
+          deletingId: deletingProductId
+        })}
         onRowClick={handleViewProductDetails}
         modalTitle="vendor.inventory.productDetails"
         modalColumns={getModalColumns(t, language, currencies)}
         emptyMessage={t('vendor.inventory.noProducts') || 'No products found'}
       />
+
+      {/* Delete Confirmation Modal */}
+      {productToDelete && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          onClick={() => setProductToDelete(null)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-xl font-semibold text-gray-900">
+              {t('vendor.inventory.deleteConfirmTitle')}
+            </h3>
+            <p className="text-sm text-gray-700">
+              {t('vendor.inventory.deleteConfirmMessage', {
+                name: language === 'es'
+                  ? (productToDelete.name_es || productToDelete.name_en || productToDelete.id)
+                  : (productToDelete.name_en || productToDelete.name_es || productToDelete.id)
+              })}
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setProductToDelete(null)}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteProduct}
+                disabled={deletingProductId === productToDelete.id}
+              >
+                {t('common.delete')}
+              </Button>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Product Details Modal */}
       {showProductDetails && selectedProduct && (
