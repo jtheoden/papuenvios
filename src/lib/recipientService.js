@@ -6,10 +6,16 @@
 
 import { supabase } from '@/lib/supabase';
 import {
+  AppError,
   handleError, logError, createValidationError,
   createNotFoundError, createPermissionError, parseSupabaseError, ERROR_CODES
 } from './errorHandler';
 import { encryptData } from '@/lib/encryption';
+
+const formatServiceError = (error, context = {}, defaultCode = ERROR_CODES.DB_ERROR) => {
+  const parsedError = error instanceof AppError ? error : (parseSupabaseError(error) || error);
+  return handleError(parsedError, parsedError?.code || defaultCode, context);
+};
 
 // ============================================================================
 // DESTINATARIOS
@@ -131,14 +137,12 @@ export const createRecipient = async (recipientData) => {
       throw parseSupabaseError(error);
     }
 
-    return data;
+    return {
+      success: true,
+      recipient: data
+    };
   } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
-      operation: 'createRecipient'
-    });
-    logError(appError, { operation: 'createRecipient' });
-    throw appError;
+    return formatServiceError(error, { operation: 'createRecipient' });
   }
 };
 
@@ -186,15 +190,12 @@ export const updateRecipient = async (recipientId, updates) => {
       throw parseSupabaseError(error);
     }
 
-    return data;
+    return {
+      success: true,
+      recipient: data
+    };
   } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
-      operation: 'updateRecipient',
-      recipientId
-    });
-    logError(appError, { operation: 'updateRecipient', recipientId });
-    throw appError;
+    return formatServiceError(error, { operation: 'updateRecipient', recipientId });
   }
 };
 
@@ -239,15 +240,11 @@ export const deleteRecipient = async (recipientId) => {
       throw parseSupabaseError(error);
     }
 
-    return true;
+    return {
+      success: true
+    };
   } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
-      operation: 'deleteRecipient',
-      recipientId
-    });
-    logError(appError, { operation: 'deleteRecipient', recipientId });
-    throw appError;
+    return formatServiceError(error, { operation: 'deleteRecipient', recipientId });
   }
 };
 
@@ -298,15 +295,15 @@ export const addRecipientAddress = async (addressData) => {
       throw parseSupabaseError(error);
     }
 
-    return data;
+    return {
+      success: true,
+      address: data
+    };
   } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+    return formatServiceError(error, {
       operation: 'addRecipientAddress',
       recipientId: addressData?.recipient_id
     });
-    logError(appError, { operation: 'addRecipientAddress', recipientId: addressData?.recipient_id });
-    throw appError;
   }
 };
 
@@ -361,15 +358,12 @@ export const updateRecipientAddress = async (addressId, updates) => {
       throw parseSupabaseError(error);
     }
 
-    return data;
+    return {
+      success: true,
+      address: data
+    };
   } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
-      operation: 'updateRecipientAddress',
-      addressId
-    });
-    logError(appError, { operation: 'updateRecipientAddress', addressId });
-    throw appError;
+    return formatServiceError(error, { operation: 'updateRecipientAddress', addressId });
   }
 };
 
@@ -394,15 +388,11 @@ export const deleteRecipientAddress = async (addressId) => {
       throw parseSupabaseError(error);
     }
 
-    return true;
+    return {
+      success: true
+    };
   } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
-      operation: 'deleteRecipientAddress',
-      addressId
-    });
-    logError(appError, { operation: 'deleteRecipientAddress', addressId });
-    throw appError;
+    return formatServiceError(error, { operation: 'deleteRecipientAddress', addressId });
   }
 };
 
