@@ -57,6 +57,7 @@ export const ORDER_STATUS = {
 // Payment Status
 export const PAYMENT_STATUS = {
   PENDING: 'pending',
+  PROOF_UPLOADED: 'proof_uploaded', // Comprobante de pago subido, esperando validación
   VALIDATED: 'validated',
   REJECTED: 'rejected',
 };

@@ -16,6 +16,7 @@ import PriceDisplay from '@/components/PriceDisplay';
 import { useUserDiscounts } from '@/hooks/useUserDiscounts';
 import { buildDiscountBreakdown } from '@/lib/discountDisplayService';
 import { computeComboPricing } from '@/lib/comboUtils';
+import { useRealtimeProducts, useRealtimeCombos } from '@/hooks/useRealtimeSubscription';
 
 const ProductsPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
@@ -47,6 +48,24 @@ const ProductsPage = ({ onNavigate }) => {
     });
     return baseId || selectedCurrency;
   }, [currencyMap, selectedCurrency]);
+
+  // Suscripción real-time para productos - actualiza automáticamente cuando cambian
+  useRealtimeProducts({
+    enabled: true,
+    onUpdate: () => {
+      console.log('[ProductsPage] Products realtime update');
+      refreshProducts();
+    }
+  });
+
+  // Suscripción real-time para combos - actualiza automáticamente cuando cambian
+  useRealtimeCombos({
+    enabled: true,
+    onUpdate: () => {
+      console.log('[ProductsPage] Combos realtime update');
+      refreshProducts();
+    }
+  });
 
   const handleImageUpload = useCallback(async (event, productId) => {
     const file = event.target.files[0];

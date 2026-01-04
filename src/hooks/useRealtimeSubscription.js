@@ -231,3 +231,33 @@ export const useRealtimeActivityLogs = ({ onUpdate, enabled = true }) => {
     onDelete: onUpdate
   });
 };
+
+/**
+ * useRealtimeProducts Hook
+ * Specialized hook for real-time product updates
+ */
+export const useRealtimeProducts = ({ onUpdate, enabled = true }) => {
+  return useRealtimeSubscription({
+    table: 'products',
+    event: '*',
+    enabled,
+    onInsert: onUpdate,
+    onUpdate: onUpdate,
+    onDelete: onUpdate
+  });
+};
+
+/**
+ * useRealtimeCombos Hook
+ * Specialized hook for real-time combo updates
+ */
+export const useRealtimeCombos = ({ onUpdate, enabled = true }) => {
+  return useRealtimeSubscription({
+    table: 'combo_products',
+    event: '*',
+    enabled,
+    onInsert: onUpdate,
+    onUpdate: onUpdate,
+    onDelete: onUpdate
+  });
+};
