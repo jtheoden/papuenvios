@@ -15,6 +15,7 @@ function buildCorsHeaders(req: Request) {
 
   return {
     "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, prefer",
     "Access-Control-Max-Age": "86400",
@@ -42,9 +43,13 @@ serve(async (req: Request) => {
   });
 
   try {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      return json({ message: "Faltan las variables SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY" }, 500, corsHeaders);
+    }
+
     const user = await getAuthenticatedUser(supabase);
     if (!user) {
-      return json({ message: "No se pudo validar la sesión. Vuelve a iniciar sesión." }, 401);
+      return json({ message: "No se pudo validar la sesión. Vuelve a iniciar sesión." }, 401, corsHeaders);
     }
 
     const isAdmin = await checkIsAdmin(supabase, user.id);
@@ -174,7 +179,7 @@ async function handleUpdateSettings(
   return json({ message: "Configuraciones actualizadas correctamente." }, 200, corsHeaders);
 }
 
-function json(data: unknown, status = 200, corsHeaders: HeadersInit) {
+function json(data: unknown, status = 200, corsHeaders: HeadersInit = {}) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { "Content-Type": "application/json", ...corsHeaders },

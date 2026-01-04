@@ -1,10 +1,9 @@
 import { supabase } from '@/lib/supabase';
 
-// Las configuraciones de notificación se leen/escriben directamente en `system_config`.
-// Ventajas de este enfoque:
-// - Elimina la dependencia de la Edge Function ausente y evita errores de CORS.
-// - Respeta el modelo de datos real (columnas `key`, `value_text`) y los defaults existentes.
-// - Garantiza que los valores visibles en la UI provienen de la tabla fuente y se actualizan con `upsert`.
+// Las configuraciones de notificación están protegidas por RLS y se gestionan
+// a través de la Edge Function `notification-settings`, que usa la service role.
+// Este servicio obtiene el token del usuario, invoca la función con CORS y
+// devuelve errores manejables cuando la función no está disponible.
 const DEFAULT_SETTINGS = {
   whatsapp: '',
   whatsappGroup: '',
@@ -36,17 +35,30 @@ const getSessionToken = async () => {
 const callNotificationFunction = async (method, payload) => {
   const accessToken = await getSessionToken();
 
-  const { data, error } = await supabase.functions.invoke('notification-settings', {
+  const invokeOptions = {
     method,
-    body: payload,
     headers: {
-      Authorization: `Bearer ${accessToken}`
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
     }
-  });
+  };
+
+  if (method !== 'GET') {
+    invokeOptions.body = payload;
+  }
+
+  const { data, error } = await supabase.functions.invoke('notification-settings', invokeOptions);
 
   if (error) {
     console.error(`[NotificationSettings] Function error (${method})`, error);
-    const message = error?.message || 'No se pudieron procesar las configuraciones.';
+    const isNetworkOrCors =
+      error?.name === 'FunctionsFetchError' ||
+      error?.message?.includes('Failed to send a request');
+
+    const message = isNetworkOrCors
+      ? 'No se pudo contactar la función de notificaciones. Verifica tu conexión o los permisos de CORS.'
+      : (error?.message || 'No se pudieron procesar las configuraciones.');
+
     throw new Error(message);
   }
 

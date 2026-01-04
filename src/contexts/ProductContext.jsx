@@ -1,5 +1,4 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
 import { getProducts, getCategories } from '@/lib/productService';
 import { getCombos } from '@/lib/comboService';
 import { getTestimonials } from '@/lib/testimonialService';
@@ -53,40 +52,47 @@ export const ProductProvider = ({ children }) => {
       const data = await getCombos(includeInactive);
 
       // Get current products to check stock
-      const productsData = await getProducts();
-      const productsMap = {};
-      (productsData || []).forEach(p => {
-        productsMap[p.id] = p;
-      });
+      let productsMap = {};
+      try {
+        const productsData = products?.length ? products : await getProducts();
+        (productsData || []).forEach(p => {
+          productsMap[p.id] = p;
+        });
+      } catch (productError) {
+        console.error('Error refreshing products for combos:', productError);
+      }
 
       // Transform to match existing format with quantities
       const transformedCombos = (data || []).map(c => {
         const productQuantities = {};
-        const products = c.items?.map(i => {
-          productQuantities[i.product.id] = i.quantity;
-          return i.product.id;
-        }) || [];
+        const products = (c.items || []).reduce((acc, item) => {
+          const productId = item?.product?.id;
+
+          if (!productId) {
+            console.warn('[refreshCombos] Missing product in combo item', { comboId: c.id, item });
+            return acc;
+          }
+
+          productQuantities[productId] = item.quantity;
+          acc.push(productId);
+          return acc;
+        }, []);
 
         // Check if combo should be active based on product stock
         let hasInsufficientStock = false;
-        for (const productId of products) {
-          const product = productsMap[productId];
-          const requiredQuantity = productQuantities[productId] || 1;
-          const availableStock = product?.stock || 0;
+        if (Object.keys(productsMap).length > 0) {
+          for (const productId of products) {
+            const product = productsMap[productId];
+            if (!product) continue;
 
-          if (availableStock === 0 || availableStock < requiredQuantity) {
-            hasInsufficientStock = true;
-            break;
+            const requiredQuantity = productQuantities[productId] || 1;
+            const availableStock = product?.stock ?? 0;
+
+            if (availableStock === 0 || availableStock < requiredQuantity) {
+              hasInsufficientStock = true;
+              break;
+            }
           }
-        }
-
-        // Auto-deactivate combo if it has insufficient stock
-        if (hasInsufficientStock && c.is_active) {
-          supabase
-            .from('combo_products')
-            .update({ is_active: false })
-            .eq('id', c.id)
-            .then(() => console.log(`Combo ${c.id} auto-deactivated due to insufficient stock`));
         }
 
         return {
@@ -99,7 +105,8 @@ export const ProductProvider = ({ children }) => {
           items: c.items || [],
           profitMargin: c.profit_margin,
           baseTotalPrice: c.base_total_price,
-          is_active: hasInsufficientStock ? false : c.is_active
+          is_active: c.is_active,
+          hasStockIssues: hasInsufficientStock
         };
       });
 
