@@ -76,7 +76,7 @@ const ProductsPage = ({ onNavigate }) => {
       setImagePreview(result.base64);
 
       // Upload processed image
-      const fileName = `product-${productId}-${Date.now()}.jpg`;
+      const fileName = `product-${productId}-${Date.now()}`;
       const { publicUrl } = await uploadProductImage(result.blob, fileName);
 
       // Update product in database
@@ -112,9 +112,7 @@ const ProductsPage = ({ onNavigate }) => {
     if (!imageUrl) return;
 
     try {
-      // Extract file path from URL
-      const filePath = imageUrl.split('/').pop();
-      await deleteProductImage(filePath);
+      await deleteProductImage(imageUrl);
 
       // Update product in database
       const { error: updateError } = await supabase
