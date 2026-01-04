@@ -38,12 +38,13 @@ const callNotificationFunction = async (method, payload) => {
   const invokeOptions = {
     method,
     headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
+      Authorization: `Bearer ${accessToken}`
     }
   };
 
-  if (method !== 'GET') {
+  // Para métodos que envían body, pasamos el objeto directamente
+  // El SDK de Supabase se encarga de serializar y establecer Content-Type
+  if (method !== 'GET' && payload) {
     invokeOptions.body = payload;
   }
 
