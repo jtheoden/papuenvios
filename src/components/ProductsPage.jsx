@@ -583,7 +583,7 @@ const ProductsPage = ({ onNavigate }) => {
                   <img
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     alt={product.name_es || product.name}
-                    src={product.image_url || "https://images.unsplash.com/photo-1646193186132-7976c1670e81"}
+                    src={product.image_url || product.image_file || "https://images.unsplash.com/photo-1646193186132-7976c1670e81"}
                   />
                 )}
 
