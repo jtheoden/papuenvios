@@ -88,19 +88,33 @@ const ModalComponent = ({
   const icons = {
     danger: AlertTriangle,
     success: CheckCircle,
-    info: Info
+    info: Info,
+    confirm: AlertTriangle,
+    warning: AlertTriangle
   };
 
   const colors = {
     danger: 'text-red-600',
     success: 'text-green-600',
-    info: 'text-blue-600'
+    info: 'text-blue-600',
+    confirm: 'text-orange-600',
+    warning: 'text-yellow-600'
   };
 
   const buttonColors = {
     danger: 'bg-red-600 hover:bg-red-700',
     success: 'bg-green-600 hover:bg-green-700',
-    info: 'bg-blue-600 hover:bg-blue-700'
+    info: 'bg-blue-600 hover:bg-blue-700',
+    confirm: 'bg-orange-600 hover:bg-orange-700',
+    warning: 'bg-yellow-600 hover:bg-yellow-700'
+  };
+
+  const iconBgColors = {
+    danger: 'bg-red-100',
+    success: 'bg-green-100',
+    info: 'bg-blue-100',
+    confirm: 'bg-orange-100',
+    warning: 'bg-yellow-100'
   };
 
   const Icon = icons[type] || Info;
@@ -133,8 +147,8 @@ const ModalComponent = ({
           >
             <div className="p-6">
               <div className="flex items-start gap-4 mb-4">
-                <div className={`flex-shrink-0 w-12 h-12 rounded-full bg-${type === 'danger' ? 'red' : type === 'success' ? 'green' : 'blue'}-100 flex items-center justify-center`}>
-                  <Icon className={`h-6 w-6 ${colors[type]}`} />
+                <div className={`flex-shrink-0 w-12 h-12 rounded-full ${iconBgColors[type] || 'bg-blue-100'} flex items-center justify-center`}>
+                  <Icon className={`h-6 w-6 ${colors[type] || 'text-blue-600'}`} />
                 </div>
                 <div className="flex-1">
                   <h3 className="text-xl font-bold text-gray-900 mb-2">{title}</h3>
@@ -181,7 +195,7 @@ const ModalComponent = ({
                   <button
                     type="submit"
                     disabled={input && required && !inputValue.trim()}
-                    className={`flex-1 px-6 py-3 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${buttonColors[type]}`}
+                    className={`flex-1 px-6 py-3 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${buttonColors[type] || 'bg-blue-600 hover:bg-blue-700'}`}
                   >
                     {confirmText}
                   </button>

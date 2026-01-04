@@ -15,10 +15,9 @@ import {
   deleteRecipient,
   addRecipientAddress,
   updateRecipientAddress,
-  deleteRecipientAddress,
-  getCubanProvinces,
-  getMunicipalitiesByProvince
+  deleteRecipientAddress
 } from '@/lib/recipientService';
+import { getProvinceNames, getMunicipalitiesByProvince } from '@/lib/cubanLocations';
 
 const MyRecipientsPage = ({ onNavigate }) => {
   const { t } = useLanguage();
@@ -83,24 +82,16 @@ const MyRecipientsPage = ({ onNavigate }) => {
     }
   };
 
-  const loadProvinces = async () => {
-    try {
-      const provinces = await getCubanProvinces();
-      setProvinces(provinces || []);
-    } catch (error) {
-      console.error('Error loading provinces:', error);
-      setProvinces([]);
-    }
+  const loadProvinces = () => {
+    // Usa datos estáticos de cubanLocations.js - siempre disponibles
+    const provinceNames = getProvinceNames();
+    setProvinces(provinceNames);
   };
 
-  const loadMunicipalities = async (province) => {
-    try {
-      const municipalities = await getMunicipalitiesByProvince(province);
-      setMunicipalities(municipalities || []);
-    } catch (error) {
-      console.error('Error loading municipalities:', error);
-      setMunicipalities([]);
-    }
+  const loadMunicipalities = (province) => {
+    // Usa datos estáticos de cubanLocations.js - siempre disponibles
+    const municipalityNames = getMunicipalitiesByProvince(province);
+    setMunicipalities(municipalityNames);
   };
 
   const handleProvinceChange = (province) => {
@@ -534,8 +525,8 @@ const MyRecipientsPage = ({ onNavigate }) => {
                       >
                         <option value="">{t('recipients.selectMunicipalityOpt')}</option>
                         {municipalities.map((mun) => (
-                          <option key={mun.id} value={mun.municipality}>
-                            {mun.municipality}
+                          <option key={mun} value={mun}>
+                            {mun}
                           </option>
                         ))}
                       </select>

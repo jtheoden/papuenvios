@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useModal } from '@/contexts/ModalContext';
-import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users, Crown, TrendingDown, Gift, Truck, Upload } from 'lucide-react';
+import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users, Crown, TrendingDown, Gift, Truck, Upload, EyeOff, Filter, ChevronDown } from 'lucide-react';
 import { getUserOrders, getOrderById, getAllOrders, validatePayment, rejectPayment, cancelOrderByUser, uploadPaymentProof, markOrderAsDispatched, markOrderAsDelivered, completeOrder, reopenOrder, ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderService';
 import { getUserTestimonial, createTestimonial, updateTestimonial } from '@/lib/testimonialService';
 import { getMyRemittances } from '@/lib/remittanceService';
@@ -14,7 +14,10 @@ import { Button } from '@/components/ui/button';
 import CategoryBadge from '@/components/CategoryBadge';
 import { derivePercentFromAmount } from '@/lib/discountDisplayService';
 import { useUserDiscounts } from '@/hooks/useUserDiscounts';
-import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
+import { useRealtimeRemittances, useRealtimeOrders } from '@/hooks/useRealtimeSubscription';
+
+// Constante de paginación fuera del componente para evitar recreación
+const ORDERS_PER_PAGE = 20;
 
 const UserPanel = ({ onNavigate }) => {
   const { user, userRole, userCategory } = useAuth();
@@ -41,6 +44,12 @@ const UserPanel = ({ onNavigate }) => {
   const [deliveryProofFile, setDeliveryProofFile] = useState(null);
   const [retryProofFile, setRetryProofFile] = useState(null);
   const [processingAction, setProcessingAction] = useState(false);
+  const [hideCompletedOrders, setHideCompletedOrders] = useState(true); // Ocultar pedidos finalizados/cancelados por defecto
+
+  // Paginación de órdenes
+  const [visibleOrdersCount, setVisibleOrdersCount] = useState(ORDERS_PER_PAGE);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const ordersContainerRef = useRef(null);
   const selectedOrderSubtotal = selectedOrder ? (parseFloat(selectedOrder.subtotal) || 0) : 0;
   const selectedOrderTotal = selectedOrder ? (parseFloat(selectedOrder.total_amount) || 0) : 0;
   const selectedOrderDiscountTotal = selectedOrder ? (parseFloat(selectedOrder.discount_amount) || 0) : 0;
@@ -59,6 +68,36 @@ const UserPanel = ({ onNavigate }) => {
   );
   const selectedOrderBaseTotal = selectedOrderSubtotal + selectedOrderShipping;
   const selectedOrderTotalAfterCategory = Math.max(selectedOrderBaseTotal - selectedOrderCategoryDiscountAmount, 0);
+
+  // Órdenes filtradas según el estado del toggle
+  const filteredOrders = useMemo(() => {
+    if (userRole === 'admin' || userRole === 'super_admin') return orders;
+    if (!hideCompletedOrders) return orders;
+    return orders.filter(order => !['completed', 'cancelled'].includes(order.status));
+  }, [orders, hideCompletedOrders, userRole]);
+
+  // Órdenes paginadas (slice de las filtradas)
+  const paginatedOrders = useMemo(() => {
+    return filteredOrders.slice(0, visibleOrdersCount);
+  }, [filteredOrders, visibleOrdersCount]);
+
+  // Verifica si hay más órdenes por cargar
+  const hasMoreOrders = filteredOrders.length > visibleOrdersCount;
+
+  // Handler para cargar más órdenes
+  const handleLoadMoreOrders = useCallback(() => {
+    setLoadingMore(true);
+    // Simular pequeño delay para mejor UX
+    setTimeout(() => {
+      setVisibleOrdersCount(prev => prev + ORDERS_PER_PAGE);
+      setLoadingMore(false);
+    }, 300);
+  }, []);
+
+  // Resetear paginación cuando cambia el filtro
+  useEffect(() => {
+    setVisibleOrdersCount(ORDERS_PER_PAGE);
+  }, [hideCompletedOrders]);
 
   const loadUserRemittances = useCallback(async () => {
     if (!user?.id) return;
@@ -135,6 +174,22 @@ const UserPanel = ({ onNavigate }) => {
     enabled: userRole === 'user' && !!user?.id,
     filter: user ? `user_id=eq.${user.id}` : null,
     onUpdate: loadUserRemittances
+  });
+
+  // Suscripción real-time para órdenes - actualiza automáticamente cuando cambia el estado
+  useRealtimeOrders({
+    enabled: !!user?.id,
+    onUpdate: (payload) => {
+      console.log('[UserPanel] Order realtime update:', payload.eventType);
+      // Recargar órdenes cuando haya cualquier cambio
+      loadUserOrders();
+      // Si el modal de detalles está abierto y es la orden que cambió, actualizarla
+      if (selectedOrder?.id === payload.new?.id || selectedOrder?.id === payload.old?.id) {
+        getOrderById(selectedOrder.id).then(order => {
+          if (order) setSelectedOrder(order);
+        }).catch(console.error);
+      }
+    }
   });
 
   const handleOrderClick = async (orderId) => {
@@ -646,40 +701,74 @@ const UserPanel = ({ onNavigate }) => {
           transition={{ delay: 0.2 }}
           className="p-8 rounded-2xl bg-white shadow-lg border border-gray-200"
         >
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-semibold flex items-center" style={getTextStyle(visualSettings, 'primary')}>
-              <div
-                className="p-2 rounded-lg mr-3"
-                style={{
-                  background: visualSettings.useGradient
-                    ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
-                    : visualSettings.primaryColor || '#2563eb'
-                }}
-              >
-                <ShoppingBag className="h-5 w-5 text-white" />
-              </div>
-              {(userRole === 'admin' || userRole === 'super_admin')
-                ? (language === 'es' ? 'Pedidos Pendientes' : 'Pending Orders')
-                : t('userPanel.myOrders')
-              }
-            </h2>
+          <div className="flex flex-col gap-4 mb-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-semibold flex items-center" style={getTextStyle(visualSettings, 'primary')}>
+                <div
+                  className="p-2 rounded-lg mr-3"
+                  style={{
+                    background: visualSettings.useGradient
+                      ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
+                      : visualSettings.primaryColor || '#2563eb'
+                  }}
+                >
+                  <ShoppingBag className="h-5 w-5 text-white" />
+                </div>
+                {(userRole === 'admin' || userRole === 'super_admin')
+                  ? (language === 'es' ? 'Pedidos Pendientes' : 'Pending Orders')
+                  : t('userPanel.myOrders')
+                }
+              </h2>
 
-            {/* WhatsApp Contact Button (Regular users only) - Top Right */}
-            {userRole !== 'admin' && userRole !== 'super_admin' && businessInfo?.whatsapp && (
-              <Button
-                size="default"
-                className="bg-green-600 hover:bg-green-700 text-white"
-                onClick={() => {
-                  const message = language === 'es'
-                    ? `Hola! Soy ${displayName}. Necesito ayuda con mis pedidos.`
-                    : `Hello! I'm ${displayName}. I need help with my orders.`;
-                  window.open(generateWhatsAppURL(businessInfo.whatsapp, message), '_blank', 'noopener,noreferrer');
-                }}
-                title={language === 'es' ? 'Contactar por WhatsApp' : 'Contact via WhatsApp'}
-              >
-                <MessageCircle className="h-4 w-4 mr-2" />
-                {language === 'es' ? 'Contactar' : 'Contact'}
-              </Button>
+              {/* WhatsApp Contact Button (Regular users only) - Top Right */}
+              {userRole !== 'admin' && userRole !== 'super_admin' && businessInfo?.whatsapp && (
+                <Button
+                  size="default"
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => {
+                    const message = language === 'es'
+                      ? `Hola! Soy ${displayName}. Necesito ayuda con mis pedidos.`
+                      : `Hello! I'm ${displayName}. I need help with my orders.`;
+                    window.open(generateWhatsAppURL(businessInfo.whatsapp, message), '_blank', 'noopener,noreferrer');
+                  }}
+                  title={language === 'es' ? 'Contactar por WhatsApp' : 'Contact via WhatsApp'}
+                >
+                  <MessageCircle className="h-4 w-4 mr-2" />
+                  {language === 'es' ? 'Contactar' : 'Contact'}
+                </Button>
+              )}
+            </div>
+
+            {/* Toggle para ocultar/mostrar pedidos finalizados - Solo para usuarios regulares */}
+            {userRole !== 'admin' && userRole !== 'super_admin' && orders.length > 0 && (
+              <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-200">
+                <div className="flex items-center gap-2">
+                  <Filter className="h-4 w-4" style={{ color: visualSettings.primaryColor }} />
+                  <span className="text-sm font-medium" style={getTextStyle(visualSettings, 'secondary')}>
+                    {language === 'es' ? 'Filtrar pedidos' : 'Filter orders'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setHideCompletedOrders(!hideCompletedOrders)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                    hideCompletedOrders
+                      ? 'bg-blue-100 text-blue-700 border border-blue-300'
+                      : 'bg-gray-200 text-gray-600 border border-gray-300'
+                  }`}
+                >
+                  {hideCompletedOrders ? (
+                    <>
+                      <EyeOff className="h-3.5 w-3.5" />
+                      {language === 'es' ? 'Ocultos: Completados/Cancelados' : 'Hidden: Completed/Cancelled'}
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="h-3.5 w-3.5" />
+                      {language === 'es' ? 'Mostrando todos' : 'Showing all'}
+                    </>
+                  )}
+                </button>
+              </div>
             )}
           </div>
 
@@ -687,9 +776,23 @@ const UserPanel = ({ onNavigate }) => {
             <div className="flex justify-center items-center py-12">
               <Loader2 className="h-8 w-8 animate-spin" style={{ color: visualSettings.primaryColor }} />
             </div>
-          ) : orders.length > 0 ? (
-            <div className="space-y-4">
-              {orders.map(order => {
+          ) : filteredOrders.length > 0 ? (
+            <div className="space-y-4" ref={ordersContainerRef}>
+              {/* Contador de órdenes */}
+              <div className="flex items-center justify-between text-sm" style={getTextStyle(visualSettings, 'muted')}>
+                <span>
+                  {language === 'es'
+                    ? `Mostrando ${paginatedOrders.length} de ${filteredOrders.length} pedidos`
+                    : `Showing ${paginatedOrders.length} of ${filteredOrders.length} orders`}
+                </span>
+                {orders.length !== filteredOrders.length && (
+                  <span className="text-xs">
+                    ({orders.length} {language === 'es' ? 'total' : 'total'})
+                  </span>
+                )}
+              </div>
+
+              {paginatedOrders.map(order => {
                 const orderSubtotal = parseFloat(order.subtotal) || 0;
                 const orderTotal = parseFloat(order.total_amount) || 0;
                 const orderDiscountTotal = parseFloat(order.discount_amount) || 0;
@@ -771,43 +874,106 @@ const UserPanel = ({ onNavigate }) => {
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="px-3 py-1.5 rounded-full flex items-center gap-2 text-sm font-medium"
-                        style={getStatusStyle(order.payment_status || order.status, visualSettings)}
-                      >
-                        {getStatusIcon(order.status, order.payment_status)}
-                        <span>{getStatusText(order.status, order.payment_status)}</span>
+                    <div className="flex flex-col items-end gap-2">
+                      {/* Badges de estado en dos filas para usuarios regulares */}
+                      <div className="flex flex-wrap items-center gap-2 justify-end">
+                        {/* Estado del Pedido */}
+                        <div
+                          className="px-2.5 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium"
+                          style={getStatusStyle(order.status, visualSettings)}
+                          title={language === 'es' ? 'Estado del pedido' : 'Order status'}
+                        >
+                          {order.status === 'completed' && <CheckCircle className="h-3.5 w-3.5" />}
+                          {order.status === 'cancelled' && <XCircle className="h-3.5 w-3.5" />}
+                          {order.status === 'dispatched' && <Truck className="h-3.5 w-3.5" />}
+                          {order.status === 'delivered' && <Package className="h-3.5 w-3.5" />}
+                          {order.status === 'processing' && <Clock className="h-3.5 w-3.5" />}
+                          {order.status === 'pending' && <Clock className="h-3.5 w-3.5" />}
+                          <span>{getOrderStatusLabel(order.status)}</span>
+                        </div>
+
+                        {/* Estado del Pago */}
+                        <div
+                          className="px-2.5 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium"
+                          style={getStatusStyle(order.payment_status, visualSettings)}
+                          title={language === 'es' ? 'Estado del pago' : 'Payment status'}
+                        >
+                          <DollarSign className="h-3.5 w-3.5" />
+                          <span>{getPaymentStatusLabel(order.payment_status)}</span>
+                        </div>
                       </div>
 
-                      {/* WhatsApp contact button for pending/processing orders (Regular users only) */}
-                      {userRole !== 'admin' && userRole !== 'super_admin' && businessInfo?.whatsapp &&
-                       (order.payment_status === 'pending' || order.status === 'processing' || order.status === 'pending') && (
-                        <Button
-                          size="sm"
-                          className="bg-green-600 hover:bg-green-700 text-white"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const orderStatus = getStatusText(order.status, order.payment_status);
-                            const message = language === 'es'
-                              ? `Hola! Soy ${displayName}. Tengo una consulta sobre mi pedido ${order.order_number} (Estado: ${orderStatus}, Total: $${parseFloat(order.total_amount).toFixed(2)} ${order.currencies?.code || 'USD'}).`
-                              : `Hello! I'm ${displayName}. I have a question about my order ${order.order_number} (Status: ${orderStatus}, Total: $${parseFloat(order.total_amount).toFixed(2)} ${order.currencies?.code || 'USD'}).`;
-                            window.open(generateWhatsAppURL(businessInfo.whatsapp, message), '_blank', 'noopener,noreferrer');
-                          }}
-                          title={language === 'es' ? 'Consultar sobre este pedido' : 'Ask about this order'}
-                        >
-                          <MessageCircle className="h-3 w-3" />
-                        </Button>
-                      )}
+                      {/* Botones de acción */}
+                      <div className="flex items-center gap-1">
+                        {/* WhatsApp contact button for pending/processing orders (Regular users only) */}
+                        {userRole !== 'admin' && userRole !== 'super_admin' && businessInfo?.whatsapp &&
+                         (order.payment_status === 'pending' || order.status === 'processing' || order.status === 'pending') && (
+                          <Button
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const orderStatus = getOrderStatusLabel(order.status);
+                              const paymentStatus = getPaymentStatusLabel(order.payment_status);
+                              const message = language === 'es'
+                                ? `Hola! Soy ${displayName}. Tengo una consulta sobre mi pedido ${order.order_number} (Pedido: ${orderStatus}, Pago: ${paymentStatus}, Total: $${parseFloat(order.total_amount).toFixed(2)} ${order.currencies?.code || 'USD'}).`
+                                : `Hello! I'm ${displayName}. I have a question about my order ${order.order_number} (Order: ${orderStatus}, Payment: ${paymentStatus}, Total: $${parseFloat(order.total_amount).toFixed(2)} ${order.currencies?.code || 'USD'}).`;
+                              window.open(generateWhatsAppURL(businessInfo.whatsapp, message), '_blank', 'noopener,noreferrer');
+                            }}
+                            title={language === 'es' ? 'Consultar sobre este pedido' : 'Ask about this order'}
+                          >
+                            <MessageCircle className="h-3 w-3" />
+                          </Button>
+                        )}
 
-                      <Button size="sm" variant="ghost">
-                        <Eye className="h-4 w-4" />
-                      </Button>
+                        <Button size="sm" variant="ghost">
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </motion.div>
                 );
               })}
+
+              {/* Botón Cargar Más */}
+              {hasMoreOrders && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex flex-col items-center gap-2 pt-4"
+                >
+                  <Button
+                    onClick={handleLoadMoreOrders}
+                    disabled={loadingMore}
+                    variant="outline"
+                    className="w-full max-w-xs"
+                    style={{
+                      borderColor: visualSettings.primaryColor,
+                      color: visualSettings.primaryColor
+                    }}
+                  >
+                    {loadingMore ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        {language === 'es' ? 'Cargando...' : 'Loading...'}
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="h-4 w-4 mr-2" />
+                        {language === 'es'
+                          ? `Cargar más (${filteredOrders.length - visibleOrdersCount} restantes)`
+                          : `Load more (${filteredOrders.length - visibleOrdersCount} remaining)`}
+                      </>
+                    )}
+                  </Button>
+                  <span className="text-xs" style={getTextStyle(visualSettings, 'muted')}>
+                    {language === 'es'
+                      ? `Página ${Math.ceil(visibleOrdersCount / ORDERS_PER_PAGE)} de ${Math.ceil(filteredOrders.length / ORDERS_PER_PAGE)}`
+                      : `Page ${Math.ceil(visibleOrdersCount / ORDERS_PER_PAGE)} of ${Math.ceil(filteredOrders.length / ORDERS_PER_PAGE)}`}
+                  </span>
+                </motion.div>
+              )}
               </div>
             ) : (
             <div className="text-center py-12">

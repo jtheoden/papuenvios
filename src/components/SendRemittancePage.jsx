@@ -454,8 +454,32 @@ const SendRemittancePage = ({ onNavigate }) => {
                 {t('remittances.wizard.step1Title')}
               </h2>
 
-              {/* Type Selection */}
-              <div className="space-y-3 mb-6">
+              {/* Amount Input - PRIMERO para mayor claridad */}
+              <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border-2 border-blue-200">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  {t('remittances.wizard.amountToSend')} (USD) *
+                </label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-blue-600" />
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 rounded-lg border-2 border-blue-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg font-semibold"
+                    placeholder="Ej: 100.00"
+                  />
+                </div>
+                {selectedType && (
+                  <p className="text-xs text-gray-600 mt-2">
+                    {t('remittances.wizard.minAmount')}: {selectedType.min_amount} {selectedType.currency_code}
+                    {selectedType.max_amount && ` • ${t('remittances.wizard.maxAmount')}: ${selectedType.max_amount} ${selectedType.currency_code}`}
+                  </p>
+                )}
+              </div>
+
+              {/* Type Selection - DESPUÉS del monto */}
+              <div className="space-y-3">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   {t('remittances.wizard.selectTypeRequired')}
                 </label>
@@ -463,60 +487,58 @@ const SendRemittancePage = ({ onNavigate }) => {
                   <div
                     key={type.id}
                     onClick={() => handleSelectType(type)}
-                    className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                    className={`p-4 rounded-xl cursor-pointer transition-all duration-200 ${
                       selectedType?.id === type.id
-                        ? 'border-blue-600 bg-blue-50'
-                        : 'border-gray-200 hover:border-blue-300'
+                        ? 'border-2 border-blue-600 bg-gradient-to-r from-blue-100 to-purple-100 shadow-lg shadow-blue-200 ring-2 ring-blue-400 ring-offset-2'
+                        : 'border-2 border-gray-200 hover:border-blue-300 hover:bg-gray-50'
                     }`}
                   >
                     <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="font-bold text-lg">{type.name}</h3>
-                        {type.description && (
-                          <p className="text-sm text-gray-600 mt-1">{type.description}</p>
-                        )}
-                        <div className="mt-2 text-sm">
-                          <span className="text-gray-600">{t('remittances.wizard.rate')}: </span>
-                          <span className="font-semibold">
-                            1 {type.currency_code} = {type.exchange_rate} {type.delivery_currency}
-                          </span>
+                      <div className="flex items-start gap-3">
+                        {/* Indicador de selección */}
+                        <div className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center mt-0.5 transition-all ${
+                          selectedType?.id === type.id
+                            ? 'border-blue-600 bg-blue-600'
+                            : 'border-gray-300 bg-white'
+                        }`}>
+                          {selectedType?.id === type.id && (
+                            <Check className="h-4 w-4 text-white" />
+                          )}
+                        </div>
+                        <div>
+                          <h3 className={`font-bold text-lg ${selectedType?.id === type.id ? 'text-blue-900' : 'text-gray-900'}`}>
+                            {type.name}
+                          </h3>
+                          {type.description && (
+                            <p className={`text-sm mt-1 ${selectedType?.id === type.id ? 'text-blue-700' : 'text-gray-600'}`}>
+                              {type.description}
+                            </p>
+                          )}
+                          <div className="mt-2 text-sm">
+                            <span className={selectedType?.id === type.id ? 'text-blue-700' : 'text-gray-600'}>
+                              {t('remittances.wizard.rate')}:{' '}
+                            </span>
+                            <span className={`font-semibold ${selectedType?.id === type.id ? 'text-blue-900' : 'text-gray-900'}`}>
+                              1 {type.currency_code} = {type.exchange_rate} {type.delivery_currency}
+                            </span>
+                          </div>
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-xs text-gray-500">{t('remittances.wizard.limits')}</p>
-                        <p className="text-sm font-semibold">
+                        <p className={`text-xs ${selectedType?.id === type.id ? 'text-blue-600' : 'text-gray-500'}`}>
+                          {t('remittances.wizard.limits')}
+                        </p>
+                        <p className={`text-sm font-semibold ${selectedType?.id === type.id ? 'text-blue-900' : 'text-gray-900'}`}>
                           {type.min_amount} - {type.max_amount || '∞'}
                         </p>
-                        <p className="text-xs text-gray-500 mt-1">{type.currency_code}</p>
+                        <p className={`text-xs mt-1 ${selectedType?.id === type.id ? 'text-blue-600' : 'text-gray-500'}`}>
+                          {type.currency_code}
+                        </p>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-
-              {/* Amount Input */}
-              {selectedType && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {t('remittances.wizard.amountToSend')} ({selectedType.currency_code}) *
-                  </label>
-                  <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
-                      placeholder={`Ej: ${selectedType.min_amount}`}
-                    />
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    {t('remittances.wizard.minAmount')}: {selectedType.min_amount} {selectedType.currency_code}
-                    {selectedType.max_amount && ` • ${t('remittances.wizard.maxAmount')}: ${selectedType.max_amount} ${selectedType.currency_code}`}
-                  </p>
-                </div>
-              )}
             </div>
 
             <div className="flex justify-end">

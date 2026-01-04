@@ -52,16 +52,17 @@ serve(async (req: Request) => {
       return json({ message: "No se pudo validar la sesión. Vuelve a iniciar sesión." }, 401, corsHeaders);
     }
 
-    const isAdmin = await checkIsAdmin(supabase, user.id);
-    if (!isAdmin) {
-      return json({ message: "Solo los administradores pueden gestionar estas configuraciones." }, 403, corsHeaders);
-    }
-
+    // GET: Todos los usuarios autenticados pueden leer las configuraciones
     if (req.method === "GET") {
       return await handleGetSettings(supabase, corsHeaders);
     }
 
+    // PUT: Solo admins pueden modificar las configuraciones
     if (req.method === "PUT") {
+      const isAdmin = await checkIsAdmin(supabase, user.id);
+      if (!isAdmin) {
+        return json({ message: "Solo los administradores pueden modificar estas configuraciones." }, 403, corsHeaders);
+      }
       const payload = await req.json().catch(() => null);
       return await handleUpdateSettings(supabase, payload, corsHeaders);
     }
