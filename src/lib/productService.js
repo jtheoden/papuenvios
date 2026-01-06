@@ -621,7 +621,7 @@ export const getCategories = async () => {
  * @throws {AppError} If validation fails or creation fails
  * @returns {Promise<Object>} Created category
  */
-export const createCategory = async (categoryData) => {
+export const createCategory = async (categoryData, performedBy = 'system') => {
   try {
     if (!categoryData.es || !categoryData.en) {
       throw createValidationError(
@@ -650,6 +650,25 @@ export const createCategory = async (categoryData) => {
       throw appError;
     }
 
+    // Log the category creation
+    try {
+      await logActivity({
+        action: 'category_created',
+        entityType: 'category',
+        entityId: data?.id,
+        performedBy,
+        description: `Categoría creada - ${categoryData.es}`,
+        metadata: {
+          categoryId: data?.id,
+          categoryName: categoryData.es,
+          categoryNameEn: categoryData.en,
+          categorySlug: data?.slug
+        }
+      });
+    } catch (logErr) {
+      console.warn('[createCategory] Failed to log category creation:', logErr);
+    }
+
     return data;
   } catch (error) {
     if (error.code) throw error; // Already an AppError
@@ -665,7 +684,7 @@ export const createCategory = async (categoryData) => {
  * @throws {AppError} If category not found or update fails
  * @returns {Promise<Object>} Updated category
  */
-export const updateCategory = async (categoryId, categoryData) => {
+export const updateCategory = async (categoryId, categoryData, performedBy = 'system') => {
   try {
     if (!categoryId) {
       throw createValidationError({ categoryId: 'Category ID is required' });
@@ -701,6 +720,25 @@ export const updateCategory = async (categoryId, categoryData) => {
       throw appError;
     }
 
+    // Log the category update
+    try {
+      await logActivity({
+        action: 'category_updated',
+        entityType: 'category',
+        entityId: categoryId,
+        performedBy,
+        description: `Categoría actualizada - ${categoryData.es}`,
+        metadata: {
+          categoryId,
+          categoryName: categoryData.es,
+          categoryNameEn: categoryData.en,
+          categorySlug: data?.slug
+        }
+      });
+    } catch (logErr) {
+      console.warn('[updateCategory] Failed to log category update:', logErr);
+    }
+
     return data;
   } catch (error) {
     if (error.code) throw error; // Already an AppError
@@ -710,20 +748,71 @@ export const updateCategory = async (categoryId, categoryData) => {
 };
 
 /**
- * Delete a product category (soft delete by setting is_active to false)
+ * Delete a product category (hard delete - removes from database)
+ * Validates no products are using this category before deletion
  * @param {string} categoryId - Category ID to delete
- * @throws {AppError} If deletion fails
- * @returns {Promise<boolean>} True if deletion successful
+ * @param {string} performedBy - Email or ID of user performing the action (optional)
+ * @throws {AppError} If deletion fails or products exist with this category
+ * @returns {Promise<Object>} Result with deleted category info
  */
-export const deleteCategory = async (categoryId) => {
+export const deleteCategory = async (categoryId, performedBy = 'system') => {
   try {
     if (!categoryId) {
       throw createValidationError({ categoryId: 'Category ID is required' });
     }
 
+    // Fetch category info before deletion for logging
+    const { data: category, error: fetchCategoryError } = await supabase
+      .from('product_categories')
+      .select('id, name_es, name_en, slug')
+      .eq('id', categoryId)
+      .single();
+
+    if (fetchCategoryError) {
+      const appError = parseSupabaseError(fetchCategoryError);
+      logError(appError, { operation: 'deleteCategory - fetch', categoryId });
+      throw appError;
+    }
+
+    const categoryName = category?.name_es || category?.name_en || categoryId;
+
+    // Check if any products are using this category
+    const { data: productsWithCategory, error: checkProductsError } = await supabase
+      .from('products')
+      .select('id, name_es, name_en')
+      .eq('category_id', categoryId);
+
+    if (checkProductsError) {
+      console.warn('[deleteCategory] Error checking products:', checkProductsError);
+    }
+
+    // If products exist with this category, throw error with product names
+    if (productsWithCategory && productsWithCategory.length > 0) {
+      const productNames = productsWithCategory
+        .map(p => p.name_es || p.name_en || p.id)
+        .slice(0, 10); // Limit to first 10 for readability
+
+      const moreCount = productsWithCategory.length > 10
+        ? ` y ${productsWithCategory.length - 10} más`
+        : '';
+
+      throw new AppError(
+        `No se puede eliminar la categoría "${categoryName}" porque tiene ${productsWithCategory.length} producto(s) asociado(s): ${productNames.join(', ')}${moreCount}`,
+        ERROR_CODES.CONFLICT,
+        409,
+        {
+          categoryId,
+          categoryName,
+          productCount: productsWithCategory.length,
+          productNames: productNames
+        }
+      );
+    }
+
+    // No products - safe to delete
     const { error } = await supabase
       .from('product_categories')
-      .update({ is_active: false })
+      .delete()
       .eq('id', categoryId);
 
     if (error) {
@@ -732,7 +821,32 @@ export const deleteCategory = async (categoryId) => {
       throw appError;
     }
 
-    return true;
+    // Log the category deletion
+    try {
+      await logActivity({
+        action: 'category_deleted',
+        entityType: 'category',
+        entityId: categoryId,
+        performedBy,
+        description: `Categoría eliminada - ${categoryName}`,
+        metadata: {
+          categoryId,
+          categoryName,
+          categorySlug: category?.slug,
+          deletedAt: new Date().toISOString()
+        }
+      });
+    } catch (logErr) {
+      console.warn('[deleteCategory] Failed to log category deletion:', logErr);
+    }
+
+    return {
+      success: true,
+      deletedCategory: {
+        id: categoryId,
+        name: categoryName
+      }
+    };
   } catch (error) {
     if (error.code) throw error; // Already an AppError
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'deleteCategory', categoryId });

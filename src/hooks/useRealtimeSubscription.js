@@ -261,3 +261,18 @@ export const useRealtimeCombos = ({ onUpdate, enabled = true }) => {
     onDelete: onUpdate
   });
 };
+
+/**
+ * useRealtimeCategories Hook
+ * Specialized hook for real-time product category updates
+ */
+export const useRealtimeCategories = ({ onUpdate, enabled = true }) => {
+  return useRealtimeSubscription({
+    table: 'product_categories',
+    event: '*',
+    enabled,
+    onInsert: onUpdate,
+    onUpdate: onUpdate,
+    onDelete: onUpdate
+  });
+};
