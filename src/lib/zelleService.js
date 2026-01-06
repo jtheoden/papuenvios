@@ -815,18 +815,91 @@ export const updateZelleAccount = async (accountId, updates) => {
 };
 
 /**
+ * Check Zelle account dependencies before deletion
+ * Verifies if there are active transactions, orders, or remittances using this account
+ *
+ * @param {string} accountId - ID of the Zelle account
+ * @returns {Promise<object>} Dependency check result
+ */
+const checkZelleAccountDependencies = async (accountId) => {
+  const dependencies = {
+    hasPendingTransactions: false,
+    hasHistoricalTransactions: false,
+    hasActiveOrders: false,
+    hasActiveRemittances: false,
+    pendingTransactionCount: 0,
+    historicalTransactionCount: 0,
+    activeOrderCount: 0,
+    activeRemittanceCount: 0
+  };
+
+  // Check pending transactions in zelle_transaction_history
+  const { data: pendingTx, error: pendingTxError } = await supabase
+    .from('zelle_transaction_history')
+    .select('id', { count: 'exact', head: true })
+    .eq('zelle_account_id', accountId)
+    .eq('status', 'pending');
+
+  if (!pendingTxError && pendingTx !== null) {
+    dependencies.pendingTransactionCount = pendingTx;
+    dependencies.hasPendingTransactions = pendingTx > 0;
+  }
+
+  // Check all historical transactions
+  const { count: historicalCount, error: histError } = await supabase
+    .from('zelle_transaction_history')
+    .select('id', { count: 'exact', head: true })
+    .eq('zelle_account_id', accountId);
+
+  if (!histError && historicalCount !== null) {
+    dependencies.historicalTransactionCount = historicalCount;
+    dependencies.hasHistoricalTransactions = historicalCount > 0;
+  }
+
+  // Check active orders using this Zelle account
+  const { count: orderCount, error: orderError } = await supabase
+    .from('orders')
+    .select('id', { count: 'exact', head: true })
+    .eq('zelle_account_id', accountId)
+    .not('status', 'in', '("completed","cancelled")');
+
+  if (!orderError && orderCount !== null) {
+    dependencies.activeOrderCount = orderCount;
+    dependencies.hasActiveOrders = orderCount > 0;
+  }
+
+  // Check active remittances using this Zelle account
+  const { count: remittanceCount, error: remittanceError } = await supabase
+    .from('remittances')
+    .select('id', { count: 'exact', head: true })
+    .eq('zelle_account_id', accountId)
+    .not('status', 'in', '("completed","cancelled","delivered")');
+
+  if (!remittanceError && remittanceCount !== null) {
+    dependencies.activeRemittanceCount = remittanceCount;
+    dependencies.hasActiveRemittances = remittanceCount > 0;
+  }
+
+  return dependencies;
+};
+
+/**
  * Eliminar cuenta Zelle (Admin only)
- * IMPORTANT: Currently performs hard delete. Consider soft delete for audit trail.
- * If business logic requires audit trail of deleted accounts, implement soft delete pattern.
+ * Implements intelligent deletion strategy:
+ * - If there are pending transactions/orders/remittances: Reject deletion
+ * - If there is historical data: Soft delete (is_active = false)
+ * - If no dependencies: Hard delete
  *
  * @param {string} accountId - ID of the account to delete
- * @returns {Promise<void>} Void on success
- * @throws {AppError} If unauthorized, validation fails, or database error
+ * @param {boolean} [forceDeactivate=false] - Force soft delete even with active dependencies
+ * @returns {Promise<{deleted: boolean, deactivated: boolean, message: string}>} Result
+ * @throws {AppError} If unauthorized, validation fails, or has active dependencies
  *
  * @example
- * await deleteZelleAccount('acc-123');
+ * const result = await deleteZelleAccount('acc-123');
+ * // result: { deleted: true, deactivated: false, message: 'Account deleted' }
  */
-export const deleteZelleAccount = async (accountId) => {
+export const deleteZelleAccount = async (accountId, forceDeactivate = false) => {
   try {
     if (!accountId || typeof accountId !== 'string') {
       throw createValidationError({ accountId: 'Must be a non-empty string' }, 'Invalid account ID');
@@ -842,7 +915,46 @@ export const deleteZelleAccount = async (accountId) => {
       throw createPermissionError('access this resource', 'authenticated user');
     }
 
-    // Delete account (hard delete - consider soft delete for audit trail)
+    // Check dependencies
+    const deps = await checkZelleAccountDependencies(accountId);
+
+    // If there are active orders or remittances, block deletion
+    if (deps.hasActiveOrders || deps.hasActiveRemittances || deps.hasPendingTransactions) {
+      const activeItems = [];
+      if (deps.hasPendingTransactions) activeItems.push(`${deps.pendingTransactionCount} pending transaction(s)`);
+      if (deps.hasActiveOrders) activeItems.push(`${deps.activeOrderCount} active order(s)`);
+      if (deps.hasActiveRemittances) activeItems.push(`${deps.activeRemittanceCount} active remittance(s)`);
+
+      if (!forceDeactivate) {
+        throw new AppError(
+          `Cannot delete account with active dependencies: ${activeItems.join(', ')}. Please complete or cancel these first, or deactivate the account instead.`,
+          ERROR_CODES.CONFLICT,
+          409
+        );
+      }
+    }
+
+    // If there is historical data, do soft delete
+    if (deps.hasHistoricalTransactions || forceDeactivate) {
+      const { error: updateError } = await supabase
+        .from('zelle_accounts')
+        .update({ is_active: false })
+        .eq('id', accountId);
+
+      if (updateError) {
+        throw parseSupabaseError(updateError);
+      }
+
+      console.log(`[deleteZelleAccount] Account ${accountId} deactivated (soft delete) - has ${deps.historicalTransactionCount} historical transactions`);
+
+      return {
+        deleted: false,
+        deactivated: true,
+        message: `Account deactivated. Historical data preserved (${deps.historicalTransactionCount} transactions).`
+      };
+    }
+
+    // No dependencies - safe to hard delete
     const { error } = await supabase
       .from('zelle_accounts')
       .delete()
@@ -851,6 +963,14 @@ export const deleteZelleAccount = async (accountId) => {
     if (error) {
       throw parseSupabaseError(error);
     }
+
+    console.log(`[deleteZelleAccount] Account ${accountId} permanently deleted (no dependencies)`);
+
+    return {
+      deleted: true,
+      deactivated: false,
+      message: 'Account permanently deleted.'
+    };
   } catch (error) {
     if (error instanceof AppError) {
       logError(error, { operation: 'deleteZelleAccount', accountId });
