@@ -1105,8 +1105,10 @@ export const validatePayment = async (orderId, adminId) => {
       action: 'payment_validated',
       entityId: orderId,
       performedBy: adminEmail,
-      description: `Pago validado y orden movida a procesamiento`,
+      description: `Pago validado - Orden ${updatedOrder?.order_number || orderId}`,
       metadata: buildOrderPaymentMetadata(updatedOrder, {
+        orderId,
+        orderNumber: updatedOrder?.order_number,
         validatedBy: adminEmail,
         validatedAt: updatedOrder?.validated_at
       })
@@ -1361,8 +1363,10 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
       action: 'payment_rejected',
       entityId: orderId,
       performedBy: adminEmail,
-      description: 'Pago rechazado por administrador',
+      description: `Pago rechazado - Orden ${updatedOrder?.order_number || orderId}`,
       metadata: buildOrderPaymentMetadata(updatedOrder, {
+        orderId,
+        orderNumber: updatedOrder?.order_number,
         rejectionReason,
         validatedBy: adminEmail,
         validatedAt: updatedOrder?.validated_at
@@ -1489,8 +1493,8 @@ export const updateOrderStatus = async (orderId, newStatus, adminId, notes = '')
       action: 'order_status_updated',
       entityId: orderId,
       performedBy: adminEmail,
-      description: `Estado de orden cambiado a ${newStatus}`,
-      metadata: { previousStatus: order.status, newStatus, notes }
+      description: `Estado cambiado a ${newStatus} - Orden ${updatedOrder?.order_number || orderId}`,
+      metadata: { orderId, orderNumber: updatedOrder?.order_number, previousStatus: order.status, newStatus, notes }
     });
 
     return updatedOrder;
@@ -1612,10 +1616,10 @@ export const uploadPaymentProof = async (file, orderId, userId) => {
       action: 'payment_proof_uploaded',
       entityId: orderId,
       performedBy: userEmail,
-      description: `Comprobante de pago subido`,
+      description: `Comprobante subido - Orden ${order?.order_number || orderId}`,
       metadata: buildOrderPaymentMetadata(
         { ...order, payment_status: PAYMENT_STATUS.PROOF_UPLOADED },
-        { paymentProofUrl: urlData.publicUrl }
+        { orderId, orderNumber: order?.order_number, paymentProofUrl: urlData.publicUrl }
       )
     });
 
@@ -1885,8 +1889,8 @@ export const markOrderAsDelivered = async (orderId, proofFile, adminId) => {
       action: 'order_delivered',
       entityId: orderId,
       performedBy: adminEmail,
-      description: 'Orden marcada como entregada con evidencia',
-      metadata: { deliveryProofUrl: urlData.publicUrl }
+      description: `Entregada con evidencia - Orden ${updatedOrder?.order_number || orderId}`,
+      metadata: { orderId, orderNumber: updatedOrder?.order_number, deliveryProofUrl: urlData.publicUrl }
     });
 
     return updatedOrder;
@@ -1962,8 +1966,8 @@ export const completeOrder = async (orderId, notes = '') => {
       action: 'order_completed',
       entityId: orderId,
       performedBy: 'system',
-      description: 'Orden marcada como completada',
-      metadata: { notes }
+      description: `Completada - Orden ${updatedOrder?.order_number || orderId}`,
+      metadata: { orderId, orderNumber: updatedOrder?.order_number, notes }
     });
 
     return updatedOrder;
@@ -2083,8 +2087,8 @@ export const cancelOrder = async (orderId, adminId, reason) => {
       action: 'order_cancelled',
       entityId: orderId,
       performedBy: adminEmail,
-      description: `Orden cancelada por administrador (${reason})`,
-      metadata: { reason }
+      description: `Cancelada por admin - Orden ${updatedOrder?.order_number || orderId}`,
+      metadata: { orderId, orderNumber: updatedOrder?.order_number, reason }
     });
 
     return updatedOrder;
