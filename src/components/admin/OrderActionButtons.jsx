@@ -135,8 +135,8 @@ const OrderActionButtons = ({
       {/* Primary Action Button - Status dependent */}
       {primaryAction && renderButton(primaryAction)}
 
-      {/* Cancel Button - Always available except when completed or cancelled */}
-      {order.status !== 'completed' && order.status !== 'cancelled' && renderButton({
+      {/* Cancel Button - Only available for pending or processing orders */}
+      {(order.status === 'pending' || order.status === 'processing') && renderButton({
         icon: <Ban className="h-4 w-4" />,
         label: t('common.cancel'),
         onClick: () => onCancelOrder(order),
