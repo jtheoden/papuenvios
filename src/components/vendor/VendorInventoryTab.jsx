@@ -11,6 +11,7 @@ import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import { getTableColumns, getModalColumns } from './ProductTableConfig';
 import { logActivity } from '@/lib/activityLogger';
+import { useRealtimeProducts } from '@/hooks/useRealtimeSubscription';
 
 /**
  * Vendor Inventory Tab Component
@@ -36,6 +37,17 @@ const VendorInventoryTab = ({
   const [processingProductId, setProcessingProductId] = useState(null);
   const [deletingProductId, setDeletingProductId] = useState(null);
   const [productToDelete, setProductToDelete] = useState(null);
+
+  // Real-time subscription for product updates
+  useRealtimeProducts({
+    enabled: true,
+    onUpdate: () => {
+      console.log('[VendorInventoryTab] Products realtime update detected');
+      if (onProductsRefresh) {
+        onProductsRefresh(true);
+      }
+    }
+  });
 
   const logProductActivity = async (action, productId, description, metadata = {}) => {
     try {
@@ -315,18 +327,25 @@ const VendorInventoryTab = ({
     console.log('[handleDeleteProduct] START - Input:', { productId: productToDelete.id });
     setDeletingProductId(productToDelete.id);
     try {
-      await deleteProduct(productToDelete.id);
-      await logProductActivity(
-        'product_deleted',
-        productToDelete.id,
-        `Product ${productToDelete.name_es || productToDelete.name_en || productToDelete.id} deleted from inventory`,
-        { name_es: productToDelete.name_es, name_en: productToDelete.name_en }
-      );
+      // Pass user info for activity logging
+      const result = await deleteProduct(productToDelete.id, user?.email || user?.id || 'anonymous');
+
+      // Build toast description with deactivated combos info
+      const productName = productToDelete.name_es || productToDelete.name_en || productToDelete.id;
+      let toastDescription = language === 'es'
+        ? `${productName} eliminado`
+        : `${productName} deleted`;
+
+      if (result?.deactivatedCombos?.length > 0) {
+        const comboNames = result.deactivatedCombos.map(c => c.name).join(', ');
+        toastDescription += language === 'es'
+          ? `. Combos desactivados: ${comboNames}`
+          : `. Deactivated combos: ${comboNames}`;
+      }
+
       toast({
         title: t('vendor.inventory.productDeleted'),
-        description: language === 'es'
-          ? `${productToDelete.name_es || productToDelete.name_en || productToDelete.id} eliminado`
-          : `${productToDelete.name_en || productToDelete.name_es || productToDelete.id} deleted`
+        description: toastDescription
       });
       await onProductsRefresh(true);
       setProductToDelete(null);
