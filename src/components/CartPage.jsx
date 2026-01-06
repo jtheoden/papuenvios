@@ -142,13 +142,13 @@ const CartPage = ({ onNavigate }) => {
     }
   }, [recipientDetails.province]);
 
-  // Calculate shipping when province changes or cart changes
+  // Calculate shipping when province/municipality changes or cart changes
   useEffect(() => {
     if (recipientDetails.province) {
-      updateShippingCost(recipientDetails.province);
+      updateShippingCost(recipientDetails.province, recipientDetails.municipality);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recipientDetails.province, subtotal]);
+  }, [recipientDetails.province, recipientDetails.municipality, subtotal]);
 
   // Convert amounts when currency or totals change
   useEffect(() => {
@@ -218,20 +218,21 @@ const CartPage = ({ onNavigate }) => {
     }
   };
 
-  const updateShippingCost = async (provinceName) => {
+  const updateShippingCost = async (provinceName, municipalityName = null) => {
     if (!provinceName) {
       console.log('[CartPage] No province provided for shipping calculation');
       setShippingCost(0);
       return;
     }
 
-    console.log('[CartPage] Calculating shipping for province:', provinceName, 'subtotal:', subtotal);
+    console.log('[CartPage] Calculating shipping for:', { provinceName, municipalityName, subtotal });
     try {
-      const result = await calculateShippingCost(provinceName, subtotal);
+      // Pass municipality for priority-based cost lookup
+      const result = await calculateShippingCost(provinceName, subtotal, municipalityName);
       console.log('[CartPage] Shipping calculation result:', result);
       const cost = typeof result?.cost === 'number' ? result.cost : 0;
       setShippingCost(cost);
-      console.log('[CartPage] Shipping cost set to:', cost);
+      console.log('[CartPage] Shipping cost set to:', cost, 'source:', result?.source);
     } catch (error) {
       console.error('[CartPage] Error calculating shipping:', error);
       setShippingCost(0);
