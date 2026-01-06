@@ -265,18 +265,41 @@ const SettingsZelleTab = () => {
     if (!selectedAccount) return;
     setActionLoading('delete');
     try {
-      await zelleService.deleteZelleAccount(selectedAccount.id);
-      toast({
-        title: t('zelle.accountDeleted') || 'Success',
-        description: language === 'es' ? 'Cuenta eliminada' : 'Account deleted'
-      });
+      const result = await zelleService.deleteZelleAccount(selectedAccount.id);
+
+      if (result.deactivated) {
+        // Soft delete - account was deactivated
+        toast({
+          title: language === 'es' ? 'Cuenta Desactivada' : 'Account Deactivated',
+          description: language === 'es'
+            ? `La cuenta fue desactivada. Se preservó el historial (${result.message})`
+            : result.message
+        });
+      } else {
+        // Hard delete - account was permanently removed
+        toast({
+          title: t('zelle.accountDeleted') || 'Success',
+          description: language === 'es' ? 'Cuenta eliminada permanentemente' : 'Account permanently deleted'
+        });
+      }
+
       setShowDeleteModal(false);
       loadAccounts();
     } catch (error) {
       console.error('Error deleting account:', error);
+
+      // Check if it's a dependency error (409 Conflict)
+      const isDependencyError = error.statusCode === 409 || error.message?.includes('active dependencies');
+
       toast({
-        title: t('zelle.errorDeletingAccount') || 'Error',
-        description: error.message,
+        title: isDependencyError
+          ? (language === 'es' ? 'No se puede eliminar' : 'Cannot Delete')
+          : (t('zelle.errorDeletingAccount') || 'Error'),
+        description: isDependencyError
+          ? (language === 'es'
+              ? 'Esta cuenta tiene transacciones, órdenes o remesas activas. Complete o cancele estas operaciones primero, o desactive la cuenta desde el toggle de estado.'
+              : error.message)
+          : error.message,
         variant: 'destructive'
       });
     } finally {
@@ -562,12 +585,45 @@ const SettingsZelleTab = () => {
             animate={{ opacity: 1, scale: 1 }}
             className="bg-white rounded-lg max-w-md w-full p-6"
           >
-            <h2 className="text-lg font-semibold mb-2">{t('zelle.confirmDelete')}</h2>
-            <p className="text-gray-600 mb-6">
-              {language === 'es'
-                ? `¿Estás seguro de que deseas eliminar la cuenta "${selectedAccount.account_name}"? Esta acción no se puede deshacer.`
-                : `Are you sure you want to delete the account "${selectedAccount.account_name}"? This action cannot be undone.`}
-            </p>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-red-100 rounded-full">
+                <AlertCircle className="h-6 w-6 text-red-600" />
+              </div>
+              <h2 className="text-lg font-semibold">{t('zelle.confirmDelete')}</h2>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              <p className="text-gray-700">
+                {language === 'es'
+                  ? `¿Estás seguro de que deseas eliminar la cuenta "${selectedAccount.account_name}"?`
+                  : `Are you sure you want to delete the account "${selectedAccount.account_name}"?`}
+              </p>
+
+              {/* Warning box */}
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-sm font-medium text-amber-800 mb-2">
+                  {language === 'es' ? '⚠️ Importante:' : '⚠️ Important:'}
+                </p>
+                <ul className="text-sm text-amber-700 space-y-1 list-disc list-inside">
+                  <li>
+                    {language === 'es'
+                      ? 'Si hay órdenes o remesas activas usando esta cuenta, la eliminación será bloqueada.'
+                      : 'If there are active orders or remittances using this account, deletion will be blocked.'}
+                  </li>
+                  <li>
+                    {language === 'es'
+                      ? 'Si hay historial de transacciones, la cuenta será desactivada (no eliminada) para preservar los registros.'
+                      : 'If there is transaction history, the account will be deactivated (not deleted) to preserve records.'}
+                  </li>
+                  <li>
+                    {language === 'es'
+                      ? 'Solo se elimina permanentemente si no hay ninguna dependencia.'
+                      : 'Only permanently deleted if there are no dependencies.'}
+                  </li>
+                </ul>
+              </div>
+            </div>
+
             <div className="flex gap-3 justify-end">
               <Button variant="outline" onClick={() => setShowDeleteModal(false)}>
                 {t('common.cancel')}
