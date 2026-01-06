@@ -391,7 +391,7 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
             {/* Price */}
             <div className="glass-effect p-6 rounded-xl">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-sm text-gray-600">{language === 'es' ? 'Mostrar en:' : 'Display in:'}</span>
+                <span className="text-sm text-gray-600">{t('products.detail.displayIn')}</span>
                 <CurrencySelector
                   selectedCurrency={selectedCurrency}
                   onCurrencyChange={setSelectedCurrency}
@@ -451,13 +451,13 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
                 {/* Price Comparison for Customers */}
                 <div className="glass-effect p-6 rounded-xl bg-gradient-to-r from-purple-50 to-pink-50">
                   <h3 className="font-semibold text-lg mb-3" >💰
-                   <span style={getHeadingStyle(visualSettings)}> {language === 'es' ? '¡Ahorra con este combo!' : 'Save with this combo!'}</span>
+                   <span style={getHeadingStyle(visualSettings)}> {t('products.detail.saveWithCombo')}</span>
                   </h3>
                   <div className="space-y-3">
                     {/* Individual products breakdown with individual profit margins */}
                     <div className="bg-white bg-opacity-50 p-3 rounded-lg space-y-1">
                       <p className="text-sm font-semibold text-gray-700 mb-2">
-                        {language === 'es' ? 'Comprando por separado:' : 'Buying separately:'}
+                        {t('products.detail.buyingSeparately')}
                       </p>
                       {(currentItem.products || []).map(productId => {
                         const product = products.find(p => p.id === productId);
@@ -486,7 +486,7 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
                         );
                       })}
                       <div className="flex justify-between pt-2 border-t border-gray-300">
-                        <span className="font-semibold text-gray-700">{language === 'es' ? 'Total:' : 'Total:'}</span>
+                        <span className="font-semibold text-gray-700">{t('products.detail.total')}</span>
                         <span className="text-lg font-semibold line-through text-gray-500">
                           {currencySymbol}{(() => {
                             let total = 0;
@@ -511,7 +511,7 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
 
                     <div className="flex items-center justify-between pt-2 border-t border-purple-200">
                       <span className="text-lg font-bold" style={getHeadingStyle(visualSettings)}>
-                        {language === 'es' ? 'Precio del combo:' : 'Combo price:'}
+                        {t('products.detail.comboPrice')}
                       </span>
                       <span className="text-2xl font-bold" style={getHeadingStyle(visualSettings)}>
                         {currencySymbol}{price}
@@ -519,7 +519,7 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
                     </div>
                     <div className="text-center pt-2">
                       <span className="inline-block bg-green-100 px-4 py-2 rounded-full text-sm font-semibold" style={getHeadingStyle(visualSettings)}>
-                        {language === 'es' ? '¡Ahorras ' : 'You save '}
+                        {t('products.detail.youSave')}
                         {currencySymbol}{(() => {
                           // Calculate total with individual product margins
                           let totalIndividual = 0;

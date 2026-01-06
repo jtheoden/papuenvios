@@ -25,13 +25,16 @@ import RecipientSelector from '@/components/RecipientSelector';
 import ZelleAccountSelector from '@/components/ZelleAccountSelector';
 import FileUploadWithPreview from '@/components/FileUploadWithPreview';
 import CurrencySelector from '@/components/CurrencySelector';
+import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import { useUserDiscounts } from '@/hooks/useUserDiscounts';
+import { useModal } from '@/contexts/ModalContext';
 
 const CartPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { cart, updateCartQuantity, removeFromCart, clearCart, financialSettings, zelleAccounts, visualSettings, businessInfo, notificationSettings } = useBusiness();
   const { isAuthenticated, user } = useAuth();
   const { selectedCurrency, setSelectedCurrency, currencies, currencyCode, currencySymbol, convertAmount } = useCurrency();
+  const { showModal } = useModal();
 
   const recipientSelectorRef = useRef();
 
@@ -56,6 +59,10 @@ const CartPage = ({ onNavigate }) => {
   const [convertedDiscountedSubtotal, setConvertedDiscountedSubtotal] = useState(null);
   const [convertedShipping, setConvertedShipping] = useState(null);
   const [convertedTotal, setConvertedTotal] = useState(null);
+
+  // Confirmation modal state
+  const [showConfirmationModal, setShowConfirmationModal] = useState(false);
+  const [confirmedOrderInfo, setConfirmedOrderInfo] = useState(null);
 
   const { categoryInfo, categoryDiscountPercent } = useUserDiscounts();
   const userCategory = categoryInfo.category || 'regular';
@@ -318,6 +325,40 @@ const CartPage = ({ onNavigate }) => {
     setView('payment');
   };
 
+  // Translate coupon error codes to user-friendly messages
+  const getCouponErrorMessage = (validation) => {
+    const { errorCode, requiredAmount, currentAmount, usage } = validation;
+
+    switch (errorCode) {
+      case 'NOT_FOUND':
+        return language === 'es'
+          ? 'Código de cupón no encontrado o inactivo'
+          : 'Coupon code not found or inactive';
+      case 'EXPIRED':
+        return language === 'es'
+          ? 'Este cupón ha expirado'
+          : 'This coupon has expired';
+      case 'MIN_AMOUNT':
+        return language === 'es'
+          ? `Compra mínima requerida: ${currencySymbol}${requiredAmount?.toFixed(2)}. Tu subtotal actual: ${currencySymbol}${currentAmount?.toFixed(2)}`
+          : `Minimum purchase required: ${currencySymbol}${requiredAmount?.toFixed(2)}. Your current subtotal: ${currencySymbol}${currentAmount?.toFixed(2)}`;
+      case 'GLOBAL_LIMIT':
+        return language === 'es'
+          ? 'Este cupón ya alcanzó su límite de usos'
+          : 'This coupon has reached its usage limit';
+      case 'USER_LIMIT':
+        return language === 'es'
+          ? `Ya usaste este cupón ${usage?.userCount || 0} veces (máximo: ${usage?.userLimit || 1})`
+          : `You have already used this coupon ${usage?.userCount || 0} times (limit: ${usage?.userLimit || 1})`;
+      case 'VALIDATION_ERROR':
+        return language === 'es'
+          ? 'Error al validar el cupón. Por favor intenta de nuevo.'
+          : 'Error validating coupon. Please try again.';
+      default:
+        return validation.reason || t('cart.coupon.invalid');
+    }
+  };
+
   // Apply coupon code
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) {
@@ -340,11 +381,12 @@ const CartPage = ({ onNavigate }) => {
           description: `Coupon ${couponCode} rejected`,
           metadata: {
             reason: validation.reason,
+            errorCode: validation.errorCode,
             subtotal,
             usage: validation.usage || null
           }
         });
-        setCouponError(validation.reason || t('cart.coupon.invalid'));
+        setCouponError(getCouponErrorMessage(validation));
         setAppliedOffer(null);
         setValidatingCoupon(false);
         return;
@@ -484,6 +526,38 @@ const CartPage = ({ onNavigate }) => {
       });
     } finally {
       setUploadingProof(false);
+    }
+  };
+
+  // Pre-payment confirmation modal
+  const handlePrePaymentConfirmation = async () => {
+    if (!paymentProof) {
+      toast({
+        title: language === 'es' ? 'Comprobante requerido' : 'Proof required',
+        description: language === 'es'
+          ? 'Por favor sube el comprobante de pago'
+          : 'Please upload payment proof',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const summaryText = language === 'es'
+      ? `Destinatario: ${recipientDetails.fullName}\nTotal: ${currencySymbol}${convertedTotal?.toFixed(2) || totalAmount.toFixed(2)} ${currencyCode}\nProductos: ${cart.length} artículo(s)`
+      : `Recipient: ${recipientDetails.fullName}\nTotal: ${currencySymbol}${convertedTotal?.toFixed(2) || totalAmount.toFixed(2)} ${currencyCode}\nProducts: ${cart.length} item(s)`;
+
+    const confirmed = await showModal({
+      type: 'confirm',
+      title: language === 'es' ? '¿Confirmar pedido?' : 'Confirm order?',
+      message: language === 'es'
+        ? `¿Estás seguro de que deseas confirmar este pedido?\n\n${summaryText}\n\nUna vez confirmado, procesaremos tu pedido.`
+        : `Are you sure you want to confirm this order?\n\n${summaryText}\n\nOnce confirmed, we will process your order.`,
+      confirmText: language === 'es' ? 'Sí, confirmar' : 'Yes, confirm',
+      cancelText: language === 'es' ? 'Cancelar' : 'Cancel'
+    });
+
+    if (confirmed) {
+      handleConfirmPayment();
     }
   };
 
@@ -661,24 +735,7 @@ const CartPage = ({ onNavigate }) => {
         console.warn('notify-order function error (non-blocking):', fnErr?.message || fnErr);
       }
 
-      // Success message with discount info if applicable
-      let descriptionMsg;
-      if (appliedOffer?.id) {
-        descriptionMsg = language === 'es'
-          ? `Tu pedido ${createdOrder.order_number} ha sido creado con descuento por cupón. Recibirás una notificación cuando sea validado.`
-          : `Your order ${createdOrder.order_number} has been created with coupon discount. You'll receive a notification when it's validated.`;
-      } else {
-        descriptionMsg = language === 'es'
-          ? `Tu pedido ${createdOrder.order_number} ha sido creado. Recibirás una notificación cuando sea validado.`
-          : `Your order ${createdOrder.order_number} has been created. You'll receive a notification when it's validated.`;
-      }
-
-      toast({
-        title: language === 'es' ? '✅ Pedido confirmado' : '✅ Order confirmed',
-        description: descriptionMsg
-      });
-
-      // Clear cart and navigate
+      // Log activity
       await logActivity({
         action: 'order_submitted',
         entityType: 'order',
@@ -695,8 +752,15 @@ const CartPage = ({ onNavigate }) => {
         }
       });
 
-      clearCart();
-      onNavigate('user-panel');
+      // Store order info and show confirmation modal
+      setConfirmedOrderInfo({
+        orderNumber: createdOrder.order_number,
+        total: totalAmount,
+        currency: currency.code || 'USD',
+        recipientName: recipientDetails.fullName,
+        itemCount: cart.length
+      });
+      setShowConfirmationModal(true);
 
     } catch (error) {
       console.error('Error confirming payment:', error);
@@ -1074,7 +1138,7 @@ const CartPage = ({ onNavigate }) => {
               {language === 'es' ? 'Atrás' : 'Back'}
             </Button>
             <Button
-              onClick={handleConfirmPayment}
+              onClick={handlePrePaymentConfirmation}
               className="flex-1"
               size="lg"
               style={getPrimaryButtonStyle(visualSettings)}
@@ -1273,6 +1337,28 @@ const CartPage = ({ onNavigate }) => {
           </div>
         )}
       </div>
+
+      {/* Order Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showConfirmationModal}
+        onClose={() => {
+          setShowConfirmationModal(false);
+          clearCart();
+          onNavigate('user-panel');
+        }}
+        onViewOrders={() => {
+          setShowConfirmationModal(false);
+          clearCart();
+          onNavigate('user-panel');
+        }}
+        orderNumber={confirmedOrderInfo?.orderNumber}
+        orderType="order"
+        total={confirmedOrderInfo?.total}
+        currency={confirmedOrderInfo?.currency}
+        recipientName={confirmedOrderInfo?.recipientName}
+        itemCount={confirmedOrderInfo?.itemCount}
+        estimatedDelivery={language === 'es' ? '24-72 horas' : '24-72 hours'}
+      />
     </div>
   );
 };

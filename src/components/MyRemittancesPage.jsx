@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   Calendar, DollarSign, User, FileText, AlertCircle, CheckCircle,
@@ -22,9 +22,12 @@ import { useModal } from '@/contexts/ModalContext';
 import FileUploadWithPreview from '@/components/FileUploadWithPreview';
 import TooltipButton from './TooltipButton';
 import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
+import SkeletonCard from '@/components/ui/SkeletonCard';
+import SearchFilterBar from '@/components/ui/SearchFilterBar';
+import RemittanceTimeline from '@/components/ui/RemittanceTimeline';
 
 const MyRemittancesPage = ({ onNavigate }) => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user, isAdmin, isSuperAdmin } = useAuth();
   const { showModal } = useModal();
 
@@ -43,6 +46,46 @@ const MyRemittancesPage = ({ onNavigate }) => {
   });
   const [imagePreview, setImagePreview] = useState(null);
   const [deliveryProofPreview, setDeliveryProofPreview] = useState(null);
+
+  // Search and filter state
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  // Filtered remittances based on search and status filter
+  const filteredRemittances = useMemo(() => {
+    let filtered = remittances;
+
+    // Filter by status
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(r => {
+        if (statusFilter === 'pending') {
+          return ['pending', 'proof_uploaded'].includes(r.status);
+        }
+        if (statusFilter === 'processing') {
+          return ['validated', 'processing', 'ready_for_delivery'].includes(r.status);
+        }
+        if (statusFilter === 'completed') {
+          return ['delivered', 'completed'].includes(r.status);
+        }
+        if (statusFilter === 'rejected') {
+          return r.status === 'rejected';
+        }
+        return true;
+      });
+    }
+
+    // Filter by search term
+    if (searchTerm.trim()) {
+      const search = searchTerm.toLowerCase().trim();
+      filtered = filtered.filter(r =>
+        r.remittance_number?.toLowerCase().includes(search) ||
+        r.recipient_name?.toLowerCase().includes(search) ||
+        r.remittance_types?.name?.toLowerCase().includes(search)
+      );
+    }
+
+    return filtered;
+  }, [remittances, statusFilter, searchTerm]);
 
   const loadRemittances = useCallback(async () => {
     setLoading(true);
@@ -389,7 +432,24 @@ const MyRemittancesPage = ({ onNavigate }) => {
         </button>
       </div>
 
-      {remittances.length === 0 ? (
+      {/* Search and Filter Bar - only show when there are remittances */}
+      {!loading && remittances.length > 0 && (
+        <SearchFilterBar
+          onSearch={setSearchTerm}
+          onFilterChange={setStatusFilter}
+          activeFilter={statusFilter}
+          placeholder={t('remittances.user.searchPlaceholder') || (t('language') === 'es' ? 'Buscar por nombre, referencia...' : 'Search by name, reference...')}
+          resultsCount={filteredRemittances.length}
+        />
+      )}
+
+      {loading ? (
+        <div className="space-y-4">
+          <SkeletonCard variant="remittance" />
+          <SkeletonCard variant="remittance" />
+          <SkeletonCard variant="remittance" />
+        </div>
+      ) : remittances.length === 0 ? (
         <div className="text-center py-12 glass-effect rounded-xl">
           <DollarSign className="h-16 w-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-xl font-bold text-gray-700 mb-2">
@@ -406,9 +466,19 @@ const MyRemittancesPage = ({ onNavigate }) => {
             {t('remittances.user.newRemittance')}
           </button>
         </div>
+      ) : filteredRemittances.length === 0 ? (
+        <div className="text-center py-12 glass-effect rounded-xl">
+          <DollarSign className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-xl font-bold text-gray-600 mb-2">
+            {t('remittances.user.noResults') || (t('language') === 'es' ? 'Sin resultados' : 'No results')}
+          </h3>
+          <p className="text-gray-500">
+            {t('remittances.user.noResultsDesc') || (t('language') === 'es' ? 'No se encontraron remesas con los filtros seleccionados' : 'No remittances found with the selected filters')}
+          </p>
+        </div>
       ) : (
         <div className="space-y-4">
-          {remittances.map((remittance) => {
+          {filteredRemittances.map((remittance) => {
             const StatusIcon = getStatusIcon(remittance.status);
             const alert = calculateDeliveryAlert(remittance);
 
@@ -506,7 +576,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                   <div className="flex items-center gap-4 text-sm text-gray-600">
                     <span className="flex items-center gap-1">
                       <Calendar className="h-4 w-4" />
-                      {new Date(remittance.created_at).toLocaleDateString('es-CU')}
+                      {new Date(remittance.created_at).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US')}
                     </span>
                   </div>
 
@@ -717,6 +787,16 @@ const MyRemittancesPage = ({ onNavigate }) => {
                     <p><span className="text-gray-600">{t('remittances.user.amountSentLabel')}</span> <span className="font-medium">${selectedRemittance.amount_sent}</span></p>
                     <p><span className="text-gray-600">{t('remittances.user.amountToDeliverLabel')}</span> <span className="font-bold text-green-600">${selectedRemittance.amount_to_deliver} {selectedRemittance.currency_delivered}</span></p>
                   </div>
+                </div>
+
+                {/* Timeline de Progreso */}
+                <div className="pt-4 border-t">
+                  <RemittanceTimeline
+                    currentStatus={selectedRemittance.status}
+                    rejectionReason={selectedRemittance.rejection_reason}
+                    statusHistory={selectedRemittance.status_history}
+                    compact={false}
+                  />
                 </div>
               </div>
 

@@ -22,6 +22,7 @@ import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import RecipientSelector from '@/components/RecipientSelector';
 import ZelleAccountSelector from '@/components/ZelleAccountSelector';
 import FileUploadWithPreview from '@/components/FileUploadWithPreview';
+import ConfirmationModal from '@/components/ui/ConfirmationModal';
 
 const SendRemittancePage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
@@ -67,6 +68,10 @@ const SendRemittancePage = ({ onNavigate }) => {
 
   const [imagePreview, setImagePreview] = useState(null);
   const [createdRemittance, setCreatedRemittance] = useState(null);
+
+  // Confirmation modal state
+  const [showConfirmationModal, setShowConfirmationModal] = useState(false);
+  const [confirmedRemittanceInfo, setConfirmedRemittanceInfo] = useState(null);
 
   useEffect(() => {
     loadTypes();
@@ -223,15 +228,17 @@ const SendRemittancePage = ({ onNavigate }) => {
         description: t('remittances.wizard.remittanceCreatedSuccess')
       });
 
-      // Si es remesa CASH, redirigir directamente a Mis Remesas
+      // Si es remesa CASH, mostrar modal de confirmación
       // Si es OFF-CASH (transfer, card, moneypocket), ir al paso 4 (comprobante)
       if (selectedType?.delivery_method === 'cash') {
-        // Redirigir después de un breve delay para que el usuario vea el toast
-        setTimeout(() => {
-          if (onNavigate) {
-            onNavigate('my-remittances');
-          }
-        }, 1500);
+        // Store remittance info and show confirmation modal
+        setConfirmedRemittanceInfo({
+          remittanceNumber: remittance.remittance_number,
+          total: calculation?.amountToDeliver || parseFloat(amount),
+          currency: calculation?.deliveryCurrency || 'CUP',
+          recipientName: recipientData.name
+        });
+        setShowConfirmationModal(true);
       } else {
         setStep(4);
       }
@@ -363,16 +370,18 @@ const SendRemittancePage = ({ onNavigate }) => {
           notifyAdminNewPaymentProof(enrichedRemittance, notificationSettings.whatsapp, locale);
         } catch (error) {
           console.error('Error sending WhatsApp notification:', error);
-          // Don't prevent the redirect if WhatsApp notification fails
+          // Don't prevent showing modal if WhatsApp notification fails
         }
       }
 
-      // Redirect to my remittances
-      setTimeout(() => {
-        if (onNavigate) {
-          onNavigate('my-remittances');
-        }
-      }, 2000);
+      // Store remittance info and show confirmation modal
+      setConfirmedRemittanceInfo({
+        remittanceNumber: createdRemittance.remittance_number,
+        total: calculation?.amountToDeliver || parseFloat(amount),
+        currency: calculation?.deliveryCurrency || 'CUP',
+        recipientName: recipientData.name
+      });
+      setShowConfirmationModal(true);
     } catch (error) {
       console.error('Error uploading payment proof:', error);
       toast({
@@ -1098,6 +1107,25 @@ const SendRemittancePage = ({ onNavigate }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showConfirmationModal}
+        onClose={() => {
+          setShowConfirmationModal(false);
+          onNavigate('my-remittances');
+        }}
+        onViewOrders={() => {
+          setShowConfirmationModal(false);
+          onNavigate('my-remittances');
+        }}
+        orderNumber={confirmedRemittanceInfo?.remittanceNumber}
+        orderType="remittance"
+        total={confirmedRemittanceInfo?.total}
+        currency={confirmedRemittanceInfo?.currency}
+        recipientName={confirmedRemittanceInfo?.recipientName}
+        estimatedDelivery={language === 'es' ? '24-72 horas' : '24-72 hours'}
+      />
     </div>
   );
 };

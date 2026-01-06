@@ -30,7 +30,7 @@ const AdminRemittancesTab = () => {
   const { isAdmin, isSuperAdmin } = useAuth();
   const { showModal } = useModal();
 
-  const locale = language === 'es' ? 'es-CU' : 'en-US';
+  const locale = language === 'es' ? 'es-ES' : 'en-US';
 
   const [remittances, setRemittances] = useState([]);
   const [filteredRemittances, setFilteredRemittances] = useState([]);

@@ -121,6 +121,7 @@ export const validateAndGetOffer = async (offerCode, subtotal = 0, userId = null
       return {
         valid: false,
         reason: 'Offer code not found or inactive',
+        errorCode: 'NOT_FOUND',
         code: offerCode
       };
     }
@@ -130,6 +131,7 @@ export const validateAndGetOffer = async (offerCode, subtotal = 0, userId = null
       return {
         valid: false,
         reason: 'Offer has expired',
+        errorCode: 'EXPIRED',
         code: offerCode,
         expiredDate: offers.valid_until
       };
@@ -140,6 +142,7 @@ export const validateAndGetOffer = async (offerCode, subtotal = 0, userId = null
       return {
         valid: false,
         reason: `Minimum purchase amount required: $${offers.min_purchase_amount}`,
+        errorCode: 'MIN_AMOUNT',
         requiredAmount: offers.min_purchase_amount,
         currentAmount: subtotal,
         code: offerCode
@@ -179,6 +182,7 @@ export const validateAndGetOffer = async (offerCode, subtotal = 0, userId = null
         return {
           valid: false,
           reason: 'Offer has reached its usage limit',
+          errorCode: 'GLOBAL_LIMIT',
           code: offerCode,
           usage: {
             globalCount: globalUsageCount,
@@ -205,6 +209,7 @@ export const validateAndGetOffer = async (offerCode, subtotal = 0, userId = null
         return {
           valid: false,
           reason: `You have already used this offer ${userUsageData.length} times (limit: ${offers.max_usage_per_user})`,
+          errorCode: 'USER_LIMIT',
           userUsageCount: userUsageData.length,
           code: offerCode,
           usage: {
@@ -236,6 +241,7 @@ export const validateAndGetOffer = async (offerCode, subtotal = 0, userId = null
     return {
       valid: false,
       reason: 'Error validating offer code',
+      errorCode: 'VALIDATION_ERROR',
       error: error.message,
       code: offerCode
     };
