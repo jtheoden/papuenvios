@@ -80,6 +80,14 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
         });
       }
 
+      // Refresh categories list immediately
+      console.log('[handleCategorySubmit] Refreshing categories list...');
+      if (refreshCategories) {
+        await refreshCategories();
+      } else if (onCategoriesChange) {
+        await onCategoriesChange();
+      }
+
       setCategoryForm({
         dbId: null,
         es: '',
@@ -132,6 +140,14 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
         title: t('vendor.categoryRemoved'),
         description: result?.deletedCategory?.name
       });
+
+      // Refresh categories list immediately
+      console.log('[handleConfirmDelete] Refreshing categories list...');
+      if (refreshCategories) {
+        await refreshCategories();
+      } else if (onCategoriesChange) {
+        await onCategoriesChange();
+      }
     } catch (error) {
       console.error('[handleConfirmDelete] ERROR:', error);
       console.error('[handleConfirmDelete] Error details:', { message: error?.message, code: error?.code, context: error?.context });
