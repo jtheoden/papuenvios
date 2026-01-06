@@ -1,15 +1,17 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
-import { Plus, Edit, Save, AlertCircle, AlertTriangle, Box, Trash2, Eye, EyeOff } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, Edit, Save, AlertCircle, AlertTriangle, Box, Trash2, Eye, EyeOff, Loader2, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBusiness } from '@/contexts/BusinessContext';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { createCombo, updateCombo as updateComboDB, deleteCombo, setComboActiveState } from '@/lib/comboService';
 import { checkComboStockIssues, computeComboPricing } from '@/lib/comboUtils';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { logActivity } from '@/lib/activityLogger';
+import { useRealtimeCombos } from '@/hooks/useRealtimeSubscription';
 
 /**
  * Vendor Combos Tab Component
@@ -28,10 +30,25 @@ const VendorCombosTab = ({
 }) => {
   const { t, language } = useLanguage();
   const { user } = useAuth();
+  const { refreshCombos } = useBusiness();
 
   const [comboForm, setComboForm] = useState(null);
   const [comboImagePreview, setComboImagePreview] = useState(null);
   const [processingComboId, setProcessingComboId] = useState(null);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState(null);
+
+  // Real-time subscription for combo updates
+  useRealtimeCombos({
+    enabled: true,
+    onUpdate: () => {
+      console.log('[VendorCombosTab] Combos realtime update detected');
+      if (refreshCombos) {
+        refreshCombos(true);
+      } else if (onCombosRefresh) {
+        onCombosRefresh(true);
+      }
+    }
+  });
 
   const currencyCodeById = useMemo(() => {
     return (currencies || []).reduce((acc, currency) => {
@@ -223,42 +240,37 @@ const VendorCombosTab = ({
     }
   };
 
-  const handleDeleteCombo = async (combo) => {
-    console.log('[handleDeleteCombo] START - Input:', { comboId: combo.id, comboName: combo.name });
-    const confirmed = window.confirm(
-      language === 'es'
-        ? '¿Eliminar este combo? Esta acción lo desactivará para los usuarios.'
-        : 'Delete this combo? This will deactivate it for users.'
-    );
-
-    if (!confirmed) {
-      console.log('[handleDeleteCombo] User cancelled deletion');
-      return;
-    }
-
-    console.log('[handleDeleteCombo] Confirmation received, proceeding with deletion...');
+  const handleConfirmDelete = async (combo) => {
+    console.log('[handleConfirmDelete] START - Input:', { comboId: combo.id, comboName: combo.name });
     setProcessingComboId(combo.id);
+    setConfirmingDeleteId(null);
     try {
-      console.log('[handleDeleteCombo] Deleting combo...');
+      console.log('[handleConfirmDelete] Deleting combo...');
       await deleteCombo(combo.id);
-      console.log('[handleDeleteCombo] Combo deleted, logging audit...');
+      console.log('[handleConfirmDelete] Combo deleted, logging audit...');
       await logComboAudit(
         'combo_deleted',
         combo.id,
         `Combo ${combo.name || combo.name_es || combo.id} deleted from VendorPage`,
         { products: combo.products || [], quantities: combo.productQuantities }
       );
-      console.log('[handleDeleteCombo] SUCCESS - Combo deleted');
+      console.log('[handleConfirmDelete] SUCCESS - Combo deleted');
       toast({
         title: language === 'es' ? 'Combo eliminado' : 'Combo deleted',
         description: combo.name || combo.name_es || ''
       });
-      console.log('[handleDeleteCombo] Refreshing combos list...');
-      await onCombosRefresh(true);
-      console.log('[handleDeleteCombo] Combos refreshed');
+
+      // Refresh combos list immediately
+      console.log('[handleConfirmDelete] Refreshing combos list...');
+      if (refreshCombos) {
+        await refreshCombos(true);
+      } else if (onCombosRefresh) {
+        await onCombosRefresh(true);
+      }
+      console.log('[handleConfirmDelete] Combos refreshed');
     } catch (error) {
-      console.error('[handleDeleteCombo] ERROR:', error);
-      console.error('[handleDeleteCombo] Error details:', { message: error?.message, code: error?.code });
+      console.error('[handleConfirmDelete] ERROR:', error);
+      console.error('[handleConfirmDelete] Error details:', { message: error?.message, code: error?.code });
       toast({
         title: t('common.error'),
         description: error.message,
@@ -266,8 +278,12 @@ const VendorCombosTab = ({
       });
     } finally {
       setProcessingComboId(null);
-      console.log('[handleDeleteCombo] Processing state cleared');
+      console.log('[handleConfirmDelete] Processing state cleared');
     }
+  };
+
+  const handleCancelDelete = () => {
+    setConfirmingDeleteId(null);
   };
 
   const handleComboSubmit = async () => {
@@ -562,46 +578,111 @@ const VendorCombosTab = ({
           const stockIssues = checkComboStockIssues(c, products, language);
           const isDeactivated = c.is_active === false || stockIssues.length > 0;
           const prices = getComboCalculatedPrices(c);
+          const isConfirming = confirmingDeleteId === c.id;
+          const isProcessing = processingComboId === c.id;
 
           return (
             <div
               key={c.id}
-              className={`glass-effect p-4 rounded-lg relative ${isDeactivated ? 'border-2 border-red-300' : ''}`}
+              className={`glass-effect p-4 rounded-lg relative transition-all duration-200 ${
+                isConfirming
+                  ? 'border-2 border-red-400 bg-red-50'
+                  : isDeactivated
+                    ? 'border-2 border-red-300'
+                    : ''
+              }`}
             >
-              {isDeactivated && (
+              {isDeactivated && !isConfirming && (
                 <div className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded flex items-center gap-1">
                   <AlertCircle className="h-3 w-3" />
                   {language === 'es' ? 'DESACTIVADO' : 'DEACTIVATED'}
                 </div>
               )}
-              <div className="absolute top-2 right-2 flex gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => openEditComboForm(c)}
-                  disabled={processingComboId === c.id}
-                >
-                  <Edit className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleToggleComboActive(c, !c.is_active)}
-                  disabled={processingComboId === c.id}
-                >
-                  {c.is_active ? <EyeOff className="h-4 w-4 text-red-600" /> : <Eye className="h-4 w-4 text-green-600" />}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleDeleteCombo(c)}
-                  disabled={processingComboId === c.id}
-                >
-                  <Trash2 className="h-4 w-4 text-red-600" />
-                </Button>
+
+              {/* Action Buttons with Confirmation */}
+              <div className="absolute top-2 right-2">
+                <AnimatePresence mode="wait">
+                  {isConfirming ? (
+                    <motion.div
+                      key="confirm-actions"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      className="flex items-center gap-2 bg-white p-2 rounded-lg shadow-md"
+                    >
+                      <span className="text-sm text-red-600 font-medium flex items-center gap-1">
+                        <AlertTriangle className="h-4 w-4" />
+                        {language === 'es' ? '¿Eliminar?' : 'Delete?'}
+                      </span>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleConfirmDelete(c)}
+                        disabled={isProcessing}
+                        className="h-8 px-3"
+                      >
+                        {isProcessing ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Check className="h-4 w-4 mr-1" />
+                            {language === 'es' ? 'Sí' : 'Yes'}
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCancelDelete}
+                        disabled={isProcessing}
+                        className="h-8 px-3"
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        {language === 'es' ? 'No' : 'No'}
+                      </Button>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="default-actions"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="flex gap-1"
+                    >
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => openEditComboForm(c)}
+                        disabled={isProcessing}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleToggleComboActive(c, !c.is_active)}
+                        disabled={isProcessing}
+                      >
+                        {c.is_active ? <EyeOff className="h-4 w-4 text-red-600" /> : <Eye className="h-4 w-4 text-green-600" />}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setConfirmingDeleteId(c.id)}
+                        disabled={isProcessing}
+                      >
+                        {isProcessing ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        )}
+                      </Button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
-              <h3 className={`font-bold pr-8 ${isDeactivated ? 'line-through text-gray-500 mt-8' : ''}`}>
+              <h3 className={`font-bold pr-24 ${isDeactivated ? 'line-through text-gray-500 mt-8' : ''}`}>
                 {language === 'es' ? (c.name_es || c.name) : (c.name_en || c.name_es || c.name)}
               </h3>
               <p className="text-sm text-gray-600">
