@@ -841,8 +841,10 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
       action: 'payment_proof_uploaded',
       remittance: { ...updatedRemittance, payment_reference: reference },
       performedBy: user?.email || user?.id,
-      description: 'Payment proof uploaded (remittance)',
+      description: `Comprobante subido - Remesa ${updatedRemittance?.remittance_number || remittanceId}`,
       metadata: {
+        remittanceId,
+        remittanceNumber: updatedRemittance?.remittance_number,
         paymentProofUrl: filePath,
         paymentNotes: notes
       }
@@ -1256,8 +1258,10 @@ export const validatePayment = async (remittanceId, notes = '') => {
       action: 'payment_validated',
       remittance: updatedRemittance,
       performedBy: user?.email || user?.id,
-      description: 'Payment validated (remittance)',
+      description: `Pago validado - Remesa ${updatedRemittance?.remittance_number || remittanceId}`,
       metadata: {
+        remittanceId,
+        remittanceNumber: updatedRemittance?.remittance_number,
         validationNotes: notes || null,
         validatedAt: updatedRemittance?.payment_validated_at,
         validatedBy: user?.id
@@ -1354,13 +1358,15 @@ export const rejectPayment = async (remittanceId, reason) => {
     }
 
     // Update remittance to payment rejected
+    // Note: payment_rejected_at column does not exist in DB schema
+    // Using updated_at as the rejection timestamp
+    const rejectionTimestamp = new Date().toISOString();
     const { data: updatedRemittance, error: updateError } = await supabase
       .from('remittances')
       .update({
         status: REMITTANCE_STATUS.PAYMENT_REJECTED,
-        payment_rejected_at: new Date().toISOString(),
         payment_rejection_reason: reason,
-        updated_at: new Date().toISOString()
+        updated_at: rejectionTimestamp
       })
       .eq('id', remittanceId)
       .select('*, remittance_types(*)')
@@ -1384,10 +1390,12 @@ export const rejectPayment = async (remittanceId, reason) => {
       action: 'payment_rejected',
       remittance: updatedRemittance,
       performedBy: user?.email || user?.id,
-      description: 'Payment rejected (remittance)',
+      description: `Pago rechazado - Remesa ${updatedRemittance?.remittance_number || remittanceId}`,
       metadata: {
+        remittanceId,
+        remittanceNumber: updatedRemittance?.remittance_number,
         rejectionReason: reason,
-        rejectedAt: updatedRemittance?.payment_rejected_at,
+        rejectedAt: rejectionTimestamp,
         rejectedBy: user?.id
       }
     });
