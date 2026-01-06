@@ -4,6 +4,7 @@
     "error": "Error",
     "cancel": "Cancelar",
     "loading": "Cargando...",
+    "loadingPlatform": "Cargando tu plataforma de comercio digital...",
     "search": "Buscar",
     "save": "Guardar",
     "delete": "Eliminar",
@@ -108,6 +109,9 @@
     "title": "Catálogo de Productos",
     "subtitle": "Descubre productos y combos para enviar a Cuba con precios competitivos",
     "searchPlaceholder": "Buscar productos...",
+    "specialCombos": "Combos Especiales",
+    "scrollLeft": "Desplazar a la izquierda",
+    "scrollRight": "Desplazar a la derecha",
     "categories": {
       "all": "Todas las Categorías"
     },
@@ -139,7 +143,15 @@
       "productDetails": "Detalles del Producto",
       "inStock": "En Stock",
       "outOfStock": "Agotado",
-      "units": "unidades"
+      "units": "unidades",
+      "displayIn": "Mostrar en:",
+      "saveWithCombo": "¡Ahorra con este combo!",
+      "buyingSeparately": "Comprando por separado:",
+      "comboPrice": "Precio del combo:",
+      "youSave": "¡Ahorras ",
+      "total": "Total:",
+      "quantity": "Cantidad:",
+      "each": "c/u"
     }
   },
   "remittances": {

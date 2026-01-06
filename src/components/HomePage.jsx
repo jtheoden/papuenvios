@@ -11,6 +11,7 @@ import { getTestimonials } from '@/lib/testimonialService';
 import { getHeadingStyle } from '@/lib/styleUtils';
 import { supabase } from '@/lib/supabase';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import SkeletonCard from '@/components/ui/SkeletonCard';
 
 const COMPLETED_REMITTANCE_STATUSES = ['delivered', 'completed'];
 const COMPLETED_ORDER_STATUS = 'completed';
@@ -21,8 +22,11 @@ const HomePage = ({ onNavigate }) => {
   const { isAdmin } = useAuth();
   const { currencySymbol } = useCurrency();
   const [carouselSlides, setCarouselSlides] = useState([]);
+  const [carouselLoading, setCarouselLoading] = useState(true);
   const [dbTestimonials, setDbTestimonials] = useState([]);
+  const [testimonialsLoading, setTestimonialsLoading] = useState(true);
   const [activeOffers, setActiveOffers] = useState([]);
+  const [offersLoading, setOffersLoading] = useState(true);
   const [landingStats, setLandingStats] = useState({
     users: 0,
     remittancesCompleted: 0,
@@ -138,6 +142,8 @@ const HomePage = ({ onNavigate }) => {
         console.error('Error loading testimonials:', error);
         setTestimonialsError(error);
         setDbTestimonials([]);
+      } finally {
+        setTestimonialsLoading(false);
       }
     };
     loadTestimonials();
@@ -166,6 +172,8 @@ const HomePage = ({ onNavigate }) => {
         console.error('Error loading carousel slides:', error);
         // Fallback to empty array if database fails
         setCarouselSlides([]);
+      } finally {
+        setCarouselLoading(false);
       }
     };
     loadSlides();
@@ -225,6 +233,8 @@ const HomePage = ({ onNavigate }) => {
       } catch (error) {
         console.error('Error loading offers and stats:', error);
         setActiveOffers([]);
+      } finally {
+        setOffersLoading(false);
       }
     };
 
@@ -267,7 +277,11 @@ const HomePage = ({ onNavigate }) => {
   return (
     <div className="min-h-screen">
       <section className="relative h-[60vh] md:h-[80vh] w-full overflow-hidden">
-        {carouselSlides.length > 0 ? (
+        {carouselLoading ? (
+          <div className="absolute inset-0">
+            <SkeletonCard variant="carousel" />
+          </div>
+        ) : carouselSlides.length > 0 ? (
           <>
             <AnimatePresence initial={false}>
               <motion.div
@@ -399,7 +413,13 @@ const HomePage = ({ onNavigate }) => {
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {activeOffers.length > 0 ? (
+            {offersLoading ? (
+              <>
+                <SkeletonCard variant="stats" />
+                <SkeletonCard variant="stats" />
+                <SkeletonCard variant="stats" />
+              </>
+            ) : activeOffers.length > 0 ? (
               activeOffers.map((offer, idx) => (
                 <motion.div
                   key={offer.id || idx}
@@ -548,7 +568,11 @@ const HomePage = ({ onNavigate }) => {
             </p>
           </motion.div>
 
-          {dbTestimonials.length > 0 ? (
+          {testimonialsLoading ? (
+            <div className="max-w-4xl mx-auto">
+              <SkeletonCard variant="testimonial" />
+            </div>
+          ) : dbTestimonials.length > 0 ? (
             <div className="relative max-w-4xl mx-auto">
               <AnimatePresence mode="wait">
                 <motion.div

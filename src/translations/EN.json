@@ -4,6 +4,7 @@
     "error": "Error",
     "cancel": "Cancel",
     "loading": "Loading...",
+    "loadingPlatform": "Loading your digital commerce platform...",
     "search": "Search",
     "save": "Save",
     "delete": "Delete",
@@ -108,6 +109,9 @@
     "title": "Product Catalog",
     "subtitle": "Discover products and combos to send to Cuba at competitive prices",
     "searchPlaceholder": "Search products...",
+    "specialCombos": "Special Combos",
+    "scrollLeft": "Scroll left",
+    "scrollRight": "Scroll right",
     "categories": {
       "all": "All Categories"
     },
@@ -139,7 +143,15 @@
       "productDetails": "Product Details",
       "inStock": "In Stock",
       "outOfStock": "Out of Stock",
-      "units": "units"
+      "units": "units",
+      "displayIn": "Display in:",
+      "saveWithCombo": "Save with this combo!",
+      "buyingSeparately": "Buying separately:",
+      "comboPrice": "Combo price:",
+      "youSave": "You save ",
+      "total": "Total:",
+      "quantity": "Quantity:",
+      "each": "each"
     }
   },
   "remittances": {

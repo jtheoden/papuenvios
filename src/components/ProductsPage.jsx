@@ -407,7 +407,7 @@ const ProductsPage = ({ onNavigate }) => {
               className="mb-4"
             >
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold" >🎁 <span style={getHeadingStyle(visualSettings)}>Combos Especiales</span></h2>
+                <h2 className="text-2xl font-bold" >🎁 <span style={getHeadingStyle(visualSettings)}>{t('products.specialCombos')}</span></h2>
                 {filteredCombos.length > 3 && (
                   <div className="flex gap-2">
                     <Button
@@ -416,6 +416,7 @@ const ProductsPage = ({ onNavigate }) => {
                       onClick={() => scrollCombos('left')}
                       disabled={!showLeftArrow}
                       className="rounded-full w-10 h-10 p-0"
+                      aria-label={t('products.scrollLeft')}
                     >
                       <ChevronLeft className="w-5 h-5" />
                     </Button>
@@ -425,6 +426,7 @@ const ProductsPage = ({ onNavigate }) => {
                       onClick={() => scrollCombos('right')}
                       disabled={!showRightArrow}
                       className="rounded-full w-10 h-10 p-0"
+                      aria-label={t('products.scrollRight')}
                     >
                       <ChevronRight className="w-5 h-5" />
                     </Button>

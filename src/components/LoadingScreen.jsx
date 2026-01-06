@@ -2,9 +2,11 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { ShoppingBag, DollarSign, Globe } from 'lucide-react';
 import { useBusiness } from '@/contexts/BusinessContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const LoadingScreen = () => {
   const { visualSettings } = useBusiness();
+  const { t } = useLanguage();
 
   return (
     <motion.div
@@ -78,7 +80,7 @@ const LoadingScreen = () => {
           transition={{ delay: 0.9 }}
           className="text-xl text-white/80 mb-8"
         >
-          Cargando tu plataforma de comercio digital...
+          {t('common.loadingPlatform')}
         </motion.p>
 
         <motion.div
