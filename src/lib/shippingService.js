@@ -1,7 +1,8 @@
 /**
  * Shipping Zone Management Service
- * Handles province-based shipping cost configuration for Cuba
+ * Handles province and municipality-based shipping cost configuration for Cuba
  * Zone-based rules with validation and cost calculations
+ * Priority: Municipality-specific cost > Province-wide default cost
  */
 
 import { supabase } from './supabase';
@@ -12,7 +13,7 @@ import {
 
 /**
  * Get all active shipping zones
- * @returns {Promise<Array>} List of active shipping zones
+ * @returns {Promise<Array>} List of active shipping zones sorted by province and municipality
  * @throws {AppError} DB_ERROR if query fails
  */
 export const getActiveShippingZones = async () => {
@@ -21,7 +22,8 @@ export const getActiveShippingZones = async () => {
       .from('shipping_zones')
       .select('*')
       .eq('is_active', true)
-      .order('province_name', { ascending: true });
+      .order('province_name', { ascending: true })
+      .order('municipality_name', { ascending: true, nullsFirst: true });
 
     if (error) {
       throw parseSupabaseError(error);
@@ -38,7 +40,7 @@ export const getActiveShippingZones = async () => {
 
 /**
  * Get all shipping zones (admin only)
- * @returns {Promise<Array>} List of all shipping zones
+ * @returns {Promise<Array>} List of all shipping zones sorted by province and municipality
  * @throws {AppError} DB_ERROR if query fails
  */
 export const getAllShippingZones = async () => {
@@ -46,7 +48,8 @@ export const getAllShippingZones = async () => {
     const { data, error } = await supabase
       .from('shipping_zones')
       .select('*')
-      .order('province_name', { ascending: true });
+      .order('province_name', { ascending: true })
+      .order('municipality_name', { ascending: true, nullsFirst: true });
 
     if (error) {
       throw parseSupabaseError(error);
@@ -96,9 +99,9 @@ export const getShippingZoneById = async (zoneId) => {
 };
 
 /**
- * Get shipping zone by province name
+ * Get shipping zone by province name (province-wide default only)
  * @param {string} provinceName - Province name
- * @returns {Promise<Object>} Shipping zone details
+ * @returns {Promise<Object>} Shipping zone details (where municipality_name is null)
  * @throws {AppError} VALIDATION_FAILED if provinceName missing, NOT_FOUND if not found, DB_ERROR on failure
  */
 export const getShippingZoneByProvince = async (provinceName) => {
@@ -111,6 +114,7 @@ export const getShippingZoneByProvince = async (provinceName) => {
       .from('shipping_zones')
       .select('*')
       .eq('province_name', provinceName)
+      .is('municipality_name', null)
       .eq('is_active', true)
       .single();
 
@@ -131,38 +135,165 @@ export const getShippingZoneByProvince = async (provinceName) => {
 };
 
 /**
- * Calculate shipping cost for province
+ * Get shipping zone for a specific municipality
  * @param {string} provinceName - Province name
- * @param {number} cartTotal - Cart subtotal (for free shipping checks)
- * @returns {Promise<Object>} Shipping cost details with cost, freeShipping flag, and zone info
- * @throws {AppError} VALIDATION_FAILED if provinceName missing, NOT_FOUND if province not found, DB_ERROR on failure
+ * @param {string} municipalityName - Municipality name
+ * @returns {Promise<Object|null>} Shipping zone details or null if not found
+ * @throws {AppError} VALIDATION_FAILED if parameters missing, DB_ERROR on failure
  */
-export const calculateShippingCost = async (provinceName, cartTotal = 0) => {
+export const getShippingZoneByMunicipality = async (provinceName, municipalityName) => {
+  try {
+    if (!provinceName) {
+      throw createValidationError({ provinceName: 'Province name is required' }, 'Missing province name');
+    }
+    if (!municipalityName) {
+      throw createValidationError({ municipalityName: 'Municipality name is required' }, 'Missing municipality name');
+    }
+
+    const { data, error } = await supabase
+      .from('shipping_zones')
+      .select('*')
+      .eq('province_name', provinceName)
+      .eq('municipality_name', municipalityName)
+      .eq('is_active', true)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No municipality-specific zone found - this is OK, will fallback to province
+        return null;
+      }
+      throw parseSupabaseError(error);
+    }
+
+    return data;
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'getShippingZoneByMunicipality',
+      provinceName,
+      municipalityName
+    });
+    logError(appError, { operation: 'getShippingZoneByMunicipality', provinceName, municipalityName });
+    throw appError;
+  }
+};
+
+/**
+ * Get shipping zone for location with priority lookup
+ * Priority: Municipality-specific zone > Province-wide default
+ * @param {string} provinceName - Province name
+ * @param {string|null} municipalityName - Municipality name (optional)
+ * @returns {Promise<Object>} Shipping zone details with source indicator
+ * @throws {AppError} VALIDATION_FAILED if provinceName missing, NOT_FOUND if no zone found, DB_ERROR on failure
+ */
+export const getShippingZoneForLocation = async (provinceName, municipalityName = null) => {
   try {
     if (!provinceName) {
       throw createValidationError({ provinceName: 'Province name is required' }, 'Missing province name');
     }
 
-    const zone = await getShippingZoneByProvince(provinceName);
+    // If municipality provided, try to find municipality-specific zone first
+    if (municipalityName) {
+      const municipalityZone = await getShippingZoneByMunicipality(provinceName, municipalityName);
+      if (municipalityZone) {
+        return {
+          ...municipalityZone,
+          _source: 'municipality'
+        };
+      }
+    }
+
+    // Fallback to province-wide default
+    const provinceZone = await getShippingZoneByProvince(provinceName);
+    return {
+      ...provinceZone,
+      _source: 'province'
+    };
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'getShippingZoneForLocation',
+      provinceName,
+      municipalityName
+    });
+    logError(appError, { operation: 'getShippingZoneForLocation', provinceName, municipalityName });
+    throw appError;
+  }
+};
+
+/**
+ * Get all zones for a specific province (including municipality-specific ones)
+ * @param {string} provinceName - Province name
+ * @returns {Promise<Array>} List of zones for the province
+ * @throws {AppError} VALIDATION_FAILED if provinceName missing, DB_ERROR on failure
+ */
+export const getShippingZonesForProvince = async (provinceName) => {
+  try {
+    if (!provinceName) {
+      throw createValidationError({ provinceName: 'Province name is required' }, 'Missing province name');
+    }
+
+    const { data, error } = await supabase
+      .from('shipping_zones')
+      .select('*')
+      .eq('province_name', provinceName)
+      .order('municipality_name', { ascending: true, nullsFirst: true });
+
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return data || [];
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getShippingZonesForProvince', provinceName });
+    logError(appError, { operation: 'getShippingZonesForProvince', provinceName });
+    throw appError;
+  }
+};
+
+/**
+ * Calculate shipping cost for location (province and optional municipality)
+ * Uses priority lookup: Municipality-specific cost > Province-wide default
+ * @param {string} provinceName - Province name
+ * @param {number} cartTotal - Cart subtotal (for free shipping checks)
+ * @param {string|null} municipalityName - Municipality name (optional)
+ * @returns {Promise<Object>} Shipping cost details with cost, freeShipping flag, zone info, and source
+ * @throws {AppError} VALIDATION_FAILED if provinceName missing, NOT_FOUND if no zone found, DB_ERROR on failure
+ */
+export const calculateShippingCost = async (provinceName, cartTotal = 0, municipalityName = null) => {
+  try {
+    if (!provinceName) {
+      throw createValidationError({ provinceName: 'Province name is required' }, 'Missing province name');
+    }
+
+    const zone = await getShippingZoneForLocation(provinceName, municipalityName);
 
     // Check if shipping is free for this zone
     if (zone.free_shipping) {
       return {
         cost: 0,
         freeShipping: true,
-        zone
+        zone,
+        source: zone._source
       };
     }
 
     return {
       cost: parseFloat(zone.shipping_cost),
       freeShipping: false,
-      zone
+      zone,
+      source: zone._source
     };
   } catch (error) {
     if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'calculateShippingCost', provinceName });
-    logError(appError, { operation: 'calculateShippingCost', provinceName });
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'calculateShippingCost',
+      provinceName,
+      municipalityName
+    });
+    logError(appError, { operation: 'calculateShippingCost', provinceName, municipalityName });
     throw appError;
   }
 };
@@ -171,9 +302,13 @@ export const calculateShippingCost = async (provinceName, cartTotal = 0) => {
  * Create new shipping zone (admin only)
  * @param {Object} zoneData - Shipping zone information
  * @param {string} zoneData.provinceName - Province name (required)
+ * @param {string|null} zoneData.municipalityName - Municipality name (optional, null = province-wide default)
  * @param {number} zoneData.shippingCost - Base shipping cost
  * @param {boolean} zoneData.isActive - Whether zone is active
  * @param {boolean} zoneData.freeShipping - Whether shipping is free
+ * @param {number} zoneData.deliveryDays - Estimated delivery days
+ * @param {number} zoneData.transportCost - Transport cost
+ * @param {string} zoneData.deliveryNote - Delivery note
  * @returns {Promise<Object>} Created shipping zone
  * @throws {AppError} VALIDATION_FAILED if provinceName missing, DB_ERROR on failure
  */
@@ -185,10 +320,22 @@ export const createShippingZone = async (zoneData) => {
 
     const zone = {
       province_name: zoneData.provinceName,
+      municipality_name: zoneData.municipalityName || null,
       shipping_cost: parseFloat(zoneData.shippingCost || 0),
       is_active: zoneData.isActive !== undefined ? zoneData.isActive : true,
       free_shipping: zoneData.freeShipping || false
     };
+
+    // Add optional fields if provided
+    if (zoneData.deliveryDays !== undefined) {
+      zone.delivery_days = parseInt(zoneData.deliveryDays);
+    }
+    if (zoneData.transportCost !== undefined) {
+      zone.transport_cost = parseFloat(zoneData.transportCost);
+    }
+    if (zoneData.deliveryNote !== undefined) {
+      zone.delivery_note = zoneData.deliveryNote;
+    }
 
     const { data, error } = await supabase
       .from('shipping_zones')
@@ -203,8 +350,16 @@ export const createShippingZone = async (zoneData) => {
     return data;
   } catch (error) {
     if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'createShippingZone', provinceName: zoneData?.provinceName });
-    logError(appError, { operation: 'createShippingZone', provinceName: zoneData?.provinceName });
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'createShippingZone',
+      provinceName: zoneData?.provinceName,
+      municipalityName: zoneData?.municipalityName
+    });
+    logError(appError, {
+      operation: 'createShippingZone',
+      provinceName: zoneData?.provinceName,
+      municipalityName: zoneData?.municipalityName
+    });
     throw appError;
   }
 };
@@ -212,7 +367,7 @@ export const createShippingZone = async (zoneData) => {
 /**
  * Update shipping zone (admin only)
  * @param {string} zoneId - Shipping zone ID
- * @param {Object} updates - Fields to update
+ * @param {Object} updates - Fields to update (including municipalityName)
  * @returns {Promise<Object>} Updated shipping zone
  * @throws {AppError} VALIDATION_FAILED if zoneId missing, NOT_FOUND if zone not found, DB_ERROR on failure
  */
@@ -231,6 +386,10 @@ export const updateShippingZone = async (zoneId, updates) => {
     if (updates.provinceName !== undefined) {
       updateData.province_name = updates.provinceName;
     }
+    // Municipality name can be explicitly set to null for province-wide default
+    if (updates.municipalityName !== undefined) {
+      updateData.municipality_name = updates.municipalityName || null;
+    }
     if (updates.shippingCost !== undefined) {
       updateData.shipping_cost = parseFloat(updates.shippingCost);
     }
@@ -240,7 +399,6 @@ export const updateShippingZone = async (zoneId, updates) => {
     if (updates.freeShipping !== undefined) {
       updateData.free_shipping = updates.freeShipping;
     }
-    // Phase 2 fields
     if (updates.deliveryDays !== undefined) {
       updateData.delivery_days = parseInt(updates.deliveryDays);
     }
