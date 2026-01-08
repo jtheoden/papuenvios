@@ -45,7 +45,7 @@ const RemittancesPage = ({ onNavigate }) => {
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
             <button
-              onClick={() => user ? onNavigate('send-remittance') : onNavigate('login')}
+              onClick={() => onNavigate('send-remittance')}
               className={`${getPrimaryButtonStyle()} flex items-center justify-center gap-2 px-8 py-4 text-lg`}
             >
               <Send className="h-6 w-6" />
@@ -128,10 +128,10 @@ const RemittancesPage = ({ onNavigate }) => {
               ¿Listo para enviar tu primera remesa?
             </p>
             <button
-              onClick={() => onNavigate('login')}
+              onClick={() => onNavigate('send-remittance')}
               className={`${getPrimaryButtonStyle()} inline-flex items-center gap-2`}
             >
-              Iniciar Sesión
+              {t('remittances.send')}
               <ArrowRight className="h-5 w-5" />
             </button>
           </motion.div>
