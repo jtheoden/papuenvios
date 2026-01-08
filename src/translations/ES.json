@@ -157,7 +157,12 @@
       "total": "Total:",
       "quantity": "Cantidad:",
       "each": "c/u"
-    }
+    },
+    "disabled": "Desactivado",
+    "notAvailable": "No disponible",
+    "saveBadge": "AHORRA",
+    "discount": "Descuento",
+    "userCategoryLabel": "Categoría: {category}"
   },
   "remittances": {
     "title": "Remesas a Cuba",
