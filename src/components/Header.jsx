@@ -18,11 +18,11 @@ const Header = ({ currentPage, onNavigate }) => {
   const { cart, visualSettings } = useBusiness();
   const { user, isAdmin, userRole, userCategory } = useAuth();
 
-  // Public menu items
+  // Public menu items (hide remittances for admin - they use admin panel)
   let publicMenuItems = [
     { id: 'home', icon: ShoppingBag, label: t('nav.home') },
     { id: 'products', icon: ShoppingBag, label: t('nav.products') },
-    { id: 'remittances', icon: DollarSign, label: t('nav.remittances') },
+    ...(!isAdmin ? [{ id: 'remittances', icon: DollarSign, label: t('nav.remittances') }] : []),
   ];
 
   
