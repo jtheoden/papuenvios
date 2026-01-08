@@ -644,8 +644,8 @@ const VendorInventoryTab = ({
               {t('common.cancel')}
             </Button>
             <Button onClick={handleSubmitProduct} style={getPrimaryButtonStyle(visualSettings)}>
-              <Save className="w-4 h-4 mr-2" />
-              {t('vendor.addProduct.save')}
+              <Save className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">{t('vendor.addProduct.save')}</span>
             </Button>
           </div>
         </motion.div>

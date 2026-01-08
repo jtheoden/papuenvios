@@ -35,7 +35,8 @@
     "view": "Ver",
     "filters": "Filtros",
     "clearFilters": "Limpiar Filtros",
-    "saveSettings": "Guardar Ajustes"
+    "saveSettings": "Guardar Ajustes",
+    "showing": "Mostrando"
   },
   "nav": {
     "home": "Inicio",
@@ -51,6 +52,8 @@
   },
   "home": {
     "hero": {
+      "title": "Tu Plataforma de Comercio Digital",
+      "subtitle": "Envía productos y dinero a Cuba de forma rápida, segura y confiable",
       "cta": {
         "products": "Ver Productos"
       }
@@ -109,6 +112,7 @@
   "products": {
     "title": "Catálogo de Productos",
     "subtitle": "Descubre productos y combos para enviar a Cuba con precios competitivos",
+    "preview": "Vista previa",
     "searchPlaceholder": "Buscar productos...",
     "specialCombos": "Combos Especiales",
     "scrollLeft": "Desplazar a la izquierda",
@@ -297,7 +301,6 @@
       "adminCannotSendRemittance": "Esta página es solo para usuarios. Los administradores deben usar el panel de gestión de remesas.",
       "amountInfoTitle": "Información de Monto",
       "amountSent": "Monto Enviado:",
-      "noPendingDeliveryProof": "Evidencia de entrega pendiente",
       "toDeliver": "A Entregar:",
       "recipientInfoTitle": "Información del Destinatario",
       "recipientName": "Nombre:",
@@ -356,10 +359,6 @@
       "type": "Tipo",
       "deliveryMethod": "Método de Entrega",
       "recipient": "Destinatario",
-      "name": "Nombre:",
-      "phone": "Teléfono:",
-      "city": "Ciudad:",
-      "address": "Dirección:",
       "amounts": "Montos",
       "amountSentLabel": "Monto enviado:",
       "amountToDeliverLabel": "Monto a entregar:",
@@ -371,6 +370,7 @@
       "proofPending": "Comprobante de pago pendiente",
       "proofNotSent": "El comprobante aún no ha sido enviado",
       "close": "Cerrar",
+      "closeButton": "Cerrar",
       "myRemittances": "Mis Remesas",
       "newRemittance": "Nueva Remesa",
       "cancelRemittanceTitle": "Cancelar Remesa",
@@ -380,24 +380,11 @@
       "paymentReferenceLabel": "Referencia de pago *",
       "referenceExample": "Ej: ZELLE123456",
       "additionalNotesLabel": "Notas Adicionales",
-      "additionalDetailsPlaceholder": "Detalles adicionales...",
-      "detailsTitle": "Detalles de Remesa",
-      "number": "Número",
-      "type": "Tipo",
-      "recipient": "Destinatario",
       "recipientName": "Nombre:",
       "recipientPhone": "Teléfono:",
       "recipientCity": "Ciudad:",
       "recipientAddress": "Dirección:",
-      "amounts": "Montos",
-      "amountSentLabel": "Monto enviado:",
-      "amountToDeliverLabel": "Monto a entregar:",
       "paymentProofSection": "Comprobante de Pago",
-      "imageLoadError": "No se pudo cargar la imagen",
-      "openInNewTab": "Abrir en nueva pestaña",
-      "referenceLabel": "Referencia:",
-      "proofNotSent": "El comprobante aún no ha sido enviado",
-      "closeButton": "Cerrar",
       "deliveryEvidenceTitle": "Evidencia de Entrega",
       "deliveryEvidenceUploaded": "Evidencia de entrega subida exitosamente",
       "deliveryEvidenceLoading": "Cargando evidencia...",
@@ -500,6 +487,7 @@
       "product": "Producto",
       "stock": "Existencias",
       "price": "Precio Final",
+      "finalPrice": "Precio Final",
       "expiryDate": "Fecha de Caducidad",
       "category": "Categoría",
       "sku": "SKU",
@@ -957,16 +945,6 @@
       "completeOrder": "Completar Orden",
       "cancelOrder": "Cancelar Orden"
     },
-    "actions": {
-      "view": "Ver",
-      "start": "Iniciar",
-      "ship": "Enviar",
-      "proof": "Evidencia",
-      "complete": "Completar",
-      "processing": "Procesando...",
-      "loading": "Cargando...",
-      "completing": "Completando..."
-    },
     "detail": {
       "title": "Detalles de la Orden",
       "order": "Número de Orden",
@@ -1107,6 +1085,7 @@
   "users": {
     "management": "Gestión de Usuarios",
     "managementDescription": "Administra roles y permisos de usuarios de la plataforma",
+    "detail": "Detalles del Usuario",
     "fetchError": "Error al cargar usuarios",
     "roleUpdated": "Rol actualizado",
     "roleUpdatedSuccess": "El rol del usuario se actualizó correctamente",
@@ -1329,6 +1308,33 @@
     "totalVolume": "Volumen total",
     "validatedVolume": "Validado",
     "pendingVolume": "Pendiente"
+  },
+  "news": {
+    "title": "Noticias",
+    "subtitle": "Mantente informado con las últimas novedades",
+    "searchPlaceholder": "Buscar noticias...",
+    "featured": "Destacado",
+    "readMore": "Leer más",
+    "noArticles": "No se encontraron artículos",
+    "noArticlesDesc": "No hay artículos que coincidan con tu búsqueda",
+    "articles": {
+      "1": {
+        "title": "Nuevas opciones de envío disponibles",
+        "excerpt": "Descubre las nuevas opciones de envío que hemos añadido para ti."
+      },
+      "2": {
+        "title": "Mejoras en la plataforma",
+        "excerpt": "Conoce las últimas mejoras y funcionalidades de nuestra plataforma."
+      },
+      "3": {
+        "title": "Consejos para envíos seguros",
+        "excerpt": "Aprende los mejores consejos para realizar envíos seguros a Cuba."
+      },
+      "4": {
+        "title": "Nuevas promociones del mes",
+        "excerpt": "Aprovecha las promociones exclusivas disponibles este mes."
+      }
+    }
   },
   "tables": {
     "noData": "No hay datos disponibles",

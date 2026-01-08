@@ -35,7 +35,8 @@
     "view": "View",
     "filters": "Filters",
     "clearFilters": "Clear Filters",
-    "saveSettings": "Save Settings"
+    "saveSettings": "Save Settings",
+    "showing": "Showing"
   },
   "nav": {
     "home": "Home",
@@ -51,6 +52,8 @@
   },
   "home": {
     "hero": {
+      "title": "Your Digital Commerce Platform",
+      "subtitle": "Send products and money to Cuba quickly, safely and reliably",
       "cta": {
         "products": "View Products"
       }
@@ -109,6 +112,7 @@
   "products": {
     "title": "Product Catalog",
     "subtitle": "Discover products and combos to send to Cuba at competitive prices",
+    "preview": "Preview",
     "searchPlaceholder": "Search products...",
     "specialCombos": "Special Combos",
     "scrollLeft": "Scroll left",
@@ -297,7 +301,6 @@
       "adminCannotSendRemittance": "This page is only for users. Admins should use the remittance management panel.",
       "amountInfoTitle": "Amount Information",
       "amountSent": "Amount Sent:",
-      "noPendingDeliveryProof": "Delivery proof pending",
       "toDeliver": "To Deliver:",
       "recipientInfoTitle": "Recipient Information",
       "recipientName": "Name:",
@@ -475,6 +478,7 @@
       "product": "Product",
       "stock": "Stock",
       "price": "Final Price",
+      "finalPrice": "Final Price",
       "expiryDate": "Expiry Date",
       "category": "Category",
       "sku": "SKU",
@@ -932,16 +936,6 @@
       "completeOrder": "Complete Order",
       "cancelOrder": "Cancel Order"
     },
-    "actions": {
-      "view": "View",
-      "start": "Start",
-      "ship": "Ship",
-      "proof": "Proof",
-      "complete": "Complete",
-      "processing": "Processing...",
-      "loading": "Loading...",
-      "completing": "Completing..."
-    },
     "detail": {
       "title": "Order Details",
       "order": "Order Number",
@@ -1082,6 +1076,7 @@
   "users": {
     "management": "User Management",
     "managementDescription": "Manage roles and permissions for platform users",
+    "detail": "User Details",
     "fetchError": "Error loading users",
     "roleUpdated": "Role updated",
     "roleUpdatedSuccess": "User role updated successfully",
@@ -1304,6 +1299,33 @@
     "totalVolume": "Total volume",
     "validatedVolume": "Validated volume",
     "pendingVolume": "Pending volume"
+  },
+  "news": {
+    "title": "News",
+    "subtitle": "Stay informed with the latest updates",
+    "searchPlaceholder": "Search news...",
+    "featured": "Featured",
+    "readMore": "Read more",
+    "noArticles": "No articles found",
+    "noArticlesDesc": "No articles match your search",
+    "articles": {
+      "1": {
+        "title": "New shipping options available",
+        "excerpt": "Discover the new shipping options we've added for you."
+      },
+      "2": {
+        "title": "Platform improvements",
+        "excerpt": "Learn about the latest improvements and features of our platform."
+      },
+      "3": {
+        "title": "Tips for safe shipping",
+        "excerpt": "Learn the best tips for making safe shipments to Cuba."
+      },
+      "4": {
+        "title": "New promotions this month",
+        "excerpt": "Take advantage of the exclusive promotions available this month."
+      }
+    }
   },
   "tables": {
     "noData": "No data available",
