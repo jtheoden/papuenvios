@@ -352,13 +352,13 @@ const SettingsZelleTab = () => {
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
+        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
       >
         <div>
-          <h3 className="text-2xl font-semibold" style={{ color: visualSettings.headingColor || '#1f2937' }}>
+          <h3 className="text-xl sm:text-2xl font-semibold" style={{ color: visualSettings.headingColor || '#1f2937' }}>
             {t('zelle.accounts') || 'Zelle Accounts'}
           </h3>
-          <p className="text-sm text-gray-600 mt-1">
+          <p className="text-sm text-gray-600 mt-1 hidden sm:block">
             {language === 'es'
               ? 'Gestiona las cuentas Zelle para pagos de productos y remesas'
               : 'Manage Zelle accounts for product payments and remittances'}
@@ -367,10 +367,11 @@ const SettingsZelleTab = () => {
         <Button
           onClick={handleCreateAccount}
           style={{ backgroundColor: visualSettings.primaryColor || '#2563eb', color: 'white' }}
-          className="hover:opacity-90"
+          className="hover:opacity-90 h-9 px-3"
+          title={t('zelle.createAccount') || 'Create Account'}
         >
-          <Plus className="h-4 w-4 mr-2" />
-          {t('zelle.createAccount') || 'Create Account'}
+          <Plus className="h-4 w-4 sm:mr-2" />
+          <span className="hidden sm:inline">{t('zelle.createAccount') || 'Create Account'}</span>
         </Button>
       </motion.div>
 
@@ -426,28 +427,28 @@ const SettingsZelleTab = () => {
 
       {/* Form Modal */}
       {showFormModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-2 sm:p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-lg max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto"
           >
-            <div className="sticky top-0 bg-white border-b p-6 flex items-center justify-between">
-              <h2 className="text-xl font-semibold">
+            <div className="sticky top-0 bg-white border-b p-4 sm:p-6 flex items-center justify-between">
+              <h2 className="text-lg sm:text-xl font-semibold truncate pr-4">
                 {selectedAccount ? t('zelle.editAccount') : t('zelle.createAccount')}
               </h2>
               <button
                 onClick={() => setShowFormModal(false)}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-gray-500 hover:text-gray-700 shrink-0 p-1"
               >
                 ✕
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 sm:p-6 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">{t('zelle.accountName')} *</label>
+                  <label className="block text-sm font-medium mb-1 truncate">{t('zelle.accountName')} *</label>
                   <input
                     type="text"
                     value={formData.account_name}
@@ -457,7 +458,7 @@ const SettingsZelleTab = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">{t('zelle.phoneNumber')} *</label>
+                  <label className="block text-sm font-medium mb-1 truncate">{t('zelle.phoneNumber')} *</label>
                   <input
                     type="tel"
                     value={formData.phone}
@@ -467,7 +468,7 @@ const SettingsZelleTab = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">{t('zelle.holderName')} *</label>
+                  <label className="block text-sm font-medium mb-1 truncate">{t('zelle.holderName')} *</label>
                   <input
                     type="text"
                     value={formData.account_holder}
@@ -477,7 +478,7 @@ const SettingsZelleTab = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">{t('common.email')} *</label>
+                  <label className="block text-sm font-medium mb-1 truncate">{t('common.email')} *</label>
                   <input
                     type="email"
                     value={formData.email}
@@ -487,7 +488,7 @@ const SettingsZelleTab = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">{t('zelle.priority')}</label>
+                  <label className="block text-sm font-medium mb-1 truncate">{t('zelle.priority')}</label>
                   <input
                     type="number"
                     value={formData.priority_order}
@@ -497,7 +498,7 @@ const SettingsZelleTab = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">{t('zelle.dailyLimit')} ($)</label>
+                  <label className="block text-sm font-medium mb-1 truncate">{t('zelle.dailyLimit')} ($)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -506,14 +507,14 @@ const SettingsZelleTab = () => {
                     className="input-style w-full"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">{t('zelle.monthlyLimit')} ($)</label>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium mb-1 truncate">{t('zelle.monthlyLimit')} ($)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={formData.monthly_limit}
                     onChange={(e) => setFormData({...formData, monthly_limit: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0})}
-                    className="input-style w-full"
+                    className="input-style w-full sm:w-1/2"
                   />
                 </div>
               </div>
@@ -524,12 +525,12 @@ const SettingsZelleTab = () => {
                   value={formData.notes}
                   onChange={(e) => setFormData({...formData, notes: e.target.value})}
                   placeholder={t('zelle.notesPlaceholder') || 'Additional notes'}
-                  rows="3"
+                  rows="2"
                   className="input-style w-full"
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -560,17 +561,20 @@ const SettingsZelleTab = () => {
               </div>
             </div>
 
-            <div className="border-t p-6 flex gap-3 justify-end">
-              <Button variant="outline" onClick={() => setShowFormModal(false)}>
-                {t('common.cancel')}
+            <div className="border-t p-4 sm:p-6 flex gap-2 sm:gap-3 justify-end">
+              <Button variant="outline" onClick={() => setShowFormModal(false)} className="h-9 px-3">
+                <span className="hidden sm:inline">{t('common.cancel')}</span>
+                <span className="sm:hidden">✕</span>
               </Button>
               <Button
                 onClick={handleSubmitForm}
                 disabled={actionLoading === 'form'}
                 style={{ backgroundColor: visualSettings.primaryColor || '#2563eb', color: 'white' }}
+                className="h-9 px-3"
               >
-                {actionLoading === 'form' && <Loader className="h-4 w-4 mr-2 animate-spin" />}
-                {t('common.save')}
+                {actionLoading === 'form' && <Loader className="h-4 w-4 sm:mr-2 animate-spin" />}
+                <span className="hidden sm:inline">{t('common.save')}</span>
+                <span className="sm:hidden">{actionLoading !== 'form' && '✓'}</span>
               </Button>
             </div>
           </motion.div>
@@ -579,62 +583,60 @@ const SettingsZelleTab = () => {
 
       {/* Delete Modal */}
       {showDeleteModal && selectedAccount && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-2 sm:p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-lg max-w-md w-full p-6"
+            className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6 max-h-[95vh] overflow-y-auto"
           >
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-red-100 rounded-full">
-                <AlertCircle className="h-6 w-6 text-red-600" />
+              <div className="p-2 bg-red-100 rounded-full shrink-0">
+                <AlertCircle className="h-5 w-5 sm:h-6 sm:w-6 text-red-600" />
               </div>
-              <h2 className="text-lg font-semibold">{t('zelle.confirmDelete')}</h2>
+              <h2 className="text-base sm:text-lg font-semibold">{t('zelle.confirmDelete')}</h2>
             </div>
 
-            <div className="space-y-4 mb-6">
-              <p className="text-gray-700">
+            <div className="space-y-3 sm:space-y-4 mb-4 sm:mb-6">
+              <p className="text-sm sm:text-base text-gray-700">
                 {language === 'es'
                   ? `¿Estás seguro de que deseas eliminar la cuenta "${selectedAccount.account_name}"?`
                   : `Are you sure you want to delete the account "${selectedAccount.account_name}"?`}
               </p>
 
               {/* Warning box */}
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                <p className="text-sm font-medium text-amber-800 mb-2">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 sm:p-3">
+                <p className="text-xs sm:text-sm font-medium text-amber-800 mb-2">
                   {language === 'es' ? '⚠️ Importante:' : '⚠️ Important:'}
                 </p>
-                <ul className="text-sm text-amber-700 space-y-1 list-disc list-inside">
+                <ul className="text-xs sm:text-sm text-amber-700 space-y-1 list-disc list-inside">
                   <li>
                     {language === 'es'
-                      ? 'Si hay órdenes o remesas activas usando esta cuenta, la eliminación será bloqueada.'
-                      : 'If there are active orders or remittances using this account, deletion will be blocked.'}
+                      ? 'Si hay órdenes o remesas activas, la eliminación será bloqueada.'
+                      : 'If there are active orders or remittances, deletion will be blocked.'}
                   </li>
                   <li>
                     {language === 'es'
-                      ? 'Si hay historial de transacciones, la cuenta será desactivada (no eliminada) para preservar los registros.'
-                      : 'If there is transaction history, the account will be deactivated (not deleted) to preserve records.'}
-                  </li>
-                  <li>
-                    {language === 'es'
-                      ? 'Solo se elimina permanentemente si no hay ninguna dependencia.'
-                      : 'Only permanently deleted if there are no dependencies.'}
+                      ? 'Si hay historial, la cuenta será desactivada para preservar registros.'
+                      : 'If there is history, the account will be deactivated to preserve records.'}
                   </li>
                 </ul>
               </div>
             </div>
 
-            <div className="flex gap-3 justify-end">
-              <Button variant="outline" onClick={() => setShowDeleteModal(false)}>
-                {t('common.cancel')}
+            <div className="flex gap-2 sm:gap-3 justify-end">
+              <Button variant="outline" onClick={() => setShowDeleteModal(false)} className="h-9 px-3">
+                <span className="hidden sm:inline">{t('common.cancel')}</span>
+                <span className="sm:hidden">✕</span>
               </Button>
               <Button
                 variant="destructive"
                 onClick={handleConfirmDelete}
                 disabled={actionLoading === 'delete'}
+                className="h-9 px-3"
               >
-                {actionLoading === 'delete' && <Loader className="h-4 w-4 mr-2 animate-spin" />}
-                {t('common.delete')}
+                {actionLoading === 'delete' && <Loader className="h-4 w-4 sm:mr-2 animate-spin" />}
+                <Trash2 className="h-4 w-4 sm:mr-2 sm:hidden" />
+                <span className="hidden sm:inline">{t('common.delete')}</span>
               </Button>
             </div>
           </motion.div>
@@ -643,14 +645,14 @@ const SettingsZelleTab = () => {
 
       {/* Reset Modal */}
       {showResetModal && selectedAccount && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-2 sm:p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-lg max-w-md w-full p-6"
+            className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6"
           >
-            <h2 className="text-lg font-semibold mb-4">{t('zelle.resetCounters')}</h2>
-            <div className="space-y-4">
+            <h2 className="text-base sm:text-lg font-semibold mb-4">{t('zelle.resetCounters')}</h2>
+            <div className="space-y-3 sm:space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">{t('zelle.counterType')}</label>
                 <select
@@ -658,27 +660,30 @@ const SettingsZelleTab = () => {
                   onChange={(e) => setResetType(e.target.value)}
                   className="input-style w-full"
                 >
-                  <option value="daily">{t('zelle.resetDaily')} || 'Reset Daily'</option>
-                  <option value="monthly">{t('zelle.resetMonthly')} || 'Reset Monthly'</option>
+                  <option value="daily">{t('zelle.resetDaily') || 'Reset Daily'}</option>
+                  <option value="monthly">{t('zelle.resetMonthly') || 'Reset Monthly'}</option>
                 </select>
               </div>
-              <p className="text-sm text-gray-600">
+              <p className="text-xs sm:text-sm text-gray-600">
                 {language === 'es'
-                  ? 'Esto reiniciará el contador seleccionado para esta cuenta. El contador se volverá a llenar automáticamente.'
-                  : 'This will reset the selected counter for this account. The counter will refill automatically.'}
+                  ? 'Esto reiniciará el contador seleccionado. Se llenará automáticamente.'
+                  : 'This will reset the selected counter. It will refill automatically.'}
               </p>
             </div>
-            <div className="flex gap-3 justify-end mt-6">
-              <Button variant="outline" onClick={() => setShowResetModal(false)}>
-                {t('common.cancel')}
+            <div className="flex gap-2 sm:gap-3 justify-end mt-4 sm:mt-6">
+              <Button variant="outline" onClick={() => setShowResetModal(false)} className="h-9 px-3">
+                <span className="hidden sm:inline">{t('common.cancel')}</span>
+                <span className="sm:hidden">✕</span>
               </Button>
               <Button
                 onClick={handleConfirmReset}
                 disabled={actionLoading === 'reset'}
                 style={{ backgroundColor: visualSettings.primaryColor || '#2563eb', color: 'white' }}
+                className="h-9 px-3"
               >
-                {actionLoading === 'reset' && <Loader className="h-4 w-4 mr-2 animate-spin" />}
-                {t('common.confirm')}
+                {actionLoading === 'reset' && <Loader className="h-4 w-4 sm:mr-2 animate-spin" />}
+                <RotateCcw className="h-4 w-4 sm:mr-2 sm:hidden" />
+                <span className="hidden sm:inline">{t('common.confirm')}</span>
               </Button>
             </div>
           </motion.div>
