@@ -383,9 +383,9 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
         </div>
 
         <div className="text-right">
-          <Button onClick={handleAppearanceSave} style={getPrimaryButtonStyle(visualSettings)}>
-            <Save className="mr-2 h-4 w-4" />
-            {t('settings.visual.saveCustomization')}
+          <Button onClick={handleAppearanceSave} style={getPrimaryButtonStyle(visualSettings)} className="h-9 px-3">
+            <Save className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">{t('settings.visual.saveCustomization')}</span>
           </Button>
         </div>
       </motion.div>

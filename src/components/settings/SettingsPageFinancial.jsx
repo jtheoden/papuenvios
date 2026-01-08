@@ -267,35 +267,47 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
           {t('settings.financial.title')}
         </h2>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <input
-            type="number"
-            value={localFinancial.usdToLocal}
-            onChange={e => setLocalFinancial({ ...localFinancial, usdToLocal: parseFloat(e.target.value) })}
-            placeholder={t('settings.financial.usdToLocal')}
-            className="input-style"
-          />
-          <input
-            type="number"
-            value={localFinancial.productProfit}
-            onChange={e => setLocalFinancial({ ...localFinancial, productProfit: parseFloat(e.target.value) })}
-            placeholder={t('settings.financial.productProfit')}
-            className="input-style"
-          />
-          <input
-            type="number"
-            value={localFinancial.comboProfit}
-            onChange={e => setLocalFinancial({ ...localFinancial, comboProfit: parseFloat(e.target.value) })}
-            placeholder={t('settings.financial.comboProfit')}
-            className="input-style"
-          />
-          <input
-            type="number"
-            value={localFinancial.remittanceProfit}
-            onChange={e => setLocalFinancial({ ...localFinancial, remittanceProfit: parseFloat(e.target.value) })}
-            placeholder={t('settings.financial.remittanceProfit')}
-            className="input-style"
-          />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-8">
+          <div>
+            <label className="block text-sm font-medium mb-1 truncate">{t('settings.financial.usdToLocal')}</label>
+            <input
+              type="number"
+              value={localFinancial.usdToLocal}
+              onChange={e => setLocalFinancial({ ...localFinancial, usdToLocal: parseFloat(e.target.value) })}
+              placeholder="0.00"
+              className="input-style w-full"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1 truncate">{t('settings.financial.productProfit')}</label>
+            <input
+              type="number"
+              value={localFinancial.productProfit}
+              onChange={e => setLocalFinancial({ ...localFinancial, productProfit: parseFloat(e.target.value) })}
+              placeholder="%"
+              className="input-style w-full"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1 truncate">{t('settings.financial.comboProfit')}</label>
+            <input
+              type="number"
+              value={localFinancial.comboProfit}
+              onChange={e => setLocalFinancial({ ...localFinancial, comboProfit: parseFloat(e.target.value) })}
+              placeholder="%"
+              className="input-style w-full"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1 truncate">{t('settings.financial.remittanceProfit')}</label>
+            <input
+              type="number"
+              value={localFinancial.remittanceProfit}
+              onChange={e => setLocalFinancial({ ...localFinancial, remittanceProfit: parseFloat(e.target.value) })}
+              placeholder="%"
+              className="input-style w-full"
+            />
+          </div>
         </div>
 
         {/* Shipping Configuration */}
@@ -396,26 +408,30 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
 
           <div className="space-y-2 mb-6">
             {currencies.map(currency => (
-              <div key={currency.id} className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                <span className="font-bold w-16">{currency.code}</span>
-                <span className="flex-1">{language === 'es' ? currency.name_es : currency.name_en}</span>
-                <span className="w-12 text-center">{currency.symbol}</span>
-                {currency.is_base && (
-                  <span className="text-xs text-white px-2 py-1 rounded font-semibold" style={{
-                    background: visualSettings.useGradient
-                      ? `linear-gradient(to right, ${visualSettings.primaryColor}, ${visualSettings.secondaryColor})`
-                      : visualSettings.primaryColor
-                  }}>
-                    {t('settings.financial.base')}
-                  </span>
-                )}
-                <div className="flex gap-1">
-                  <Button variant="outline" size="icon" onClick={() => handleEditCurrency(currency)}>
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button variant="destructive" size="icon" onClick={() => handleRemoveCurrency(currency.id)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+              <div key={currency.id} className="flex flex-wrap sm:flex-nowrap items-center gap-2 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <span className="font-bold w-12 sm:w-16 shrink-0">{currency.code}</span>
+                  <span className="truncate flex-1 text-sm sm:text-base">{language === 'es' ? currency.name_es : currency.name_en}</span>
+                  <span className="w-8 sm:w-12 text-center shrink-0">{currency.symbol}</span>
+                </div>
+                <div className="flex items-center gap-1 sm:gap-2 ml-auto">
+                  {currency.is_base && (
+                    <span className="text-xs text-white px-2 py-1 rounded font-semibold whitespace-nowrap" style={{
+                      background: visualSettings.useGradient
+                        ? `linear-gradient(to right, ${visualSettings.primaryColor}, ${visualSettings.secondaryColor})`
+                        : visualSettings.primaryColor
+                    }}>
+                      {t('settings.financial.base')}
+                    </span>
+                  )}
+                  <div className="flex gap-1 shrink-0">
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleEditCurrency(currency)}>
+                      <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
+                    </Button>
+                    <Button variant="destructive" size="icon" className="h-8 w-8" onClick={() => handleRemoveCurrency(currency.id)}>
+                      <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                    </Button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -480,15 +496,16 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
               </label>
             </div>
             <div className="flex gap-2">
-              <Button onClick={handleCurrencySubmit} className="flex-1" style={getPrimaryButtonStyle(visualSettings)}>
+              <Button onClick={handleCurrencySubmit} className="flex-1 h-9" style={getPrimaryButtonStyle(visualSettings)}>
                 {editingCurrency
-                  ? <><Save className="h-4 w-4 mr-2" />{t('settings.financial.updateCurrency')}</>
-                  : <><Plus className="h-4 w-4 mr-2" />{t('settings.financial.addCurrency')}</>
+                  ? <><Save className="h-4 w-4 sm:mr-2" /><span className="hidden sm:inline">{t('settings.financial.updateCurrency')}</span></>
+                  : <><Plus className="h-4 w-4 sm:mr-2" /><span className="hidden sm:inline">{t('settings.financial.addCurrency')}</span></>
                 }
               </Button>
               {editingCurrency && (
-                <Button variant="outline" onClick={handleCancelEdit}>
-                  {t('common.cancel')}
+                <Button variant="outline" onClick={handleCancelEdit} className="h-9 px-3">
+                  <span className="hidden sm:inline">{t('common.cancel')}</span>
+                  <span className="sm:hidden">✕</span>
                 </Button>
               )}
             </div>
@@ -496,9 +513,9 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         </div>
 
         <div className="mt-6 text-right">
-          <Button onClick={handleFinancialSave} style={getPrimaryButtonStyle(visualSettings)}>
-            <Save className="mr-2 h-4 w-4" />
-            {t('common.saveSettings')}
+          <Button onClick={handleFinancialSave} style={getPrimaryButtonStyle(visualSettings)} className="h-9 px-3">
+            <Save className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">{t('common.saveSettings')}</span>
           </Button>
         </div>
       </motion.div>
@@ -586,9 +603,9 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                 />
               </div>
             </div>
-            <Button onClick={handleSaveRate} style={getPrimaryButtonStyle(visualSettings)}>
-              <Plus className="h-4 w-4 mr-2" />
-              {t('settings.financial.saveRates')}
+            <Button onClick={handleSaveRate} style={getPrimaryButtonStyle(visualSettings)} className="h-9 px-3">
+              <Plus className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">{t('settings.financial.saveRates')}</span>
             </Button>
           </div>
         )}
