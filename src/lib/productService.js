@@ -352,6 +352,7 @@ export const updateProduct = async (productId, productData) => {
       description_en: productData.description_en || '',
       category_id: productData.category_id,
       base_price: parseFloat(productData.basePrice),
+      base_currency_id: productData.base_currency_id,
       profit_margin: parseFloat(productData.profitMargin || DEFAULTS.PRODUCT_PROFIT_MARGIN),
       min_stock_alert: productData.min_stock_alert !== undefined ? parseInt(productData.min_stock_alert) : DEFAULTS.MIN_STOCK_ALERT,
       updated_at: getCurrentTimestamp()
