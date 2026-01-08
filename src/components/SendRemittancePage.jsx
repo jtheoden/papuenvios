@@ -140,25 +140,50 @@ const SendRemittancePage = ({ onNavigate }) => {
     return () => clearTimeout(timer);
   }, [selectedType, amount, desiredReceiveAmount, calcMode]);
 
+  // Restore saved state after login (guest → authenticated flow)
   useEffect(() => {
-    // Check for guest users - must be logged in to send remittances
-    if (!user) {
-      showModal({
-        type: 'warning',
-        title: t('auth.loginRequired'),
-        message: t('auth.loginRequiredMessage'),
-        confirmText: t('auth.goToLogin'),
-        cancelText: t('common.cancel')
-      }).then((confirmed) => {
-        if (confirmed) {
-          onNavigate('login');
-        } else {
-          onNavigate('home');
-        }
-      });
-      return;
-    }
+    if (user && types.length > 0) {
+      const savedState = localStorage.getItem('pendingRemittance');
+      if (savedState) {
+        try {
+          const { savedAmount, savedTypeId, savedCalcMode, savedDesiredReceive } = JSON.parse(savedState);
+          localStorage.removeItem('pendingRemittance');
 
+          const savedType = types.find(t => t.id === savedTypeId);
+          if (savedType && savedAmount) {
+            // Restore state
+            setSelectedType(savedType);
+            setAmount(savedAmount);
+            setCalcMode(savedCalcMode || 'send');
+            setDesiredReceiveAmount(savedDesiredReceive || '');
+
+            // Calculate and go to step 2
+            setCalculating(true);
+            calculateRemittance(savedType.id, parseFloat(savedAmount))
+              .then((calc) => {
+                setCalculation(calc);
+                setStep(2);
+                toast({
+                  title: language === 'es' ? 'Datos restaurados' : 'Data restored',
+                  description: language === 'es'
+                    ? 'Tu remesa en progreso ha sido restaurada.'
+                    : 'Your remittance in progress has been restored.'
+                });
+              })
+              .catch((err) => {
+                console.warn('[Remittance] Restore calculation error:', err);
+              })
+              .finally(() => setCalculating(false));
+          }
+        } catch (e) {
+          console.warn('[Remittance] Error restoring state:', e);
+          localStorage.removeItem('pendingRemittance');
+        }
+      }
+    }
+  }, [user, types, language]);
+
+  useEffect(() => {
     // Check for admin users - they cannot send remittances
     if (isAdmin || isSuperAdmin) {
       showModal({
@@ -170,7 +195,7 @@ const SendRemittancePage = ({ onNavigate }) => {
         onNavigate('dashboard');
       });
     }
-  }, [user, isAdmin, isSuperAdmin]);
+  }, [isAdmin, isSuperAdmin]);
 
   const loadShippingZones = async () => {
     try {
@@ -213,6 +238,34 @@ const SendRemittancePage = ({ onNavigate }) => {
         title: t('common.error'),
         description: t('remittances.wizard.selectTypeAndAmount'),
         variant: 'destructive'
+      });
+      return;
+    }
+
+    // Check authentication before proceeding to Step 2
+    if (!user) {
+      // Save current state for restoration after login
+      const stateToSave = {
+        savedAmount: amount,
+        savedTypeId: selectedType.id,
+        savedCalcMode: calcMode,
+        savedDesiredReceive: desiredReceiveAmount
+      };
+      localStorage.setItem('pendingRemittance', JSON.stringify(stateToSave));
+
+      // Show modal and redirect to login
+      showModal({
+        type: 'info',
+        title: t('auth.loginRequired'),
+        message: language === 'es'
+          ? 'Para continuar con tu remesa, necesitas iniciar sesión. Tu información será guardada.'
+          : 'To continue with your remittance, you need to log in. Your information will be saved.',
+        confirmText: t('auth.goToLogin'),
+        cancelText: t('common.cancel')
+      }).then((confirmed) => {
+        if (confirmed) {
+          onNavigate('login');
+        }
       });
       return;
     }
