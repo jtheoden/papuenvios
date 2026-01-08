@@ -160,16 +160,8 @@ const ProductsPage = ({ onNavigate }) => {
 
 
   useEffect(() => {
-    // Filter products - Hide products with zero stock for non-admin users
+    // Filter products - Show all products (including zero stock with visual indicator)
     let filtered = products;
-
-    // Filter out zero-stock products for customers
-    if (!isAdmin) {
-      filtered = filtered.filter(product => {
-        const stock = product.stock !== undefined ? product.stock : 0;
-        return stock > 0;
-      });
-    }
 
     if (searchTerm) {
       filtered = filtered.filter(product =>
@@ -584,13 +576,16 @@ const ProductsPage = ({ onNavigate }) => {
         )}
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredProducts.map((product, index) => (
+          {filteredProducts.map((product, index) => {
+            const isOutOfStock = !isAdmin && (product.stock === undefined || product.stock === null || product.stock <= 0);
+
+            return (
             <motion.div
               key={product.id}
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
-              className="glass-effect rounded-2xl overflow-hidden hover-lift group cursor-pointer"
+              className={`glass-effect rounded-2xl overflow-hidden group cursor-pointer ${isOutOfStock ? 'opacity-60' : 'hover-lift'}`}
               onClick={() => onNavigate('product-detail', { itemId: product.id, itemType: 'product' })}
             >
               <div className="aspect-square bg-gradient-to-br from-gray-100 to-gray-200 relative group">
@@ -615,6 +610,13 @@ const ProductsPage = ({ onNavigate }) => {
                 <div className={`absolute inset-0 flex items-center justify-center ${(product.image_url || product.image_file) ? 'hidden' : ''}`}>
                   <Package className="w-20 h-20 text-gray-300" />
                 </div>
+
+                {/* Out of Stock Badge */}
+                {isOutOfStock && (
+                  <div className="absolute top-2 right-2 bg-gray-800 text-white text-xs font-bold px-3 py-1 rounded-full z-10">
+                    {language === 'es' ? 'Agotado' : 'Out of Stock'}
+                  </div>
+                )}
 
                 {isAdmin && (
                   <div className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center z-10">
@@ -713,10 +715,16 @@ const ProductsPage = ({ onNavigate }) => {
                 <Button
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleAddToCart(product);
+                    if (!isOutOfStock) handleAddToCart(product);
                   }}
+                  disabled={isOutOfStock}
                   className="w-full"
-                  style={{
+                  style={isOutOfStock ? {
+                    background: '#9ca3af',
+                    color: '#ffffff',
+                    border: 'none',
+                    cursor: 'not-allowed'
+                  } : {
                     background: visualSettings.useGradient
                       ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
                       : visualSettings.buttonBgColor || '#2563eb',
@@ -725,11 +733,15 @@ const ProductsPage = ({ onNavigate }) => {
                   }}
                 >
                   <ShoppingCart className="w-4 h-4 mr-2" />
-                  {t('products.addToCart')}
+                  {isOutOfStock
+                    ? (language === 'es' ? 'Agotado' : 'Out of Stock')
+                    : t('products.addToCart')
+                  }
                 </Button>
               </div>
             </motion.div>
-          ))}
+          );
+          })}
         </div>
 
         {filteredProducts.length === 0 && (
