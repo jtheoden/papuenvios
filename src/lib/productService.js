@@ -681,7 +681,41 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
     }
 
     // ============================================
-    // STEP 5: Delete inventory records (now safe - no FK references)
+    // STEP 5: Get inventory IDs and delete inventory_movements first
+    // ============================================
+    console.log('[deleteProduct] Getting inventory IDs for product...');
+    const { data: inventoryRecords, error: invFetchError } = await supabase
+      .from('inventory')
+      .select('id')
+      .eq('product_id', productId);
+
+    if (invFetchError) {
+      console.warn('[deleteProduct] Error fetching inventory IDs:', invFetchError);
+    }
+
+    const productInventoryIds = (inventoryRecords || []).map(inv => inv.id);
+
+    if (productInventoryIds.length > 0) {
+      // Delete inventory_movements that reference these inventory records
+      console.log('[deleteProduct] Deleting inventory_movements for inventory IDs:', productInventoryIds.length);
+      const { error: movementsError } = await supabase
+        .from('inventory_movements')
+        .delete()
+        .in('inventory_id', productInventoryIds);
+
+      if (movementsError) {
+        console.error('[deleteProduct] Error deleting inventory_movements:', movementsError);
+        throw new AppError(
+          'Error al eliminar movimientos de inventario',
+          ERROR_CODES.DB_ERROR,
+          500,
+          { operation: 'deleteInventoryMovements', error: movementsError.message }
+        );
+      }
+    }
+
+    // ============================================
+    // STEP 6: Delete inventory records (now safe - no FK references)
     // ============================================
     console.log('[deleteProduct] Deleting inventory records...');
     const { error: inventoryError } = await supabase
@@ -700,7 +734,7 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
     }
 
     // ============================================
-    // STEP 6: Delete the product
+    // STEP 7: Delete the product
     // ============================================
     console.log('[deleteProduct] Deleting product...');
     const { error } = await supabase
