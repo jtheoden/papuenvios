@@ -843,6 +843,11 @@
     "logoutSuccess": "Logged out successfully.",
     "loginRequired": "Login Required",
     "loginToCheckout": "Please log in to continue to checkout.",
+    "loginToRemittance": "Please log in to send a remittance.",
+    "loginRequiredMessage": "You must be registered and logged in to perform this action. Would you like to go to the login page?",
+    "goToLogin": "Go to Login",
+    "paymentProofRequired": "Payment Proof Required",
+    "paymentProofMessage": "To complete your request, you will need to upload a payment proof (screenshot or photo of the Zelle transfer).",
     "authenticating": "Authenticating...",
     "loadingMessages": {
       "connecting": "Connecting with Google...",

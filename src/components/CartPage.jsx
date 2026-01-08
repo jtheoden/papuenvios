@@ -268,9 +268,27 @@ const CartPage = ({ onNavigate }) => {
 
   const handleCheckout = async () => {
     if (!isAuthenticated) {
-      toast({ title: t('auth.loginRequired'), description: t('auth.loginToCheckout'), variant: 'destructive' });
+      const confirmed = await showModal({
+        type: 'warning',
+        title: t('auth.loginRequired'),
+        message: t('auth.loginRequiredMessage'),
+        confirmText: t('auth.goToLogin'),
+        cancelText: t('common.cancel')
+      });
+      if (confirmed) {
+        onNavigate('login');
+      }
       return;
     }
+
+    // Show payment proof notification before proceeding
+    await showModal({
+      type: 'info',
+      title: t('auth.paymentProofRequired'),
+      message: t('auth.paymentProofMessage'),
+      confirmText: t('common.continue'),
+      cancelText: null
+    });
 
     await logActivity({
       action: 'checkout_initiated',

@@ -79,6 +79,25 @@ const SendRemittancePage = ({ onNavigate }) => {
   }, []);
 
   useEffect(() => {
+    // Check for guest users - must be logged in to send remittances
+    if (!user) {
+      showModal({
+        type: 'warning',
+        title: t('auth.loginRequired'),
+        message: t('auth.loginRequiredMessage'),
+        confirmText: t('auth.goToLogin'),
+        cancelText: t('common.cancel')
+      }).then((confirmed) => {
+        if (confirmed) {
+          onNavigate('login');
+        } else {
+          onNavigate('home');
+        }
+      });
+      return;
+    }
+
+    // Check for admin users - they cannot send remittances
     if (isAdmin || isSuperAdmin) {
       showModal({
         type: 'info',
@@ -89,7 +108,7 @@ const SendRemittancePage = ({ onNavigate }) => {
         onNavigate('dashboard');
       });
     }
-  }, [isAdmin, isSuperAdmin]);
+  }, [user, isAdmin, isSuperAdmin]);
 
   const loadShippingZones = async () => {
     try {
@@ -153,7 +172,7 @@ const SendRemittancePage = ({ onNavigate }) => {
     }
   };
 
-  const handleRecipientSubmit = () => {
+  const handleRecipientSubmit = async () => {
     if (!selectedRecipientData) {
       toast({
         title: t('common.error'),
@@ -191,6 +210,15 @@ const SendRemittancePage = ({ onNavigate }) => {
       });
       return;
     }
+
+    // Show payment proof notification before proceeding to payment step
+    await showModal({
+      type: 'info',
+      title: t('auth.paymentProofRequired'),
+      message: t('auth.paymentProofMessage'),
+      confirmText: t('common.continue'),
+      cancelText: null
+    });
 
     setStep(3);
   };

@@ -852,6 +852,11 @@
     "logoutSuccess": "Sesión cerrada exitosamente.",
     "loginRequired": "Inicio de Sesión Requerido",
     "loginToCheckout": "Por favor, inicia sesión para continuar con el pago.",
+    "loginToRemittance": "Por favor, inicia sesión para enviar una remesa.",
+    "loginRequiredMessage": "Debes estar registrado e iniciar sesión para realizar esta acción. ¿Deseas ir a la página de inicio de sesión?",
+    "goToLogin": "Ir a Iniciar Sesión",
+    "paymentProofRequired": "Comprobante de Pago Requerido",
+    "paymentProofMessage": "Para completar tu solicitud, deberás subir un comprobante de pago (captura de pantalla o foto de la transferencia Zelle).",
     "authenticating": "Autenticando...",
     "loadingMessages": {
       "connecting": "Conectando con Google...",
