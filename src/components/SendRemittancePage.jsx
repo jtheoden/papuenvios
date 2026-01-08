@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight, ArrowLeft, Check, DollarSign, User, FileText, Upload,
-  AlertCircle, CheckCircle, Calculator, Copy, CreditCard, MessageCircle
+  AlertCircle, CheckCircle, Calculator, Copy, CreditCard, MessageCircle,
+  Target, RefreshCw
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,6 +12,7 @@ import { useBusiness } from '@/contexts/BusinessContext';
 import {
   getActiveRemittanceTypes,
   calculateRemittance,
+  calculateReverseRemittance,
   createRemittance,
   uploadPaymentProof
 } from '@/lib/remittanceService';
@@ -41,6 +43,12 @@ const SendRemittancePage = ({ onNavigate }) => {
   const [selectedType, setSelectedType] = useState(null);
   const [amount, setAmount] = useState('');
   const [calculation, setCalculation] = useState(null);
+
+  // Calculator mode: 'send' = user enters amount to send, 'receive' = user enters desired receive amount
+  const [calcMode, setCalcMode] = useState('send');
+  const [desiredReceiveAmount, setDesiredReceiveAmount] = useState('');
+  const [liveCalc, setLiveCalc] = useState(null);
+  const [isCalculatingLive, setIsCalculatingLive] = useState(false);
 
   const [selectedRecipientData, setSelectedRecipientData] = useState(null);
   const [selectedZelle, setSelectedZelle] = useState(null);
@@ -77,6 +85,60 @@ const SendRemittancePage = ({ onNavigate }) => {
     loadTypes();
     loadShippingZones();
   }, []);
+
+  // Live calculation effect with debounce
+  useEffect(() => {
+    if (!selectedType) {
+      setLiveCalc(null);
+      return;
+    }
+
+    const inputAmount = calcMode === 'send' ? amount : desiredReceiveAmount;
+    if (!inputAmount || parseFloat(inputAmount) <= 0) {
+      setLiveCalc(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsCalculatingLive(true);
+      try {
+        if (calcMode === 'send') {
+          // Normal calculation: user enters amount to send
+          const result = await calculateRemittance(selectedType.id, parseFloat(amount));
+          setLiveCalc({
+            mode: 'send',
+            amountToSend: parseFloat(amount),
+            amountToReceive: result.amountToDeliver,
+            commission: result.totalCommission,
+            exchangeRate: result.exchangeRate || selectedType.exchange_rate,
+            currency: result.currency,
+            deliveryCurrency: result.deliveryCurrency
+          });
+        } else {
+          // Reverse calculation: user enters desired receive amount
+          const result = await calculateReverseRemittance(selectedType.id, parseFloat(desiredReceiveAmount));
+          setLiveCalc({
+            mode: 'receive',
+            amountToSend: result.amountToSend,
+            amountToReceive: parseFloat(desiredReceiveAmount),
+            commission: result.totalCommission,
+            exchangeRate: result.exchangeRate,
+            currency: result.currency,
+            deliveryCurrency: result.deliveryCurrency
+          });
+          // Auto-sync amount for when user proceeds
+          setAmount(result.amountToSend.toString());
+        }
+      } catch (error) {
+        console.warn('[LiveCalc] Error:', error.message);
+        setLiveCalc(null);
+      } finally {
+        setIsCalculatingLive(false);
+      }
+    }, 400); // 400ms debounce
+
+    return () => clearTimeout(timer);
+  }, [selectedType, amount, desiredReceiveAmount, calcMode]);
 
   useEffect(() => {
     // Check for guest users - must be logged in to send remittances
@@ -491,24 +553,148 @@ const SendRemittancePage = ({ onNavigate }) => {
                 {t('remittances.wizard.step1Title')}
               </h2>
 
-              {/* Amount Input - PRIMERO para mayor claridad */}
+              {/* Calculator Mode Toggle + Amount Input */}
               <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border-2 border-blue-200">
+                {/* Toggle Tabs */}
+                <div className="flex mb-4 bg-white rounded-lg p-1 border border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCalcMode('send');
+                      setDesiredReceiveAmount('');
+                      setLiveCalc(null);
+                    }}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-md text-sm font-semibold transition-all ${
+                      calcMode === 'send'
+                        ? 'bg-blue-600 text-white shadow-md'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <DollarSign className="w-4 h-4" />
+                    {t('remittances.wizard.youSendTab')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCalcMode('receive');
+                      setAmount('');
+                      setLiveCalc(null);
+                    }}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-md text-sm font-semibold transition-all ${
+                      calcMode === 'receive'
+                        ? 'bg-green-600 text-white shadow-md'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Target className="w-4 h-4" />
+                    {t('remittances.wizard.theyReceiveTab')}
+                  </button>
+                </div>
+
+                {/* Amount Input - Changes based on mode */}
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  {t('remittances.wizard.amountToSend')} (USD) *
+                  {calcMode === 'send'
+                    ? `${t('remittances.wizard.amountToSend')} (USD) *`
+                    : `${t('remittances.wizard.amountToReceive')} (${selectedType?.delivery_currency || 'CUP'}) *`
+                  }
                 </label>
                 <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-blue-600" />
+                  {calcMode === 'send' ? (
+                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-blue-600" />
+                  ) : (
+                    <Target className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-green-600" />
+                  )}
                   <input
                     type="number"
                     step="0.01"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 rounded-lg border-2 border-blue-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg font-semibold"
-                    placeholder="Ej: 100.00"
+                    value={calcMode === 'send' ? amount : desiredReceiveAmount}
+                    onChange={(e) => {
+                      if (calcMode === 'send') {
+                        setAmount(e.target.value);
+                      } else {
+                        setDesiredReceiveAmount(e.target.value);
+                      }
+                    }}
+                    className={`w-full pl-10 pr-4 py-3 rounded-lg border-2 focus:ring-2 text-lg font-semibold transition-colors ${
+                      calcMode === 'send'
+                        ? 'border-blue-300 focus:ring-blue-500 focus:border-blue-500'
+                        : 'border-green-300 focus:ring-green-500 focus:border-green-500'
+                    }`}
+                    placeholder={calcMode === 'send' ? 'Ej: 100.00' : 'Ej: 10,000'}
                   />
                 </div>
+
+                {/* Live Calculation Preview */}
+                {(isCalculatingLive || liveCalc) && selectedType && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`mt-4 p-4 rounded-xl border-2 ${
+                      calcMode === 'send'
+                        ? 'bg-green-50 border-green-200'
+                        : 'bg-blue-50 border-blue-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-3">
+                      <Calculator className="w-4 h-4 text-gray-600" />
+                      <span className="text-sm font-semibold text-gray-700">
+                        {t('remittances.wizard.liveCalculation')}
+                      </span>
+                      {isCalculatingLive && (
+                        <RefreshCw className="w-4 h-4 text-gray-400 animate-spin ml-auto" />
+                      )}
+                    </div>
+
+                    {liveCalc && !isCalculatingLive && (
+                      <div className="space-y-2">
+                        {/* Exchange Rate */}
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">{t('remittances.wizard.exchangeRateLabel')}:</span>
+                          <span className="font-medium">1 {liveCalc.currency} = {liveCalc.exchangeRate} {liveCalc.deliveryCurrency}</span>
+                        </div>
+
+                        {/* Commission */}
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">{t('remittances.wizard.commission')}:</span>
+                          <span className="font-medium text-red-600">-{liveCalc.commission.toFixed(2)} {liveCalc.currency}</span>
+                        </div>
+
+                        <div className="border-t border-gray-200 pt-2 mt-2">
+                          {calcMode === 'send' ? (
+                            /* Show what they will receive */
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-semibold text-gray-700">
+                                {t('remittances.wizard.theyWillReceive')}:
+                              </span>
+                              <span className="text-xl font-bold text-green-600">
+                                {liveCalc.amountToReceive.toFixed(2)} {liveCalc.deliveryCurrency}
+                              </span>
+                            </div>
+                          ) : (
+                            /* Show what user must send */
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-semibold text-gray-700">
+                                {t('remittances.wizard.youMustSend')}:
+                              </span>
+                              <span className="text-xl font-bold text-blue-600">
+                                ${liveCalc.amountToSend.toFixed(2)} {liveCalc.currency}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {isCalculatingLive && !liveCalc && (
+                      <div className="text-sm text-gray-500 text-center py-2">
+                        {t('remittances.wizard.calculating')}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+
                 {selectedType && (
-                  <p className="text-xs text-gray-600 mt-2">
+                  <p className="text-xs text-gray-600 mt-3">
                     {t('remittances.wizard.minAmount')}: {selectedType.min_amount} {selectedType.currency_code}
                     {selectedType.max_amount && ` • ${t('remittances.wizard.maxAmount')}: ${selectedType.max_amount} ${selectedType.currency_code}`}
                   </p>

@@ -466,6 +466,107 @@ export const calculateRemittance = async (typeId, amount) => {
 };
 
 /**
+ * Calculate remittance in REVERSE mode (from desired receive amount)
+ * Given how much recipient should receive, calculate how much sender needs to send
+ * @param {string} typeId - Remittance type UUID
+ * @param {number} desiredReceiveAmount - Amount recipient should receive (in delivery currency)
+ * @returns {Promise<Object>} Calculation details including amount to send
+ */
+export const calculateReverseRemittance = async (typeId, desiredReceiveAmount) => {
+  try {
+    if (!typeId || desiredReceiveAmount === undefined || desiredReceiveAmount === null) {
+      throw createValidationError(
+        { typeId: !typeId ? 'Type ID is required' : undefined, amount: !desiredReceiveAmount ? 'Amount is required' : undefined },
+        'Missing calculation parameters'
+      );
+    }
+
+    if (parseFloat(desiredReceiveAmount) <= 0) {
+      throw createValidationError({ amount: 'Amount must be greater than 0' });
+    }
+
+    const { data: type, error } = await supabase
+      .from('remittance_types')
+      .select('*')
+      .eq('id', typeId)
+      .or('is_active.eq.true,is_active.is.null')
+      .single();
+
+    if (error) {
+      const appError = parseSupabaseError(error);
+      if (!type) {
+        throw createNotFoundError('Remittance type', typeId);
+      }
+      logError(appError, { operation: 'calculateReverseRemittance', typeId, desiredReceiveAmount });
+      throw appError;
+    }
+
+    if (!type) {
+      throw createNotFoundError('Remittance type', typeId);
+    }
+
+    // Reverse formula:
+    // Normal: amountToDeliver = (amount - totalCommission) * exchange_rate
+    // Where: totalCommission = (amount * commission_percentage / 100) + commission_fixed
+    //
+    // Solving for amount:
+    // desiredReceive = (amount - (amount * commPct / 100) - commFixed) * exchangeRate
+    // desiredReceive / exchangeRate = amount * (1 - commPct/100) - commFixed
+    // (desiredReceive / exchangeRate) + commFixed = amount * (1 - commPct/100)
+    // amount = ((desiredReceive / exchangeRate) + commFixed) / (1 - commPct/100)
+
+    const exchangeRate = type.exchange_rate || 1;
+    const commissionPercentage = type.commission_percentage || 0;
+    const commissionFixed = type.commission_fixed || 0;
+
+    // Calculate amount to send
+    const denominator = 1 - (commissionPercentage / 100);
+    if (denominator <= 0) {
+      throw createValidationError({ commission: 'Commission percentage cannot be 100% or more' });
+    }
+
+    const amountToSend = ((desiredReceiveAmount / exchangeRate) + commissionFixed) / denominator;
+
+    // Validate against limits
+    if (amountToSend < type.min_amount) {
+      throw createValidationError(
+        { amount: `Amount to send (${amountToSend.toFixed(2)}) is below minimum ${type.min_amount} ${type.currency_code}` },
+        'Amount below minimum'
+      );
+    }
+
+    if (type.max_amount && amountToSend > type.max_amount) {
+      throw createValidationError(
+        { amount: `Amount to send (${amountToSend.toFixed(2)}) exceeds maximum ${type.max_amount} ${type.currency_code}` },
+        'Amount exceeds maximum'
+      );
+    }
+
+    // Recalculate commission for display
+    const totalCommissionPercentage = (amountToSend * commissionPercentage) / 100;
+    const totalCommission = totalCommissionPercentage + commissionFixed;
+
+    return {
+      amountToSend: Math.round(amountToSend * 100) / 100, // Round to 2 decimals
+      desiredReceiveAmount,
+      exchangeRate,
+      commissionPercentage,
+      commissionFixed,
+      totalCommission: Math.round(totalCommission * 100) / 100,
+      currency: type.currency_code,
+      deliveryCurrency: type.delivery_currency,
+      deliveryMethod: type.delivery_method,
+      minAmount: type.min_amount,
+      maxAmount: type.max_amount
+    };
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'calculateReverseRemittance', typeId, desiredReceiveAmount });
+    throw appError;
+  }
+};
+
+/**
  * Create a new remittance (User)
  * @param {Object} remittanceData - Remittance creation data
  * @throws {AppError} If validation fails or creation fails
