@@ -400,11 +400,12 @@ const findBlockingOrdersForCombo = async (comboId) => {
 };
 
 /**
- * Delete a combo (soft delete by setting is_active to false)
+ * Delete a combo (hard delete - removes from database)
  * Validates no blocking orders exist before deletion
+ * Clears combo references from completed/cancelled orders
  * @param {string} comboId - Combo ID to delete
  * @throws {AppError} If deletion fails or blocking orders exist
- * @returns {Promise<Object>} Deleted combo
+ * @returns {Promise<Object>} Result with deleted combo info
  */
 export const deleteCombo = async (comboId) => {
   try {
@@ -427,7 +428,9 @@ export const deleteCombo = async (comboId) => {
 
     const comboName = combo?.name_es || combo?.name_en || comboId;
 
-    // Check for blocking orders
+    // ============================================
+    // STEP 1: Check for blocking orders
+    // ============================================
     console.log('[deleteCombo] Checking for blocking orders...');
     const { blockingOrders, safeOrders } = await findBlockingOrdersForCombo(comboId);
 
@@ -450,26 +453,72 @@ export const deleteCombo = async (comboId) => {
 
     console.log('[deleteCombo] No blocking orders. Safe orders found:', safeOrders.length);
 
-    // Soft delete - set is_active to false
-    const { data, error } = await supabase
+    // ============================================
+    // STEP 2: Clear item_id from safe order_items (dispatched/delivered/completed/cancelled)
+    // ============================================
+    if (safeOrders.length > 0) {
+      console.log('[deleteCombo] Clearing item_id from order_items for safe orders...');
+      const { error: clearError } = await supabase
+        .from('order_items')
+        .update({ item_id: null })
+        .eq('item_type', 'combo')
+        .eq('item_id', comboId);
+
+      if (clearError) {
+        console.error('[deleteCombo] Error clearing item_id from order_items:', clearError);
+        throw new AppError(
+          'Error al limpiar referencias del combo en órdenes completadas',
+          ERROR_CODES.DB_ERROR,
+          500,
+          { operation: 'clearOrderItemsCombo', error: clearError.message }
+        );
+      }
+    }
+
+    // ============================================
+    // STEP 3: Delete combo_items references (FK constraint)
+    // ============================================
+    console.log('[deleteCombo] Deleting combo_items references...');
+    const { error: comboItemsError } = await supabase
+      .from('combo_items')
+      .delete()
+      .eq('combo_id', comboId);
+
+    if (comboItemsError) {
+      console.error('[deleteCombo] Error deleting combo_items:', comboItemsError);
+      throw new AppError(
+        'Error al eliminar items del combo',
+        ERROR_CODES.DB_ERROR,
+        500,
+        { operation: 'deleteComboItems', error: comboItemsError.message }
+      );
+    }
+
+    // ============================================
+    // STEP 4: Delete the combo
+    // ============================================
+    console.log('[deleteCombo] Deleting combo...');
+    const { error } = await supabase
       .from('combo_products')
-      .update({ is_active: false, updated_at: getCurrentTimestamp() })
-      .eq('id', comboId)
-      .select()
-      .single();
+      .delete()
+      .eq('id', comboId);
 
     if (error) {
       const appError = parseSupabaseError(error);
-      if (!data) {
-        throw createNotFoundError('Combo', comboId);
-      }
       logError(appError, { operation: 'deleteCombo', comboId });
       throw appError;
     }
 
-    console.log('[deleteCombo] SUCCESS - Combo deactivated:', comboName);
+    console.log('[deleteCombo] SUCCESS - Combo deleted:', comboName);
 
-    return data;
+    return {
+      success: true,
+      deletedCombo: {
+        id: comboId,
+        name: comboName
+      },
+      clearedOrderItems: safeOrders.length
+    };
   } catch (error) {
     if (error.code) throw error; // Already an AppError
     const appError = handleError(error, ERROR_CODES.DB_ERROR, {
