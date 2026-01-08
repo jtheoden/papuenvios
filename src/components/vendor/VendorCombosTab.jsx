@@ -587,7 +587,7 @@ const VendorCombosTab = ({
           {/* Form Actions */}
           <div className="flex justify-end gap-4 mt-6">
             <Button variant="outline" onClick={() => setComboForm(null)}>
-              {t('vendor.addProduct.cancel')}
+              {t('common.cancel')}
             </Button>
             <Button onClick={handleComboSubmit} style={getPrimaryButtonStyle(visualSettings)}>
               <Save className="w-4 h-4 mr-2" />

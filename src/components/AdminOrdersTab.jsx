@@ -310,11 +310,11 @@ const AdminOrdersTab = () => {
             showToast(t('adminOrders.messages.validateSuccess'), 'success');
             loadOrders();
           } else {
-            showToast(`${t('adminOrders.messages.error')}: ${result.error}`, 'error');
+            showToast(`${t('common.error')}: ${result.error}`, 'error');
           }
         } catch (err) {
           console.error('Error validating payment:', err);
-          showToast(t('adminOrders.messages.error'), 'error');
+          showToast(t('common.error'), 'error');
         } finally {
           setActionLoading(null);
         }
@@ -340,11 +340,11 @@ const AdminOrdersTab = () => {
             showToast(t('adminOrders.messages.rejectSuccess'), 'success');
             loadOrders();
           } else {
-            showToast(`${t('adminOrders.messages.error')}: ${result.error}`, 'error');
+            showToast(`${t('common.error')}: ${result.error}`, 'error');
           }
         } catch (err) {
           console.error('Error rejecting payment:', err);
-          showToast(t('adminOrders.messages.error'), 'error');
+          showToast(t('common.error'), 'error');
         } finally {
           setActionLoading(null);
         }
@@ -365,11 +365,11 @@ const AdminOrdersTab = () => {
             showToast(t('adminOrders.messages.startSuccess'), 'success');
             loadOrders(); // Refresh orders
           } else {
-            showToast(`${t('adminOrders.messages.error')}: ${result.error}`, 'error');
+            showToast(`${t('common.error')}: ${result.error}`, 'error');
           }
         } catch (err) {
           console.error('Error starting processing:', err);
-          showToast(t('adminOrders.messages.error'), 'error');
+          showToast(t('common.error'), 'error');
         } finally {
           setActionLoading(null);
         }
@@ -391,11 +391,11 @@ const AdminOrdersTab = () => {
             showToast(t('adminOrders.messages.dispatchSuccess'), 'success');
             loadOrders(); // Refresh orders
           } else {
-            showToast(`${t('adminOrders.messages.error')}: ${result.error}`, 'error');
+            showToast(`${t('common.error')}: ${result.error}`, 'error');
           }
         } catch (err) {
           console.error('Error marking as dispatched:', err);
-          showToast(t('adminOrders.messages.error'), 'error');
+          showToast(t('common.error'), 'error');
         } finally {
           setActionLoading(null);
         }
@@ -458,11 +458,11 @@ const AdminOrdersTab = () => {
         setSelectedOrder(null);
         loadOrders(); // Refresh orders
       } else {
-        showToast(`${t('adminOrders.messages.error')}: ${result.error}`, 'error');
+        showToast(`${t('common.error')}: ${result.error}`, 'error');
       }
     } catch (err) {
       console.error('Error uploading delivery proof:', err);
-      showToast(t('adminOrders.messages.error'), 'error');
+      showToast(t('common.error'), 'error');
     } finally {
       setActionLoading(null);
     }
@@ -481,11 +481,11 @@ const AdminOrdersTab = () => {
             showToast(t('adminOrders.messages.completeSuccess'), 'success');
             loadOrders(); // Refresh orders
           } else {
-            showToast(`${t('adminOrders.messages.error')}: ${result.error}`, 'error');
+            showToast(`${t('common.error')}: ${result.error}`, 'error');
           }
         } catch (err) {
           console.error('Error completing order:', err);
-          showToast(t('adminOrders.messages.error'), 'error');
+          showToast(t('common.error'), 'error');
         } finally {
           setActionLoading(null);
         }
@@ -516,11 +516,11 @@ const AdminOrdersTab = () => {
                 showToast(t('adminOrders.messages.cancelSuccess'), 'success');
                 loadOrders(); // Refresh orders
               } else {
-                showToast(`${t('adminOrders.messages.error')}: ${result.error}`, 'error');
+                showToast(`${t('common.error')}: ${result.error}`, 'error');
               }
             } catch (err) {
               console.error('Error cancelling order:', err);
-              showToast(t('adminOrders.messages.error'), 'error');
+              showToast(t('common.error'), 'error');
             } finally {
               setActionLoading(null);
             }
@@ -594,7 +594,7 @@ const AdminOrdersTab = () => {
       ...baseColumns,
       {
         key: 'actions',
-        label: t('adminOrders.table.actions'),
+        label: t('common.actions'),
         width: '120px',
         render: (value, order) => (
           <OrderActionButtons

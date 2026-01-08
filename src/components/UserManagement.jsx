@@ -642,7 +642,7 @@ const UserManagement = () => {
                   title={t('users.deleteUser')}
                 >
                   <Trash2 className="w-4 h-4" />
-                  {t('users.delete')}
+                  {t('common.delete')}
                 </Button>
               </div>
             );

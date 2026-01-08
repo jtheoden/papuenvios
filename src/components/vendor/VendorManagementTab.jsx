@@ -25,10 +25,10 @@ const VendorManagementTab = ({ testimonials, onTestimonialsRefresh }) => {
 
       console.log('[handleToggleTestimonialVisibility] SUCCESS - Visibility toggled');
       toast({
-        title: language === 'es' ? 'Actualizado' : 'Updated',
-        description: language === 'es'
-          ? `Testimonio ${!currentVisibility ? 'visible' : 'oculto'}`
-          : `Testimonial ${!currentVisibility ? 'visible' : 'hidden'}`
+        title: t('vendor.management.updated'),
+        description: !currentVisibility
+          ? t('vendor.management.testimonialVisible')
+          : t('vendor.management.testimonialHidden')
       });
 
       console.log('[handleToggleTestimonialVisibility] Refreshing testimonials list...');
@@ -38,10 +38,8 @@ const VendorManagementTab = ({ testimonials, onTestimonialsRefresh }) => {
       console.error('[handleToggleTestimonialVisibility] ERROR:', error);
       console.error('[handleToggleTestimonialVisibility] Error details:', { message: error?.message, code: error?.code });
       toast({
-        title: 'Error',
-        description: error.message || (language === 'es'
-          ? 'Error al actualizar testimonio'
-          : 'Error updating testimonial'),
+        title: t('common.error'),
+        description: error.message || t('vendor.management.errorUpdatingTestimonial'),
         variant: 'destructive'
       });
     }
@@ -59,10 +57,10 @@ const VendorManagementTab = ({ testimonials, onTestimonialsRefresh }) => {
 
       console.log('[handleToggleTestimonialFeatured] SUCCESS - Featured status toggled');
       toast({
-        title: language === 'es' ? 'Actualizado' : 'Updated',
-        description: language === 'es'
-          ? `Testimonio ${!currentFeatured ? 'destacado' : 'normal'}`
-          : `Testimonial ${!currentFeatured ? 'featured' : 'unfeatured'}`
+        title: t('vendor.management.updated'),
+        description: !currentFeatured
+          ? t('vendor.management.testimonialFeatured')
+          : t('vendor.management.testimonialUnfeatured')
       });
 
       console.log('[handleToggleTestimonialFeatured] Refreshing testimonials list...');
@@ -72,10 +70,8 @@ const VendorManagementTab = ({ testimonials, onTestimonialsRefresh }) => {
       console.error('[handleToggleTestimonialFeatured] ERROR:', error);
       console.error('[handleToggleTestimonialFeatured] Error details:', { message: error?.message, code: error?.code });
       toast({
-        title: 'Error',
-        description: error.message || (language === 'es'
-          ? 'Error al destacar testimonio'
-          : 'Error featuring testimonial'),
+        title: t('common.error'),
+        description: error.message || t('vendor.management.errorFeaturingTestimonial'),
         variant: 'destructive'
       });
     }
@@ -90,7 +86,7 @@ const VendorManagementTab = ({ testimonials, onTestimonialsRefresh }) => {
         <div className="glass-effect p-4 rounded-lg space-y-2">
           {testimonials.length === 0 ? (
             <p className="text-gray-500 text-center py-4">
-              {language === 'es' ? 'No hay testimonios aún' : 'No testimonials yet'}
+              {t('vendor.management.noTestimonials')}
             </p>
           ) : (
             testimonials.map(testimonial => (
@@ -116,7 +112,7 @@ const VendorManagementTab = ({ testimonials, onTestimonialsRefresh }) => {
                         {testimonial.is_featured && (
                           <Check
                             className="w-4 h-4 text-purple-500"
-                            title={language === 'es' ? 'Destacado' : 'Featured'}
+                            title={t('vendor.management.featured')}
                           />
                         )}
                         <span className="text-yellow-500">
@@ -135,17 +131,17 @@ const VendorManagementTab = ({ testimonials, onTestimonialsRefresh }) => {
                     className="h-8 px-2 sm:px-3"
                     variant={testimonial.is_featured ? "default" : "outline"}
                     onClick={() => handleToggleTestimonialFeatured(testimonial.id, testimonial.is_featured)}
-                    title={language === 'es' ? 'Destacar/Quitar destaque' : 'Feature/Unfeature'}
+                    title={t('vendor.management.toggleFeatured')}
                   >
                     {testimonial.is_featured ? (
                       <>
                         <Check className="h-4 w-4 sm:mr-2" />
-                        <span className="hidden sm:inline">{language === 'es' ? 'Destacado' : 'Featured'}</span>
+                        <span className="hidden sm:inline">{t('vendor.management.featured')}</span>
                       </>
                     ) : (
                       <>
                         <X className="h-4 w-4 sm:mr-2" />
-                        <span className="hidden sm:inline">{language === 'es' ? 'Normal' : 'Normal'}</span>
+                        <span className="hidden sm:inline">{t('vendor.management.normal')}</span>
                       </>
                     )}
                   </Button>

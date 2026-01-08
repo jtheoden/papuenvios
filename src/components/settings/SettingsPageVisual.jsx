@@ -58,7 +58,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       const result = await validateAndProcessImage(file, 'logo');
       if (!result.success) {
         toast({
-          title: language === 'es' ? 'Error de validación' : 'Validation error',
+          title: t('settings.visual.validationError'),
           description: result.errors.join('\n'),
           variant: 'destructive',
         });
@@ -69,13 +69,13 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       setAppearance(prev => ({ ...prev, logo: result.base64 }));
 
       toast({
-        title: language === 'es' ? 'Logo cargado' : 'Logo uploaded',
+        title: t('settings.visual.logoUploaded'),
         description: `${result.metadata.originalDimensions} → ${result.metadata.finalDimensions}`,
       });
     } catch (error) {
       console.error('Error processing logo:', error);
       toast({
-        title: language === 'es' ? 'Error al procesar imagen' : 'Error processing image',
+        title: t('settings.visual.errorProcessingImage'),
         description: error.message,
         variant: 'destructive',
       });
@@ -119,7 +119,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
 
       await loadCarouselSlides();
       toast({
-        title: language === 'es' ? 'Diapositiva creada' : 'Slide created'
+        title: t('settings.visual.slideCreated')
       });
     } catch (error) {
       console.error('Error creating slide:', error);
@@ -174,7 +174,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
   };
 
   const handleRemoveSlide = async (id) => {
-    if (!confirm(language === 'es' ? '¿Eliminar esta diapositiva?' : 'Delete this slide?')) {
+    if (!confirm(t('settings.visual.confirmDeleteSlide'))) {
       return;
     }
 
@@ -190,7 +190,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       });
 
       toast({
-        title: language === 'es' ? 'Diapositiva eliminada' : 'Slide deleted'
+        title: t('settings.visual.slideDeleted')
       });
     } catch (error) {
       console.error('Error deleting slide:', error);
@@ -281,7 +281,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 cursor-pointer px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
               <Upload className="h-4 w-4" />
-              {language === 'es' ? 'Subir Logo' : 'Upload Logo'}
+              {t('settings.visual.uploadLogo')}
               <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
             </label>
           </div>
@@ -356,7 +356,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
             onMouseEnter={e => e.currentTarget.style.backgroundColor = appearance.buttonHoverBgColor}
             onMouseLeave={e => e.currentTarget.style.backgroundColor = appearance.buttonBgColor}
           >
-            {language === 'es' ? 'Botón Principal' : 'Primary Button'}
+            {t('settings.visual.primaryButton')}
           </div>
           <div
             className="px-4 py-3 rounded-lg text-white font-semibold"
@@ -367,7 +367,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
             onMouseEnter={e => e.currentTarget.style.backgroundColor = appearance.destructiveHoverBgColor}
             onMouseLeave={e => e.currentTarget.style.backgroundColor = appearance.destructiveBgColor}
           >
-            {language === 'es' ? 'Botón Eliminar' : 'Delete Button'}
+            {t('settings.visual.deleteButton')}
           </div>
           <div className="flex gap-4 flex-wrap items-center">
             <div
@@ -377,7 +377,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
                 color: appearance.accentColor
               }}
             >
-              {language === 'es' ? 'Badge' : 'Badge'}
+              {t('settings.visual.badge')}
             </div>
           </div>
         </div>
@@ -385,7 +385,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
         <div className="text-right">
           <Button onClick={handleAppearanceSave} style={getPrimaryButtonStyle(visualSettings)}>
             <Save className="mr-2 h-4 w-4" />
-            {language === 'es' ? 'Guardar Personalización' : 'Save Customization'}
+            {t('settings.visual.saveCustomization')}
           </Button>
         </div>
       </motion.div>
@@ -407,11 +407,11 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
 
         {loadingSlides ? (
           <div className="text-center py-8 text-gray-500">
-            {language === 'es' ? 'Cargando diapositivas...' : 'Loading slides...'}
+            {t('settings.visual.loadingSlides')}
           </div>
         ) : carouselSlides.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
-            {language === 'es' ? 'No hay diapositivas. Agrega una para comenzar.' : 'No slides. Add one to get started.'}
+            {t('settings.visual.noSlides')}
           </div>
         ) : (
           <div className="space-y-4">
@@ -420,13 +420,13 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
                 {savingSlide === slide.id && (
                   <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 p-2 rounded">
                     <RefreshCw className="h-4 w-4 animate-spin" />
-                    <span>{language === 'es' ? 'Guardando...' : 'Saving...'}</span>
+                    <span>{t('settings.visual.saving')}</span>
                   </div>
                 )}
                 {savedSlide === slide.id && savingSlide !== slide.id && (
                   <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded">
                     <Check className="h-4 w-4" />
-                    <span>{language === 'es' ? 'Guardado ✓' : 'Saved ✓'}</span>
+                    <span>{t('settings.visual.saved')}</span>
                   </div>
                 )}
 
@@ -456,7 +456,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
                 {(slide.image_url || slidePreviews[slide.id]) && (
                   <div>
                     <p className="text-sm font-medium text-gray-700 mb-2">
-                      {language === 'es' ? 'Vista Previa:' : 'Preview:'}
+                      {t('settings.visual.preview')}
                     </p>
                     <div className="relative w-full aspect-[16/9] max-w-2xl rounded-lg overflow-hidden border-2 border-gray-300 bg-gray-100">
                       <img
@@ -537,10 +537,10 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
                     size="sm"
                     className="h-8 px-2 sm:px-3"
                     onClick={() => handleRemoveSlide(slide.id)}
-                    title={language === 'es' ? 'Eliminar' : 'Delete'}
+                    title={t('common.delete')}
                   >
                     <Trash2 className="h-4 w-4 sm:mr-2" />
-                    <span className="hidden sm:inline">{language === 'es' ? 'Eliminar' : 'Delete'}</span>
+                    <span className="hidden sm:inline">{t('common.delete')}</span>
                   </Button>
                 </div>
               </div>

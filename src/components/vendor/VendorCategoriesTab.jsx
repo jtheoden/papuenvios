@@ -308,7 +308,7 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
               })}
             >
               <X className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">{t('vendor.addProduct.cancel')}</span>
+              <span className="hidden sm:inline">{t('common.cancel')}</span>
             </Button>
           )}
         </div>

@@ -199,8 +199,8 @@ const RemittanceTypesConfig = () => {
       type: 'danger',
       title: t('remittances.admin.confirmDelete'),
       message: `${type.name}\n\n${t('remittances.admin.deleteWarning')}`,
-      confirmText: t('remittances.admin.delete'),
-      cancelText: t('remittances.admin.cancel')
+      confirmText: t('common.delete'),
+      cancelText: t('common.cancel')
     });
 
     if (!confirmed) {
@@ -625,7 +625,7 @@ const RemittanceTypesConfig = () => {
                   <button
                     onClick={() => handleEdit(type)}
                     className="p-2 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors"
-                    title={t('remittances.admin.edit')}
+                    title={t('common.edit')}
                   >
                     <Edit className="h-5 w-5" />
                   </button>
@@ -634,7 +634,7 @@ const RemittanceTypesConfig = () => {
                     <button
                       onClick={() => handleDelete(type)}
                       className="p-2 hover:bg-red-50 text-red-600 rounded-lg transition-colors"
-                      title={t('remittances.admin.delete')}
+                      title={t('common.delete')}
                     >
                       <Trash2 className="h-5 w-5" />
                     </button>

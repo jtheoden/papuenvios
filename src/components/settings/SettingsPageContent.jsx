@@ -96,7 +96,7 @@ const SettingsPageContent = ({ localNotifications, setLocalNotifications }) => {
       <div className="mt-6 text-right">
         <Button onClick={handleNotificationSave} style={getPrimaryButtonStyle(visualSettings)}>
           <Save className="mr-2 h-4 w-4" />
-          {t('settings.notifications.save')}
+          {t('common.saveSettings')}
         </Button>
       </div>
     </motion.div>

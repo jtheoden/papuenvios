@@ -105,7 +105,7 @@ const InputDialog = ({ show, title, message, defaultValue, onConfirm, onCancel, 
             className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors font-medium"
             aria-label="Cancelar"
           >
-            {t('adminOrders.modals.cancel')}
+            {t('common.cancel')}
           </button>
           <button
             onClick={handleSubmit}
