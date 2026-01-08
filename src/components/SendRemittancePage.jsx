@@ -817,14 +817,14 @@ const SendRemittancePage = ({ onNavigate }) => {
               </div>
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex justify-end mt-6">
               <button
                 onClick={handleCalculate}
                 disabled={!selectedType || !amount || calculating}
-                className={`${getPrimaryButtonStyle()} flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed`}
+                className={`${getPrimaryButtonStyle()} flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none ${!calculating && selectedType && amount ? 'animate-pulse ring-2 ring-blue-300 ring-offset-2' : ''}`}
               >
                 {calculating ? t('remittances.wizard.calculating') : t('remittances.wizard.continue')}
-                <ArrowRight className="h-5 w-5" />
+                <ArrowRight className="h-6 w-6" />
               </button>
             </div>
           </motion.div>
@@ -943,10 +943,10 @@ const SendRemittancePage = ({ onNavigate }) => {
               </button>
               <button
                 onClick={handleRecipientSubmit}
-                className={`${getPrimaryButtonStyle()} flex items-center gap-2`}
+                className={`${getPrimaryButtonStyle()} flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200`}
               >
                 {t('remittances.wizard.continue')}
-                <ArrowRight className="h-5 w-5" />
+                <ArrowRight className="h-6 w-6" />
               </button>
             </div>
           </motion.div>
@@ -1076,10 +1076,10 @@ const SendRemittancePage = ({ onNavigate }) => {
               <button
                 onClick={handleConfirmRemittance}
                 disabled={submitting}
-                className={`${getPrimaryButtonStyle()} flex items-center gap-2 disabled:opacity-50`}
+                className={`${getPrimaryButtonStyle()} flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:shadow-none`}
               >
                 {submitting ? t('remittances.wizard.creating') : t('remittances.wizard.confirmAndCreate')}
-                <CheckCircle className="h-5 w-5" />
+                <CheckCircle className="h-6 w-6" />
               </button>
             </div>
           </motion.div>
