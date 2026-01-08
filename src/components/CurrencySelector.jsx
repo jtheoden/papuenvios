@@ -100,7 +100,7 @@ export const CurrencySelector = ({
         ) : (
           currencies.map((currency) => (
             <option key={currency.id} value={currency.id}>
-              {showSymbol ? `${currency.code} (${currency.symbol})` : currency.code}
+              {currency.code}
             </option>
           ))
         )}

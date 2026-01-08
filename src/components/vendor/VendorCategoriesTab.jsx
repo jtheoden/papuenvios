@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Edit, Trash2, Plus, X, Save, Loader2, Check, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -41,6 +41,26 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingCategoryId, setDeletingCategoryId] = useState(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState(null);
+
+  // Refs for form focus and scroll
+  const categoryFormRef = useRef(null);
+  const categoryNameInputRef = useRef(null);
+
+  // Function to scroll and focus the form
+  const scrollToFormAndFocus = useCallback(() => {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        if (categoryFormRef.current) {
+          categoryFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        setTimeout(() => {
+          if (categoryNameInputRef.current) {
+            categoryNameInputRef.current.focus();
+          }
+        }, 300);
+      }, 50);
+    });
+  }, []);
 
   const handleCategorySubmit = async (e) => {
     console.log('[handleCategorySubmit] START - Input:', { categoryForm, hasId: !!categoryForm.dbId });
@@ -120,6 +140,8 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
         description_en: category.description_en || ''
       });
       console.log('[handleEditCategory] SUCCESS - Form populated for editing');
+      // Scroll to form and focus after state update
+      scrollToFormAndFocus();
     } catch (error) {
       console.error('[handleEditCategory] ERROR:', error);
       console.error('[handleEditCategory] Error details:', { message: error?.message, code: error?.code });
@@ -179,11 +201,12 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
     <div className="space-y-8">
       {/* Category Form */}
       <motion.div
+        ref={categoryFormRef}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="glass-effect p-8 rounded-2xl"
+        className="glass-effect p-4 sm:p-8 rounded-2xl"
       >
-        <h2 className="text-2xl font-semibold mb-6">
+        <h2 className="text-xl sm:text-2xl font-semibold mb-4 sm:mb-6">
           {categoryForm.dbId
             ? (language === 'es' ? 'Editar Categoría' : 'Edit Category')
             : (language === 'es' ? 'Nueva Categoría' : 'New Category')}
@@ -197,6 +220,7 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
                 {language === 'es' ? 'Nombre (Español) *' : 'Name (Spanish) *'}
               </label>
               <input
+                ref={categoryNameInputRef}
                 type="text"
                 value={categoryForm.es}
                 onChange={e => setCategoryForm({ ...categoryForm, es: e.target.value })}
@@ -257,18 +281,18 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {language === 'es' ? 'Guardando...' : 'Saving...'}
+                <Loader2 className="h-4 w-4 sm:mr-2 animate-spin" />
+                <span className="hidden sm:inline">{language === 'es' ? 'Guardando...' : 'Saving...'}</span>
               </>
             ) : categoryForm.dbId ? (
               <>
-                <Save className="mr-2 h-4 w-4" />
-                {language === 'es' ? 'Actualizar Categoría' : 'Update Category'}
+                <Save className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">{language === 'es' ? 'Actualizar' : 'Update'}</span>
               </>
             ) : (
               <>
-                <Plus className="mr-2 h-4 w-4" />
-                {language === 'es' ? 'Crear Categoría' : 'Create Category'}
+                <Plus className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">{language === 'es' ? 'Crear' : 'Create'}</span>
               </>
             )}
           </Button>
@@ -283,8 +307,8 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
                 description_en: ''
               })}
             >
-              <X className="mr-2 h-4 w-4" />
-              {t('vendor.addProduct.cancel')}
+              <X className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">{t('vendor.addProduct.cancel')}</span>
             </Button>
           )}
         </div>
@@ -314,25 +338,25 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
               return (
                 <li
                   key={c.id}
-                  className={`flex justify-between items-center p-4 rounded-lg transition-all duration-200 ${
+                  className={`flex justify-between items-center p-3 sm:p-4 rounded-lg transition-all duration-200 ${
                     isConfirming
                       ? 'bg-red-50 border-2 border-red-200'
                       : 'bg-slate-50 hover:bg-slate-100'
                   }`}
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="flex gap-4 items-center">
-                      <span className="font-semibold">{categoryName}</span>
-                      <span className="text-gray-500 text-sm">({c.slug})</span>
+                    <div className="flex flex-col sm:flex-row sm:gap-4 sm:items-center">
+                      <span className="font-semibold text-sm sm:text-base truncate">{categoryName}</span>
+                      <span className="text-gray-500 text-xs sm:text-sm">({c.slug})</span>
                     </div>
                     {(c.description_es || c.description_en) && (
-                      <p className="text-sm text-gray-600 mt-1 truncate">
+                      <p className="text-xs sm:text-sm text-gray-600 mt-1 truncate">
                         {language === 'es' ? c.description_es : c.description_en}
                       </p>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                  <div className="flex items-center gap-1 sm:gap-2 ml-2 sm:ml-4 flex-shrink-0">
                     <AnimatePresence mode="wait">
                       {isConfirming ? (
                         <motion.div
@@ -340,25 +364,25 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
                           initial={{ opacity: 0, x: 10 }}
                           animate={{ opacity: 1, x: 0 }}
                           exit={{ opacity: 0, x: -10 }}
-                          className="flex items-center gap-2"
+                          className="flex items-center gap-1 sm:gap-2"
                         >
-                          <span className="text-sm text-red-600 font-medium flex items-center gap-1">
-                            <AlertTriangle className="h-4 w-4" />
-                            {language === 'es' ? '¿Eliminar?' : 'Delete?'}
+                          <span className="text-xs sm:text-sm text-red-600 font-medium flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3 sm:h-4 sm:w-4" />
+                            <span className="hidden xs:inline">{language === 'es' ? '¿Eliminar?' : 'Delete?'}</span>
                           </span>
                           <Button
                             variant="destructive"
                             size="sm"
                             onClick={() => handleConfirmDelete(c.id)}
                             disabled={isDeleting}
-                            className="h-8 px-3"
+                            className="h-7 sm:h-8 px-2 sm:px-3"
                           >
                             {isDeleting ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
                             ) : (
                               <>
-                                <Check className="h-4 w-4 mr-1" />
-                                {language === 'es' ? 'Sí' : 'Yes'}
+                                <Check className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-1" />
+                                <span className="hidden sm:inline">{language === 'es' ? 'Sí' : 'Yes'}</span>
                               </>
                             )}
                           </Button>
@@ -367,10 +391,10 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
                             size="sm"
                             onClick={handleCancelDelete}
                             disabled={isDeleting}
-                            className="h-8 px-3"
+                            className="h-7 sm:h-8 px-2 sm:px-3"
                           >
-                            <X className="h-4 w-4 mr-1" />
-                            {language === 'es' ? 'No' : 'No'}
+                            <X className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-1" />
+                            <span className="hidden sm:inline">{language === 'es' ? 'No' : 'No'}</span>
                           </Button>
                         </motion.div>
                       ) : (
@@ -379,13 +403,14 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                           exit={{ opacity: 0, x: 10 }}
-                          className="flex gap-1"
+                          className="flex gap-0.5 sm:gap-1"
                         >
                           <Button
                             variant="ghost"
                             size="icon"
                             onClick={() => handleEditCategory(c)}
                             disabled={isDeleting}
+                            className="h-8 w-8"
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
@@ -394,6 +419,7 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
                             size="icon"
                             onClick={() => setConfirmingDeleteId(c.id)}
                             disabled={isDeleting}
+                            className="h-8 w-8"
                           >
                             {isDeleting ? (
                               <Loader2 className="h-4 w-4 animate-spin" />

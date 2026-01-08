@@ -96,7 +96,7 @@ const VendorManagementTab = ({ testimonials, onTestimonialsRefresh }) => {
             testimonials.map(testimonial => (
               <div
                 key={testimonial.id}
-                className="flex justify-between items-center p-3 border-b hover:bg-gray-50 transition-colors"
+                className="flex flex-col sm:flex-row sm:justify-between sm:items-center p-3 border-b hover:bg-gray-50 transition-colors gap-3"
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-1">
@@ -109,7 +109,7 @@ const VendorManagementTab = ({ testimonials, onTestimonialsRefresh }) => {
                       />
                     )}
                     <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-semibold text-gray-900">
                           {testimonial.user_name || 'Usuario'}
                         </p>
@@ -129,39 +129,42 @@ const VendorManagementTab = ({ testimonials, onTestimonialsRefresh }) => {
                     "{testimonial.comment}"
                   </p>
                 </div>
-                <div className="flex gap-2 ml-4">
+                <div className="flex gap-2 sm:ml-4 flex-shrink-0">
                   <Button
                     size="sm"
+                    className="h-8 px-2 sm:px-3"
                     variant={testimonial.is_featured ? "default" : "outline"}
                     onClick={() => handleToggleTestimonialFeatured(testimonial.id, testimonial.is_featured)}
                     title={language === 'es' ? 'Destacar/Quitar destaque' : 'Feature/Unfeature'}
                   >
                     {testimonial.is_featured ? (
                       <>
-                        <Check className="mr-2 h-4 w-4" />
-                        {language === 'es' ? 'Destacado' : 'Featured'}
+                        <Check className="h-4 w-4 sm:mr-2" />
+                        <span className="hidden sm:inline">{language === 'es' ? 'Destacado' : 'Featured'}</span>
                       </>
                     ) : (
                       <>
-                        <X className="mr-2 h-4 w-4" />
-                        {language === 'es' ? 'Normal' : 'Normal'}
+                        <X className="h-4 w-4 sm:mr-2" />
+                        <span className="hidden sm:inline">{language === 'es' ? 'Normal' : 'Normal'}</span>
                       </>
                     )}
                   </Button>
                   <Button
                     size="sm"
+                    className="h-8 px-2 sm:px-3"
                     variant={testimonial.is_visible ? "default" : "outline"}
                     onClick={() => handleToggleTestimonialVisibility(testimonial.id, testimonial.is_visible)}
+                    title={testimonial.is_visible ? t('vendor.management.hide') : t('vendor.management.show')}
                   >
                     {testimonial.is_visible ? (
                       <>
-                        <Eye className="mr-2 h-4 w-4" />
-                        {t('vendor.management.hide')}
+                        <Eye className="h-4 w-4 sm:mr-2" />
+                        <span className="hidden sm:inline">{t('vendor.management.hide')}</span>
                       </>
                     ) : (
                       <>
-                        <EyeOff className="mr-2 h-4 w-4" />
-                        {t('vendor.management.show')}
+                        <EyeOff className="h-4 w-4 sm:mr-2" />
+                        <span className="hidden sm:inline">{t('vendor.management.show')}</span>
                       </>
                     )}
                   </Button>

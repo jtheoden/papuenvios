@@ -422,15 +422,15 @@ const VendorInventoryTab = ({
           >
             {currencies.map(currency => (
               <option key={currency.id} value={currency.id}>
-                {currency.code} - {language === 'es' ? currency.name_es : currency.name_en}
+                {currency.code}
               </option>
             ))}
           </select>
         </div>
 
-        <Button onClick={openNewProductForm} style={getPrimaryButtonStyle(visualSettings)}>
-          <Plus className="mr-2 h-4 w-4" />
-          {t('vendor.actions.addProduct')}
+        <Button onClick={openNewProductForm} style={getPrimaryButtonStyle(visualSettings)} className="flex-shrink-0">
+          <Plus className="h-4 w-4 sm:mr-2" />
+          <span className="hidden sm:inline">{t('vendor.actions.addProduct')}</span>
         </Button>
       </div>
 
@@ -558,7 +558,7 @@ const VendorInventoryTab = ({
               >
                 {currencies.map(c => (
                   <option key={c.id} value={c.id}>
-                    {c.code} - {language === 'es' ? c.name_es : c.name_en}
+                    {c.code}
                   </option>
                 ))}
               </select>
@@ -705,39 +705,64 @@ const VendorInventoryTab = ({
         </motion.div>
       )}
 
-      {/* Product Details Modal */}
+      {/* Product Details Modal - Responsive */}
       {showProductDetails && selectedProduct && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2 sm:p-4 z-50"
           onClick={() => setShowProductDetails(false)}
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-lg">
-              <h3 className="text-xl font-bold text-gray-900">
-                {t('vendor.inventory.productDetails')} - {language === 'es' ? selectedProduct.name_es : selectedProduct.name_en}
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between rounded-t-lg">
+              <h3 className="text-base sm:text-xl font-bold text-gray-900 truncate pr-2">
+                <span className="hidden sm:inline">{t('vendor.inventory.productDetails')} - </span>
+                {language === 'es' ? selectedProduct.name_es : selectedProduct.name_en}
               </h3>
               <button
                 onClick={() => setShowProductDetails(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 flex-shrink-0"
               >
-                <X className="h-6 w-6" />
+                <X className="h-5 w-5 sm:h-6 sm:w-6" />
               </button>
             </div>
 
-            <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Left Column - Product Information */}
-              <div className="lg:col-span-2 space-y-6">
-                {/* Product Info */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-3 sm:p-6 flex flex-col lg:grid lg:grid-cols-3 gap-4 sm:gap-6">
+              {/* Product Image - First on mobile */}
+              <div className="lg:col-span-1 lg:order-2">
+                {selectedProduct.image_url || selectedProduct.image_file || selectedProduct.image ? (
+                  <div className="space-y-2 sm:space-y-3 lg:sticky lg:top-20">
+                    <h4 className="text-sm sm:text-lg font-semibold text-gray-900 hidden lg:block">
+                      {language === 'es' ? 'Imagen del Producto' : 'Product Image'}
+                    </h4>
+                    <div className="bg-gray-50 rounded-lg border border-gray-200 p-1 sm:p-2">
+                      <img
+                        src={selectedProduct.image_url || selectedProduct.image_file || selectedProduct.image}
+                        alt={selectedProduct.name_es || selectedProduct.name}
+                        className="w-full h-auto max-h-48 sm:max-h-64 lg:max-h-none object-contain rounded-lg"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="lg:sticky lg:top-20 bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4">
+                    <p className="text-xs sm:text-sm text-yellow-800 font-medium">
+                      {language === 'es' ? 'Sin imagen' : 'No image'}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Product Information */}
+              <div className="lg:col-span-2 lg:order-1 space-y-4 sm:space-y-6">
+                {/* Product Info Grid */}
+                <div className="grid grid-cols-2 gap-2 sm:gap-4">
                   <ProductInfoItem
                     label={t('vendor.inventory.product')}
                     value={language === 'es'
@@ -757,10 +782,10 @@ const VendorInventoryTab = ({
                 {/* Description - Based on active language */}
                 {(language === 'es' ? selectedProduct.description_es : selectedProduct.description_en || selectedProduct.description_es) && (
                   <div>
-                    <h4 className="text-lg font-semibold text-gray-900 mb-3">
+                    <h4 className="text-sm sm:text-lg font-semibold text-gray-900 mb-2 sm:mb-3">
                       {t('vendor.addProduct.description')}
                     </h4>
-                    <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-4">
+                    <p className="text-xs sm:text-sm text-gray-700 bg-gray-50 rounded-lg p-3 sm:p-4">
                       {language === 'es'
                         ? (selectedProduct.description_es || selectedProduct.description_en)
                         : (selectedProduct.description_en || selectedProduct.description_es)
@@ -769,40 +794,19 @@ const VendorInventoryTab = ({
                   </div>
                 )}
               </div>
-
-              {/* Right Column - Product Image */}
-              <div className="lg:col-span-1">
-                {selectedProduct.image_url || selectedProduct.image_file || selectedProduct.image ? (
-                  <div className="sticky top-20 space-y-3">
-                    <h4 className="text-lg font-semibold text-gray-900">📷 {language === 'es' ? 'Imagen del Producto' : 'Product Image'}</h4>
-                    <div className="bg-gray-50 rounded-lg border border-gray-200 p-2">
-                      <img
-                        src={selectedProduct.image_url || selectedProduct.image_file || selectedProduct.image}
-                        alt={selectedProduct.name_es || selectedProduct.name}
-                        className="w-full h-auto rounded-lg"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="sticky top-20 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <p className="text-sm text-yellow-800 font-medium">
-                      {language === 'es' ? 'Sin imagen' : 'No image'}
-                    </p>
-                  </div>
-                )}
-              </div>
             </div>
 
-            <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end gap-3 rounded-b-lg">
-              <Button variant="outline" onClick={() => setShowProductDetails(false)}>
-                {t('vendor.addProduct.cancel')}
+            <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-3 sm:px-6 py-3 sm:py-4 flex justify-end gap-2 sm:gap-3 rounded-b-lg">
+              <Button variant="outline" onClick={() => setShowProductDetails(false)} className="text-sm sm:text-base">
+                <X className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">{t('vendor.addProduct.cancel')}</span>
               </Button>
               <Button onClick={() => {
                 openEditProductForm(selectedProduct);
                 setShowProductDetails(false);
-              }} style={getPrimaryButtonStyle(visualSettings)}>
-                <Edit className="h-4 w-4 mr-2" />
-                {t('vendor.actions.edit')}
+              }} style={getPrimaryButtonStyle(visualSettings)} className="text-sm sm:text-base">
+                <Edit className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">{t('vendor.actions.edit')}</span>
               </Button>
             </div>
           </motion.div>
