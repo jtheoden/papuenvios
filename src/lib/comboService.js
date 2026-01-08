@@ -5,9 +5,10 @@
  */
 
 import { supabase } from './supabase';
-import { executeQuery, getCurrentTimestamp } from './queryHelpers';
+import { getCurrentTimestamp } from './queryHelpers';
 import { DEFAULTS } from './constants';
 import {
+  AppError,
   handleError,
   logError,
   createValidationError,
@@ -15,6 +16,21 @@ import {
   parseSupabaseError,
   ERROR_CODES
 } from './errorHandler';
+import { ORDER_STATUS } from './orderService';
+
+// Estados que BLOQUEAN eliminación de combos
+const BLOCKING_ORDER_STATUSES = [
+  ORDER_STATUS.PENDING,
+  ORDER_STATUS.PROCESSING
+];
+
+// Estados que PERMITEN eliminación (órdenes ya procesadas o canceladas)
+const SAFE_DELETE_ORDER_STATUSES = [
+  ORDER_STATUS.DISPATCHED,
+  ORDER_STATUS.DELIVERED,
+  ORDER_STATUS.COMPLETED,
+  ORDER_STATUS.CANCELLED
+];
 
 /**
  * Get all combos with their products
@@ -336,9 +352,58 @@ export const setComboActiveState = async (comboId, isActive = true) => {
 };
 
 /**
+ * Find blocking orders for a combo
+ * Returns orders in BLOCKING states (pending/processing)
+ * @param {string} comboId - Combo ID
+ * @returns {Promise<{blockingOrders: Array, safeOrders: Array}>}
+ */
+const findBlockingOrdersForCombo = async (comboId) => {
+  // Find order_items that reference this combo
+  const { data: orderItems, error: oiError } = await supabase
+    .from('order_items')
+    .select(`
+      id,
+      item_id,
+      order_id,
+      orders!inner(id, order_number, status, payment_status)
+    `)
+    .eq('item_type', 'combo')
+    .eq('item_id', comboId);
+
+  if (oiError) {
+    console.warn('[findBlockingOrdersForCombo] Error fetching order_items:', oiError);
+    return { blockingOrders: [], safeOrders: [] };
+  }
+
+  const blockingOrders = [];
+  const safeOrders = [];
+
+  (orderItems || []).forEach(item => {
+    const order = item.orders;
+    if (!order) return;
+
+    const orderInfo = {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      status: order.status,
+      paymentStatus: order.payment_status
+    };
+
+    if (BLOCKING_ORDER_STATUSES.includes(order.status)) {
+      blockingOrders.push(orderInfo);
+    } else if (SAFE_DELETE_ORDER_STATUSES.includes(order.status)) {
+      safeOrders.push(orderInfo);
+    }
+  });
+
+  return { blockingOrders, safeOrders };
+};
+
+/**
  * Delete a combo (soft delete by setting is_active to false)
+ * Validates no blocking orders exist before deletion
  * @param {string} comboId - Combo ID to delete
- * @throws {AppError} If deletion fails
+ * @throws {AppError} If deletion fails or blocking orders exist
  * @returns {Promise<Object>} Deleted combo
  */
 export const deleteCombo = async (comboId) => {
@@ -347,9 +412,48 @@ export const deleteCombo = async (comboId) => {
       throw createValidationError({ comboId: 'Combo ID is required' });
     }
 
+    console.log('[deleteCombo] START - Attempting to delete combo:', comboId);
+
+    // Fetch combo info for error messages
+    const { data: combo, error: fetchError } = await supabase
+      .from('combo_products')
+      .select('id, name_es, name_en')
+      .eq('id', comboId)
+      .single();
+
+    if (fetchError) {
+      console.warn('[deleteCombo] Error fetching combo info:', fetchError);
+    }
+
+    const comboName = combo?.name_es || combo?.name_en || comboId;
+
+    // Check for blocking orders
+    console.log('[deleteCombo] Checking for blocking orders...');
+    const { blockingOrders, safeOrders } = await findBlockingOrdersForCombo(comboId);
+
+    if (blockingOrders.length > 0) {
+      const orderNumbers = blockingOrders.map(o => o.orderNumber).join(', ');
+      console.log('[deleteCombo] BLOCKED - Found blocking orders:', orderNumbers);
+
+      throw new AppError(
+        `No se puede eliminar el combo "${comboName}" porque tiene órdenes activas en proceso: ${orderNumbers}. Espere a que las órdenes sean despachadas o canceladas.`,
+        ERROR_CODES.CONFLICT,
+        409,
+        {
+          comboId,
+          comboName,
+          blockingOrders,
+          blockingOrderCount: blockingOrders.length
+        }
+      );
+    }
+
+    console.log('[deleteCombo] No blocking orders. Safe orders found:', safeOrders.length);
+
+    // Soft delete - set is_active to false
     const { data, error } = await supabase
       .from('combo_products')
-      .update({ is_active: false })
+      .update({ is_active: false, updated_at: getCurrentTimestamp() })
       .eq('id', comboId)
       .select()
       .single();
@@ -362,6 +466,8 @@ export const deleteCombo = async (comboId) => {
       logError(appError, { operation: 'deleteCombo', comboId });
       throw appError;
     }
+
+    console.log('[deleteCombo] SUCCESS - Combo deactivated:', comboName);
 
     return data;
   } catch (error) {
