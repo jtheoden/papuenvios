@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Edit, Save, AlertCircle, AlertTriangle, Box, Trash2, Eye, EyeOff, Loader2, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -36,6 +36,31 @@ const VendorCombosTab = ({
   const [comboImagePreview, setComboImagePreview] = useState(null);
   const [processingComboId, setProcessingComboId] = useState(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState(null);
+
+  // Refs for form focus and scroll
+  const comboFormRef = useRef(null);
+  const comboNameInputRef = useRef(null);
+
+  // Track form open state for focus/scroll (using id or 'new' as key)
+  const comboFormKey = comboForm ? (comboForm.id || 'new') : null;
+
+  // Focus and scroll to form when editing/creating a combo
+  useEffect(() => {
+    if (comboFormKey) {
+      // Small delay to ensure the form is rendered
+      const timeoutId = setTimeout(() => {
+        // Scroll form into view
+        if (comboFormRef.current) {
+          comboFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        // Focus the name input
+        if (comboNameInputRef.current) {
+          comboNameInputRef.current.focus();
+        }
+      }, 100);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [comboFormKey]); // Trigger when form opens (new) or switches to different combo (edit)
 
   // Real-time subscription for combo updates
   useRealtimeCombos({
@@ -413,6 +438,7 @@ const VendorCombosTab = ({
       {/* Combo Form */}
       {comboForm && (
         <motion.div
+          ref={comboFormRef}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="glass-effect p-8 rounded-2xl"
@@ -428,6 +454,7 @@ const VendorCombosTab = ({
                 {t('vendor.combos.name')} *
               </label>
               <input
+                ref={comboNameInputRef}
                 type="text"
                 value={comboForm.name}
                 onChange={e => setComboForm(prev => ({ ...prev, name: e.target.value }))}
