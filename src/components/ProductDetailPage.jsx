@@ -127,17 +127,19 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
     if (!item) return '0.00';
 
     if (isProduct) {
-      // Use final_price if available, otherwise use base_price
-      const basePrice = parseFloat(item.final_price || item.base_price || 0);
+      // SIEMPRE usar base_price y aplicar el margen de ganancia
+      // final_price en la BD ya tiene el margen aplicado, pero aquí calculamos desde base_price
+      // para mantener consistencia con la conversión de moneda
+      const basePrice = parseFloat(item.base_price || 0);
       const productCurrencyId = item.base_currency_id;
 
-      // Convert to selected currency first
+      // Convert base price to selected currency
       let convertedPrice = basePrice;
       if (productCurrencyId && productCurrencyId !== selectedCurrency) {
         convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
       }
 
-      // Apply product profit margin
+      // Apply product profit margin to base_price
       const profitMargin = parseFloat(financialSettings.productProfit || 40) / 100;
       const finalPrice = convertedPrice * (1 + profitMargin);
 
