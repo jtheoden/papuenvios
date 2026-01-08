@@ -1104,7 +1104,7 @@ const SettingsPage = () => {
                 </div>
               </div>
             </div>
-            <div className="mt-6 text-right"><Button onClick={handleFinancialSave} style={getPrimaryButtonStyle(visualSettings)}><Save className="mr-2 h-4 w-4" />{t('settings.financial.save')}</Button></div>
+            <div className="mt-6 text-right"><Button onClick={handleFinancialSave} style={getPrimaryButtonStyle(visualSettings)}><Save className="mr-2 h-4 w-4" />{t('common.saveSettings')}</Button></div>
           </motion.div>
 
           {/* Exchange Rates Management */}
@@ -2128,7 +2128,7 @@ const SettingsPage = () => {
                 <p className="text-xs text-gray-500 mt-1">{language === 'es' ? 'Email para recibir notificaciones de nuevos pedidos' : 'Email to receive new order notifications'}</p>
               </div>
             </div>
-            <div className="mt-6 text-right"><Button onClick={handleNotificationSave} style={getPrimaryButtonStyle(visualSettings)}><Save className="mr-2 h-4 w-4" />{t('settings.notifications.save')}</Button></div>
+            <div className="mt-6 text-right"><Button onClick={handleNotificationSave} style={getPrimaryButtonStyle(visualSettings)}><Save className="mr-2 h-4 w-4" />{t('common.saveSettings')}</Button></div>
           </motion.div>
             </>
           )}

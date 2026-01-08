@@ -72,7 +72,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       console.error('Error loading currencies:', error);
       toast({
         title: t('common.error'),
-        description: language === 'es' ? 'Error al cargar monedas' : 'Error loading currencies',
+        description: t('settings.financial.errorLoadingCurrencies'),
         variant: 'destructive'
       });
     }
@@ -81,8 +81,8 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   const handleCurrencySubmit = async () => {
     if (!currencyForm.code || !currencyForm.name_es || !currencyForm.name_en || !currencyForm.symbol) {
       toast({
-        title: 'Error',
-        description: language === 'es' ? 'Por favor complete todos los campos' : 'Please fill all fields',
+        title: t('common.error'),
+        description: t('settings.financial.fillAllFields'),
         variant: 'destructive'
       });
       return;
@@ -100,15 +100,15 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         const { error } = await updateCurrency(editingCurrency.id, currencyForm);
         if (error) throw error;
         toast({
-          title: language === 'es' ? 'Moneda actualizada' : 'Currency Updated',
-          description: language === 'es' ? 'La moneda se actualizó exitosamente' : 'Currency was updated successfully'
+          title: t('settings.financial.currencyUpdated'),
+          description: t('settings.financial.currencyUpdatedSuccess')
         });
       } else {
         const { error } = await createCurrency(currencyForm);
         if (error) throw error;
         toast({
-          title: language === 'es' ? 'Moneda creada' : 'Currency Created',
-          description: language === 'es' ? 'La moneda se creó exitosamente' : 'Currency was created successfully'
+          title: t('settings.financial.currencyCreated'),
+          description: t('settings.financial.currencyCreatedSuccess')
         });
       }
 
@@ -137,9 +137,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   };
 
   const handleRemoveCurrency = async (currencyId) => {
-    if (!confirm(language === 'es'
-      ? '¿Está seguro de que desea eliminar esta moneda?'
-      : 'Are you sure you want to delete this currency?')) {
+    if (!confirm(t('settings.financial.confirmDeleteCurrency'))) {
       return;
     }
 
@@ -152,7 +150,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       if (error) throw error;
 
       toast({
-        title: language === 'es' ? 'Moneda eliminada' : 'Currency Deleted'
+        title: t('settings.financial.currencyDeleted')
       });
 
       await loadCurrencies();
@@ -188,8 +186,8 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   const handleSaveRate = async () => {
     if (!newRate.fromCurrencyId || !newRate.toCurrencyId || !newRate.rate) {
       toast({
-        title: language === 'es' ? 'Datos incompletos' : 'Incomplete data',
-        description: language === 'es' ? 'Por favor complete todos los campos' : 'Please fill all fields',
+        title: t('settings.financial.incompleteData'),
+        description: t('settings.financial.fillAllFields'),
         variant: 'destructive'
       });
       return;
@@ -197,8 +195,8 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
 
     if (newRate.fromCurrencyId === newRate.toCurrencyId) {
       toast({
-        title: 'Error',
-        description: language === 'es' ? 'Las monedas deben ser diferentes' : 'Currencies must be different',
+        title: t('common.error'),
+        description: t('settings.financial.currenciesMustBeDifferent'),
         variant: 'destructive'
       });
       return;
@@ -225,12 +223,12 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       });
 
       toast({
-        title: language === 'es' ? '✅ Tasas guardadas' : '✅ Rates saved'
+        title: t('settings.financial.ratesSaved')
       });
     } catch (error) {
       console.error('Error saving rate:', error);
       toast({
-        title: language === 'es' ? 'Error al guardar' : 'Save error',
+        title: t('settings.financial.saveError'),
         description: error.message,
         variant: 'destructive'
       });
@@ -238,7 +236,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   };
 
   const handleDeleteRate = async (rateId) => {
-    if (!confirm(language === 'es' ? '¿Eliminar esta tasa?' : 'Delete this rate?')) {
+    if (!confirm(t('settings.financial.confirmDeleteRate'))) {
       return;
     }
 
@@ -248,7 +246,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
 
       await loadExchangeRates();
       toast({
-        title: language === 'es' ? '✅ Tasa eliminada' : '✅ Rate deleted'
+        title: t('settings.financial.rateDeleted')
       });
     } catch (error) {
       console.error('Error deleting rate:', error);
@@ -303,29 +301,29 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         {/* Shipping Configuration */}
         <div className="border-t pt-6 mb-6">
           <h3 className="text-xl font-semibold mb-4">
-            {language === 'es' ? 'Configuración de Envío' : 'Shipping Configuration'}
+            {t('settings.financial.shippingConfig')}
           </h3>
           <div className="grid md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium mb-2">
-                {language === 'es' ? 'Tipo de Envío' : 'Shipping Type'}
+                {t('settings.financial.shippingType')}
               </label>
               <select
                 value={localFinancial.shippingType || 'undetermined'}
                 onChange={e => setLocalFinancial({ ...localFinancial, shippingType: e.target.value })}
                 className="input-style w-full"
               >
-                <option value="free">{language === 'es' ? 'Gratis' : 'Free'}</option>
-                <option value="fixed">{language === 'es' ? 'Tarifa Fija' : 'Fixed Rate'}</option>
-                <option value="undetermined">{language === 'es' ? 'Por Determinar (según ubicación)' : 'To Be Determined (based on location)'}</option>
-                <option value="calculated">{language === 'es' ? 'Calculado (con umbral gratis)' : 'Calculated (with free threshold)'}</option>
+                <option value="free">{t('settings.financial.shippingFree')}</option>
+                <option value="fixed">{t('settings.financial.shippingFixed')}</option>
+                <option value="undetermined">{t('settings.financial.shippingUndetermined')}</option>
+                <option value="calculated">{t('settings.financial.shippingCalculated')}</option>
               </select>
             </div>
 
             {localFinancial.shippingType === 'fixed' && (
               <div>
                 <label className="block text-sm font-medium mb-2">
-                  {language === 'es' ? 'Costo Fijo de Envío ($)' : 'Fixed Shipping Cost ($)'}
+                  {t('settings.financial.fixedShippingCost')}
                 </label>
                 <input
                   type="number"
@@ -341,7 +339,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
             {(localFinancial.shippingType === 'calculated' || localFinancial.shippingType === 'undetermined') && (
               <div>
                 <label className="block text-sm font-medium mb-2">
-                  {language === 'es' ? 'Umbral para Envío Gratis ($)' : 'Free Shipping Threshold ($)'}
+                  {t('settings.financial.freeShippingThreshold')}
                 </label>
                 <input
                   type="number"
@@ -356,10 +354,10 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
           </div>
 
           <div className="mt-4 p-4 bg-blue-50 rounded-lg text-sm text-gray-700">
-            {localFinancial.shippingType === 'free' && (language === 'es' ? '✓ Envío gratis: No se cobrará envío en ningún pedido' : '✓ Free shipping: No shipping charge on any order')}
-            {localFinancial.shippingType === 'fixed' && (language === 'es' ? '✓ Tarifa fija: Se cobrará el mismo monto de envío en todos los pedidos' : '✓ Fixed rate: Same shipping amount will be charged on all orders')}
-            {localFinancial.shippingType === 'undetermined' && (language === 'es' ? '⚠ Por determinar: El costo de envío se mostrará como "Por determinar" y se calculará según la ubicación del destinatario' : '⚠ To be determined: Shipping cost will show as "To be determined" and will be calculated based on recipient location')}
-            {localFinancial.shippingType === 'calculated' && (language === 'es' ? '⚠ Calculado: Envío gratis si el pedido supera el umbral, de lo contrario se determinará según ubicación' : '⚠ Calculated: Free shipping if order exceeds threshold, otherwise determined by location')}
+            {localFinancial.shippingType === 'free' && t('settings.financial.shippingInfoFree')}
+            {localFinancial.shippingType === 'fixed' && t('settings.financial.shippingInfoFixed')}
+            {localFinancial.shippingType === 'undetermined' && t('settings.financial.shippingInfoUndetermined')}
+            {localFinancial.shippingType === 'calculated' && t('settings.financial.shippingInfoCalculated')}
           </div>
         </div>
 
@@ -373,17 +371,17 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
               variant="outline"
               size="sm"
               className="h-8 px-2 sm:px-3"
-              title={language === 'es' ? 'Cargar Tasas Oficiales' : 'Load Official Rates'}
+              title={t('settings.financial.loadOfficialRates')}
             >
               <DollarSign className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">{loadingRates ? (language === 'es' ? 'Cargando...' : 'Loading...') : (language === 'es' ? 'Cargar Tasas Oficiales' : 'Load Official Rates')}</span>
+              <span className="hidden sm:inline">{loadingRates ? t('common.loading') : t('settings.financial.loadOfficialRates')}</span>
             </Button>
           </div>
 
           {officialRates && (
             <div className="bg-green-50 p-4 rounded-lg mb-4">
               <h4 className="font-semibold text-green-800 mb-2">
-                {language === 'es' ? 'Tasas Oficiales (Referencia)' : 'Official Rates (Reference)'}
+                {t('settings.financial.officialRatesReference')}
               </h4>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 text-sm">
                 {Object.entries(officialRates).map(([code, rate]) => (
@@ -408,7 +406,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                       ? `linear-gradient(to right, ${visualSettings.primaryColor}, ${visualSettings.secondaryColor})`
                       : visualSettings.primaryColor
                   }}>
-                    {language === 'es' ? 'Base' : 'Base'}
+                    {t('settings.financial.base')}
                   </span>
                 )}
                 <div className="flex gap-1">
@@ -425,7 +423,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
 
           <div className="bg-blue-50 p-4 rounded-lg">
             <h4 className="text-lg font-semibold mb-3">
-              {editingCurrency ? (language === 'es' ? 'Editar Moneda' : 'Edit Currency') : (language === 'es' ? 'Nueva Moneda' : 'New Currency')}
+              {editingCurrency ? t('settings.financial.editCurrency') : t('settings.financial.newCurrency')}
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
               <div>
@@ -477,7 +475,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                   className="rounded"
                 />
                 <span className="text-sm font-medium">
-                  {language === 'es' ? 'Moneda Base' : 'Base Currency'}
+                  {t('settings.financial.baseCurrency')}
                 </span>
               </label>
             </div>
@@ -490,7 +488,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
               </Button>
               {editingCurrency && (
                 <Button variant="outline" onClick={handleCancelEdit}>
-                  {language === 'es' ? 'Cancelar' : 'Cancel'}
+                  {t('common.cancel')}
                 </Button>
               )}
             </div>
@@ -500,7 +498,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         <div className="mt-6 text-right">
           <Button onClick={handleFinancialSave} style={getPrimaryButtonStyle(visualSettings)}>
             <Save className="mr-2 h-4 w-4" />
-            {t('settings.financial.save')}
+            {t('common.saveSettings')}
           </Button>
         </div>
       </motion.div>
@@ -514,35 +512,35 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       >
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
           <h3 className="text-xl sm:text-2xl font-bold" style={getHeadingStyle(visualSettings)}>
-            {language === 'es' ? 'Tasas de Cambio' : 'Exchange Rates'}
+            {t('settings.financial.exchangeRates')}
           </h3>
           <Button
             onClick={() => setShowAddRate(!showAddRate)}
             style={getPrimaryButtonStyle(visualSettings)}
             className="h-8 px-2 sm:px-3"
-            title={language === 'es' ? 'Nueva Tasa' : 'New Rate'}
+            title={t('settings.financial.newRate')}
           >
             <Plus className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">{language === 'es' ? 'Nueva Tasa' : 'New Rate'}</span>
+            <span className="hidden sm:inline">{t('settings.financial.newRate')}</span>
           </Button>
         </div>
 
         {showAddRate && (
           <div className="bg-blue-50 p-4 rounded-lg mb-6">
             <h4 className="text-lg font-semibold mb-3">
-              {language === 'es' ? 'Agregar Nueva Tasa de Cambio' : 'Add New Exchange Rate'}
+              {t('settings.financial.addNewExchangeRate')}
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
               <div>
                 <label className="block text-sm font-medium mb-1">
-                  {language === 'es' ? 'De Moneda' : 'From Currency'}
+                  {t('settings.financial.fromCurrency')}
                 </label>
                 <select
                   value={newRate.fromCurrencyId}
                   onChange={e => setNewRate({ ...newRate, fromCurrencyId: e.target.value })}
                   className="input-style w-full"
                 >
-                  <option value="">{language === 'es' ? 'Seleccionar' : 'Select'}</option>
+                  <option value="">{t('settings.financial.select')}</option>
                   {currencies.map(c => (
                     <option key={c.id} value={c.id}>{c.code} - {language === 'es' ? c.name_es : c.name_en}</option>
                   ))}
@@ -550,14 +548,14 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">
-                  {language === 'es' ? 'A Moneda' : 'To Currency'}
+                  {t('settings.financial.toCurrency')}
                 </label>
                 <select
                   value={newRate.toCurrencyId}
                   onChange={e => setNewRate({ ...newRate, toCurrencyId: e.target.value })}
                   className="input-style w-full"
                 >
-                  <option value="">{language === 'es' ? 'Seleccionar' : 'Select'}</option>
+                  <option value="">{t('settings.financial.select')}</option>
                   {currencies.map(c => (
                     <option key={c.id} value={c.id}>{c.code} - {language === 'es' ? c.name_es : c.name_en}</option>
                   ))}
@@ -565,7 +563,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">
-                  {language === 'es' ? 'Tasa' : 'Rate'}
+                  {t('settings.financial.rate')}
                 </label>
                 <input
                   type="number"
@@ -578,7 +576,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">
-                  {language === 'es' ? 'Efectiva Desde' : 'Effective Date'}
+                  {t('settings.financial.effectiveDate')}
                 </label>
                 <input
                   type="date"
@@ -590,23 +588,23 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
             </div>
             <Button onClick={handleSaveRate} style={getPrimaryButtonStyle(visualSettings)}>
               <Plus className="h-4 w-4 mr-2" />
-              {language === 'es' ? 'Guardar Tasas' : 'Save Rates'}
+              {t('settings.financial.saveRates')}
             </Button>
           </div>
         )}
 
         {loadingRates2 ? (
-          <p className="text-center py-8 text-gray-500">{language === 'es' ? 'Cargando...' : 'Loading...'}</p>
+          <p className="text-center py-8 text-gray-500">{t('common.loading')}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="p-2 text-left">{language === 'es' ? 'De' : 'From'}</th>
-                  <th className="p-2 text-left">{language === 'es' ? 'A' : 'To'}</th>
-                  <th className="p-2 text-left">{language === 'es' ? 'Tasa' : 'Rate'}</th>
-                  <th className="p-2 text-left">{language === 'es' ? 'Efectiva Desde' : 'Effective'}</th>
-                  <th className="p-2 text-right">{language === 'es' ? 'Acciones' : 'Actions'}</th>
+                  <th className="p-2 text-left">{t('settings.financial.from')}</th>
+                  <th className="p-2 text-left">{t('settings.financial.to')}</th>
+                  <th className="p-2 text-left">{t('settings.financial.rate')}</th>
+                  <th className="p-2 text-left">{t('settings.financial.effective')}</th>
+                  <th className="p-2 text-right">{t('common.actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">

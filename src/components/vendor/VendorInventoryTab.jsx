@@ -641,7 +641,7 @@ const VendorInventoryTab = ({
           </div>
           <div className="flex justify-end gap-4 mt-6">
             <Button variant="outline" onClick={() => setProductForm(null)}>
-              {t('vendor.addProduct.cancel')}
+              {t('common.cancel')}
             </Button>
             <Button onClick={handleSubmitProduct} style={getPrimaryButtonStyle(visualSettings)}>
               <Save className="w-4 h-4 mr-2" />
@@ -799,14 +799,14 @@ const VendorInventoryTab = ({
             <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-3 sm:px-6 py-3 sm:py-4 flex justify-end gap-2 sm:gap-3 rounded-b-lg">
               <Button variant="outline" onClick={() => setShowProductDetails(false)} className="text-sm sm:text-base">
                 <X className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">{t('vendor.addProduct.cancel')}</span>
+                <span className="hidden sm:inline">{t('common.cancel')}</span>
               </Button>
               <Button onClick={() => {
                 openEditProductForm(selectedProduct);
                 setShowProductDetails(false);
               }} style={getPrimaryButtonStyle(visualSettings)} className="text-sm sm:text-base">
                 <Edit className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">{t('vendor.actions.edit')}</span>
+                <span className="hidden sm:inline">{t('common.edit')}</span>
               </Button>
             </div>
           </motion.div>

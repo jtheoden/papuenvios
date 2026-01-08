@@ -1088,7 +1088,7 @@ const AdminRemittancesTab = () => {
                 onClick={() => setSelectedRemittance(null)}
                 className="w-full py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
               >
-                {t('remittances.admin.cancel')}
+                {t('common.cancel')}
               </button>
             </div>
           </motion.div>
