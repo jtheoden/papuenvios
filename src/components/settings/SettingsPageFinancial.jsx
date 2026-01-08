@@ -365,16 +365,18 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
 
         {/* Currencies Section */}
         <div className="border-t pt-6">
-          <div className="flex justify-between items-center mb-4">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
             <h3 className="text-xl font-semibold">{t('settings.financial.currencies')}</h3>
             <Button
               onClick={loadOfficialRates}
               disabled={loadingRates}
               variant="outline"
               size="sm"
+              className="h-8 px-2 sm:px-3"
+              title={language === 'es' ? 'Cargar Tasas Oficiales' : 'Load Official Rates'}
             >
-              <DollarSign className="w-4 h-4 mr-2" />
-              {loadingRates ? (language === 'es' ? 'Cargando...' : 'Loading...') : (language === 'es' ? 'Cargar Tasas Oficiales' : 'Load Official Rates')}
+              <DollarSign className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">{loadingRates ? (language === 'es' ? 'Cargando...' : 'Loading...') : (language === 'es' ? 'Cargar Tasas Oficiales' : 'Load Official Rates')}</span>
             </Button>
           </div>
 
@@ -510,16 +512,18 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         transition={{ delay: 0.4 }}
         className="glass-effect p-6 rounded-2xl mt-8"
       >
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-2xl font-bold" style={getHeadingStyle(visualSettings)}>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+          <h3 className="text-xl sm:text-2xl font-bold" style={getHeadingStyle(visualSettings)}>
             {language === 'es' ? 'Tasas de Cambio' : 'Exchange Rates'}
           </h3>
           <Button
             onClick={() => setShowAddRate(!showAddRate)}
             style={getPrimaryButtonStyle(visualSettings)}
+            className="h-8 px-2 sm:px-3"
+            title={language === 'es' ? 'Nueva Tasa' : 'New Rate'}
           >
-            <Plus className="h-4 w-4 mr-2" />
-            {language === 'es' ? 'Nueva Tasa' : 'New Rate'}
+            <Plus className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">{language === 'es' ? 'Nueva Tasa' : 'New Rate'}</span>
           </Button>
         </div>
 

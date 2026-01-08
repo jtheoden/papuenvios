@@ -631,37 +631,39 @@ const AdminOrdersTab = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900">
             {t('adminOrders.title')}
           </h2>
-          <p className="text-sm text-gray-600 mt-1">
+          <p className="text-sm text-gray-600 mt-1 hidden sm:block">
             {t('adminOrders.subtitle')}
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+            className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 rounded-lg border transition-colors ${
               showFilters
                 ? 'bg-blue-50 border-blue-500 text-blue-700'
                 : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
             }`}
+            title={t('adminOrders.filters.title')}
           >
             <Filter className="h-4 w-4" />
-            {t('adminOrders.filters.title').replace(' de Búsqueda', '')}
+            <span className="hidden sm:inline">{t('adminOrders.filters.title').replace(' de Búsqueda', '')}</span>
             {showFilters ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
 
           <button
             onClick={loadOrders}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            title={t('dashboard.refresh')}
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            {t('dashboard.refresh')}
+            <span className="hidden sm:inline">{t('dashboard.refresh')}</span>
           </button>
         </div>
       </div>

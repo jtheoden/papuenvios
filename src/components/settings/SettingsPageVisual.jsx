@@ -392,11 +392,16 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
 
       {/* Carousel Slides Section */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="glass-effect p-8 rounded-2xl mt-8">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-semibold">{t('settings.visual.slides')}</h2>
-          <Button onClick={handleAddSlide} style={getPrimaryButtonStyle(visualSettings)}>
-            <Plus className="mr-2 h-4 w-4" />
-            {t('settings.visual.addSlide')}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
+          <h2 className="text-xl sm:text-2xl font-semibold">{t('settings.visual.slides')}</h2>
+          <Button
+            onClick={handleAddSlide}
+            style={getPrimaryButtonStyle(visualSettings)}
+            className="h-8 px-2 sm:px-3"
+            title={t('settings.visual.addSlide')}
+          >
+            <Plus className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">{t('settings.visual.addSlide')}</span>
           </Button>
         </div>
 
@@ -530,10 +535,12 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
                   <Button
                     variant="destructive"
                     size="sm"
+                    className="h-8 px-2 sm:px-3"
                     onClick={() => handleRemoveSlide(slide.id)}
+                    title={language === 'es' ? 'Eliminar' : 'Delete'}
                   >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    {language === 'es' ? 'Eliminar' : 'Delete'}
+                    <Trash2 className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">{language === 'es' ? 'Eliminar' : 'Delete'}</span>
                   </Button>
                 </div>
               </div>
