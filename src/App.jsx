@@ -70,7 +70,7 @@ function App() {
   const ProtectedAdmin = React.useMemo(() => withProtectedRoute(AdminPage, 'admin'), []);
   const ProtectedSettings = React.useMemo(() => withProtectedRoute(SettingsPage, 'admin'), []);
   const ProtectedUserPanel = React.useMemo(() => withProtectedRoute(UserPanel, 'user'), []);
-  const ProtectedSendRemittance = React.useMemo(() => withProtectedRoute(SendRemittancePage, 'user'), []);
+  // SendRemittancePage no longer protected - guests can see Step 1, auth required at Step 2
   const ProtectedMyRemittances = React.useMemo(() => withProtectedRoute(MyRemittancesPage, 'user'), []);
   const ProtectedMyRecipients = React.useMemo(() => withProtectedRoute(MyRecipientsPage, 'user'), []);
 
@@ -207,7 +207,7 @@ function App() {
       case 'remittances':
         return <RemittancesPage onNavigate={handleNavigate} />;
       case 'send-remittance':
-        return <ProtectedSendRemittance onNavigate={handleNavigate} />;
+        return <SendRemittancePage onNavigate={handleNavigate} />;
       case 'my-remittances':
         return <ProtectedMyRemittances onNavigate={handleNavigate} />;
       case 'recipients':
