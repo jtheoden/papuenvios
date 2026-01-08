@@ -7,12 +7,11 @@ import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/components/ui/use-toast';
-import { getHeadingStyle } from '@/lib/styleUtils';
+import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import TabsResponsive from '@/components/TabsResponsive';
 import CategoryBadge from '@/components/CategoryBadge';
 import UserAvatar from '@/components/avatars/UserAvatar';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
-import TableDetailModal from '@/components/modals/TableDetailModal';
 import { getUserTableColumns, getUserModalColumns } from '@/components/admin/UserTableConfig';
 import { getCategoryRules, getCategoryDiscounts, recalculateAllCategories, updateCategoryDiscount } from '@/lib/userCategorizationService';
 
@@ -609,28 +608,30 @@ const UserManagement = () => {
               );
             }
             return (
-              <div className="flex items-center justify-end gap-2">
+              <div className="flex items-center justify-end gap-1 sm:gap-2">
                 <Button
                   variant={row.is_enabled ? "outline" : "default"}
                   size="sm"
+                  className="h-8 px-2 sm:px-3"
                   onClick={() => handleToggleUserStatus(row.id, !row.is_enabled)}
                   title={row.is_enabled ? t('users.disableUser') : t('users.enableUser')}
                 >
                   {row.is_enabled ? (
                     <>
-                      <UserX className="w-4 h-4" />
-                      {t('users.disable')}
+                      <UserX className="w-4 h-4 sm:mr-1" />
+                      <span className="hidden sm:inline">{t('users.disable')}</span>
                     </>
                   ) : (
                     <>
-                      <UserCheck className="w-4 h-4" />
-                      {t('users.enable')}
+                      <UserCheck className="w-4 h-4 sm:mr-1" />
+                      <span className="hidden sm:inline">{t('users.enable')}</span>
                     </>
                   )}
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
+                  className="h-8 px-2 sm:px-3"
                   onClick={() => handleDeleteUser(row.id)}
                   style={{
                     backgroundColor: visualSettings.destructiveBgColor || '#dc2626',
@@ -641,8 +642,8 @@ const UserManagement = () => {
                   onMouseLeave={e => e.currentTarget.style.backgroundColor = visualSettings.destructiveBgColor || '#dc2626'}
                   title={t('users.deleteUser')}
                 >
-                  <Trash2 className="w-4 h-4" />
-                  {t('common.delete')}
+                  <Trash2 className="w-4 h-4 sm:mr-1" />
+                  <span className="hidden sm:inline">{t('common.delete')}</span>
                 </Button>
               </div>
             );
@@ -706,21 +707,199 @@ const UserManagement = () => {
         />
       </motion.div>
 
-      {/* User Detail Modal */}
+      {/* User Detail Modal with Edit Functionality */}
       {showUserModal && selectedUser && (
-        <TableDetailModal
-          isOpen={showUserModal}
-          onClose={() => {
-            console.log('[UserModal onClose] Closing user detail modal for user:', selectedUser.id);
-            setShowUserModal(false);
-            setTimeout(() => setSelectedUser(null), 300);
-            console.log('[UserModal onClose] Modal closed');
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowUserModal(false);
+              setTimeout(() => setSelectedUser(null), 300);
+            }
           }}
-          title={t('users.detail') || 'User Details'}
-          data={selectedUser}
-          columns={getUserModalColumns(t)}
-          maxHeight="80vh"
-        />
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="bg-white rounded-2xl p-4 sm:p-6 max-w-lg w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-xl font-bold gradient-text">
+                {t('users.detail')}
+              </h2>
+              <button
+                onClick={() => {
+                  setShowUserModal(false);
+                  setTimeout(() => setSelectedUser(null), 300);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X size={20} className="text-gray-600" />
+              </button>
+            </div>
+
+            {/* User Info */}
+            <div className="space-y-4">
+              {/* Avatar & Email */}
+              <div className="flex items-center gap-3 pb-4 border-b">
+                <UserAvatar
+                  email={selectedUser.email}
+                  fullName={selectedUser.full_name}
+                  avatarUrl={selectedUser.avatar_url}
+                  size="lg"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-gray-900 truncate">{selectedUser.email}</p>
+                  <p className="text-sm text-gray-500 truncate">{selectedUser.full_name || '-'}</p>
+                </div>
+              </div>
+
+              {/* Role Section */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {t('users.table.role')}
+                </label>
+                {selectedUser.role === 'super_admin' ? (
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                    <Shield className="w-3 h-3 mr-1" />
+                    {t('users.superAdmin')}
+                  </span>
+                ) : isSuperAdmin ? (
+                  <select
+                    value={selectedUser.role || 'user'}
+                    onChange={(e) => {
+                      handleRoleChange(selectedUser.id, e.target.value);
+                      setSelectedUser(prev => ({ ...prev, role: e.target.value }));
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="user">{t('users.roles.user')}</option>
+                    <option value="admin">{t('users.roles.admin')}</option>
+                  </select>
+                ) : (
+                  <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
+                    selectedUser.role === 'admin' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {t(`users.roles.${selectedUser.role || 'user'}`)}
+                  </span>
+                )}
+              </div>
+
+              {/* Category Section */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {t('users.table.category')}
+                </label>
+                {selectedUser.role === 'super_admin' ? (
+                  <span className="text-xs text-gray-400 italic">
+                    {t('users.protected')}
+                  </span>
+                ) : isSuperAdmin ? (
+                  <select
+                    value={selectedUser.category_name || ''}
+                    onChange={(e) => {
+                      handleCategoryChange(selectedUser.id, e.target.value);
+                      setSelectedUser(prev => ({ ...prev, category_name: e.target.value }));
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">{t('users.categories.selectCategory')}</option>
+                    {categoryRules && categoryRules.map((rule) => (
+                      <option key={rule.category_name} value={rule.category_name}>
+                        {t(`users.categories.${rule.category_name}`)}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <CategoryBadge categoryName={selectedUser.category_name || 'regular'} readOnly />
+                )}
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {t('users.table.status')}
+                </label>
+                <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
+                  selectedUser.is_enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                }`}>
+                  {selectedUser.is_enabled ? t('users.table.active') : t('users.table.inactive')}
+                </span>
+              </div>
+
+              {/* Created At */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {t('common.createdAt')}
+                </label>
+                <p className="text-sm text-gray-900">
+                  {selectedUser.created_at ? new Date(selectedUser.created_at).toLocaleString() : '-'}
+                </p>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            {isSuperAdmin && selectedUser.role !== 'super_admin' && (
+              <div className="mt-6 pt-4 border-t flex flex-wrap gap-2">
+                <Button
+                  variant={selectedUser.is_enabled ? "outline" : "default"}
+                  size="sm"
+                  className="flex-1 min-w-[120px]"
+                  onClick={() => {
+                    handleToggleUserStatus(selectedUser.id, !selectedUser.is_enabled);
+                    setSelectedUser(prev => ({ ...prev, is_enabled: !prev.is_enabled }));
+                  }}
+                >
+                  {selectedUser.is_enabled ? (
+                    <>
+                      <UserX className="w-4 h-4 mr-2" />
+                      {t('users.disable')}
+                    </>
+                  ) : (
+                    <>
+                      <UserCheck className="w-4 h-4 mr-2" />
+                      {t('users.enable')}
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 min-w-[120px]"
+                  onClick={() => {
+                    handleDeleteUser(selectedUser.id);
+                    setShowUserModal(false);
+                  }}
+                  style={{
+                    backgroundColor: visualSettings.destructiveBgColor || '#dc2626',
+                    color: visualSettings.destructiveTextColor || '#ffffff',
+                    borderColor: visualSettings.destructiveBgColor || '#dc2626'
+                  }}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  {t('common.delete')}
+                </Button>
+              </div>
+            )}
+
+            {/* Close Button */}
+            <div className="mt-4 sm:mt-6">
+              <Button
+                onClick={() => {
+                  setShowUserModal(false);
+                  setTimeout(() => setSelectedUser(null), 300);
+                }}
+                className="w-full"
+                style={getPrimaryButtonStyle(visualSettings)}
+              >
+                {t('common.close')}
+              </Button>
+            </div>
+          </motion.div>
+        </div>
       )}
 
       {/* Info Cards */}
@@ -791,9 +970,11 @@ const UserManagement = () => {
           <Button
             onClick={handleRecalculateAll}
             disabled={recalculatingAll}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
+            className="bg-blue-600 hover:bg-blue-700 text-white h-9 px-3"
+            title={t('users.categories.recalculate')}
           >
-            {recalculatingAll ? t('common.processing') : t('users.categories.recalculate')}
+            <BarChart3 className="w-4 h-4 sm:mr-2" />
+            <span className="hidden sm:inline">{recalculatingAll ? t('common.processing') : t('users.categories.recalculate')}</span>
           </Button>
         </div>
       </motion.div>
@@ -963,34 +1144,39 @@ const UserManagement = () => {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-2 sm:px-4 py-3">
                           {isEditing ? (
-                            <div className="flex gap-2">
+                            <div className="flex gap-1 sm:gap-2">
                               <Button
                                 size="sm"
+                                className="bg-green-600 hover:bg-green-700 text-white h-8 px-2 sm:px-3"
                                 onClick={() => handleSaveDiscount(discount.category_name)}
-                                className="bg-green-600 hover:bg-green-700 text-white"
+                                title={t('common.save')}
                               >
-                                <Save className="w-4 h-4 mr-1" />
-                                {t('common.save')}
+                                <Save className="w-4 h-4 sm:mr-1" />
+                                <span className="hidden sm:inline">{t('common.save')}</span>
                               </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
+                                className="h-8 px-2 sm:px-3"
                                 onClick={handleCancelEditDiscount}
+                                title={t('common.cancel')}
                               >
-                                <X className="w-4 h-4 mr-1" />
-                                {t('common.cancel')}
+                                <X className="w-4 h-4 sm:mr-1" />
+                                <span className="hidden sm:inline">{t('common.cancel')}</span>
                               </Button>
                             </div>
                           ) : (
                             <Button
                               size="sm"
                               variant="outline"
+                              className="h-8 px-2 sm:px-3"
                               onClick={() => handleEditDiscount(discount)}
+                              title={t('common.edit')}
                             >
-                              <Edit className="w-4 h-4 mr-1" />
-                              {t('common.edit')}
+                              <Edit className="w-4 h-4 sm:mr-1" />
+                              <span className="hidden sm:inline">{t('common.edit')}</span>
                             </Button>
                           )}
                         </td>

@@ -279,9 +279,9 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
             </div>
           )}
           <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+            <label className="flex items-center gap-2 cursor-pointer px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50" title={t('settings.visual.uploadLogo')}>
               <Upload className="h-4 w-4" />
-              {t('settings.visual.uploadLogo')}
+              <span className="hidden sm:inline">{t('settings.visual.uploadLogo')}</span>
               <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
             </label>
           </div>
