@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight, ArrowLeft, Check, DollarSign, User, FileText, Upload,
-  AlertCircle, CheckCircle, Calculator, Copy, CreditCard, MessageCircle,
+  AlertCircle, CheckCircle, Calculator, Copy, CreditCard, Eye, Send,
   Target, RefreshCw
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -364,8 +364,8 @@ const SendRemittancePage = ({ onNavigate }) => {
       }
 
       const remittance = await createRemittance(remittanceData);
-
       setCreatedRemittance(remittance);
+
       toast({
         title: t('common.success'),
         description: t('remittances.wizard.remittanceCreatedSuccess')
@@ -429,114 +429,6 @@ const SendRemittancePage = ({ onNavigate }) => {
     }
   };
 
-  const handleNotifyAdminWhatsApp = async () => {
-    if (!notificationSettings?.whatsapp) {
-      toast({
-        title: t('common.error'),
-        description: 'Número de WhatsApp del administrador no configurado',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    try {
-      const enrichedRemittance = {
-        ...createdRemittance,
-        remittance_types: selectedType,
-        remittance_type: selectedType,
-        amount: parseFloat(amount),
-        currency: calculation?.currency || 'USD',
-        amount_to_deliver: calculation?.amountToDeliver,
-        delivery_currency: calculation?.deliveryCurrency,
-        user_email: user?.email,
-        payment_reference: paymentData.reference || '(Pendiente)'
-      };
-      const locale = language || 'es';
-      await notifyAdminNewPaymentProof(enrichedRemittance, notificationSettings.whatsapp, locale);
-
-      toast({
-        title: t('common.success'),
-        description: 'WhatsApp abierto. Envía el mensaje al administrador.'
-      });
-    } catch (error) {
-      console.error('Error opening WhatsApp:', error);
-      toast({
-        title: t('common.error'),
-        description: 'Error al abrir WhatsApp',
-        variant: 'destructive'
-      });
-    }
-  };
-
-  const handlePaymentProofSubmit = async (e) => {
-    e.preventDefault();
-
-    if (!paymentData.file || !paymentData.reference) {
-      toast({
-        title: t('common.error'),
-        description: t('remittances.wizard.uploadProofAndReference'),
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    setSubmitting(true);
-
-    try {
-      await uploadPaymentProof(
-        createdRemittance.id,
-        paymentData.file,
-        paymentData.reference,
-        paymentData.notes
-      );
-
-      toast({
-        title: t('common.success'),
-        description: t('remittances.wizard.proofSentSuccess')
-      });
-
-      // Send WhatsApp notification to admin if configured
-      if (notificationSettings?.whatsapp) {
-        try {
-          // Enrich remittance data with full information for WhatsApp notification
-          const enrichedRemittance = {
-            ...createdRemittance,
-            remittance_types: selectedType,
-            remittance_type: selectedType,
-            amount: parseFloat(amount),
-            currency: calculation?.currency || 'USD',
-            amount_to_deliver: calculation?.amountToDeliver,
-            delivery_currency: calculation?.deliveryCurrency,
-            payment_reference: paymentData.reference
-          };
-          const locale = language || 'es';
-          notifyAdminNewPaymentProof(enrichedRemittance, notificationSettings.whatsapp, locale);
-        } catch (error) {
-          console.error('Error sending WhatsApp notification:', error);
-          // Don't prevent showing modal if WhatsApp notification fails
-        }
-      }
-
-      // Store remittance info and show confirmation modal
-      setConfirmedRemittanceInfo({
-        remittanceNumber: createdRemittance.remittance_number,
-        total: calculation?.amountToDeliver || parseFloat(amount),
-        currency: calculation?.deliveryCurrency || 'CUP',
-        recipientName: recipientData.name
-      });
-      setShowConfirmationModal(true);
-    } catch (error) {
-      console.error('Error uploading payment proof:', error);
-      toast({
-        title: t('common.error'),
-        description: error?.message || t('remittances.wizard.errorUploadingProof') || 'Error al subir el comprobante',
-        variant: 'destructive'
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const renderStepIndicator = () => (
     <div className="flex items-center justify-center mb-8">
       {[1, 2, 3, 4].map((stepNum) => (
@@ -565,11 +457,6 @@ const SendRemittancePage = ({ onNavigate }) => {
         ))}
       </div>
     );
-
-  const zelleAccountInfo = createdRemittance?.zelle_accounts?.[0] || selectedZelle;
-  const zelleName = zelleAccountInfo?.account_name || zelleAccountInfo?.account_holder || zelleAccountInfo?.name;
-  const zelleEmail = zelleAccountInfo?.email || zelleAccountInfo?.zelle_email;
-  const zellePhone = zelleAccountInfo?.phone_number || zelleAccountInfo?.phone || zelleAccountInfo?.telefono;
 
   if (loading) {
     return (
@@ -1085,7 +972,7 @@ const SendRemittancePage = ({ onNavigate }) => {
           </motion.div>
         )}
 
-        {/* Step 4: Upload Payment Proof */}
+        {/* Step 4: Payment - Copy info, make payment, upload proof */}
         {step === 4 && createdRemittance && (
           <motion.div
             key="step4"
@@ -1094,187 +981,139 @@ const SendRemittancePage = ({ onNavigate }) => {
             exit={{ opacity: 0, x: -20 }}
             className="space-y-6"
           >
-            <div className="glass-effect p-6 rounded-xl text-center">
-              <CheckCircle className="h-16 w-16 text-green-600 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold mb-2">{t('remittances.wizard.remittanceCreated')}</h2>
-              <p className="text-gray-600 mb-4">
-                {t('remittances.wizard.remittanceNumber')}: <span className="font-bold">{createdRemittance.remittance_number}</span>
+            {/* Success Header */}
+            <div className="glass-effect p-6 rounded-xl text-center border-2 border-green-200 bg-green-50">
+              <CheckCircle className="h-12 w-12 text-green-600 mx-auto mb-3" />
+              <h2 className="text-xl font-bold mb-2 text-green-900">
+                {language === 'es' ? '¡Remesa Creada!' : 'Remittance Created!'}
+              </h2>
+              <p className="text-gray-600">
+                {language === 'es'
+                  ? 'Ahora realiza el pago y sube el comprobante para completar el proceso.'
+                  : 'Now make the payment and upload the proof to complete the process.'}
               </p>
             </div>
 
-              {/* Zelle Account Information */}
-              {zelleAccountInfo ? (
-                <div className="glass-effect p-6 rounded-xl border-2 border-blue-200 bg-blue-50">
-                  <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-blue-900">
-                    <CreditCard className="h-5 w-5" />
-                    {t('remittances.wizard.zelleAccountInfo')}
-                  </h3>
-                  <div className="space-y-3">
+            {/* ID de Remesa - COPIAR para descripción del pago */}
+            <div className="glass-effect p-6 rounded-xl border-2 border-purple-200 bg-purple-50">
+              <h3 className="text-lg font-bold mb-3 text-purple-900 flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                {language === 'es' ? 'ID de Remesa (usar en descripción del pago)' : 'Remittance ID (use in payment description)'}
+              </h3>
+              <div className="flex items-center justify-between bg-white p-4 rounded-lg border-2 border-purple-300">
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">{language === 'es' ? 'Incluye este ID en la descripción de tu pago Zelle:' : 'Include this ID in your Zelle payment description:'}</p>
+                  <p className="text-2xl font-mono font-bold text-purple-700">{createdRemittance.id}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleCopyToClipboard(createdRemittance.id, 'ID de remesa')}
+                  className="p-3 bg-purple-100 hover:bg-purple-200 rounded-lg transition-colors flex-shrink-0"
+                  title="Copiar ID"
+                >
+                  <Copy className="h-6 w-6 text-purple-600" />
+                </button>
+              </div>
+            </div>
+
+            {/* Datos Zelle para el pago */}
+            {selectedZelle && (
+              <div className="glass-effect p-6 rounded-xl border-2 border-blue-200 bg-blue-50">
+                <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-blue-900">
+                  <CreditCard className="h-5 w-5" />
+                  {language === 'es' ? 'Envía tu pago Zelle a:' : 'Send your Zelle payment to:'}
+                </h3>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between bg-white p-3 rounded-lg">
+                    <div>
+                      <p className="text-xs text-gray-500">{language === 'es' ? 'Nombre de Cuenta' : 'Account Name'}</p>
+                      <p className="font-semibold text-gray-800">{selectedZelle?.account_name || selectedZelle?.account_holder || selectedZelle?.name}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyToClipboard(selectedZelle?.account_name || selectedZelle?.account_holder || selectedZelle?.name, 'Nombre')}
+                      className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
+                    >
+                      <Copy className="h-4 w-4 text-blue-600" />
+                    </button>
+                  </div>
+
+                  {(selectedZelle?.email || selectedZelle?.zelle_email) && (
                     <div className="flex items-center justify-between bg-white p-3 rounded-lg">
                       <div>
-                        <p className="text-xs text-gray-500">{t('remittances.wizard.accountName')}</p>
-                        <p className="font-semibold text-gray-800">{zelleName}</p>
-                        {zelleAccountInfo.account_holder && (
-                          <p className="text-sm text-gray-700 font-medium mt-1">{zelleAccountInfo.account_holder}</p>
-                        )}
-                        {zellePhone && (
-                          <p className="text-sm text-gray-700 font-medium mt-1">{zellePhone}</p>
-                        )}
+                        <p className="text-xs text-gray-500">Email Zelle</p>
+                        <p className="font-semibold text-gray-800">{selectedZelle?.email || selectedZelle?.zelle_email}</p>
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleCopyToClipboard(zelleName, t('remittances.wizard.accountName'))}
+                        onClick={() => handleCopyToClipboard(selectedZelle?.email || selectedZelle?.zelle_email, 'Email')}
                         className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
-                        title="Copiar nombre de cuenta"
                       >
                         <Copy className="h-4 w-4 text-blue-600" />
                       </button>
                     </div>
+                  )}
 
-                    {zelleEmail && (
-                      <div className="flex items-center justify-between bg-white p-3 rounded-lg">
-                        <div>
-                          <p className="text-xs text-gray-500">{t('remittances.wizard.zelleEmail')}</p>
-                          <p className="font-semibold text-gray-800">{zelleEmail}</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyToClipboard(zelleEmail, t('remittances.wizard.zelleEmail'))}
-                          className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
-                          title="Copiar email Zelle"
-                        >
-                          <Copy className="h-4 w-4 text-blue-600" />
-                        </button>
+                  {(selectedZelle?.phone_number || selectedZelle?.phone) && (
+                    <div className="flex items-center justify-between bg-white p-3 rounded-lg">
+                      <div>
+                        <p className="text-xs text-gray-500">{language === 'es' ? 'Teléfono Zelle' : 'Zelle Phone'}</p>
+                        <p className="font-semibold text-gray-800">{selectedZelle?.phone_number || selectedZelle?.phone}</p>
                       </div>
-                    )}
-
-                    {zellePhone && (
-                      <div className="flex items-center justify-between bg-white p-3 rounded-lg">
-                        <div>
-                          <p className="text-xs text-gray-500">{t('remittances.wizard.zellePhone')}</p>
-                          <p className="font-semibold text-gray-800">{zellePhone}</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyToClipboard(zellePhone, t('remittances.wizard.zellePhone'))}
-                          className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
-                          title="Copiar teléfono"
-                        >
-                          <Copy className="h-4 w-4 text-blue-600" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="glass-effect p-6 rounded-xl border-2 border-yellow-200 bg-yellow-50 flex items-start gap-3">
-                  <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
-                  <div>
-                    <p className="font-semibold text-yellow-900">{t('remittances.wizard.zelleAccountInfo')}</p>
-                    <p className="text-sm text-yellow-800">{t('remittances.wizard.zelleAccountMissing')}</p>
-                  </div>
-                </div>
-              )}
-
-            {/* Remittance ID and Amount to Transfer */}
-            <div className="glass-effect p-6 rounded-xl border-2 border-green-200 bg-green-50">
-              <h3 className="text-lg font-bold mb-4 text-green-900">
-                {t('remittances.wizard.transferDescription')}
-              </h3>
-              <div className="space-y-3">
-                {/* Remittance ID */}
-                <div className="flex items-center justify-between bg-white p-4 rounded-lg border border-green-300">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">{t('remittances.wizard.remittanceIdForTransfer')}</p>
-                    <p className="text-xl font-mono font-bold text-gray-900">{createdRemittance.id}</p>
-                    <p className="text-xs text-gray-600 mt-1">{t('remittances.wizard.useThisInTransfer')}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleCopyToClipboard(createdRemittance.id, 'ID de remesa')}
-                    className="p-3 bg-green-100 hover:bg-green-200 rounded-lg transition-colors flex-shrink-0"
-                    title="Copiar ID de remesa"
-                  >
-                    <Copy className="h-5 w-5 text-green-600" />
-                  </button>
-                </div>
-
-                {/* Amount to Transfer */}
-                <div className="flex items-center justify-between bg-white p-4 rounded-lg border border-green-300">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Monto a Transferir</p>
-                    <p className="text-2xl font-bold text-green-600">
-                      {calculation?.amount} {calculation?.currency || 'USD'}
-                    </p>
-                    <p className="text-xs text-gray-600 mt-1">Cantidad que debes enviar al número Zelle</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleCopyToClipboard(`${calculation?.amount}`, 'Monto')}
-                    className="p-3 bg-green-100 hover:bg-green-200 rounded-lg transition-colors flex-shrink-0"
-                    title="Copiar monto"
-                  >
-                    <Copy className="h-5 w-5 text-green-600" />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* WhatsApp Notification Info Section */}
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={`glass-effect p-6 rounded-xl border-2 ${
-                notificationSettings?.whatsapp
-                  ? 'border-green-200 bg-green-50'
-                  : 'border-yellow-200 bg-yellow-50'
-              }`}
-            >
-              <div className="flex items-start gap-4">
-                <div className="flex-shrink-0">
-                  <MessageCircle className={`h-6 w-6 ${
-                    notificationSettings?.whatsapp ? 'text-green-600' : 'text-yellow-600'
-                  }`} />
-                </div>
-                <div className="flex-1">
-                  <h3 className={`text-lg font-bold mb-2 ${
-                    notificationSettings?.whatsapp ? 'text-green-900' : 'text-yellow-900'
-                  }`}>
-                    📱 {t('remittances.wizard.whatsappNotification') || 'Notificación por WhatsApp'}
-                  </h3>
-
-                  {notificationSettings?.whatsapp ? (
-                    <>
-                      <p className="text-sm text-green-800 mb-4">
-                        {t('remittances.wizard.whatsappInfo') || 'Cuando envíes el comprobante de pago, se notificará automáticamente al administrador a través de WhatsApp con todos los detalles de tu remesa.'}
-                      </p>
                       <button
                         type="button"
-                        onClick={handleNotifyAdminWhatsApp}
-                        className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium"
-                        title={t('remittances.wizard.notifyAdmin') || 'Notificar al administrador ahora por WhatsApp'}
+                        onClick={() => handleCopyToClipboard(selectedZelle?.phone_number || selectedZelle?.phone, 'Teléfono')}
+                        className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
                       >
-                        <MessageCircle className="h-4 w-4" />
-                        {t('remittances.wizard.notifyAdmin') || 'Notificar Administrador Ahora'}
+                        <Copy className="h-4 w-4 text-blue-600" />
                       </button>
-                    </>
-                  ) : (
-                    <p className="text-sm text-yellow-800">
-                      {t('remittances.wizard.whatsappNotConfigured') || '⚠️ Número de WhatsApp del administrador no configurado. Contacta con soporte para activar esta función y recibir notificaciones instantáneas cuando envíes comprobantes de pago.'}
-                    </p>
+                    </div>
                   )}
                 </div>
               </div>
-            </motion.div>
+            )}
 
-            <form onSubmit={handlePaymentProofSubmit} className="glass-effect p-6 rounded-xl">
-              <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <Upload className="h-6 w-6 text-blue-600" />
-                {t('remittances.wizard.step4Title')}
+            {/* Monto a Transferir */}
+            <div className="glass-effect p-6 rounded-xl border-2 border-green-200 bg-green-50">
+              <h3 className="text-lg font-bold mb-3 text-green-900">
+                {language === 'es' ? 'Monto a Transferir' : 'Amount to Transfer'}
+              </h3>
+              <div className="flex items-center justify-between bg-white p-4 rounded-lg border-2 border-green-300">
+                <div>
+                  <p className="text-3xl font-bold text-green-600">
+                    ${calculation?.amount} {calculation?.currency || 'USD'}
+                  </p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {language === 'es' ? 'El destinatario recibirá:' : 'Recipient will receive:'} {calculation?.amountToDeliver?.toFixed(2)} {calculation?.deliveryCurrency}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleCopyToClipboard(`${calculation?.amount}`, 'Monto')}
+                  className="p-3 bg-green-100 hover:bg-green-200 rounded-lg transition-colors flex-shrink-0"
+                >
+                  <Copy className="h-6 w-6 text-green-600" />
+                </button>
+              </div>
+            </div>
+
+            {/* Upload comprobante de pago - OBLIGATORIO */}
+            <div className="glass-effect p-6 rounded-xl border-2 border-orange-200 bg-orange-50">
+              <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-orange-900">
+                <Upload className="h-6 w-6" />
+                {language === 'es' ? 'Subir Comprobante de Pago (Obligatorio)' : 'Upload Payment Proof (Required)'}
               </h3>
 
+              <div className="p-3 bg-orange-100 rounded-lg mb-4">
+                <p className="text-sm text-orange-800 flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                  {language === 'es'
+                    ? 'Una vez realizado el pago, sube el comprobante para que podamos procesar tu remesa.'
+                    : 'Once payment is made, upload the proof so we can process your remittance.'}
+                </p>
+              </div>
+
               <div className="space-y-4">
-                {/* File Upload with Preview Component */}
                 <FileUploadWithPreview
                   label={t('remittances.user.paymentProof') || 'Comprobante de pago'}
                   accept="image/*,.pdf"
@@ -1284,12 +1123,9 @@ const SendRemittancePage = ({ onNavigate }) => {
                   onChange={(e) => {
                     const file = e.target.files[0];
                     setPaymentData({ ...paymentData, file });
-
                     if (file) {
                       const reader = new FileReader();
-                      reader.onloadend = () => {
-                        setImagePreview(reader.result);
-                      };
+                      reader.onloadend = () => setImagePreview(reader.result);
                       reader.readAsDataURL(file);
                     } else {
                       setImagePreview(null);
@@ -1300,77 +1136,98 @@ const SendRemittancePage = ({ onNavigate }) => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {t('remittances.user.paymentReference')} *
+                    {language === 'es' ? 'Referencia del Pago' : 'Payment Reference'} *
                   </label>
                   <input
                     type="text"
                     value={paymentData.reference}
                     onChange={(e) => setPaymentData({ ...paymentData, reference: e.target.value })}
                     className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder={t('remittances.wizard.paymentReferencePlaceholder') || 'Ej: ZELLE123456'}
+                    placeholder={language === 'es' ? 'Ej: Confirmación Zelle #123456' : 'E.g.: Zelle Confirmation #123456'}
                     required
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {t('remittances.user.additionalNotes')}
+                    {language === 'es' ? 'Notas adicionales (opcional)' : 'Additional notes (optional)'}
                   </label>
                   <textarea
                     value={paymentData.notes}
                     onChange={(e) => setPaymentData({ ...paymentData, notes: e.target.value })}
                     className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    rows="3"
-                    placeholder={t('remittances.wizard.paymentNotesPlaceholder') || 'Detalles adicionales del pago...'}
+                    rows="2"
+                    placeholder={language === 'es' ? 'Detalles adicionales...' : 'Additional details...'}
                   />
                 </div>
               </div>
 
-              <div className="mt-6 space-y-3">
-                <div className="p-4 bg-blue-50 rounded-lg">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                    <div className="text-sm text-blue-800">
-                      <p className="font-semibold mb-1">{t('remittances.wizard.importantNote')}:</p>
-                      <p>{t('remittances.wizard.proofNote')}</p>
-                    </div>
-                  </div>
-                </div>
+              <button
+                onClick={async () => {
+                  if (!paymentData.file || !paymentData.reference) {
+                    toast({
+                      title: t('common.error'),
+                      description: language === 'es'
+                        ? 'Sube el comprobante y proporciona la referencia del pago.'
+                        : 'Upload the proof and provide the payment reference.',
+                      variant: 'destructive'
+                    });
+                    return;
+                  }
+                  setSubmitting(true);
+                  try {
+                    await uploadPaymentProof(createdRemittance.id, paymentData.file, paymentData.reference, paymentData.notes);
 
-                  {notificationSettings?.whatsapp && (
-                    <div className="p-4 bg-green-50 rounded-lg">
-                      <div className="flex items-start gap-3">
-                        <MessageCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                        <div className="text-sm text-green-800">
-                          <p className="font-semibold mb-1">📱 {t('remittances.wizard.whatsappNotification') || 'Notificación por WhatsApp'}:</p>
-                          <p>{t('remittances.wizard.whatsappInfo') || 'Cuando envíes el comprobante, se notificará automáticamente al administrador vía WhatsApp con tu número de remesa, monto y detalles del comprobante.'}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-              <div className="flex gap-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (onNavigate) {
-                      onNavigate('my-remittances');
+                    // Notificar por WhatsApp si está configurado
+                    if (notificationSettings?.whatsapp) {
+                      try {
+                        const enrichedRemittance = {
+                          ...createdRemittance,
+                          remittance_types: selectedType,
+                          amount: parseFloat(amount),
+                          currency: calculation?.currency || 'USD',
+                          amount_to_deliver: calculation?.amountToDeliver,
+                          delivery_currency: calculation?.deliveryCurrency,
+                          payment_reference: paymentData.reference
+                        };
+                        await notifyAdminNewPaymentProof(enrichedRemittance, notificationSettings.whatsapp, language);
+                      } catch (e) { console.warn('WhatsApp notification failed', e); }
                     }
-                  }}
-                  className="flex-1 px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  {t('remittances.wizard.uploadLater')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className={`flex-1 ${getPrimaryButtonStyle()} disabled:opacity-50`}
-                >
-                  {submitting ? t('remittances.wizard.sending') : t('remittances.wizard.sendProof')}
-                </button>
-              </div>
-            </form>
+
+                    toast({ title: t('common.success'), description: language === 'es' ? '¡Comprobante enviado exitosamente!' : 'Proof submitted successfully!' });
+
+                    // Mostrar modal de confirmación
+                    setConfirmedRemittanceInfo({
+                      remittanceNumber: createdRemittance.remittance_number,
+                      total: calculation?.amountToDeliver || parseFloat(amount),
+                      currency: calculation?.deliveryCurrency || 'CUP',
+                      recipientName: recipientData.name
+                    });
+                    setShowConfirmationModal(true);
+                  } catch (error) {
+                    console.error('Error uploading proof:', error);
+                    toast({ title: t('common.error'), description: error?.message || 'Error al subir comprobante', variant: 'destructive' });
+                  } finally {
+                    setSubmitting(false);
+                  }
+                }}
+                disabled={submitting || !paymentData.file || !paymentData.reference}
+                className={`w-full mt-4 ${getPrimaryButtonStyle()} flex items-center justify-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:shadow-none`}
+              >
+                {submitting ? (language === 'es' ? 'Enviando...' : 'Sending...') : (language === 'es' ? 'Enviar Comprobante y Completar' : 'Submit Proof and Complete')}
+                <CheckCircle className="h-6 w-6" />
+              </button>
+            </div>
+
+            {/* Botón para ver mis remesas (secundario) */}
+            <div className="text-center">
+              <button
+                onClick={() => onNavigate('my-remittances')}
+                className="text-blue-600 hover:text-blue-800 underline text-sm"
+              >
+                {language === 'es' ? 'Subir comprobante más tarde desde "Mis Remesas"' : 'Upload proof later from "My Remittances"'}
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
