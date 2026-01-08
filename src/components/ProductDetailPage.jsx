@@ -262,7 +262,7 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
   if (!selectedCurrency || currenciesLoading) {
     return (
       <div className="min-h-screen py-8 px-4 flex items-center justify-center">
-        <p className="text-gray-500">{t('products.loading') || 'Loading...'}</p>
+        <p className="text-gray-500">{t('common.loading')}</p>
       </div>
     );
   }
