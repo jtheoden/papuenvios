@@ -429,9 +429,9 @@ const VendorCombosTab = ({
             ))}
           </select>
         </div>
-        <Button onClick={openNewComboForm} style={getPrimaryButtonStyle(visualSettings)}>
-          <Plus className="mr-2 h-4 w-4" />
-          {t('vendor.combos.new')}
+        <Button onClick={openNewComboForm} style={getPrimaryButtonStyle(visualSettings)} className="flex-shrink-0">
+          <Plus className="h-4 w-4 sm:mr-2" />
+          <span className="hidden sm:inline">{t('vendor.combos.new')}</span>
         </Button>
       </div>
 
@@ -594,8 +594,8 @@ const VendorCombosTab = ({
         </motion.div>
       )}
 
-      {/* Combos Grid */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* Combos Grid - Responsive: list on mobile, grid on larger screens */}
+      <div className="flex flex-col gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:gap-6">
         {combos.map(c => {
           const totalItems = (c.products || []).reduce((sum, productId) => {
             const quantity = c.productQuantities?.[productId] || 1;
@@ -611,7 +611,7 @@ const VendorCombosTab = ({
           return (
             <div
               key={c.id}
-              className={`glass-effect p-4 rounded-lg relative transition-all duration-200 ${
+              className={`glass-effect p-4 rounded-lg transition-all duration-200 ${
                 isConfirming
                   ? 'border-2 border-red-400 bg-red-50'
                   : isDeactivated
@@ -619,132 +619,155 @@ const VendorCombosTab = ({
                     : ''
               }`}
             >
-              {isDeactivated && !isConfirming && (
-                <div className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" />
-                  {language === 'es' ? 'DESACTIVADO' : 'DEACTIVATED'}
+              {/* Mobile: Horizontal list layout / Desktop: Card layout */}
+              <div className="flex flex-col">
+                {/* Header row with title and actions */}
+                <div className="flex items-start justify-between gap-2">
+                  {/* Left: Status badge + Title */}
+                  <div className="flex-1 min-w-0">
+                    {isDeactivated && !isConfirming && (
+                      <div className="inline-flex items-center gap-1 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded mb-1">
+                        <AlertCircle className="h-3 w-3" />
+                        <span className="hidden xs:inline">{language === 'es' ? 'DESACTIVADO' : 'DEACTIVATED'}</span>
+                        <span className="xs:hidden">{language === 'es' ? 'OFF' : 'OFF'}</span>
+                      </div>
+                    )}
+                    <h3 className={`font-bold truncate ${isDeactivated ? 'line-through text-gray-500' : ''}`}>
+                      {language === 'es' ? (c.name_es || c.name) : (c.name_en || c.name_es || c.name)}
+                    </h3>
+                  </div>
+
+                  {/* Right: Action buttons */}
+                  <div className="flex-shrink-0">
+                    <AnimatePresence mode="wait">
+                      {isConfirming ? (
+                        <motion.div
+                          key="confirm-actions"
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          className="flex flex-col xs:flex-row items-end xs:items-center gap-1 xs:gap-2"
+                        >
+                          <span className="text-xs text-red-600 font-medium flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" />
+                            {language === 'es' ? '¿Eliminar?' : 'Delete?'}
+                          </span>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleConfirmDelete(c)}
+                              disabled={isProcessing}
+                              className="h-7 px-2 text-xs"
+                            >
+                              {isProcessing ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <>
+                                  <Check className="h-3 w-3 mr-0.5" />
+                                  {language === 'es' ? 'Sí' : 'Yes'}
+                                </>
+                              )}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleCancelDelete}
+                              disabled={isProcessing}
+                              className="h-7 px-2 text-xs"
+                            >
+                              <X className="h-3 w-3 mr-0.5" />
+                              {language === 'es' ? 'No' : 'No'}
+                            </Button>
+                          </div>
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="default-actions"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="flex gap-0.5"
+                        >
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openEditComboForm(c)}
+                            disabled={isProcessing}
+                            className="h-8 w-8"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleToggleComboActive(c, !c.is_active)}
+                            disabled={isProcessing}
+                            className="h-8 w-8"
+                          >
+                            {c.is_active ? <EyeOff className="h-4 w-4 text-red-600" /> : <Eye className="h-4 w-4 text-green-600" />}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setConfirmingDeleteId(c.id)}
+                            disabled={isProcessing}
+                            className="h-8 w-8"
+                          >
+                            {isProcessing ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4 text-red-600" />
+                            )}
+                          </Button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
-              )}
 
-              {/* Action Buttons with Confirmation */}
-              <div className="absolute top-2 right-2">
-                <AnimatePresence mode="wait">
-                  {isConfirming ? (
-                    <motion.div
-                      key="confirm-actions"
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      className="flex items-center gap-2 bg-white p-2 rounded-lg shadow-md"
-                    >
-                      <span className="text-sm text-red-600 font-medium flex items-center gap-1">
-                        <AlertTriangle className="h-4 w-4" />
-                        {language === 'es' ? '¿Eliminar?' : 'Delete?'}
-                      </span>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleConfirmDelete(c)}
-                        disabled={isProcessing}
-                        className="h-8 px-3"
-                      >
-                        {isProcessing ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <>
-                            <Check className="h-4 w-4 mr-1" />
-                            {language === 'es' ? 'Sí' : 'Yes'}
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleCancelDelete}
-                        disabled={isProcessing}
-                        className="h-8 px-3"
-                      >
-                        <X className="h-4 w-4 mr-1" />
-                        {language === 'es' ? 'No' : 'No'}
-                      </Button>
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key="default-actions"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="flex gap-1"
-                    >
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => openEditComboForm(c)}
-                        disabled={isProcessing}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleToggleComboActive(c, !c.is_active)}
-                        disabled={isProcessing}
-                      >
-                        {c.is_active ? <EyeOff className="h-4 w-4 text-red-600" /> : <Eye className="h-4 w-4 text-green-600" />}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setConfirmingDeleteId(c.id)}
-                        disabled={isProcessing}
-                      >
-                        {isProcessing ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        )}
-                      </Button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              <h3 className={`font-bold pr-24 ${isDeactivated ? 'line-through text-gray-500 mt-8' : ''}`}>
-                {language === 'es' ? (c.name_es || c.name) : (c.name_en || c.name_es || c.name)}
-              </h3>
-              <p className="text-sm text-gray-600">
-                {totalItems} {language === 'es' ? 'elementos' : 'items'} ({c.products?.length || 0} {language === 'es' ? 'productos' : 'products'})
-              </p>
-
-              {isDeactivated && stockIssues.length > 0 && (
-                <div className="mt-2 p-2 bg-red-100 border border-red-300 rounded text-xs">
-                  <p className="font-semibold text-red-800 mb-1">
-                    {language === 'es' ? 'Problemas de stock:' : 'Stock issues:'}
+                {/* Content row: items count and prices */}
+                <div className="flex flex-wrap items-center justify-between gap-2 mt-2">
+                  <p className="text-sm text-gray-600">
+                    {totalItems} {language === 'es' ? 'elem.' : 'items'} ({c.products?.length || 0} {language === 'es' ? 'prod.' : 'prod.'})
                   </p>
-                  <ul className="space-y-1">
-                    {stockIssues.map((issue, idx) => (
-                      <li key={idx} className="flex items-start gap-1 text-red-700">
-                        <AlertTriangle className="h-3 w-3 mt-0.5 flex-shrink-0" />
-                        <span>
-                          <strong>{issue.productName}:</strong>{' '}
-                          {issue.issue === 'out_of_stock'
-                            ? (language === 'es' ? 'Sin stock' : 'Out of stock')
-                            : `${language === 'es' ? 'Insuf.' : 'Insuf.'} (${language === 'es' ? 'Req:' : 'Req:'} ${issue.required}, ${language === 'es' ? 'Disp:' : 'Avail:'} ${issue.available})`
-                          }
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="flex items-center gap-3">
+                    <p className={`text-xs ${isDeactivated ? 'text-gray-400 line-through' : 'text-gray-500'}`}>
+                      {currencySymbol}{prices.base}
+                    </p>
+                    <p className={`text-base font-bold ${isDeactivated ? 'text-gray-400 line-through' : 'text-green-600'}`}>
+                      {currencySymbol}{prices.final} {currencyCode}
+                    </p>
+                  </div>
                 </div>
-              )}
 
-              <div className="mt-2 space-y-1">
-                <p className={`text-sm ${isDeactivated ? 'text-gray-400 line-through' : 'text-gray-500'}`}>
-                  {language === 'es' ? 'Base:' : 'Base:'} {currencySymbol}{prices.base} {currencyCode}
-                </p>
-                <p className={`text-lg font-bold ${isDeactivated ? 'text-gray-400 line-through' : 'text-green-600'}`}>
-                  {language === 'es' ? 'Final:' : 'Final:'} {currencySymbol}{prices.final} {currencyCode}
-                </p>
+                {/* Stock issues - collapsible on mobile */}
+                {isDeactivated && stockIssues.length > 0 && (
+                  <div className="mt-2 p-2 bg-red-100 border border-red-300 rounded text-xs">
+                    <p className="font-semibold text-red-800 mb-1">
+                      {language === 'es' ? 'Problemas de stock:' : 'Stock issues:'}
+                    </p>
+                    <ul className="space-y-1">
+                      {stockIssues.slice(0, 2).map((issue, idx) => (
+                        <li key={idx} className="flex items-start gap-1 text-red-700">
+                          <AlertTriangle className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                          <span className="truncate">
+                            <strong>{issue.productName}:</strong>{' '}
+                            {issue.issue === 'out_of_stock'
+                              ? (language === 'es' ? 'Sin stock' : 'Out of stock')
+                              : `${language === 'es' ? 'Insuf.' : 'Insuf.'} (${issue.required}/${issue.available})`
+                            }
+                          </span>
+                        </li>
+                      ))}
+                      {stockIssues.length > 2 && (
+                        <li className="text-red-600 font-medium">
+                          +{stockIssues.length - 2} {language === 'es' ? 'más' : 'more'}
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                )}
               </div>
             </div>
           );
