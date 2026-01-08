@@ -157,7 +157,12 @@
       "total": "Total:",
       "quantity": "Quantity:",
       "each": "each"
-    }
+    },
+    "disabled": "Disabled",
+    "notAvailable": "Not available",
+    "saveBadge": "SAVE",
+    "discount": "Discount",
+    "userCategoryLabel": "Category: {category}"
   },
   "remittances": {
     "title": "Remittances to Cuba",
