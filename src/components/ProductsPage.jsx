@@ -176,12 +176,8 @@ const ProductsPage = ({ onNavigate }) => {
 
     setFilteredProducts(filtered);
 
-    // Filter combos - Only show active combos for non-admin users
+    // Filter combos - show all combos (inactive ones will be displayed as disabled)
     let filteredC = combos || [];
-
-    if (!isAdmin) {
-      filteredC = filteredC.filter(combo => combo.is_active !== false);
-    }
 
     if (searchTerm) {
       filteredC = filteredC.filter(combo =>
@@ -438,6 +434,9 @@ const ProductsPage = ({ onNavigate }) => {
               style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
               {filteredCombos.map((combo, index) => {
+                // Check if combo is inactive (for non-admin users, show as disabled)
+                const isComboInactive = !isAdmin && combo.is_active === false;
+
                 // Savings calculation with currency conversion applied
                 const calculateSavings = () => {
                   let totalIndividual = 0;
@@ -712,32 +711,34 @@ const ProductsPage = ({ onNavigate }) => {
                   </div>
                 </div>
 
-                <Button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!isOutOfStock) handleAddToCart(product);
-                  }}
-                  disabled={isOutOfStock}
-                  className="w-full"
-                  style={isOutOfStock ? {
-                    background: '#9ca3af',
-                    color: '#ffffff',
-                    border: 'none',
-                    cursor: 'not-allowed'
-                  } : {
-                    background: visualSettings.useGradient
-                      ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
-                      : visualSettings.buttonBgColor || '#2563eb',
-                    color: visualSettings.buttonTextColor || '#ffffff',
-                    border: 'none'
-                  }}
-                >
-                  <ShoppingCart className="w-4 h-4 mr-2" />
-                  {isOutOfStock
-                    ? (language === 'es' ? 'Agotado' : 'Out of Stock')
-                    : t('products.addToCart')
-                  }
-                </Button>
+                {!isAdmin && (
+                  <Button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!isOutOfStock) handleAddToCart(product);
+                    }}
+                    disabled={isOutOfStock}
+                    className="w-full"
+                    style={isOutOfStock ? {
+                      background: '#9ca3af',
+                      color: '#ffffff',
+                      border: 'none',
+                      cursor: 'not-allowed'
+                    } : {
+                      background: visualSettings.useGradient
+                        ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
+                        : visualSettings.buttonBgColor || '#2563eb',
+                      color: visualSettings.buttonTextColor || '#ffffff',
+                      border: 'none'
+                    }}
+                  >
+                    <ShoppingCart className="w-4 h-4 mr-2" />
+                    {isOutOfStock
+                      ? (language === 'es' ? 'Agotado' : 'Out of Stock')
+                      : t('products.addToCart')
+                    }
+                  </Button>
+                )}
               </div>
             </motion.div>
           );
