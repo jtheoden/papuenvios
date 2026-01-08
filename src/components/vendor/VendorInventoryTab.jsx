@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Save, Edit, X } from 'lucide-react';
+import { Plus, Save, Edit, X, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCurrency } from '@/contexts/CurrencyContext';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { createProduct, deleteProduct, setProductActiveState, updateProduct as updateProductDB } from '@/lib/productService';
@@ -30,6 +31,7 @@ const VendorInventoryTab = ({
 }) => {
   const { t, language } = useLanguage();
   const { user } = useAuth();
+  const { convertAmountAsync, getCurrencyById } = useCurrency();
   const [productForm, setProductForm] = useState(null);
   const [productImagePreview, setProductImagePreview] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -37,6 +39,54 @@ const VendorInventoryTab = ({
   const [processingProductId, setProcessingProductId] = useState(null);
   const [deletingProductId, setDeletingProductId] = useState(null);
   const [productToDelete, setProductToDelete] = useState(null);
+  const [convertedPreview, setConvertedPreview] = useState(null);
+  const [isConverting, setIsConverting] = useState(false);
+
+  // Find base currency from currencies list
+  const systemBaseCurrency = currencies.find(c => c.is_base);
+  const systemBaseCurrencyId = systemBaseCurrency?.id || baseCurrencyId;
+
+  // Calculate converted price preview when price or currency changes
+  const updateConvertedPreview = useCallback(async (price, fromCurrencyId) => {
+    if (!price || !fromCurrencyId || !systemBaseCurrencyId) {
+      setConvertedPreview(null);
+      return;
+    }
+
+    // Same currency - no conversion needed
+    if (fromCurrencyId === systemBaseCurrencyId) {
+      setConvertedPreview(null);
+      return;
+    }
+
+    setIsConverting(true);
+    try {
+      const converted = await convertAmountAsync(parseFloat(price), fromCurrencyId, systemBaseCurrencyId);
+      const baseCurrencyInfo = getCurrencyById(systemBaseCurrencyId);
+      setConvertedPreview({
+        amount: converted,
+        symbol: baseCurrencyInfo?.symbol || '$',
+        code: baseCurrencyInfo?.code || 'USD'
+      });
+    } catch (error) {
+      console.warn('[VendorInventoryTab] Conversion preview error:', error);
+      setConvertedPreview(null);
+    } finally {
+      setIsConverting(false);
+    }
+  }, [convertAmountAsync, getCurrencyById, systemBaseCurrencyId]);
+
+  // Trigger conversion preview when form price or currency changes
+  useEffect(() => {
+    if (productForm?.basePrice && productForm?.base_currency_id) {
+      const timer = setTimeout(() => {
+        updateConvertedPreview(productForm.basePrice, productForm.base_currency_id);
+      }, 300); // Debounce 300ms
+      return () => clearTimeout(timer);
+    } else {
+      setConvertedPreview(null);
+    }
+  }, [productForm?.basePrice, productForm?.base_currency_id, updateConvertedPreview]);
 
   // Real-time subscription for product updates
   useRealtimeProducts({
@@ -198,17 +248,41 @@ const VendorInventoryTab = ({
 
       console.log('[handleSubmitProduct] Category validated:', { categoryId: category.id, categoryName: category.name_es });
 
+      // Convert price to base currency if different
+      let normalizedPrice = parseFloat(productForm.basePrice);
+      let finalCurrencyId = productForm.base_currency_id;
+      const inputCurrency = getCurrencyById(productForm.base_currency_id);
+
+      if (productForm.base_currency_id !== systemBaseCurrencyId) {
+        console.log('[handleSubmitProduct] Converting price to base currency...');
+        try {
+          normalizedPrice = await convertAmountAsync(
+            parseFloat(productForm.basePrice),
+            productForm.base_currency_id,
+            systemBaseCurrencyId
+          );
+          finalCurrencyId = systemBaseCurrencyId;
+          console.log('[handleSubmitProduct] Price converted:', {
+            original: `${inputCurrency?.code} ${productForm.basePrice}`,
+            converted: `${systemBaseCurrency?.code} ${normalizedPrice.toFixed(2)}`
+          });
+        } catch (convError) {
+          console.warn('[handleSubmitProduct] Conversion failed, using original:', convError);
+          // Fallback: keep original price and currency
+        }
+      }
+
       const productData = {
         name_es: productForm.name_es,
         name_en: productForm.name_en || productForm.name_es,
         description_es: productForm.description_es || '',
         description_en: productForm.description_en || '',
-        basePrice: parseFloat(productForm.basePrice),
+        basePrice: normalizedPrice,
         stock: parseInt(productForm.stock || 0, 10),
         min_stock_alert: parseInt(productForm.min_stock_alert || 10, 10),
         profitMargin: parseFloat(productForm.profitMargin || 40),
         category_id: productForm.category,
-        base_currency_id: productForm.base_currency_id,
+        base_currency_id: finalCurrencyId,
         image: productForm.image || '',
         sku: productForm.sku || `SKU-${Date.now()}`,
         slug: productForm.name_es.toLowerCase().replace(/\s+/g, '-'),
@@ -544,6 +618,24 @@ const VendorInventoryTab = ({
                 className="w-full input-style"
                 required
               />
+              {/* Conversion Preview */}
+              {convertedPreview && (
+                <div className="mt-2 flex items-center gap-2 text-sm text-blue-600 bg-blue-50 px-3 py-2 rounded-lg">
+                  <RefreshCw className={`w-4 h-4 ${isConverting ? 'animate-spin' : ''}`} />
+                  <span>
+                    ≈ {convertedPreview.symbol}{convertedPreview.amount.toFixed(2)} {convertedPreview.code}
+                    <span className="text-gray-500 ml-1">
+                      ({language === 'es' ? 'precio base' : 'base price'})
+                    </span>
+                  </span>
+                </div>
+              )}
+              {isConverting && !convertedPreview && (
+                <div className="mt-2 flex items-center gap-2 text-sm text-gray-500">
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>{language === 'es' ? 'Calculando...' : 'Calculating...'}</span>
+                </div>
+              )}
             </div>
 
             {/* Currency */}
@@ -558,7 +650,7 @@ const VendorInventoryTab = ({
               >
                 {currencies.map(c => (
                   <option key={c.id} value={c.id}>
-                    {c.code}
+                    {c.code} {c.is_base ? (language === 'es' ? '(Base)' : '(Base)') : ''}
                   </option>
                 ))}
               </select>
