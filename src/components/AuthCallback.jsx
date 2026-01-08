@@ -9,6 +9,24 @@ const AuthCallback = ({ onNavigate }) => {
   const [isProcessing, setIsProcessing] = useState(true);
   const [error, setError] = useState(null);
 
+  // Determina la ruta de redirección basada en el contexto de origen
+  const getRedirectDestination = (role) => {
+    // Admin siempre va al dashboard
+    if (role === 'admin' || role === 'super_admin') {
+      return 'dashboard';
+    }
+
+    // Si hay una remesa pendiente, redirigir a send-remittance para continuar el flujo
+    const pendingRemittance = localStorage.getItem('pendingRemittance');
+    if (pendingRemittance) {
+      console.log('[AuthCallback] Detected pending remittance, redirecting to send-remittance');
+      return 'send-remittance';
+    }
+
+    // Por defecto, usuarios regulares van a products
+    return 'products';
+  };
+
   useEffect(() => {
     let mounted = true;
 
@@ -22,13 +40,9 @@ const AuthCallback = ({ onNavigate }) => {
           if (mounted) setIsProcessing(false);
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user && onNavigate) {
-            // Redirect based on role
+            // Redirect based on role and context
             const role = await getUserRole(session.user.id);
-            if (role === 'admin' || role === 'super_admin') {
-              onNavigate('dashboard');
-            } else {
-              onNavigate('products');
-            }
+            onNavigate(getRedirectDestination(role));
           }
           return;
         }
@@ -76,15 +90,11 @@ const AuthCallback = ({ onNavigate }) => {
 
         toast({ title: '¡Bienvenido!', description: `Has iniciado sesión como ${session.user.email}` });
 
-        // Redirect based on role
+        // Redirect based on role and context (pending remittance, etc.)
         if (onNavigate) {
           const role = await getUserRole(session.user.id);
           setTimeout(() => {
-            if (role === 'admin' || role === 'super_admin') {
-              onNavigate('dashboard');
-            } else {
-              onNavigate('products');
-            }
+            onNavigate(getRedirectDestination(role));
           }, 150);
         }
       } catch (err) {
