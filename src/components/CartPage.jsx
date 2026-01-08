@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { ShoppingCart, X, Plus, Minus, Copy, Upload, CheckCircle, MessageCircle, ArrowLeft, ArrowRight, Tag } from 'lucide-react';
+import { ShoppingCart, X, Plus, Minus, Copy, Upload, CheckCircle, MessageCircle, ArrowLeft, ArrowRight, Tag, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -1177,7 +1177,7 @@ const CartPage = ({ onNavigate }) => {
                 const displayName = language === 'es'
                   ? (item.name_es || item.name || 'Producto')
                   : (item.name_en || item.name || 'Product');
-                const displayImage = item.image_url || item.image || "https://images.unsplash.com/photo-1635865165118-917ed9e20936";
+                const displayImage = item.image_url || item.image;
                 const isCombo = !!item.products;
 
                 // Calculate converted prices for display
@@ -1189,11 +1189,22 @@ const CartPage = ({ onNavigate }) => {
                   <motion.div key={item.id} layout className="glass-effect p-4 rounded-2xl">
                     <div className="flex items-start gap-4">
                       {/* Product Image */}
-                      <img
-                        className="w-24 h-24 rounded-lg object-cover flex-shrink-0"
-                        alt={displayName}
-                        src={displayImage}
-                      />
+                      <div className="w-24 h-24 rounded-lg flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden">
+                        {displayImage ? (
+                          <img
+                            className="w-full h-full object-cover"
+                            alt={displayName}
+                            src={displayImage}
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              e.target.nextElementSibling?.classList.remove('hidden');
+                            }}
+                          />
+                        ) : null}
+                        <div className={`w-full h-full flex items-center justify-center ${displayImage ? 'hidden' : ''}`}>
+                          <Package className="w-10 h-10 text-gray-300" />
+                        </div>
+                      </div>
 
                       {/* Product Info */}
                       <div className="flex-grow min-w-0">
