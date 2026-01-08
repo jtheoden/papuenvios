@@ -40,27 +40,26 @@ const VendorCombosTab = ({
   // Refs for form focus and scroll
   const comboFormRef = useRef(null);
   const comboNameInputRef = useRef(null);
+  const formOpenTrigger = useRef(0);
 
-  // Track form open state for focus/scroll (using id or 'new' as key)
-  const comboFormKey = comboForm ? (comboForm.id || 'new') : null;
-
-  // Focus and scroll to form when editing/creating a combo
-  useEffect(() => {
-    if (comboFormKey) {
-      // Small delay to ensure the form is rendered
-      const timeoutId = setTimeout(() => {
-        // Scroll form into view
+  // Function to scroll and focus the form
+  const scrollToFormAndFocus = useCallback(() => {
+    // Use requestAnimationFrame to ensure DOM is ready
+    requestAnimationFrame(() => {
+      // Additional small delay for animation to start
+      setTimeout(() => {
         if (comboFormRef.current) {
           comboFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
-        // Focus the name input
-        if (comboNameInputRef.current) {
-          comboNameInputRef.current.focus();
-        }
-      }, 100);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [comboFormKey]); // Trigger when form opens (new) or switches to different combo (edit)
+        // Focus after scroll starts
+        setTimeout(() => {
+          if (comboNameInputRef.current) {
+            comboNameInputRef.current.focus();
+          }
+        }, 300);
+      }, 50);
+    });
+  }, []);
 
   // Real-time subscription for combo updates
   useRealtimeCombos({
@@ -119,6 +118,8 @@ const VendorCombosTab = ({
     });
     setComboImagePreview(null);
     console.log('[openNewComboForm] SUCCESS - Form initialized');
+    // Scroll to form and focus after state update
+    scrollToFormAndFocus();
   };
 
   const openEditComboForm = (combo) => {
@@ -141,6 +142,8 @@ const VendorCombosTab = ({
     });
     setComboImagePreview(combo.image_url || combo.image || null);
     console.log('[openEditComboForm] SUCCESS - Form populated for editing');
+    // Scroll to form and focus after state update
+    scrollToFormAndFocus();
   };
 
   const handleComboImageUpload = async (e) => {
