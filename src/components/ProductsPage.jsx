@@ -593,20 +593,28 @@ const ProductsPage = ({ onNavigate }) => {
               className="glass-effect rounded-2xl overflow-hidden hover-lift group cursor-pointer"
               onClick={() => onNavigate('product-detail', { itemId: product.id, itemType: 'product' })}
             >
-              <div className="aspect-square bg-gray-100 relative group">
+              <div className="aspect-square bg-gradient-to-br from-gray-100 to-gray-200 relative group">
                 {imagePreview && editingProduct === product.id ? (
                   <img
                     className="w-full h-full object-cover"
                     alt={t('products.preview')}
                     src={imagePreview}
                   />
-                ) : (
+                ) : (product.image_url || product.image_file) ? (
                   <img
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     alt={product.name_es || product.name}
-                    src={product.image_url || product.image_file || "https://images.unsplash.com/photo-1646193186132-7976c1670e81"}
+                    src={product.image_url || product.image_file}
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.nextElementSibling?.classList.remove('hidden');
+                    }}
                   />
-                )}
+                ) : null}
+                {/* Fallback icon when no image or image fails to load */}
+                <div className={`absolute inset-0 flex items-center justify-center ${(product.image_url || product.image_file) ? 'hidden' : ''}`}>
+                  <Package className="w-20 h-20 text-gray-300" />
+                </div>
 
                 {isAdmin && (
                   <div className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center z-10">

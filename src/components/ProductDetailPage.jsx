@@ -46,16 +46,25 @@ const ProductThumbnail = ({ product, selectedCurrency, currencySymbol, currencyC
             height: expanded ? '120px' : '60px',
           }}
           transition={{ duration: 0.3, ease: 'easeInOut' }}
-          className="rounded-lg overflow-hidden border-2 border-gray-300 bg-gray-100"
+          className="rounded-lg overflow-hidden border-2 border-gray-300 bg-gradient-to-br from-gray-100 to-gray-200"
         >
-          <img
-            src={product.image_url || "https://images.unsplash.com/photo-1646193186132-7976c1670e81"}
-            alt={language === 'es'
-              ? (product.name_es || product.name)
-              : (product.name_en || product.name_es || product.name)
-            }
-            className="w-full h-full object-cover"
-          />
+          {product.image_url ? (
+            <img
+              src={product.image_url}
+              alt={language === 'es'
+                ? (product.name_es || product.name)
+                : (product.name_en || product.name_es || product.name)
+              }
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.nextElementSibling?.classList.remove('hidden');
+              }}
+            />
+          ) : null}
+          <div className={`w-full h-full flex items-center justify-center ${product.image_url ? 'hidden' : ''}`}>
+            <Package className="w-8 h-8 text-gray-300" />
+          </div>
         </motion.div>
       </motion.div>
       <div className="flex-1">
