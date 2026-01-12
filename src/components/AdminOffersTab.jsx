@@ -496,13 +496,13 @@ const AdminOffersTab = () => {
           </h3>
           <div className="space-y-3">
             {analytics.topOffers.map((offer, idx) => (
-              <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center justify-center h-8 w-8 rounded-full bg-purple-100">
+              <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg min-w-0">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-full bg-purple-100">
                     <span className="text-sm font-bold text-purple-600">#{idx + 1}</span>
                   </div>
-                  <div>
-                    <p className="font-medium text-gray-900">{offer.code}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-gray-900 truncate" title={offer.code}>{offer.code}</p>
                     <p className="text-xs text-gray-500">
                       {offer.discount}% {language === 'es' ? 'de descuento' : 'discount'}
                     </p>
@@ -826,25 +826,34 @@ const AdminOffersTab = () => {
                   : 'border-l-gray-400 opacity-75'
               } transition-shadow`}
             >
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <code className="bg-gray-100 px-3 py-1 rounded font-mono font-bold text-purple-600">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 min-w-0">
+                <div className="flex-1 min-w-0 overflow-hidden">
+                  <div className="flex items-center gap-3 mb-2 flex-wrap">
+                    <code className="bg-gray-100 px-3 py-1 rounded font-mono font-bold text-purple-600 truncate max-w-[150px] sm:max-w-[200px]" title={offer.code}>
                       {offer.code}
                     </code>
                     <button
                       onClick={() => copyToClipboard(offer.code)}
-                      className="p-1 hover:bg-gray-100 rounded transition-colors"
+                      className="p-1 hover:bg-gray-100 rounded transition-colors flex-shrink-0"
                       title={language === 'es' ? 'Copiar código' : 'Copy code'}
                     >
                       <Copy className="h-4 w-4 text-gray-500" />
                     </button>
                     {offer.is_active && (
-                      <span className="text-xs font-semibold px-2 py-1 bg-green-100 text-green-700 rounded">
+                      <span className="text-xs font-semibold px-2 py-1 bg-green-100 text-green-700 rounded flex-shrink-0">
                         {language === 'es' ? 'Activo' : 'Active'}
                       </span>
                     )}
                   </div>
+                  {/* Coupon Name with truncation */}
+                  {(offer.name_es || offer.name_en) && (
+                    <p
+                      className="text-sm text-gray-700 mb-2 truncate max-w-full"
+                      title={language === 'es' ? (offer.name_es || offer.name_en) : (offer.name_en || offer.name_es)}
+                    >
+                      {language === 'es' ? (offer.name_es || offer.name_en) : (offer.name_en || offer.name_es)}
+                    </p>
+                  )}
 
                   {/* Quick Summary */}
                   <div className="text-sm text-gray-600 grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
