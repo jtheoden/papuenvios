@@ -826,7 +826,7 @@ const AdminOffersTab = () => {
                   : 'border-l-gray-400 opacity-75'
               } transition-shadow`}
             >
-              <div className="flex items-start justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <code className="bg-gray-100 px-3 py-1 rounded font-mono font-bold text-purple-600">
@@ -913,7 +913,7 @@ const AdminOffersTab = () => {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex gap-2 ml-4">
+                <div className="flex flex-wrap gap-2 w-full sm:w-auto sm:ml-4 justify-start sm:justify-end">
                   <button
                     onClick={() => handleToggleActive(offer.id, offer.is_active)}
                     className={`p-2 rounded transition-colors ${

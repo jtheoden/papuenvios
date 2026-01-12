@@ -13,6 +13,7 @@ import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingSer
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
 import { convertCurrency } from '@/lib/currencyService';
 import { generateWhatsAppURL, notifyAdminNewPayment, openWhatsAppChat } from '@/lib/whatsappService';
+import { getActiveWhatsappRecipient } from '@/lib/notificationSettingsService';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
 import { getAvailableZelleAccount } from '@/lib/zelleService';
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
@@ -463,7 +464,7 @@ const CartPage = ({ onNavigate }) => {
     });
   };
 
-  const whatsappTarget = notificationSettings?.whatsapp || businessInfo?.whatsapp;
+  const whatsappTarget = getActiveWhatsappRecipient(notificationSettings) || businessInfo?.whatsapp;
 
   const handleContactSupport = () => {
     if (!whatsappTarget) {
@@ -713,8 +714,9 @@ const CartPage = ({ onNavigate }) => {
         });
       }
 
+      const notificationWhatsapp = getActiveWhatsappRecipient(notificationSettings);
       // Notify admin via WhatsApp using optimized function
-      if (notificationSettings?.whatsapp) {
+      if (notificationWhatsapp) {
         // Prepare order data for notification
         const orderForNotification = {
           ...createdOrder,
@@ -727,12 +729,12 @@ const CartPage = ({ onNavigate }) => {
         };
 
         // Use the optimized notification function
-        notifyAdminNewPayment(orderForNotification, notificationSettings.whatsapp, language);
+        notifyAdminNewPayment(orderForNotification, notificationWhatsapp, language);
       }
 
       // Trigger server-side email/WhatsApp notification via Supabase Edge Function (if configured)
       try {
-        if (notificationSettings?.adminEmail || notificationSettings?.whatsapp) {
+        if (notificationSettings?.adminEmail || notificationWhatsapp) {
           await supabase.functions.invoke('notify-order', {
             body: {
               orderData: {
@@ -745,7 +747,10 @@ const CartPage = ({ onNavigate }) => {
                 couponCode: appliedOffer?.code || null,  // Include coupon if applied
                 paymentProofUrl: uploadedProofUrl || createdOrder.payment_proof_url || null
               },
-              notificationSettings
+              notificationSettings: {
+                ...notificationSettings,
+                whatsapp: notificationWhatsapp
+              }
             }
           });
         }
