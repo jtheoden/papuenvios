@@ -38,6 +38,7 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
     description_es: '',
     description_en: ''
   });
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingCategoryId, setDeletingCategoryId] = useState(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState(null);
@@ -115,6 +116,7 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
         description_es: '',
         description_en: ''
       });
+      setShowCategoryForm(false);
       console.log('[handleCategorySubmit] Form reset complete');
     } catch (error) {
       console.error('[handleCategorySubmit] ERROR:', error);
@@ -139,6 +141,7 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
         description_es: category.description_es || '',
         description_en: category.description_en || ''
       });
+      setShowCategoryForm(true);
       console.log('[handleEditCategory] SUCCESS - Form populated for editing');
       // Scroll to form and focus after state update
       scrollToFormAndFocus();
@@ -147,6 +150,29 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
       console.error('[handleEditCategory] Error details:', { message: error?.message, code: error?.code });
       throw error;
     }
+  };
+
+  const handleOpenNewCategoryForm = () => {
+    setCategoryForm({
+      dbId: null,
+      es: '',
+      en: '',
+      description_es: '',
+      description_en: ''
+    });
+    setShowCategoryForm(true);
+    scrollToFormAndFocus();
+  };
+
+  const handleCloseCategoryForm = () => {
+    setCategoryForm({
+      dbId: null,
+      es: '',
+      en: '',
+      description_es: '',
+      description_en: ''
+    });
+    setShowCategoryForm(false);
   };
 
   const handleConfirmDelete = async (categoryId) => {
@@ -198,121 +224,148 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
   };
 
   return (
-    <div className="space-y-8">
-      {/* Category Form */}
-      <motion.div
-        ref={categoryFormRef}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="glass-effect p-4 sm:p-8 rounded-2xl"
-      >
-        <h2 className="text-xl sm:text-2xl font-semibold mb-4 sm:mb-6">
-          {categoryForm.dbId
-            ? (language === 'es' ? 'Editar Categoría' : 'Edit Category')
-            : (language === 'es' ? 'Nueva Categoría' : 'New Category')}
-        </h2>
-
-        <div className="space-y-4 mb-6">
-          {/* Bilingual Name Fields */}
-          <div className="grid md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {language === 'es' ? 'Nombre (Español) *' : 'Name (Spanish) *'}
-              </label>
-              <input
-                ref={categoryNameInputRef}
-                type="text"
-                value={categoryForm.es}
-                onChange={e => setCategoryForm({ ...categoryForm, es: e.target.value })}
-                className="input-style w-full"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {language === 'es' ? 'Nombre (Inglés) *' : 'Name (English) *'}
-              </label>
-              <input
-                type="text"
-                value={categoryForm.en}
-                onChange={e => setCategoryForm({ ...categoryForm, en: e.target.value })}
-                className="input-style w-full"
-                required
-              />
-            </div>
-          </div>
-
-          {/* Bilingual Description Fields */}
-          <div className="grid md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {language === 'es' ? 'Descripción (Español)' : 'Description (Spanish)'}
-              </label>
-              <textarea
-                value={categoryForm.description_es}
-                onChange={e => setCategoryForm({ ...categoryForm, description_es: e.target.value })}
-                className="input-style w-full"
-                rows="3"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {language === 'es' ? 'Descripción (Inglés)' : 'Description (English)'}
-              </label>
-              <textarea
-                value={categoryForm.description_en}
-                onChange={e => setCategoryForm({ ...categoryForm, description_en: e.target.value })}
-                className="input-style w-full"
-                rows="3"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Form Actions */}
-        <div className="flex gap-2">
+    <div className="space-y-6">
+      {/* Create New Category Button - Show when form is hidden */}
+      {!showCategoryForm && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+        >
           <Button
-            onClick={handleCategorySubmit}
-            disabled={isSubmitting}
+            onClick={handleOpenNewCategoryForm}
+            className="w-full sm:w-auto"
             style={{
               backgroundColor: visualSettings.primaryColor || '#2563eb',
               color: 'white'
             }}
           >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="h-4 w-4 sm:mr-2 animate-spin" />
-                <span className="hidden sm:inline">{language === 'es' ? 'Guardando...' : 'Saving...'}</span>
-              </>
-            ) : categoryForm.dbId ? (
-              <>
-                <Save className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">{language === 'es' ? 'Actualizar' : 'Update'}</span>
-              </>
-            ) : (
-              <>
-                <Plus className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">{language === 'es' ? 'Crear' : 'Create'}</span>
-              </>
-            )}
+            <Plus className="h-4 w-4 mr-2" />
+            {language === 'es' ? 'Nueva Categoría' : 'New Category'}
           </Button>
-          {categoryForm.dbId && (
-            <Button
-              variant="outline"
-              onClick={() => setCategoryForm({
-                dbId: null,
-                es: '',
-                en: '',
-                description_es: '',
-                description_en: ''
-              })}
-            >
-              <X className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">{t('common.cancel')}</span>
-            </Button>
-          )}
-        </div>
-      </motion.div>
+        </motion.div>
+      )}
+
+      {/* Category Form - Toggleable */}
+      <AnimatePresence>
+        {showCategoryForm && (
+          <motion.div
+            ref={categoryFormRef}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="glass-effect p-3 sm:p-8 rounded-2xl overflow-hidden"
+          >
+            <div className="flex justify-between items-center mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-2xl font-semibold">
+                {categoryForm.dbId
+                  ? (language === 'es' ? 'Editar Categoría' : 'Edit Category')
+                  : (language === 'es' ? 'Nueva Categoría' : 'New Category')}
+              </h2>
+              <button
+                onClick={handleCloseCategoryForm}
+                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="space-y-3 sm:space-y-4 mb-4 sm:mb-6">
+              {/* Bilingual Name Fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
+                    {language === 'es' ? 'Nombre (Español) *' : 'Name (Spanish) *'}
+                  </label>
+                  <input
+                    ref={categoryNameInputRef}
+                    type="text"
+                    value={categoryForm.es}
+                    onChange={e => setCategoryForm({ ...categoryForm, es: e.target.value })}
+                    className="input-style w-full text-sm"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
+                    {language === 'es' ? 'Nombre (Inglés) *' : 'Name (English) *'}
+                  </label>
+                  <input
+                    type="text"
+                    value={categoryForm.en}
+                    onChange={e => setCategoryForm({ ...categoryForm, en: e.target.value })}
+                    className="input-style w-full text-sm"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Bilingual Description Fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
+                    {language === 'es' ? 'Descripción (Español)' : 'Description (Spanish)'}
+                  </label>
+                  <textarea
+                    value={categoryForm.description_es}
+                    onChange={e => setCategoryForm({ ...categoryForm, description_es: e.target.value })}
+                    className="input-style w-full text-sm"
+                    rows="2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
+                    {language === 'es' ? 'Descripción (Inglés)' : 'Description (English)'}
+                  </label>
+                  <textarea
+                    value={categoryForm.description_en}
+                    onChange={e => setCategoryForm({ ...categoryForm, description_en: e.target.value })}
+                    className="input-style w-full text-sm"
+                    rows="2"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Form Actions */}
+            <div className="flex gap-2">
+              <Button
+                onClick={handleCategorySubmit}
+                disabled={isSubmitting}
+                className="text-sm"
+                style={{
+                  backgroundColor: visualSettings.primaryColor || '#2563eb',
+                  color: 'white'
+                }}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 sm:mr-2 animate-spin" />
+                    <span className="hidden sm:inline">{language === 'es' ? 'Guardando...' : 'Saving...'}</span>
+                  </>
+                ) : categoryForm.dbId ? (
+                  <>
+                    <Save className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">{language === 'es' ? 'Actualizar' : 'Update'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">{language === 'es' ? 'Crear' : 'Create'}</span>
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleCloseCategoryForm}
+                className="text-sm"
+              >
+                <X className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">{t('common.cancel')}</span>
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Categories List */}
       <motion.div

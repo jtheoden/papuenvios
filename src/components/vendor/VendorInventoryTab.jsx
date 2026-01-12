@@ -483,16 +483,16 @@ const VendorInventoryTab = ({
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       {/* Header con selector de moneda y botón agregar */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4 sm:mb-6">
         {/* Currency Selector */}
-        <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-gray-700">
-            {t('vendor.inventory.displayCurrency')}:
+        <div className="flex items-center gap-2">
+          <label className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap">
+            {language === 'es' ? 'Moneda:' : 'Currency:'}
           </label>
           <select
             value={selectedCurrency ?? baseCurrencyId ?? ''}
             onChange={(e) => onSelectedCurrencyChange(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
           >
             {currencies.map(currency => (
               <option key={currency.id} value={currency.id}>
@@ -502,7 +502,7 @@ const VendorInventoryTab = ({
           </select>
         </div>
 
-        <Button onClick={openNewProductForm} style={getPrimaryButtonStyle(visualSettings)} className="flex-shrink-0">
+        <Button onClick={openNewProductForm} style={getPrimaryButtonStyle(visualSettings)} className="flex-shrink-0 h-9 sm:h-10 px-3 sm:px-4 text-sm">
           <Plus className="h-4 w-4 sm:mr-2" />
           <span className="hidden sm:inline">{t('vendor.actions.addProduct')}</span>
         </Button>
@@ -753,8 +753,6 @@ const VendorInventoryTab = ({
           deletingId: deletingProductId
         })}
         onRowClick={handleViewProductDetails}
-        modalTitle="vendor.inventory.productDetails"
-        modalColumns={getModalColumns(t, language, currencies)}
         emptyMessage={t('vendor.inventory.noProducts') || 'No products found'}
       />
 
@@ -910,9 +908,9 @@ const VendorInventoryTab = ({
 
 // Helper component for product info items
 const ProductInfoItem = ({ label, value }) => (
-  <div>
-    <dt className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">{label}</dt>
-    <dd className="text-sm text-gray-900 font-medium">{value}</dd>
+  <div className="overflow-hidden">
+    <dt className="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider mb-0.5 sm:mb-1 truncate">{label}</dt>
+    <dd className="text-xs sm:text-sm text-gray-900 font-medium truncate" title={String(value)}>{value}</dd>
   </div>
 );
 
