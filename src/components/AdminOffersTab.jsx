@@ -393,38 +393,39 @@ const AdminOffersTab = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">{language === 'es' ? 'Ofertas y Cupones' : 'Offers & Coupons'}</h2>
-          <p className="text-gray-600 text-sm mt-1">
-            {language === 'es' ? 'Administra códigos de descuento y promociones' : 'Manage discount codes and promotions'}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg sm:text-2xl font-bold text-gray-900">{language === 'es' ? 'Ofertas y Cupones' : 'Offers & Coupons'}</h2>
+          <p className="text-gray-600 text-xs sm:text-sm mt-1">
+            {language === 'es' ? 'Administra códigos de descuento' : 'Manage discount codes'}
           </p>
         </div>
         <button
           onClick={() => setShowCreateForm(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:shadow-lg transition-shadow font-medium"
+          className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:shadow-lg transition-shadow font-medium text-sm sm:text-base flex-shrink-0"
         >
-          <Plus className="h-5 w-5" />
-          {language === 'es' ? 'Nueva Oferta' : 'New Offer'}
+          <Plus className="h-4 w-4 sm:h-5 sm:w-5" />
+          <span className="hidden xs:inline">{language === 'es' ? 'Nueva Oferta' : 'New Offer'}</span>
+          <span className="xs:hidden">{language === 'es' ? 'Nueva' : 'New'}</span>
         </button>
       </div>
 
       {/* Analytics Dashboard */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
         {/* Total Offers */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200"
+          className="bg-gradient-to-br from-blue-50 to-blue-100 p-2 sm:p-4 rounded-lg border border-blue-200"
         >
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-blue-600 font-medium">
-                {language === 'es' ? 'Total Ofertas' : 'Total Offers'}
+            <div className="min-w-0">
+              <p className="text-[10px] sm:text-sm text-blue-600 font-medium truncate">
+                {language === 'es' ? 'Total' : 'Total'}
               </p>
-              <p className="text-2xl font-bold text-blue-900 mt-1">{analytics.totalOffers}</p>
+              <p className="text-lg sm:text-2xl font-bold text-blue-900">{analytics.totalOffers}</p>
             </div>
-            <Activity className="h-8 w-8 text-blue-600 opacity-30" />
+            <Activity className="h-5 w-5 sm:h-8 sm:w-8 text-blue-600 opacity-30 flex-shrink-0" />
           </div>
         </motion.div>
 
@@ -433,16 +434,16 @@ const AdminOffersTab = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05 }}
-          className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-200"
+          className="bg-gradient-to-br from-green-50 to-green-100 p-2 sm:p-4 rounded-lg border border-green-200"
         >
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-green-600 font-medium">
+            <div className="min-w-0">
+              <p className="text-[10px] sm:text-sm text-green-600 font-medium truncate">
                 {language === 'es' ? 'Activas' : 'Active'}
               </p>
-              <p className="text-2xl font-bold text-green-900 mt-1">{analytics.activeOffers}</p>
+              <p className="text-lg sm:text-2xl font-bold text-green-900">{analytics.activeOffers}</p>
             </div>
-            <TrendingUp className="h-8 w-8 text-green-600 opacity-30" />
+            <TrendingUp className="h-5 w-5 sm:h-8 sm:w-8 text-green-600 opacity-30 flex-shrink-0" />
           </div>
         </motion.div>
 
@@ -451,16 +452,16 @@ const AdminOffersTab = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200"
+          className="bg-gradient-to-br from-purple-50 to-purple-100 p-2 sm:p-4 rounded-lg border border-purple-200"
         >
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-purple-600 font-medium">
-                {language === 'es' ? 'Usos Totales' : 'Total Uses'}
+            <div className="min-w-0">
+              <p className="text-[10px] sm:text-sm text-purple-600 font-medium truncate">
+                {language === 'es' ? 'Usos' : 'Uses'}
               </p>
-              <p className="text-2xl font-bold text-purple-900 mt-1">{analytics.totalUses}</p>
+              <p className="text-lg sm:text-2xl font-bold text-purple-900">{analytics.totalUses}</p>
             </div>
-            <BarChart3 className="h-8 w-8 text-purple-600 opacity-30" />
+            <BarChart3 className="h-5 w-5 sm:h-8 sm:w-8 text-purple-600 opacity-30 flex-shrink-0" />
           </div>
         </motion.div>
 
@@ -469,16 +470,16 @@ const AdminOffersTab = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="bg-gradient-to-br from-orange-50 to-orange-100 p-4 rounded-lg border border-orange-200"
+          className="bg-gradient-to-br from-orange-50 to-orange-100 p-2 sm:p-4 rounded-lg border border-orange-200"
         >
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-orange-600 font-medium">
-                {language === 'es' ? 'Usuarios Únicos' : 'Unique Users'}
+            <div className="min-w-0">
+              <p className="text-[10px] sm:text-sm text-orange-600 font-medium truncate">
+                {language === 'es' ? 'Usuarios' : 'Users'}
               </p>
-              <p className="text-2xl font-bold text-orange-900 mt-1">{analytics.uniqueUsers}</p>
+              <p className="text-lg sm:text-2xl font-bold text-orange-900">{analytics.uniqueUsers}</p>
             </div>
-            <Users className="h-8 w-8 text-orange-600 opacity-30" />
+            <Users className="h-5 w-5 sm:h-8 sm:w-8 text-orange-600 opacity-30 flex-shrink-0" />
           </div>
         </motion.div>
       </div>
@@ -496,13 +497,13 @@ const AdminOffersTab = () => {
           </h3>
           <div className="space-y-3">
             {analytics.topOffers.map((offer, idx) => (
-              <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center justify-center h-8 w-8 rounded-full bg-purple-100">
+              <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg min-w-0">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-full bg-purple-100">
                     <span className="text-sm font-bold text-purple-600">#{idx + 1}</span>
                   </div>
-                  <div>
-                    <p className="font-medium text-gray-900">{offer.code}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-gray-900 truncate" title={offer.code}>{offer.code}</p>
                     <p className="text-xs text-gray-500">
                       {offer.discount}% {language === 'es' ? 'de descuento' : 'discount'}
                     </p>
@@ -521,23 +522,23 @@ const AdminOffersTab = () => {
       )}
 
       {/* Search and Filter */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+      <div className="flex flex-col gap-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
           <input
             type="text"
             placeholder={language === 'es' ? 'Buscar por código...' : 'Search by code...'}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            className="w-full pl-9 sm:pl-10 pr-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
           />
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-1 sm:gap-2 overflow-x-auto pb-1">
           {['all', 'active', 'inactive'].map((filter) => (
             <button
               key={filter}
               onClick={() => setFilterActive(filter)}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              className={`px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
                 filterActive === filter
                   ? 'bg-purple-600 text-white'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -826,25 +827,34 @@ const AdminOffersTab = () => {
                   : 'border-l-gray-400 opacity-75'
               } transition-shadow`}
             >
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <code className="bg-gray-100 px-3 py-1 rounded font-mono font-bold text-purple-600">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 min-w-0">
+                <div className="flex-1 min-w-0 overflow-hidden">
+                  <div className="flex items-center gap-3 mb-2 flex-wrap">
+                    <code className="bg-gray-100 px-3 py-1 rounded font-mono font-bold text-purple-600 truncate max-w-[150px] sm:max-w-[200px]" title={offer.code}>
                       {offer.code}
                     </code>
                     <button
                       onClick={() => copyToClipboard(offer.code)}
-                      className="p-1 hover:bg-gray-100 rounded transition-colors"
+                      className="p-1 hover:bg-gray-100 rounded transition-colors flex-shrink-0"
                       title={language === 'es' ? 'Copiar código' : 'Copy code'}
                     >
                       <Copy className="h-4 w-4 text-gray-500" />
                     </button>
                     {offer.is_active && (
-                      <span className="text-xs font-semibold px-2 py-1 bg-green-100 text-green-700 rounded">
+                      <span className="text-xs font-semibold px-2 py-1 bg-green-100 text-green-700 rounded flex-shrink-0">
                         {language === 'es' ? 'Activo' : 'Active'}
                       </span>
                     )}
                   </div>
+                  {/* Coupon Name with truncation */}
+                  {(offer.name_es || offer.name_en) && (
+                    <p
+                      className="text-sm text-gray-700 mb-2 truncate max-w-full"
+                      title={language === 'es' ? (offer.name_es || offer.name_en) : (offer.name_en || offer.name_es)}
+                    >
+                      {language === 'es' ? (offer.name_es || offer.name_en) : (offer.name_en || offer.name_es)}
+                    </p>
+                  )}
 
                   {/* Quick Summary */}
                   <div className="text-sm text-gray-600 grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">

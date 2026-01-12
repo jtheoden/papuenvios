@@ -553,93 +553,93 @@ const RemittanceTypesConfig = () => {
               key={type.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className={`glass-effect p-6 rounded-xl ${!type.is_active ? 'opacity-60' : ''}`}
+              className={`glass-effect p-3 sm:p-6 rounded-xl ${!type.is_active ? 'opacity-60' : ''}`}
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-lg font-bold gradient-text">{type.name}</h3>
+              <div className="flex flex-col gap-3">
+                {/* Header with name and action buttons */}
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <h3 className="text-sm sm:text-lg font-bold gradient-text truncate">{type.name}</h3>
                     {!type.is_active && (
-                      <span className="px-2 py-1 bg-gray-200 text-gray-600 text-xs rounded-full">
+                      <span className="px-1.5 py-0.5 bg-gray-200 text-gray-600 text-[10px] sm:text-xs rounded-full flex-shrink-0">
                         {t('remittances.admin.inactive')}
                       </span>
                     )}
                   </div>
+                  {/* Action buttons */}
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      onClick={() => toggleActive(type)}
+                      className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                      title={type.is_active ? t('remittances.admin.deactivate') : t('remittances.admin.activate')}
+                    >
+                      {type.is_active ? (
+                        <Eye className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
+                      ) : (
+                        <EyeOff className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleEdit(type)}
+                      className="p-1.5 sm:p-2 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors"
+                      title={t('common.edit')}
+                    >
+                      <Edit className="h-4 w-4 sm:h-5 sm:w-5" />
+                    </button>
+                    {isSuperAdmin && (
+                      <button
+                        onClick={() => handleDelete(type)}
+                        className="p-1.5 sm:p-2 hover:bg-red-50 text-red-600 rounded-lg transition-colors"
+                        title={t('common.delete')}
+                      >
+                        <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-                  <div className="grid md:grid-cols-3 gap-4 mt-4">
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Conversión</p>
-                      <p className="font-semibold">
-                        1 {type.currency_code} = {type.exchange_rate} {type.delivery_currency}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Límites</p>
-                      <p className="font-semibold">
-                        {type.min_amount} - {type.max_amount || '∞'} {type.currency_code}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Comisión</p>
-                      <p className="font-semibold">
-                        {type.commission_percentage}% + {type.commission_fixed} {type.currency_code}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Entrega</p>
-                      <p className="font-semibold capitalize">{type.delivery_method}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Tiempo Máximo</p>
-                      <p className="font-semibold">{type.max_delivery_days} {type.max_delivery_days === 1 ? t('adminOrders.days.singular') : t('adminOrders.days.plural')}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Alerta</p>
-                      <p className="font-semibold">{type.warning_days} {type.warning_days === 1 ? t('adminOrders.days.singular') : t('adminOrders.days.plural')}</p>
-                    </div>
+                {/* Info grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4">
+                  <div>
+                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">Conversión</p>
+                    <p className="text-xs sm:text-sm font-semibold">
+                      1 {type.currency_code} = {type.exchange_rate} {type.delivery_currency}
+                    </p>
                   </div>
 
-                  {type.description && (
-                    <p className="text-sm text-gray-600 mt-3">{type.description}</p>
-                  )}
+                  <div>
+                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">Límites</p>
+                    <p className="text-xs sm:text-sm font-semibold">
+                      {type.min_amount} - {type.max_amount || '∞'} {type.currency_code}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">Comisión</p>
+                    <p className="text-xs sm:text-sm font-semibold">
+                      {type.commission_percentage}% + {type.commission_fixed} {type.currency_code}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">Entrega</p>
+                    <p className="text-xs sm:text-sm font-semibold capitalize">{type.delivery_method}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">Tiempo Máx</p>
+                    <p className="text-xs sm:text-sm font-semibold">{type.max_delivery_days} {type.max_delivery_days === 1 ? t('adminOrders.days.singular') : t('adminOrders.days.plural')}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">Alerta</p>
+                    <p className="text-xs sm:text-sm font-semibold">{type.warning_days} {type.warning_days === 1 ? t('adminOrders.days.singular') : t('adminOrders.days.plural')}</p>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2 ml-4">
-                  <button
-                    onClick={() => toggleActive(type)}
-                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                    title={type.is_active ? t('remittances.admin.deactivate') : t('remittances.admin.activate')}
-                  >
-                    {type.is_active ? (
-                      <Eye className="h-5 w-5 text-green-600" />
-                    ) : (
-                      <EyeOff className="h-5 w-5 text-gray-400" />
-                    )}
-                  </button>
-
-                  <button
-                    onClick={() => handleEdit(type)}
-                    className="p-2 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors"
-                    title={t('common.edit')}
-                  >
-                    <Edit className="h-5 w-5" />
-                  </button>
-
-                  {isSuperAdmin && (
-                    <button
-                      onClick={() => handleDelete(type)}
-                      className="p-2 hover:bg-red-50 text-red-600 rounded-lg transition-colors"
-                      title={t('common.delete')}
-                    >
-                      <Trash2 className="h-5 w-5" />
-                    </button>
-                  )}
-                </div>
+                {type.description && (
+                  <p className="text-xs sm:text-sm text-gray-600 line-clamp-2">{type.description}</p>
+                )}
               </div>
             </motion.div>
           ))}
