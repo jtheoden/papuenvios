@@ -661,18 +661,19 @@ const AdminRemittancesTab = () => {
               key={remittance.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="glass-effect p-6 rounded-xl hover:shadow-lg transition-shadow"
+              className="glass-effect p-3 sm:p-6 rounded-xl hover:shadow-lg transition-shadow"
             >
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-bold gradient-text">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3 sm:mb-4">
+                <div className="min-w-0">
+                  <h3 className="text-sm sm:text-lg font-bold gradient-text truncate">
                     {remittance.remittance_number}
                   </h3>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-xs sm:text-sm text-gray-600 truncate">
                     {remittance.remittance_types?.name}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1 sm:gap-2">
                   {getStatusBadge(remittance.status)}
                   {[REMITTANCE_STATUS.PAYMENT_VALIDATED, REMITTANCE_STATUS.PROCESSING].includes(remittance.status) && (
                     getAlertBadge(remittance)
@@ -680,75 +681,78 @@ const AdminRemittancesTab = () => {
                 </div>
               </div>
 
-              <div className="grid md:grid-cols-4 gap-4 mb-4">
+              {/* Info Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-4 mb-3 sm:mb-4">
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">{t('remittances.user.amountSent')}</p>
-                  <p className="font-semibold">
+                  <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">{t('remittances.user.amountSent')}</p>
+                  <p className="text-xs sm:text-sm font-semibold">
                     {remittance.amount_sent} {remittance.currency_sent}
                   </p>
                 </div>
 
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">{t('remittances.user.toDeliver')}</p>
-                  <p className="font-semibold">
+                  <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">{t('remittances.user.toDeliver')}</p>
+                  <p className="text-xs sm:text-sm font-semibold">
                     {remittance.amount_to_deliver?.toFixed(2)} {remittance.currency_delivered}
                   </p>
                 </div>
 
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">{t('remittances.user.method')}</p>
-                  <p className="font-semibold capitalize">{remittance.delivery_method}</p>
+                  <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">{t('remittances.user.method')}</p>
+                  <p className="text-xs sm:text-sm font-semibold capitalize">{remittance.delivery_method}</p>
                 </div>
 
                 {remittance.recipient_city && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">{t('remittances.recipient.city')}</p>
-                    <p className="font-semibold">
+                  <div className="col-span-2 sm:col-span-1">
+                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">{t('remittances.recipient.city')}</p>
+                    <p className="text-xs sm:text-sm font-semibold truncate">
                       {remittance.recipient_city}
                       {remittance.recipient_province && `, ${remittance.recipient_province}`}
-                      {remittance.recipient_municipality && `, ${remittance.recipient_municipality}`}
                     </p>
                   </div>
                 )}
 
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">{t('remittances.recipient.fullName')}</p>
-                  <p className="font-semibold">{remittance.recipient_name}</p>
+                  <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">{t('remittances.recipient.fullName')}</p>
+                  <p className="text-xs sm:text-sm font-semibold truncate">{remittance.recipient_name}</p>
                 </div>
 
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">{t('remittances.recipient.phone')}</p>
-                  <p className="font-semibold">{remittance.recipient_phone}</p>
+                  <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">{t('remittances.recipient.phone')}</p>
+                  <p className="text-xs sm:text-sm font-semibold">{remittance.recipient_phone}</p>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                <div className="flex items-center gap-4 text-sm text-gray-600">
+              {/* Footer - Date and Actions */}
+              <div className="flex flex-col gap-2 pt-3 sm:pt-4 border-t border-gray-200">
+                {/* Date and proof link */}
+                <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
                   <span className="flex items-center gap-1">
-                    <Calendar className="h-4 w-4" />
+                    <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
                     {new Date(remittance.created_at).toLocaleDateString(locale)}
                   </span>
                   {remittance.payment_proof_url && (
                     <TooltipButton
                       tooltipText={t('remittances.user.viewProof')}
                       onClick={() => handleViewPaymentProof(remittance)}
-                      className="flex items-center gap-1 px-2 sm:px-3 py-1 text-blue-600 hover:bg-blue-50 rounded transition-colors text-sm"
+                      className="flex items-center gap-1 px-1.5 sm:px-3 py-0.5 sm:py-1 text-blue-600 hover:bg-blue-50 rounded transition-colors text-xs sm:text-sm"
                       title={t('remittances.user.viewProof')}
                     >
-                      <FileText className="h-4 w-4" />
+                      <FileText className="h-3 w-3 sm:h-4 sm:w-4" />
                       <span className="hidden sm:inline">{t('remittances.user.viewProof')}</span>
                     </TooltipButton>
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                {/* Action buttons */}
+                <div className="flex flex-wrap items-center gap-1 sm:gap-2">
                   <TooltipButton
                     tooltipText={t('remittances.admin.viewDetails')}
                     onClick={() => setSelectedRemittance(remittance)}
-                    className="flex items-center gap-1 px-2 sm:px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+                    className="flex items-center gap-1 px-2 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-xs sm:text-sm"
                     title={t('remittances.admin.viewDetails')}
                   >
-                    <Eye className="h-4 w-4" />
+                    <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
                     <span className="hidden sm:inline">{t('remittances.admin.viewDetails')}</span>
                   </TooltipButton>
                   {renderActionButtons(remittance)}

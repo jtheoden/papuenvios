@@ -111,15 +111,15 @@ const Header = ({ currentPage, onNavigate }) => {
         color: visualSettings.headerTextColor || semanticColors.neutral[800]
       }}
     >
-      <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-16">
+      <div className="container mx-auto px-2 sm:px-4">
+        <div className="flex items-center justify-between h-14 sm:h-16 gap-1 sm:gap-2">
           <motion.div
             whileHover={{ scale: 1.05 }}
-            className="flex items-center space-x-2 cursor-pointer"
+            className="flex items-center gap-1 sm:gap-2 cursor-pointer min-w-0 flex-shrink-0"
             onClick={() => handleNavClick('home')}
           >
             {visualSettings.logo ? (
-              <div className="w-10 h-10 flex items-center justify-center">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center flex-shrink-0">
                 <img
                   src={visualSettings.logo}
                   alt={visualSettings.companyName || 'Logo'}
@@ -128,18 +128,18 @@ const Header = ({ currentPage, onNavigate }) => {
               </div>
             ) : (
               <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center flex-shrink-0"
                 style={{
                   background: visualSettings.useGradient
                     ? `linear-gradient(to right, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.secondaryColor || semanticColors.secondary.hex})`
                     : visualSettings.primaryColor || semanticColors.primary.main
                 }}
               >
-                <ShoppingBag className="w-5 h-5 text-white" />
+                <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               </div>
             )}
             <span
-              className="text-xl font-bold"
+              className="text-sm sm:text-xl font-bold truncate max-w-[100px] sm:max-w-none"
               style={{
                 backgroundImage: visualSettings.useGradient
                   ? `linear-gradient(to right, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.secondaryColor || semanticColors.secondary.hex})`
@@ -259,7 +259,7 @@ const Header = ({ currentPage, onNavigate }) => {
             )}
           </nav>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-0.5 sm:gap-2 flex-shrink-0">
             <Button
               variant="outline"
               size="sm"
@@ -275,11 +275,11 @@ const Header = ({ currentPage, onNavigate }) => {
             </Button>
 
             {userRole !== 'admin' && userRole !== 'super_admin' && (
-              <Button variant="ghost" size="icon" onClick={() => onNavigate('cart')}>
+              <Button variant="ghost" size="icon" onClick={() => onNavigate('cart')} className="h-8 w-8 sm:h-9 sm:w-9">
                 <div className="relative">
-                  <ShoppingCart className="w-5 h-5" />
+                  <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
                   {cart.length > 0 && (
-                    <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                    <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
                       {cart.reduce((acc, item) => acc + item.quantity, 0)}
                     </span>
                   )}
@@ -293,32 +293,32 @@ const Header = ({ currentPage, onNavigate }) => {
                   variant="ghost"
                   size="icon"
                   onClick={() => onNavigate('user-panel')}
-                  className="relative"
+                  className="relative h-8 w-8 sm:h-9 sm:w-9"
                 >
                   <div className="relative">
                     {renderCategoryIndicator()}
                     <UserAvatar user={user} />
                     {(userRole === 'admin' || userRole === 'super_admin') && pendingOrdersCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold shadow-lg">
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center font-bold shadow-lg">
                         {pendingOrdersCount}
                       </span>
                     )}
                   </div>
                 </Button>
-                <Button variant="ghost" size="icon" onClick={handleLogout}>
-                  <LogOut className="w-5 h-5" />
+                <Button variant="ghost" size="icon" onClick={handleLogout} className="hidden sm:flex h-8 w-8 sm:h-9 sm:w-9">
+                  <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
                 </Button>
               </>
             ) : (
-              <Button variant="ghost" size="icon" onClick={handleLogin}>
-                <LogIn className="w-5 h-5" />
+              <Button variant="ghost" size="icon" onClick={handleLogin} className="h-8 w-8 sm:h-9 sm:w-9">
+                <LogIn className="w-4 h-4 sm:w-5 sm:h-5" />
               </Button>
             )}
 
             <Button
               variant="ghost"
-              size="sm"
-              className="md:hidden"
+              size="icon"
+              className="md:hidden h-8 w-8 sm:h-9 sm:w-9"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
             >
               {isMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}

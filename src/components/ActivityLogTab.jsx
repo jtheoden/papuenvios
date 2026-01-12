@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Activity, Clock, Filter, Search, Shield } from 'lucide-react';
+import { Activity, Clock, Filter, Search, Shield, X, User, Calendar, FileText } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -42,6 +42,7 @@ const ActivityLogTab = () => {
   const [actionFilter, setActionFilter] = useState('all');
   const [entityFilter, setEntityFilter] = useState('all');
   const [loading, setLoading] = useState(false);
+  const [selectedLog, setSelectedLog] = useState(null);
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
@@ -192,7 +193,122 @@ const ActivityLogTab = () => {
         </div>
       </div>
 
-      <ResponsiveTableWrapper data={logs} columns={columns} isLoading={loading} />
+      <ResponsiveTableWrapper
+        data={logs}
+        columns={columns}
+        isLoading={loading}
+        onRowClick={(row) => setSelectedLog(row)}
+      />
+
+      {/* Detail Modal - Responsive for 320px */}
+      {selectedLog && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4"
+          onClick={() => setSelectedLog(null)}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-3 sm:p-4 flex items-center justify-between">
+              <h3 className="text-base sm:text-lg font-bold text-gray-900">
+                {t('activityLog.details') || 'Detalles de Actividad'}
+              </h3>
+              <button
+                onClick={() => setSelectedLog(null)}
+                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-3 sm:p-4 space-y-4">
+              {/* Date/Time */}
+              <div className="flex items-start gap-3">
+                <Calendar className="h-5 w-5 text-purple-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs text-gray-500">{t('activityLog.timestamp') || 'Fecha'}</p>
+                  <p className="text-sm font-semibold">
+                    {new Date(selectedLog.created_at).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US')}
+                    {' - '}
+                    {new Date(selectedLog.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </p>
+                </div>
+              </div>
+
+              {/* User */}
+              <div className="flex items-start gap-3">
+                <User className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs text-gray-500">{t('activityLog.user') || 'Usuario'}</p>
+                  <p className="text-sm font-semibold">{selectedLog.performed_by || t('activityLog.unknownUser') || 'Desconocido'}</p>
+                </div>
+              </div>
+
+              {/* Action & Entity */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-purple-50 rounded-lg p-3">
+                  <p className="text-xs text-purple-600 mb-1">{t('activityLog.action') || 'Acción'}</p>
+                  <span className="px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700 capitalize">
+                    {selectedLog.action}
+                  </span>
+                </div>
+                <div className="bg-blue-50 rounded-lg p-3">
+                  <p className="text-xs text-blue-600 mb-1">{t('activityLog.entity') || 'Entidad'}</p>
+                  <p className="text-sm font-semibold capitalize">{selectedLog.entity_type}</p>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="flex items-start gap-3">
+                <FileText className="h-5 w-5 text-gray-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-xs text-gray-500">{t('activityLog.description') || 'Descripción'}</p>
+                  <p className="text-sm text-gray-800">{selectedLog.description || t('activityLog.noDescription') || 'Sin descripción'}</p>
+                </div>
+              </div>
+
+              {/* Metadata */}
+              {selectedLog.metadata && Object.keys(selectedLog.metadata).length > 0 && (
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs text-gray-500 mb-2">{t('activityLog.metadata') || 'Información Adicional'}</p>
+                  <div className="space-y-1.5 text-xs">
+                    {Object.entries(selectedLog.metadata).map(([key, value]) => (
+                      <div key={key} className="flex justify-between gap-2">
+                        <span className="text-gray-500 capitalize">{key.replace(/_/g, ' ')}:</span>
+                        <span className="font-medium text-gray-800 text-right break-all">
+                          {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Entity ID */}
+              {selectedLog.entity_id && (
+                <div className="text-xs text-gray-400 text-center pt-2 border-t">
+                  ID: {selectedLog.entity_id}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 p-3 sm:p-4">
+              <button
+                onClick={() => setSelectedLog(null)}
+                className="w-full py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium"
+              >
+                {t('common.close') || 'Cerrar'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </motion.div>
   );
 };
