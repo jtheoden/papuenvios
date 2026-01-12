@@ -318,7 +318,7 @@ const SettingsPageShipping = () => {
                         )}
                       </button>
                     </div>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <div>
                         <label className="text-xs text-gray-500 flex items-center gap-1">
                           <DollarSign className="h-3 w-3" />
@@ -416,7 +416,7 @@ const SettingsPageShipping = () => {
                         ))}
                       </select>
                     </div>
-                    <div className="grid grid-cols-3 gap-2 mb-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
                       <div>
                         <label className="text-xs text-gray-600">
                           {language === 'es' ? 'Costo Envío ($)' : 'Shipping ($)'}
@@ -600,7 +600,7 @@ const SettingsPageShipping = () => {
                 {!zone.free_shipping && (
                   <div className="space-y-3">
                     {/* Primary costs row */}
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="flex items-center gap-1 text-xs text-gray-600 mb-1">
                           <DollarSign className="h-3 w-3" />
