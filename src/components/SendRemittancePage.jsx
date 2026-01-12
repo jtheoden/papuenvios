@@ -19,6 +19,7 @@ import {
 import { getActiveShippingZones } from '@/lib/shippingService';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
 import { notifyAdminNewPaymentProof } from '@/lib/whatsappService';
+import { getActiveWhatsappRecipient } from '@/lib/notificationSettingsService';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import RecipientSelector from '@/components/RecipientSelector';
@@ -1178,8 +1179,9 @@ const SendRemittancePage = ({ onNavigate }) => {
                   try {
                     await uploadPaymentProof(createdRemittance.id, paymentData.file, paymentData.reference, paymentData.notes);
 
+                    const notificationWhatsapp = getActiveWhatsappRecipient(notificationSettings);
                     // Notificar por WhatsApp si está configurado
-                    if (notificationSettings?.whatsapp) {
+                    if (notificationWhatsapp) {
                       try {
                         const enrichedRemittance = {
                           ...createdRemittance,
@@ -1190,7 +1192,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                           delivery_currency: calculation?.deliveryCurrency,
                           payment_reference: paymentData.reference
                         };
-                        await notifyAdminNewPaymentProof(enrichedRemittance, notificationSettings.whatsapp, language);
+                        await notifyAdminNewPaymentProof(enrichedRemittance, notificationWhatsapp, language);
                       } catch (e) { console.warn('WhatsApp notification failed', e); }
                     }
 
