@@ -1307,7 +1307,23 @@
     "countersReset": "Contadores reiniciados exitosamente",
     "countersResetDaily": "Contador diario reiniciado exitosamente",
     "countersResetMonthly": "Contador mensual reiniciado exitosamente",
-    "notesPlaceholder": "Notas adicionales sobre esta cuenta"
+    "notesPlaceholder": "Notas adicionales sobre esta cuenta",
+    "accountUnavailable": "Cuenta Zelle no disponible",
+    "selectAnotherAccount": "La cuenta Zelle seleccionada ya no está disponible. Por favor selecciona otra.",
+    "accountInvalidated": "Tu cuenta seleccionada ya no está disponible",
+    "pleaseSelectNew": "La cuenta Zelle que seleccionaste fue desactivada. Por favor elige otra para continuar.",
+    "loadError": "Error al cargar cuentas Zelle",
+    "contactAdmin": "Contacta a administración para configurar cuentas Zelle",
+    "payingVia": "Pagarás a través de",
+    "alert": {
+      "title": "Acción Requerida",
+      "message": "La cuenta Zelle de tu operación pendiente fue desactivada. Necesitas seleccionar una nueva cuenta para completar tu pago.",
+      "ordersAffected": "pedido(s) necesitan nueva cuenta Zelle",
+      "remittancesAffected": "remesa(s) necesitan nueva cuenta Zelle",
+      "totalAffected": "Monto total afectado",
+      "selectNewAccount": "Seleccionar Nueva Cuenta",
+      "hint": "Selecciona una nueva cuenta Zelle para continuar con tu pago"
+    }
   },
   "zelleHistory": {
     "title": "Historial de Pagos Zelle",

@@ -15,6 +15,7 @@ import {
   parseSupabaseError
 } from '@/lib/errorHandler';
 import { USER_ROLES } from '@/lib/constants';
+import { createZelleDeactivationAlerts } from '@/lib/userAlertService';
 
 // ============================================================================
 // ZELLE STATUS CONSTANTS
@@ -817,6 +818,7 @@ export const updateZelleAccount = async (accountId, updates) => {
 /**
  * Check Zelle account dependencies before deletion
  * Verifies if there are active transactions, orders, or remittances using this account
+ * NOW: Distinguishes between operations WITH and WITHOUT payment proof
  *
  * @param {string} accountId - ID of the Zelle account
  * @returns {Promise<object>} Dependency check result
@@ -830,8 +832,16 @@ const checkZelleAccountDependencies = async (accountId) => {
     pendingTransactionCount: 0,
     historicalTransactionCount: 0,
     activeOrderCount: 0,
-    activeRemittanceCount: 0
+    activeRemittanceCount: 0,
+    // NEW: Distinguish operations by payment proof status
+    ordersWithoutProof: 0,
+    ordersWithProof: 0,
+    remittancesWithoutProof: 0,
+    remittancesWithProof: 0,
+    affectedUserIds: []
   };
+
+  const affectedUsers = new Set();
 
   // Check pending transactions in zelle_transaction_history
   const { data: pendingTx, error: pendingTxError } = await supabase
@@ -856,48 +866,109 @@ const checkZelleAccountDependencies = async (accountId) => {
     dependencies.hasHistoricalTransactions = historicalCount > 0;
   }
 
-  // Check active orders using this Zelle account
-  const { count: orderCount, error: orderError } = await supabase
+  // Check active orders - now with payment_status distinction
+  const { data: orders, error: orderError } = await supabase
     .from('orders')
-    .select('id', { count: 'exact', head: true })
+    .select('id, user_id, payment_status')
     .eq('zelle_account_id', accountId)
     .not('status', 'in', '("completed","cancelled")');
 
-  if (!orderError && orderCount !== null) {
-    dependencies.activeOrderCount = orderCount;
-    dependencies.hasActiveOrders = orderCount > 0;
+  if (!orderError && orders) {
+    dependencies.activeOrderCount = orders.length;
+    dependencies.hasActiveOrders = orders.length > 0;
+    orders.forEach(order => {
+      if (order.payment_status === 'pending' || order.payment_status === 'rejected') {
+        dependencies.ordersWithoutProof++;
+        if (order.user_id) affectedUsers.add(order.user_id);
+      } else {
+        dependencies.ordersWithProof++;
+      }
+    });
   }
 
-  // Check active remittances using this Zelle account
-  const { count: remittanceCount, error: remittanceError } = await supabase
+  // Check active remittances - now with status distinction
+  const { data: remittances, error: remittanceError } = await supabase
     .from('remittances')
-    .select('id', { count: 'exact', head: true })
+    .select('id, user_id, status')
     .eq('zelle_account_id', accountId)
     .not('status', 'in', '("completed","cancelled","delivered")');
 
-  if (!remittanceError && remittanceCount !== null) {
-    dependencies.activeRemittanceCount = remittanceCount;
-    dependencies.hasActiveRemittances = remittanceCount > 0;
+  if (!remittanceError && remittances) {
+    dependencies.activeRemittanceCount = remittances.length;
+    dependencies.hasActiveRemittances = remittances.length > 0;
+    remittances.forEach(rem => {
+      if (rem.status === 'payment_pending' || rem.status === 'payment_rejected') {
+        dependencies.remittancesWithoutProof++;
+        if (rem.user_id) affectedUsers.add(rem.user_id);
+      } else {
+        dependencies.remittancesWithProof++;
+      }
+    });
   }
+
+  dependencies.affectedUserIds = Array.from(affectedUsers);
 
   return dependencies;
 };
 
 /**
+ * Get detailed affected operations when deactivating a Zelle account
+ * Returns list of operations without payment proof that will be affected
+ *
+ * @param {string} accountId - ID of the Zelle account
+ * @returns {Promise<object>} Affected operations with user details
+ */
+export const getAffectedOperations = async (accountId) => {
+  const result = {
+    orders: [],
+    remittances: [],
+    totalAffected: 0
+  };
+
+  // Get orders without payment proof
+  const { data: orders } = await supabase
+    .from('orders')
+    .select('id, user_id, total_amount, created_at, payment_status')
+    .eq('zelle_account_id', accountId)
+    .in('payment_status', ['pending', 'rejected'])
+    .not('status', 'in', '("completed","cancelled")');
+
+  if (orders) {
+    result.orders = orders;
+    result.totalAffected += orders.length;
+  }
+
+  // Get remittances without payment proof
+  const { data: remittances } = await supabase
+    .from('remittances')
+    .select('id, user_id, amount_sent, created_at, status')
+    .eq('zelle_account_id', accountId)
+    .in('status', ['payment_pending', 'payment_rejected']);
+
+  if (remittances) {
+    result.remittances = remittances;
+    result.totalAffected += remittances.length;
+  }
+
+  return result;
+};
+
+/**
  * Eliminar cuenta Zelle (Admin only)
  * Implements intelligent deletion strategy:
- * - If there are pending transactions/orders/remittances: Reject deletion
+ * - If there are operations WITH payment proof uploaded: Block deletion (they're being processed)
+ * - If there are only operations WITHOUT payment proof: Allow deactivation (users will be notified)
  * - If there is historical data: Soft delete (is_active = false)
  * - If no dependencies: Hard delete
  *
  * @param {string} accountId - ID of the account to delete
  * @param {boolean} [forceDeactivate=false] - Force soft delete even with active dependencies
- * @returns {Promise<{deleted: boolean, deactivated: boolean, message: string}>} Result
- * @throws {AppError} If unauthorized, validation fails, or has active dependencies
+ * @returns {Promise<{deleted: boolean, deactivated: boolean, message: string, affectedOperations?: object}>} Result
+ * @throws {AppError} If unauthorized, validation fails, or has operations with payment proof
  *
  * @example
  * const result = await deleteZelleAccount('acc-123');
- * // result: { deleted: true, deactivated: false, message: 'Account deleted' }
+ * // result: { deleted: true, deactivated: false, message: 'Account deleted', affectedOperations: {...} }
  */
 export const deleteZelleAccount = async (accountId, forceDeactivate = false) => {
   try {
@@ -915,27 +986,47 @@ export const deleteZelleAccount = async (accountId, forceDeactivate = false) => 
       throw createPermissionError('access this resource', 'authenticated user');
     }
 
+    // Get account details before any modifications (needed for alerts)
+    const { data: accountData, error: accountFetchError } = await supabase
+      .from('zelle_accounts')
+      .select('account_name')
+      .eq('id', accountId)
+      .single();
+
+    if (accountFetchError) {
+      throw parseSupabaseError(accountFetchError);
+    }
+
+    const accountName = accountData?.account_name || 'Unknown Account';
+
     // Check dependencies
     const deps = await checkZelleAccountDependencies(accountId);
 
-    // If there are active orders or remittances, block deletion
-    if (deps.hasActiveOrders || deps.hasActiveRemittances || deps.hasPendingTransactions) {
-      const activeItems = [];
-      if (deps.hasPendingTransactions) activeItems.push(`${deps.pendingTransactionCount} pending transaction(s)`);
-      if (deps.hasActiveOrders) activeItems.push(`${deps.activeOrderCount} active order(s)`);
-      if (deps.hasActiveRemittances) activeItems.push(`${deps.activeRemittanceCount} active remittance(s)`);
+    // NEW LOGIC: Only block if there are operations WITH payment proof (being processed)
+    const hasOperationsWithProof = deps.ordersWithProof > 0 || deps.remittancesWithProof > 0;
+    const hasOperationsWithoutProof = deps.ordersWithoutProof > 0 || deps.remittancesWithoutProof > 0;
 
-      if (!forceDeactivate) {
-        throw new AppError(
-          `Cannot delete account with active dependencies: ${activeItems.join(', ')}. Please complete or cancel these first, or deactivate the account instead.`,
-          ERROR_CODES.CONFLICT,
-          409
-        );
-      }
+    if (hasOperationsWithProof && !forceDeactivate) {
+      const activeItems = [];
+      if (deps.ordersWithProof > 0) activeItems.push(`${deps.ordersWithProof} order(s) with payment proof`);
+      if (deps.remittancesWithProof > 0) activeItems.push(`${deps.remittancesWithProof} remittance(s) with payment proof`);
+
+      throw new AppError(
+        `Cannot delete account: ${activeItems.join(', ')} are pending validation. Please validate or reject these payments first.`,
+        ERROR_CODES.CONFLICT,
+        409
+      );
     }
 
-    // If there is historical data, do soft delete
-    if (deps.hasHistoricalTransactions || forceDeactivate) {
+    // Get affected operations before deactivating (for notification purposes)
+    let affectedOperations = null;
+    if (hasOperationsWithoutProof) {
+      affectedOperations = await getAffectedOperations(accountId);
+      console.log(`[deleteZelleAccount] Account ${accountId} has ${affectedOperations.totalAffected} operations without payment proof that will be affected`);
+    }
+
+    // If there is historical data OR operations without proof OR force, do soft delete
+    if (deps.hasHistoricalTransactions || hasOperationsWithoutProof || forceDeactivate) {
       const { error: updateError } = await supabase
         .from('zelle_accounts')
         .update({ is_active: false })
@@ -945,12 +1036,48 @@ export const deleteZelleAccount = async (accountId, forceDeactivate = false) => 
         throw parseSupabaseError(updateError);
       }
 
-      console.log(`[deleteZelleAccount] Account ${accountId} deactivated (soft delete) - has ${deps.historicalTransactionCount} historical transactions`);
+      // Create alerts in database for ALL affected users (persistent notification)
+      let alertsCreated = 0;
+      if (hasOperationsWithoutProof && affectedOperations) {
+        try {
+          const alerts = await createZelleDeactivationAlerts({
+            zelleAccountId: accountId,
+            zelleAccountName: accountName,
+            affectedOrders: affectedOperations.orders || [],
+            affectedRemittances: affectedOperations.remittances || [],
+            language: 'es' // Default to Spanish
+          });
+          alertsCreated = alerts?.length || 0;
+          console.log(`[deleteZelleAccount] Created ${alertsCreated} alerts in database for affected users`);
+
+          // Send email notifications to affected users (async, non-blocking)
+          sendZelleDeactivationEmails({
+            zelleAccountName: accountName,
+            affectedOrders: affectedOperations.orders || [],
+            affectedRemittances: affectedOperations.remittances || []
+          }).catch(emailError => {
+            console.error('[deleteZelleAccount] Error sending email notifications:', emailError);
+            // Non-blocking - alerts are already in DB
+          });
+        } catch (alertError) {
+          console.error('[deleteZelleAccount] Error creating alerts:', alertError);
+          // Continue - account was deactivated, alerts are secondary
+        }
+      }
+
+      const reasons = [];
+      if (deps.hasHistoricalTransactions) reasons.push(`${deps.historicalTransactionCount} historical transactions`);
+      if (hasOperationsWithoutProof) reasons.push(`${affectedOperations?.totalAffected || 0} pending operations notified (${alertsCreated} alerts created)`);
+
+      console.log(`[deleteZelleAccount] Account ${accountId} deactivated (soft delete) - ${reasons.join(', ')}`);
 
       return {
         deleted: false,
         deactivated: true,
-        message: `Account deactivated. Historical data preserved (${deps.historicalTransactionCount} transactions).`
+        message: `Account deactivated. ${reasons.join('. ')}.`,
+        affectedOperations,
+        affectedUserIds: deps.affectedUserIds,
+        alertsCreated
       };
     }
 
@@ -969,7 +1096,9 @@ export const deleteZelleAccount = async (accountId, forceDeactivate = false) => 
     return {
       deleted: true,
       deactivated: false,
-      message: 'Account permanently deleted.'
+      message: 'Account permanently deleted.',
+      affectedOperations: null,
+      affectedUserIds: []
     };
   } catch (error) {
     if (error instanceof AppError) {
@@ -1401,6 +1530,86 @@ export const getAllZellePaymentHistory = async (filters = {}) => {
     logError(appError, { operation: 'getAllZellePaymentHistory', filters });
     throw appError;
   }
+};
+
+// ============================================================================
+// EMAIL NOTIFICATIONS
+// ============================================================================
+
+/**
+ * Send email notifications to users affected by Zelle account deactivation
+ * Uses Supabase Edge Function with Resend
+ * @param {object} params - Parameters
+ * @param {string} params.zelleAccountName - Name of deactivated account
+ * @param {Array} params.affectedOrders - Orders without payment proof
+ * @param {Array} params.affectedRemittances - Remittances without payment proof
+ */
+const sendZelleDeactivationEmails = async ({
+  zelleAccountName,
+  affectedOrders = [],
+  affectedRemittances = []
+}) => {
+  // Collect unique user IDs
+  const userIds = new Set();
+  affectedOrders.forEach(order => order.user_id && userIds.add(order.user_id));
+  affectedRemittances.forEach(rem => rem.user_id && userIds.add(rem.user_id));
+
+  if (userIds.size === 0) {
+    console.log('[sendZelleDeactivationEmails] No users to notify');
+    return;
+  }
+
+  // Fetch user emails from user_profiles
+  const { data: users, error: usersError } = await supabase
+    .from('user_profiles')
+    .select('id, email, full_name, preferred_language')
+    .in('id', Array.from(userIds));
+
+  if (usersError || !users || users.length === 0) {
+    console.error('[sendZelleDeactivationEmails] Error fetching user profiles:', usersError);
+    return;
+  }
+
+  // Call Edge Function for each user
+  const emailPromises = users.map(async (user) => {
+    if (!user.email) return null;
+
+    // Find operations for this user
+    const userOrders = affectedOrders.filter(o => o.user_id === user.id);
+    const userRemittances = affectedRemittances.filter(r => r.user_id === user.id);
+
+    try {
+      const { error } = await supabase.functions.invoke('notify-zelle-deactivation', {
+        body: {
+          userEmail: user.email,
+          userName: user.full_name || user.email,
+          language: user.preferred_language || 'es',
+          zelleAccountName,
+          affectedOrders: userOrders.map(o => ({
+            id: o.id,
+            amount: o.total_amount,
+            createdAt: o.created_at
+          })),
+          affectedRemittances: userRemittances.map(r => ({
+            id: r.id,
+            amount: r.amount_sent,
+            createdAt: r.created_at
+          }))
+        }
+      });
+
+      if (error) {
+        console.error(`[sendZelleDeactivationEmails] Error sending to ${user.email}:`, error);
+      } else {
+        console.log(`[sendZelleDeactivationEmails] Email sent to ${user.email}`);
+      }
+    } catch (err) {
+      console.error(`[sendZelleDeactivationEmails] Exception for ${user.email}:`, err);
+    }
+  });
+
+  await Promise.allSettled(emailPromises);
+  console.log(`[sendZelleDeactivationEmails] Processed ${users.length} email notifications`);
 };
 
 // ============================================================================
