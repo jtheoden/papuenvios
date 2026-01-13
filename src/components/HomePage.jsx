@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingBag, DollarSign, TrendingUp, Users, ChevronLeft, ChevronRight, Star, Gift } from 'lucide-react';
+import { listItemAnimation, carouselSlide, slideUp, fadeIn, STAGGER } from '@/lib/animations';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -420,12 +421,16 @@ const HomePage = ({ onNavigate }) => {
                 <SkeletonCard variant="stats" />
               </>
             ) : activeOffers.length > 0 ? (
-              activeOffers.map((offer, idx) => (
+              activeOffers.map((offer, idx) => {
+                // Use optimized animation with viewport trigger
+                const offerAnimation = listItemAnimation(idx, 6);
+                return (
                 <motion.div
                   key={offer.id || idx}
-                  initial={{ opacity: 0, y: 15 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.05 }}
+                  initial={offerAnimation.initial}
+                  whileInView={offerAnimation.animate}
+                  viewport={{ once: true }}
+                  transition={offerAnimation.transition}
                   className="glass-effect p-6 rounded-2xl border border-purple-100 shadow-sm"
                 >
                   <div className="flex items-center justify-between mb-3">
@@ -443,7 +448,8 @@ const HomePage = ({ onNavigate }) => {
                     </Button>
                   </div>
                 </motion.div>
-              ))
+              );
+              })
             ) : (
               <div className="col-span-full text-center text-gray-500">
                 {t('home.offers.empty')}
