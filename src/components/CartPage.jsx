@@ -138,6 +138,36 @@ const CartPage = ({ onNavigate }) => {
     loadShippingZones();
   }, []);
 
+  // Restaurar flujo de checkout pendiente después del login
+  useEffect(() => {
+    if (isAuthenticated && cart.length > 0) {
+      const savedState = localStorage.getItem('pendingCheckout');
+      if (savedState) {
+        try {
+          const { timestamp } = JSON.parse(savedState);
+          // Solo restaurar si el pendingCheckout tiene menos de 1 hora
+          const ONE_HOUR = 60 * 60 * 1000;
+          if (Date.now() - timestamp < ONE_HOUR) {
+            localStorage.removeItem('pendingCheckout');
+            // Mostrar notificación y avanzar al paso de destinatario
+            toast({
+              title: t('cart.restored.title'),
+              description: t('cart.restored.description'),
+            });
+            // Avanzar al siguiente paso del checkout
+            setView('recipient');
+          } else {
+            // Expiró, limpiar
+            localStorage.removeItem('pendingCheckout');
+          }
+        } catch (e) {
+          console.warn('[CartPage] Error restoring checkout state:', e);
+          localStorage.removeItem('pendingCheckout');
+        }
+      }
+    }
+  }, [isAuthenticated, cart.length, t]);
+
   // Load municipalities when province changes
   useEffect(() => {
     if (recipientDetails.province) {
@@ -269,6 +299,12 @@ const CartPage = ({ onNavigate }) => {
 
   const handleCheckout = async () => {
     if (!isAuthenticated) {
+      // Guardar estado para restaurar después del login
+      localStorage.setItem('pendingCheckout', JSON.stringify({
+        timestamp: Date.now(),
+        cartItemCount: cart.length
+      }));
+
       const confirmed = await showModal({
         type: 'warning',
         title: t('auth.loginRequired'),
@@ -278,6 +314,9 @@ const CartPage = ({ onNavigate }) => {
       });
       if (confirmed) {
         onNavigate('login');
+      } else {
+        // Si cancela, eliminar el pendingCheckout
+        localStorage.removeItem('pendingCheckout');
       }
       return;
     }

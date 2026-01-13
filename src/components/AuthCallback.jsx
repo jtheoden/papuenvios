@@ -23,6 +23,13 @@ const AuthCallback = ({ onNavigate }) => {
       return 'send-remittance';
     }
 
+    // Si hay un checkout pendiente, redirigir al carrito para continuar el flujo
+    const pendingCheckout = localStorage.getItem('pendingCheckout');
+    if (pendingCheckout) {
+      console.log('[AuthCallback] Detected pending checkout, redirecting to cart');
+      return 'cart';
+    }
+
     // Por defecto, usuarios regulares van a products
     return 'products';
   };
