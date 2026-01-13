@@ -851,6 +851,10 @@
       "confirm": "Confirmar Pago",
       "recipientTitle": "Datos de Entrega/Destinatario",
       "whatsappNotConfigured": "Número de WhatsApp no configurado"
+    },
+    "restored": {
+      "title": "¡Bienvenido de vuelta!",
+      "description": "Continúa con tu compra donde la dejaste."
     }
   },
   "auth": {

@@ -842,6 +842,10 @@
       "confirm": "Confirm Payment",
       "recipientTitle": "Delivery/Recipient Details",
       "whatsappNotConfigured": "WhatsApp number not configured"
+    },
+    "restored": {
+      "title": "Welcome back!",
+      "description": "Continue with your purchase where you left off."
     }
   },
   "auth": {
