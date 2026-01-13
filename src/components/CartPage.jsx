@@ -247,9 +247,13 @@ const CartPage = ({ onNavigate }) => {
     }
   };
 
-  const purchaseId = `PO-${Date.now()}`;
+  // Memoize purchaseId to avoid regeneration on every render
+  const purchaseId = useMemo(() => `PO-${Date.now()}`, []);
 
-  const activeZelleAccount = zelleAccounts.find(acc => acc.forProducts && acc.active);
+  const activeZelleAccount = useMemo(() =>
+    zelleAccounts.find(acc => acc.forProducts && acc.active),
+    [zelleAccounts]
+  );
 
   const exchangeRateForDisplay = useMemo(() => {
     if (subtotal > 0 && convertedSubtotal !== null) {
@@ -258,14 +262,17 @@ const CartPage = ({ onNavigate }) => {
     return 1;
   }, [convertedSubtotal, subtotal]);
 
-  const displayValues = {
+  // Memoize display values to avoid recalculation on every render
+  const displayValues = useMemo(() => ({
     subtotal: convertedSubtotal !== null ? convertedSubtotal : subtotal,
     discountedSubtotal: convertedDiscountedSubtotal !== null ? convertedDiscountedSubtotal : discountedSubtotal,
     shipping: convertedShipping !== null ? convertedShipping : shippingCost,
     total: convertedTotal !== null ? convertedTotal : totalAmount,
     categoryDiscount: categoryDiscountAmount * exchangeRateForDisplay,
     offerDiscount: offerDiscountAmount * exchangeRateForDisplay
-  };
+  }), [convertedSubtotal, convertedDiscountedSubtotal, convertedShipping, convertedTotal,
+      subtotal, discountedSubtotal, shippingCost, totalAmount, categoryDiscountAmount,
+      offerDiscountAmount, exchangeRateForDisplay]);
 
   const handleCheckout = async () => {
     if (!isAuthenticated) {

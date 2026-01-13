@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Search, Filter, ShoppingCart, Plus, Package, Upload, X, ChevronLeft, ChevronRight, Tag } from 'lucide-react';
+import { listItemAnimation } from '@/lib/animations';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -468,12 +469,13 @@ const ProductsPage = ({ onNavigate }) => {
 
                 const savingsData = calculateSavings();
 
+                // Optimized animation - limit stagger delay for better performance
+                const comboAnimationProps = listItemAnimation(index, 8);
+
                 return (
                   <motion.div
                     key={`combo-${combo.id}`}
-                    initial={{ opacity: 0, y: 30 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.1 }}
+                    {...comboAnimationProps}
                     className={`glass-effect rounded-2xl overflow-hidden group border-2 border-purple-200 cursor-pointer flex-shrink-0 ${isComboInactive ? 'opacity-60' : 'hover-lift'}`}
                     style={{ width: '300px' }}
                     onClick={() => onNavigate('product-detail', { itemId: combo.id, itemType: 'combo' })}
@@ -596,12 +598,13 @@ const ProductsPage = ({ onNavigate }) => {
           {filteredProducts.map((product, index) => {
             const isOutOfStock = !isAdmin && (product.stock === undefined || product.stock === null || product.stock <= 0);
 
+            // Use optimized animation - skips animation for items beyond threshold
+            const animationProps = listItemAnimation(index, 12);
+
             return (
             <motion.div
               key={product.id}
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
+              {...animationProps}
               className={`glass-effect rounded-2xl overflow-hidden group cursor-pointer ${isOutOfStock ? 'opacity-60' : 'hover-lift'}`}
               onClick={() => onNavigate('product-detail', { itemId: product.id, itemType: 'product' })}
             >
