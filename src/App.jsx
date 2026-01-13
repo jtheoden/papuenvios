@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Helmet, HelmetProvider } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Analytics } from '@vercel/analytics/react';
 import { Toaster } from '@/components/ui/toaster';
 import LoadingScreen from '@/components/LoadingScreen';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -235,6 +236,7 @@ function App() {
 
   return (
     <ErrorBoundary>
+      <Analytics />
       <HelmetProvider>
         <LanguageProvider>
           <AuthProvider>
