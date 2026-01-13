@@ -24,6 +24,7 @@ import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import RecipientSelector from '@/components/RecipientSelector';
 import ZelleAccountSelector from '@/components/ZelleAccountSelector';
+import ZelleAccountAlert from '@/components/ZelleAccountAlert';
 import FileUploadWithPreview from '@/components/FileUploadWithPreview';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 
@@ -469,6 +470,12 @@ const SendRemittancePage = ({ onNavigate }) => {
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4">
+      {/* Alert for Zelle account deactivation */}
+      <ZelleAccountAlert
+        operationType="remittance"
+        onSelectNewAccount={() => setStep(4)}
+      />
+
       <h1 className={`${getHeadingStyle()} text-3xl mb-2 text-center`}>
         {t('remittances.wizard.pageTitle')}
       </h1>

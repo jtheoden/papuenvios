@@ -24,6 +24,7 @@ import { buildDiscountBreakdown } from '@/lib/discountDisplayService';
 import { logActivity } from '@/lib/activityLogger';
 import RecipientSelector from '@/components/RecipientSelector';
 import ZelleAccountSelector from '@/components/ZelleAccountSelector';
+import ZelleAccountAlert from '@/components/ZelleAccountAlert';
 import FileUploadWithPreview from '@/components/FileUploadWithPreview';
 import CurrencySelector from '@/components/CurrencySelector';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
@@ -1220,6 +1221,12 @@ const CartPage = ({ onNavigate }) => {
 
   return (
     <div className="min-h-screen py-8 px-4">
+      {/* Alert for Zelle account deactivation */}
+      <ZelleAccountAlert
+        operationType="order"
+        onSelectNewAccount={() => setView('payment')}
+      />
+
       <div className="container mx-auto">
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-12">
           <h1 className="text-4xl font-bold mb-4" style={getHeadingStyle(visualSettings)}>{t('cart.title')}</h1>

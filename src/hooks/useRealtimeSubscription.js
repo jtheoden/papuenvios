@@ -276,3 +276,190 @@ export const useRealtimeCategories = ({ onUpdate, enabled = true }) => {
     onDelete: onUpdate
   });
 };
+
+/**
+ * useRealtimeZelleAccounts Hook
+ * Specialized hook for real-time Zelle account updates
+ * Propagates account changes immediately across all components
+ */
+export const useRealtimeZelleAccounts = ({ onUpdate, enabled = true }) => {
+  return useRealtimeSubscription({
+    table: 'zelle_accounts',
+    event: '*',
+    enabled,
+    onInsert: onUpdate,
+    onUpdate: onUpdate,
+    onDelete: onUpdate
+  });
+};
+
+/**
+ * useUserAlerts Hook
+ * Loads and manages user alerts from database with real-time updates.
+ * Ensures ALL users receive persistent notifications even if offline when event occurred.
+ *
+ * @param {object} options - Hook options
+ * @param {string} options.userId - User ID to fetch alerts for
+ * @param {string} options.alertType - Filter by specific alert type (optional)
+ * @returns {object} { alerts, loading, hasAlerts, dismissAlert, markAsRead, refresh }
+ */
+export const useUserAlerts = ({ userId, alertType = null, enabled = true }) => {
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Load alerts from database
+  const loadAlerts = async () => {
+    if (!userId || !enabled) {
+      setAlerts([]);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      let query = supabase
+        .from('user_alerts')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('is_dismissed', false)
+        .order('created_at', { ascending: false });
+
+      if (alertType) {
+        query = query.eq('alert_type', alertType);
+      }
+
+      // Exclude expired alerts
+      query = query.or('expires_at.is.null,expires_at.gt.now()');
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('[useUserAlerts] Error loading alerts:', error);
+        setAlerts([]);
+      } else {
+        setAlerts(data || []);
+      }
+    } catch (error) {
+      console.error('[useUserAlerts] Exception loading alerts:', error);
+      setAlerts([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Initial load
+  useEffect(() => {
+    loadAlerts();
+  }, [userId, alertType, enabled]);
+
+  // Subscribe to real-time updates for this user's alerts
+  useRealtimeSubscription({
+    table: 'user_alerts',
+    event: '*',
+    filter: userId ? `user_id=eq.${userId}` : null,
+    enabled: enabled && !!userId,
+    onInsert: () => {
+      console.log('[useUserAlerts] New alert received');
+      loadAlerts();
+    },
+    onUpdate: () => {
+      console.log('[useUserAlerts] Alert updated');
+      loadAlerts();
+    },
+    onDelete: () => {
+      console.log('[useUserAlerts] Alert deleted');
+      loadAlerts();
+    }
+  });
+
+  // Dismiss an alert
+  const dismissAlert = async (alertId) => {
+    try {
+      const { error } = await supabase
+        .from('user_alerts')
+        .update({
+          is_dismissed: true,
+          dismissed_at: new Date().toISOString(),
+          action_required: false
+        })
+        .eq('id', alertId);
+
+      if (error) {
+        console.error('[useUserAlerts] Error dismissing alert:', error);
+        return false;
+      }
+
+      // Optimistically update local state
+      setAlerts(prev => prev.filter(a => a.id !== alertId));
+      return true;
+    } catch (error) {
+      console.error('[useUserAlerts] Exception dismissing alert:', error);
+      return false;
+    }
+  };
+
+  // Mark alert as read (but don't dismiss)
+  const markAsRead = async (alertId) => {
+    try {
+      const { error } = await supabase
+        .from('user_alerts')
+        .update({
+          is_read: true,
+          read_at: new Date().toISOString()
+        })
+        .eq('id', alertId);
+
+      if (error) {
+        console.error('[useUserAlerts] Error marking alert as read:', error);
+        return false;
+      }
+
+      // Optimistically update local state
+      setAlerts(prev => prev.map(a =>
+        a.id === alertId ? { ...a, is_read: true, read_at: new Date().toISOString() } : a
+      ));
+      return true;
+    } catch (error) {
+      console.error('[useUserAlerts] Exception marking alert as read:', error);
+      return false;
+    }
+  };
+
+  // Dismiss alerts by operation (when user selects new Zelle account)
+  const dismissByOperation = async (operationType, operationId) => {
+    try {
+      const { error } = await supabase
+        .from('user_alerts')
+        .update({
+          is_dismissed: true,
+          dismissed_at: new Date().toISOString(),
+          action_required: false
+        })
+        .eq('user_id', userId)
+        .eq('alert_type', 'zelle_account_deactivated')
+        .contains('metadata', { operationType, operationId });
+
+      if (error) {
+        console.error('[useUserAlerts] Error dismissing by operation:', error);
+        return false;
+      }
+
+      // Reload to get updated state
+      loadAlerts();
+      return true;
+    } catch (error) {
+      console.error('[useUserAlerts] Exception dismissing by operation:', error);
+      return false;
+    }
+  };
+
+  return {
+    alerts,
+    loading,
+    hasAlerts: alerts.length > 0,
+    alertCount: alerts.length,
+    dismissAlert,
+    markAsRead,
+    dismissByOperation,
+    refresh: loadAlerts
+  };
+};

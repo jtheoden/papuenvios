@@ -1298,7 +1298,23 @@
     "countersReset": "Counters reset successfully",
     "countersResetDaily": "Daily counters reset successfully",
     "countersResetMonthly": "Monthly counters reset successfully",
-    "notesPlaceholder": "Additional notes about this account"
+    "notesPlaceholder": "Additional notes about this account",
+    "accountUnavailable": "Zelle account unavailable",
+    "selectAnotherAccount": "The selected Zelle account is no longer available. Please select another one.",
+    "accountInvalidated": "Your selected account is no longer available",
+    "pleaseSelectNew": "The Zelle account you selected has been deactivated. Please choose another one to continue.",
+    "loadError": "Error loading Zelle accounts",
+    "contactAdmin": "Contact administration to configure Zelle accounts",
+    "payingVia": "You will pay via",
+    "alert": {
+      "title": "Action Required",
+      "message": "The Zelle account for your pending operation was deactivated. You need to select a new account to complete your payment.",
+      "ordersAffected": "order(s) need a new Zelle account",
+      "remittancesAffected": "remittance(s) need a new Zelle account",
+      "totalAffected": "Total amount affected",
+      "selectNewAccount": "Select New Account",
+      "hint": "Select a new Zelle account to continue with your payment"
+    }
   },
   "zelleHistory": {
     "title": "Zelle Payment History",
