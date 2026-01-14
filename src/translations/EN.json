@@ -391,7 +391,9 @@
       "deliveryPhotoTip": "💡 Tip: Upload a clear photo showing the package delivered to the recipient to confirm delivery.",
       "selectEvidencePhoto": "Please select an evidence photo",
       "evidenceUploadError": "Error uploading evidence photo",
-      "send": "Send"
+      "send": "Send",
+      "noResults": "No results",
+      "noResultsDesc": "No remittances found with the selected filters"
     },
     "wizard": {
       "step1Title": "Remittance Type and Amount",

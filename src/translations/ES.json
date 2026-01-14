@@ -400,7 +400,9 @@
       "deliveryPhotoLabel": "Foto de evidencia de entrega *",
       "deliveryPhotoTip": "💡 Consejo: Suba una foto clara mostrando el paquete entregado al destinatario para confirmar la entrega.",
       "selectEvidencePhoto": "Por favor seleccione una foto de evidencia",
-      "evidenceUploadError": "Error al subir foto de evidencia"
+      "evidenceUploadError": "Error al subir foto de evidencia",
+      "noResults": "Sin resultados",
+      "noResultsDesc": "No se encontraron remesas con los filtros seleccionados"
     },
     "wizard": {
       "step1Title": "Tipo y Monto de Remesa",
