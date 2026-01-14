@@ -127,23 +127,18 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
     if (!item) return '0.00';
 
     if (isProduct) {
-      // SIEMPRE usar base_price y aplicar el margen de ganancia
-      // final_price en la BD ya tiene el margen aplicado, pero aquí calculamos desde base_price
-      // para mantener consistencia con la conversión de moneda
-      const basePrice = parseFloat(item.base_price || 0);
+      // Use final_price from database which already has the product's individual profit margin applied
+      // This is a PostgreSQL GENERATED column: base_price * (1 + profit_margin / 100)
+      const finalPrice = parseFloat(item.final_price || item.base_price || 0);
       const productCurrencyId = item.base_currency_id;
 
-      // Convert base price to selected currency
-      let convertedPrice = basePrice;
+      // Convert to selected currency if needed
+      let convertedPrice = finalPrice;
       if (productCurrencyId && productCurrencyId !== selectedCurrency) {
-        convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
+        convertedPrice = convertAmount(finalPrice, productCurrencyId, selectedCurrency);
       }
 
-      // Apply product profit margin to base_price
-      const profitMargin = parseFloat(financialSettings.productProfit || 40) / 100;
-      const finalPrice = convertedPrice * (1 + profitMargin);
-
-      return finalPrice.toFixed(2);
+      return convertedPrice.toFixed(2);
     } else {
       // For combos, calculate from base_price and apply ONLY combo profit margin
       let totalBasePrice = 0;
@@ -430,8 +425,8 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
             {/* Product-specific Details */}
             {isProduct && (
               <div className="space-y-4">
-                {/* Stock */}
-                {currentItem.stock !== undefined && (
+                {/* Stock - Only visible to admin/super_admin */}
+                {isAdmin && currentItem.stock !== undefined && (
                   <div className="flex items-center justify-between glass-effect p-4 rounded-xl">
                     <span className="text-gray-600">{t('products.detail.stock')}:</span>
                     <span className={`font-semibold ${currentItem.stock > 0 ? 'text-green-600' : 'text-red-600'}`}>
