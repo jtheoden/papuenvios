@@ -13,7 +13,7 @@ import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingSer
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
 import { convertCurrency } from '@/lib/currencyService';
 import { generateWhatsAppURL, notifyAdminNewPayment, openWhatsAppChat } from '@/lib/whatsappService';
-import { getActiveWhatsappRecipient } from '@/lib/notificationSettingsService';
+import { getActiveWhatsappRecipient, getFreshWhatsappRecipient, getFreshNotificationSettings } from '@/lib/notificationSettingsService';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
 import { getAvailableZelleAccount } from '@/lib/zelleService';
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
@@ -504,7 +504,9 @@ const CartPage = ({ onNavigate }) => {
     });
   };
 
-  const whatsappTarget = getActiveWhatsappRecipient(notificationSettings) || businessInfo?.whatsapp;
+  // Use cached settings for UI display only (contact support button)
+  // For actual notifications, we fetch fresh settings from DB in handleConfirmPayment
+  const whatsappTarget = getActiveWhatsappRecipient(notificationSettings);
 
   const handleContactSupport = () => {
     if (!whatsappTarget) {
@@ -754,7 +756,24 @@ const CartPage = ({ onNavigate }) => {
         });
       }
 
-      const notificationWhatsapp = getActiveWhatsappRecipient(notificationSettings);
+      // IMPORTANT: Fetch FRESH notification settings from DB to avoid using stale cached values
+      // This ensures notifications go to the currently configured phone/group, not old cached values
+      let freshSettings;
+      let notificationWhatsapp;
+      try {
+        freshSettings = await getFreshNotificationSettings();
+        notificationWhatsapp = getActiveWhatsappRecipient(freshSettings);
+        console.log('[CartPage] Using fresh notification settings:', {
+          whatsapp: freshSettings?.whatsapp,
+          whatsappTarget: freshSettings?.whatsappTarget,
+          resolvedRecipient: notificationWhatsapp
+        });
+      } catch (settingsErr) {
+        console.warn('[CartPage] Error fetching fresh settings, using cached:', settingsErr);
+        freshSettings = notificationSettings;
+        notificationWhatsapp = getActiveWhatsappRecipient(notificationSettings);
+      }
+
       // Notify admin via WhatsApp using optimized function
       if (notificationWhatsapp) {
         // Prepare order data for notification
@@ -768,13 +787,13 @@ const CartPage = ({ onNavigate }) => {
           user_name: recipientDetails.fullName
         };
 
-        // Use the optimized notification function
+        // Use the optimized notification function with fresh recipient
         notifyAdminNewPayment(orderForNotification, notificationWhatsapp, language);
       }
 
       // Trigger server-side email/WhatsApp notification via Supabase Edge Function (if configured)
       try {
-        if (notificationSettings?.adminEmail || notificationWhatsapp) {
+        if (freshSettings?.adminEmail || notificationWhatsapp) {
           await supabase.functions.invoke('notify-order', {
             body: {
               orderData: {
@@ -788,7 +807,7 @@ const CartPage = ({ onNavigate }) => {
                 paymentProofUrl: uploadedProofUrl || createdOrder.payment_proof_url || null
               },
               notificationSettings: {
-                ...notificationSettings,
+                ...freshSettings, // Use fresh settings, not cached
                 whatsapp: notificationWhatsapp
               }
             }

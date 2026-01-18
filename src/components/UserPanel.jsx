@@ -10,6 +10,7 @@ import { getUserTestimonial, createTestimonial, updateTestimonial } from '@/lib/
 import { getMyRemittances } from '@/lib/remittanceService';
 import { getHeadingStyle, getTextStyle, getPillStyle, getStatusStyle } from '@/lib/styleUtils';
 import { generateWhatsAppURL } from '@/lib/whatsappService';
+import { getActiveWhatsappRecipient } from '@/lib/notificationSettingsService';
 import { Button } from '@/components/ui/button';
 import CategoryBadge from '@/components/CategoryBadge';
 import { derivePercentFromAmount } from '@/lib/discountDisplayService';
@@ -22,7 +23,9 @@ const ORDERS_PER_PAGE = 20;
 const UserPanel = ({ onNavigate }) => {
   const { user, userRole, userCategory } = useAuth();
   const { t, language } = useLanguage();
-  const { visualSettings, businessInfo } = useBusiness();
+  const { visualSettings, notificationSettings } = useBusiness();
+  // Use notification settings for WhatsApp contact (from DB, not hardcoded)
+  const whatsappContact = getActiveWhatsappRecipient(notificationSettings);
   const { showModal } = useModal();
   const { categoryDiscountPercent } = useUserDiscounts();
   const isRegularUser = userRole === 'user';
@@ -553,7 +556,7 @@ const UserPanel = ({ onNavigate }) => {
         </motion.div>
 
         {/* WhatsApp Support Button */}
-        {businessInfo?.whatsapp && (
+        {whatsappContact && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -586,7 +589,7 @@ const UserPanel = ({ onNavigate }) => {
                   const message = language === 'es'
                     ? `Hola! Soy ${displayName}. Necesito ayuda con mi cuenta.`
                     : `Hello! I'm ${displayName}. I need help with my account.`;
-                  window.open(generateWhatsAppURL(businessInfo.whatsapp, message), '_blank');
+                  window.open(generateWhatsAppURL(whatsappContact, message), '_blank');
                 }}
                 className="bg-green-600 hover:bg-green-700 text-white"
               >
@@ -721,7 +724,7 @@ const UserPanel = ({ onNavigate }) => {
               </h2>
 
               {/* WhatsApp Contact Button (Regular users only) - Top Right */}
-              {userRole !== 'admin' && userRole !== 'super_admin' && businessInfo?.whatsapp && (
+              {userRole !== 'admin' && userRole !== 'super_admin' && whatsappContact && (
                 <Button
                   size="default"
                   className="bg-green-600 hover:bg-green-700 text-white"
@@ -729,7 +732,7 @@ const UserPanel = ({ onNavigate }) => {
                     const message = language === 'es'
                       ? `Hola! Soy ${displayName}. Necesito ayuda con mis pedidos.`
                       : `Hello! I'm ${displayName}. I need help with my orders.`;
-                    window.open(generateWhatsAppURL(businessInfo.whatsapp, message), '_blank', 'noopener,noreferrer');
+                    window.open(generateWhatsAppURL(whatsappContact, message), '_blank', 'noopener,noreferrer');
                   }}
                   title={language === 'es' ? 'Contactar por WhatsApp' : 'Contact via WhatsApp'}
                 >
@@ -906,7 +909,7 @@ const UserPanel = ({ onNavigate }) => {
                       {/* Botones de acción */}
                       <div className="flex items-center gap-1">
                         {/* WhatsApp contact button for pending/processing orders (Regular users only) */}
-                        {userRole !== 'admin' && userRole !== 'super_admin' && businessInfo?.whatsapp &&
+                        {userRole !== 'admin' && userRole !== 'super_admin' && whatsappContact &&
                          (order.payment_status === 'pending' || order.status === 'processing' || order.status === 'pending') && (
                           <Button
                             size="sm"
@@ -918,7 +921,7 @@ const UserPanel = ({ onNavigate }) => {
                               const message = language === 'es'
                                 ? `Hola! Soy ${displayName}. Tengo una consulta sobre mi pedido ${order.order_number} (Pedido: ${orderStatus}, Pago: ${paymentStatus}, Total: $${parseFloat(order.total_amount).toFixed(2)} ${order.currencies?.code || 'USD'}).`
                                 : `Hello! I'm ${displayName}. I have a question about my order ${order.order_number} (Order: ${orderStatus}, Payment: ${paymentStatus}, Total: $${parseFloat(order.total_amount).toFixed(2)} ${order.currencies?.code || 'USD'}).`;
-                              window.open(generateWhatsAppURL(businessInfo.whatsapp, message), '_blank', 'noopener,noreferrer');
+                              window.open(generateWhatsAppURL(whatsappContact, message), '_blank', 'noopener,noreferrer');
                             }}
                             title={language === 'es' ? 'Consultar sobre este pedido' : 'Ask about this order'}
                           >

@@ -204,4 +204,49 @@ export const getActiveWhatsappRecipient = (settings = {}) => {
   return settings.whatsapp || settings.whatsappGroup || '';
 };
 
+/**
+ * Fetch fresh notification settings directly from the database (bypasses cache)
+ * Use this function when you need the most up-to-date settings (e.g., before sending notifications)
+ * @returns {Promise<Object>} Fresh settings object with whatsapp, whatsappGroup, adminEmail, whatsappTarget
+ */
+export async function getFreshNotificationSettings() {
+  try {
+    // Always fetch fresh from notification_settings table (primary source of truth)
+    const { data, error } = await supabase
+      .from('notification_settings')
+      .select('setting_type, value, is_active')
+      .in('setting_type', Object.values(NOTIFICATION_KEYS));
+
+    if (error) {
+      console.error('[NotificationSettings] Fresh fetch error:', error);
+      throw error;
+    }
+
+    if (data && data.length > 0) {
+      const settings = mapSettingsFromTable(data);
+      return {
+        ...settings,
+        whatsappTarget: resolveWhatsappTarget(settings)
+      };
+    }
+
+    // Fallback: return defaults if no data found
+    console.warn('[NotificationSettings] No settings found in notification_settings table');
+    return { ...DEFAULT_SETTINGS };
+  } catch (err) {
+    console.error('[NotificationSettings] getFreshNotificationSettings error:', err);
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+/**
+ * Get the active WhatsApp recipient from fresh database data (bypasses all caches)
+ * Use this when sending critical notifications to ensure correct recipient
+ * @returns {Promise<string>} The phone number or group URL to send notifications to
+ */
+export async function getFreshWhatsappRecipient() {
+  const settings = await getFreshNotificationSettings();
+  return getActiveWhatsappRecipient(settings);
+}
+
 export { DEFAULT_SETTINGS };
