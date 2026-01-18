@@ -22,7 +22,8 @@ const getWhatsAppConfig = () => {
 
 /**
  * Format phone number for WhatsApp
- * Removes spaces, dashes, and country code prefixes
+ * Removes spaces, dashes, parentheses - keeps country code
+ * WhatsApp requires format: COUNTRY_CODE + NUMBER (e.g., 15616011675 for US)
  * @param {string} phone - Phone number to format
  * @returns {string} Formatted phone number (empty string if invalid)
  */
@@ -35,17 +36,18 @@ export const formatPhoneForWhatsApp = (phone) => {
     return '';
   }
 
-  // Remove all non-digit characters
+  // Remove all non-digit characters (spaces, dashes, parentheses, +)
   let cleaned = phone.replace(/\D/g, '');
 
-  // Remove leading + if present
-  if (cleaned.startsWith('1')) {
-    // US/Canada number
-    cleaned = cleaned.substring(1);
-  } else if (cleaned.startsWith('53')) {
-    // Cuban number - keep as is
-  } else if (cleaned.startsWith('0')) {
-    // Remove leading 0
+  // If empty after cleaning, return empty
+  if (!cleaned) return '';
+
+  // Handle leading zeros (some local formats)
+  if (cleaned.startsWith('00')) {
+    // International format with 00 prefix (e.g., 001 for US)
+    cleaned = cleaned.substring(2);
+  } else if (cleaned.length > 10 && cleaned.startsWith('0')) {
+    // Remove single leading 0 only if number is long enough to have country code
     cleaned = cleaned.substring(1);
   }
 
