@@ -81,14 +81,24 @@ const mapSettingsFromRows = (rows = []) => {
 };
 
 const mapSettingsFromTable = (rows = []) => {
-  const getValue = (key) => rows.find((row) => row.setting_type === key)?.value ?? '';
+  console.log('[NotificationSettings] mapSettingsFromTable - input rows:', rows);
 
-  return {
+  const getValue = (key) => {
+    const row = rows.find((row) => row.setting_type === key);
+    const value = row?.value ?? '';
+    console.log(`[NotificationSettings] getValue('${key}') = '${value}'`, 'from row:', row);
+    return value;
+  };
+
+  const result = {
     whatsapp: getValue(NOTIFICATION_KEYS.whatsapp),
     whatsappGroup: getValue(NOTIFICATION_KEYS.whatsappGroup),
     adminEmail: getValue(NOTIFICATION_KEYS.adminEmail),
     whatsappTarget: getValue(NOTIFICATION_KEYS.whatsappTarget)
   };
+
+  console.log('[NotificationSettings] mapSettingsFromTable result:', result);
+  return result;
 };
 
 const resolveWhatsappTarget = (settings) => {
@@ -216,10 +226,16 @@ export async function saveNotificationSettings(settings) {
 
 export const getActiveWhatsappRecipient = (settings = {}) => {
   const target = resolveWhatsappTarget(settings);
+  console.log('[NotificationSettings] getActiveWhatsappRecipient - target:', target, 'settings:', settings);
+
   if (target === 'whatsappGroup' && settings.whatsappGroup) {
+    console.log('[NotificationSettings] Returning whatsappGroup:', settings.whatsappGroup);
     return settings.whatsappGroup;
   }
-  return settings.whatsapp || settings.whatsappGroup || '';
+
+  const result = settings.whatsapp || settings.whatsappGroup || '';
+  console.log('[NotificationSettings] Returning whatsapp recipient:', JSON.stringify(result), 'length:', result?.length);
+  return result;
 };
 
 /**
@@ -229,6 +245,8 @@ export const getActiveWhatsappRecipient = (settings = {}) => {
  * @returns {Promise<Object>} Fresh settings object with whatsapp, whatsappGroup, adminEmail, whatsappTarget
  */
 export async function getFreshNotificationSettings() {
+  console.log('[NotificationSettings] getFreshNotificationSettings called');
+
   // 1. Try direct table read first
   try {
     const { data, error } = await supabase
@@ -236,8 +254,13 @@ export async function getFreshNotificationSettings() {
       .select('setting_type, value, is_active')
       .in('setting_type', Object.values(NOTIFICATION_KEYS));
 
+    console.log('[NotificationSettings] Direct table query result:', { data, error: error?.message });
+
     if (!error && data && data.length > 0) {
       const settings = mapSettingsFromTable(data);
+      console.log('[NotificationSettings] Mapped settings from table:', settings);
+      console.log('[NotificationSettings] whatsapp value:', JSON.stringify(settings.whatsapp), 'length:', settings.whatsapp?.length);
+
       if (settings.whatsapp || settings.whatsappGroup || settings.adminEmail) {
         console.log('[NotificationSettings] Fresh settings from table:', settings);
         return {
