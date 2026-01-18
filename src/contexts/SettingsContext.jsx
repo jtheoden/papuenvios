@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { DEFAULT_SETTINGS, loadNotificationSettings } from '@/lib/notificationSettingsService';
+import { DEFAULT_SETTINGS, loadNotificationSettings, getFreshNotificationSettings } from '@/lib/notificationSettingsService';
 
 const SettingsContext = createContext();
 
@@ -76,6 +76,18 @@ export const SettingsProvider = ({ children }) => {
   // Notification settings now loaded from Supabase system_config table
   const [notificationSettings, setNotificationSettings] = useState(DEFAULT_SETTINGS);
 
+  // Function to refresh notification settings from DB (bypasses cache)
+  const refreshNotificationSettings = useCallback(async () => {
+    try {
+      const settings = await getFreshNotificationSettings();
+      setNotificationSettings(settings);
+      return settings;
+    } catch (err) {
+      console.error('Failed to refresh notification settings:', err);
+      return notificationSettings; // Return current if refresh fails
+    }
+  }, [notificationSettings]);
+
   // Load notification settings from Supabase on mount
   useEffect(() => {
     const loadSettings = async () => {
@@ -140,6 +152,7 @@ export const SettingsProvider = ({ children }) => {
     // Notification settings
     notificationSettings,
     setNotificationSettings,
+    refreshNotificationSettings, // Function to refresh from DB (bypasses cache)
     // Visual settings
     visualSettings,
     setVisualSettings,

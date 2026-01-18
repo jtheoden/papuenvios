@@ -81,14 +81,24 @@ const mapSettingsFromRows = (rows = []) => {
 };
 
 const mapSettingsFromTable = (rows = []) => {
-  const getValue = (key) => rows.find((row) => row.setting_type === key)?.value ?? '';
+  console.log('[NotificationSettings] mapSettingsFromTable - input rows:', rows);
 
-  return {
+  const getValue = (key) => {
+    const row = rows.find((row) => row.setting_type === key);
+    const value = row?.value ?? '';
+    console.log(`[NotificationSettings] getValue('${key}') = '${value}'`, 'from row:', row);
+    return value;
+  };
+
+  const result = {
     whatsapp: getValue(NOTIFICATION_KEYS.whatsapp),
     whatsappGroup: getValue(NOTIFICATION_KEYS.whatsappGroup),
     adminEmail: getValue(NOTIFICATION_KEYS.adminEmail),
     whatsappTarget: getValue(NOTIFICATION_KEYS.whatsappTarget)
   };
+
+  console.log('[NotificationSettings] mapSettingsFromTable result:', result);
+  return result;
 };
 
 const resolveWhatsappTarget = (settings) => {
@@ -119,42 +129,61 @@ const loadNotificationSettingsFromTable = async () => {
 };
 
 /**
- * Load notification settings from system_config table
+ * Load notification settings from notification_settings table
+ * Falls back to edge function if table read fails, then to defaults
  * @returns {Promise<Object>} Settings object with whatsapp, whatsappGroup, adminEmail
  */
 export async function loadNotificationSettings() {
+  // 1. First, try to load directly from notification_settings table
   try {
     const settings = await loadNotificationSettingsFromTable();
     if (settings.whatsapp || settings.whatsappGroup || settings.adminEmail) {
+      console.log('[NotificationSettings] Loaded from table:', settings);
       return settings;
     }
+    console.log('[NotificationSettings] Table returned empty settings');
   } catch (err) {
-    console.warn('[NotificationSettings] Table load failed, falling back to function:', err);
+    console.warn('[NotificationSettings] Table load failed (possibly RLS):', err.message);
   }
 
-  const data = await callNotificationFunction('GET');
-  if (Array.isArray(data)) {
-    const mapped = mapSettingsFromRows(data);
-    return {
-      ...mapped,
-      whatsappTarget: resolveWhatsappTarget(mapped)
-    };
+  // 2. Fallback: try edge function (uses service role, bypasses RLS)
+  try {
+    const data = await callNotificationFunction('GET');
+    if (data) {
+      if (Array.isArray(data)) {
+        const mapped = mapSettingsFromRows(data);
+        return {
+          ...mapped,
+          whatsappTarget: resolveWhatsappTarget(mapped)
+        };
+      }
+
+      const mapped = {
+        whatsapp: data?.whatsapp ?? '',
+        whatsappGroup: data?.whatsappGroup ?? '',
+        adminEmail: data?.adminEmail ?? '',
+        whatsappTarget: data?.whatsappTarget ?? ''
+      };
+      if (mapped.whatsapp || mapped.whatsappGroup || mapped.adminEmail) {
+        console.log('[NotificationSettings] Loaded from edge function:', mapped);
+        return {
+          ...mapped,
+          whatsappTarget: resolveWhatsappTarget(mapped)
+        };
+      }
+    }
+  } catch (fnErr) {
+    console.warn('[NotificationSettings] Edge function also failed:', fnErr.message);
   }
 
-  const mapped = {
-    whatsapp: data?.whatsapp ?? '',
-    whatsappGroup: data?.whatsappGroup ?? '',
-    adminEmail: data?.adminEmail ?? '',
-    whatsappTarget: data?.whatsappTarget ?? ''
-  };
-  return {
-    ...mapped,
-    whatsappTarget: resolveWhatsappTarget(mapped)
-  };
+  // 3. Final fallback: return defaults (better than crashing)
+  console.warn('[NotificationSettings] Using DEFAULT_SETTINGS as fallback');
+  return { ...DEFAULT_SETTINGS };
 }
 
 /**
- * Save notification settings into notification_settings and sync system_config when available
+ * Save notification settings via edge function (bypasses RLS with service role)
+ * Falls back to direct DB write if edge function fails
  * @param {Object} settings - Settings object with whatsapp, whatsappGroup, adminEmail
  * @returns {Promise<boolean>} Success status
  */
@@ -163,14 +192,26 @@ export async function saveNotificationSettings(settings) {
     throw new Error('Debes proporcionar configuraciones para guardar.');
   }
 
-  try {
-    const payload = {
-      whatsapp: settings.whatsapp || '',
-      whatsappGroup: settings.whatsappGroup || '',
-      adminEmail: settings.adminEmail || '',
-      whatsappTarget: resolveWhatsappTarget(settings)
-    };
+  const payload = {
+    whatsapp: settings.whatsapp || '',
+    whatsappGroup: settings.whatsappGroup || '',
+    adminEmail: settings.adminEmail || '',
+    whatsappTarget: resolveWhatsappTarget(settings)
+  };
 
+  console.log('[NotificationSettings] Saving settings via edge function:', payload);
+
+  // 1. Try edge function FIRST (uses service role, bypasses RLS)
+  try {
+    await callNotificationFunction('PUT', payload);
+    console.log('[NotificationSettings] Settings saved successfully via edge function');
+    return true;
+  } catch (fnErr) {
+    console.warn('[NotificationSettings] Edge function save failed, trying direct DB:', fnErr.message);
+  }
+
+  // 2. Fallback: try direct DB write (may fail due to RLS if policies aren't set up)
+  try {
     const { error } = await supabase
       .from('notification_settings')
       .upsert([
@@ -181,27 +222,105 @@ export async function saveNotificationSettings(settings) {
       ], { onConflict: 'setting_type' });
 
     if (error) {
+      console.error('[NotificationSettings] Direct DB save failed:', error);
       throw error;
     }
 
-    try {
-      await callNotificationFunction('PUT', payload);
-    } catch (syncError) {
-      console.warn('[NotificationSettings] Edge function sync failed:', syncError);
-    }
+    console.log('[NotificationSettings] Settings saved successfully via direct DB');
     return true;
   } catch (err) {
     console.error('[NotificationSettings] Save error:', err);
-    throw err;
+    throw new Error('No se pudieron guardar las configuraciones. Verifica los permisos o contacta al administrador.');
   }
 }
 
 export const getActiveWhatsappRecipient = (settings = {}) => {
   const target = resolveWhatsappTarget(settings);
+  console.log('[NotificationSettings] getActiveWhatsappRecipient - target:', target, 'settings:', settings);
+
   if (target === 'whatsappGroup' && settings.whatsappGroup) {
+    console.log('[NotificationSettings] Returning whatsappGroup:', settings.whatsappGroup);
     return settings.whatsappGroup;
   }
-  return settings.whatsapp || settings.whatsappGroup || '';
+
+  const result = settings.whatsapp || settings.whatsappGroup || '';
+  console.log('[NotificationSettings] Returning whatsapp recipient:', JSON.stringify(result), 'length:', result?.length);
+  return result;
 };
+
+/**
+ * Fetch fresh notification settings directly from the database (bypasses cache)
+ * Use this function when you need the most up-to-date settings (e.g., before sending notifications)
+ * Falls back to edge function if direct table read fails (RLS), then to defaults
+ * @returns {Promise<Object>} Fresh settings object with whatsapp, whatsappGroup, adminEmail, whatsappTarget
+ */
+export async function getFreshNotificationSettings() {
+  console.log('[NotificationSettings] getFreshNotificationSettings called');
+
+  // 1. Try direct table read first
+  try {
+    const { data, error } = await supabase
+      .from('notification_settings')
+      .select('setting_type, value, is_active')
+      .in('setting_type', Object.values(NOTIFICATION_KEYS));
+
+    console.log('[NotificationSettings] Direct table query result:', { data, error: error?.message });
+
+    if (!error && data && data.length > 0) {
+      const settings = mapSettingsFromTable(data);
+      console.log('[NotificationSettings] Mapped settings from table:', settings);
+      console.log('[NotificationSettings] whatsapp value:', JSON.stringify(settings.whatsapp), 'length:', settings.whatsapp?.length);
+
+      if (settings.whatsapp || settings.whatsappGroup || settings.adminEmail) {
+        console.log('[NotificationSettings] Fresh settings from table:', settings);
+        return {
+          ...settings,
+          whatsappTarget: resolveWhatsappTarget(settings)
+        };
+      }
+    }
+    if (error) {
+      console.warn('[NotificationSettings] Fresh table read failed (possibly RLS):', error.message);
+    }
+  } catch (err) {
+    console.warn('[NotificationSettings] Fresh table read error:', err.message);
+  }
+
+  // 2. Fallback: try edge function (uses service role, bypasses RLS)
+  try {
+    const data = await callNotificationFunction('GET');
+    if (data) {
+      const mapped = {
+        whatsapp: data?.whatsapp ?? '',
+        whatsappGroup: data?.whatsappGroup ?? '',
+        adminEmail: data?.adminEmail ?? '',
+        whatsappTarget: data?.whatsappTarget ?? ''
+      };
+      if (mapped.whatsapp || mapped.whatsappGroup || mapped.adminEmail) {
+        console.log('[NotificationSettings] Fresh settings from edge function:', mapped);
+        return {
+          ...mapped,
+          whatsappTarget: resolveWhatsappTarget(mapped)
+        };
+      }
+    }
+  } catch (fnErr) {
+    console.warn('[NotificationSettings] Edge function fallback failed:', fnErr.message);
+  }
+
+  // 3. Final fallback: return defaults
+  console.warn('[NotificationSettings] getFreshNotificationSettings using DEFAULT_SETTINGS');
+  return { ...DEFAULT_SETTINGS };
+}
+
+/**
+ * Get the active WhatsApp recipient from fresh database data (bypasses all caches)
+ * Use this when sending critical notifications to ensure correct recipient
+ * @returns {Promise<string>} The phone number or group URL to send notifications to
+ */
+export async function getFreshWhatsappRecipient() {
+  const settings = await getFreshNotificationSettings();
+  return getActiveWhatsappRecipient(settings);
+}
 
 export { DEFAULT_SETTINGS };

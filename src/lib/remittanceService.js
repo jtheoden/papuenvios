@@ -22,6 +22,7 @@ import {
   notifyUserPaymentRejected,
   notifyUserRemittanceDelivered
 } from '@/lib/whatsappService';
+import { getFreshWhatsappRecipient } from '@/lib/notificationSettingsService';
 import {
   getAvailableZelleAccount,
   registerZelleTransaction,
@@ -952,19 +953,20 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
     });
 
     // Notify admin (graceful fallback if fails - don't block remittance creation)
+    // IMPORTANT: Use getFreshWhatsappRecipient to get settings from notification_settings table
+    // This ensures we always use the currently configured phone/group, not stale cached values
     try {
-      const { data: settings, error: settingsError } = await supabase
-        .from('system_config')
-        .select('value_text')
-        .eq('key', 'whatsapp_admin_phone')
-        .single();
+      const whatsappRecipient = await getFreshWhatsappRecipient();
+      console.log('[uploadPaymentProof] Fresh WhatsApp recipient for notification:', whatsappRecipient);
 
-      if (!settingsError && settings?.value_text) {
+      if (whatsappRecipient) {
         const remittanceForNotify = {
           ...updatedRemittance,
           user_email: user.email
         };
-        await notifyAdminNewPaymentProof(remittanceForNotify, settings.value_text, 'es');
+        await notifyAdminNewPaymentProof(remittanceForNotify, whatsappRecipient, 'es');
+      } else {
+        console.warn('[uploadPaymentProof] No WhatsApp recipient configured in notification_settings');
       }
     } catch (notifyError) {
       logError(notifyError, { operation: 'uploadPaymentProof - notification', remittanceId });
