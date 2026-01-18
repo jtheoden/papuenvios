@@ -182,7 +182,8 @@ export async function loadNotificationSettings() {
 }
 
 /**
- * Save notification settings into notification_settings and sync system_config when available
+ * Save notification settings via edge function (bypasses RLS with service role)
+ * Falls back to direct DB write if edge function fails
  * @param {Object} settings - Settings object with whatsapp, whatsappGroup, adminEmail
  * @returns {Promise<boolean>} Success status
  */
@@ -191,14 +192,26 @@ export async function saveNotificationSettings(settings) {
     throw new Error('Debes proporcionar configuraciones para guardar.');
   }
 
-  try {
-    const payload = {
-      whatsapp: settings.whatsapp || '',
-      whatsappGroup: settings.whatsappGroup || '',
-      adminEmail: settings.adminEmail || '',
-      whatsappTarget: resolveWhatsappTarget(settings)
-    };
+  const payload = {
+    whatsapp: settings.whatsapp || '',
+    whatsappGroup: settings.whatsappGroup || '',
+    adminEmail: settings.adminEmail || '',
+    whatsappTarget: resolveWhatsappTarget(settings)
+  };
 
+  console.log('[NotificationSettings] Saving settings via edge function:', payload);
+
+  // 1. Try edge function FIRST (uses service role, bypasses RLS)
+  try {
+    await callNotificationFunction('PUT', payload);
+    console.log('[NotificationSettings] Settings saved successfully via edge function');
+    return true;
+  } catch (fnErr) {
+    console.warn('[NotificationSettings] Edge function save failed, trying direct DB:', fnErr.message);
+  }
+
+  // 2. Fallback: try direct DB write (may fail due to RLS if policies aren't set up)
+  try {
     const { error } = await supabase
       .from('notification_settings')
       .upsert([
@@ -209,18 +222,15 @@ export async function saveNotificationSettings(settings) {
       ], { onConflict: 'setting_type' });
 
     if (error) {
+      console.error('[NotificationSettings] Direct DB save failed:', error);
       throw error;
     }
 
-    try {
-      await callNotificationFunction('PUT', payload);
-    } catch (syncError) {
-      console.warn('[NotificationSettings] Edge function sync failed:', syncError);
-    }
+    console.log('[NotificationSettings] Settings saved successfully via direct DB');
     return true;
   } catch (err) {
     console.error('[NotificationSettings] Save error:', err);
-    throw err;
+    throw new Error('No se pudieron guardar las configuraciones. Verifica los permisos o contacta al administrador.');
   }
 }
 
