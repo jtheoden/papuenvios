@@ -24,6 +24,7 @@ const SettingsPage = () => {
   const {
     financialSettings, setFinancialSettings,
     notificationSettings, setNotificationSettings,
+    refreshNotificationSettings,
     visualSettings, setVisualSettings,
     zelleAccounts, setZelleAccounts
   } = useBusiness();
@@ -316,8 +317,10 @@ const SettingsPage = () => {
     try {
       console.log('[handleNotificationSave] Saving notification settings...');
       await saveNotificationSettings(localNotifications);
-      setNotificationSettings(localNotifications);
-      console.log('[handleNotificationSave] SUCCESS - Notification settings saved');
+      // IMPORTANT: Refresh from DB to ensure all components get the fresh values
+      // This ensures the cached values in context are updated immediately
+      await refreshNotificationSettings();
+      console.log('[handleNotificationSave] SUCCESS - Notification settings saved and context refreshed');
       toast({ title: t('settings.saveSuccess') });
     } catch (err) {
       console.error('[handleNotificationSave] ERROR:', err);

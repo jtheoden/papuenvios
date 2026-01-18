@@ -4,6 +4,7 @@ import { Bell, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
+import { useSettings } from '@/contexts/SettingsContext';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { toast } from '@/components/ui/use-toast';
 import { saveNotificationSettings } from '@/lib/notificationSettingsService';
@@ -15,10 +16,13 @@ import { saveNotificationSettings } from '@/lib/notificationSettingsService';
 const SettingsPageContent = ({ localNotifications, setLocalNotifications }) => {
   const { t, language } = useLanguage();
   const { visualSettings } = useBusiness();
+  const { refreshNotificationSettings } = useSettings();
 
   const handleNotificationSave = async () => {
     try {
       await saveNotificationSettings(localNotifications);
+      // IMPORTANT: Refresh context cache so all components use the new values immediately
+      await refreshNotificationSettings();
       toast({ title: t('settings.saveSuccess') });
     } catch (error) {
       console.error('Error saving notification settings:', error);
