@@ -69,12 +69,17 @@ FOR DELETE
 TO authenticated
 USING (public.get_my_role() IN ('admin', 'super_admin'));
 
--- Step 5: Verify the policies were created
+-- Step 5: Grant table-level permissions (CRITICAL - RLS policies need these)
+-- Without these grants, authenticated users cannot perform operations even with valid RLS policies
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.notification_settings TO authenticated;
+
+-- Step 6: Verify the policies were created
 DO $$
 BEGIN
     RAISE NOTICE 'RLS policies created successfully for notification_settings';
     RAISE NOTICE 'Policies: SELECT (all auth), INSERT/UPDATE/DELETE (admin/super_admin only)';
+    RAISE NOTICE 'Table grants: SELECT, INSERT, UPDATE, DELETE for authenticated role';
 END $$;
 
--- Step 6: Test the function works (optional - will show your role)
+-- Step 7: Test the function works (optional - will show your role)
 -- SELECT public.get_my_role();
