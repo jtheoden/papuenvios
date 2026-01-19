@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, ShoppingBag, Globe, DollarSign, BarChart3, Settings, ShoppingCart, User as UserIcon, LogIn, LogOut, ShieldCheck, Users, LayoutDashboard, ChevronDown, Crown, Zap, Star } from 'lucide-react';
+import { Menu, X, ShoppingBag, Globe, DollarSign, BarChart3, Settings, ShoppingCart, User as UserIcon, LogIn, LogOut, ShieldCheck, Users, LayoutDashboard, ChevronDown, Crown, Zap, Star, Home, Package, Banknote } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -14,9 +14,32 @@ const Header = ({ currentPage, onNavigate }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
   const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
+  const [isMobileUser, setIsMobileUser] = useState(false);
   const { language, setLanguage, t } = useLanguage();
   const { cart, visualSettings } = useBusiness();
   const { user, isAdmin, userRole, userCategory } = useAuth();
+
+  // Detect mobile viewport for user-friendly quick nav
+  const MOBILE_BREAKPOINT = 740;
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobileUser(window.innerWidth < MOBILE_BREAKPOINT);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Quick nav items for mobile users (non-admin)
+  const quickNavItems = [
+    { id: 'home', icon: Home, label: t('nav.home') },
+    { id: 'products', icon: Package, label: t('nav.products') },
+    { id: 'remittances', icon: Banknote, label: t('nav.remittances') },
+  ];
+
+  // Check if quick nav should show (mobile + non-admin user)
+  const showQuickNav = isMobileUser && !isAdmin;
 
   // Public menu items (hide remittances for admin - they use admin panel)
   let publicMenuItems = [
@@ -260,6 +283,7 @@ const Header = ({ currentPage, onNavigate }) => {
           </nav>
 
           <div className="flex items-center gap-0.5 sm:gap-2 flex-shrink-0">
+            {/* Desktop language selector */}
             <Button
               variant="outline"
               size="sm"
@@ -273,6 +297,20 @@ const Header = ({ currentPage, onNavigate }) => {
               <Globe className="w-4 h-4" />
               <span>{language.toUpperCase()}</span>
             </Button>
+
+            {/* Mobile language selector for regular users - positioned before cart */}
+            {showQuickNav && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setLanguage(language === 'es' ? 'en' : 'es')}
+                className="sm:hidden h-8 w-8 flex items-center justify-center"
+                style={{ color: visualSettings.primaryColor || semanticColors.primary.main }}
+                title={language === 'es' ? 'Switch to English' : 'Cambiar a Español'}
+              >
+                <Globe className="w-4 h-4" />
+              </Button>
+            )}
 
             {userRole !== 'admin' && userRole !== 'super_admin' && (
               <Button variant="ghost" size="icon" onClick={() => onNavigate('cart')} className="h-8 w-8 sm:h-9 sm:w-9">
@@ -325,6 +363,47 @@ const Header = ({ currentPage, onNavigate }) => {
             </Button>
           </div>
         </div>
+
+        {/* Mobile Quick Navigation Pills for Regular Users - UX optimized for elderly users */}
+        {showQuickNav && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="border-t py-2 px-1"
+            style={{
+              borderColor: `${visualSettings.primaryColor || semanticColors.primary.main}20`,
+              backgroundColor: `${visualSettings.headerBgColor || 'rgba(255, 255, 255, 0.95)'}`
+            }}
+          >
+            <div className="flex items-center justify-center gap-2">
+              {quickNavItems.map((item) => {
+                const isActive = currentPage === item.id;
+                return (
+                  <motion.button
+                    key={item.id}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => handleNavClick(item.id)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all duration-200 min-w-[85px] justify-center shadow-sm"
+                    style={isActive ? {
+                      background: visualSettings.useGradient
+                        ? `linear-gradient(135deg, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.secondaryColor || semanticColors.secondary.hex})`
+                        : visualSettings.primaryColor || semanticColors.primary.main,
+                      color: '#ffffff',
+                      boxShadow: `0 2px 8px ${visualSettings.primaryColor || semanticColors.primary.main}40`
+                    } : {
+                      backgroundColor: `${visualSettings.primaryColor || semanticColors.primary.main}12`,
+                      color: visualSettings.primaryColor || semanticColors.primary.main,
+                      border: `1.5px solid ${visualSettings.primaryColor || semanticColors.primary.main}30`
+                    }}
+                  >
+                    <item.icon className="w-4 h-4" />
+                    <span className="truncate">{item.label}</span>
+                  </motion.button>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
 
         {/* Mobile Menu */}
         <AnimatePresence>
