@@ -328,15 +328,16 @@ const RecipientSelector = React.forwardRef((
           <BankAccountSelector
             recipientId={selectedRecipient.id}
             onSelect={(account) => {
-              const bankAccountId = account.bank_account?.id;
-              setSelectedBankAccountId(bankAccountId);
-              // Notificar al componente padre con el bank_account_id y detalles completos
+              // account.id = recipient_bank_accounts.id (the link table)
+              // account.bank_account.id = bank_accounts.id (the actual account)
+              const recipientBankAccountId = account.id;
+              setSelectedBankAccountId(recipientBankAccountId);
               onSelect({
                 recipientId: selectedRecipient.id,
                 addressId: selectedAddress?.id,
                 isNew: false,
                 recipientData: selectedRecipient,
-                bank_account_id: bankAccountId,
+                recipient_bank_account_id: recipientBankAccountId,
                 bank_account_details: account.bank_account
               });
             }}
