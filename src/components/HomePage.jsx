@@ -405,7 +405,19 @@ const HomePage = ({ onNavigate }) => {
                 {t('home.offers.cta')}
               </Button>
               {isAdmin && (
-                <Button onClick={() => onNavigate('dashboard')}>
+                <Button
+                  onClick={() => onNavigate('dashboard')}
+                  style={{
+                    backgroundColor: visualSettings.buttonBgColor || visualSettings.primaryColor || '#2563eb',
+                    color: visualSettings.buttonTextColor || '#ffffff'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = visualSettings.buttonHoverBgColor || '#1d4ed8';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = visualSettings.buttonBgColor || visualSettings.primaryColor || '#2563eb';
+                  }}
+                >
                   {t('home.offers.manage')}
                 </Button>
               )}
@@ -426,10 +438,17 @@ const HomePage = ({ onNavigate }) => {
                   initial={{ opacity: 0, y: 15 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.05 }}
-                  className="glass-effect p-6 rounded-2xl border border-purple-100 shadow-sm"
+                  className="glass-effect p-6 rounded-2xl shadow-sm"
+                  style={{ border: `1px solid ${visualSettings.accentColor || '#9333ea'}30` }}
                 >
                   <div className="flex items-center justify-between mb-3">
-                    <span className="px-3 py-1 rounded-full bg-purple-100 text-purple-700 text-xs font-semibold">{offer.discount_type === 'percentage' ? `${offer.discount_value}% OFF` : `${currencySymbol}${offer.discount_value}`}</span>
+                    <span
+                      className="px-3 py-1 rounded-full text-xs font-semibold"
+                      style={{
+                        backgroundColor: `${visualSettings.accentColor || '#9333ea'}20`,
+                        color: visualSettings.accentColor || '#9333ea'
+                      }}
+                    >{offer.discount_type === 'percentage' ? `${offer.discount_value}% OFF` : `${currencySymbol}${offer.discount_value}`}</span>
                     <span className="text-xs text-gray-500">{offer.code}</span>
                   </div>
                   <p className="text-gray-700 text-sm mb-3">{t('home.offers.availableUntil', { date: offer.end_date ? new Date(offer.end_date).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US') : t('home.offers.limited') })}</p>
@@ -438,7 +457,14 @@ const HomePage = ({ onNavigate }) => {
                       <p className="text-xs text-gray-500">{t('home.offers.usage')}</p>
                       <p className="font-semibold">{offer.max_usage_global || t('home.offers.unlimited')}</p>
                     </div>
-                    <Button size="sm" variant="secondary" onClick={() => navigator.clipboard.writeText(offer.code)}>
+                    <Button
+                      size="sm"
+                      onClick={() => navigator.clipboard.writeText(offer.code)}
+                      style={{
+                        backgroundColor: `${visualSettings.primaryColor || '#2563eb'}15`,
+                        color: visualSettings.primaryColor || '#2563eb'
+                      }}
+                    >
                       {t('home.offers.copy')}
                     </Button>
                   </div>

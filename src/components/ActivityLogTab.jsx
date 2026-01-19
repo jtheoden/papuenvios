@@ -148,7 +148,8 @@ const ActivityLogTab = () => {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('activityLog.search') || 'Buscar por usuario o detalle'}
-              className="pl-9 pr-3 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500"
+              className="pl-9 pr-3 py-2 border rounded-lg shadow-sm focus:ring-2"
+              style={{ '--tw-ring-color': visualSettings?.primaryColor || '#9333ea' }}
             />
           </div>
           <div className="flex gap-2">
