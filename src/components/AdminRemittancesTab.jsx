@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Search, Filter, Eye, EyeOff, CheckCircle, XCircle, Clock, Package, Truck,
-  AlertTriangle, Download, FileText, Image as ImageIcon, Calendar, X, CreditCard
+  AlertTriangle, Download, FileText, Image as ImageIcon, Calendar, X, CreditCard, Copy, Check
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,6 +18,7 @@ import {
   calculateDeliveryAlert,
   generateProofSignedUrl,
   getRemittanceBankAccountDetails,
+  getBankAccountByRecipientId,
   REMITTANCE_STATUS
 } from '@/lib/remittanceService';
 import { decryptData } from '@/lib/encryption';
@@ -42,6 +43,7 @@ const AdminRemittancesTab = () => {
   const [showFullAccountNumber, setShowFullAccountNumber] = useState(false);
   const [decryptedAccountNumber, setDecryptedAccountNumber] = useState(null);
   const [decrypting, setDecrypting] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [proofSignedUrl, setProofSignedUrl] = useState(null);
   const [deliveryProofSignedUrl, setDeliveryProofSignedUrl] = useState(null);
   const [showPaymentProofModal, setShowPaymentProofModal] = useState(false);
@@ -96,20 +98,32 @@ const AdminRemittancesTab = () => {
   // Load bank account details when modal opens
   useEffect(() => {
     const loadBankAccountDetails = async () => {
-      if (selectedRemittance?.recipient_bank_account_id) {
-        setBankAccountDetails(null);
-        setShowFullAccountNumber(false);
-        setDecryptedAccountNumber(null);
-        const details = await getRemittanceBankAccountDetails(selectedRemittance.recipient_bank_account_id);
-        setBankAccountDetails(details);
-      } else {
-        setBankAccountDetails(null);
-        setShowFullAccountNumber(false);
-        setDecryptedAccountNumber(null);
+      setBankAccountDetails(null);
+      setShowFullAccountNumber(false);
+      setDecryptedAccountNumber(null);
+
+      // Only load for non-cash delivery methods
+      const deliveryMethod = selectedRemittance?.remittance_types?.delivery_method;
+      if (deliveryMethod === 'cash' || !deliveryMethod) {
+        return;
       }
+
+      let details = null;
+
+      // Try recipient_bank_account_id first (direct reference)
+      if (selectedRemittance?.recipient_bank_account_id) {
+        details = await getRemittanceBankAccountDetails(selectedRemittance.recipient_bank_account_id);
+      }
+
+      // Fallback: search by recipient_id if no direct reference
+      if (!details && selectedRemittance?.recipient_id) {
+        details = await getBankAccountByRecipientId(selectedRemittance.recipient_id);
+      }
+
+      setBankAccountDetails(details);
     };
     loadBankAccountDetails();
-  }, [selectedRemittance?.recipient_bank_account_id]);
+  }, [selectedRemittance?.id, selectedRemittance?.recipient_bank_account_id, selectedRemittance?.recipient_id]);
 
   const loadRemittances = async () => {
     setLoading(true);
@@ -699,7 +713,7 @@ const AdminRemittancesTab = () => {
 
                 <div>
                   <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">{t('remittances.user.method')}</p>
-                  <p className="text-xs sm:text-sm font-semibold capitalize">{remittance.delivery_method}</p>
+                  <p className="text-xs sm:text-sm font-semibold capitalize">{remittance.remittance_types?.delivery_method}</p>
                 </div>
 
                 {remittance.recipient_city && (
@@ -846,7 +860,7 @@ const AdminRemittancesTab = () => {
                 </div>
 
                 {/* Location Information - Only for Cash Delivery */}
-                {selectedRemittance.delivery_method === 'cash' && (
+                {selectedRemittance.remittance_types?.delivery_method === 'cash' && (
                   <div className="border-l-4 border-green-500 bg-green-50 rounded-lg p-3 sm:p-4">
                     <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2 text-sm sm:text-base">
                       <span className="inline-block w-3 h-3 bg-green-500 rounded-full"></span>
@@ -870,11 +884,11 @@ const AdminRemittancesTab = () => {
                 )}
 
                 {/* Bank Account Information - For Bank Transfer/Card */}
-                {selectedRemittance.delivery_method !== 'cash' && bankAccountDetails?.bank_accounts && (
+                {selectedRemittance.remittance_types?.delivery_method !== 'cash' && bankAccountDetails?.bank_accounts && (
                   <div className="border-l-4 border-blue-500 bg-blue-50 rounded-lg p-3 sm:p-4">
                     <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2 text-sm sm:text-base">
                       <CreditCard className="w-4 h-4 text-blue-600" />
-                      {selectedRemittance.delivery_method === 'transfer' ? t('remittances.admin.bankInfoTitle') : t('remittances.admin.cardInfoTitle')}
+                      {selectedRemittance.remittance_types?.delivery_method === 'transfer' ? t('remittances.admin.bankInfoTitle') : t('remittances.admin.cardInfoTitle')}
                     </h3>
                     <div className="bg-white rounded-lg p-3 border border-blue-200 space-y-2">
                       <div className="flex items-center justify-between text-xs sm:text-sm">
@@ -954,6 +968,41 @@ const AdminRemittancesTab = () => {
                                   )}
                                 </button>
                               )}
+                              {/* Copy button - only show when full number is visible */}
+                              {showFullAccountNumber && decryptedAccountNumber && (
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      await navigator.clipboard.writeText(decryptedAccountNumber);
+                                      setCopied(true);
+                                      toast({
+                                        title: language === 'es' ? 'Copiado' : 'Copied',
+                                        description: language === 'es'
+                                          ? 'Número de cuenta copiado al portapapeles'
+                                          : 'Account number copied to clipboard',
+                                      });
+                                      setTimeout(() => setCopied(false), 2000);
+                                    } catch (error) {
+                                      console.error('Error copying to clipboard:', error);
+                                      toast({
+                                        title: language === 'es' ? 'Error' : 'Error',
+                                        description: language === 'es'
+                                          ? 'No se pudo copiar al portapapeles'
+                                          : 'Failed to copy to clipboard',
+                                        variant: 'destructive'
+                                      });
+                                    }
+                                  }}
+                                  className="p-1.5 hover:bg-green-100 rounded transition-colors"
+                                  title={language === 'es' ? 'Copiar número de cuenta' : 'Copy account number'}
+                                >
+                                  {copied ? (
+                                    <Check className="h-4 w-4 text-green-600" />
+                                  ) : (
+                                    <Copy className="h-4 w-4 text-gray-600" />
+                                  )}
+                                </button>
+                              )}
                             </div>
                             {showFullAccountNumber && (
                               <p className="text-xs text-orange-600 flex items-center gap-1">
@@ -980,10 +1029,10 @@ const AdminRemittancesTab = () => {
                 <div className="bg-blue-50 rounded-lg p-3 sm:p-4">
                   <p className="text-xs sm:text-sm text-blue-600 font-medium mb-1">{t('remittances.admin.deliveryMethodLabel')}</p>
                   <p className="text-base sm:text-lg font-semibold text-blue-900">
-                    {selectedRemittance.delivery_method === 'cash' ? t('remittances.admin.cash')
-                      : selectedRemittance.delivery_method === 'transfer' ? t('remittances.admin.transfer')
-                      : selectedRemittance.delivery_method === 'card' ? t('remittances.admin.card')
-                      : selectedRemittance.delivery_method}
+                    {selectedRemittance.remittance_types?.delivery_method === 'cash' ? t('remittances.admin.cash')
+                      : selectedRemittance.remittance_types?.delivery_method === 'transfer' ? t('remittances.admin.transfer')
+                      : selectedRemittance.remittance_types?.delivery_method === 'card' ? t('remittances.admin.card')
+                      : selectedRemittance.remittance_types?.delivery_method}
                   </p>
                 </div>
 

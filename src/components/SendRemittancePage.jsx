@@ -785,9 +785,9 @@ const SendRemittancePage = ({ onNavigate }) => {
                 onSelect={(recipientData) => {
                   setSelectedRecipientData(recipientData);
 
-                  // Guardar bank_account_id y detalles si es una remesa off-cash
-                  if (recipientData.bank_account_id) {
-                    setSelectedBankAccount(recipientData.bank_account_id);
+                  // Guardar recipient_bank_account_id y detalles si es una remesa off-cash
+                  if (recipientData.recipient_bank_account_id) {
+                    setSelectedBankAccount(recipientData.recipient_bank_account_id);
                     setSelectedBankAccountDetails(recipientData.bank_account_details || null);
                   }
 

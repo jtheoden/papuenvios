@@ -13,8 +13,7 @@ import {
   createNotFoundError,
   parseSupabaseError,
   createPermissionError,
-  ERROR_CODES,
-  isSchemaMissingError
+  ERROR_CODES
 } from './errorHandler';
 import {
   notifyAdminNewPaymentProof,
@@ -131,8 +130,7 @@ export const DELIVERY_METHODS = {
   CARD: 'card'
 };
 
-// Cache-friendly flag to avoid retrying schema-missing inserts on every request
-let hasRecipientBankAccountColumn = true;
+// recipient_bank_account_id column now exists in remittances table (added 2026-01-19)
 
 // ============================================================================
 // GESTIÓN DE TIPOS DE REMESAS (ADMIN)
@@ -577,13 +575,6 @@ export const createRemittance = async (remittanceData) => {
   console.log('[createRemittance] START - Input data:', remittanceData);
 
   try {
-    // Cache-aware guard: if the backend schema is still missing the column, skip it entirely
-    let recipientBankAccountColumnSupported = true;
-    if (!hasRecipientBankAccountColumn && remittanceData.recipient_bank_account_id) {
-      recipientBankAccountColumnSupported = false;
-      console.warn('[createRemittance] Skipping recipient_bank_account_id because schema cache previously reported it missing');
-    }
-
     const {
       remittance_type_id,
       amount,
@@ -722,7 +713,7 @@ export const createRemittance = async (remittanceData) => {
       zelle_account_id: selectedZelleAccountId
     };
 
-    if (recipient_bank_account_id && recipientBankAccountColumnSupported) {
+    if (recipient_bank_account_id) {
       insertData.recipient_bank_account_id = recipient_bank_account_id;
     }
 
@@ -746,24 +737,7 @@ export const createRemittance = async (remittanceData) => {
       .select('*, zelle_accounts(*)')
       .single();
 
-    let schemaSupportsRecipientBankAccount = recipientBankAccountColumnSupported;
-    let { data, error } = await performInsert(insertData);
-
-    if (error && insertData.recipient_bank_account_id) {
-      const parsedError = parseSupabaseError(error);
-      if (
-        schemaSupportsRecipientBankAccount &&
-        (isSchemaMissingError(error) || isSchemaMissingError(parsedError))
-      ) {
-        // Gracefully degrade if the backend schema has not been updated yet
-        console.warn('[createRemittance] Schema missing recipient_bank_account_id, retrying without the column');
-        schemaSupportsRecipientBankAccount = false;
-        hasRecipientBankAccountColumn = false;
-        const fallbackData = { ...insertData };
-        delete fallbackData.recipient_bank_account_id;
-        ({ data, error } = await performInsert(fallbackData));
-      }
-    }
+    const { data, error } = await performInsert(insertData);
 
     if (error) {
       console.error('[createRemittance] DATABASE INSERT ERROR:', error);
@@ -795,7 +769,7 @@ export const createRemittance = async (remittanceData) => {
     }
 
     // Create bank transfer for off-cash methods (graceful fallback if fails)
-    if (deliveryMethod !== 'cash' && recipient_bank_account_id && schemaSupportsRecipientBankAccount) {
+    if (deliveryMethod !== 'cash' && recipient_bank_account_id) {
       if (isAdminUser) {
         console.log('[createRemittance] STEP 11 - Creating bank transfer for non-cash delivery as admin...');
         try {
@@ -1282,6 +1256,52 @@ export const getRemittanceBankAccountDetails = async (recipientBankAccountId) =>
     return data;
   } catch (error) {
     console.error('[getRemittanceBankAccountDetails] Exception:', error);
+    return null;
+  }
+};
+
+/**
+ * Get bank account details by recipient ID (fallback when recipient_bank_account_id is not set)
+ * Returns the default bank account for the recipient, or the first one if none is default
+ * @param {string} recipientId - Recipient ID
+ * @returns {Promise<Object|null>} Bank account details or null
+ */
+export const getBankAccountByRecipientId = async (recipientId) => {
+  try {
+    if (!recipientId) {
+      return null;
+    }
+
+    const { data, error } = await supabase
+      .from('recipient_bank_accounts')
+      .select(`
+        id,
+        is_default,
+        bank_accounts!bank_account_id(
+          id,
+          account_number_last4,
+          account_number_hash,
+          account_number_full,
+          account_holder_name,
+          banks!bank_id(name, swift_code),
+          account_types!account_type_id(name),
+          currencies!currency_id(code, name_es, name_en)
+        )
+      `)
+      .eq('recipient_id', recipientId)
+      .eq('is_active', true)
+      .order('is_default', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error) {
+      console.error('[getBankAccountByRecipientId] Error:', error);
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('[getBankAccountByRecipientId] Exception:', error);
     return null;
   }
 };
