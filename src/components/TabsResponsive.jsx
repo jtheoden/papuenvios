@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useBusiness } from '@/contexts/BusinessContext';
 import { semanticColors } from '@/lib/colorTokens';
 
 /**
@@ -9,14 +10,28 @@ import { semanticColors } from '@/lib/colorTokens';
  * Desktop (md+): Renders horizontal tabs normally
  * Mobile (<md): Renders as dropdown menu with icons
  *
+ * Now supports visualSettings for dynamic theming
+ *
  * @param {Array} tabs - Tab configuration array
  *   [{ id, label (i18n key), icon (LucideIcon), content (ReactNode) }, ...]
  * @param {string} activeTab - Currently active tab id
  * @param {Function} onTabChange - Callback when tab changes
+ * @param {Object} visualSettings - Optional visual settings override (falls back to context)
  */
-const TabsResponsive = ({ tabs, activeTab, onTabChange }) => {
+const TabsResponsive = ({ tabs, activeTab, onTabChange, visualSettings: propVisualSettings }) => {
   const { t } = useLanguage();
+  const { visualSettings: contextVisualSettings } = useBusiness();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Use prop visualSettings if provided, otherwise fall back to context
+  const visualSettings = propVisualSettings || contextVisualSettings || {};
+
+  // Tab colors from visualSettings with fallbacks to semanticColors
+  const tabActiveColor = visualSettings.tabActiveColor || visualSettings.primaryColor || semanticColors.primary.main;
+  const tabActiveBgColor = visualSettings.tabActiveBgColor || semanticColors.primary.light;
+  const tabInactiveColor = visualSettings.tabInactiveColor || semanticColors.neutral[600];
+  const tabInactiveBgColor = visualSettings.tabInactiveBgColor || 'transparent';
+  const hoverColor = visualSettings.tabInactiveColor ? visualSettings.tabActiveColor : semanticColors.neutral[900];
 
   const activeTabData = tabs.find(tab => tab.id === activeTab);
 
@@ -34,25 +49,27 @@ const TabsResponsive = ({ tabs, activeTab, onTabChange }) => {
             style={
               activeTab === tab.id
                 ? {
-                    borderBottom: `2px solid ${semanticColors.primary.main}`,
-                    color: semanticColors.primary.main
+                    borderBottom: `2px solid ${tabActiveColor}`,
+                    color: tabActiveColor,
+                    backgroundColor: tabActiveBgColor
                   }
                 : {
-                    color: semanticColors.neutral[600],
-                    transition: 'color 0.2s'
+                    color: tabInactiveColor,
+                    backgroundColor: tabInactiveBgColor,
+                    transition: 'color 0.2s, background-color 0.2s'
                   }
             }
             onMouseEnter={(e) => {
               if (activeTab !== tab.id) {
-                e.currentTarget.style.color = semanticColors.neutral[900];
+                e.currentTarget.style.color = hoverColor;
               }
             }}
             onMouseLeave={(e) => {
               if (activeTab !== tab.id) {
-                e.currentTarget.style.color = semanticColors.neutral[600];
+                e.currentTarget.style.color = tabInactiveColor;
               }
             }}
-            className="px-6 py-3 font-medium text-sm transition-colors"
+            className="px-6 py-3 font-medium text-sm transition-colors rounded-t-lg"
           >
             {t(tab.label)}
           </button>
@@ -107,12 +124,13 @@ const TabsResponsive = ({ tabs, activeTab, onTabChange }) => {
                 style={
                   activeTab === tab.id
                     ? {
-                        backgroundColor: semanticColors.primary.light,
-                        color: semanticColors.primary.main,
-                        borderRight: `2px solid ${semanticColors.primary.main}`
+                        backgroundColor: tabActiveBgColor,
+                        color: tabActiveColor,
+                        borderRight: `2px solid ${tabActiveColor}`
                       }
                     : {
-                        color: semanticColors.neutral[700],
+                        color: tabInactiveColor,
+                        backgroundColor: tabInactiveBgColor,
                         transition: 'background-color 0.2s'
                       }
                 }
@@ -123,7 +141,7 @@ const TabsResponsive = ({ tabs, activeTab, onTabChange }) => {
                 }}
                 onMouseLeave={(e) => {
                   if (activeTab !== tab.id) {
-                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.backgroundColor = tabInactiveBgColor;
                   }
                 }}
               >

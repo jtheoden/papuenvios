@@ -45,6 +45,18 @@ export const IMAGE_CONSTRAINTS = {
     quality: 0.95,
     formats: ['image/png', 'image/svg+xml', 'image/webp']
   },
+  favicon: {
+    maxSizeMB: 0.5,
+    maxWidth: 256,
+    maxHeight: 256,
+    minWidth: 16,
+    minHeight: 16,
+    aspectRatio: null, // Maintain original aspect ratio
+    quality: 1.0, // No quality loss for small icons
+    formats: ['image/x-icon', 'image/vnd.microsoft.icon', 'image/png', 'image/svg+xml', 'image/webp'],
+    skipResize: false, // Allow resizing to fit max dimensions
+    outputFormat: 'image/png' // Output as PNG for broad compatibility
+  },
   payment_proof: {
     maxSizeMB: 5,
     maxWidth: 2000,
@@ -116,6 +128,33 @@ export const processImage = async (file, type = 'product') => {
   }
 
   try {
+    // Special handling for .ico files - can't be processed in canvas, just convert to base64
+    if (file.type === 'image/x-icon' || file.type === 'image/vnd.microsoft.icon') {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const sizeMB = file.size / (1024 * 1024);
+
+      return {
+        success: true,
+        base64,
+        blob: file,
+        metadata: {
+          originalSize: sizeMB.toFixed(2) + 'MB',
+          finalSize: sizeMB.toFixed(2) + 'MB',
+          compression: '0%',
+          originalDimensions: 'N/A',
+          finalDimensions: 'N/A',
+          format: 'ICO',
+          quality: '100%'
+        }
+      };
+    }
+
     // Special handling for SVG files (don't process, just convert to base64)
     if (file.type === 'image/svg+xml') {
       const base64 = await new Promise((resolve, reject) => {
@@ -203,11 +242,12 @@ export const processImage = async (file, type = 'product') => {
       0, 0, finalWidth, finalHeight
     );
 
-    // Convert to blob
+    // Convert to blob - use PNG for favicons to preserve transparency, JPEG otherwise
+    const outputFormat = constraints.outputFormat || 'image/jpeg';
     const blob = await new Promise((resolve) => {
       canvas.toBlob(
         resolve,
-        'image/jpeg', // Always convert to JPEG for best compression
+        outputFormat,
         constraints.quality
       );
     });
@@ -224,6 +264,10 @@ export const processImage = async (file, type = 'product') => {
     const finalSizeMB = blob.size / (1024 * 1024);
     const compressionRatio = ((1 - finalSizeMB / originalSizeMB) * 100).toFixed(1);
 
+    // Determine format name for metadata
+    const formatName = outputFormat === 'image/png' ? 'PNG' :
+                       outputFormat === 'image/webp' ? 'WebP' : 'JPEG';
+
     return {
       success: true,
       base64,
@@ -233,8 +277,8 @@ export const processImage = async (file, type = 'product') => {
         finalSize: finalSizeMB.toFixed(2) + 'MB',
         compression: compressionRatio + '%',
         originalDimensions: `${img.width}x${img.height}`,
-        finalDimensions: `${finalWidth}x${finalHeight}`,
-        format: 'JPEG',
+        finalDimensions: `${Math.round(finalWidth)}x${Math.round(finalHeight)}`,
+        format: formatName,
         quality: (constraints.quality * 100) + '%'
       }
     };

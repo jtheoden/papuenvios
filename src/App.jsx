@@ -31,17 +31,48 @@ import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { trackPageVisit } from '@/lib/analyticsService';
 
-// Component to dynamically update page title
-function DynamicTitle() {
+// Component to dynamically update page title and apply visual settings
+function DynamicVisualSettings() {
   const { visualSettings } = useBusiness();
 
   useEffect(() => {
-    document.title = visualSettings.companyName || 'PapuEnvíos';
-  }, [visualSettings.companyName]);
+    // Update document title
+    document.title = visualSettings.siteTitle || visualSettings.companyName || 'PapuEnvíos';
+
+    // Apply page background color to body
+    if (visualSettings.pageBgColor) {
+      document.body.style.backgroundColor = visualSettings.pageBgColor;
+    }
+
+    // Apply favicon
+    if (visualSettings.favicon) {
+      const link = document.querySelector("link[rel='icon']") || document.createElement('link');
+      link.rel = 'icon';
+      link.href = visualSettings.favicon;
+      if (!document.querySelector("link[rel='icon']")) {
+        document.head.appendChild(link);
+      }
+    }
+
+    // Set CSS custom properties for global access
+    const root = document.documentElement;
+    if (visualSettings.primaryColor) {
+      root.style.setProperty('--color-primary', visualSettings.primaryColor);
+    }
+    if (visualSettings.secondaryColor) {
+      root.style.setProperty('--color-secondary', visualSettings.secondaryColor);
+    }
+    if (visualSettings.accentColor) {
+      root.style.setProperty('--color-accent', visualSettings.accentColor);
+    }
+    if (visualSettings.pageBgColor) {
+      root.style.setProperty('--color-page-bg', visualSettings.pageBgColor);
+    }
+  }, [visualSettings]);
 
   return (
     <Helmet>
-      <title>{visualSettings.companyName || 'PapuEnvíos'} - Plataforma de Comercio Digital</title>
+      <title>{visualSettings.siteTitle || visualSettings.companyName || 'PapuEnvíos'}</title>
       <meta name="description" content="Plataforma completa de comercio digital con vendedores independientes, remesas y gestión de ganancias" />
     </Helmet>
   );
@@ -242,7 +273,7 @@ function App() {
               <CurrencyProvider>
                 <ModalProvider>
                 <div className="min-h-screen">
-                  <DynamicTitle />
+                  <DynamicVisualSettings />
                   <PageAnalyticsTracker currentPage={currentPage} />
 
                 <AnimatePresence mode="wait">

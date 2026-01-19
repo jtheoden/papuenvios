@@ -7,6 +7,8 @@ import {
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useModal } from '@/contexts/ModalContext';
+import { useBusiness } from '@/contexts/BusinessContext';
+import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import {
   getAllRemittances,
@@ -30,6 +32,7 @@ const AdminRemittancesTab = () => {
   const { t, language } = useLanguage();
   const { isAdmin, isSuperAdmin } = useAuth();
   const { showModal } = useModal();
+  const { visualSettings } = useBusiness();
 
   const locale = language === 'es' ? 'es-ES' : 'en-US';
 
@@ -494,7 +497,8 @@ const AdminRemittancesTab = () => {
         return (
           <TooltipButton
             tooltipText={t('remittances.admin.process')}
-            className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+            className="flex items-center gap-1 px-2 sm:px-3 py-1 rounded-lg transition-colors text-sm"
+            style={getPrimaryButtonStyle(visualSettings)}
             onClick={() => handleStartProcessing(remittance)}
             title={t('remittances.admin.process')}
           >
@@ -510,7 +514,8 @@ const AdminRemittancesTab = () => {
             {/* Upload Delivery Proof */}
             <div className="flex items-center gap-2">
               <label
-                className="flex items-center gap-2 px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm cursor-pointer"
+                className="flex items-center gap-2 px-2 sm:px-3 py-1 rounded-lg transition-colors text-sm cursor-pointer"
+                style={getPrimaryButtonStyle(visualSettings)}
                 title={hasDeliveryProof ? t('remittances.admin.changeDeliveryProof') : t('remittances.admin.uploadDeliveryProof')}
               >
                 <ImageIcon className="h-4 w-4" />
@@ -540,11 +545,11 @@ const AdminRemittancesTab = () => {
               tooltipText={t('remittances.admin.confirmDelivery')}
               onClick={() => handleConfirmDelivery(remittance)}
               disabled={!hasDeliveryProof}
-              className={`flex items-center gap-1 px-2 sm:px-3 py-1 rounded-lg transition-colors text-sm ${
-                hasDeliveryProof
-                  ? 'bg-purple-600 text-white hover:bg-purple-700'
-                  : 'bg-gray-400 text-gray-200 cursor-not-allowed'
-              }`}
+              className="flex items-center gap-1 px-2 sm:px-3 py-1 rounded-lg transition-colors text-sm"
+              style={hasDeliveryProof
+                ? { backgroundColor: visualSettings?.accentColor || '#9333ea', color: '#ffffff' }
+                : { backgroundColor: '#9ca3af', color: '#e5e7eb', cursor: 'not-allowed' }
+              }
               title={t('remittances.admin.confirmDelivery')}
             >
               <Truck className="h-4 w-4" />
@@ -616,7 +621,8 @@ const AdminRemittancesTab = () => {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
+              className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:border-transparent appearance-none bg-white"
+              style={{ '--tw-ring-color': visualSettings?.primaryColor || '#2563eb' }}
             >
               <option value="all">{t('remittances.admin.allStatuses')}</option>
               <option value="pending_validation">{t('remittances.admin.pendingValidation')}</option>

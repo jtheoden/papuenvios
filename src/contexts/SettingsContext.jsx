@@ -1,6 +1,13 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { DEFAULT_SETTINGS, loadNotificationSettings, getFreshNotificationSettings } from '@/lib/notificationSettingsService';
+import {
+  DEFAULT_VISUAL_SETTINGS,
+  loadVisualSettings,
+  saveVisualSettings,
+  applyVisualSettingsToDOM,
+  clearVisualSettingsCache
+} from '@/lib/businessVisualSettingsService';
 
 const SettingsContext = createContext();
 
@@ -108,34 +115,62 @@ export const SettingsProvider = ({ children }) => {
     loadSettings();
   }, [isAuthenticated]);
 
-  const [visualSettings, setVisualSettings] = useLocalStorage('visualSettings', {
-    logo: '',
-    favicon: '',
-    companyName: 'PapuEnvíos',
-    // Brand colors
-    primaryColor: '#2563eb',
-    secondaryColor: '#9333ea',
-    useGradient: true,
-    // Header colors
-    headerBgColor: '#ffffff',
-    headerTextColor: '#1f2937',
-    // Text/Heading colors
-    headingColor: '#1f2937',
-    useHeadingGradient: true,
-    // Button colors
-    buttonBgColor: '#2563eb',
-    buttonTextColor: '#ffffff',
-    buttonHoverBgColor: '#1d4ed8',
-    // Destructive button colors
-    destructiveBgColor: '#dc2626',
-    destructiveTextColor: '#ffffff',
-    destructiveHoverBgColor: '#b91c1c',
-    // Accent colors
-    accentColor: '#9333ea',
-    // Background colors
-    pageBgColor: '#f9fafb',
-    cardBgColor: '#ffffff'
-  });
+  // Visual settings - loaded from database for cross-device persistence
+  const [visualSettings, setVisualSettingsState] = useState(DEFAULT_VISUAL_SETTINGS);
+  const [visualSettingsLoaded, setVisualSettingsLoaded] = useState(false);
+  const visualSettingsSaveTimeout = useRef(null);
+
+  // Load visual settings from database on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const settings = await loadVisualSettings();
+        setVisualSettingsState(settings);
+        applyVisualSettingsToDOM(settings);
+        setVisualSettingsLoaded(true);
+      } catch (err) {
+        console.error('[SettingsContext] Failed to load visual settings:', err);
+        setVisualSettingsLoaded(true);
+      }
+    };
+    loadSettings();
+  }, []);
+
+  // Save visual settings to database with debounce
+  const setVisualSettings = useCallback(async (newSettings) => {
+    const settingsToSave = typeof newSettings === 'function'
+      ? newSettings(visualSettings)
+      : newSettings;
+
+    // Update state immediately for responsive UI
+    setVisualSettingsState(settingsToSave);
+    applyVisualSettingsToDOM(settingsToSave);
+
+    // Debounce database save (500ms)
+    if (visualSettingsSaveTimeout.current) {
+      clearTimeout(visualSettingsSaveTimeout.current);
+    }
+    visualSettingsSaveTimeout.current = setTimeout(async () => {
+      const result = await saveVisualSettings(settingsToSave);
+      if (!result.success) {
+        console.error('[SettingsContext] Failed to save visual settings:', result.error);
+      }
+    }, 500);
+  }, [visualSettings]);
+
+  // Force refresh visual settings from database
+  const refreshVisualSettings = useCallback(async () => {
+    try {
+      clearVisualSettingsCache();
+      const settings = await loadVisualSettings();
+      setVisualSettingsState(settings);
+      applyVisualSettingsToDOM(settings);
+      return settings;
+    } catch (err) {
+      console.error('[SettingsContext] Failed to refresh visual settings:', err);
+      return visualSettings;
+    }
+  }, [visualSettings]);
 
   // Helper: get exchange rate for USD
   const getExchangeRate = (currencyCode = 'USD') => {
@@ -153,9 +188,11 @@ export const SettingsProvider = ({ children }) => {
     notificationSettings,
     setNotificationSettings,
     refreshNotificationSettings, // Function to refresh from DB (bypasses cache)
-    // Visual settings
+    // Visual settings (persisted to database)
     visualSettings,
     setVisualSettings,
+    refreshVisualSettings,
+    visualSettingsLoaded,
     // Helpers
     exchangeRate: getExchangeRate('USD'),
     getExchangeRate

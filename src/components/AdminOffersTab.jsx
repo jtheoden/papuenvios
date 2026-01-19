@@ -32,15 +32,18 @@ import {
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBusiness } from '@/contexts/BusinessContext';
 import { toast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/supabase';
 import { logActivity } from '@/lib/activityLogger';
 import { useRealtimeOffers } from '@/hooks/useRealtimeSubscription';
+import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 
 const AdminOffersTab = () => {
   const { t, language } = useLanguage();
   const { currencySymbol } = useCurrency();
   const { user } = useAuth();
+  const { visualSettings } = useBusiness();
 
   // States
   const [offers, setOffers] = useState([]);
@@ -402,7 +405,14 @@ const AdminOffersTab = () => {
         </div>
         <button
           onClick={() => setShowCreateForm(true)}
-          className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:shadow-lg transition-shadow font-medium text-sm sm:text-base flex-shrink-0"
+          className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-lg hover:shadow-lg transition-shadow font-medium text-sm sm:text-base flex-shrink-0"
+          style={{
+            backgroundImage: visualSettings?.useGradient
+              ? `linear-gradient(to right, ${visualSettings?.primaryColor || '#9333ea'}, ${visualSettings?.secondaryColor || '#7c3aed'})`
+              : undefined,
+            backgroundColor: !visualSettings?.useGradient ? (visualSettings?.primaryColor || '#9333ea') : undefined,
+            color: '#ffffff'
+          }}
         >
           <Plus className="h-4 w-4 sm:h-5 sm:w-5" />
           <span className="hidden xs:inline">{language === 'es' ? 'Nueva Oferta' : 'New Offer'}</span>
@@ -530,7 +540,8 @@ const AdminOffersTab = () => {
             placeholder={language === 'es' ? 'Buscar por código...' : 'Search by code...'}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 sm:pl-10 pr-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            className="w-full pl-9 sm:pl-10 pr-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
+            style={{ '--tw-ring-color': visualSettings?.primaryColor || '#9333ea' }}
           />
         </div>
         <div className="flex gap-1 sm:gap-2 overflow-x-auto pb-1">
@@ -538,11 +549,11 @@ const AdminOffersTab = () => {
             <button
               key={filter}
               onClick={() => setFilterActive(filter)}
-              className={`px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
-                filterActive === filter
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
+              className="px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0"
+              style={filterActive === filter
+                ? { backgroundColor: visualSettings?.primaryColor || '#9333ea', color: '#ffffff' }
+                : { backgroundColor: '#e5e7eb', color: '#374151' }
+              }
             >
               {language === 'es'
                 ? filter === 'all'
@@ -773,7 +784,14 @@ const AdminOffersTab = () => {
               <div className="flex gap-3 pt-4">
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:shadow-lg transition-shadow font-medium"
+                  className="flex-1 px-4 py-2 rounded-lg hover:shadow-lg transition-shadow font-medium"
+                  style={{
+                    backgroundImage: visualSettings?.useGradient
+                      ? `linear-gradient(to right, ${visualSettings?.primaryColor || '#9333ea'}, ${visualSettings?.secondaryColor || '#7c3aed'})`
+                      : undefined,
+                    backgroundColor: !visualSettings?.useGradient ? (visualSettings?.primaryColor || '#9333ea') : undefined,
+                    color: '#ffffff'
+                  }}
                 >
                   {editingOffer
                     ? language === 'es'

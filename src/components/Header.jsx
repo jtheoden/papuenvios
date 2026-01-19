@@ -172,7 +172,7 @@ const Header = ({ currentPage, onNavigate }) => {
                 backgroundClip: 'text'
               }}
             >
-              {visualSettings?.logoName || 'PapuEnvíos'}
+              {visualSettings?.companyName || 'PapuEnvíos'}
             </span>
           </motion.div>
 
@@ -232,21 +232,14 @@ const Header = ({ currentPage, onNavigate }) => {
                       exit={{ opacity: 0, y: -10 }}
                       className="absolute right-0 mt-2 w-56 rounded-xl shadow-xl overflow-hidden backdrop-blur-md"
                       style={{
-                        backgroundColor: visualSettings.headerBgColor || 'rgba(255, 255, 255, 0.95)',
-                        color: visualSettings.headerTextColor || semanticColors.neutral[800]
+                        backgroundColor: visualSettings.headerMenuBgColor || visualSettings.headerBgColor || 'rgba(255, 255, 255, 0.95)',
+                        color: visualSettings.headerMenuTextColor || visualSettings.headerTextColor || semanticColors.neutral[800]
                       }}
                     >
                       {adminMenuItems.map((item) => {
-                        // Calculate hover background color based on header background
-                        const isHeaderLight = visualSettings.headerBgColor === '#ffffff' || !visualSettings.headerBgColor;
-                        const hoverBgColor = isHeaderLight
-                          ? `${visualSettings.primaryColor}15` // 15 = 8% opacity in hex
-                          : `${visualSettings.headerBgColor}40`; // Lighter shade
-
-                        const activeStyle = currentPage === item.id ? {
-                          backgroundColor: hoverBgColor,
-                          color: visualSettings.primaryColor || semanticColors.primary.main
-                        } : {};
+                        const isActive = currentPage === item.id;
+                        const hoverBgColor = visualSettings.headerMenuHoverBgColor || `${visualSettings.primaryColor}15`;
+                        const activeColor = visualSettings.headerMenuActiveColor || visualSettings.primaryColor || semanticColors.primary.main;
 
                         return (
                           <Button
@@ -256,16 +249,18 @@ const Header = ({ currentPage, onNavigate }) => {
                             onClick={() => handleNavClick(item.id)}
                             className="w-full justify-start flex items-center space-x-2 rounded-none hover:opacity-100"
                             style={{
-                              ...activeStyle,
-                              color: visualSettings.headerTextColor || semanticColors.neutral[800]
+                              backgroundColor: isActive ? hoverBgColor : 'transparent',
+                              color: isActive
+                                ? activeColor
+                                : (visualSettings.headerMenuTextColor || visualSettings.headerTextColor || semanticColors.neutral[800])
                             }}
                             onMouseEnter={(e) => {
-                              if (currentPage !== item.id) {
+                              if (!isActive) {
                                 e.currentTarget.style.backgroundColor = hoverBgColor;
                               }
                             }}
                             onMouseLeave={(e) => {
-                              if (currentPage !== item.id) {
+                              if (!isActive) {
                                 e.currentTarget.style.backgroundColor = 'transparent';
                               }
                             }}

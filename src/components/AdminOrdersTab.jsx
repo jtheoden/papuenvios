@@ -46,7 +46,9 @@ import {
 import { ORDER_STATUS, PAYMENT_STATUS, ITEM_TYPES } from '@/lib/constants';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBusiness } from '@/contexts/BusinessContext';
 import { useRealtimeOrders } from '@/hooks/useRealtimeSubscription';
+import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import OrderActionButtons from '@/components/admin/OrderActionButtons';
 import { getTableColumns, getModalColumns } from '@/components/admin/OrderTableConfig';
@@ -91,6 +93,7 @@ const getStatusIcon = (status, paymentStatus) => {
 const AdminOrdersTab = () => {
   const { t } = useLanguage();
   const { user } = useAuth();
+  const { visualSettings } = useBusiness();
 
   // State
   const [orders, setOrders] = useState([]);
@@ -644,11 +647,11 @@ const AdminOrdersTab = () => {
         <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 rounded-lg border transition-colors ${
-              showFilters
-                ? 'bg-blue-50 border-blue-500 text-blue-700'
-                : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-            }`}
+            className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 rounded-lg border transition-colors"
+            style={showFilters
+              ? { backgroundColor: `${visualSettings?.primaryColor || '#2563eb'}15`, borderColor: visualSettings?.primaryColor || '#2563eb', color: visualSettings?.primaryColor || '#2563eb' }
+              : { backgroundColor: '#ffffff', borderColor: '#d1d5db', color: '#374151' }
+            }
             title={t('adminOrders.filters.title')}
           >
             <Filter className="h-4 w-4" />
@@ -659,7 +662,8 @@ const AdminOrdersTab = () => {
           <button
             onClick={loadOrders}
             disabled={loading}
-            className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+            style={getPrimaryButtonStyle(visualSettings)}
             title={t('dashboard.refresh')}
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
@@ -816,7 +820,8 @@ const AdminOrdersTab = () => {
             <div className="flex justify-end pt-4 border-t border-gray-200">
               <button
                 onClick={applyApiFilters}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="px-6 py-2 rounded-lg transition-colors"
+                style={getPrimaryButtonStyle(visualSettings)}
               >
                 {t('adminOrders.filters.apply')}
               </button>
