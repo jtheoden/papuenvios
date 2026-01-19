@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { DollarSign, Save, Plus, Edit, Trash2 } from 'lucide-react';
+import { DollarSign, Save, Plus, Edit, Trash2, AlertTriangle, ArrowRightLeft, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -37,6 +37,34 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
     fromCurrencyId: '', toCurrencyId: '', rate: '',
     effectiveDate: new Date().toISOString().split('T')[0]
   });
+
+  // Check if exchange rate pair already exists (including inverse)
+  const duplicateRateInfo = useMemo(() => {
+    if (!newRate.fromCurrencyId || !newRate.toCurrencyId) return null;
+
+    const existingRate = exchangeRates.find(rate =>
+      (rate.from_currency_id === newRate.fromCurrencyId && rate.to_currency_id === newRate.toCurrencyId) ||
+      (rate.from_currency_id === newRate.toCurrencyId && rate.to_currency_id === newRate.fromCurrencyId)
+    );
+
+    if (existingRate) {
+      const fromCurrency = currencies.find(c => c.id === existingRate.from_currency_id);
+      const toCurrency = currencies.find(c => c.id === existingRate.to_currency_id);
+      return {
+        exists: true,
+        rate: existingRate,
+        fromCode: fromCurrency?.code,
+        toCode: toCurrency?.code
+      };
+    }
+
+    return null;
+  }, [newRate.fromCurrencyId, newRate.toCurrencyId, exchangeRates, currencies]);
+
+  // Get currency codes for preview
+  const fromCurrency = useMemo(() => currencies.find(c => c.id === newRate.fromCurrencyId), [currencies, newRate.fromCurrencyId]);
+  const toCurrency = useMemo(() => currencies.find(c => c.id === newRate.toCurrencyId), [currencies, newRate.toCurrencyId]);
+  const inverseRate = useMemo(() => newRate.rate ? (1 / parseFloat(newRate.rate)) : null, [newRate.rate]);
 
   useEffect(() => {
     loadCurrencies();
@@ -197,6 +225,18 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       toast({
         title: t('common.error'),
         description: t('settings.financial.currenciesMustBeDifferent'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Check for duplicate exchange rate pair
+    if (duplicateRateInfo) {
+      toast({
+        title: t('common.error'),
+        description: language === 'es'
+          ? `Ya existe una tasa de cambio para ${duplicateRateInfo.fromCode}/${duplicateRateInfo.toCode}. Elimínala primero si deseas crear una nueva.`
+          : `An exchange rate already exists for ${duplicateRateInfo.fromCode}/${duplicateRateInfo.toCode}. Delete it first if you want to create a new one.`,
         variant: 'destructive'
       });
       return;
@@ -547,6 +587,29 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
             <h4 className="text-lg font-semibold mb-3">
               {t('settings.financial.addNewExchangeRate')}
             </h4>
+
+            {/* Info box explaining how exchange rates work */}
+            <div className="bg-blue-100 border border-blue-300 rounded-lg p-3 mb-4 flex items-start gap-2">
+              <Info className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+              <div className="text-sm text-blue-800">
+                {language === 'es' ? (
+                  <>
+                    <strong>Ejemplo:</strong> Si 1 USD = 430 CUP, ingresa 430 como tasa.
+                    El sistema creará automáticamente la tasa inversa (1 CUP = 0.0023 USD).
+                    <br />
+                    <span className="text-blue-600 mt-1 block">Solo se permite una tasa por par de monedas.</span>
+                  </>
+                ) : (
+                  <>
+                    <strong>Example:</strong> If 1 USD = 430 CUP, enter 430 as the rate.
+                    The system will automatically create the inverse rate (1 CUP = 0.0023 USD).
+                    <br />
+                    <span className="text-blue-600 mt-1 block">Only one rate per currency pair is allowed.</span>
+                  </>
+                )}
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
               <div>
                 <label className="block text-sm font-medium mb-1">
@@ -558,7 +621,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                   className="input-style w-full"
                 >
                   <option value="">{t('settings.financial.select')}</option>
-                  {currencies.map(c => (
+                  {currencies.filter(c => c.id !== newRate.toCurrencyId).map(c => (
                     <option key={c.id} value={c.id}>{c.code} - {language === 'es' ? c.name_es : c.name_en}</option>
                   ))}
                 </select>
@@ -573,7 +636,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                   className="input-style w-full"
                 >
                   <option value="">{t('settings.financial.select')}</option>
-                  {currencies.map(c => (
+                  {currencies.filter(c => c.id !== newRate.fromCurrencyId).map(c => (
                     <option key={c.id} value={c.id}>{c.code} - {language === 'es' ? c.name_es : c.name_en}</option>
                   ))}
                 </select>
@@ -603,7 +666,51 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                 />
               </div>
             </div>
-            <Button onClick={handleSaveRate} style={getPrimaryButtonStyle(visualSettings)} className="h-9 px-3">
+
+            {/* Visual preview of the rate and its inverse */}
+            {fromCurrency && toCurrency && newRate.rate && (
+              <div className="bg-white border border-blue-200 rounded-lg p-3 mb-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                  <ArrowRightLeft className="h-4 w-4 text-blue-600" />
+                  {language === 'es' ? 'Vista previa de conversión:' : 'Conversion preview:'}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="bg-green-50 border border-green-200 rounded p-2">
+                    <span className="font-mono text-green-800">
+                      1 {fromCurrency.code} = {parseFloat(newRate.rate).toFixed(4)} {toCurrency.code}
+                    </span>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded p-2">
+                    <span className="font-mono text-blue-800">
+                      1 {toCurrency.code} = {inverseRate?.toFixed(6)} {fromCurrency.code}
+                    </span>
+                    <span className="text-xs text-blue-600 ml-2">({language === 'es' ? 'inversa automática' : 'auto inverse'})</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Warning for duplicate rate */}
+            {duplicateRateInfo && (
+              <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 mb-4 flex items-start gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+                <div className="text-sm text-amber-800">
+                  <strong>{language === 'es' ? 'Tasa existente:' : 'Existing rate:'}</strong>{' '}
+                  {language === 'es'
+                    ? `Ya existe una tasa para ${duplicateRateInfo.fromCode}/${duplicateRateInfo.toCode} (${Number(duplicateRateInfo.rate.rate).toFixed(4)}). Elimínala primero si deseas crear una nueva.`
+                    : `A rate for ${duplicateRateInfo.fromCode}/${duplicateRateInfo.toCode} already exists (${Number(duplicateRateInfo.rate.rate).toFixed(4)}). Delete it first to create a new one.`
+                  }
+                </div>
+              </div>
+            )}
+
+            <Button
+              onClick={handleSaveRate}
+              style={duplicateRateInfo ? undefined : getPrimaryButtonStyle(visualSettings)}
+              className="h-9 px-3"
+              disabled={!!duplicateRateInfo}
+              variant={duplicateRateInfo ? 'secondary' : 'default'}
+            >
               <Plus className="h-4 w-4 sm:mr-2" />
               <span className="hidden sm:inline">{t('settings.financial.saveRates')}</span>
             </Button>
