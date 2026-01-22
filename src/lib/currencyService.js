@@ -718,3 +718,47 @@ export const deleteExchangeRate = async (rateId) => {
     throw appError;
   }
 };
+
+/**
+ * Soft delete exchange rate pair - deletes both direct and inverse rate (ADMIN ONLY)
+ * @param {string} fromCurrencyId - From currency UUID
+ * @param {string} toCurrencyId - To currency UUID
+ * @returns {Promise<{deletedCount: number}>} Number of rates deleted
+ * @throws {AppError} DB_ERROR on failure
+ */
+export const deleteExchangeRatePair = async (fromCurrencyId, toCurrencyId) => {
+  try {
+    if (!fromCurrencyId || !toCurrencyId) {
+      throw createValidationError({
+        fromCurrencyId: !fromCurrencyId ? 'From currency ID required' : null,
+        toCurrencyId: !toCurrencyId ? 'To currency ID required' : null
+      }, 'Missing currency IDs');
+    }
+
+    // Delete both direct rate (from→to) and inverse rate (to→from)
+    const { data, error } = await supabase
+      .from('exchange_rates')
+      .update({ is_active: false })
+      .or(
+        `and(from_currency_id.eq.${fromCurrencyId},to_currency_id.eq.${toCurrencyId}),` +
+        `and(from_currency_id.eq.${toCurrencyId},to_currency_id.eq.${fromCurrencyId})`
+      )
+      .eq('is_active', true)
+      .select('id');
+
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return { deletedCount: data?.length || 0 };
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'deleteExchangeRatePair',
+      fromCurrencyId,
+      toCurrencyId
+    });
+    logError(appError, { operation: 'deleteExchangeRatePair', fromCurrencyId, toCurrencyId });
+    throw appError;
+  }
+};

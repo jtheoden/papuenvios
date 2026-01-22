@@ -8,7 +8,7 @@ import { getPrimaryButtonStyle, getHeadingStyle } from '@/lib/styleUtils';
 import { toast } from '@/components/ui/use-toast';
 import {
   getCurrencies, createCurrency, updateCurrency, deleteCurrency,
-  fetchOfficialRates, getAllExchangeRates, saveExchangeRate, deleteExchangeRate
+  fetchOfficialRates, getAllExchangeRates, saveExchangeRate, deleteExchangeRate, deleteExchangeRatePair
 } from '@/lib/currencyService';
 import { supabase } from '@/lib/supabase';
 
@@ -65,6 +65,38 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   const fromCurrency = useMemo(() => currencies.find(c => c.id === newRate.fromCurrencyId), [currencies, newRate.fromCurrencyId]);
   const toCurrency = useMemo(() => currencies.find(c => c.id === newRate.toCurrencyId), [currencies, newRate.toCurrencyId]);
   const inverseRate = useMemo(() => newRate.rate ? (1 / parseFloat(newRate.rate)) : null, [newRate.rate]);
+
+  // Group exchange rates into pairs for display
+  const groupedExchangeRates = useMemo(() => {
+    const pairs = [];
+    const processedPairs = new Set();
+
+    exchangeRates.forEach(rate => {
+      // Create a unique key for the pair (sorted to ensure same key for both directions)
+      const pairKey = [rate.from_currency_id, rate.to_currency_id].sort().join('-');
+
+      if (processedPairs.has(pairKey)) return;
+      processedPairs.add(pairKey);
+
+      // Find the inverse rate if it exists
+      const inverseRate = exchangeRates.find(r =>
+        r.from_currency_id === rate.to_currency_id &&
+        r.to_currency_id === rate.from_currency_id
+      );
+
+      pairs.push({
+        id: rate.id,
+        pairKey,
+        directRate: rate,
+        inverseRate: inverseRate || null,
+        fromCurrency: rate.from_currency,
+        toCurrency: rate.to_currency,
+        effectiveDate: rate.effective_date
+      });
+    });
+
+    return pairs;
+  }, [exchangeRates]);
 
   useEffect(() => {
     loadCurrencies();
@@ -290,6 +322,37 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       });
     } catch (error) {
       console.error('Error deleting rate:', error);
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Delete exchange rate pair (both direct and inverse)
+  const handleDeleteRatePair = async (fromCurrencyId, toCurrencyId) => {
+    const confirmMessage = language === 'es'
+      ? '¿Eliminar este par de tasas de cambio? Se eliminarán ambas direcciones (directa e inversa).'
+      : 'Delete this exchange rate pair? Both directions (direct and inverse) will be removed.';
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      const result = await deleteExchangeRatePair(fromCurrencyId, toCurrencyId);
+      if (result.error) throw result.error;
+
+      await loadExchangeRates();
+      toast({
+        title: language === 'es' ? 'Par de tasas eliminado' : 'Rate pair deleted',
+        description: language === 'es'
+          ? `Se eliminaron ${result.deletedCount} tasas de cambio`
+          : `${result.deletedCount} exchange rates removed`
+      });
+    } catch (error) {
+      console.error('Error deleting rate pair:', error);
       toast({
         title: 'Error',
         description: error.message,
@@ -719,38 +782,84 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
 
         {loadingRates2 ? (
           <p className="text-center py-8 text-gray-500">{t('common.loading')}</p>
+        ) : groupedExchangeRates.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <ArrowRightLeft className="h-12 w-12 mx-auto mb-4 opacity-30" />
+            <p>{language === 'es' ? 'No hay tasas de cambio configuradas' : 'No exchange rates configured'}</p>
+            <p className="text-sm mt-2">
+              {language === 'es'
+                ? 'Haz clic en "Nueva tasa" para agregar un par de tasas de cambio'
+                : 'Click "New rate" to add an exchange rate pair'
+              }
+            </p>
+          </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="p-2 text-left">{t('settings.financial.from')}</th>
-                  <th className="p-2 text-left">{t('settings.financial.to')}</th>
-                  <th className="p-2 text-left">{t('settings.financial.rate')}</th>
-                  <th className="p-2 text-left">{t('settings.financial.effective')}</th>
-                  <th className="p-2 text-right">{t('common.actions')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {exchangeRates.map(rate => (
-                  <tr key={rate.id} className="hover:bg-gray-50">
-                    <td className="p-2">{rate.from_currency?.code}</td>
-                    <td className="p-2">{rate.to_currency?.code}</td>
-                    <td className="p-2 font-mono">{Number(rate.rate).toFixed(4)}</td>
-                    <td className="p-2">{new Date(rate.effective_date).toLocaleDateString()}</td>
-                    <td className="p-2 text-right">
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleDeleteRate(rate.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-4">
+            {groupedExchangeRates.map(pair => (
+              <div key={pair.pairKey} className="border rounded-lg p-4 bg-white hover:bg-gray-50 transition-colors">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="font-bold text-lg">{pair.fromCurrency?.code}</span>
+                      <ArrowRightLeft className="h-4 w-4 text-gray-400" />
+                      <span className="font-bold text-lg">{pair.toCurrency?.code}</span>
+                    </div>
+
+                    {/* Direct rate */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="bg-green-50 border border-green-200 rounded p-2">
+                        <span className="text-xs text-green-600 block mb-1">
+                          {language === 'es' ? 'Tasa directa' : 'Direct rate'}
+                        </span>
+                        <span className="font-mono text-green-800">
+                          1 {pair.fromCurrency?.code} = {Number(pair.directRate.rate).toFixed(4)} {pair.toCurrency?.code}
+                        </span>
+                      </div>
+
+                      {/* Inverse rate */}
+                      {pair.inverseRate ? (
+                        <div className="bg-blue-50 border border-blue-200 rounded p-2">
+                          <span className="text-xs text-blue-600 block mb-1">
+                            {language === 'es' ? 'Tasa inversa' : 'Inverse rate'}
+                          </span>
+                          <span className="font-mono text-blue-800">
+                            1 {pair.toCurrency?.code} = {Number(pair.inverseRate.rate).toFixed(6)} {pair.fromCurrency?.code}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="bg-amber-50 border border-amber-200 rounded p-2">
+                          <span className="text-xs text-amber-600 block mb-1">
+                            {language === 'es' ? 'Tasa inversa' : 'Inverse rate'}
+                          </span>
+                          <span className="text-amber-700 text-sm">
+                            {language === 'es' ? 'No configurada' : 'Not configured'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-2 text-xs text-gray-500">
+                      {language === 'es' ? 'Vigente desde: ' : 'Effective: '}
+                      {new Date(pair.effectiveDate).toLocaleDateString()}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleDeleteRatePair(pair.directRate.from_currency_id, pair.directRate.to_currency_id)}
+                      title={language === 'es' ? 'Eliminar par de tasas' : 'Delete rate pair'}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      <span className="hidden sm:inline">
+                        {language === 'es' ? 'Eliminar par' : 'Delete pair'}
+                      </span>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </motion.div>
