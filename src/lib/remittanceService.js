@@ -29,6 +29,7 @@ import {
   ZELLE_STATUS,
   ZELLE_TRANSACTION_TYPES
 } from '@/lib/zelleService';
+import { getExchangeRate as getCurrencyExchangeRate } from '@/lib/currencyService';
 
 /**
  * Generate a signed URL for accessing a proof from private storage
@@ -131,6 +132,45 @@ export const DELIVERY_METHODS = {
 };
 
 // recipient_bank_account_id column now exists in remittances table (added 2026-01-19)
+
+// ============================================================================
+// EXCHANGE RATE HELPERS - Get rate from exchange_rates table with fallback
+// ============================================================================
+
+/**
+ * Get exchange rate for remittance from exchange_rates table
+ * Uses the rate configured in financial settings (exchange_rates table)
+ * Falls back to remittance_type.exchange_rate if no configured rate exists
+ *
+ * @param {string} fromCurrencyCode - Source currency code (e.g., 'USD')
+ * @param {string} toCurrencyCode - Target currency code (e.g., 'CUP')
+ * @param {number} fallbackRate - Fallback rate from remittance_type if not found
+ * @returns {Promise<{rate: number, source: 'configured'|'fallback'}>} Exchange rate and its source
+ */
+export const getRemittanceExchangeRate = async (fromCurrencyCode, toCurrencyCode, fallbackRate) => {
+  try {
+    // Same currency = 1:1 rate
+    if (fromCurrencyCode === toCurrencyCode) {
+      return { rate: 1, source: 'configured' };
+    }
+
+    // Try to get rate from exchange_rates table via currencyService
+    const configuredRate = await getCurrencyExchangeRate(fromCurrencyCode, toCurrencyCode);
+
+    if (configuredRate && configuredRate > 0) {
+      console.log(`[getRemittanceExchangeRate] Using configured rate for ${fromCurrencyCode}→${toCurrencyCode}: ${configuredRate}`);
+      return { rate: configuredRate, source: 'configured' };
+    }
+
+    // Fallback to remittance_type rate
+    console.log(`[getRemittanceExchangeRate] No configured rate found for ${fromCurrencyCode}→${toCurrencyCode}, using fallback: ${fallbackRate}`);
+    return { rate: fallbackRate, source: 'fallback' };
+  } catch (error) {
+    // If any error, use fallback rate
+    console.warn(`[getRemittanceExchangeRate] Error getting rate for ${fromCurrencyCode}→${toCurrencyCode}, using fallback: ${fallbackRate}`, error);
+    return { rate: fallbackRate, source: 'fallback' };
+  }
+};
 
 // ============================================================================
 // GESTIÓN DE TIPOS DE REMESAS (ADMIN)
@@ -385,6 +425,9 @@ export const deleteRemittanceType = async (typeId) => {
 
 /**
  * Calculate remittance details including exchange rate, commissions, and delivery amount
+ * Uses exchange rate from exchange_rates table (financial settings) when available,
+ * falls back to remittance_type.exchange_rate if not configured
+ *
  * @param {string} typeId - Remittance type ID
  * @param {number} amount - Amount to send
  * @throws {AppError} If type not found, amount invalid, or calculation fails
@@ -438,17 +481,27 @@ export const calculateRemittance = async (typeId, amount) => {
       );
     }
 
+    // Get exchange rate from configured rates (exchange_rates table) or fallback to type rate
+    const { rate: exchangeRate, source: rateSource } = await getRemittanceExchangeRate(
+      type.currency_code,
+      type.delivery_currency,
+      type.exchange_rate
+    );
+
+    console.log(`[calculateRemittance] Using ${rateSource} rate: ${exchangeRate} for ${type.currency_code}→${type.delivery_currency}`);
+
     // Calculate commission - single source of truth formula
     const commissionPercentage = (amount * (type.commission_percentage || 0)) / 100;
     const commissionFixed = type.commission_fixed || 0;
     const totalCommission = commissionPercentage + commissionFixed;
 
-    // Calculate delivery amount
-    const amountToDeliver = (amount * type.exchange_rate) - (totalCommission * type.exchange_rate);
+    // Calculate delivery amount using the resolved exchange rate
+    const amountToDeliver = (amount * exchangeRate) - (totalCommission * exchangeRate);
 
     return {
       amount,
-      exchangeRate: type.exchange_rate,
+      exchangeRate,
+      exchangeRateSource: rateSource,
       commissionPercentage: type.commission_percentage || 0,
       commissionFixed: type.commission_fixed || 0,
       totalCommission,
@@ -467,6 +520,9 @@ export const calculateRemittance = async (typeId, amount) => {
 /**
  * Calculate remittance in REVERSE mode (from desired receive amount)
  * Given how much recipient should receive, calculate how much sender needs to send
+ * Uses exchange rate from exchange_rates table (financial settings) when available,
+ * falls back to remittance_type.exchange_rate if not configured
+ *
  * @param {string} typeId - Remittance type UUID
  * @param {number} desiredReceiveAmount - Amount recipient should receive (in delivery currency)
  * @returns {Promise<Object>} Calculation details including amount to send
@@ -514,7 +570,15 @@ export const calculateReverseRemittance = async (typeId, desiredReceiveAmount) =
     // (desiredReceive / exchangeRate) + commFixed = amount * (1 - commPct/100)
     // amount = ((desiredReceive / exchangeRate) + commFixed) / (1 - commPct/100)
 
-    const exchangeRate = type.exchange_rate || 1;
+    // Get exchange rate from configured rates (exchange_rates table) or fallback to type rate
+    const { rate: exchangeRate, source: rateSource } = await getRemittanceExchangeRate(
+      type.currency_code,
+      type.delivery_currency,
+      type.exchange_rate || 1
+    );
+
+    console.log(`[calculateReverseRemittance] Using ${rateSource} rate: ${exchangeRate} for ${type.currency_code}→${type.delivery_currency}`);
+
     const commissionPercentage = type.commission_percentage || 0;
     const commissionFixed = type.commission_fixed || 0;
 
@@ -549,6 +613,7 @@ export const calculateReverseRemittance = async (typeId, desiredReceiveAmount) =
       amountToSend: Math.round(amountToSend * 100) / 100, // Round to 2 decimals
       desiredReceiveAmount,
       exchangeRate,
+      exchangeRateSource: rateSource,
       commissionPercentage,
       commissionFixed,
       totalCommission: Math.round(totalCommission * 100) / 100,
