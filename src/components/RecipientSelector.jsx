@@ -261,33 +261,70 @@ const RecipientSelector = React.forwardRef((
             </div>
           )}
 
-          {/* Recipients List */}
-          <div className={`space-y-2 ${recipients.length > 7 ? 'max-h-[400px] overflow-y-auto pr-1' : ''}`}>
-            {filteredRecipients.length > 0 ? (
-              filteredRecipients.map((recipient) => (
-                <motion.button
-                  key={recipient.id}
-                  onClick={() => handleRecipientSelect(recipient)}
-                  className={`w-full text-left p-3 rounded-lg border-2 transition-all ${
-                    selectedRecipient?.id === recipient.id
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                  whileHover={{ scale: 1.01 }}
-                  whileTap={{ scale: 0.99 }}
+          {/* Recipients List - Conditional render: Cards for ≤2, Dropdown for >2 (Req 6dup) */}
+          {recipients.length <= 2 ? (
+            /* Card-based selection for few recipients */
+            <div className="space-y-2">
+              {filteredRecipients.length > 0 ? (
+                filteredRecipients.map((recipient) => (
+                  <motion.button
+                    key={recipient.id}
+                    onClick={() => handleRecipientSelect(recipient)}
+                    className={`w-full text-left p-3 rounded-lg border-2 transition-all ${
+                      selectedRecipient?.id === recipient.id
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
+                  >
+                    <p className="font-medium">{recipient.full_name}</p>
+                    <p className="text-xs text-gray-500">{recipient.phone}</p>
+                  </motion.button>
+                ))
+              ) : (
+                <div className="p-4 bg-gray-50 rounded-lg text-center">
+                  <p className="text-sm text-gray-600">
+                    {language === 'es' ? 'No se encontraron destinatarios' : 'No recipients found'}
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Dropdown selection for many recipients (Req 6dup) */
+            <div className="space-y-3">
+              <select
+                value={selectedRecipient?.id || ''}
+                onChange={(e) => {
+                  const recipient = recipients.find(r => r.id === e.target.value);
+                  if (recipient) handleRecipientSelect(recipient);
+                }}
+                className="w-full p-3 border-2 border-gray-200 rounded-lg bg-white text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+              >
+                <option value="">{language === 'es' ? 'Selecciona un destinatario' : 'Select a recipient'}</option>
+                {filteredRecipients.map((recipient) => (
+                  <option key={recipient.id} value={recipient.id}>
+                    {recipient.full_name} - {recipient.phone}
+                  </option>
+                ))}
+              </select>
+
+              {/* Show selected recipient details */}
+              {selectedRecipient && (
+                <motion.div
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-3 bg-blue-50 border border-blue-200 rounded-lg"
                 >
-                  <p className="font-medium">{recipient.full_name}</p>
-                  <p className="text-xs text-gray-500">{recipient.phone}</p>
-                </motion.button>
-              ))
-            ) : (
-              <div className="p-4 bg-gray-50 rounded-lg text-center">
-                <p className="text-sm text-gray-600">
-                  {language === 'es' ? 'No se encontraron destinatarios' : 'No recipients found'}
-                </p>
-              </div>
-            )}
-          </div>
+                  <p className="font-semibold text-gray-900">{selectedRecipient.full_name}</p>
+                  <p className="text-sm text-gray-600">{selectedRecipient.phone}</p>
+                  {selectedRecipient.email && (
+                    <p className="text-xs text-gray-500">{selectedRecipient.email}</p>
+                  )}
+                </motion.div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

@@ -41,6 +41,10 @@ const AdminRemittancesTab = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20;
   const [selectedRemittance, setSelectedRemittance] = useState(null);
   const [bankAccountDetails, setBankAccountDetails] = useState(null);
   const [showFullAccountNumber, setShowFullAccountNumber] = useState(false);
@@ -56,6 +60,37 @@ const AdminRemittancesTab = () => {
     loadRemittances();
   }, []);
 
+  // Req 8: Auto-select remittance from URL parameter ?id=X
+  useEffect(() => {
+    if (remittances.length === 0) return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetId = urlParams.get('id');
+
+    if (targetId) {
+      const target = remittances.find(r =>
+        r.id === targetId || r.remittance_number === targetId
+      );
+
+      if (target) {
+        setSelectedRemittance(target);
+        // Scroll to element after a brief delay for DOM rendering
+        setTimeout(() => {
+          const rowElement = document.getElementById(`remittance-row-${target.id}`);
+          if (rowElement) {
+            rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            rowElement.classList.add('bg-yellow-50');
+            setTimeout(() => rowElement.classList.remove('bg-yellow-50'), 2000);
+          }
+        }, 100);
+
+        // Clean up URL parameter after navigation
+        const newUrl = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, '', newUrl);
+      }
+    }
+  }, [remittances]);
+
   useRealtimeRemittances({
     enabled: true,
     onUpdate: () => loadRemittances()
@@ -63,7 +98,8 @@ const AdminRemittancesTab = () => {
 
   useEffect(() => {
     filterRemittances();
-  }, [remittances, searchTerm, statusFilter]);
+    setCurrentPage(1); // Reset to first page when filters change
+  }, [remittances, searchTerm, statusFilter, startDate, endDate]);
 
   // Generate signed URL for payment proof when modal opens
   useEffect(() => {
@@ -172,6 +208,18 @@ const AdminRemittancesTab = () => {
       } else {
         filtered = filtered.filter(r => r.status === statusFilter);
       }
+    }
+
+    // Filtro por fecha (Req 11)
+    if (startDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      filtered = filtered.filter(r => new Date(r.created_at) >= start);
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      filtered = filtered.filter(r => new Date(r.created_at) <= end);
     }
 
     setFilteredRemittances(filtered);
@@ -602,7 +650,7 @@ const AdminRemittancesTab = () => {
     <div className="space-y-6">
       {/* Filters */}
       <div className="glass-effect p-4 rounded-xl">
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid md:grid-cols-4 gap-4">
           {/* Search */}
           <div className="md:col-span-2 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -631,6 +679,54 @@ const AdminRemittancesTab = () => {
               <option value={REMITTANCE_STATUS.COMPLETED}>{t('remittances.status.completed')}</option>
               <option value={REMITTANCE_STATUS.CANCELLED}>{t('remittances.status.cancelled')}</option>
             </select>
+          </div>
+
+          {/* Clear Filters */}
+          {(searchTerm || statusFilter !== 'all' || startDate || endDate) && (
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setStatusFilter('all');
+                setStartDate('');
+                setEndDate('');
+              }}
+              className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1"
+            >
+              <X className="h-4 w-4" />
+              {language === 'es' ? 'Limpiar' : 'Clear'}
+            </button>
+          )}
+        </div>
+
+        {/* Date Filters Row (Req 11) */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full pl-10 pr-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              placeholder={language === 'es' ? 'Desde' : 'From'}
+            />
+          </div>
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full pl-10 pr-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              placeholder={language === 'es' ? 'Hasta' : 'To'}
+            />
+          </div>
+          <div className="col-span-2 text-sm text-gray-500 flex items-center">
+            {filteredRemittances.length} {language === 'es' ? 'resultados' : 'results'}
+            {(startDate || endDate) && (
+              <span className="ml-2 text-blue-600">
+                ({language === 'es' ? 'filtrado por fecha' : 'filtered by date'})
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -668,7 +764,7 @@ const AdminRemittancesTab = () => {
         ))}
       </div>
 
-      {/* Remittances List */}
+      {/* Remittances List with Pagination (Req 11) */}
       {filteredRemittances.length === 0 ? (
         <div className="text-center py-12 glass-effect rounded-xl">
           <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
@@ -676,9 +772,12 @@ const AdminRemittancesTab = () => {
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredRemittances.map((remittance) => (
+          {filteredRemittances
+            .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+            .map((remittance) => (
             <motion.div
               key={remittance.id}
+              id={`remittance-row-${remittance.id}`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="glass-effect p-3 sm:p-6 rounded-xl hover:shadow-lg transition-shadow"
@@ -780,6 +879,37 @@ const AdminRemittancesTab = () => {
               </div>
             </motion.div>
           ))}
+
+          {/* Pagination (Req 11) */}
+          {filteredRemittances.length > pageSize && (
+            <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+              <p className="text-sm text-gray-600">
+                {language === 'es'
+                  ? `Mostrando ${(currentPage - 1) * pageSize + 1}-${Math.min(currentPage * pageSize, filteredRemittances.length)} de ${filteredRemittances.length}`
+                  : `Showing ${(currentPage - 1) * pageSize + 1}-${Math.min(currentPage * pageSize, filteredRemittances.length)} of ${filteredRemittances.length}`
+                }
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {language === 'es' ? 'Anterior' : 'Previous'}
+                </button>
+                <span className="text-sm text-gray-600">
+                  {currentPage} / {Math.ceil(filteredRemittances.length / pageSize)}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(Math.ceil(filteredRemittances.length / pageSize), p + 1))}
+                  disabled={currentPage >= Math.ceil(filteredRemittances.length / pageSize)}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {language === 'es' ? 'Siguiente' : 'Next'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

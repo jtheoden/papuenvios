@@ -181,63 +181,107 @@ const ZelleAccountSelector = ({
         )}
       </AnimatePresence>
 
-      <div className="space-y-2">
-        {accounts.map((account) => (
-          <motion.button
-            key={account.id}
-            onClick={() => handleSelect(account)}
-            className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
-              selectedAccount?.id === account.id
-                ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
-                : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-            }`}
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.99 }}
-            layout
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-start gap-3">
-                  <div
-                    className={`w-5 h-5 rounded-full border-2 mt-0.5 flex items-center justify-center flex-shrink-0 transition-colors ${
-                      selectedAccount?.id === account.id
-                        ? 'border-blue-500 bg-blue-500'
-                        : 'border-gray-300'
-                    }`}
-                  >
-                    {selectedAccount?.id === account.id && (
-                      <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        className="w-2 h-2 bg-white rounded-full"
-                      />
-                    )}
-                  </div>
-
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <CreditCard className="w-4 h-4 text-blue-600" />
-                      <p className="font-semibold text-gray-900">{account.account_name}</p>
+      {/* Conditional render: Cards for ≤2 accounts, Dropdown for >2 (Req 6dup) */}
+      {accounts.length <= 2 ? (
+        /* Card-based selection for few accounts */
+        <div className="space-y-2">
+          {accounts.map((account) => (
+            <motion.button
+              key={account.id}
+              onClick={() => handleSelect(account)}
+              className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
+                selectedAccount?.id === account.id
+                  ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                  : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+              }`}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              layout
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`w-5 h-5 rounded-full border-2 mt-0.5 flex items-center justify-center flex-shrink-0 transition-colors ${
+                        selectedAccount?.id === account.id
+                          ? 'border-blue-500 bg-blue-500'
+                          : 'border-gray-300'
+                      }`}
+                    >
+                      {selectedAccount?.id === account.id && (
+                        <motion.div
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          className="w-2 h-2 bg-white rounded-full"
+                        />
+                      )}
                     </div>
-                    <p className="text-sm text-gray-600">{account.email}</p>
-                    {account.priority_order && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        {t('zelle.priority')}: #{account.priority_order}
-                      </p>
-                    )}
+
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <CreditCard className="w-4 h-4 text-blue-600" />
+                        <p className="font-semibold text-gray-900">{account.account_name}</p>
+                      </div>
+                      <p className="text-sm text-gray-600">{account.email}</p>
+                      {account.priority_order && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {t('zelle.priority')}: #{account.priority_order}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {account.is_active && (
-                <span className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full font-medium">
+                {account.is_active && (
+                  <span className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full font-medium">
+                    {t('zelle.active')}
+                  </span>
+                )}
+              </div>
+            </motion.button>
+          ))}
+        </div>
+      ) : (
+        /* Dropdown selection for many accounts (Req 6dup) */
+        <div className="space-y-3">
+          <div className="relative">
+            <CreditCard className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <select
+              value={selectedAccount?.id || ''}
+              onChange={(e) => {
+                const account = accounts.find(a => a.id === e.target.value);
+                if (account) handleSelect(account);
+              }}
+              className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-lg bg-white text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all appearance-none"
+            >
+              <option value="">{t('zelle.selectAccountPlaceholder') || 'Selecciona una cuenta Zelle'}</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.account_name} - {account.email}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Show selected account details */}
+          {selectedAccount && (
+            <motion.div
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-3 bg-blue-50 border border-blue-200 rounded-lg"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <CreditCard className="w-4 h-4 text-blue-600" />
+                <p className="font-semibold text-gray-900">{selectedAccount.account_name}</p>
+                <span className="px-2 py-0.5 text-xs bg-green-100 text-green-800 rounded-full font-medium">
                   {t('zelle.active')}
                 </span>
-              )}
-            </div>
-          </motion.button>
-        ))}
-      </div>
+              </div>
+              <p className="text-sm text-gray-600">{selectedAccount.email}</p>
+            </motion.div>
+          )}
+        </div>
+      )}
 
       {/* Selected account confirmation */}
       <AnimatePresence>

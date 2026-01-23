@@ -13,6 +13,7 @@ import { semanticColors } from '@/lib/colorTokens';
 const Header = ({ currentPage, onNavigate }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
   const [isMobileUser, setIsMobileUser] = useState(false);
   const { language, setLanguage, t } = useLanguage();
@@ -74,6 +75,7 @@ const Header = ({ currentPage, onNavigate }) => {
     onNavigate(id);
     setIsAdminMenuOpen(false);
     setIsMenuOpen(false);
+    setIsUserMenuOpen(false);
   };
 
   // Load pending orders count for admin
@@ -321,11 +323,12 @@ const Header = ({ currentPage, onNavigate }) => {
             )}
 
             {user ? (
-              <>
+              /* Authenticated: Avatar with dropdown menu */
+              <div className="relative">
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => onNavigate('user-panel')}
+                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                   className="relative h-8 w-8 sm:h-9 sm:w-9"
                 >
                   <div className="relative">
@@ -338,13 +341,57 @@ const Header = ({ currentPage, onNavigate }) => {
                     )}
                   </div>
                 </Button>
-                <Button variant="ghost" size="icon" onClick={handleLogout} className="hidden sm:flex h-8 w-8 sm:h-9 sm:w-9">
-                  <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
-                </Button>
-              </>
+
+                {/* User Dropdown Menu */}
+                <AnimatePresence>
+                  {isUserMenuOpen && (
+                    <>
+                      {/* Backdrop */}
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      />
+                      <motion.div
+                        initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-200 py-2 z-50"
+                      >
+                        {/* User Panel */}
+                        <button
+                          onClick={() => {
+                            onNavigate('user-panel');
+                            setIsUserMenuOpen(false);
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                          <UserIcon className="w-4 h-4" />
+                          {language === 'es' ? 'Panel de Usuario' : 'User Panel'}
+                        </button>
+
+                        <div className="border-t border-gray-100 my-1" />
+
+                        {/* Logout */}
+                        <button
+                          onClick={() => {
+                            handleLogout();
+                            setIsUserMenuOpen(false);
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          {language === 'es' ? 'Salir' : 'Logout'}
+                        </button>
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+              </div>
             ) : (
-              <Button variant="ghost" size="icon" onClick={handleLogin} className="h-8 w-8 sm:h-9 sm:w-9">
-                <LogIn className="w-4 h-4 sm:w-5 sm:h-5" />
+              /* Guest: User icon → login (Req 10) */
+              <Button variant="ghost" size="icon" onClick={handleLogin} className="h-8 w-8 sm:h-9 sm:w-9" title={t('auth.login')}>
+                <UserIcon className="w-4 h-4 sm:w-5 sm:h-5" />
               </Button>
             )}
 

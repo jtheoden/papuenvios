@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowRight, ArrowLeft, Check, DollarSign, User, FileText, Upload,
-  AlertCircle, CheckCircle, Calculator, Copy, CreditCard, Eye, Send,
-  Target, RefreshCw
+  ArrowRight, ArrowLeft, Check, DollarSign, User, FileText,
+  AlertCircle, CheckCircle, Calculator, Copy, Target, RefreshCw
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,6 +10,7 @@ import { useModal } from '@/contexts/ModalContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import {
   getActiveRemittanceTypes,
+  getRemittanceExchangeRate,
   calculateRemittance,
   calculateReverseRemittance,
   createRemittance,
@@ -25,8 +25,10 @@ import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import RecipientSelector from '@/components/RecipientSelector';
 import ZelleAccountSelector from '@/components/ZelleAccountSelector';
 import ZelleAccountAlert from '@/components/ZelleAccountAlert';
-import FileUploadWithPreview from '@/components/FileUploadWithPreview';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
+import ZelleAccountDisplay from '@/components/shared/ZelleAccountDisplay';
+import AmountDisplayCard from '@/components/shared/AmountDisplayCard';
+import PaymentProofForm from '@/components/shared/PaymentProofForm';
 
 const SendRemittancePage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
@@ -82,6 +84,74 @@ const SendRemittancePage = ({ onNavigate }) => {
   // Confirmation modal state
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
   const [confirmedRemittanceInfo, setConfirmedRemittanceInfo] = useState(null);
+
+  // Validation: Check if amount is within limits for selected type
+  // Limits are always in send currency (USD), so we validate the USD amount state
+  const getAmountValidation = () => {
+    if (!selectedType) return { isValid: true, error: null };
+
+    // Always validate against 'amount' state (USD to send)
+    const amountToValidate = parseFloat(amount) || 0;
+
+    if (amountToValidate <= 0) return { isValid: true, error: null };
+
+    const minAmount = parseFloat(selectedType.min_amount) || 0;
+    const maxAmount = selectedType.max_amount ? parseFloat(selectedType.max_amount) : null;
+
+    if (amountToValidate < minAmount) {
+      const receiveHint = calcMode === 'receive'
+        ? ' ' + t('remittances.wizard.sendingEquivalent', { amount: amountToValidate.toFixed(2) })
+        : '';
+      return {
+        isValid: false,
+        error: 'min',
+        message: t('remittances.wizard.belowMinAmount', { min: minAmount, currency: selectedType.currency_code }) + receiveHint,
+        limit: minAmount
+      };
+    }
+
+    if (maxAmount && amountToValidate > maxAmount) {
+      const receiveHint = calcMode === 'receive'
+        ? ' ' + t('remittances.wizard.sendingEquivalent', { amount: amountToValidate.toFixed(2) })
+        : '';
+      return {
+        isValid: false,
+        error: 'max',
+        message: t('remittances.wizard.aboveMaxAmount', { max: maxAmount, currency: selectedType.currency_code }) + receiveHint,
+        limit: maxAmount
+      };
+    }
+
+    return { isValid: true, error: null };
+  };
+
+  // Immediate calculation of complementary field when user types
+  // This preserves user input and calculates the other field instantly
+  const handleAmountChange = (value) => {
+    setAmount(value);
+    if (selectedType && value) {
+      const numValue = parseFloat(value) || 0;
+      if (numValue > 0) {
+        const rate = selectedType.currentRate || selectedType.exchange_rate || 1;
+        const receiveValue = numValue * rate;
+        setDesiredReceiveAmount(receiveValue.toFixed(2));
+      }
+    }
+  };
+
+  const handleDesiredReceiveChange = (value) => {
+    setDesiredReceiveAmount(value);
+    if (selectedType && value) {
+      const numValue = parseFloat(value) || 0;
+      if (numValue > 0) {
+        const rate = selectedType.currentRate || selectedType.exchange_rate || 1;
+        const sendValue = numValue / rate;
+        setAmount(sendValue.toFixed(2));
+      }
+    }
+  };
+
+  const amountValidation = getAmountValidation();
 
   useEffect(() => {
     loadTypes();
@@ -215,8 +285,35 @@ const SendRemittancePage = ({ onNavigate }) => {
   const loadTypes = async () => {
     setLoading(true);
     try {
-      const types = await getActiveRemittanceTypes();
-      setTypes(types || []);
+      const rawTypes = await getActiveRemittanceTypes();
+
+      // Enrich each type with current exchange rate from exchange_rates table
+      const enrichedTypes = await Promise.all(
+        (rawTypes || []).map(async (type) => {
+          try {
+            const { rate, source } = await getRemittanceExchangeRate(
+              type.currency_code,
+              type.delivery_currency,
+              type.exchange_rate
+            );
+            return {
+              ...type,
+              currentRate: rate,
+              rateSource: source, // 'configured' or 'fallback'
+              // Keep original exchange_rate as fallback reference
+            };
+          } catch (err) {
+            console.warn(`[loadTypes] Error getting rate for ${type.name}:`, err);
+            return {
+              ...type,
+              currentRate: type.exchange_rate,
+              rateSource: 'fallback'
+            };
+          }
+        })
+      );
+
+      setTypes(enrichedTypes);
     } catch (error) {
       console.error('Error loading remittance types:', error);
       toast({
@@ -229,8 +326,28 @@ const SendRemittancePage = ({ onNavigate }) => {
   };
 
   const handleSelectType = (type) => {
+    const previousType = selectedType;
     setSelectedType(type);
-    setAmount('');
+
+    // Preserve values and recalculate with new rate (Req 4)
+    if (previousType && type.id !== previousType.id) {
+      const currentAmount = calcMode === 'send' ? parseFloat(amount) : parseFloat(desiredReceiveAmount);
+
+      if (currentAmount > 0) {
+        // Recalculate with new type's rate
+        if (calcMode === 'send') {
+          // User entered send amount - recalculate receive amount with new rate
+          const newReceive = currentAmount * type.currentRate;
+          setDesiredReceiveAmount(newReceive.toFixed(2));
+        } else {
+          // User entered receive amount - recalculate send amount with new rate
+          const newSend = currentAmount / type.currentRate;
+          setAmount(newSend.toFixed(2));
+        }
+      }
+    }
+
+    // Clear calculation to force recalculation on continue
     setCalculation(null);
   };
 
@@ -508,8 +625,16 @@ const SendRemittancePage = ({ onNavigate }) => {
                   <button
                     type="button"
                     onClick={() => {
+                      if (calcMode === 'send') return; // Already in send mode
+
+                      // When switching to 'send' mode:
+                      // - If user had entered a receive amount, use liveCalc to pre-fill send amount (if available)
+                      // - Otherwise, keep existing amount or leave empty
+                      if (liveCalc && liveCalc.mode === 'receive' && liveCalc.amountToSend) {
+                        setAmount(liveCalc.amountToSend.toFixed(2));
+                      }
+                      // Do NOT clear the receive amount - preserve it for if user switches back
                       setCalcMode('send');
-                      setDesiredReceiveAmount('');
                       setLiveCalc(null);
                     }}
                     className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-md text-sm font-semibold transition-all ${
@@ -524,8 +649,16 @@ const SendRemittancePage = ({ onNavigate }) => {
                   <button
                     type="button"
                     onClick={() => {
+                      if (calcMode === 'receive') return; // Already in receive mode
+
+                      // When switching to 'receive' mode:
+                      // - If user had entered a send amount, use liveCalc to pre-fill receive amount (if available)
+                      // - Otherwise, keep existing receive amount or leave empty
+                      if (liveCalc && liveCalc.mode === 'send' && liveCalc.amountToReceive) {
+                        setDesiredReceiveAmount(liveCalc.amountToReceive.toFixed(2));
+                      }
+                      // Do NOT clear the send amount - preserve it for if user switches back
                       setCalcMode('receive');
-                      setAmount('');
                       setLiveCalc(null);
                     }}
                     className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-md text-sm font-semibold transition-all ${
@@ -538,9 +671,64 @@ const SendRemittancePage = ({ onNavigate }) => {
                     {t('remittances.wizard.theyReceiveTab')}
                   </button>
                 </div>
+ {/* Type Selection - Dropdown (Req 2) */}
+              <div className="space-y-3 p-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {t('remittances.wizard.selectTypeRequired')}
+                </label>
+                <select
+                  value={selectedType?.id || ''}
+                  onChange={(e) => {
+                    const type = types.find(t => t.id === e.target.value);
+                    if (type) handleSelectType(type);
+                  }}
+                  className="w-full p-3 border-2 border-gray-200 rounded-lg bg-white text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                >
+                  <option value="">{t('remittances.wizard.selectType') || 'Selecciona un tipo de remesa'}</option>
+                  {types.map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.name} 
+                    </option>
+                  ))}
+                </select>
 
+                {/* Selected type details card */}
+               {/*  {selectedType && (
+                  <div className="p-4 rounded-xl border-2 border-blue-200 bg-gradient-to-r from-blue-50 to-purple-50">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-lg text-blue-900">{selectedType.name}</h3>
+                          {selectedType.rateSource === 'configured' && (
+                            <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full">✓ {language === 'es' ? 'Tasa actualizada' : 'Updated rate'}</span>
+                          )}
+                        </div>
+                        {selectedType.description && (
+                          <p className="text-sm mt-1 text-blue-700">{selectedType.description}</p>
+                        )}
+                        <div className="mt-2 text-sm">
+                          <span className="text-blue-700">{t('remittances.wizard.rate')}: </span>
+                          <span className="font-semibold text-blue-900">
+                            1 {selectedType.currency_code} = {selectedType.currentRate || selectedType.exchange_rate} {selectedType.delivery_currency}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-blue-600">{t('remittances.wizard.limits')}</p>
+                        <p className="text-sm font-semibold text-blue-900">
+                          {selectedType.min_amount} - {selectedType.max_amount || '∞'} {selectedType.currency_code}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )} */}
+              </div>
                 {/* Amount Input - Changes based on mode */}
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label className={`block text-sm font-semibold mb-2 transition-colors ${
+                  !amountValidation.isValid
+                    ? 'text-red-600'
+                    : 'text-gray-700'
+                }`}>
                   {calcMode === 'send'
                     ? `${t('remittances.wizard.amountToSend')} (USD) *`
                     : `${t('remittances.wizard.amountToReceive')} (${selectedType?.delivery_currency || 'CUP'}) *`
@@ -548,9 +736,13 @@ const SendRemittancePage = ({ onNavigate }) => {
                 </label>
                 <div className="relative">
                   {calcMode === 'send' ? (
-                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-blue-600" />
+                    <DollarSign className={`absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 ${
+                      !selectedType ? 'text-gray-400' : !amountValidation.isValid ? 'text-red-500' : 'text-blue-600'
+                    }`} />
                   ) : (
-                    <Target className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-green-600" />
+                    <Target className={`absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 ${
+                      !selectedType ? 'text-gray-400' : !amountValidation.isValid ? 'text-red-500' : 'text-green-600'
+                    }`} />
                   )}
                   <input
                     type="number"
@@ -558,19 +750,35 @@ const SendRemittancePage = ({ onNavigate }) => {
                     value={calcMode === 'send' ? amount : desiredReceiveAmount}
                     onChange={(e) => {
                       if (calcMode === 'send') {
-                        setAmount(e.target.value);
+                        handleAmountChange(e.target.value);
                       } else {
-                        setDesiredReceiveAmount(e.target.value);
+                        handleDesiredReceiveChange(e.target.value);
                       }
                     }}
+                    disabled={!selectedType}
                     className={`w-full pl-10 pr-4 py-3 rounded-lg border-2 focus:ring-2 text-lg font-semibold transition-colors ${
-                      calcMode === 'send'
-                        ? 'border-blue-300 focus:ring-blue-500 focus:border-blue-500'
-                        : 'border-green-300 focus:ring-green-500 focus:border-green-500'
+                      !selectedType
+                        ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
+                        : !amountValidation.isValid
+                          ? 'border-red-400 focus:ring-red-500 focus:border-red-500 bg-red-50'
+                          : calcMode === 'send'
+                            ? 'border-blue-300 focus:ring-blue-500 focus:border-blue-500'
+                            : 'border-green-300 focus:ring-green-500 focus:border-green-500'
                     }`}
-                    placeholder={calcMode === 'send' ? 'Ej: 100.00' : 'Ej: 10,000'}
+                    placeholder={!selectedType
+                      ? t('remittances.wizard.selectTypeFirst')
+                      : (calcMode === 'send' ? 'Ej: 100.00' : 'Ej: 10,000')
+                    }
                   />
                 </div>
+
+                {/* Validation Error Message */}
+                {!amountValidation.isValid && (
+                  <p className="text-sm text-red-600 font-medium mt-2 flex items-center gap-1">
+                    <AlertCircle className="h-4 w-4" />
+                    {amountValidation.message}
+                  </p>
+                )}
 
                 {/* Live Calculation Preview */}
                 {(isCalculatingLive || liveCalc) && selectedType && (
@@ -649,74 +857,14 @@ const SendRemittancePage = ({ onNavigate }) => {
                 )}
               </div>
 
-              {/* Type Selection - DESPUÉS del monto */}
-              <div className="space-y-3">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {t('remittances.wizard.selectTypeRequired')}
-                </label>
-                {types.map((type) => (
-                  <div
-                    key={type.id}
-                    onClick={() => handleSelectType(type)}
-                    className={`p-4 rounded-xl cursor-pointer transition-all duration-200 ${
-                      selectedType?.id === type.id
-                        ? 'border-2 border-blue-600 bg-gradient-to-r from-blue-100 to-purple-100 shadow-lg shadow-blue-200 ring-2 ring-blue-400 ring-offset-2'
-                        : 'border-2 border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div className="flex items-start gap-3">
-                        {/* Indicador de selección */}
-                        <div className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center mt-0.5 transition-all ${
-                          selectedType?.id === type.id
-                            ? 'border-blue-600 bg-blue-600'
-                            : 'border-gray-300 bg-white'
-                        }`}>
-                          {selectedType?.id === type.id && (
-                            <Check className="h-4 w-4 text-white" />
-                          )}
-                        </div>
-                        <div>
-                          <h3 className={`font-bold text-lg ${selectedType?.id === type.id ? 'text-blue-900' : 'text-gray-900'}`}>
-                            {type.name}
-                          </h3>
-                          {type.description && (
-                            <p className={`text-sm mt-1 ${selectedType?.id === type.id ? 'text-blue-700' : 'text-gray-600'}`}>
-                              {type.description}
-                            </p>
-                          )}
-                          <div className="mt-2 text-sm">
-                            <span className={selectedType?.id === type.id ? 'text-blue-700' : 'text-gray-600'}>
-                              {t('remittances.wizard.rate')}:{' '}
-                            </span>
-                            <span className={`font-semibold ${selectedType?.id === type.id ? 'text-blue-900' : 'text-gray-900'}`}>
-                              1 {type.currency_code} = {type.exchange_rate} {type.delivery_currency}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className={`text-xs ${selectedType?.id === type.id ? 'text-blue-600' : 'text-gray-500'}`}>
-                          {t('remittances.wizard.limits')}
-                        </p>
-                        <p className={`text-sm font-semibold ${selectedType?.id === type.id ? 'text-blue-900' : 'text-gray-900'}`}>
-                          {type.min_amount} - {type.max_amount || '∞'}
-                        </p>
-                        <p className={`text-xs mt-1 ${selectedType?.id === type.id ? 'text-blue-600' : 'text-gray-500'}`}>
-                          {type.currency_code}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+             
             </div>
 
             <div className="flex justify-end mt-6">
               <button
                 onClick={handleCalculate}
-                disabled={!selectedType || !amount || calculating}
-                className={`${getPrimaryButtonStyle()} flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none ${!calculating && selectedType && amount ? 'animate-pulse ring-2 ring-blue-300 ring-offset-2' : ''}`}
+                disabled={!selectedType || !amount || calculating || !amountValidation.isValid}
+                className={`${getPrimaryButtonStyle()} flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none ${!calculating && selectedType && amount && amountValidation.isValid ? 'animate-pulse ring-2 ring-blue-300 ring-offset-2' : ''}`}
               >
                 {calculating ? t('remittances.wizard.calculating') : t('remittances.wizard.continue')}
                 <ArrowRight className="h-6 w-6" />
@@ -1024,219 +1172,98 @@ const SendRemittancePage = ({ onNavigate }) => {
               </div>
             </div>
 
-            {/* Datos Zelle para el pago */}
+            {/* Datos Zelle para el pago - Using shared component */}
             {selectedZelle && (
-              <div className="glass-effect p-6 rounded-xl border-2 border-blue-200 bg-blue-50">
-                <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-blue-900">
-                  <CreditCard className="h-5 w-5" />
-                  {language === 'es' ? 'Envía tu pago Zelle a:' : 'Send your Zelle payment to:'}
-                </h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between bg-white p-3 rounded-lg">
-                    <div>
-                      <p className="text-xs text-gray-500">{language === 'es' ? 'Nombre de Cuenta' : 'Account Name'}</p>
-                      <p className="font-semibold text-gray-800">{selectedZelle?.account_name || selectedZelle?.account_holder || selectedZelle?.name}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCopyToClipboard(selectedZelle?.account_name || selectedZelle?.account_holder || selectedZelle?.name, 'Nombre')}
-                      className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
-                    >
-                      <Copy className="h-4 w-4 text-blue-600" />
-                    </button>
-                  </div>
-
-                  {(selectedZelle?.email || selectedZelle?.zelle_email) && (
-                    <div className="flex items-center justify-between bg-white p-3 rounded-lg">
-                      <div>
-                        <p className="text-xs text-gray-500">Email Zelle</p>
-                        <p className="font-semibold text-gray-800">{selectedZelle?.email || selectedZelle?.zelle_email}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleCopyToClipboard(selectedZelle?.email || selectedZelle?.zelle_email, 'Email')}
-                        className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
-                      >
-                        <Copy className="h-4 w-4 text-blue-600" />
-                      </button>
-                    </div>
-                  )}
-
-                  {(selectedZelle?.phone_number || selectedZelle?.phone) && (
-                    <div className="flex items-center justify-between bg-white p-3 rounded-lg">
-                      <div>
-                        <p className="text-xs text-gray-500">{language === 'es' ? 'Teléfono Zelle' : 'Zelle Phone'}</p>
-                        <p className="font-semibold text-gray-800">{selectedZelle?.phone_number || selectedZelle?.phone}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleCopyToClipboard(selectedZelle?.phone_number || selectedZelle?.phone, 'Teléfono')}
-                        className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
-                      >
-                        <Copy className="h-4 w-4 text-blue-600" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <ZelleAccountDisplay
+                account={selectedZelle}
+                showCopyButtons={true}
+                onCopy={(label, value) => {
+                  toast({
+                    title: language === 'es' ? '¡Copiado!' : 'Copied!',
+                    description: `${label}: ${value}`
+                  });
+                }}
+              />
             )}
 
-            {/* Monto a Transferir */}
-            <div className="glass-effect p-6 rounded-xl border-2 border-green-200 bg-green-50">
-              <h3 className="text-lg font-bold mb-3 text-green-900">
-                {language === 'es' ? 'Monto a Transferir' : 'Amount to Transfer'}
-              </h3>
-              <div className="flex items-center justify-between bg-white p-4 rounded-lg border-2 border-green-300">
-                <div>
-                  <p className="text-3xl font-bold text-green-600">
-                    ${calculation?.amount} {calculation?.currency || 'USD'}
-                  </p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {language === 'es' ? 'El destinatario recibirá:' : 'Recipient will receive:'} {calculation?.amountToDeliver?.toFixed(2)} {calculation?.deliveryCurrency}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleCopyToClipboard(`${calculation?.amount}`, 'Monto')}
-                  className="p-3 bg-green-100 hover:bg-green-200 rounded-lg transition-colors flex-shrink-0"
-                >
-                  <Copy className="h-6 w-6 text-green-600" />
-                </button>
-              </div>
-            </div>
+            {/* Monto a Transferir - Using shared component */}
+            <AmountDisplayCard
+              amount={calculation?.amount}
+              currency={calculation?.currency || 'USD'}
+              deliveryAmount={calculation?.amountToDeliver}
+              deliveryCurrency={calculation?.deliveryCurrency}
+              showCopyButton={true}
+              onCopy={(value) => {
+                toast({
+                  title: language === 'es' ? '¡Copiado!' : 'Copied!',
+                  description: `${language === 'es' ? 'Monto' : 'Amount'}: $${value}`
+                });
+              }}
+            />
 
-            {/* Upload comprobante de pago - OBLIGATORIO */}
-            <div className="glass-effect p-6 rounded-xl border-2 border-orange-200 bg-orange-50">
-              <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-orange-900">
-                <Upload className="h-6 w-6" />
-                {language === 'es' ? 'Subir Comprobante de Pago (Obligatorio)' : 'Upload Payment Proof (Required)'}
-              </h3>
+            {/* Upload comprobante de pago - Using shared component */}
+            <PaymentProofForm
+              file={paymentData.file}
+              preview={imagePreview}
+              reference={paymentData.reference}
+              notes={paymentData.notes}
+              requireReference={true}
+              showNotesField={true}
+              onFileChange={(e) => {
+                const file = e.target.files[0];
+                setPaymentData({ ...paymentData, file });
+                if (file) {
+                  const reader = new FileReader();
+                  reader.onloadend = () => setImagePreview(reader.result);
+                  reader.readAsDataURL(file);
+                } else {
+                  setImagePreview(null);
+                }
+              }}
+              onReferenceChange={(value) => setPaymentData({ ...paymentData, reference: value })}
+              onNotesChange={(value) => setPaymentData({ ...paymentData, notes: value })}
+              onSubmit={async () => {
+                setSubmitting(true);
+                try {
+                  await uploadPaymentProof(createdRemittance.id, paymentData.file, paymentData.reference, paymentData.notes);
 
-              <div className="p-3 bg-orange-100 rounded-lg mb-4">
-                <p className="text-sm text-orange-800 flex items-start gap-2">
-                  <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                  {language === 'es'
-                    ? 'Una vez realizado el pago, sube el comprobante para que podamos procesar tu remesa.'
-                    : 'Once payment is made, upload the proof so we can process your remittance.'}
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <FileUploadWithPreview
-                  label={t('remittances.user.paymentProof') || 'Comprobante de pago'}
-                  accept="image/*,.pdf"
-                  value={paymentData.file}
-                  preview={imagePreview}
-                  previewPosition="above"
-                  onChange={(e) => {
-                    const file = e.target.files[0];
-                    setPaymentData({ ...paymentData, file });
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.onloadend = () => setImagePreview(reader.result);
-                      reader.readAsDataURL(file);
-                    } else {
-                      setImagePreview(null);
-                    }
-                  }}
-                  required={true}
-                />
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {language === 'es' ? 'Referencia del Pago' : 'Payment Reference'} *
-                  </label>
-                  <input
-                    type="text"
-                    value={paymentData.reference}
-                    onChange={(e) => setPaymentData({ ...paymentData, reference: e.target.value })}
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder={language === 'es' ? 'Ej: Confirmación Zelle #123456' : 'E.g.: Zelle Confirmation #123456'}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {language === 'es' ? 'Notas adicionales (opcional)' : 'Additional notes (optional)'}
-                  </label>
-                  <textarea
-                    value={paymentData.notes}
-                    onChange={(e) => setPaymentData({ ...paymentData, notes: e.target.value })}
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    rows="2"
-                    placeholder={language === 'es' ? 'Detalles adicionales...' : 'Additional details...'}
-                  />
-                </div>
-              </div>
-
-              <button
-                onClick={async () => {
-                  if (!paymentData.file || !paymentData.reference) {
-                    toast({
-                      title: t('common.error'),
-                      description: language === 'es'
-                        ? 'Sube el comprobante y proporciona la referencia del pago.'
-                        : 'Upload the proof and provide the payment reference.',
-                      variant: 'destructive'
-                    });
-                    return;
+                  const notificationWhatsapp = getActiveWhatsappRecipient(notificationSettings);
+                  if (notificationWhatsapp) {
+                    try {
+                      const enrichedRemittance = {
+                        ...createdRemittance,
+                        remittance_types: selectedType,
+                        amount: parseFloat(amount),
+                        currency: calculation?.currency || 'USD',
+                        amount_to_deliver: calculation?.amountToDeliver,
+                        delivery_currency: calculation?.deliveryCurrency,
+                        payment_reference: paymentData.reference
+                      };
+                      await notifyAdminNewPaymentProof(enrichedRemittance, notificationWhatsapp, language);
+                    } catch (e) { console.warn('WhatsApp notification failed', e); }
                   }
-                  setSubmitting(true);
-                  try {
-                    await uploadPaymentProof(createdRemittance.id, paymentData.file, paymentData.reference, paymentData.notes);
 
-                    const notificationWhatsapp = getActiveWhatsappRecipient(notificationSettings);
-                    // Notificar por WhatsApp si está configurado
-                    if (notificationWhatsapp) {
-                      try {
-                        const enrichedRemittance = {
-                          ...createdRemittance,
-                          remittance_types: selectedType,
-                          amount: parseFloat(amount),
-                          currency: calculation?.currency || 'USD',
-                          amount_to_deliver: calculation?.amountToDeliver,
-                          delivery_currency: calculation?.deliveryCurrency,
-                          payment_reference: paymentData.reference
-                        };
-                        await notifyAdminNewPaymentProof(enrichedRemittance, notificationWhatsapp, language);
-                      } catch (e) { console.warn('WhatsApp notification failed', e); }
-                    }
+                  toast({ title: t('common.success'), description: language === 'es' ? '¡Comprobante enviado exitosamente!' : 'Proof submitted successfully!' });
 
-                    toast({ title: t('common.success'), description: language === 'es' ? '¡Comprobante enviado exitosamente!' : 'Proof submitted successfully!' });
-
-                    // Mostrar modal de confirmación
-                    setConfirmedRemittanceInfo({
-                      remittanceNumber: createdRemittance.remittance_number,
-                      total: calculation?.amountToDeliver || parseFloat(amount),
-                      currency: calculation?.deliveryCurrency || 'CUP',
-                      recipientName: recipientData.name
-                    });
-                    setShowConfirmationModal(true);
-                  } catch (error) {
-                    console.error('Error uploading proof:', error);
-                    toast({ title: t('common.error'), description: error?.message || 'Error al subir comprobante', variant: 'destructive' });
-                  } finally {
-                    setSubmitting(false);
-                  }
-                }}
-                disabled={submitting || !paymentData.file || !paymentData.reference}
-                className={`w-full mt-4 ${getPrimaryButtonStyle()} flex items-center justify-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:shadow-none`}
-              >
-                {submitting ? (language === 'es' ? 'Enviando...' : 'Sending...') : (language === 'es' ? 'Enviar Comprobante y Completar' : 'Submit Proof and Complete')}
-                <CheckCircle className="h-6 w-6" />
-              </button>
-            </div>
-
-            {/* Botón para ver mis remesas (secundario) */}
-            <div className="text-center">
-              <button
-                onClick={() => onNavigate('my-remittances')}
-                className="text-blue-600 hover:text-blue-800 underline text-sm"
-              >
-                {language === 'es' ? 'Subir comprobante más tarde desde "Mis Remesas"' : 'Upload proof later from "My Remittances"'}
-              </button>
-            </div>
+                  setConfirmedRemittanceInfo({
+                    remittanceNumber: createdRemittance.remittance_number,
+                    total: calculation?.amountToDeliver || parseFloat(amount),
+                    currency: calculation?.deliveryCurrency || 'CUP',
+                    recipientName: recipientData.name
+                  });
+                  setShowConfirmationModal(true);
+                } catch (error) {
+                  console.error('Error uploading proof:', error);
+                  toast({ title: t('common.error'), description: error?.message || 'Error al subir comprobante', variant: 'destructive' });
+                } finally {
+                  setSubmitting(false);
+                }
+              }}
+              submitting={submitting}
+              submitLabel={language === 'es' ? 'Enviar Comprobante y Completar' : 'Submit Proof and Complete'}
+              showUploadLater={true}
+              onUploadLater={() => onNavigate('my-remittances')}
+            />
           </motion.div>
         )}
       </AnimatePresence>

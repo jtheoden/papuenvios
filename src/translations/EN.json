@@ -457,7 +457,11 @@
       "zelleAccountMissing": "We couldn't load the Zelle account details. Please contact support before sending the transfer.",
       "transferDescription": "Details to complete your transfer",
       "remittanceIdForTransfer": "Remittance ID",
-      "useThisInTransfer": "Use this ID in your transfer reference or payment note"
+      "useThisInTransfer": "Use this ID in your transfer reference or payment note",
+      "belowMinAmount": "Minimum amount: {min} {currency}",
+      "aboveMaxAmount": "Maximum amount: {max} {currency}",
+      "sendingEquivalent": "(you're sending ~{amount} USD)",
+      "selectTypeFirst": "Select a type first"
     }
   },
   "vendor": {
@@ -1293,6 +1297,7 @@
     "currentDaily": "Current Daily Usage",
     "currentMonthly": "Current Monthly Usage",
     "isActive": "Active",
+    "active": "Active",
     "forProducts": "For Products",
     "forRemittances": "For Remittances",
     "createAccount": "Create Account",

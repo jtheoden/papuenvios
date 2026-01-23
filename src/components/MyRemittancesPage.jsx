@@ -118,7 +118,49 @@ const MyRemittancesPage = ({ onNavigate }) => {
     loadRemittances();
   }, [loadRemittances]);
 
-  const handleRealtimeRemittance = useCallback(async () => {
+  const handleRealtimeRemittance = useCallback(async (payload) => {
+    // Show toast notification when status changes (Req 14)
+    if (payload?.eventType === 'UPDATE' && payload?.old?.status !== payload?.new?.status) {
+      const newStatus = payload.new?.status;
+      const remittanceNumber = payload.new?.remittance_number || '';
+
+      // Status labels for notification
+      const statusLabels = {
+        es: {
+          payment_pending: 'Pendiente de pago',
+          payment_proof_uploaded: 'Comprobante enviado',
+          payment_validated: 'Pago validado',
+          payment_rejected: 'Pago rechazado',
+          processing: 'En proceso',
+          ready_for_delivery: 'Listo para entrega',
+          delivered: 'Entregado',
+          completed: 'Completado'
+        },
+        en: {
+          payment_pending: 'Payment pending',
+          payment_proof_uploaded: 'Proof uploaded',
+          payment_validated: 'Payment validated',
+          payment_rejected: 'Payment rejected',
+          processing: 'Processing',
+          ready_for_delivery: 'Ready for delivery',
+          delivered: 'Delivered',
+          completed: 'Completed'
+        }
+      };
+
+      const labels = statusLabels[language] || statusLabels.es;
+      const statusText = labels[newStatus] || newStatus;
+
+      // Show appropriate toast based on status
+      const isNegative = newStatus === 'payment_rejected';
+      toast({
+        title: language === 'es' ? '🔔 Estado actualizado' : '🔔 Status updated',
+        description: `${remittanceNumber}: ${statusText}`,
+        variant: isNegative ? 'destructive' : 'default',
+        duration: 5000
+      });
+    }
+
     await loadRemittances();
 
     if (selectedRemittance?.id) {
@@ -131,7 +173,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
         console.error('Error refreshing remittance details:', error);
       }
     }
-  }, [loadRemittances, selectedRemittance]);
+  }, [loadRemittances, selectedRemittance, language]);
 
   useEffect(() => {
     if (isAdmin || isSuperAdmin) {

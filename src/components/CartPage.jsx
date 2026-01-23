@@ -28,6 +28,7 @@ import ZelleAccountAlert from '@/components/ZelleAccountAlert';
 import FileUploadWithPreview from '@/components/FileUploadWithPreview';
 import CurrencySelector from '@/components/CurrencySelector';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
+import ZelleAccountDisplay from '@/components/shared/ZelleAccountDisplay';
 import { useUserDiscounts } from '@/hooks/useUserDiscounts';
 import { useModal } from '@/contexts/ModalContext';
 
@@ -984,16 +985,11 @@ const CartPage = ({ onNavigate }) => {
           </div>
 
           {selectedZelle ? (
-            <div className="mb-6 glass-effect p-4 rounded-lg border-2 border-blue-200 bg-blue-50">
-              <h3 className="font-semibold text-blue-900 mb-3">{t('cart.payment.accountInfo')}</h3>
-              <div className="space-y-2 text-sm">
-                <p><strong>{t('settings.zelle.name')}:</strong> {selectedZelle.account_name || selectedZelle.name}</p>
-                <p><strong>Email:</strong> {selectedZelle.email || selectedZelle.zelle_email}</p>
-                {(selectedZelle.phone_number || selectedZelle.phone || selectedZelle.telefono) && (
-                  <p><strong>{t('common.phone')}:</strong> {selectedZelle.phone_number || selectedZelle.phone || selectedZelle.telefono}</p>
-                )}
-              </div>
-            </div>
+            <ZelleAccountDisplay
+              account={selectedZelle}
+              showCopyButtons={false}
+              className="mb-6"
+            />
           ) : (
             <p className="text-red-500 mb-6">{language === 'es' ? 'No hay cuenta Zelle disponible.' : 'No Zelle account available.'}</p>
           )}
