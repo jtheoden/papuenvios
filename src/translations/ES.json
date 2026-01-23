@@ -466,7 +466,11 @@
       "zelleAccountMissing": "No pudimos cargar los datos de la cuenta Zelle. Contacta soporte antes de enviar la transferencia.",
       "transferDescription": "Datos para realizar tu transferencia",
       "remittanceIdForTransfer": "ID de la remesa",
-      "useThisInTransfer": "Usa este ID en la referencia de tu transferencia o en la nota del pago"
+      "useThisInTransfer": "Usa este ID en la referencia de tu transferencia o en la nota del pago",
+      "belowMinAmount": "Monto mínimo: {min} {currency}",
+      "aboveMaxAmount": "Monto máximo: {max} {currency}",
+      "sendingEquivalent": "(estás enviando ~{amount} USD)",
+      "selectTypeFirst": "Selecciona un tipo primero"
     }
   },
   "vendor": {
@@ -1302,6 +1306,7 @@
     "currentDaily": "Uso Diario Actual",
     "currentMonthly": "Uso Mensual Actual",
     "isActive": "Activo",
+    "active": "Activa",
     "forProducts": "Para Productos",
     "forRemittances": "Para Remesas",
     "createAccount": "Crear Cuenta",

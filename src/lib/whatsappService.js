@@ -178,27 +178,53 @@ export const notifyAdminNewPayment = (order, adminPhone, language = 'es') => {
     `${i + 1}. ${item.item_name_es || item.item_name_en} (x${item.quantity})`
   ).join('\n   ') || 'Sin items';
 
+  // Parse recipient_info (puede venir como string JSON o ya parseado)
+  let recipientInfo = order.recipient_info;
+  if (typeof recipientInfo === 'string') {
+    try {
+      recipientInfo = JSON.parse(recipientInfo);
+    } catch (e) {
+      recipientInfo = {};
+    }
+  }
+  recipientInfo = recipientInfo || {};
+
+  // System link with order ID for direct navigation
+  const systemLink = `${window.location.origin}/dashboard?tab=orders&id=${order.id}`;
+
   const messages = {
     es: `🆕 *Nueva Orden Registrada*\n\n` +
         `📋 *Orden:* ${order.order_number}\n` +
-        `👤 *Cliente:* ${order.user_name || order.user_profile?.full_name || 'N/A'}\n` +
-        `📧 *Email:* ${order.user_email || order.user_profile?.email || 'N/A'}\n\n` +
+        `👤 *Cliente:* ${order.user_profile?.full_name || order.user_name || 'N/A'}\n` +
+        `📧 *Email:* ${order.user_profile?.email || order.user_email || 'N/A'}\n\n` +
         `📦 *Items:*\n   ${itemsList}\n\n` +
         `💰 *Total:* ${order.total_amount} ${order.currency?.code || order.currencies?.code || 'USD'}\n` +
-        `💳 *Método de Pago:* ${order.payment_method || 'N/A'}\n` +
-        `📍 *Provincia:* ${order.shipping_zone?.province_name || order.shipping_address || 'N/A'}\n\n` +
-        `🔗 *Ver en sistema:*\n${window.location.origin}/dashboard?tab=orders\n\n` +
+        `💳 *Método de Pago:* ${order.payment_method || 'N/A'}\n\n` +
+        `📍 *Destinatario para Entrega*\n` +
+        `┌─────────────────────\n` +
+        `│ 👤 ${recipientInfo.fullName || 'N/A'}\n` +
+        `│ 📱 ${recipientInfo.phone || 'N/A'}\n` +
+        `│ 📍 ${recipientInfo.province || 'N/A'}${recipientInfo.municipality ? ', ' + recipientInfo.municipality : ''}\n` +
+        `│ 🏠 ${recipientInfo.address || 'N/A'}\n` +
+        `└─────────────────────\n\n` +
+        `🔗 *Ver en sistema:*\n${systemLink}\n\n` +
         `_Mensaje desde PapuEnvíos_`,
 
     en: `🆕 *New Order Registered*\n\n` +
         `📋 *Order:* ${order.order_number}\n` +
-        `👤 *Customer:* ${order.user_name || order.user_profile?.full_name || 'N/A'}\n` +
-        `📧 *Email:* ${order.user_email || order.user_profile?.email || 'N/A'}\n\n` +
+        `👤 *Customer:* ${order.user_profile?.full_name || order.user_name || 'N/A'}\n` +
+        `📧 *Email:* ${order.user_profile?.email || order.user_email || 'N/A'}\n\n` +
         `📦 *Items:*\n   ${itemsList}\n\n` +
         `💰 *Total:* ${order.total_amount} ${order.currency?.code || order.currencies?.code || 'USD'}\n` +
-        `💳 *Payment Method:* ${order.payment_method || 'N/A'}\n` +
-        `📍 *Province:* ${order.shipping_zone?.province_name || order.shipping_address || 'N/A'}\n\n` +
-        `🔗 *View in system:*\n${window.location.origin}/dashboard?tab=orders\n\n` +
+        `💳 *Payment Method:* ${order.payment_method || 'N/A'}\n\n` +
+        `📍 *Delivery Recipient*\n` +
+        `┌─────────────────────\n` +
+        `│ 👤 ${recipientInfo.fullName || 'N/A'}\n` +
+        `│ 📱 ${recipientInfo.phone || 'N/A'}\n` +
+        `│ 📍 ${recipientInfo.province || 'N/A'}${recipientInfo.municipality ? ', ' + recipientInfo.municipality : ''}\n` +
+        `│ 🏠 ${recipientInfo.address || 'N/A'}\n` +
+        `└─────────────────────\n\n` +
+        `🔗 *View in system:*\n${systemLink}\n\n` +
         `_Message from PapuEnvíos_`
   };
 
@@ -494,7 +520,7 @@ export const notifyAdminNewPaymentProof = async (remittance, adminPhone, languag
     }
   }
 
-  const systemLink = `${window.location.origin}/dashboard?tab=remittances`;
+  const systemLink = `${window.location.origin}/dashboard?tab=remittances&id=${remittance.id}`;
   const formattedProofLink = proofLink || systemLink;
 
   const messages = {

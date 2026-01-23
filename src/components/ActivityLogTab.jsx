@@ -41,6 +41,10 @@ const ActivityLogTab = () => {
   const [search, setSearch] = useState('');
   const [actionFilter, setActionFilter] = useState('all');
   const [entityFilter, setEntityFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20;
   const [loading, setLoading] = useState(false);
   const [selectedLog, setSelectedLog] = useState(null);
 
@@ -49,11 +53,21 @@ const ActivityLogTab = () => {
     const data = await fetchActivityLogs({
       search,
       type: actionFilter,
-      entity: entityFilter
+      entity: entityFilter,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined
     });
     setLogs(data);
+    setCurrentPage(1); // Reset to first page when filters change
     setLoading(false);
-  }, [actionFilter, entityFilter, search]);
+  }, [actionFilter, entityFilter, search, startDate, endDate]);
+
+  // Paginated logs (Req 12)
+  const paginatedLogs = useMemo(() => {
+    return logs.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  }, [logs, currentPage, pageSize]);
+
+  const totalPages = Math.ceil(logs.length / pageSize);
 
   useEffect(() => {
     if (!isSuperAdmin) return;
@@ -177,6 +191,47 @@ const ActivityLogTab = () => {
         </div>
       </div>
 
+      {/* Date Filters (Req 12) */}
+      <div className="flex flex-wrap items-center gap-3 bg-white p-3 rounded-lg border border-gray-200">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-gray-500" />
+          <span className="text-sm text-gray-600">{language === 'es' ? 'Desde:' : 'From:'}</span>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="px-2 py-1 text-sm border rounded-lg focus:ring-2 focus:ring-purple-500"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-600">{language === 'es' ? 'Hasta:' : 'To:'}</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="px-2 py-1 text-sm border rounded-lg focus:ring-2 focus:ring-purple-500"
+          />
+        </div>
+        {(startDate || endDate || actionFilter !== 'all' || entityFilter !== 'all' || search) && (
+          <button
+            onClick={() => {
+              setStartDate('');
+              setEndDate('');
+              setActionFilter('all');
+              setEntityFilter('all');
+              setSearch('');
+            }}
+            className="flex items-center gap-1 px-2 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-4 h-4" />
+            {language === 'es' ? 'Limpiar filtros' : 'Clear filters'}
+          </button>
+        )}
+        <span className="ml-auto text-sm text-gray-500">
+          {logs.length} {language === 'es' ? 'registros' : 'records'}
+        </span>
+      </div>
+
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="glass-effect p-4 rounded-xl flex items-center gap-3">
           <Clock className="w-10 h-10 text-purple-600" />
@@ -195,11 +250,42 @@ const ActivityLogTab = () => {
       </div>
 
       <ResponsiveTableWrapper
-        data={logs}
+        data={paginatedLogs}
         columns={columns}
         isLoading={loading}
         onRowClick={(row) => setSelectedLog(row)}
       />
+
+      {/* Pagination (Req 12) */}
+      {logs.length > pageSize && (
+        <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200">
+          <p className="text-sm text-gray-600">
+            {language === 'es'
+              ? `Mostrando ${(currentPage - 1) * pageSize + 1}-${Math.min(currentPage * pageSize, logs.length)} de ${logs.length}`
+              : `Showing ${(currentPage - 1) * pageSize + 1}-${Math.min(currentPage * pageSize, logs.length)} of ${logs.length}`
+            }
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {language === 'es' ? 'Anterior' : 'Previous'}
+            </button>
+            <span className="text-sm text-gray-600">
+              {currentPage} / {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage >= totalPages}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {language === 'es' ? 'Siguiente' : 'Next'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Detail Modal - Responsive for 320px */}
       {selectedLog && (

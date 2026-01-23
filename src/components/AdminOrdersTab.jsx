@@ -134,6 +134,29 @@ const AdminOrdersTab = () => {
     loadOrders();
   }, []);
 
+  // Req 8: Auto-select order from URL parameter ?id=X
+  useEffect(() => {
+    if (orders.length === 0) return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetId = urlParams.get('id');
+
+    if (targetId) {
+      const target = orders.find(o =>
+        o.id === targetId || o.order_number === targetId
+      );
+
+      if (target) {
+        setSelectedOrder(target);
+        setShowOrderModal(true);
+
+        // Clean up URL parameter after navigation
+        const newUrl = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, '', newUrl);
+      }
+    }
+  }, [orders]);
+
   // Real-time subscription for order updates
   useRealtimeOrders({
     enabled: true,
