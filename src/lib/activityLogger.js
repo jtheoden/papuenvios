@@ -284,7 +284,7 @@ export const logActivity = async ({
   }
 };
 
-export const fetchActivityLogs = async ({ search = '', type = 'all', entity = 'all', limit = 200 } = {}) => {
+export const fetchActivityLogs = async ({ search = '', type = 'all', entity = 'all', startDate, endDate, limit = 200 } = {}) => {
   try {
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData?.session) {
@@ -304,6 +304,15 @@ export const fetchActivityLogs = async ({ search = '', type = 'all', entity = 'a
 
     if (search) {
       query = query.or(`description.ilike.%${search}%,performed_by.ilike.%${search}%`);
+    }
+
+    // Date range filters - expects ISO timestamps from client (already timezone-adjusted)
+    if (startDate) {
+      query = query.gte('created_at', startDate);
+    }
+
+    if (endDate) {
+      query = query.lte('created_at', endDate);
     }
 
     const { data, error } = await query;

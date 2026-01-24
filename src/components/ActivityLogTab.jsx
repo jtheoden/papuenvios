@@ -43,24 +43,68 @@ const ActivityLogTab = () => {
   const [entityFilter, setEntityFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [dateError, setDateError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 20;
   const [loading, setLoading] = useState(false);
   const [selectedLog, setSelectedLog] = useState(null);
 
+  // Validate date range (from must be before to)
+  const validateDateRange = useCallback((from, to) => {
+    if (from && to && new Date(from) > new Date(to)) {
+      setDateError(t('activityLog.invalidDateRange'));
+      return false;
+    }
+    setDateError('');
+    return true;
+  }, [t]);
+
+  // Handle start date change with validation
+  const handleStartDateChange = (value) => {
+    setStartDate(value);
+    validateDateRange(value, endDate);
+  };
+
+  // Handle end date change with validation
+  const handleEndDateChange = (value) => {
+    setEndDate(value);
+    validateDateRange(startDate, value);
+  };
+
+  // Convert local date string to ISO timestamp (start of day in user's timezone)
+  const getStartOfDayISO = useCallback((dateStr) => {
+    if (!dateStr) return undefined;
+    // Create date at start of day in local timezone, then convert to UTC ISO
+    const date = new Date(dateStr + 'T00:00:00');
+    return date.toISOString();
+  }, []);
+
+  // Convert local date string to ISO timestamp (end of day in user's timezone)
+  const getEndOfDayISO = useCallback((dateStr) => {
+    if (!dateStr) return undefined;
+    // Create date at end of day in local timezone, then convert to UTC ISO
+    const date = new Date(dateStr + 'T23:59:59.999');
+    return date.toISOString();
+  }, []);
+
   const loadLogs = useCallback(async () => {
+    // Don't load if date range is invalid
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      return;
+    }
     setLoading(true);
     const data = await fetchActivityLogs({
       search,
       type: actionFilter,
       entity: entityFilter,
-      startDate: startDate || undefined,
-      endDate: endDate || undefined
+      // Convert dates to UTC ISO strings accounting for user's timezone
+      startDate: getStartOfDayISO(startDate),
+      endDate: getEndOfDayISO(endDate)
     });
     setLogs(data);
     setCurrentPage(1); // Reset to first page when filters change
     setLoading(false);
-  }, [actionFilter, entityFilter, search, startDate, endDate]);
+  }, [actionFilter, entityFilter, search, startDate, endDate, getStartOfDayISO, getEndOfDayISO]);
 
   // Paginated logs (Req 12)
   const paginatedLogs = useMemo(() => {
@@ -195,28 +239,36 @@ const ActivityLogTab = () => {
       <div className="flex flex-wrap items-center gap-3 bg-white p-3 rounded-lg border border-gray-200">
         <div className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-gray-500" />
-          <span className="text-sm text-gray-600">{language === 'es' ? 'Desde:' : 'From:'}</span>
+          <span className="text-sm text-gray-600">{t('activityLog.dateFrom')}:</span>
           <input
             type="date"
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="px-2 py-1 text-sm border rounded-lg focus:ring-2 focus:ring-purple-500"
+            max={endDate || undefined}
+            onChange={(e) => handleStartDateChange(e.target.value)}
+            className={`px-2 py-1 text-sm border rounded-lg focus:ring-2 focus:ring-purple-500 ${dateError ? 'border-red-500' : ''}`}
           />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">{language === 'es' ? 'Hasta:' : 'To:'}</span>
+          <span className="text-sm text-gray-600">{t('activityLog.dateTo')}:</span>
           <input
             type="date"
             value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="px-2 py-1 text-sm border rounded-lg focus:ring-2 focus:ring-purple-500"
+            min={startDate || undefined}
+            onChange={(e) => handleEndDateChange(e.target.value)}
+            className={`px-2 py-1 text-sm border rounded-lg focus:ring-2 focus:ring-purple-500 ${dateError ? 'border-red-500' : ''}`}
           />
         </div>
+        {dateError && (
+          <span className="text-sm text-red-600 font-medium">
+            {dateError}
+          </span>
+        )}
         {(startDate || endDate || actionFilter !== 'all' || entityFilter !== 'all' || search) && (
           <button
             onClick={() => {
               setStartDate('');
               setEndDate('');
+              setDateError('');
               setActionFilter('all');
               setEntityFilter('all');
               setSearch('');
@@ -224,11 +276,11 @@ const ActivityLogTab = () => {
             className="flex items-center gap-1 px-2 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <X className="w-4 h-4" />
-            {language === 'es' ? 'Limpiar filtros' : 'Clear filters'}
+            {t('activityLog.clearFilters')}
           </button>
         )}
         <span className="ml-auto text-sm text-gray-500">
-          {logs.length} {language === 'es' ? 'registros' : 'records'}
+          {logs.length} {t('activityLog.records')}
         </span>
       </div>
 

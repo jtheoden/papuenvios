@@ -683,7 +683,14 @@
     "latest": "Latest entries",
     "securityEvents": "Security events",
     "onlySuperAdmin": "Only super admins can view the activity log",
-    "search": "Search activity"
+    "search": "Search activity",
+    "details": "Activity Details",
+    "metadata": "Additional Information",
+    "dateFrom": "From",
+    "dateTo": "To",
+    "clearFilters": "Clear filters",
+    "records": "records",
+    "invalidDateRange": "'From' date must be earlier than 'To' date"
   },
   "settings": {
     "title": "General Settings",
