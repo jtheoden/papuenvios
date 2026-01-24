@@ -64,20 +64,23 @@ export const useRealtimeSubscription = ({
       try {
         const sanitizedFilter =
           typeof filter === 'string' && filter.trim().length > 0 ? filter.trim() : null;
-        const effectiveFilter = sanitizedFilter ?? 'id=not.is.null';
 
         // Create channel name (unique per table/filter/event to avoid collisions)
         const uniqueToken = Math.random().toString(36).slice(2, 8);
-        const channelName = `realtime:${table}:${event}:${effectiveFilter}:${uniqueToken}`;
+        const channelName = `realtime:${table}:${event}:${sanitizedFilter || 'all'}:${uniqueToken}`;
 
-        // Build subscription
+        // Build subscription options
         const changeOptions = {
           event: event,
           schema: 'public',
           table: table
         };
 
-        changeOptions.filter = effectiveFilter;
+        // Only apply filter if one is explicitly provided
+        // No filter = subscribe to ALL changes on the table
+        if (sanitizedFilter) {
+          changeOptions.filter = sanitizedFilter;
+        }
 
         let subscription = supabase
           .channel(channelName)
@@ -85,6 +88,7 @@ export const useRealtimeSubscription = ({
             'postgres_changes',
             changeOptions,
             (payload) => {
+              console.log(`[Realtime] ${table} ${payload.eventType}:`, payload.new?.id || payload.old?.id);
               setLastUpdate(new Date());
 
               // Call specific handlers based on event type

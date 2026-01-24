@@ -4,11 +4,19 @@ import { useSettings } from '@/contexts/SettingsContext';
 /**
  * useProfitMargin Hook
  *
- * Centralizes profit margin calculation logic
- * Eliminates duplicate margin calculations across components
+ * Centralizes profit margin calculation logic for products and combos.
+ * Eliminates duplicate margin calculations across components.
+ *
+ * IMPORTANT - Profit margin sources:
+ * - Products: Each product has its own profit_margin in DB. This hook provides
+ *   the default fallback (productProfit) for products without individual margins.
+ * - Combos: Uses comboProfit as the default margin for combo calculations.
+ * - Remittances: DEPRECATED - Remittance profits are calculated directly from
+ *   commissions (commission = profit). The remittanceProfit setting is no longer
+ *   used in active code. Commission configuration is per remittance_type in DB.
  *
  * @param {Object} options - Configuration options
- * @param {string} options.itemType - Type of item: 'product' | 'combo' | 'remittance'
+ * @param {string} options.itemType - Type of item: 'product' | 'combo' | 'remittance' (deprecated)
  * @param {string} options.categoryId - Optional category ID for category-specific margins
  * @param {number} options.overridePercent - Optional override percentage (0-100)
  *
@@ -43,6 +51,9 @@ export const useProfitMargin = ({ itemType = 'product', categoryId = null, overr
           marginPercent = parseFloat(financialSettings.comboProfit) || 35;
           break;
         case 'remittance':
+          // DEPRECATED: Remittance profits are now calculated as commission = profit
+          // This case is kept for backward compatibility but is not used in active code.
+          // Actual remittance commissions are configured per remittance_type in the database.
           marginPercent = parseFloat(financialSettings.remittanceProfit) || 10;
           break;
         default:

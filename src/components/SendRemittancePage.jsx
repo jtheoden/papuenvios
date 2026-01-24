@@ -437,9 +437,14 @@ const SendRemittancePage = ({ onNavigate }) => {
     // Validación para remesas off-cash (transfer, card, moneypocket)
     const deliveryMethod = selectedType?.delivery_method || 'cash';
     if (deliveryMethod !== 'cash' && !selectedBankAccount) {
+      const deliveryCurrency = selectedType?.delivery_currency || '';
       toast({
         title: t('common.error'),
-        description: t('remittances.wizard.selectBankAccountRequired') || 'Debes seleccionar una cuenta bancaria para este tipo de remesa',
+        description: deliveryCurrency
+          ? (language === 'es'
+            ? `Debes seleccionar una cuenta bancaria en ${deliveryCurrency} para este tipo de remesa. Si el destinatario no tiene una cuenta compatible, crea una nueva.`
+            : `You must select a bank account in ${deliveryCurrency} for this remittance type. If the recipient doesn't have a compatible account, create a new one.`)
+          : (t('remittances.wizard.selectBankAccountRequired') || 'Debes seleccionar una cuenta bancaria para este tipo de remesa'),
         variant: 'destructive'
       });
       return;

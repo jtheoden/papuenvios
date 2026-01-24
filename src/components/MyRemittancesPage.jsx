@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   Calendar, DollarSign, User, FileText, AlertCircle, CheckCircle,
@@ -55,20 +55,20 @@ const MyRemittancesPage = ({ onNavigate }) => {
   const filteredRemittances = useMemo(() => {
     let filtered = remittances;
 
-    // Filter by status
+    // Filter by status - use correct database status values
     if (statusFilter !== 'all') {
       filtered = filtered.filter(r => {
         if (statusFilter === 'pending') {
-          return ['pending', 'proof_uploaded'].includes(r.status);
+          return [REMITTANCE_STATUS.PAYMENT_PENDING, REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED].includes(r.status);
         }
         if (statusFilter === 'processing') {
-          return ['validated', 'processing', 'ready_for_delivery'].includes(r.status);
+          return [REMITTANCE_STATUS.PAYMENT_VALIDATED, REMITTANCE_STATUS.PROCESSING].includes(r.status);
         }
         if (statusFilter === 'completed') {
-          return ['delivered', 'completed'].includes(r.status);
+          return [REMITTANCE_STATUS.DELIVERED, REMITTANCE_STATUS.COMPLETED].includes(r.status);
         }
         if (statusFilter === 'rejected') {
-          return r.status === 'rejected';
+          return r.status === REMITTANCE_STATUS.PAYMENT_REJECTED || r.status === REMITTANCE_STATUS.CANCELLED;
         }
         return true;
       });
@@ -118,7 +118,23 @@ const MyRemittancesPage = ({ onNavigate }) => {
     loadRemittances();
   }, [loadRemittances]);
 
+  // Ref to track currently selected remittance ID for real-time updates
+  const selectedRemittanceIdRef = useRef(null);
+
+  // Keep ref in sync with selectedRemittance
+  useEffect(() => {
+    selectedRemittanceIdRef.current = selectedRemittance?.id || null;
+  }, [selectedRemittance?.id]);
+
+  // Use ref to always have access to latest loadRemittances without stale closure
+  const loadRemittancesRef = useRef(loadRemittances);
+  useEffect(() => {
+    loadRemittancesRef.current = loadRemittances;
+  }, [loadRemittances]);
+
   const handleRealtimeRemittance = useCallback(async (payload) => {
+    console.log('[MyRemittances] Realtime event received:', payload?.eventType, payload?.new?.id);
+
     // Show toast notification when status changes (Req 14)
     if (payload?.eventType === 'UPDATE' && payload?.old?.status !== payload?.new?.status) {
       const newStatus = payload.new?.status;
@@ -132,7 +148,6 @@ const MyRemittancesPage = ({ onNavigate }) => {
           payment_validated: 'Pago validado',
           payment_rejected: 'Pago rechazado',
           processing: 'En proceso',
-          ready_for_delivery: 'Listo para entrega',
           delivered: 'Entregado',
           completed: 'Completado'
         },
@@ -142,7 +157,6 @@ const MyRemittancesPage = ({ onNavigate }) => {
           payment_validated: 'Payment validated',
           payment_rejected: 'Payment rejected',
           processing: 'Processing',
-          ready_for_delivery: 'Ready for delivery',
           delivered: 'Delivered',
           completed: 'Completed'
         }
@@ -161,11 +175,16 @@ const MyRemittancesPage = ({ onNavigate }) => {
       });
     }
 
-    await loadRemittances();
+    // Reload the remittances list using ref to avoid stale closure
+    console.log('[MyRemittances] Reloading remittances list...');
+    await loadRemittancesRef.current();
 
-    if (selectedRemittance?.id) {
+    // Update the selected remittance if modal is open (using ref to avoid stale closure)
+    const currentSelectedId = selectedRemittanceIdRef.current;
+    if (currentSelectedId) {
+      console.log('[MyRemittances] Refreshing selected remittance:', currentSelectedId);
       try {
-        const updated = await getRemittanceDetails(selectedRemittance.id);
+        const updated = await getRemittanceDetails(currentSelectedId);
         if (updated) {
           setSelectedRemittance(updated);
         }
@@ -173,7 +192,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
         console.error('Error refreshing remittance details:', error);
       }
     }
-  }, [loadRemittances, selectedRemittance, language]);
+  }, [language]);
 
   useEffect(() => {
     if (isAdmin || isSuperAdmin) {
@@ -444,6 +463,23 @@ const MyRemittancesPage = ({ onNavigate }) => {
     };
 
     return labels[status] || status;
+  };
+
+  // Translate delivery method based on active language
+  const getDeliveryMethodLabel = (method) => {
+    if (!method) return '-';
+    const labels = {
+      es: {
+        transfer: 'Transferencia',
+        cash: 'Efectivo'
+      },
+      en: {
+        transfer: 'Transfer',
+        cash: 'Cash'
+      }
+    };
+    const langLabels = labels[language] || labels.es;
+    return langLabels[method] || method;
   };
 
   if (loading) {
@@ -797,7 +833,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                   </div>
                   <div>
                     <p className="text-xs sm:text-sm text-gray-500">{t('remittances.user.deliveryMethod')}</p>
-                    <p className="font-semibold capitalize text-sm sm:text-base">{selectedRemittance.delivery_method}</p>
+                    <p className="font-semibold text-sm sm:text-base">{getDeliveryMethodLabel(selectedRemittance.remittance_types?.delivery_method)}</p>
                   </div>
                 </div>
 

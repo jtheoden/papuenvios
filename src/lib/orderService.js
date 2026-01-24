@@ -1859,10 +1859,8 @@ export const markOrderAsDelivered = async (orderId, proofFile, adminId) => {
       throw appError;
     }
 
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from('order-delivery-proofs')
-      .getPublicUrl(fileName);
+    // Store the file path (NOT public URL) - signed URLs will be generated when displaying
+    // This matches the pattern used by remittances for private bucket storage
 
     // Update order status
     const { data: updatedOrder, error: updateError } = await supabase
@@ -1870,7 +1868,7 @@ export const markOrderAsDelivered = async (orderId, proofFile, adminId) => {
       .update({
         status: ORDER_STATUS.DELIVERED,
         delivered_at: new Date().toISOString(),
-        delivery_proof_url: urlData.publicUrl,
+        delivery_proof_url: fileName, // Store path only, not full URL
         updated_at: new Date().toISOString()
       })
       .eq('id', orderId)
@@ -1890,7 +1888,7 @@ export const markOrderAsDelivered = async (orderId, proofFile, adminId) => {
       entityId: orderId,
       performedBy: adminEmail,
       description: `Entregada con evidencia - Orden ${updatedOrder?.order_number || orderId}`,
-      metadata: { orderId, orderNumber: updatedOrder?.order_number, deliveryProofUrl: urlData.publicUrl }
+      metadata: { orderId, orderNumber: updatedOrder?.order_number, deliveryProofPath: fileName }
     });
 
     return updatedOrder;

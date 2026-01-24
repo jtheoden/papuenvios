@@ -7,7 +7,7 @@ import { useModal } from '@/contexts/ModalContext';
 import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users, Crown, TrendingDown, Gift, Truck, Upload, EyeOff, Filter, ChevronDown } from 'lucide-react';
 import { getUserOrders, getOrderById, getAllOrders, validatePayment, rejectPayment, cancelOrderByUser, uploadPaymentProof, markOrderAsDispatched, markOrderAsDelivered, completeOrder, reopenOrder, ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderService';
 import { getUserTestimonial, createTestimonial, updateTestimonial } from '@/lib/testimonialService';
-import { getMyRemittances } from '@/lib/remittanceService';
+import { getMyRemittances, generateProofSignedUrl } from '@/lib/remittanceService';
 import { getHeadingStyle, getTextStyle, getPillStyle, getStatusStyle } from '@/lib/styleUtils';
 import { generateWhatsAppURL } from '@/lib/whatsappService';
 import { getActiveWhatsappRecipient } from '@/lib/notificationSettingsService';
@@ -48,6 +48,8 @@ const UserPanel = ({ onNavigate }) => {
   const [retryProofFile, setRetryProofFile] = useState(null);
   const [processingAction, setProcessingAction] = useState(false);
   const [hideCompletedOrders, setHideCompletedOrders] = useState(true); // Ocultar pedidos finalizados/cancelados por defecto
+  const [orderDeliveryProofSignedUrl, setOrderDeliveryProofSignedUrl] = useState(null);
+  const [loadingOrderDeliveryProof, setLoadingOrderDeliveryProof] = useState(false);
 
   // Paginación de órdenes
   const [visibleOrdersCount, setVisibleOrdersCount] = useState(ORDERS_PER_PAGE);
@@ -114,6 +116,37 @@ const UserPanel = ({ onNavigate }) => {
   useEffect(() => {
     setVisibleOrdersCount(ORDERS_PER_PAGE);
   }, [hideCompletedOrders]);
+
+  // Generate signed URL for order delivery proof when selectedOrder changes
+  useEffect(() => {
+    const loadDeliveryProofUrl = async () => {
+      if (!selectedOrder?.delivery_proof_url) {
+        setOrderDeliveryProofSignedUrl(null);
+        return;
+      }
+
+      setLoadingOrderDeliveryProof(true);
+      try {
+        const result = await generateProofSignedUrl(
+          selectedOrder.delivery_proof_url,
+          'order-delivery-proofs'
+        );
+        if (result.success && result.signedUrl) {
+          setOrderDeliveryProofSignedUrl(result.signedUrl);
+        } else {
+          console.error('[UserPanel] Failed to generate signed URL:', result.error);
+          setOrderDeliveryProofSignedUrl(null);
+        }
+      } catch (error) {
+        console.error('[UserPanel] Error generating signed URL:', error);
+        setOrderDeliveryProofSignedUrl(null);
+      } finally {
+        setLoadingOrderDeliveryProof(false);
+      }
+    };
+
+    loadDeliveryProofUrl();
+  }, [selectedOrder?.delivery_proof_url]);
 
   const loadUserRemittances = useCallback(async () => {
     if (!user?.id) return;
@@ -1527,6 +1560,54 @@ const UserPanel = ({ onNavigate }) => {
                             <p className="text-sm" style={getTextStyle(visualSettings, 'muted')}>
                               {language === 'es' ? 'Sin comprobante de pago' : 'No payment proof'}
                             </p>
+                          </div>
+                        )}
+
+                        {/* Delivery Proof Section - Show when admin has uploaded delivery evidence */}
+                        {selectedOrder.delivery_proof_url && (
+                          <div className="mt-6">
+                            <h4 className="text-lg font-semibold mb-3 flex items-center gap-2" style={getTextStyle(visualSettings, 'primary')}>
+                              <Truck className="h-5 w-5 text-green-600" />
+                              {language === 'es' ? 'Evidencia de Entrega' : 'Delivery Proof'}
+                            </h4>
+                            <div
+                              className="rounded-lg border-2 overflow-hidden min-h-[100px] flex items-center justify-center"
+                              style={{ borderColor: '#22c55e', backgroundColor: '#f0fdf4' }}
+                            >
+                              {loadingOrderDeliveryProof ? (
+                                <div className="flex flex-col items-center gap-2 py-8">
+                                  <Loader2 className="h-6 w-6 animate-spin text-green-600" />
+                                  <p className="text-sm text-gray-500">
+                                    {language === 'es' ? 'Cargando imagen...' : 'Loading image...'}
+                                  </p>
+                                </div>
+                              ) : orderDeliveryProofSignedUrl ? (
+                                <img
+                                  src={orderDeliveryProofSignedUrl}
+                                  alt={language === 'es' ? 'Evidencia de entrega' : 'Delivery proof'}
+                                  className="w-full h-auto object-contain max-h-[400px] cursor-pointer hover:opacity-90 transition-opacity"
+                                  onClick={() => window.open(orderDeliveryProofSignedUrl, '_blank')}
+                                  onError={(e) => {
+                                    console.error('[UserPanel] Error loading delivery proof image');
+                                    e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect fill="%23f0fdf4" width="400" height="200"/><text x="50%" y="50%" font-family="Arial" font-size="14" fill="%2316a34a" text-anchor="middle">Error al cargar imagen</text></svg>';
+                                  }}
+                                />
+                              ) : (
+                                <p className="text-sm text-gray-500 py-8">
+                                  {language === 'es' ? 'No se pudo cargar la imagen' : 'Could not load image'}
+                                </p>
+                              )}
+                            </div>
+                            {orderDeliveryProofSignedUrl && (
+                              <p className="text-xs text-center mt-2" style={getTextStyle(visualSettings, 'muted')}>
+                                {language === 'es' ? 'Click en la imagen para ver en tamaño completo' : 'Click image to view full size'}
+                              </p>
+                            )}
+                            {selectedOrder.delivered_at && (
+                              <p className="text-xs text-center mt-1 text-green-600 font-medium">
+                                {language === 'es' ? 'Entregado el' : 'Delivered on'}: {new Date(selectedOrder.delivered_at).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US')}
+                              </p>
+                            )}
                           </div>
                         )}
                       </div>
