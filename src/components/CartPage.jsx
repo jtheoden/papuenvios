@@ -40,6 +40,8 @@ const CartPage = ({ onNavigate }) => {
   const { showModal } = useModal();
 
   const recipientSelectorRef = useRef();
+  // Ref to track if recipient details are being set from a selection (to avoid municipality reset race condition)
+  const isRecipientSelectionRef = useRef(false);
 
   const [view, setView] = useState('cart'); // cart, recipient, payment
   const [recipientDetails, setRecipientDetails] = useState({
@@ -175,8 +177,14 @@ const CartPage = ({ onNavigate }) => {
     if (recipientDetails.province) {
       const muns = getMunicipalitiesByProvince(recipientDetails.province);
       setMunicipalities(muns);
-      // Reset municipality when province changes
-      setRecipientDetails(prev => ({ ...prev, municipality: '' }));
+      // Only reset municipality if NOT coming from a recipient selection
+      // This prevents the race condition where selecting a recipient sets both
+      // province and municipality, but the province change triggers a reset
+      if (!isRecipientSelectionRef.current) {
+        setRecipientDetails(prev => ({ ...prev, municipality: '' }));
+      }
+      // Reset the flag after use
+      isRecipientSelectionRef.current = false;
     } else {
       setMunicipalities([]);
     }
@@ -874,6 +882,8 @@ const CartPage = ({ onNavigate }) => {
               ref={recipientSelectorRef}
               onSelect={(recipientData) => {
                 setSelectedRecipientData(recipientData);
+                // Set flag to prevent municipality reset in the province change useEffect
+                isRecipientSelectionRef.current = true;
                 if (recipientData.recipientData) {
                   // Existing recipient selected
                   setRecipientDetails({

@@ -72,6 +72,19 @@ const UserPanel = ({ onNavigate }) => {
   const selectedOrderBaseTotal = selectedOrderSubtotal + selectedOrderShipping;
   const selectedOrderTotalAfterCategory = Math.max(selectedOrderBaseTotal - selectedOrderCategoryDiscountAmount, 0);
 
+  // Parse recipient_info for selected order
+  const selectedOrderRecipientInfo = useMemo(() => {
+    if (!selectedOrder?.recipient_info) return null;
+    if (typeof selectedOrder.recipient_info === 'string') {
+      try {
+        return JSON.parse(selectedOrder.recipient_info);
+      } catch {
+        return null;
+      }
+    }
+    return selectedOrder.recipient_info;
+  }, [selectedOrder]);
+
   // Órdenes filtradas según el estado del toggle
   const filteredOrders = useMemo(() => {
     if (userRole === 'admin' || userRole === 'super_admin') return orders;
@@ -1277,6 +1290,23 @@ const UserPanel = ({ onNavigate }) => {
                         </div>
                       </div>
                     </div>
+
+                    {/* Recipient Details - For regular users */}
+                    {isRegularUser && selectedOrderRecipientInfo && (
+                      <div className="p-4 rounded-lg border" style={{ borderColor: visualSettings.borderColor || '#e5e7eb', backgroundColor: `${visualSettings.primaryColor}08` }}>
+                        <h4 className="text-sm font-semibold mb-2" style={getTextStyle(visualSettings, 'primary')}>
+                          {t('adminOrders.detail.recipient')}
+                        </h4>
+                        <div className="space-y-1 text-sm">
+                          <p style={getTextStyle(visualSettings, 'primary')}>
+                            <span className="font-medium">{t('common.name')}:</span> {selectedOrderRecipientInfo.fullName || 'N/A'}
+                          </p>
+                          <p style={getTextStyle(visualSettings, 'primary')}>
+                            <span className="font-medium">{t('common.address')}:</span> {selectedOrderRecipientInfo.address || selectedOrder.shipping_address || 'N/A'}
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Items & Payment Proof - 2 Column Layout */}
                     <div className="grid md:grid-cols-2 gap-6">
