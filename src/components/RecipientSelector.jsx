@@ -54,11 +54,42 @@ const RecipientSelector = React.forwardRef((
     loadRecipients();
   }, []);
 
+  // Restore selection state from prop when recipients load or prop changes
   useEffect(() => {
-    ref.current = {
-      loadRecipients,
-      resetForm: resetForm
-    };
+    if (selectedRecipientData && recipients.length > 0) {
+      // Find the recipient in the loaded list
+      const recipientId = selectedRecipientData.recipientId;
+      const recipient = recipients.find(r => r.id === recipientId);
+
+      if (recipient && recipient.id !== selectedRecipient?.id) {
+        setSelectedRecipient(recipient);
+
+        // Restore address selection
+        if (selectedRecipientData.addressId && recipient.addresses) {
+          const address = recipient.addresses.find(a => a.id === selectedRecipientData.addressId);
+          if (address) {
+            setSelectedAddress(address);
+          }
+        } else if (recipient.addresses?.length > 0) {
+          const defaultAddr = recipient.addresses.find(a => a.is_default) || recipient.addresses[0];
+          setSelectedAddress(defaultAddr);
+        }
+
+        // Restore bank account selection for off-cash remittances
+        if (selectedRecipientData.recipient_bank_account_id) {
+          setSelectedBankAccountId(selectedRecipientData.recipient_bank_account_id);
+        }
+      }
+    }
+  }, [selectedRecipientData, recipients]);
+
+  useEffect(() => {
+    if (ref) {
+      ref.current = {
+        loadRecipients,
+        resetForm: resetForm
+      };
+    }
   }, [ref]);
 
   const loadRecipients = async () => {
@@ -93,16 +124,46 @@ const RecipientSelector = React.forwardRef((
     setMunicipalities([]);
   };
 
-  // Filter recipients based on search term
+  // Helper: Check if a province has a valid shipping zone (cost > 0 OR free_shipping = true)
+  const hasValidShippingZone = (provinceName) => {
+    if (!provinceName || shippingZones.length === 0) return false;
+    const zone = shippingZones.find(z =>
+      z.province_name?.toLowerCase().trim() === provinceName.toLowerCase().trim() &&
+      z.municipality_name === null // Province-level zone
+    );
+    if (!zone) return false;
+    // Valid if: has shipping cost > 0 OR is marked as free shipping
+    return zone.shipping_cost > 0 || zone.free_shipping === true;
+  };
+
+  // Helper: Check if recipient has at least one address with valid shipping zone
+  const hasValidAddress = (recipient) => {
+    if (!recipient.addresses || recipient.addresses.length === 0) return false;
+    return recipient.addresses.some(addr => hasValidShippingZone(addr.province));
+  };
+
+  // Filter recipients: must have valid address with valid shipping zone
+  // Also filter by search term
   const filteredRecipients = useMemo(() => {
-    if (!searchTerm) return recipients;
+    // First filter by valid shipping zones
+    const validRecipients = recipients.filter(r => hasValidAddress(r));
+
+    // Then filter by search term
+    if (!searchTerm) return validRecipients;
     const term = searchTerm.toLowerCase();
-    return recipients.filter(r =>
+    return validRecipients.filter(r =>
       r.full_name.toLowerCase().includes(term) ||
       r.phone.includes(term) ||
       r.email?.toLowerCase().includes(term)
     );
-  }, [recipients, searchTerm]);
+  }, [recipients, searchTerm, shippingZones]);
+
+  // Get valid provinces (those with shipping cost > 0 or free_shipping = true)
+  const validProvinces = useMemo(() => {
+    return shippingZones
+      .filter(z => z.municipality_name === null && (z.shipping_cost > 0 || z.free_shipping === true))
+      .map(z => z.province_name);
+  }, [shippingZones]);
 
   const handleRecipientSelect = (recipient) => {
     setSelectedRecipient(recipient);
@@ -154,6 +215,18 @@ const RecipientSelector = React.forwardRef((
       toast({
         title: t('common.error'),
         description: language === 'es' ? 'Completa provincia, municipio y dirección' : 'Complete province, municipality and address',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Validate province has valid shipping zone
+    if (showProvinceInForm && formData.province && !hasValidShippingZone(formData.province)) {
+      toast({
+        title: t('common.error'),
+        description: language === 'es'
+          ? 'La provincia seleccionada no tiene costo de envío configurado. Contacta al administrador.'
+          : 'Selected province does not have shipping cost configured. Contact administrator.',
         variant: 'destructive'
       });
       return;

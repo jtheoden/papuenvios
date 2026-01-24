@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight, ArrowLeft, Check, DollarSign, User, FileText,
-  AlertCircle, CheckCircle, Calculator, Copy, Target, RefreshCw
+  AlertCircle, CheckCircle, Calculator, Copy, Target, RefreshCw, CreditCard
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';

@@ -11,23 +11,25 @@ import {
   deleteRemittanceType,
   DELIVERY_METHODS
 } from '@/lib/remittanceService';
+import { getCurrenciesWithRates } from '@/lib/currencyService';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 
 const RemittanceTypesConfig = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { isSuperAdmin } = useAuth();
   const { showModal } = useModal();
 
   const [types, setTypes] = useState([]);
+  const [currencies, setCurrencies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingType, setEditingType] = useState(null);
 
   const [formData, setFormData] = useState({
     name: '',
-    currency_code: 'USD',
-    delivery_currency: 'CUP',
+    currency_code: '',
+    delivery_currency: '',
     exchange_rate: '',
     commission_percentage: '0',
     commission_fixed: '0',
@@ -44,7 +46,19 @@ const RemittanceTypesConfig = () => {
 
   useEffect(() => {
     loadTypes();
+    loadCurrencies();
   }, []);
+
+  const loadCurrencies = async () => {
+    try {
+      // Load only active currencies that have exchange rates configured
+      const data = await getCurrenciesWithRates();
+      setCurrencies(data || []);
+    } catch (error) {
+      console.error('[loadCurrencies] ERROR:', error);
+      setCurrencies([]);
+    }
+  };
 
   const loadTypes = async () => {
     console.log('[loadTypes] START');
@@ -76,10 +90,13 @@ const RemittanceTypesConfig = () => {
 
   const handleCreate = () => {
     setEditingType(null);
+    // Set defaults based on available currencies
+    const defaultOrigin = currencies.find(c => c.code === 'USD') || currencies[0];
+    const defaultDelivery = currencies.find(c => c.code === 'CUP') || currencies[0];
     setFormData({
       name: '',
-      currency_code: 'USD',
-      delivery_currency: 'CUP',
+      currency_code: defaultOrigin?.code || '',
+      delivery_currency: defaultDelivery?.code || '',
       exchange_rate: '',
       commission_percentage: '0',
       commission_fixed: '0',
@@ -133,6 +150,28 @@ const RemittanceTypesConfig = () => {
       toast({
         title: t('common.error'),
         description: t('remittances.admin.requiredFields'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Validate currencies are selected
+    if (!formData.currency_code || !formData.delivery_currency) {
+      toast({
+        title: t('common.error'),
+        description: language === 'es' ? 'Selecciona las monedas de origen y destino' : 'Select origin and delivery currencies',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Validate selected currencies are active
+    const originCurrency = currencies.find(c => c.code === formData.currency_code);
+    const deliveryCurrency = currencies.find(c => c.code === formData.delivery_currency);
+    if (!originCurrency || !deliveryCurrency) {
+      toast({
+        title: t('common.error'),
+        description: language === 'es' ? 'Una de las monedas seleccionadas no está activa' : 'One of the selected currencies is not active',
         variant: 'destructive'
       });
       return;
@@ -335,10 +374,12 @@ const RemittanceTypesConfig = () => {
                 className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
               >
-                <option value="USD">USD - Dólar Estadounidense</option>
-                <option value="EUR">EUR - Euro</option>
-                <option value="CAD">CAD - Dólar Canadiense</option>
-                <option value="GBP">GBP - Libra Esterlina</option>
+                <option value="">{language === 'es' ? 'Seleccionar moneda' : 'Select currency'}</option>
+                {currencies.map(c => (
+                  <option key={c.id} value={c.code}>
+                    {c.code} - {language === 'es' ? c.name_es : c.name_en}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -352,9 +393,12 @@ const RemittanceTypesConfig = () => {
                 className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
               >
-                <option value="CUP">CUP - Peso Cubano</option>
-                <option value="USD">USD - Dólar (Efectivo)</option>
-                <option value="MLC">MLC - Moneda Libremente Convertible</option>
+                <option value="">{language === 'es' ? 'Seleccionar moneda' : 'Select currency'}</option>
+                {currencies.map(c => (
+                  <option key={c.id} value={c.code}>
+                    {c.code} - {language === 'es' ? c.name_es : c.name_en}
+                  </option>
+                ))}
               </select>
             </div>
 

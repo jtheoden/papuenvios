@@ -718,131 +718,105 @@ const CartPage = ({ onNavigate }) => {
       // Create order (returns order object directly, throws on error)
       const createdOrder = await createOrder(orderData, orderItems);
 
-      // Record offer usage if coupon was applied
-      if (appliedOffer?.id) {
-        try {
-          await recordOfferUsage(appliedOffer.id, user.id, createdOrder.id);
-        } catch (offerUsageErr) {
-          console.warn('Error recording offer usage (non-blocking):', offerUsageErr?.message || offerUsageErr);
-          // Don't fail the order if usage recording fails
-        }
-      }
+      // ============================================================
+      // ORDER CREATED SUCCESSFULLY - From here, NOTHING should block
+      // All operations below are wrapped to ensure modal always shows
+      // ============================================================
 
-      // Upload payment proof (throws on failure)
-      let uploadedProofUrl = null;
-      try {
-        uploadedProofUrl = await uploadPaymentProof(paymentProof, createdOrder.id, user.id);
-        await logActivity({
-          action: 'payment_proof_uploaded',
-          entityType: 'order',
-          entityId: createdOrder.id,
-          performedBy: user?.email || 'anonymous',
-          description: `Payment proof uploaded for order ${createdOrder.order_number}`,
-          metadata: {
-            orderId: createdOrder.id,
-            orderNumber: createdOrder.order_number,
-            uploadUrl: uploadedProofUrl
-          }
-        });
-      } catch (uploadErr) {
-        console.error('Error uploading payment proof:', uploadErr);
-        // Continue anyway - order is created
-        await logActivity({
-          action: 'payment_proof_upload_failed',
-          entityType: 'order',
-          entityId: createdOrder.id,
-          performedBy: user?.email || 'anonymous',
-          description: `Payment proof upload failed for order ${createdOrder.order_number}`,
-          metadata: { error: uploadErr?.message || uploadErr }
-        });
-      }
-
-      // IMPORTANT: Fetch FRESH notification settings from DB to avoid using stale cached values
-      // This ensures notifications go to the currently configured phone/group, not old cached values
-      let freshSettings;
-      let notificationWhatsapp;
-      try {
-        freshSettings = await getFreshNotificationSettings();
-        notificationWhatsapp = getActiveWhatsappRecipient(freshSettings);
-        console.log('[CartPage] Using fresh notification settings:', {
-          whatsapp: freshSettings?.whatsapp,
-          whatsappTarget: freshSettings?.whatsappTarget,
-          resolvedRecipient: notificationWhatsapp
-        });
-      } catch (settingsErr) {
-        console.warn('[CartPage] Error fetching fresh settings, using cached:', settingsErr);
-        freshSettings = notificationSettings;
-        notificationWhatsapp = getActiveWhatsappRecipient(notificationSettings);
-      }
-
-      // Notify admin via WhatsApp using optimized function
-      if (notificationWhatsapp) {
-        // Prepare order data for notification
-        const orderForNotification = {
-          ...createdOrder,
-          order_items: orderItems.map(item => ({
-            item_name_es: language === 'es' ? item.name : item.nameEn || item.name,
-            item_name_en: item.nameEn || item.name,
-            quantity: item.quantity
-          })),
-          user_name: recipientDetails.fullName
-        };
-
-        // Use the optimized notification function with fresh recipient
-        notifyAdminNewPayment(orderForNotification, notificationWhatsapp, language);
-      }
-
-      // Trigger server-side email/WhatsApp notification via Supabase Edge Function (if configured)
-      try {
-        if (freshSettings?.adminEmail || notificationWhatsapp) {
-          await supabase.functions.invoke('notify-order', {
-            body: {
-              orderData: {
-                orderNumber: createdOrder.order_number,
-                customerName: recipientDetails.fullName,
-                subtotal: subtotal.toFixed(2),
-                discountAmount: totalDiscountAmount.toFixed(2),
-                total: totalDisplay,  // Includes discount and shipping
-                currency: selectedCurrency,
-                couponCode: appliedOffer?.code || null,  // Include coupon if applied
-                paymentProofUrl: uploadedProofUrl || createdOrder.payment_proof_url || null
-              },
-              notificationSettings: {
-                ...freshSettings, // Use fresh settings, not cached
-                whatsapp: notificationWhatsapp
-              }
-            }
-          });
-        }
-      } catch (fnErr) {
-        console.warn('notify-order function error (non-blocking):', fnErr?.message || fnErr);
-      }
-
-      // Log activity
-      await logActivity({
-        action: 'order_submitted',
-        entityType: 'order',
-        entityId: createdOrder.id,
-        performedBy: user?.email || 'anonymous',
-        description: `Order ${createdOrder.order_number} submitted from cart`,
-        metadata: {
-          total: totalAmount,
-          subtotal,
-          discount: totalDiscountAmount,
-          shippingCost,
-          paymentStatus: createdOrder.payment_status,
-          offerId: appliedOffer?.id || null
-        }
-      });
-
-      // Store order info and show confirmation modal
-      setConfirmedOrderInfo({
+      // Store order info immediately (before any async operations)
+      const orderInfo = {
         orderNumber: createdOrder.order_number,
         total: totalAmount,
         currency: currency.code || 'USD',
         recipientName: recipientDetails.fullName,
         itemCount: cart.length
-      });
+      };
+
+      // Run all post-creation tasks in parallel, non-blocking
+      const postCreationTasks = async () => {
+        // Record offer usage
+        if (appliedOffer?.id) {
+          try {
+            await recordOfferUsage(appliedOffer.id, user.id, createdOrder.id);
+          } catch (e) {
+            console.warn('Offer usage recording failed:', e);
+          }
+        }
+
+        // Upload payment proof
+        let uploadedProofUrl = null;
+        try {
+          uploadedProofUrl = await uploadPaymentProof(paymentProof, createdOrder.id, user.id);
+          logActivity({
+            action: 'payment_proof_uploaded',
+            entityType: 'order',
+            entityId: createdOrder.id,
+            performedBy: user?.email || 'anonymous',
+            description: `Payment proof uploaded for order ${createdOrder.order_number}`,
+            metadata: { orderId: createdOrder.id, orderNumber: createdOrder.order_number, uploadUrl: uploadedProofUrl }
+          }).catch(() => {});
+        } catch (e) {
+          console.warn('Payment proof upload failed:', e);
+          logActivity({
+            action: 'payment_proof_upload_failed',
+            entityType: 'order',
+            entityId: createdOrder.id,
+            performedBy: user?.email || 'anonymous',
+            description: `Payment proof upload failed for order ${createdOrder.order_number}`,
+            metadata: { error: e?.message || e }
+          }).catch(() => {});
+        }
+
+        // Get fresh notification settings
+        let freshSettings = notificationSettings;
+        let notificationWhatsapp = getActiveWhatsappRecipient(notificationSettings);
+        try {
+          freshSettings = await getFreshNotificationSettings();
+          notificationWhatsapp = getActiveWhatsappRecipient(freshSettings);
+        } catch (e) {
+          console.warn('Fresh settings fetch failed, using cached:', e);
+        }
+
+        // Notify admin via WhatsApp
+        if (notificationWhatsapp) {
+          try {
+            const orderForNotification = {
+              ...createdOrder,
+              order_items: orderItems.map(item => ({
+                item_name_es: language === 'es' ? item.name : item.nameEn || item.name,
+                item_name_en: item.nameEn || item.name,
+                quantity: item.quantity
+              })),
+              user_name: user.full_name || user.user_metadata?.full_name || user.email?.split('@')[0],
+              user_email: user.email
+            };
+            notifyAdminNewPayment(orderForNotification, notificationWhatsapp, language);
+          } catch (e) {
+            console.warn('WhatsApp notification failed:', e);
+          }
+        }
+
+        // Note: Edge function 'notify-order' removed - notifications handled by notifyAdminNewPayment above
+
+        // Log activity
+        logActivity({
+          action: 'order_submitted',
+          entityType: 'order',
+          entityId: createdOrder.id,
+          performedBy: user?.email || 'anonymous',
+          description: `Order ${createdOrder.order_number} submitted from cart`,
+          metadata: {
+            total: totalAmount, subtotal, discount: totalDiscountAmount,
+            shippingCost, paymentStatus: createdOrder.payment_status, offerId: appliedOffer?.id || null
+          }
+        }).catch(() => {});
+      };
+
+      // Run post-creation tasks WITHOUT awaiting - don't block modal
+      postCreationTasks().catch(e => console.warn('Post-creation tasks error:', e));
+
+      // ALWAYS show confirmation modal after order is created
+      setConfirmedOrderInfo(orderInfo);
       setShowConfirmationModal(true);
 
     } catch (error) {
@@ -987,7 +961,13 @@ const CartPage = ({ onNavigate }) => {
           {selectedZelle ? (
             <ZelleAccountDisplay
               account={selectedZelle}
-              showCopyButtons={false}
+              showCopyButtons={true}
+              onCopy={(label, value) => {
+                toast({
+                  title: language === 'es' ? '¡Copiado!' : 'Copied!',
+                  description: `${label}: ${value}`
+                });
+              }}
               className="mb-6"
             />
           ) : (
@@ -1230,6 +1210,28 @@ const CartPage = ({ onNavigate }) => {
             </Button>
           </div>
         </motion.div>
+
+        {/* Order Confirmation Modal - Must be inside payment view return */}
+        <ConfirmationModal
+          isOpen={showConfirmationModal}
+          onClose={() => {
+            setShowConfirmationModal(false);
+            clearCart();
+            onNavigate('user-panel');
+          }}
+          onViewOrders={() => {
+            setShowConfirmationModal(false);
+            clearCart();
+            onNavigate('user-panel');
+          }}
+          orderNumber={confirmedOrderInfo?.orderNumber}
+          orderType="order"
+          total={confirmedOrderInfo?.total}
+          currency={confirmedOrderInfo?.currency}
+          recipientName={confirmedOrderInfo?.recipientName}
+          itemCount={confirmedOrderInfo?.itemCount}
+          estimatedDelivery={language === 'es' ? '24-72 horas' : '24-72 hours'}
+        />
       </div>
     );
   }

@@ -100,6 +100,56 @@ export const getAllCurrencies = async () => {
 };
 
 /**
+ * Get active currencies that have associated exchange rates
+ * Used for selectors in remittances, products, etc. where exchange rates are needed
+ * @returns {Promise<Array>} Array of active currency objects with exchange rates
+ * @throws {AppError} DB_ERROR if query fails
+ */
+export const getCurrenciesWithRates = async () => {
+  try {
+    // First get all active exchange rates to find which currencies have rates
+    const { data: rates, error: ratesError } = await supabase
+      .from('exchange_rates')
+      .select('from_currency_id, to_currency_id')
+      .eq('is_active', true);
+
+    if (ratesError) {
+      throw parseSupabaseError(ratesError);
+    }
+
+    // Collect unique currency IDs that appear in exchange rates
+    const currencyIdsWithRates = new Set();
+    (rates || []).forEach(rate => {
+      currencyIdsWithRates.add(rate.from_currency_id);
+      currencyIdsWithRates.add(rate.to_currency_id);
+    });
+
+    if (currencyIdsWithRates.size === 0) {
+      return [];
+    }
+
+    // Get active currencies that have exchange rates
+    const { data: currencies, error: currenciesError } = await supabase
+      .from('currencies')
+      .select('*')
+      .eq('is_active', true)
+      .in('id', Array.from(currencyIdsWithRates))
+      .order('code', { ascending: true });
+
+    if (currenciesError) {
+      throw parseSupabaseError(currenciesError);
+    }
+
+    return currencies || [];
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getCurrenciesWithRates' });
+    logError(appError, { operation: 'getCurrenciesWithRates' });
+    throw appError;
+  }
+};
+
+/**
  * Create a new currency (ADMIN ONLY)
  * @param {Object} currencyData - Currency data
  * @param {string} currencyData.code - Currency code (USD, EUR, CUP)
@@ -607,6 +657,8 @@ export const getAllExchangeRates = async () => {
         rate,
         effective_date,
         is_active,
+        from_currency_id,
+        to_currency_id,
         from_currency:from_currency_id(id, code, name_es, name_en, symbol),
         to_currency:to_currency_id(id, code, name_es, name_en, symbol)
       `)
@@ -715,6 +767,69 @@ export const deleteExchangeRate = async (rateId) => {
       rateId
     });
     logError(appError, { operation: 'deleteExchangeRate', rateId });
+    throw appError;
+  }
+};
+
+/**
+ * Update exchange rate pair - updates both direct and inverse rate (ADMIN ONLY)
+ * @param {string} fromCurrencyId - From currency UUID
+ * @param {string} toCurrencyId - To currency UUID
+ * @param {number} newRate - New exchange rate value (for direct rate, inverse is calculated)
+ * @param {string} [effectiveDate] - Effective date (defaults to today)
+ * @returns {Promise<{updatedCount: number}>} Number of rates updated
+ * @throws {AppError} DB_ERROR on failure
+ */
+export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRate, effectiveDate) => {
+  try {
+    if (!fromCurrencyId || !toCurrencyId) {
+      throw createValidationError({
+        fromCurrencyId: !fromCurrencyId ? 'From currency ID required' : null,
+        toCurrencyId: !toCurrencyId ? 'To currency ID required' : null
+      }, 'Missing currency IDs');
+    }
+
+    if (newRate === null || newRate === undefined || isNaN(parseFloat(newRate))) {
+      throw createValidationError({ rate: 'Valid rate value required' }, 'Invalid rate');
+    }
+
+    const rate = parseFloat(newRate);
+    const inverseRate = 1 / rate;
+    const effDate = effectiveDate || new Date().toISOString().split('T')[0];
+
+    // Update direct rate (from→to)
+    const { error: directError } = await supabase
+      .from('exchange_rates')
+      .update({ rate: rate, effective_date: effDate })
+      .eq('from_currency_id', fromCurrencyId)
+      .eq('to_currency_id', toCurrencyId)
+      .eq('is_active', true);
+
+    if (directError) {
+      throw parseSupabaseError(directError);
+    }
+
+    // Update inverse rate (to→from)
+    const { error: inverseError } = await supabase
+      .from('exchange_rates')
+      .update({ rate: inverseRate, effective_date: effDate })
+      .eq('from_currency_id', toCurrencyId)
+      .eq('to_currency_id', fromCurrencyId)
+      .eq('is_active', true);
+
+    if (inverseError) {
+      throw parseSupabaseError(inverseError);
+    }
+
+    return { updatedCount: 2 };
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'updateExchangeRatePair',
+      fromCurrencyId,
+      toCurrencyId
+    });
+    logError(appError, { operation: 'updateExchangeRatePair', fromCurrencyId, toCurrencyId });
     throw appError;
   }
 };
