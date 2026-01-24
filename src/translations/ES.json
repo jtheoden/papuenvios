@@ -692,7 +692,14 @@
     "latest": "Últimas entradas",
     "securityEvents": "Eventos de seguridad",
     "onlySuperAdmin": "Solo los super administradores pueden ver el registro",
-    "search": "Buscar actividad"
+    "search": "Buscar actividad",
+    "details": "Detalles de Actividad",
+    "metadata": "Información Adicional",
+    "dateFrom": "Desde",
+    "dateTo": "Hasta",
+    "clearFilters": "Limpiar filtros",
+    "records": "registros",
+    "invalidDateRange": "La fecha 'Desde' debe ser anterior a la fecha 'Hasta'"
   },
   "settings": {
     "title": "Ajustes Generales",
