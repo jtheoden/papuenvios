@@ -1,7 +1,8 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, TrendingDown, User } from 'lucide-react';
+import { X, TrendingDown, User, Truck, Loader2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { generateProofSignedUrl } from '@/lib/remittanceService';
 
 /**
  * Order Details Modal Component
@@ -16,6 +17,10 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
   const { t, language } = useLanguage();
   const modalRef = useRef(null);
   const titleId = `order-modal-title-${order?.id}`;
+
+  // State for signed delivery proof URL
+  const [deliveryProofSignedUrl, setDeliveryProofSignedUrl] = useState(null);
+  const [loadingDeliveryProof, setLoadingDeliveryProof] = useState(false);
 
   // Normalize order data - parse recipient_info and combine user data from different sources
   const normalizedOrder = useMemo(() => {
@@ -40,6 +45,37 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
       recipient_info: recipientInfo || {}
     };
   }, [order]);
+
+  // Generate signed URL for delivery proof (private bucket requires signed URLs)
+  useEffect(() => {
+    const loadDeliveryProofUrl = async () => {
+      if (!normalizedOrder?.delivery_proof_url) {
+        setDeliveryProofSignedUrl(null);
+        return;
+      }
+
+      setLoadingDeliveryProof(true);
+      try {
+        const result = await generateProofSignedUrl(
+          normalizedOrder.delivery_proof_url,
+          'order-delivery-proofs'
+        );
+        if (result.success && result.signedUrl) {
+          setDeliveryProofSignedUrl(result.signedUrl);
+        } else {
+          console.error('[OrderDetailsModal] Failed to generate signed URL:', result.error);
+          setDeliveryProofSignedUrl(null);
+        }
+      } catch (error) {
+        console.error('[OrderDetailsModal] Error generating signed URL:', error);
+        setDeliveryProofSignedUrl(null);
+      } finally {
+        setLoadingDeliveryProof(false);
+      }
+    };
+
+    loadDeliveryProofUrl();
+  }, [normalizedOrder?.delivery_proof_url]);
 
   if (!normalizedOrder) return null;
 
@@ -295,10 +331,11 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
             )}
           </div>
 
-          {/* Right Column - Payment Proof */}
-          <div className="lg:col-span-1">
+          {/* Right Column - Payment Proof & Delivery Proof */}
+          <div className="lg:col-span-1 space-y-6">
+            {/* Payment Proof Section */}
             {normalizedOrder.payment_proof_url ? (
-              <div className="sticky top-20 space-y-3">
+              <div className="space-y-3">
                 <h4 className="text-lg font-semibold text-gray-900">
                   {t('adminOrders.detail.paymentProof')}
                 </h4>
@@ -319,10 +356,58 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
                 </a>
               </div>
             ) : (
-              <div className="sticky top-20 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                 <p className="text-sm text-yellow-800 font-medium">
                   {t('adminOrders.detail.noPaymentProof')}
                 </p>
+              </div>
+            )}
+
+            {/* Delivery Proof Section */}
+            {normalizedOrder.delivery_proof_url && (
+              <div className="space-y-3">
+                <h4 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <Truck className="h-5 w-5 text-green-600" />
+                  {language === 'es' ? 'Evidencia de Entrega' : 'Delivery Proof'}
+                </h4>
+                <div className="bg-green-50 rounded-lg border border-green-200 p-2 min-h-[100px] flex items-center justify-center">
+                  {loadingDeliveryProof ? (
+                    <div className="flex flex-col items-center gap-2 py-4">
+                      <Loader2 className="h-6 w-6 animate-spin text-green-600" />
+                      <p className="text-sm text-gray-500">
+                        {language === 'es' ? 'Cargando imagen...' : 'Loading image...'}
+                      </p>
+                    </div>
+                  ) : deliveryProofSignedUrl ? (
+                    <img
+                      src={deliveryProofSignedUrl}
+                      alt={language === 'es' ? 'Evidencia de entrega' : 'Delivery proof'}
+                      className="w-full h-auto rounded-lg"
+                      onError={(e) => {
+                        e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect fill="%23f0fdf4" width="400" height="200"/><text x="50%" y="50%" font-family="Arial" font-size="14" fill="%2316a34a" text-anchor="middle">Error al cargar imagen</text></svg>';
+                      }}
+                    />
+                  ) : (
+                    <p className="text-sm text-gray-500 py-4">
+                      {language === 'es' ? 'No se pudo cargar la imagen' : 'Could not load image'}
+                    </p>
+                  )}
+                </div>
+                {deliveryProofSignedUrl && (
+                  <a
+                    href={deliveryProofSignedUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block text-center text-sm text-green-600 hover:text-green-700 hover:underline"
+                  >
+                    {t('adminOrders.detail.viewFullSize')} →
+                  </a>
+                )}
+                {normalizedOrder.delivered_at && (
+                  <p className="text-xs text-center text-gray-500">
+                    {language === 'es' ? 'Entregado el' : 'Delivered on'}: {formatDate(normalizedOrder.delivered_at)}
+                  </p>
+                )}
               </div>
             )}
           </div>

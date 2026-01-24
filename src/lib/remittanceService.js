@@ -32,9 +32,40 @@ import {
 import { getExchangeRate as getCurrencyExchangeRate } from '@/lib/currencyService';
 
 /**
+ * Extract file path from a Supabase storage URL or return path as-is
+ * Handles backwards compatibility where some records may store full URLs
+ * @param {string} urlOrPath - Either a full Supabase storage URL or just the file path
+ * @param {string} bucketName - The bucket name to extract path from
+ * @returns {string} The file path only
+ */
+const extractPathFromUrl = (urlOrPath, bucketName) => {
+  if (!urlOrPath) return urlOrPath;
+
+  // Check if it's a full URL containing the bucket name
+  const publicUrlPattern = `/storage/v1/object/public/${bucketName}/`;
+  const signedUrlPattern = `/storage/v1/object/sign/${bucketName}/`;
+
+  if (urlOrPath.includes(publicUrlPattern)) {
+    // Extract path after the bucket portion
+    const parts = urlOrPath.split(publicUrlPattern);
+    return parts[1] || urlOrPath;
+  }
+
+  if (urlOrPath.includes(signedUrlPattern)) {
+    // Extract path from signed URL (before query params)
+    const parts = urlOrPath.split(signedUrlPattern);
+    const pathWithParams = parts[1] || urlOrPath;
+    return pathWithParams.split('?')[0];
+  }
+
+  // Already a path, return as-is
+  return urlOrPath;
+};
+
+/**
  * Generate a signed URL for accessing a proof from private storage
  * Signed URLs are valid for 1 hour and work with private buckets
- * @param {string} proofFilePath - File path in the storage bucket (e.g., "user-id/REM-2025-0001.jpg")
+ * @param {string} proofFilePath - File path in the storage bucket (e.g., "user-id/REM-2025-0001.jpg") or full URL
  * @param {string} bucketName - Optional bucket name (defaults to 'remittance-proofs' for payment proofs)
  * @returns {Promise<{success: boolean, signedUrl?: string, error?: string}>} Result object with signed URL or error
  */
@@ -47,10 +78,13 @@ export const generateProofSignedUrl = async (proofFilePath, bucketName = 'remitt
       };
     }
 
+    // Extract path from URL if a full URL was provided (backwards compatibility)
+    const filePath = extractPathFromUrl(proofFilePath, bucketName);
+
     // Generate signed URL valid for 1 hour (3600 seconds)
     const { data, error } = await supabase.storage
       .from(bucketName)
-      .createSignedUrl(proofFilePath, 3600);
+      .createSignedUrl(filePath, 3600);
 
     if (error) {
       const appError = parseSupabaseError(error);

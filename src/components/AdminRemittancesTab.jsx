@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   Search, Filter, Eye, EyeOff, CheckCircle, XCircle, Clock, Package, Truck,
-  AlertTriangle, Download, FileText, Image as ImageIcon, Calendar, X, CreditCard, Copy, Check
+  AlertTriangle, Download, FileText, Image as ImageIcon, Calendar, X, CreditCard, Copy, Check,
+  DollarSign
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -43,6 +44,7 @@ const AdminRemittancesTab = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [dateError, setDateError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 20;
   const [selectedRemittance, setSelectedRemittance] = useState(null);
@@ -55,6 +57,13 @@ const AdminRemittancesTab = () => {
   const [deliveryProofSignedUrl, setDeliveryProofSignedUrl] = useState(null);
   const [showPaymentProofModal, setShowPaymentProofModal] = useState(false);
   const [selectedProofUrl, setSelectedProofUrl] = useState(null);
+
+  // Helper to format account number with spaces every 4 digits
+  const formatAccountNumberDisplay = (accountNumber) => {
+    if (!accountNumber) return '';
+    const digitsOnly = accountNumber.replace(/\D/g, '');
+    return digitsOnly.replace(/(\d{4})(?=\d)/g, '$1 ');
+  };
 
   useEffect(() => {
     loadRemittances();
@@ -91,9 +100,64 @@ const AdminRemittancesTab = () => {
     }
   }, [remittances]);
 
+  // Handle real-time remittance updates with notifications
+  const handleRealtimeUpdate = useCallback((payload) => {
+    // Status labels for notification
+    const statusLabels = {
+      es: {
+        payment_pending: 'Pago pendiente',
+        payment_proof_uploaded: 'Comprobante enviado',
+        payment_validated: 'Pago validado',
+        payment_rejected: 'Pago rechazado',
+        processing: 'En proceso',
+        delivered: 'Entregado',
+        completed: 'Completado',
+        cancelled: 'Cancelado'
+      },
+      en: {
+        payment_pending: 'Payment pending',
+        payment_proof_uploaded: 'Proof uploaded',
+        payment_validated: 'Payment validated',
+        payment_rejected: 'Payment rejected',
+        processing: 'Processing',
+        delivered: 'Delivered',
+        completed: 'Completed',
+        cancelled: 'Cancelled'
+      }
+    };
+
+    const labels = statusLabels[language] || statusLabels.es;
+
+    // Show toast for new remittances
+    if (payload?.eventType === 'INSERT') {
+      const remittanceNumber = payload.new?.remittance_number || '';
+      toast({
+        title: language === 'es' ? '🆕 Nueva Remesa' : '🆕 New Remittance',
+        description: remittanceNumber,
+        duration: 5000
+      });
+    }
+
+    // Show toast for status changes
+    if (payload?.eventType === 'UPDATE' && payload?.old?.status !== payload?.new?.status) {
+      const newStatus = payload.new?.status;
+      const remittanceNumber = payload.new?.remittance_number || '';
+      const statusText = labels[newStatus] || newStatus;
+
+      toast({
+        title: language === 'es' ? '🔔 Estado actualizado' : '🔔 Status updated',
+        description: `${remittanceNumber}: ${statusText}`,
+        duration: 4000
+      });
+    }
+
+    // Reload remittances list
+    loadRemittances();
+  }, [language]);
+
   useRealtimeRemittances({
     enabled: true,
-    onUpdate: () => loadRemittances()
+    onUpdate: handleRealtimeUpdate
   });
 
   useEffect(() => {
@@ -180,7 +244,36 @@ const AdminRemittancesTab = () => {
     }
   };
 
+  // Validate date range (start must be before end)
+  const validateDateRange = useCallback((from, to) => {
+    if (from && to && new Date(from) > new Date(to)) {
+      setDateError(language === 'es'
+        ? "La fecha 'Desde' debe ser anterior a la fecha 'Hasta'"
+        : "The 'From' date must be before the 'To' date");
+      return false;
+    }
+    setDateError('');
+    return true;
+  }, [language]);
+
+  // Handle start date change with validation
+  const handleStartDateChange = (value) => {
+    setStartDate(value);
+    validateDateRange(value, endDate);
+  };
+
+  // Handle end date change with validation
+  const handleEndDateChange = (value) => {
+    setEndDate(value);
+    validateDateRange(startDate, value);
+  };
+
   const filterRemittances = () => {
+    // Don't filter if date range is invalid
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      return;
+    }
+
     let filtered = [...remittances];
 
     // Filtro por búsqueda
@@ -211,19 +304,33 @@ const AdminRemittancesTab = () => {
     }
 
     // Filtro por fecha (Req 11)
+    // Use 'T00:00:00' and 'T23:59:59.999' to force local timezone interpretation
     if (startDate) {
-      const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0);
+      const start = new Date(startDate + 'T00:00:00');
       filtered = filtered.filter(r => new Date(r.created_at) >= start);
     }
     if (endDate) {
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
+      const end = new Date(endDate + 'T23:59:59.999');
       filtered = filtered.filter(r => new Date(r.created_at) <= end);
     }
 
     setFilteredRemittances(filtered);
   };
+
+  // Stats calculation (matching AdminOrdersTab pattern)
+  const stats = useMemo(() => {
+    const completedRemittances = filteredRemittances.filter(r => r.status === REMITTANCE_STATUS.COMPLETED);
+    return {
+      total: filteredRemittances.length,
+      pendingValidation: filteredRemittances.filter(r => r.status === REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED).length,
+      processing: filteredRemittances.filter(r =>
+        [REMITTANCE_STATUS.PAYMENT_VALIDATED, REMITTANCE_STATUS.PROCESSING].includes(r.status)
+      ).length,
+      completed: completedRemittances.length,
+      rejected: filteredRemittances.filter(r => r.status === REMITTANCE_STATUS.REJECTED).length,
+      totalRevenue: completedRemittances.reduce((sum, r) => sum + (r.amount_sent || 0), 0)
+    };
+  }, [filteredRemittances]);
 
   const handleValidatePayment = async (remittance) => {
     const notes = await showModal({
@@ -689,6 +796,7 @@ const AdminRemittancesTab = () => {
                 setStatusFilter('all');
                 setStartDate('');
                 setEndDate('');
+                setDateError('');
               }}
               className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1"
             >
@@ -705,8 +813,11 @@ const AdminRemittancesTab = () => {
             <input
               type="date"
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full pl-10 pr-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              max={endDate || undefined}
+              onChange={(e) => handleStartDateChange(e.target.value)}
+              className={`w-full pl-10 pr-3 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm ${
+                dateError ? 'border-red-500 bg-red-50' : 'border-gray-300'
+              }`}
               placeholder={language === 'es' ? 'Desde' : 'From'}
             />
           </div>
@@ -715,53 +826,75 @@ const AdminRemittancesTab = () => {
             <input
               type="date"
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full pl-10 pr-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              min={startDate || undefined}
+              onChange={(e) => handleEndDateChange(e.target.value)}
+              className={`w-full pl-10 pr-3 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm ${
+                dateError ? 'border-red-500 bg-red-50' : 'border-gray-300'
+              }`}
               placeholder={language === 'es' ? 'Hasta' : 'To'}
             />
           </div>
-          <div className="col-span-2 text-sm text-gray-500 flex items-center">
-            {filteredRemittances.length} {language === 'es' ? 'resultados' : 'results'}
-            {(startDate || endDate) && (
-              <span className="ml-2 text-blue-600">
-                ({language === 'es' ? 'filtrado por fecha' : 'filtered by date'})
+          <div className="col-span-2 text-sm flex items-center flex-wrap gap-2">
+            {dateError ? (
+              <span className="text-red-600 font-medium flex items-center gap-1">
+                <AlertTriangle className="h-4 w-4" />
+                {dateError}
               </span>
+            ) : (
+              <>
+                <span className="text-gray-500">
+                  {filteredRemittances.length} {language === 'es' ? 'resultados' : 'results'}
+                </span>
+                {(startDate || endDate) && (
+                  <span className="text-blue-600">
+                    ({language === 'es' ? 'filtrado por fecha' : 'filtered by date'})
+                  </span>
+                )}
+              </>
             )}
           </div>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          {
-            label: t('remittances.admin.pendingValidation'),
-            value: remittances.filter(r => r.status === REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED).length,
-            color: 'bg-yellow-100 text-yellow-700'
-          },
-          {
-            label: t('remittances.admin.inProgress'),
-            value: remittances.filter(r =>
-              [REMITTANCE_STATUS.PAYMENT_VALIDATED, REMITTANCE_STATUS.PROCESSING].includes(r.status)
-            ).length,
-            color: 'bg-blue-100 text-blue-700'
-          },
-          {
-            label: t('remittances.status.completed'),
-            value: remittances.filter(r => r.status === REMITTANCE_STATUS.COMPLETED).length,
-            color: 'bg-green-100 text-green-700'
-          },
-          {
-            label: t('remittances.admin.total'),
-            value: remittances.length,
-            color: 'bg-gray-100 text-gray-700'
-          }
-        ].map((stat, i) => (
-          <div key={i} className="glass-effect p-4 rounded-xl">
-            <p className="text-sm text-gray-600 mb-1">{stat.label}</p>
-            <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
-          </div>
-        ))}
+      {/* Statistics Cards - Matching AdminOrdersTab Style */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <StatCard
+          label={t('remittances.admin.total')}
+          value={stats.total}
+          icon={FileText}
+          color="blue"
+        />
+        <StatCard
+          label={t('remittances.admin.pendingValidation')}
+          value={stats.pendingValidation}
+          icon={Clock}
+          color="yellow"
+        />
+        <StatCard
+          label={t('remittances.admin.inProgress')}
+          value={stats.processing}
+          icon={Truck}
+          color="purple"
+        />
+        <StatCard
+          label={t('remittances.status.completed')}
+          value={stats.completed}
+          icon={CheckCircle}
+          color="green"
+        />
+        <StatCard
+          label={t('remittances.status.paymentRejected')}
+          value={stats.rejected}
+          icon={XCircle}
+          color="red"
+        />
+        <StatCard
+          label={t('remittances.admin.revenue')}
+          value={`$${stats.totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          icon={DollarSign}
+          color="green"
+          isAmount
+        />
       </div>
 
       {/* Remittances List with Pagination (Req 11) */}
@@ -1058,51 +1191,57 @@ const AdminRemittancesTab = () => {
                           </span>
                           <div className="flex flex-col items-end gap-2">
                             <div className="flex items-center gap-2">
-                              <span className="font-mono font-bold text-base bg-blue-50 px-3 py-1 rounded border border-blue-300 text-gray-900">
+                              <span className="font-mono font-bold text-base bg-blue-50 px-3 py-1 rounded border border-blue-300 text-gray-900 tracking-wider">
                                 {showFullAccountNumber && decryptedAccountNumber
-                                  ? decryptedAccountNumber
-                                  : `****${bankAccountDetails.bank_accounts.account_number_last4}`}
+                                  ? formatAccountNumberDisplay(decryptedAccountNumber)
+                                  : `**** **** **** ${bankAccountDetails.bank_accounts.account_number_last4}`}
                               </span>
-                              {(isAdmin || isSuperAdmin) && bankAccountDetails.bank_accounts.account_number_full && (
-                                <button
-                                  onClick={async () => {
-                                    if (showFullAccountNumber) {
-                                      setShowFullAccountNumber(false);
-                                      setDecryptedAccountNumber(null);
-                                    } else {
-                                      setDecrypting(true);
-                                      try {
-                                        const decrypted = await decryptData(bankAccountDetails.bank_accounts.account_number_full);
-                                        setDecryptedAccountNumber(decrypted);
-                                        setShowFullAccountNumber(true);
-                                      } catch (error) {
-                                        console.error('Error decrypting account number:', error);
-                                        toast({
-                                          title: language === 'es' ? 'Error' : 'Error',
-                                          description: language === 'es'
-                                            ? 'No se pudo desencriptar el número de cuenta'
-                                            : 'Failed to decrypt account number',
-                                          variant: 'destructive'
-                                        });
-                                      } finally {
-                                        setDecrypting(false);
+                              {(isAdmin || isSuperAdmin) && (
+                                bankAccountDetails.bank_accounts.account_number_full ? (
+                                  <button
+                                    onClick={async () => {
+                                      if (showFullAccountNumber) {
+                                        setShowFullAccountNumber(false);
+                                        setDecryptedAccountNumber(null);
+                                      } else {
+                                        setDecrypting(true);
+                                        try {
+                                          const decrypted = await decryptData(bankAccountDetails.bank_accounts.account_number_full);
+                                          setDecryptedAccountNumber(decrypted);
+                                          setShowFullAccountNumber(true);
+                                        } catch (error) {
+                                          console.error('Error decrypting account number:', error);
+                                          toast({
+                                            title: language === 'es' ? 'Error' : 'Error',
+                                            description: language === 'es'
+                                              ? 'No se pudo desencriptar el número de cuenta'
+                                              : 'Failed to decrypt account number',
+                                            variant: 'destructive'
+                                          });
+                                        } finally {
+                                          setDecrypting(false);
+                                        }
                                       }
-                                    }
-                                  }}
-                                  disabled={decrypting}
-                                  className="p-1.5 hover:bg-blue-100 rounded transition-colors disabled:opacity-50"
-                                  title={showFullAccountNumber
-                                    ? (language === 'es' ? 'Ocultar número completo' : 'Hide full number')
-                                    : (language === 'es' ? 'Mostrar número completo' : 'Show full number')}
-                                >
-                                  {decrypting ? (
-                                    <Clock className="h-4 w-4 text-gray-600 animate-spin" />
-                                  ) : showFullAccountNumber ? (
-                                    <EyeOff className="h-4 w-4 text-gray-600" />
-                                  ) : (
-                                    <Eye className="h-4 w-4 text-gray-600" />
-                                  )}
-                                </button>
+                                    }}
+                                    disabled={decrypting}
+                                    className="p-1.5 hover:bg-blue-100 rounded transition-colors disabled:opacity-50"
+                                    title={showFullAccountNumber
+                                      ? (language === 'es' ? 'Ocultar número completo' : 'Hide full number')
+                                      : (language === 'es' ? 'Mostrar número completo' : 'Show full number')}
+                                  >
+                                    {decrypting ? (
+                                      <Clock className="h-4 w-4 text-gray-600 animate-spin" />
+                                    ) : showFullAccountNumber ? (
+                                      <EyeOff className="h-4 w-4 text-gray-600" />
+                                    ) : (
+                                      <Eye className="h-4 w-4 text-gray-600" />
+                                    )}
+                                  </button>
+                                ) : (
+                                  <span className="text-xs text-amber-600" title={language === 'es' ? 'Número completo no disponible' : 'Full number not available'}>
+                                    <AlertTriangle className="h-4 w-4" />
+                                  </span>
+                                )
                               )}
                               {/* Copy button - only show when full number is visible */}
                               {showFullAccountNumber && decryptedAccountNumber && (
@@ -1292,6 +1431,29 @@ const AdminRemittancesTab = () => {
         title={t('remittances.user.paymentProof')}
         bucketName="remittance-proofs"
       />
+    </div>
+  );
+};
+
+// Stat Card Component (matching AdminOrdersTab style)
+const StatCard = ({ label, value, icon: Icon, color, isAmount }) => {
+  const colors = {
+    blue: 'bg-blue-50 text-blue-700 border-blue-200',
+    green: 'bg-green-50 text-green-700 border-green-200',
+    yellow: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+    red: 'bg-red-50 text-red-700 border-red-200',
+    purple: 'bg-purple-50 text-purple-700 border-purple-200'
+  };
+
+  return (
+    <div className={`rounded-lg border p-4 ${colors[color]}`}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-medium uppercase tracking-wider">{label}</span>
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className={`text-2xl font-bold ${isAmount ? 'text-lg' : ''}`}>
+        {value}
+      </div>
     </div>
   );
 };

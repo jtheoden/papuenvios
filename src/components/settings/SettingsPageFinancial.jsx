@@ -587,17 +587,8 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
           {t('settings.financial.title')}
         </h2>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-8">
-          <div>
-            <label className="block text-sm font-medium mb-1 truncate">{t('settings.financial.usdToLocal')}</label>
-            <input
-              type="number"
-              value={localFinancial.usdToLocal}
-              onChange={e => setLocalFinancial({ ...localFinancial, usdToLocal: parseFloat(e.target.value) })}
-              placeholder="0.00"
-              className="input-style w-full"
-            />
-          </div>
+        {/* Profit Margins - Only showing active settings */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 mb-8">
           <div>
             <label className="block text-sm font-medium mb-1 truncate">{t('settings.financial.productProfit')}</label>
             <input
@@ -607,6 +598,11 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
               placeholder="%"
               className="input-style w-full"
             />
+            <p className="text-xs text-gray-500 mt-1">
+              {language === 'es'
+                ? 'Margen por defecto para productos sin margen individual'
+                : 'Default margin for products without individual margin'}
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1 truncate">{t('settings.financial.comboProfit')}</label>
@@ -617,79 +613,40 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
               placeholder="%"
               className="input-style w-full"
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1 truncate">{t('settings.financial.remittanceProfit')}</label>
-            <input
-              type="number"
-              value={localFinancial.remittanceProfit}
-              onChange={e => setLocalFinancial({ ...localFinancial, remittanceProfit: parseFloat(e.target.value) })}
-              placeholder="%"
-              className="input-style w-full"
-            />
+            <p className="text-xs text-gray-500 mt-1">
+              {language === 'es'
+                ? 'Margen por defecto para combos'
+                : 'Default margin for combos'}
+            </p>
           </div>
         </div>
 
-        {/* Shipping Configuration */}
-        <div className="border-t pt-6 mb-6">
-          <h3 className="text-xl font-semibold mb-4">
-            {t('settings.financial.shippingConfig')}
-          </h3>
-          <div className="grid md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                {t('settings.financial.shippingType')}
-              </label>
-              <select
-                value={localFinancial.shippingType || 'undetermined'}
-                onChange={e => setLocalFinancial({ ...localFinancial, shippingType: e.target.value })}
-                className="input-style w-full"
-              >
-                <option value="free">{t('settings.financial.shippingFree')}</option>
-                <option value="fixed">{t('settings.financial.shippingFixed')}</option>
-                <option value="undetermined">{t('settings.financial.shippingUndetermined')}</option>
-                <option value="calculated">{t('settings.financial.shippingCalculated')}</option>
-              </select>
+        {/* Info box about other configurations */}
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg mb-6">
+          <div className="flex items-start gap-3">
+            <Info className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-amber-800">
+              <p className="font-medium mb-1">
+                {language === 'es' ? 'Configuraciones adicionales:' : 'Additional configurations:'}
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-amber-700">
+                <li>
+                  {language === 'es'
+                    ? 'Tasas de cambio: Configuradas en la sección "Tasas de Cambio" abajo'
+                    : 'Exchange rates: Configured in the "Exchange Rates" section below'}
+                </li>
+                <li>
+                  {language === 'es'
+                    ? 'Costos de envío: Configurados en Configuración → Envío (zonas de envío)'
+                    : 'Shipping costs: Configured in Settings → Shipping (shipping zones)'}
+                </li>
+                <li>
+                  {language === 'es'
+                    ? 'Comisiones de remesas: Configuradas por tipo de remesa en la pestaña Remesas'
+                    : 'Remittance commissions: Configured per remittance type in Remittances tab'}
+                </li>
+              </ul>
             </div>
-
-            {localFinancial.shippingType === 'fixed' && (
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  {t('settings.financial.fixedShippingCost')}
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={localFinancial.shippingFixedAmount || 0}
-                  onChange={e => setLocalFinancial({ ...localFinancial, shippingFixedAmount: parseFloat(e.target.value) })}
-                  placeholder="0.00"
-                  className="input-style w-full"
-                />
-              </div>
-            )}
-
-            {(localFinancial.shippingType === 'calculated' || localFinancial.shippingType === 'undetermined') && (
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  {t('settings.financial.freeShippingThreshold')}
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={localFinancial.shippingFreeThreshold || 100}
-                  onChange={e => setLocalFinancial({ ...localFinancial, shippingFreeThreshold: parseFloat(e.target.value) })}
-                  placeholder="100.00"
-                  className="input-style w-full"
-                />
-              </div>
-            )}
-          </div>
-
-          <div className="mt-4 p-4 bg-blue-50 rounded-lg text-sm text-gray-700">
-            {localFinancial.shippingType === 'free' && t('settings.financial.shippingInfoFree')}
-            {localFinancial.shippingType === 'fixed' && t('settings.financial.shippingInfoFixed')}
-            {localFinancial.shippingType === 'undetermined' && t('settings.financial.shippingInfoUndetermined')}
-            {localFinancial.shippingType === 'calculated' && t('settings.financial.shippingInfoCalculated')}
           </div>
         </div>
 

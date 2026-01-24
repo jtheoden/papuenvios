@@ -35,6 +35,7 @@ const DashboardPage = ({ onNavigate }) => {
     totalRemittances: 0,
     pendingRemittances: 0,
     completedRemittances: 0,
+    totalRemittanceTypes: 0,
     dailyRemittanceIncome: 0,
     monthlyRemittanceIncome: 0,
     dailyRemittanceVolume: 0,
@@ -181,12 +182,13 @@ const DashboardPage = ({ onNavigate }) => {
 
       console.log('[fetchStats] Fetching data from multiple tables...');
       // Get counts
-      const [productsRes, combosRes, usersRes, ordersRes, remittancesRes] = await Promise.all([
+      const [productsRes, combosRes, usersRes, ordersRes, remittancesRes, remittanceTypesRes] = await Promise.all([
         supabase.from('products').select('id', { count: 'exact', head: true }),
         supabase.from('combo_products').select('id', { count: 'exact', head: true }),
         supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
         supabase.from('orders').select('id, status, payment_status, total_amount, created_at'),
-        supabase.from('remittances').select('id, status, commission_total, amount_sent, amount_to_deliver, created_at, delivered_at, completed_at, updated_at')
+        supabase.from('remittances').select('id, status, commission_total, amount_sent, amount_to_deliver, created_at, delivered_at, completed_at, updated_at'),
+        supabase.from('remittance_types').select('id', { count: 'exact', head: true }).eq('is_active', true)
       ]);
 
       console.log('[fetchStats] Database queries completed');
@@ -196,10 +198,12 @@ const DashboardPage = ({ onNavigate }) => {
       if (usersRes.error) throw usersRes.error;
       if (ordersRes.error) throw ordersRes.error;
       if (remittancesRes.error) throw remittancesRes.error;
+      if (remittanceTypesRes.error) throw remittanceTypesRes.error;
 
       const totalProducts = productsRes.count || 0;
       const totalCombos = combosRes.count || 0;
       const totalUsers = usersRes.count || 0;
+      const totalRemittanceTypes = remittanceTypesRes.count || 0;
 
       console.log('[fetchStats] Counts received:', {
         totalProducts,
@@ -281,18 +285,35 @@ const DashboardPage = ({ onNavigate }) => {
         return timestamp ? new Date(timestamp) : null;
       };
 
-      const dailyRemittanceIncome = remittances
-        .filter(r => {
-          const completedAt = getRemittanceCompletionDate(r);
-          return completedAt && completedAt >= oneDayAgo && completedStatuses.includes(r.status);
-        })
+      // Debug: Show all remittances with their commission_total and status
+      console.log('[fetchStats] All remittances data:', remittances.map(r => ({
+        id: r.id,
+        status: r.status,
+        commission_total: r.commission_total,
+        amount_sent: r.amount_sent,
+        completed_at: r.completed_at,
+        delivered_at: r.delivered_at
+      })));
+
+      // Filter remittances that match criteria for daily income
+      const dailyCompletedRemittances = remittances.filter(r => {
+        const completedAt = getRemittanceCompletionDate(r);
+        const matches = completedAt && completedAt >= oneDayAgo && completedStatuses.includes(r.status);
+        return matches;
+      });
+      console.log('[fetchStats] Daily completed remittances:', dailyCompletedRemittances.length, dailyCompletedRemittances.map(r => ({ id: r.id, commission_total: r.commission_total })));
+
+      const dailyRemittanceIncome = dailyCompletedRemittances
         .reduce((sum, r) => sum + (parseFloat(r.commission_total) || 0), 0);
 
-      const monthlyRemittanceIncome = remittances
-        .filter(r => {
-          const completedAt = getRemittanceCompletionDate(r);
-          return completedAt && completedAt >= oneMonthAgo && completedStatuses.includes(r.status);
-        })
+      // Filter remittances that match criteria for monthly income
+      const monthlyCompletedRemittances = remittances.filter(r => {
+        const completedAt = getRemittanceCompletionDate(r);
+        return completedAt && completedAt >= oneMonthAgo && completedStatuses.includes(r.status);
+      });
+      console.log('[fetchStats] Monthly completed remittances:', monthlyCompletedRemittances.length, monthlyCompletedRemittances.map(r => ({ id: r.id, commission_total: r.commission_total })));
+
+      const monthlyRemittanceIncome = monthlyCompletedRemittances
         .reduce((sum, r) => sum + (parseFloat(r.commission_total) || 0), 0);
 
       const dailyRemittanceVolume = remittances
@@ -336,6 +357,7 @@ const DashboardPage = ({ onNavigate }) => {
         totalRemittances,
         pendingRemittances,
         completedRemittances,
+        totalRemittanceTypes,
         dailyRemittanceIncome,
         monthlyRemittanceIncome,
         dailyRemittanceVolume,
@@ -394,14 +416,46 @@ const DashboardPage = ({ onNavigate }) => {
   const monthlyProfit = stats.monthlyRevenue * (financialSettings.productProfit / 100);
 
   // Calculate remittance metrics
+  // SIMPLIFIED: Commission = Profit for remittances (no additional cost layer)
   const dailyRemittanceCommission = stats.dailyRemittanceIncome || 0;
   const monthlyRemittanceCommission = stats.monthlyRemittanceIncome || 0;
   const dailyRemittanceVolumeValue = stats.dailyRemittanceVolume || 0;
   const monthlyRemittanceVolumeValue = stats.monthlyRemittanceVolume || 0;
-  const dailyRemittanceProfit = dailyRemittanceCommission * (financialSettings.remittanceProfit / 100);
-  const monthlyRemittanceProfit = monthlyRemittanceCommission * (financialSettings.remittanceProfit / 100);
+  // Commission IS the profit for remittances - no second percentage applied
+  const dailyRemittanceProfit = dailyRemittanceCommission;
+  const monthlyRemittanceProfit = monthlyRemittanceCommission;
   const dailyRemittancePayout = Math.max(0, dailyRemittanceVolumeValue - dailyRemittanceCommission);
   const monthlyRemittancePayout = Math.max(0, monthlyRemittanceVolumeValue - monthlyRemittanceCommission);
+
+  // Combined totals (Orders + Remittances) - explicit Number() to prevent string concatenation
+  // Revenue = Order totals + Remittance volume (amount_sent)
+  // Profit = Order profit + Remittance commission (commission IS the profit)
+  const combinedDailyRevenue = Number(stats.dailyRevenue || 0) + Number(dailyRemittanceVolumeValue || 0);
+  const combinedMonthlyRevenue = Number(stats.monthlyRevenue || 0) + Number(monthlyRemittanceVolumeValue || 0);
+  const combinedDailyProfit = Number(dailyProfit || 0) + Number(dailyRemittanceProfit || 0);
+  const combinedMonthlyProfit = Number(monthlyProfit || 0) + Number(monthlyRemittanceProfit || 0);
+
+  // Debug log for combined totals
+  console.log('[Dashboard] Combined metrics (DISPLAYED VALUES):', {
+    ordersOnly: {
+      dailyRevenue: Number(stats.dailyRevenue || 0).toFixed(2),
+      monthlyRevenue: Number(stats.monthlyRevenue || 0).toFixed(2),
+      dailyProfit: dailyProfit.toFixed(2),
+      monthlyProfit: monthlyProfit.toFixed(2)
+    },
+    remittancesOnly: {
+      dailyVolume: Number(dailyRemittanceVolumeValue || 0).toFixed(2),
+      monthlyVolume: Number(monthlyRemittanceVolumeValue || 0).toFixed(2),
+      dailyProfit: dailyRemittanceProfit.toFixed(2),
+      monthlyProfit: monthlyRemittanceProfit.toFixed(2)
+    },
+    combinedTotals: {
+      dailyRevenue: combinedDailyRevenue.toFixed(2),
+      monthlyRevenue: combinedMonthlyRevenue.toFixed(2),
+      dailyProfit: combinedDailyProfit.toFixed(2),
+      monthlyProfit: combinedMonthlyProfit.toFixed(2)
+    }
+  });
 
   // Get current currency symbol and code
   const currentCurrency = currencies.find(c => c.id === selectedCurrency);
@@ -513,10 +567,10 @@ const DashboardPage = ({ onNavigate }) => {
                   {isSuperAdmin && (
                     <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
                     {[
-                      { title: t('dashboard.stats.dailyRevenue'), value: stats.dailyRevenue, icon: DollarSign, color: 'from-green-500 to-emerald-600' },
-                      { title: t('dashboard.stats.monthlyRevenue'), value: stats.monthlyRevenue, icon: TrendingUp, color: 'from-blue-500 to-cyan-600' },
-                      { title: t('dashboard.stats.dailyProfit'), value: dailyProfit, icon: BarChart3, color: 'from-purple-500 to-pink-600' },
-                      { title: t('dashboard.stats.monthlyProfit'), value: monthlyProfit, icon: TrendingUp, color: 'from-orange-500 to-red-600' }
+                      { title: t('dashboard.stats.dailyRevenue'), value: combinedDailyRevenue, icon: DollarSign, color: 'from-green-500 to-emerald-600' },
+                      { title: t('dashboard.stats.monthlyRevenue'), value: combinedMonthlyRevenue, icon: TrendingUp, color: 'from-blue-500 to-cyan-600' },
+                      { title: t('dashboard.stats.dailyProfit'), value: combinedDailyProfit, icon: BarChart3, color: 'from-purple-500 to-pink-600' },
+                      { title: t('dashboard.stats.monthlyProfit'), value: combinedMonthlyProfit, icon: TrendingUp, color: 'from-orange-500 to-red-600' }
                     ].map((stat, index) => (
                       <motion.div
                         key={index}
@@ -539,10 +593,12 @@ const DashboardPage = ({ onNavigate }) => {
                     </div>
                   )}
 
-                  <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 mb-12">
                     {[
                       { title: t('dashboard.stats.totalProducts'), value: stats.totalProducts, icon: Package },
                       { title: t('dashboard.stats.totalCombos'), value: stats.totalCombos, icon: Users },
+                      { title: t('dashboard.stats.remittanceTypes'), value: stats.totalRemittanceTypes, icon: Send },
+                      { title: t('dashboard.stats.pendingRemittances'), value: stats.pendingRemittances, icon: Clock },
                       { title: t('dashboard.stats.pendingOrders'), value: stats.pendingOrders, icon: BarChart3 },
                       { title: t('dashboard.stats.totalUsers'), value: stats.totalUsers, icon: Eye }
                     ].map((stat, index) => (
@@ -666,83 +722,6 @@ const DashboardPage = ({ onNavigate }) => {
                     </motion.div>
                   </div>
 
-                  { isSuperAdmin && (
-                    <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 1.0 }}
-                    className="mb-12 mt-12"
-                  >
-                    <h2 className="text-2xl font-bold mb-6" >
-                     💰 <span style={getHeadingStyle(visualSettings)}>{t('dashboard.remittancesBreakdown')}</span> 
-                    </h2>
-
-                    <div className="grid md:grid-cols-2 gap-8">
-                      <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 1.1 }}
-                        className="glass-effect p-8 rounded-2xl"
-                      >
-                        <h3 className="text-2xl font-semibold mb-6">{t('dashboard.dailyBreakdown')}</h3>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span>{language === 'es' ? 'Volumen Entregado' : 'Volume Delivered'}:</span>
-                            <span className="font-semibold text-blue-600">{currencySymbol}{formatCurrency(dailyRemittanceVolumeValue)} {currencyCode}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>{language === 'es' ? 'Comisión Ganada' : 'Commission Earned'}:</span>
-                            <span className="font-semibold text-green-600">{currencySymbol}{formatCurrency(dailyRemittanceCommission)} {currencyCode}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>{language === 'es' ? 'Costos de Pago' : 'Payout Costs'}:</span>
-                            <span className="font-semibold text-red-600">-{currencySymbol}{formatCurrency(dailyRemittancePayout)} {currencyCode}</span>
-                          </div>
-                          <div className="flex justify-between border-t pt-2 mt-1">
-                            <span>{t('dashboard.netProfit')}:</span>
-                            <span className="font-bold text-green-600">{currencySymbol}{formatCurrency(dailyRemittanceProfit)} {currencyCode}</span>
-                          </div>
-                          <div className="flex justify-between text-xs text-gray-500">
-                            <span>{t('dashboard.profitMargin')}:</span>
-                            <span>{financialSettings.remittanceProfit || 0}%</span>
-                          </div>
-                        </div>
-                      </motion.div>
-
-                      <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 1.2 }}
-                        className="glass-effect p-8 rounded-2xl"
-                      >
-                        <h3 className="text-2xl font-semibold mb-6">{t('dashboard.monthlyBreakdown')}</h3>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span>{language === 'es' ? 'Volumen Entregado' : 'Volume Delivered'}:</span>
-                            <span className="font-semibold text-blue-600">{currencySymbol}{formatCurrency(monthlyRemittanceVolumeValue)} {currencyCode}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>{language === 'es' ? 'Comisión Ganada' : 'Commission Earned'}:</span>
-                            <span className="font-semibold text-green-600">{currencySymbol}{formatCurrency(monthlyRemittanceCommission)} {currencyCode}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>{language === 'es' ? 'Costos de Pago' : 'Payout Costs'}:</span>
-                            <span className="font-semibold text-red-600">-{currencySymbol}{formatCurrency(monthlyRemittancePayout)} {currencyCode}</span>
-                          </div>
-                          <div className="flex justify-between border-t pt-2 mt-1">
-                            <span>{t('dashboard.netProfit')}:</span>
-                            <span className="font-bold text-green-600">{currencySymbol}{formatCurrency(monthlyRemittanceProfit)} {currencyCode}</span>
-                          </div>
-                          <div className="flex justify-between text-xs text-gray-500">
-                            <span>{t('dashboard.profitMargin')}:</span>
-                            <span>{financialSettings.remittanceProfit || 0}%</span>
-                          </div>
-                        </div>
-                      </motion.div>
-                    </div>
-                    </motion.div>
-                  )}
-<br/>
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -820,6 +799,67 @@ const DashboardPage = ({ onNavigate }) => {
                       ))}
                     </div>
                   </motion.div>
+
+                  { isSuperAdmin && (
+                    <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 1.0 }}
+                    className="mb-12"
+                  >
+                    <h2 className="text-2xl font-bold mb-6" >
+                     💰 <span style={getHeadingStyle(visualSettings)}>{t('dashboard.remittancesBreakdown')}</span>
+                    </h2>
+
+                    <div className="grid md:grid-cols-2 gap-8">
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 1.1 }}
+                        className="glass-effect p-8 rounded-2xl"
+                      >
+                        <h3 className="text-2xl font-semibold mb-6">{t('dashboard.dailyBreakdown')}</h3>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span>{language === 'es' ? 'Volumen Enviado' : 'Volume Sent'}:</span>
+                            <span className="font-semibold text-blue-600">{currencySymbol}{formatCurrency(dailyRemittanceVolumeValue)} {currencyCode}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>{language === 'es' ? 'Monto a Entregar' : 'Amount to Deliver'}:</span>
+                            <span className="font-semibold text-gray-600">-{currencySymbol}{formatCurrency(dailyRemittancePayout)} {currencyCode}</span>
+                          </div>
+                          <div className="flex justify-between border-t pt-2 mt-1">
+                            <span>{language === 'es' ? 'Ganancia (Comisión)' : 'Profit (Commission)'}:</span>
+                            <span className="font-bold text-green-600">{currencySymbol}{formatCurrency(dailyRemittanceProfit)} {currencyCode}</span>
+                          </div>
+                        </div>
+                      </motion.div>
+
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 1.2 }}
+                        className="glass-effect p-8 rounded-2xl"
+                      >
+                        <h3 className="text-2xl font-semibold mb-6">{t('dashboard.monthlyBreakdown')}</h3>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span>{language === 'es' ? 'Volumen Enviado' : 'Volume Sent'}:</span>
+                            <span className="font-semibold text-blue-600">{currencySymbol}{formatCurrency(monthlyRemittanceVolumeValue)} {currencyCode}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>{language === 'es' ? 'Monto a Entregar' : 'Amount to Deliver'}:</span>
+                            <span className="font-semibold text-gray-600">-{currencySymbol}{formatCurrency(monthlyRemittancePayout)} {currencyCode}</span>
+                          </div>
+                          <div className="flex justify-between border-t pt-2 mt-1">
+                            <span>{language === 'es' ? 'Ganancia (Comisión)' : 'Profit (Commission)'}:</span>
+                            <span className="font-bold text-green-600">{currencySymbol}{formatCurrency(monthlyRemittanceProfit)} {currencyCode}</span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    </div>
+                    </motion.div>
+                  )}
 
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
