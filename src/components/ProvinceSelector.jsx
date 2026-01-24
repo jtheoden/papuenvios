@@ -20,10 +20,18 @@ const ProvinceSelector = ({
   const { language } = useLanguage();
 
   // Separate province-level and municipality-level zones
-  const { provinceZones, municipalityZonesMap } = useMemo(() => {
-    const provinceZones = shippingZones.filter(z => !z.municipality_name);
-    const municipalityZonesMap = {};
+  // Include ALL provinces but mark which are disabled (cost=0 AND free_shipping=false)
+  const { provinceZones, disabledProvinces, municipalityZonesMap } = useMemo(() => {
+    const allProvinceZones = shippingZones.filter(z => !z.municipality_name);
 
+    // Disabled provinces: cost = 0 AND free_shipping = false
+    const disabledProvinces = new Set(
+      allProvinceZones
+        .filter(z => parseFloat(z.shipping_cost) === 0 && z.free_shipping !== true)
+        .map(z => z.province_name)
+    );
+
+    const municipalityZonesMap = {};
     shippingZones
       .filter(z => z.municipality_name)
       .forEach(z => {
@@ -33,8 +41,11 @@ const ProvinceSelector = ({
         municipalityZonesMap[z.province_name][z.municipality_name] = z;
       });
 
-    return { provinceZones, municipalityZonesMap };
+    return { provinceZones: allProvinceZones, disabledProvinces, municipalityZonesMap };
   }, [shippingZones]);
+
+  // Check if a province is disabled
+  const isProvinceDisabled = (provinceName) => disabledProvinces.has(provinceName);
 
   // Get cost display for a municipality
   const getMunicipalityCost = (provinceName, municipalityName) => {
@@ -62,9 +73,18 @@ const ProvinceSelector = ({
   // Get the province cost for display
   const getProvinceCostLabel = (zone) => {
     if (!showCosts) return '';
-    if (zone.free_shipping || parseFloat(zone.shipping_cost) === 0) {
+
+    // Check if disabled (cost=0 AND NOT free_shipping)
+    if (parseFloat(zone.shipping_cost) === 0 && zone.free_shipping !== true) {
+      return ` - ${language === 'es' ? '⚠️ Envío deshabilitado' : '⚠️ Shipping disabled'}`;
+    }
+
+    // Free shipping
+    if (zone.free_shipping) {
       return ` - ${language === 'es' ? 'Envío Gratis' : 'Free Shipping'}`;
     }
+
+    // Has cost
     return ` - $${parseFloat(zone.shipping_cost).toFixed(2)}`;
   };
 
@@ -86,11 +106,19 @@ const ProvinceSelector = ({
           <option value="">
             {language === 'es' ? 'Seleccione una provincia' : 'Select a province'}
           </option>
-          {provinceZones.map(zone => (
-            <option key={zone.id} value={zone.province_name}>
-              {zone.province_name}{getProvinceCostLabel(zone)}
-            </option>
-          ))}
+          {provinceZones.map(zone => {
+            const disabled = isProvinceDisabled(zone.province_name);
+            return (
+              <option
+                key={zone.id}
+                value={zone.province_name}
+                disabled={disabled}
+                className={disabled ? 'text-gray-400' : ''}
+              >
+                {zone.province_name}{getProvinceCostLabel(zone)}
+              </option>
+            );
+          })}
         </select>
       </div>
 

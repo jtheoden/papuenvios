@@ -1,16 +1,125 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { DollarSign, Save, Plus, Edit, Trash2, AlertTriangle, ArrowRightLeft, Info } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { DollarSign, Save, Plus, Edit, Trash2, AlertTriangle, ArrowRightLeft, Info, Power, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { getPrimaryButtonStyle, getHeadingStyle } from '@/lib/styleUtils';
 import { toast } from '@/components/ui/use-toast';
 import {
-  getCurrencies, createCurrency, updateCurrency, deleteCurrency,
-  fetchOfficialRates, getAllExchangeRates, saveExchangeRate, deleteExchangeRate, deleteExchangeRatePair
+  getCurrencies, getAllCurrencies, createCurrency, updateCurrency, deleteCurrency,
+  fetchOfficialRates, getAllExchangeRates, saveExchangeRate, deleteExchangeRate, deleteExchangeRatePair, updateExchangeRatePair
 } from '@/lib/currencyService';
 import { supabase } from '@/lib/supabase';
+
+/**
+ * Confirmation Modal Component with framer-motion animations
+ */
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirmText, cancelText, variant = 'default' }) => {
+  if (!isOpen) return null;
+
+  const variantStyles = {
+    default: {
+      icon: <Power className="w-8 h-8 text-blue-500" />,
+      confirmBg: 'bg-blue-600 hover:bg-blue-700',
+    },
+    danger: {
+      icon: <AlertTriangle className="w-8 h-8 text-red-500" />,
+      confirmBg: 'bg-red-600 hover:bg-red-700',
+    },
+    success: {
+      icon: <Power className="w-8 h-8 text-green-500" />,
+      confirmBg: 'bg-green-600 hover:bg-green-700',
+    }
+  };
+
+  const style = variantStyles[variant] || variantStyles.default;
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={onClose}
+        >
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.5 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-black"
+          />
+
+          {/* Modal */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 p-1 rounded-full hover:bg-gray-100 transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-400" />
+            </button>
+
+            {/* Icon */}
+            <div className="flex justify-center mb-4">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', delay: 0.1, damping: 15 }}
+                className="p-3 rounded-full bg-gray-100"
+              >
+                {style.icon}
+              </motion.div>
+            </div>
+
+            {/* Title */}
+            <h3 className="text-xl font-bold text-center text-gray-900 mb-2">
+              {title}
+            </h3>
+
+            {/* Message */}
+            <p className="text-gray-600 text-center mb-6">
+              {message}
+            </p>
+
+            {/* Buttons */}
+            <div className="flex gap-3">
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={onClose}
+                className="flex-1 py-2.5 px-4 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+              >
+                {cancelText}
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => {
+                  onConfirm();
+                  onClose();
+                }}
+                className={`flex-1 py-2.5 px-4 rounded-lg text-white font-medium transition-colors ${style.confirmBg}`}
+              >
+                {confirmText}
+              </motion.button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
 
 /**
  * Financial Settings component
@@ -29,10 +138,23 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   const [officialRates, setOfficialRates] = useState(null);
   const [loadingRates, setLoadingRates] = useState(false);
 
+  // Confirmation modal state
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    currency: null,
+    newStatus: false
+  });
+
+  // Filter active currencies for exchange rate selectors
+  const activeCurrencies = useMemo(() => {
+    return currencies.filter(c => c.is_active);
+  }, [currencies]);
+
   // Exchange rates states
   const [exchangeRates, setExchangeRates] = useState([]);
   const [loadingRates2, setLoadingRates2] = useState(false);
   const [showAddRate, setShowAddRate] = useState(false);
+  const [editingRatePair, setEditingRatePair] = useState(null); // { fromCurrencyId, toCurrencyId, rate, effectiveDate }
   const [newRate, setNewRate] = useState({
     fromCurrencyId: '', toCurrencyId: '', rate: '',
     effectiveDate: new Date().toISOString().split('T')[0]
@@ -126,7 +248,8 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   // ===== CURRENCIES HANDLERS =====
   const loadCurrencies = async () => {
     try {
-      const currencies = await getCurrencies();
+      // Load ALL currencies including inactive ones
+      const currencies = await getAllCurrencies();
       setCurrencies(currencies || []);
     } catch (error) {
       console.error('Error loading currencies:', error);
@@ -227,6 +350,44 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   const handleCancelEdit = () => {
     setEditingCurrency(null);
     setCurrencyForm({ code: '', name_es: '', name_en: '', symbol: '', is_base: false });
+  };
+
+  // Open confirmation modal for toggle
+  const handleToggleCurrencyClick = (currency) => {
+    setConfirmModal({
+      isOpen: true,
+      currency,
+      newStatus: !currency.is_active
+    });
+  };
+
+  // Execute the actual toggle after confirmation
+  const handleToggleCurrencyConfirm = async () => {
+    const { currency, newStatus } = confirmModal;
+    if (!currency) return;
+
+    try {
+      await updateCurrency(currency.id, { is_active: newStatus });
+      toast({
+        title: newStatus
+          ? t('settings.financial.currencyActivated')
+          : t('settings.financial.currencyDeactivated'),
+        description: `${currency.code} - ${language === 'es' ? currency.name_es : currency.name_en}`
+      });
+      await loadCurrencies();
+    } catch (error) {
+      console.error('Error toggling currency status:', error);
+      toast({
+        title: t('common.error'),
+        description: error.message,
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Close the confirmation modal
+  const handleCloseConfirmModal = () => {
+    setConfirmModal({ isOpen: false, currency: null, newStatus: false });
   };
 
   // ===== EXCHANGE RATES HANDLERS =====
@@ -359,6 +520,62 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         variant: 'destructive'
       });
     }
+  };
+
+  // Start editing a rate pair
+  const handleEditRatePair = (pair) => {
+    setEditingRatePair({
+      fromCurrencyId: pair.directRate.from_currency_id,
+      toCurrencyId: pair.directRate.to_currency_id,
+      rate: pair.directRate.rate,
+      effectiveDate: pair.effectiveDate || new Date().toISOString().split('T')[0],
+      fromCurrency: pair.fromCurrency,
+      toCurrency: pair.toCurrency
+    });
+    setShowAddRate(false);
+  };
+
+  // Update exchange rate pair (both direct and inverse)
+  const handleUpdateRatePair = async () => {
+    if (!editingRatePair || !editingRatePair.rate) {
+      toast({
+        title: t('common.error'),
+        description: t('settings.financial.fillAllFields'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      const result = await updateExchangeRatePair(
+        editingRatePair.fromCurrencyId,
+        editingRatePair.toCurrencyId,
+        editingRatePair.rate,
+        editingRatePair.effectiveDate
+      );
+      if (result.error) throw result.error;
+
+      await loadExchangeRates();
+      setEditingRatePair(null);
+      toast({
+        title: language === 'es' ? 'Par de tasas actualizado' : 'Rate pair updated',
+        description: language === 'es'
+          ? 'Se actualizaron ambas tasas (directa e inversa)'
+          : 'Both rates updated (direct and inverse)'
+      });
+    } catch (error) {
+      console.error('Error updating rate pair:', error);
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Cancel editing rate pair
+  const handleCancelEditRatePair = () => {
+    setEditingRatePair(null);
   };
 
   return (
@@ -511,13 +728,33 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
 
           <div className="space-y-2 mb-6">
             {currencies.map(currency => (
-              <div key={currency.id} className="flex flex-wrap sm:flex-nowrap items-center gap-2 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+              <div
+                key={currency.id}
+                className={`flex flex-wrap sm:flex-nowrap items-center gap-2 p-3 rounded-lg transition-colors ${
+                  currency.is_active
+                    ? 'bg-gray-50 hover:bg-gray-100'
+                    : 'bg-gray-100 opacity-60 border border-dashed border-gray-300'
+                }`}
+              >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <span className="font-bold w-12 sm:w-16 shrink-0">{currency.code}</span>
-                  <span className="truncate flex-1 text-sm sm:text-base">{language === 'es' ? currency.name_es : currency.name_en}</span>
-                  <span className="w-8 sm:w-12 text-center shrink-0">{currency.symbol}</span>
+                  <span className={`font-bold w-12 sm:w-16 shrink-0 ${!currency.is_active ? 'text-gray-400' : ''}`}>
+                    {currency.code}
+                  </span>
+                  <span className={`truncate flex-1 text-sm sm:text-base ${!currency.is_active ? 'text-gray-400' : ''}`}>
+                    {language === 'es' ? currency.name_es : currency.name_en}
+                  </span>
+                  <span className={`w-8 sm:w-12 text-center shrink-0 ${!currency.is_active ? 'text-gray-400' : ''}`}>
+                    {currency.symbol}
+                  </span>
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2 ml-auto">
+                  {/* Inactive badge */}
+                  {!currency.is_active && (
+                    <span className="text-xs bg-gray-300 text-gray-600 px-2 py-1 rounded font-semibold whitespace-nowrap">
+                      {language === 'es' ? 'Inactiva' : 'Inactive'}
+                    </span>
+                  )}
+                  {/* Base currency badge */}
                   {currency.is_base && (
                     <span className="text-xs text-white px-2 py-1 rounded font-semibold whitespace-nowrap" style={{
                       background: visualSettings.useGradient
@@ -528,6 +765,19 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                     </span>
                   )}
                   <div className="flex gap-1 shrink-0">
+                    {/* Toggle active/inactive button */}
+                    <Button
+                      variant={currency.is_active ? 'outline' : 'default'}
+                      size="icon"
+                      className={`h-8 w-8 ${!currency.is_active ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`}
+                      onClick={() => handleToggleCurrencyClick(currency)}
+                      title={currency.is_active
+                        ? (language === 'es' ? 'Desactivar moneda' : 'Deactivate currency')
+                        : (language === 'es' ? 'Activar moneda' : 'Activate currency')
+                      }
+                    >
+                      <Power className="h-3 w-3 sm:h-4 sm:w-4" />
+                    </Button>
                     <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleEditCurrency(currency)}>
                       <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
                     </Button>
@@ -684,7 +934,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                   className="input-style w-full"
                 >
                   <option value="">{t('settings.financial.select')}</option>
-                  {currencies.filter(c => c.id !== newRate.toCurrencyId).map(c => (
+                  {activeCurrencies.filter(c => c.id !== newRate.toCurrencyId).map(c => (
                     <option key={c.id} value={c.id}>{c.code} - {language === 'es' ? c.name_es : c.name_en}</option>
                   ))}
                 </select>
@@ -699,7 +949,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                   className="input-style w-full"
                 >
                   <option value="">{t('settings.financial.select')}</option>
-                  {currencies.filter(c => c.id !== newRate.fromCurrencyId).map(c => (
+                  {activeCurrencies.filter(c => c.id !== newRate.fromCurrencyId).map(c => (
                     <option key={c.id} value={c.id}>{c.code} - {language === 'es' ? c.name_es : c.name_en}</option>
                   ))}
                 </select>
@@ -780,6 +1030,87 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
           </div>
         )}
 
+        {/* Edit Exchange Rate Pair Form */}
+        {editingRatePair && (
+          <div className="bg-amber-50 p-4 rounded-lg mb-6 border border-amber-200">
+            <h4 className="text-lg font-semibold mb-3 flex items-center gap-2">
+              <Edit className="h-5 w-5 text-amber-600" />
+              {language === 'es' ? 'Editar Par de Tasas' : 'Edit Rate Pair'}
+              <span className="text-sm font-normal text-gray-600">
+                ({editingRatePair.fromCurrency?.code} ↔ {editingRatePair.toCurrency?.code})
+              </span>
+            </h4>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  {language === 'es' ? 'Nueva Tasa' : 'New Rate'} (1 {editingRatePair.fromCurrency?.code} = ? {editingRatePair.toCurrency?.code})
+                </label>
+                <input
+                  type="number"
+                  step="0.0001"
+                  value={editingRatePair.rate}
+                  onChange={e => setEditingRatePair({ ...editingRatePair, rate: e.target.value })}
+                  placeholder="1.0000"
+                  className="input-style w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  {t('settings.financial.effectiveDate')}
+                </label>
+                <input
+                  type="date"
+                  value={editingRatePair.effectiveDate}
+                  onChange={e => setEditingRatePair({ ...editingRatePair, effectiveDate: e.target.value })}
+                  className="input-style w-full"
+                />
+              </div>
+            </div>
+
+            {/* Preview of changes */}
+            {editingRatePair.rate && (
+              <div className="bg-white border border-amber-200 rounded-lg p-3 mb-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                  <ArrowRightLeft className="h-4 w-4 text-amber-600" />
+                  {language === 'es' ? 'Vista previa de cambios:' : 'Preview of changes:'}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="bg-green-50 border border-green-200 rounded p-2">
+                    <span className="font-mono text-green-800">
+                      1 {editingRatePair.fromCurrency?.code} = {parseFloat(editingRatePair.rate).toFixed(4)} {editingRatePair.toCurrency?.code}
+                    </span>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded p-2">
+                    <span className="font-mono text-blue-800">
+                      1 {editingRatePair.toCurrency?.code} = {(1 / parseFloat(editingRatePair.rate)).toFixed(6)} {editingRatePair.fromCurrency?.code}
+                    </span>
+                    <span className="text-xs text-blue-600 ml-2">({language === 'es' ? 'inversa automática' : 'auto inverse'})</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                onClick={handleUpdateRatePair}
+                style={getPrimaryButtonStyle(visualSettings)}
+                className="h-9 px-3"
+              >
+                <Save className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">{language === 'es' ? 'Guardar Cambios' : 'Save Changes'}</span>
+              </Button>
+              <Button
+                onClick={handleCancelEditRatePair}
+                variant="outline"
+                className="h-9 px-3"
+              >
+                <span>{language === 'es' ? 'Cancelar' : 'Cancel'}</span>
+              </Button>
+            </div>
+          </div>
+        )}
+
         {loadingRates2 ? (
           <p className="text-center py-8 text-gray-500">{t('common.loading')}</p>
         ) : groupedExchangeRates.length === 0 ? (
@@ -846,6 +1177,17 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
 
                   <div className="flex items-center gap-2">
                     <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEditRatePair(pair)}
+                      title={language === 'es' ? 'Editar par de tasas' : 'Edit rate pair'}
+                    >
+                      <Edit className="h-4 w-4 mr-1" />
+                      <span className="hidden sm:inline">
+                        {language === 'es' ? 'Editar' : 'Edit'}
+                      </span>
+                    </Button>
+                    <Button
                       variant="destructive"
                       size="sm"
                       onClick={() => handleDeleteRatePair(pair.directRate.from_currency_id, pair.directRate.to_currency_id)}
@@ -853,7 +1195,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                     >
                       <Trash2 className="h-4 w-4 mr-1" />
                       <span className="hidden sm:inline">
-                        {language === 'es' ? 'Eliminar par' : 'Delete pair'}
+                        {language === 'es' ? 'Eliminar' : 'Delete'}
                       </span>
                     </Button>
                   </div>
@@ -863,6 +1205,30 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
           </div>
         )}
       </motion.div>
+
+      {/* Currency Toggle Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        onClose={handleCloseConfirmModal}
+        onConfirm={handleToggleCurrencyConfirm}
+        title={
+          confirmModal.newStatus
+            ? t('settings.financial.activateCurrency')
+            : t('settings.financial.deactivateCurrency')
+        }
+        message={
+          confirmModal.newStatus
+            ? t('settings.financial.activateCurrencyMessage').replace('{code}', confirmModal.currency?.code || '')
+            : t('settings.financial.deactivateCurrencyMessage').replace('{code}', confirmModal.currency?.code || '')
+        }
+        confirmText={
+          confirmModal.newStatus
+            ? t('settings.financial.activate')
+            : t('settings.financial.deactivate')
+        }
+        cancelText={t('common.cancel')}
+        variant={confirmModal.newStatus ? 'success' : 'danger'}
+      />
     </>
   );
 };

@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { getCurrencies, getConversionRate } from '@/lib/currencyService';
+import { getCurrenciesWithRates, getConversionRate } from '@/lib/currencyService';
 
 const CurrencyContext = createContext();
 
@@ -29,12 +29,12 @@ export const CurrencyProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [conversionLoading, setConversionLoading] = useState(false);
 
-  // Load currencies on mount
+  // Load currencies on mount (only active currencies with exchange rates)
   useEffect(() => {
     const loadCurrencies = async () => {
       setLoading(true);
       try {
-        const data = await getCurrencies();
+        const data = await getCurrenciesWithRates();
         if (data && data.length > 0) {
           setCurrencies(data);
           // Auto-select base currency or first one

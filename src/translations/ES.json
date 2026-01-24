@@ -755,7 +755,15 @@
       "from": "De",
       "to": "A",
       "effective": "Efectiva Desde",
-      "actions": "Acciones"
+      "actions": "Acciones",
+      "activateCurrency": "Activar Moneda",
+      "deactivateCurrency": "Desactivar Moneda",
+      "activateCurrencyMessage": "¿Deseas activar la moneda {code}? Estará disponible en todos los selectores del sistema.",
+      "deactivateCurrencyMessage": "¿Deseas desactivar la moneda {code}? Se ocultará de todos los selectores del sistema.",
+      "currencyActivated": "Moneda activada",
+      "currencyDeactivated": "Moneda desactivada",
+      "activate": "Activar",
+      "deactivate": "Desactivar"
     },
     "zelle": {
       "title": "Cuentas Zelle",

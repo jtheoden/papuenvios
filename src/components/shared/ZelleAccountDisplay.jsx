@@ -29,11 +29,12 @@ const ZelleAccountDisplay = ({
     });
   };
 
-  const CopyButton = ({ value, label }) => (
+  // Inline copy button that appears next to the value
+  const InlineCopyButton = ({ value, label }) => (
     <button
       type="button"
       onClick={() => handleCopy(value, label)}
-      className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors flex-shrink-0"
+      className="ml-2 p-1.5 bg-blue-100 hover:bg-blue-200 rounded-md transition-colors inline-flex items-center"
       title={language === 'es' ? `Copiar ${label}` : `Copy ${label}`}
     >
       <Copy className="h-4 w-4 text-blue-600" />
@@ -48,37 +49,37 @@ const ZelleAccountDisplay = ({
       </h3>
       <div className="space-y-3">
         {/* Account Name */}
-        <div className={`flex items-center justify-between bg-white p-3 rounded-lg ${showCopyButtons ? '' : 'py-2'}`}>
-          <div>
-            <p className="text-xs text-gray-500">
-              {language === 'es' ? 'Nombre de Cuenta' : 'Account Name'}
-            </p>
+        <div className="bg-white p-3 rounded-lg">
+          <p className="text-xs text-gray-500 mb-1">
+            {language === 'es' ? 'Nombre de Cuenta' : 'Account Name'}
+          </p>
+          <div className="flex items-center">
             <p className="font-semibold text-gray-800">{accountName}</p>
+            {showCopyButtons && <InlineCopyButton value={accountName} label="Nombre" />}
           </div>
-          {showCopyButtons && <CopyButton value={accountName} label="Nombre" />}
         </div>
 
         {/* Email */}
         {email && (
-          <div className={`flex items-center justify-between bg-white p-3 rounded-lg ${showCopyButtons ? '' : 'py-2'}`}>
-            <div>
-              <p className="text-xs text-gray-500">Email Zelle</p>
+          <div className="bg-white p-3 rounded-lg">
+            <p className="text-xs text-gray-500 mb-1">Email Zelle</p>
+            <div className="flex items-center">
               <p className="font-semibold text-gray-800">{email}</p>
+              {showCopyButtons && <InlineCopyButton value={email} label="Email" />}
             </div>
-            {showCopyButtons && <CopyButton value={email} label="Email" />}
           </div>
         )}
 
         {/* Phone */}
         {phone && (
-          <div className={`flex items-center justify-between bg-white p-3 rounded-lg ${showCopyButtons ? '' : 'py-2'}`}>
-            <div>
-              <p className="text-xs text-gray-500">
-                {language === 'es' ? 'Teléfono Zelle' : 'Zelle Phone'}
-              </p>
+          <div className="bg-white p-3 rounded-lg">
+            <p className="text-xs text-gray-500 mb-1">
+              {language === 'es' ? 'Teléfono Zelle' : 'Zelle Phone'}
+            </p>
+            <div className="flex items-center">
               <p className="font-semibold text-gray-800">{phone}</p>
+              {showCopyButtons && <InlineCopyButton value={phone} label="Teléfono" />}
             </div>
-            {showCopyButtons && <CopyButton value={phone} label="Teléfono" />}
           </div>
         )}
       </div>

@@ -537,11 +537,26 @@ const SettingsPageShipping = () => {
         {language === 'es' ? 'Zonas de Envío' : 'Shipping Zones'}
       </h2>
 
-      <p className="text-sm text-gray-600 mb-6">
+      <p className="text-sm text-gray-600 mb-4">
         {language === 'es'
           ? 'Configura costos de envío y transporte por provincia y municipio. Expande una provincia para ver opciones avanzadas y configurar municipios específicos.'
           : 'Configure shipping and transport costs by province and municipality. Expand a province to see advanced options and configure specific municipalities.'}
       </p>
+
+      {/* Informative alert about disabled provinces */}
+      <div className="flex items-start gap-3 p-4 mb-6 bg-amber-50 border border-amber-200 rounded-xl">
+        <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+        <div className="text-sm">
+          <p className="font-medium text-amber-800 mb-1">
+            {language === 'es' ? 'Importante: Provincias sin costo configurado' : 'Important: Provinces without configured cost'}
+          </p>
+          <p className="text-amber-700">
+            {language === 'es'
+              ? 'Las provincias con costo de envío en $0.00 y sin "Envío Gratis" activado aparecerán como deshabilitadas. Los usuarios no podrán seleccionar destinatarios en esas provincias para órdenes o remesas en efectivo.'
+              : 'Provinces with shipping cost at $0.00 and without "Free Shipping" enabled will appear as disabled. Users will not be able to select recipients in those provinces for orders or cash remittances.'}
+          </p>
+        </div>
+      </div>
 
       {loadingZones ? (
         <div className="flex justify-center py-8">
