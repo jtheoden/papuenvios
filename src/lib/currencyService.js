@@ -128,11 +128,11 @@ export const getCurrenciesWithRates = async () => {
       return [];
     }
 
-    // Get active currencies that have exchange rates
+    // Get currencies that have exchange rates (active OR base currency)
     const { data: currencies, error: currenciesError } = await supabase
       .from('currencies')
       .select('*')
-      .eq('is_active', true)
+      .or('is_active.eq.true,is_base.eq.true')
       .in('id', Array.from(currencyIdsWithRates))
       .order('code', { ascending: true });
 

@@ -765,15 +765,18 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                     </span>
                   )}
                   <div className="flex gap-1 shrink-0">
-                    {/* Toggle active/inactive button */}
+                    {/* Toggle active/inactive button - disabled for base currency */}
                     <Button
                       variant={currency.is_active ? 'outline' : 'default'}
                       size="icon"
-                      className={`h-8 w-8 ${!currency.is_active ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`}
-                      onClick={() => handleToggleCurrencyClick(currency)}
-                      title={currency.is_active
-                        ? (language === 'es' ? 'Desactivar moneda' : 'Deactivate currency')
-                        : (language === 'es' ? 'Activar moneda' : 'Activate currency')
+                      className={`h-8 w-8 ${!currency.is_active ? 'bg-green-600 hover:bg-green-700 text-white' : ''} ${currency.is_base ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      onClick={() => !currency.is_base && handleToggleCurrencyClick(currency)}
+                      disabled={currency.is_base}
+                      title={currency.is_base
+                        ? (language === 'es' ? 'La moneda base no puede desactivarse' : 'Base currency cannot be deactivated')
+                        : currency.is_active
+                          ? (language === 'es' ? 'Desactivar moneda' : 'Deactivate currency')
+                          : (language === 'es' ? 'Activar moneda' : 'Activate currency')
                       }
                     >
                       <Power className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -781,7 +784,17 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                     <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleEditCurrency(currency)}>
                       <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
                     </Button>
-                    <Button variant="destructive" size="icon" className="h-8 w-8" onClick={() => handleRemoveCurrency(currency.id)}>
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      className={`h-8 w-8 ${currency.is_base ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      onClick={() => !currency.is_base && handleRemoveCurrency(currency.id)}
+                      disabled={currency.is_base}
+                      title={currency.is_base
+                        ? (language === 'es' ? 'La moneda base no puede eliminarse' : 'Base currency cannot be deleted')
+                        : (language === 'es' ? 'Eliminar moneda' : 'Delete currency')
+                      }
+                    >
                       <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
                     </Button>
                   </div>
