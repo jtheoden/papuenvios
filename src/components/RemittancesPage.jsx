@@ -44,13 +44,28 @@ const RemittancesPage = ({ onNavigate }) => {
 
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-            <button
+            <motion.button
               onClick={() => onNavigate('send-remittance')}
-              className={`${getPrimaryButtonStyle()} flex items-center justify-center gap-2 px-8 py-4 text-lg`}
+              className={`${getPrimaryButtonStyle()} flex items-center justify-center gap-2 px-8 py-4 text-lg shadow-lg shadow-blue-500/30 ring-2 ring-blue-400/50`}
+              animate={{
+                scale: [1, 1.02, 1],
+                boxShadow: [
+                  '0 10px 15px -3px rgba(59, 130, 246, 0.3)',
+                  '0 10px 25px -3px rgba(59, 130, 246, 0.5)',
+                  '0 10px 15px -3px rgba(59, 130, 246, 0.3)'
+                ]
+              }}
+              transition={{
+                duration: 2,
+                repeat: Infinity,
+                ease: 'easeInOut'
+              }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.98 }}
             >
               <Send className="h-6 w-6" />
               {t('remittances.send')}
-            </button>
+            </motion.button>
 
             {user && (
               <button
@@ -127,13 +142,28 @@ const RemittancesPage = ({ onNavigate }) => {
             <p className="text-gray-600 mb-4">
               ¿Listo para enviar tu primera remesa?
             </p>
-            <button
+            <motion.button
               onClick={() => onNavigate('send-remittance')}
-              className={`${getPrimaryButtonStyle()} inline-flex items-center gap-2`}
+              className={`${getPrimaryButtonStyle()} inline-flex items-center gap-2 shadow-lg shadow-blue-500/30`}
+              animate={{
+                scale: [1, 1.02, 1],
+                boxShadow: [
+                  '0 10px 15px -3px rgba(59, 130, 246, 0.3)',
+                  '0 10px 25px -3px rgba(59, 130, 246, 0.5)',
+                  '0 10px 15px -3px rgba(59, 130, 246, 0.3)'
+                ]
+              }}
+              transition={{
+                duration: 2,
+                repeat: Infinity,
+                ease: 'easeInOut'
+              }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.98 }}
             >
               {t('remittances.send')}
               <ArrowRight className="h-5 w-5" />
-            </button>
+            </motion.button>
           </motion.div>
         )}
       </div>
