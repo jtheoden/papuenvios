@@ -119,6 +119,13 @@ export const CurrencyProvider = ({ children }) => {
       return amount * rate;
     }
 
+    // Try inverse rate (e.g., USD→CUP can be used for CUP→USD as 1/rate)
+    const inverseCacheKey = `${toCurrencyId}-${fromCurrencyId}`;
+    if (exchangeRatesCacheRef.current.has(inverseCacheKey)) {
+      const inverseRate = exchangeRatesCacheRef.current.get(inverseCacheKey);
+      return amount / inverseRate;
+    }
+
     // If not in cache, return original amount (avoid async in render)
     return amount;
   }, [cacheVersion]);
