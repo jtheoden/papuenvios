@@ -985,6 +985,7 @@
         "label": "Estado Pago",
         "pending": "Pago Pendiente",
         "validated": "Pago Validado (Listo para Procesar)",
+        "confirmed": "Pago Confirmado",
         "rejected": "Pago Rechazado"
       },
       "orderStatus": {
@@ -1024,11 +1025,24 @@
       "discount": "Descuento",
       "total": "Monto Total",
       "address": "Dirección de Envío",
-      "recipient": "Nombre del Destinatario",
+      "recipient": "Destinatario",
       "phone": "Teléfono del Destinatario",
       "instructions": "Instrucciones de Entrega",
       "notes": "Notas",
-      "rejectionReason": "Razón del Rechazo"
+      "rejectionReason": "Razón del Rechazo",
+      "product": "Producto",
+      "quantity": "Cantidad",
+      "unitPrice": "Precio Unit.",
+      "discountApplied": "Descuento Aplicado",
+      "coupon": "Cupón",
+      "categoryDiscount": "Descuento por categoría de usuario",
+      "savings": "Ahorro",
+      "shippingInfo": "Información de Envío",
+      "paymentProof": "Comprobante de Pago",
+      "viewFullSize": "Ver en tamaño completo",
+      "noPaymentProof": "Sin comprobante de pago",
+      "close": "Cerrar",
+      "closeOrderDetails": "Cerrar detalles de la orden"
     },
     "messages": {
       "noOrders": "No se encontraron órdenes",

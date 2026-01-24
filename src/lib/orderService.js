@@ -708,7 +708,7 @@ export const getUserOrders = async (userId, filters = {}) => {
         *,
         order_items (*),
         currencies (code, symbol),
-        shipping_zones (province_name, shipping_cost)
+        shipping_zones (province_name, municipality_name, shipping_cost)
       `)
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
@@ -824,7 +824,7 @@ export const getOrderById = async (orderId) => {
         *,
         order_items (*),
         currencies (code, symbol),
-        shipping_zones (province_name, shipping_cost)
+        shipping_zones (province_name, municipality_name, shipping_cost)
       `)
       .eq('id', orderId)
       .single();
@@ -938,7 +938,7 @@ export const getAllOrders = async (filters = {}) => {
         *,
         order_items (*),
         currencies (code, symbol),
-        shipping_zones (province_name, shipping_cost)
+        shipping_zones (province_name, municipality_name, shipping_cost)
       `)
       .order('created_at', { ascending: false });
 

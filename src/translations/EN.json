@@ -976,6 +976,7 @@
         "label": "Payment Status",
         "pending": "Payment Pending",
         "validated": "Payment Validated (Ready to Process)",
+        "confirmed": "Payment Confirmed",
         "rejected": "Payment Rejected"
       },
       "orderStatus": {
@@ -1015,11 +1016,24 @@
       "discount": "Discount",
       "total": "Total Amount",
       "address": "Shipping Address",
-      "recipient": "Recipient Name",
+      "recipient": "Recipient",
       "phone": "Recipient Phone",
       "instructions": "Delivery Instructions",
       "notes": "Notes",
-      "rejectionReason": "Rejection Reason"
+      "rejectionReason": "Rejection Reason",
+      "product": "Product",
+      "quantity": "Quantity",
+      "unitPrice": "Unit Price",
+      "discountApplied": "Discount Applied",
+      "coupon": "Coupon",
+      "categoryDiscount": "User category discount",
+      "savings": "Savings",
+      "shippingInfo": "Shipping Information",
+      "paymentProof": "Payment Proof",
+      "viewFullSize": "View full size",
+      "noPaymentProof": "No payment proof",
+      "close": "Close",
+      "closeOrderDetails": "Close order details"
     },
     "messages": {
       "noOrders": "No orders found",
