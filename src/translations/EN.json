@@ -746,7 +746,15 @@
       "from": "From",
       "to": "To",
       "effective": "Effective",
-      "actions": "Actions"
+      "actions": "Actions",
+      "activateCurrency": "Activate Currency",
+      "deactivateCurrency": "Deactivate Currency",
+      "activateCurrencyMessage": "Do you want to activate currency {code}? It will be available in all system selectors.",
+      "deactivateCurrencyMessage": "Do you want to deactivate currency {code}? It will be hidden from all system selectors.",
+      "currencyActivated": "Currency activated",
+      "currencyDeactivated": "Currency deactivated",
+      "activate": "Activate",
+      "deactivate": "Deactivate"
     },
     "zelle": {
       "title": "Zelle Accounts",

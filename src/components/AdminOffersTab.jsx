@@ -230,6 +230,18 @@ const AdminOffersTab = () => {
       return;
     }
 
+    // Validate that start date is before end date
+    if (formData.startDate && formData.endDate && formData.startDate >= formData.endDate) {
+      toast({
+        title: language === 'es' ? 'Error de fechas' : 'Date Error',
+        description: language === 'es'
+          ? 'La fecha de inicio debe ser anterior a la fecha de fin'
+          : 'Start date must be before end date',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     try {
       const offerData = {
         code: formData.code.toUpperCase().trim(),
@@ -762,8 +774,16 @@ const AdminOffersTab = () => {
                     type="date"
                     value={formData.endDate}
                     onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                    min={formData.startDate || undefined}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   />
+                  {formData.startDate && formData.endDate && formData.startDate >= formData.endDate && (
+                    <p className="text-xs text-red-500 mt-1">
+                      {language === 'es'
+                        ? 'La fecha de fin debe ser posterior a la fecha de inicio'
+                        : 'End date must be after start date'}
+                    </p>
+                  )}
                 </div>
               </div>
 
