@@ -438,6 +438,19 @@ const RecipientSelector = React.forwardRef((
           <BankAccountSelector
             recipientId={selectedRecipient.id}
             onSelect={(account) => {
+              // account can be null if no accounts match the currency filter
+              if (!account) {
+                setSelectedBankAccountId(null);
+                onSelect({
+                  recipientId: selectedRecipient.id,
+                  addressId: selectedAddress?.id,
+                  isNew: false,
+                  recipientData: selectedRecipient,
+                  recipient_bank_account_id: null,
+                  bank_account_details: null
+                });
+                return;
+              }
               // account.id = recipient_bank_accounts.id (the link table)
               // account.bank_account.id = bank_accounts.id (the actual account)
               const recipientBankAccountId = account.id;

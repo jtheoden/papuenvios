@@ -5,7 +5,7 @@
  * Used in remittance flows when delivery_method is transfer/card/moneypocket
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
@@ -28,6 +28,26 @@ const BankAccountSelector = ({
   const [showForm, setShowForm] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
 
+  // Filter accounts by remittance type's delivery currency
+  const filteredAccounts = useMemo(() => {
+    if (!accounts || accounts.length === 0) return [];
+
+    // If no remittance type selected, show all accounts
+    if (!selectedRemittanceType?.delivery_currency) {
+      return accounts;
+    }
+
+    const targetCurrency = selectedRemittanceType.delivery_currency.toUpperCase();
+
+    return accounts.filter(account => {
+      const accountCurrency = account.bank_account?.currency?.code?.toUpperCase();
+      return accountCurrency === targetCurrency;
+    });
+  }, [accounts, selectedRemittanceType?.delivery_currency]);
+
+  // Count of accounts that don't match the currency (for showing info message)
+  const hiddenAccountsCount = accounts.length - filteredAccounts.length;
+
   useEffect(() => {
     if (recipientId) {
       loadBankAccounts();
@@ -41,14 +61,7 @@ const BankAccountSelector = ({
       const accountsData = await getBankAccountsForRecipient(recipientId);
       setAccounts(accountsData || []);
 
-      // Auto-select default account if available
-      const defaultAccount = accountsData?.find(a => a.is_default);
-      if (defaultAccount) {
-        setSelectedAccount(defaultAccount);
-        if (onSelect) {
-          onSelect(defaultAccount);
-        }
-      }
+      // Auto-select will be handled by useEffect below (after currency filtering)
     } catch (error) {
       console.error('Error loading bank accounts:', error);
       toast({
@@ -63,6 +76,31 @@ const BankAccountSelector = ({
     }
   };
 
+  // Auto-select from filtered accounts when list changes
+  useEffect(() => {
+    if (loading || filteredAccounts.length === 0) {
+      // Clear selection if no matching accounts
+      if (selectedAccount && !filteredAccounts.find(a => a.id === selectedAccount.id)) {
+        setSelectedAccount(null);
+        if (onSelect) {
+          onSelect(null);
+        }
+      }
+      return;
+    }
+
+    // If no account selected yet, auto-select the default or first matching account
+    if (!selectedAccount || !filteredAccounts.find(a => a.id === selectedAccount.id)) {
+      const defaultAccount = filteredAccounts.find(a => a.is_default) || filteredAccounts[0];
+      if (defaultAccount) {
+        setSelectedAccount(defaultAccount);
+        if (onSelect) {
+          onSelect(defaultAccount);
+        }
+      }
+    }
+  }, [filteredAccounts, loading]);
+
   const handleAccountSelect = (account) => {
     setSelectedAccount(account);
     if (onSelect) {
@@ -75,20 +113,24 @@ const BankAccountSelector = ({
     try {
       // Link the newly created account to the recipient
       // linkBankAccountToRecipient returns link data directly or throws exception
-      const linkData = await linkBankAccountToRecipient(
+      await linkBankAccountToRecipient(
         recipientId,
         newAccount.id,
         accounts.length === 0 // Set as default if it's the first account
       );
 
-      // Add to local list
-      const accountWithDetails = {
-        ...linkData,
-        bank_account: newAccount
-      };
+      // Reload all accounts from database to get complete data with joins
+      // This ensures we have all nested relationships (bank, currency, account_type)
+      const refreshedAccounts = await getBankAccountsForRecipient(recipientId);
+      setAccounts(refreshedAccounts || []);
 
-      setAccounts([...accounts, accountWithDetails]);
-      handleAccountSelect(accountWithDetails);
+      // Find and select the newly created account
+      const newLinkedAccount = refreshedAccounts?.find(
+        a => a.bank_account?.id === newAccount.id
+      );
+      if (newLinkedAccount) {
+        handleAccountSelect(newLinkedAccount);
+      }
 
       toast({
         title: language === 'es' ? 'Éxito' : 'Success',
@@ -126,17 +168,40 @@ const BankAccountSelector = ({
 
   return (
     <div className="space-y-4">
-      {/* Accounts List */}
-      {accounts.length > 0 ? (
+      {/* Info message when accounts exist but none match the currency */}
+      {accounts.length > 0 && filteredAccounts.length === 0 && selectedRemittanceType?.delivery_currency && (
+        <div className="p-4 bg-amber-50 rounded-lg border-2 border-amber-200 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-semibold text-amber-800">
+              {language === 'es' ? 'Sin Cuentas Compatibles' : 'No Compatible Accounts'}
+            </p>
+            <p className="text-sm text-amber-700 mt-1">
+              {language === 'es'
+                ? `Este destinatario tiene ${accounts.length} cuenta(s), pero ninguna es en ${selectedRemittanceType.delivery_currency}. Crea una nueva cuenta compatible.`
+                : `This recipient has ${accounts.length} account(s), but none are in ${selectedRemittanceType.delivery_currency}. Create a compatible account.`}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Accounts List - only show matching accounts */}
+      {filteredAccounts.length > 0 ? (
         <div>
           <label className="block text-sm font-semibold mb-3">
-            {language === 'es' ? 'Cuentas Bancarias Disponibles' : 'Available Bank Accounts'} <span className="text-red-500">*</span>
+            {language === 'es' ? 'Cuentas Bancarias Disponibles' : 'Available Bank Accounts'}
+            {selectedRemittanceType?.delivery_currency && (
+              <span className="text-xs font-normal text-gray-500 ml-2">
+                ({selectedRemittanceType.delivery_currency})
+              </span>
+            )}
+            <span className="text-red-500 ml-1">*</span>
           </label>
 
           {/* Show as cards for 1-3 accounts, dropdown for 4+ */}
-          {accounts.length <= 3 ? (
+          {filteredAccounts.length <= 3 ? (
             <div className="space-y-2">
-              {accounts.map((account) => {
+              {filteredAccounts.map((account) => {
                 const logoPath = account.bank_account?.bank?.logo_filename
                   ? `/bank-logos/${account.bank_account.bank.logo_filename}`
                   : null;
@@ -221,7 +286,7 @@ const BankAccountSelector = ({
               <select
                 value={selectedAccount?.id || ''}
                 onChange={(e) => {
-                  const account = accounts.find(a => a.id === e.target.value);
+                  const account = filteredAccounts.find(a => a.id === e.target.value);
                   if (account) handleAccountSelect(account);
                 }}
                 className="w-full px-4 py-3 pr-10 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none appearance-none bg-white cursor-pointer"
@@ -229,7 +294,7 @@ const BankAccountSelector = ({
                 <option value="">
                   {language === 'es' ? 'Selecciona una cuenta...' : 'Select an account...'}
                 </option>
-                {accounts.map((account) => {
+                {filteredAccounts.map((account) => {
                   const currencyCode = account.bank_account?.currency?.code || '';
                   const bankName = account.bank_account?.bank?.name || '';
                   const last4 = account.bank_account?.account_number_last4 || '';

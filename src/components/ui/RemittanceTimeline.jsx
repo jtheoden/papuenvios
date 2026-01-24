@@ -12,13 +12,12 @@ import {
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 
-// Define the standard remittance flow steps
+// Define the standard remittance flow steps - MUST match database status values
 const REMITTANCE_STEPS = [
-  { id: 'pending', icon: Clock, statusMatch: ['pending'] },
-  { id: 'proof_uploaded', icon: Upload, statusMatch: ['proof_uploaded'] },
-  { id: 'validated', icon: CheckCircle, statusMatch: ['validated'] },
+  { id: 'payment_pending', icon: Clock, statusMatch: ['payment_pending'] },
+  { id: 'payment_proof_uploaded', icon: Upload, statusMatch: ['payment_proof_uploaded'] },
+  { id: 'payment_validated', icon: CheckCircle, statusMatch: ['payment_validated'] },
   { id: 'processing', icon: Loader, statusMatch: ['processing'] },
-  { id: 'ready_for_delivery', icon: Package, statusMatch: ['ready_for_delivery'] },
   { id: 'delivered', icon: Truck, statusMatch: ['delivered'] },
   { id: 'completed', icon: CheckCircle, statusMatch: ['completed'] }
 ];
@@ -32,27 +31,25 @@ const RemittanceTimeline = ({
   const { language } = useLanguage();
   const { visualSettings } = useBusiness();
 
-  // Labels for each step
+  // Labels for each step - keys MUST match database status values
   const stepLabels = {
     es: {
-      pending: 'Pendiente',
-      proof_uploaded: 'Comprobante Enviado',
-      validated: 'Validado',
+      payment_pending: 'Pago Pendiente',
+      payment_proof_uploaded: 'Comprobante Enviado',
+      payment_validated: 'Pago Validado',
       processing: 'En Proceso',
-      ready_for_delivery: 'Listo para Entrega',
       delivered: 'Entregado',
       completed: 'Completado',
-      rejected: 'Rechazado'
+      payment_rejected: 'Pago Rechazado'
     },
     en: {
-      pending: 'Pending',
-      proof_uploaded: 'Proof Uploaded',
-      validated: 'Validated',
+      payment_pending: 'Payment Pending',
+      payment_proof_uploaded: 'Proof Uploaded',
+      payment_validated: 'Payment Validated',
       processing: 'Processing',
-      ready_for_delivery: 'Ready for Delivery',
       delivered: 'Delivered',
       completed: 'Completed',
-      rejected: 'Rejected'
+      payment_rejected: 'Payment Rejected'
     }
   };
 
@@ -60,7 +57,7 @@ const RemittanceTimeline = ({
 
   // Check if a step is completed based on current status
   const getStepState = (step) => {
-    if (currentStatus === 'rejected') {
+    if (currentStatus === 'payment_rejected') {
       // If rejected, show all steps as inactive except a special rejection indicator
       return 'inactive';
     }
@@ -72,7 +69,7 @@ const RemittanceTimeline = ({
 
     if (stepIndex < currentIndex) return 'completed';
     if (stepIndex === currentIndex) return 'current';
-    return 'inactive';
+    return 'pending'; // Changed from 'inactive' to 'pending' for future states
   };
 
   // Get timestamp for a step from history
@@ -107,13 +104,13 @@ const RemittanceTimeline = ({
   const successColor = visualSettings?.successColor || '#10b981';
 
   // If rejected, show rejection state
-  if (currentStatus === 'rejected') {
+  if (currentStatus === 'payment_rejected') {
     return (
       <div className="py-4">
         <div className="flex items-center justify-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">
           <XCircle className="h-8 w-8 text-red-500 flex-shrink-0" />
           <div>
-            <p className="font-semibold text-red-700">{labels.rejected}</p>
+            <p className="font-semibold text-red-700">{labels.payment_rejected}</p>
             {rejectionReason && (
               <p className="text-sm text-red-600 mt-1">{rejectionReason}</p>
             )}
@@ -139,10 +136,10 @@ const RemittanceTimeline = ({
                   animate={{ scale: 1 }}
                   className={`flex items-center justify-center w-8 h-8 rounded-full transition-all ${
                     state === 'completed'
-                      ? 'bg-green-500 text-white'
+                      ? 'bg-green-500 text-white'  // Past states: green
                       : state === 'current'
-                        ? 'bg-blue-500 text-white ring-4 ring-blue-100'
-                        : 'bg-gray-200 text-gray-400'
+                        ? 'bg-blue-600 text-white ring-4 ring-blue-200 shadow-lg'  // Current state: blue with ring and shadow
+                        : 'bg-gray-100 text-gray-300 border border-gray-200'  // Future states: light gray, no color
                   }`}
                 >
                   <StepIcon className="h-4 w-4" />
@@ -193,14 +190,13 @@ const RemittanceTimeline = ({
                 <div
                   className={`relative z-10 flex items-center justify-center w-8 h-8 rounded-full transition-all flex-shrink-0 ${
                     state === 'completed'
-                      ? 'bg-green-500 text-white'
+                      ? 'bg-green-500 text-white'  // Past states: solid green
                       : state === 'current'
-                        ? 'text-white ring-4 ring-opacity-30'
-                        : 'bg-gray-200 text-gray-400'
+                        ? 'text-white ring-4 ring-blue-200 shadow-lg'  // Current state: with ring and shadow
+                        : 'bg-gray-100 text-gray-300 border border-gray-200'  // Future states: light gray, no color
                   }`}
                   style={state === 'current' ? {
-                    backgroundColor: primaryColor,
-                    ringColor: primaryColor
+                    backgroundColor: primaryColor
                   } : {}}
                 >
                   {state === 'current' ? (
@@ -220,16 +216,20 @@ const RemittanceTimeline = ({
                 {/* Step content */}
                 <div className={`flex-1 pb-4 ${index === REMITTANCE_STEPS.length - 1 ? 'pb-0' : ''}`}>
                   <p className={`font-medium text-sm ${
-                    state === 'inactive' ? 'text-gray-400' : 'text-gray-700'
+                    state === 'completed'
+                      ? 'text-green-700'  // Past states: green text
+                      : state === 'current'
+                        ? 'text-blue-700 font-semibold'  // Current state: blue, bold
+                        : 'text-gray-400'  // Future states: light gray
                   }`}>
                     {labels[step.id]}
                   </p>
-                  {formattedTime && state !== 'inactive' && (
+                  {formattedTime && state !== 'pending' && (
                     <p className="text-xs text-gray-500 mt-0.5">{formattedTime}</p>
                   )}
                   {state === 'current' && (
-                    <p className="text-xs mt-1" style={{ color: primaryColor }}>
-                      {language === 'es' ? 'Estado actual' : 'Current status'}
+                    <p className="text-xs mt-1 font-medium" style={{ color: primaryColor }}>
+                      {language === 'es' ? '← Estado actual' : '← Current status'}
                     </p>
                   )}
                 </div>

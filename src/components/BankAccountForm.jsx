@@ -36,6 +36,26 @@ const BankAccountForm = ({
 
   const [errors, setErrors] = useState({});
 
+  // Format account number with spaces every 4 digits (mask: XXXX XXXX XXXX XXXX)
+  const formatAccountNumber = (value) => {
+    // Remove all non-digits
+    const digitsOnly = value.replace(/\D/g, '');
+    // Limit to 16 digits
+    const truncated = digitsOnly.slice(0, 16);
+    // Add space every 4 digits
+    const formatted = truncated.replace(/(\d{4})(?=\d)/g, '$1 ');
+    return formatted;
+  };
+
+  // Handle account number change with mask
+  const handleAccountNumberChange = (e) => {
+    const formatted = formatAccountNumber(e.target.value);
+    setFormData({ ...formData, accountNumber: formatted });
+  };
+
+  // Get raw digits count (without spaces)
+  const getDigitsCount = (value) => value.replace(/\D/g, '').length;
+
   useEffect(() => {
     loadBankData();
   }, []);
@@ -86,10 +106,11 @@ const BankAccountForm = ({
     if (!formData.bankId) {
       newErrors.bankId = language === 'es' ? 'Selecciona un banco' : 'Select a bank';
     }
-    if (!formData.accountNumber || formData.accountNumber.length < 8) {
+    const accountDigits = getDigitsCount(formData.accountNumber);
+    if (!formData.accountNumber || accountDigits !== 16) {
       newErrors.accountNumber = language === 'es'
-        ? 'Número de cuenta inválido (mínimo 8 dígitos)'
-        : 'Invalid account number (minimum 8 digits)';
+        ? `Número de cuenta inválido. Debe tener exactamente 16 dígitos (actualmente: ${accountDigits})`
+        : `Invalid account number. Must be exactly 16 digits (currently: ${accountDigits})`;
     }
     if (!formData.accountHolderName || formData.accountHolderName.trim().length === 0) {
       newErrors.accountHolderName = language === 'es' ? 'Ingresa nombre del titular' : 'Enter account holder name';
@@ -239,10 +260,12 @@ const BankAccountForm = ({
         </label>
         <input
           type="text"
+          inputMode="numeric"
           value={formData.accountNumber}
-          onChange={(e) => setFormData({ ...formData, accountNumber: e.target.value })}
-          placeholder={language === 'es' ? 'Ingresa número de cuenta' : 'Enter account number'}
-          className={`w-full px-4 py-2 border-2 rounded-lg transition-colors input-style ${
+          onChange={handleAccountNumberChange}
+          placeholder="0000 0000 0000 0000"
+          maxLength={19} // 16 digits + 3 spaces
+          className={`w-full px-4 py-2 border-2 rounded-lg transition-colors input-style font-mono tracking-wider text-lg ${
             errors.accountNumber ? 'border-red-500 bg-red-50' : 'border-gray-200'
           }`}
         />
@@ -252,11 +275,16 @@ const BankAccountForm = ({
             {errors.accountNumber}
           </p>
         )}
-        <p className="text-xs text-gray-500 mt-1">
-          {language === 'es'
-            ? '💡 Solo se guardan los últimos 4 dígitos'
-            : '💡 Only last 4 digits are stored'}
-        </p>
+        <div className="flex justify-between items-center mt-1">
+          <p className="text-xs text-gray-500">
+            {language === 'es'
+              ? '💡 Solo se guardan los últimos 4 dígitos'
+              : '💡 Only last 4 digits are stored'}
+          </p>
+          <p className="text-xs text-gray-400">
+            {getDigitsCount(formData.accountNumber)}/16
+          </p>
+        </div>
       </div>
 
       {/* Account Holder Name */}
