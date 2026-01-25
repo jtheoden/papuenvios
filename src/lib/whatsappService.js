@@ -199,7 +199,8 @@ export const notifyAdminNewPayment = (order, adminPhone, language = 'es') => {
         `📧 *Email:* ${order.user_profile?.email || order.user_email || 'N/A'}\n\n` +
         `📦 *Items:*\n   ${itemsList}\n\n` +
         `💰 *Total:* ${order.total_amount} ${order.currency?.code || order.currencies?.code || 'USD'}\n` +
-        `💳 *Método de Pago:* ${order.payment_method || 'N/A'}\n\n` +
+        `💳 *Método de Pago:* ${order.payment_method || 'N/A'}\n` +
+        `📝 *Titular/Empresa:* ${order.payment_reference || 'N/A'}\n\n` +
         `📍 *Destinatario para Entrega*\n` +
         `┌─────────────────────\n` +
         `│ 👤 ${recipientInfo.fullName || 'N/A'}\n` +
@@ -216,7 +217,8 @@ export const notifyAdminNewPayment = (order, adminPhone, language = 'es') => {
         `📧 *Email:* ${order.user_profile?.email || order.user_email || 'N/A'}\n\n` +
         `📦 *Items:*\n   ${itemsList}\n\n` +
         `💰 *Total:* ${order.total_amount} ${order.currency?.code || order.currencies?.code || 'USD'}\n` +
-        `💳 *Payment Method:* ${order.payment_method || 'N/A'}\n\n` +
+        `💳 *Payment Method:* ${order.payment_method || 'N/A'}\n` +
+        `📝 *Payer Name/Company:* ${order.payment_reference || 'N/A'}\n\n` +
         `📍 *Delivery Recipient*\n` +
         `┌─────────────────────\n` +
         `│ 👤 ${recipientInfo.fullName || 'N/A'}\n` +
@@ -502,7 +504,8 @@ export const notifyAdminNewPaymentProof = async (remittance, adminPhone, languag
 
   const config = getWhatsAppConfig();
   const type = remittance.remittance_types || remittance.remittance_type;
-  const userEmail = remittance.user_email || remittance?.user?.email || remittance?.email || 'Desconocido';
+  const userEmail = remittance.user_email || remittance?.user?.email || remittance?.email || 'No disponible';
+  const userName = remittance.user_name || remittance?.user?.user_metadata?.full_name || remittance?.user?.user_metadata?.name || null;
 
   let proofLink = remittance.payment_proof_url || '';
   if (proofLink && !proofLink.startsWith('http')) {
@@ -510,7 +513,7 @@ export const notifyAdminNewPaymentProof = async (remittance, adminPhone, languag
       const { data, error } = await supabase
         .storage
         .from('remittance-proofs')
-        .createSignedUrl(proofLink, 3600);
+        .createSignedUrl(proofLink, 86400);
 
       if (!error && data?.signedUrl) {
         proofLink = data.signedUrl;
@@ -528,7 +531,11 @@ export const notifyAdminNewPaymentProof = async (remittance, adminPhone, languag
         `════════════════════════════════\n\n` +
         `📋 *ID Remesa:* ${remittance.remittance_number}\n` +
         `🆔 *Número interno:* ${remittance.id}\n\n` +
-        `📧 *Usuario:* ${userEmail}\n` +
+        `👤 *Usuario:*\n` +
+        `┌─────────────────────\n` +
+        `│ ${userName ? `Nombre: ${userName}` : ''}\n` +
+        `│ 📧 Email: ${userEmail}\n` +
+        `└─────────────────────\n\n` +
         `💰 *Detalles del Pago*\n` +
         `┌─────────────────────\n` +
         `│ Monto enviado: ${remittance.amount_sent} ${remittance.currency_sent}\n` +
@@ -541,18 +548,25 @@ export const notifyAdminNewPaymentProof = async (remittance, adminPhone, languag
         `│ 📱 ${remittance.recipient_phone}\n` +
         `│ 📍 ${remittance.recipient_province || 'N/A'}\n` +
         `└─────────────────────\n\n` +
-        `📸 *Comprobante de Pago*\n` +
-        `🔗 ${formattedProofLink}\n\n` +
-        `📝 Referencia bancaria: ${remittance.payment_reference || 'Pendiente'}\n\n` +
+        `📸 *COMPROBANTE DE PAGO*\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `👆 Toca para ver imagen:\n` +
+        `${formattedProofLink}\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `📝 Titular/Empresa: ${remittance.payment_reference || 'Pendiente'}\n\n` +
         `─────────────────────────────────\n` +
-        `✅ Revisar en sistema: ${systemLink}\n` +
+        `✅ Revisar en sistema\n (debe estar logueado como administrador): ${systemLink}\n` +
         `─────────────────────────────────`,
 
     en: `💸 *NEW REMITTANCE PAYMENT PROOF*\n` +
         `════════════════════════════════\n\n` +
         `📋 *Remittance ID:* ${remittance.remittance_number}\n` +
         `🆔 *Internal Number:* ${remittance.id}\n\n` +
-        `📧 *User:* ${userEmail}\n` +
+        `👤 *User:*\n` +
+        `┌─────────────────────\n` +
+        `│ ${userName ? `Name: ${userName}` : ''}\n` +
+        `│ 📧 Email: ${userEmail}\n` +
+        `└─────────────────────\n\n` +
         `💰 *Payment Details*\n` +
         `┌─────────────────────\n` +
         `│ Amount Sent: ${remittance.amount_sent} ${remittance.currency_sent}\n` +
@@ -565,11 +579,14 @@ export const notifyAdminNewPaymentProof = async (remittance, adminPhone, languag
         `│ 📱 ${remittance.recipient_phone}\n` +
         `│ 📍 ${remittance.recipient_province || 'N/A'}\n` +
         `└─────────────────────\n\n` +
-        `📸 *Payment Proof*\n` +
-        `🔗 ${formattedProofLink}\n\n` +
-        `📝 Bank Reference: ${remittance.payment_reference || 'Pending'}\n\n` +
+        `📸 *PAYMENT PROOF*\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `👆 Tap to view image:\n` +
+        `${formattedProofLink}\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `📝 Payer Name/Company: ${remittance.payment_reference || 'Pending'}\n\n` +
         `─────────────────────────────────\n` +
-        `✅ Check in system: ${systemLink}\n` +
+        `✅ Check in system\n (must be logued as administrator): ${systemLink}\n` +
         `─────────────────────────────────`
   };
 

@@ -140,30 +140,20 @@ const MyRemittancesPage = ({ onNavigate }) => {
       const newStatus = payload.new?.status;
       const remittanceNumber = payload.new?.remittance_number || '';
 
-      // Status labels for notification
-      const statusLabels = {
-        es: {
-          payment_pending: 'Pendiente de pago',
-          payment_proof_uploaded: 'Comprobante enviado',
-          payment_validated: 'Pago validado',
-          payment_rejected: 'Pago rechazado',
-          processing: 'En proceso',
-          delivered: 'Entregado',
-          completed: 'Completado'
-        },
-        en: {
-          payment_pending: 'Payment pending',
-          payment_proof_uploaded: 'Proof uploaded',
-          payment_validated: 'Payment validated',
-          payment_rejected: 'Payment rejected',
-          processing: 'Processing',
-          delivered: 'Delivered',
-          completed: 'Completed'
-        }
+      // Map database status to translation key suffix
+      const statusKeyMap = {
+        payment_pending: 'paymentPending',
+        payment_proof_uploaded: 'paymentProofUploaded',
+        payment_validated: 'paymentValidated',
+        payment_rejected: 'paymentRejected',
+        processing: 'processing',
+        delivered: 'delivered',
+        completed: 'completed',
+        cancelled: 'cancelled'
       };
 
-      const labels = statusLabels[language] || statusLabels.es;
-      const statusText = labels[newStatus] || newStatus;
+      const statusKey = statusKeyMap[newStatus] || newStatus;
+      const statusText = t(`remittances.status.${statusKey}`, { defaultValue: newStatus });
 
       // Show appropriate toast based on status
       const isNegative = newStatus === 'payment_rejected';
@@ -921,7 +911,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                     )}
                     {selectedRemittance.payment_reference && (
                       <div className="mt-3 bg-blue-50 p-3 rounded-lg">
-                        <p className="text-xs sm:text-sm text-gray-600">{t('remittances.user.referenceLabel')}</p>
+                        <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.paymentReferenceLabel')}</p>
                         <p className="font-semibold text-blue-900 text-sm">{selectedRemittance.payment_reference}</p>
                       </div>
                     )}

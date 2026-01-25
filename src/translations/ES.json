@@ -322,7 +322,7 @@
       "cash": "💵 Efectivo",
       "transfer": "🏦 Transferencia Bancaria",
       "card": "💳 Tarjeta",
-      "paymentReferenceLabel": "Referencia de Pago",
+      "paymentReferenceLabel": "Titular/Empresa que realiza el pago",
       "notesLabel": "Notas",
       "paymentProofSection": "Comprobante de Pago",
       "noPaymentProof": "Sin comprobante de pago",
@@ -343,7 +343,7 @@
       "cancelRemittance": "Cancelar Remesa",
       "cancelReason": "Razón (opcional)",
       "paymentProof": "Comprobante de pago",
-      "paymentReference": "Referencia de pago",
+      "paymentReference": "Titular/Empresa",
       "uploadFile": "Subir archivo",
       "additionalNotes": "Notas adicionales",
       "viewProof": "Ver Comprobante",
@@ -355,7 +355,7 @@
       "uploadProofTitle": "Subir Comprobante de Pago",
       "remittanceLabel": "Remesa",
       "paymentProofRequired": "Comprobante de pago *",
-      "paymentReferenceRequired": "Referencia de pago *",
+      "paymentReferenceRequired": "Titular/Empresa *",
       "referenceExamplePlaceholder": "Ej: ZELLE123456",
       "additionalDetailsPlaceholder": "Detalles adicionales...",
       "send": "Enviar",
@@ -383,7 +383,7 @@
       "cancelRemittanceMessage": "¿Está seguro que desea cancelar la remesa {number}?",
       "cancelReasonLabel": "Razón (opcional)",
       "paymentProofLabel": "Comprobante de pago *",
-      "paymentReferenceLabel": "Referencia de pago *",
+      "paymentReferenceLabel": "Titular/Empresa *",
       "referenceExample": "Ej: ZELLE123456",
       "additionalNotesLabel": "Notas Adicionales",
       "recipientName": "Nombre:",
@@ -452,9 +452,9 @@
       "selectRecipient": "Selecciona un destinatario",
       "fillRecipientInfo": "Por favor complete nombre y teléfono del destinatario",
       "remittanceCreatedSuccess": "Remesa creada exitosamente",
-      "uploadProofAndReference": "Por favor suba el comprobante y la referencia de pago",
+      "uploadProofAndReference": "Por favor suba el comprobante e indique el titular/empresa",
       "proofSentSuccess": "Comprobante enviado. Recibirá notificación cuando se valide el pago.",
-      "paymentReferencePlaceholder": "Ej: ZELLE123456",
+      "paymentReferencePlaceholder": "Ej: Juan Perez / Empresa ABC LLC",
       "paymentNotesPlaceholder": "Detalles adicionales del pago...",
       "whatsappNotification": "Notificación por WhatsApp",
       "whatsappInfo": "Cuando envíes el comprobante de pago, se notificará automáticamente al administrador a través de WhatsApp con todos los detalles de tu remesa.",
@@ -701,7 +701,27 @@
     "dateTo": "Hasta",
     "clearFilters": "Limpiar filtros",
     "records": "registros",
-    "invalidDateRange": "La fecha 'Desde' debe ser anterior a la fecha 'Hasta'"
+    "invalidDateRange": "La fecha 'Desde' debe ser anterior a la fecha 'Hasta'",
+    "entities": {
+      "user": "Usuario",
+      "order": "Orden",
+      "remittance": "Remesa",
+      "product": "Producto",
+      "combo": "Combo",
+      "inventory": "Inventario",
+      "offer": "Oferta",
+      "coupon": "Cupón",
+      "payment": "Pago"
+    },
+    "actions": {
+      "create": "Crear",
+      "update": "Actualizar",
+      "delete": "Eliminar",
+      "login": "Inicio de sesión",
+      "status_change": "Cambio de estado",
+      "validate": "Validar",
+      "reject": "Rechazar"
+    }
   },
   "settings": {
     "title": "Ajustes Generales",
@@ -958,6 +978,7 @@
     "stats": {
       "total": "Total",
       "pending": "Pendientes",
+      "proofUploaded": "Comprobante Subido",
       "validated": "Validadas",
       "rejected": "Rechazadas",
       "completed": "Completadas",
@@ -986,14 +1007,17 @@
       "paymentStatus": {
         "label": "Estado Pago",
         "pending": "Pago Pendiente",
-        "validated": "Pago Validado (Listo para Procesar)",
+        "proof_uploaded": "Comprobante Subido",
+        "validated": "Pago Validado",
         "confirmed": "Pago Confirmado",
-        "rejected": "Pago Rechazado"
+        "rejected": "Pago Rechazado",
+        "failed": "Fallido"
       },
       "orderStatus": {
         "label": "Estado Orden",
         "pending": "Pendiente",
-        "processing": "En Procesamiento",
+        "processing": "En Proceso",
+        "dispatched": "Despachado",
         "shipped": "Enviado",
         "delivered": "Entregado",
         "completed": "Completado",
@@ -1002,6 +1026,7 @@
       "actions": "Acciones"
     },
     "types": {
+      "product": "Producto",
       "products": "Productos",
       "remittance": "Remesa",
       "mixed": "Mixto"

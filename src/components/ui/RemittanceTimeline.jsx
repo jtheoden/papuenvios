@@ -28,32 +28,19 @@ const RemittanceTimeline = ({
   statusHistory = [],
   compact = false
 }) => {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const { visualSettings } = useBusiness();
 
-  // Labels for each step - keys MUST match database status values
-  const stepLabels = {
-    es: {
-      payment_pending: 'Pago Pendiente',
-      payment_proof_uploaded: 'Comprobante Enviado',
-      payment_validated: 'Pago Validado',
-      processing: 'En Proceso',
-      delivered: 'Entregado',
-      completed: 'Completado',
-      payment_rejected: 'Pago Rechazado'
-    },
-    en: {
-      payment_pending: 'Payment Pending',
-      payment_proof_uploaded: 'Proof Uploaded',
-      payment_validated: 'Payment Validated',
-      processing: 'Processing',
-      delivered: 'Delivered',
-      completed: 'Completed',
-      payment_rejected: 'Payment Rejected'
-    }
+  // Labels using translation dictionaries - keys MUST match database status values
+  const labels = {
+    payment_pending: t('remittances.status.paymentPending'),
+    payment_proof_uploaded: t('remittances.status.paymentProofUploaded'),
+    payment_validated: t('remittances.status.paymentValidated'),
+    processing: t('remittances.status.processing'),
+    delivered: t('remittances.status.delivered'),
+    completed: t('remittances.status.completed'),
+    payment_rejected: t('remittances.status.paymentRejected')
   };
-
-  const labels = stepLabels[language] || stepLabels.es;
 
   // Check if a step is completed based on current status
   const getStepState = (step) => {

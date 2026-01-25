@@ -1035,7 +1035,8 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
       if (whatsappRecipient) {
         const remittanceForNotify = {
           ...updatedRemittance,
-          user_email: user.email
+          user_email: user.email,
+          user_name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0]
         };
         await notifyAdminNewPaymentProof(remittanceForNotify, whatsappRecipient, 'es');
       } else {
