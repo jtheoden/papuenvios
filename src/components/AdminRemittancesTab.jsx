@@ -102,31 +102,17 @@ const AdminRemittancesTab = () => {
 
   // Handle real-time remittance updates with notifications
   const handleRealtimeUpdate = useCallback((payload) => {
-    // Status labels for notification
-    const statusLabels = {
-      es: {
-        payment_pending: 'Pago pendiente',
-        payment_proof_uploaded: 'Comprobante enviado',
-        payment_validated: 'Pago validado',
-        payment_rejected: 'Pago rechazado',
-        processing: 'En proceso',
-        delivered: 'Entregado',
-        completed: 'Completado',
-        cancelled: 'Cancelado'
-      },
-      en: {
-        payment_pending: 'Payment pending',
-        payment_proof_uploaded: 'Proof uploaded',
-        payment_validated: 'Payment validated',
-        payment_rejected: 'Payment rejected',
-        processing: 'Processing',
-        delivered: 'Delivered',
-        completed: 'Completed',
-        cancelled: 'Cancelled'
-      }
+    // Map database status to translation key suffix
+    const statusKeyMap = {
+      payment_pending: 'paymentPending',
+      payment_proof_uploaded: 'paymentProofUploaded',
+      payment_validated: 'paymentValidated',
+      payment_rejected: 'paymentRejected',
+      processing: 'processing',
+      delivered: 'delivered',
+      completed: 'completed',
+      cancelled: 'cancelled'
     };
-
-    const labels = statusLabels[language] || statusLabels.es;
 
     // Show toast for new remittances
     if (payload?.eventType === 'INSERT') {
@@ -142,7 +128,8 @@ const AdminRemittancesTab = () => {
     if (payload?.eventType === 'UPDATE' && payload?.old?.status !== payload?.new?.status) {
       const newStatus = payload.new?.status;
       const remittanceNumber = payload.new?.remittance_number || '';
-      const statusText = labels[newStatus] || newStatus;
+      const statusKey = statusKeyMap[newStatus] || newStatus;
+      const statusText = t(`remittances.status.${statusKey}`, { defaultValue: newStatus });
 
       toast({
         title: language === 'es' ? '🔔 Estado actualizado' : '🔔 Status updated',
@@ -153,7 +140,7 @@ const AdminRemittancesTab = () => {
 
     // Reload remittances list
     loadRemittances();
-  }, [language]);
+  }, [language, t]);
 
   useRealtimeRemittances({
     enabled: true,
@@ -1103,11 +1090,11 @@ const AdminRemittancesTab = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.amountSent')}</p>
-                      <p className="text-base sm:text-lg font-bold text-blue-600">{selectedRemittance.amount} {selectedRemittance.currency}</p>
+                      <p className="text-base sm:text-lg font-bold text-blue-600">{selectedRemittance.amount_sent} {selectedRemittance.currency_sent}</p>
                     </div>
                     <div>
                       <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.toDeliver')}</p>
-                      <p className="text-base sm:text-lg font-bold text-green-600">{selectedRemittance.amount_to_deliver?.toFixed(2)} {selectedRemittance.delivery_currency}</p>
+                      <p className="text-base sm:text-lg font-bold text-green-600">{selectedRemittance.amount_to_deliver?.toFixed(2)} {selectedRemittance.currency_delivered}</p>
                     </div>
                   </div>
                 </div>

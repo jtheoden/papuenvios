@@ -322,7 +322,7 @@
       "cash": "💵 Cash",
       "transfer": "🏦 Bank Transfer",
       "card": "💳 Card",
-      "paymentReferenceLabel": "Payment Reference",
+      "paymentReferenceLabel": "Payer Name/Company",
       "notesLabel": "Notes",
       "paymentProofSection": "Payment Proof",
       "noPaymentProof": "No payment proof",
@@ -343,7 +343,7 @@
       "cancelRemittance": "Cancel Remittance",
       "cancelReason": "Reason (optional)",
       "paymentProof": "Payment proof",
-      "paymentReference": "Payment reference",
+      "paymentReference": "Payer Name/Company",
       "uploadFile": "Upload file",
       "additionalNotes": "Additional notes",
       "viewProof": "View Proof",
@@ -358,7 +358,7 @@
       "uploadProofTitle": "Upload Payment Proof",
       "remittanceLabel": "Remittance",
       "paymentProofLabel": "Payment Proof *",
-      "paymentReferenceLabel": "Payment Reference *",
+      "paymentReferenceLabel": "Payer Name/Company *",
       "referenceExample": "E.g.: ZELLE123456",
       "additionalNotesLabel": "Additional Notes",
       "additionalDetailsPlaceholder": "Additional details...",
@@ -443,9 +443,9 @@
       "selectRecipient": "Select a recipient",
       "fillRecipientInfo": "Please complete recipient name and phone",
       "remittanceCreatedSuccess": "Remittance created successfully",
-      "uploadProofAndReference": "Please upload the payment proof and reference",
+      "uploadProofAndReference": "Please upload the proof and payer name/company",
       "proofSentSuccess": "Proof sent. You will be notified once payment is validated.",
-      "paymentReferencePlaceholder": "E.g.: ZELLE123456",
+      "paymentReferencePlaceholder": "E.g.: John Smith / ABC Corp LLC",
       "paymentNotesPlaceholder": "Additional payment details...",
       "whatsappNotification": "WhatsApp Notification",
       "whatsappInfo": "When you send the payment proof, the admin will automatically be notified via WhatsApp with all your remittance details.",
@@ -692,7 +692,27 @@
     "dateTo": "To",
     "clearFilters": "Clear filters",
     "records": "records",
-    "invalidDateRange": "'From' date must be earlier than 'To' date"
+    "invalidDateRange": "'From' date must be earlier than 'To' date",
+    "entities": {
+      "user": "User",
+      "order": "Order",
+      "remittance": "Remittance",
+      "product": "Product",
+      "combo": "Combo",
+      "inventory": "Inventory",
+      "offer": "Offer",
+      "coupon": "Coupon",
+      "payment": "Payment"
+    },
+    "actions": {
+      "create": "Create",
+      "update": "Update",
+      "delete": "Delete",
+      "login": "Login",
+      "status_change": "Status change",
+      "validate": "Validate",
+      "reject": "Reject"
+    }
   },
   "settings": {
     "title": "General Settings",
@@ -949,6 +969,7 @@
     "stats": {
       "total": "Total",
       "pending": "Pending",
+      "proofUploaded": "Proof Uploaded",
       "validated": "Validated",
       "rejected": "Rejected",
       "completed": "Completed",
@@ -977,14 +998,17 @@
       "paymentStatus": {
         "label": "Payment Status",
         "pending": "Payment Pending",
+        "proof_uploaded": "Proof Uploaded",
         "validated": "Payment Validated (Ready to Process)",
         "confirmed": "Payment Confirmed",
-        "rejected": "Payment Rejected"
+        "rejected": "Payment Rejected",
+        "failed": "Failed"
       },
       "orderStatus": {
         "label": "Order Status",
         "pending": "Pending",
         "processing": "Processing",
+        "dispatched": "Dispatched",
         "shipped": "Shipped",
         "delivered": "Delivered",
         "completed": "Completed",
@@ -993,6 +1017,7 @@
       "actions": "Actions"
     },
     "types": {
+      "product": "Product",
       "products": "Products",
       "remittance": "Remittance",
       "mixed": "Mixed"

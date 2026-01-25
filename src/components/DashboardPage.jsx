@@ -23,6 +23,18 @@ const DashboardPage = ({ onNavigate }) => {
   // Tab state
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' or 'orders'
 
+  // Handle URL parameters for tab navigation (deep linking from WhatsApp notifications)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+
+    const validTabs = ['overview', 'orders', 'remittances', 'remittance-types', 'offers', 'activity-log', 'zelle-history'];
+
+    if (tabParam && validTabs.includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, []);
+
   const [stats, setStats] = useState({
     totalProducts: 0,
     totalCombos: 0,

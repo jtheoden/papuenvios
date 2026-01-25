@@ -68,6 +68,9 @@ const getStatusText = (status, paymentStatus, t) => {
   if (paymentStatus === PAYMENT_STATUS.REJECTED) {
     return t('adminOrders.stats.rejected');
   }
+  if (paymentStatus === PAYMENT_STATUS.PROOF_UPLOADED) {
+    return t('adminOrders.stats.proofUploaded');
+  }
   if (paymentStatus === PAYMENT_STATUS.PENDING) {
     return t('adminOrders.stats.pending');
   }
@@ -86,6 +89,9 @@ const getStatusIcon = (status, paymentStatus) => {
   }
   if (paymentStatus === PAYMENT_STATUS.REJECTED || status === ORDER_STATUS.CANCELLED) {
     return <XCircle className="h-4 w-4" />;
+  }
+  if (paymentStatus === PAYMENT_STATUS.PROOF_UPLOADED) {
+    return <FileText className="h-4 w-4" />;
   }
   return <Clock className="h-4 w-4" />;
 };

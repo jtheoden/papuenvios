@@ -154,8 +154,8 @@ const ActivityLogTab = () => {
       label: t('activityLog.action') || 'Acción',
       width: 'w-36',
       render: (value) => (
-        <span className="px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700 capitalize">
-          {value}
+        <span className="px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">
+          {t(`activityLog.actions.${value}`, { defaultValue: value })}
         </span>
       )
     },
@@ -163,7 +163,11 @@ const ActivityLogTab = () => {
       key: 'entity_type',
       label: t('activityLog.entity') || 'Entidad',
       width: 'w-32',
-      render: (value) => <span className="capitalize">{value}</span>
+      render: (value) => (
+        <span className="capitalize">
+          {t(`activityLog.entities.${value}`, { defaultValue: value })}
+        </span>
+      )
     },
     {
       key: 'description',
@@ -216,7 +220,7 @@ const ActivityLogTab = () => {
               <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value)} className="text-sm focus:outline-none">
                 {ACTION_OPTIONS.map(option => (
                   <option key={option} value={option}>
-                    {option === 'all' ? t('common.all') : option}
+                    {option === 'all' ? t('common.all') : t(`activityLog.actions.${option}`, { defaultValue: option })}
                   </option>
                 ))}
               </select>
@@ -226,7 +230,7 @@ const ActivityLogTab = () => {
               <select value={entityFilter} onChange={(e) => setEntityFilter(e.target.value)} className="text-sm focus:outline-none">
                 {ENTITY_OPTIONS.map(option => (
                   <option key={option} value={option}>
-                    {option === 'all' ? t('common.all') : option}
+                    {option === 'all' ? t('common.all') : t(`activityLog.entities.${option}`, { defaultValue: option })}
                   </option>
                 ))}
               </select>
