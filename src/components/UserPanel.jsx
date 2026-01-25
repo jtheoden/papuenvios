@@ -46,6 +46,7 @@ const UserPanel = ({ onNavigate }) => {
   const [trackingInfo, setTrackingInfo] = useState('');
   const [deliveryProofFile, setDeliveryProofFile] = useState(null);
   const [retryProofFile, setRetryProofFile] = useState(null);
+  const [retryProofReference, setRetryProofReference] = useState('');
   const [processingAction, setProcessingAction] = useState(false);
   const [hideCompletedOrders, setHideCompletedOrders] = useState(true); // Ocultar pedidos finalizados/cancelados por defecto
   const [orderDeliveryProofSignedUrl, setOrderDeliveryProofSignedUrl] = useState(null);
@@ -420,13 +421,16 @@ const UserPanel = ({ onNavigate }) => {
   };
 
   const handleRetryPaymentProof = async () => {
-    if (!selectedOrder?.id || !retryProofFile) return;
+    if (!selectedOrder?.id || !retryProofFile || !retryProofReference.trim()) return;
     setProcessingAction(true);
     try {
-      await uploadPaymentProof(retryProofFile, selectedOrder.id, user.id);
+      await uploadPaymentProof(retryProofFile, selectedOrder.id, user.id, retryProofReference.trim());
       await loadUserOrders();
       const refreshed = await getOrderById(selectedOrder.id);
       setSelectedOrder(refreshed);
+      // Clear form after success
+      setRetryProofFile(null);
+      setRetryProofReference('');
     } catch (error) {
       console.error('Error uploading new payment proof:', error);
     } finally {
@@ -1268,7 +1272,11 @@ const UserPanel = ({ onNavigate }) => {
                           {language === 'es' ? 'Fecha' : 'Date'}
                         </p>
                         <p className="text-sm" style={getTextStyle(visualSettings, 'primary')}>
-                          {new Date(selectedOrder.created_at).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US')}
+                          {new Date(selectedOrder.created_at).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', {
+                            day: 'numeric',
+                            month: 'long',
+                            year: 'numeric'
+                          })}
                         </p>
                       </div>
                       <div>
@@ -1644,23 +1652,42 @@ const UserPanel = ({ onNavigate }) => {
                     {/* User actions: retry payment proof after rejection */}
                     {isRegularUser && selectedOrder.payment_status === 'rejected' && selectedOrder.status === 'pending' && (
                       <div className="mt-4 p-4 rounded-lg border" style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}>
-                        <p className="font-semibold mb-2" style={getTextStyle(visualSettings, 'primary')}>
+                        <p className="font-semibold mb-3" style={getTextStyle(visualSettings, 'primary')}>
                           {language === 'es' ? 'Subir nuevo comprobante de pago' : 'Upload new payment proof'}
                         </p>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => setRetryProofFile(e.target.files?.[0] || null)}
-                          className="mb-3"
-                        />
-                        <Button
-                          onClick={handleRetryPaymentProof}
-                          disabled={processingAction || !retryProofFile}
-                          className="bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                          {processingAction ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
-                          {language === 'es' ? 'Reintentar pago' : 'Retry payment'}
-                        </Button>
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              {language === 'es' ? 'Comprobante de pago' : 'Payment proof'} <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => setRetryProofFile(e.target.files?.[0] || null)}
+                              className="w-full"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              {language === 'es' ? 'Titular/Empresa que realiza el pago' : 'Payer Name/Company'} <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={retryProofReference}
+                              onChange={(e) => setRetryProofReference(e.target.value)}
+                              placeholder={language === 'es' ? 'Ej: Juan Perez / Empresa ABC LLC' : 'E.g.: John Smith / ABC Corp LLC'}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+                          <Button
+                            onClick={handleRetryPaymentProof}
+                            disabled={processingAction || !retryProofFile || !retryProofReference.trim()}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            {processingAction ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
+                            {language === 'es' ? 'Reintentar pago' : 'Retry payment'}
+                          </Button>
+                        </div>
                       </div>
                     )}
 

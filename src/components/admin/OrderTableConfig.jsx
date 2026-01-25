@@ -61,13 +61,13 @@ export const getTableColumns = (t, formatDate, formatCurrency, renderTypeIcon) =
     key: 'payment_status',
     label: t('adminOrders.table.paymentStatus.label'),
     width: '140px',
-    render: (value, row) => renderPaymentStatusBadge(value, row)
+    render: (value, row) => renderPaymentStatusBadge(value, row, t)
   },
   {
     key: 'status',
     label: t('adminOrders.table.orderStatus.label'),
     width: '140px',
-    render: (value, row) => renderOrderStatusBadge(value, row)
+    render: (value, row) => renderOrderStatusBadge(value, row, t)
   }
 ];
 
@@ -114,10 +114,14 @@ export const getModalColumns = (t, formatDate, formatCurrency) => [
 /**
  * Render payment status badge
  * Uses accessible StatusBadge component with proper icons
+ * @param {string} status - Payment status value
+ * @param {object} row - Row data
+ * @param {function} t - Translation function
  */
-function renderPaymentStatusBadge(status, row) {
+function renderPaymentStatusBadge(status, row, t) {
   const statusMap = {
     pending: 'pending',
+    proof_uploaded: 'info',
     validated: 'success',
     rejected: 'error',
     confirmed: 'success',
@@ -125,18 +129,15 @@ function renderPaymentStatusBadge(status, row) {
   };
 
   const statusType = statusMap[status] || 'pending';
-  const labelMap = {
-    pending: 'Pendiente',
-    validated: 'Validado',
-    rejected: 'Rechazado',
-    confirmed: 'Confirmado',
-    failed: 'Fallido'
-  };
+
+  // Use translation keys from adminOrders.table.paymentStatus
+  const translationKey = `adminOrders.table.paymentStatus.${status}`;
+  const label = t(translationKey, { defaultValue: status });
 
   return (
     <StatusBadge
       status={statusType}
-      label={labelMap[status] || status}
+      label={label}
       size="sm"
     />
   );
@@ -145,8 +146,11 @@ function renderPaymentStatusBadge(status, row) {
 /**
  * Render order status badge
  * Uses accessible StatusBadge component with proper icons and semantic meaning
+ * @param {string} status - Order status value
+ * @param {object} row - Row data
+ * @param {function} t - Translation function
  */
-function renderOrderStatusBadge(status, row) {
+function renderOrderStatusBadge(status, row, t) {
   const statusMap = {
     pending: 'pending',
     processing: 'pending',
@@ -157,19 +161,15 @@ function renderOrderStatusBadge(status, row) {
   };
 
   const statusType = statusMap[status] || 'pending';
-  const labelMap = {
-    pending: 'Pendiente',
-    processing: 'En proceso',
-    dispatched: 'Despachado',
-    delivered: 'Entregado',
-    completed: 'Completado',
-    cancelled: 'Cancelado'
-  };
+
+  // Use translation keys from adminOrders.table.orderStatus
+  const translationKey = `adminOrders.table.orderStatus.${status}`;
+  const label = t(translationKey, { defaultValue: status });
 
   return (
     <StatusBadge
       status={statusType}
-      label={labelMap[status] || status}
+      label={label}
       size="sm"
     />
   );

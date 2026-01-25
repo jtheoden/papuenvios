@@ -49,16 +49,16 @@ const PaymentProofForm = ({
         ? 'Una vez realizado el pago, sube el comprobante para que podamos procesar tu solicitud.'
         : 'Once payment is made, upload the proof so we can process your request.',
       'proofLabel': language === 'es' ? 'Comprobante de pago' : 'Payment proof',
-      'referenceLabel': language === 'es' ? 'Referencia del Pago' : 'Payment Reference',
-      'referencePlaceholder': language === 'es' ? 'Ej: Confirmación Zelle #123456' : 'E.g.: Zelle Confirmation #123456',
+      'referenceLabel': language === 'es' ? 'Titular/Empresa que realiza el pago' : 'Payer Name/Company',
+      'referencePlaceholder': language === 'es' ? 'Ej: Juan Perez / Empresa ABC LLC' : 'E.g.: John Smith / ABC Corp LLC',
       'notesLabel': language === 'es' ? 'Notas adicionales (opcional)' : 'Additional notes (optional)',
       'notesPlaceholder': language === 'es' ? 'Detalles adicionales...' : 'Additional details...',
       'submitDefault': language === 'es' ? 'Enviar Comprobante' : 'Submit Proof',
       'submitting': language === 'es' ? 'Enviando...' : 'Sending...',
       'uploadLater': language === 'es' ? 'Subir comprobante más tarde' : 'Upload proof later',
       'validationError': language === 'es'
-        ? 'Sube el comprobante y proporciona la referencia del pago.'
-        : 'Upload the proof and provide the payment reference.'
+        ? 'Sube el comprobante e indica el titular/empresa que realiza el pago.'
+        : 'Upload the proof and provide the payer name/company.'
     };
     return translations[key] || key;
   };

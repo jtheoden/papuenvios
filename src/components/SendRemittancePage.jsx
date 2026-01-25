@@ -495,20 +495,8 @@ const SendRemittancePage = ({ onNavigate }) => {
         description: t('remittances.wizard.remittanceCreatedSuccess')
       });
 
-      // Si es remesa CASH, mostrar modal de confirmación
-      // Si es OFF-CASH (transfer, card, moneypocket), ir al paso 4 (comprobante)
-      if (selectedType?.delivery_method === 'cash') {
-        // Store remittance info and show confirmation modal
-        setConfirmedRemittanceInfo({
-          remittanceNumber: remittance.remittance_number,
-          total: calculation?.amountToDeliver || parseFloat(amount),
-          currency: calculation?.deliveryCurrency || 'CUP',
-          recipientName: recipientData.name
-        });
-        setShowConfirmationModal(true);
-      } else {
-        setStep(4);
-      }
+      // Todas las remesas (cash y transfer) proceden al Step 4 para subir comprobante de pago
+      setStep(4);
     } catch (error) {
       console.error('Error creating remittance:', error);
       toast({
@@ -1242,7 +1230,9 @@ const SendRemittancePage = ({ onNavigate }) => {
                         currency: calculation?.currency || 'USD',
                         amount_to_deliver: calculation?.amountToDeliver,
                         delivery_currency: calculation?.deliveryCurrency,
-                        payment_reference: paymentData.reference
+                        payment_reference: paymentData.reference,
+                        user_email: user?.email,
+                        user_name: user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0]
                       };
                       await notifyAdminNewPaymentProof(enrichedRemittance, notificationWhatsapp, language);
                     } catch (e) { console.warn('WhatsApp notification failed', e); }

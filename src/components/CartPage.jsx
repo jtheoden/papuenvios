@@ -55,6 +55,7 @@ const CartPage = ({ onNavigate }) => {
   const [selectedZelle, setSelectedZelle] = useState(null);
   const [paymentProof, setPaymentProof] = useState(null);
   const [paymentProofPreview, setPaymentProofPreview] = useState(null);
+  const [paymentReference, setPaymentReference] = useState('');
   const [uploadingProof, setUploadingProof] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [shippingZones, setShippingZones] = useState([]);
@@ -612,6 +613,17 @@ const CartPage = ({ onNavigate }) => {
       return;
     }
 
+    if (!paymentReference.trim()) {
+      toast({
+        title: language === 'es' ? 'Titular requerido' : 'Payer required',
+        description: language === 'es'
+          ? 'Por favor indica el titular/empresa que realiza el pago'
+          : 'Please provide the payer name/company',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     const summaryText = language === 'es'
       ? `Destinatario: ${recipientDetails.fullName}\nTotal: ${currencySymbol}${convertedTotal?.toFixed(2) || totalAmount.toFixed(2)} ${currencyCode}\nProductos: ${cart.length} artículo(s)`
       : `Recipient: ${recipientDetails.fullName}\nTotal: ${currencySymbol}${convertedTotal?.toFixed(2) || totalAmount.toFixed(2)} ${currencyCode}\nProducts: ${cart.length} item(s)`;
@@ -638,6 +650,17 @@ const CartPage = ({ onNavigate }) => {
         description: language === 'es'
           ? 'Por favor sube el comprobante de pago'
           : 'Please upload payment proof',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (!paymentReference.trim()) {
+      toast({
+        title: language === 'es' ? 'Titular requerido' : 'Payer required',
+        description: language === 'es'
+          ? 'Por favor indica el titular/empresa que realiza el pago'
+          : 'Please provide the payer name/company',
         variant: 'destructive'
       });
       return;
@@ -751,10 +774,10 @@ const CartPage = ({ onNavigate }) => {
           }
         }
 
-        // Upload payment proof
+        // Upload payment proof with payer reference
         let uploadedProofUrl = null;
         try {
-          uploadedProofUrl = await uploadPaymentProof(paymentProof, createdOrder.id, user.id);
+          uploadedProofUrl = await uploadPaymentProof(paymentProof, createdOrder.id, user.id, paymentReference.trim());
           logActivity({
             action: 'payment_proof_uploaded',
             entityType: 'order',
@@ -796,7 +819,8 @@ const CartPage = ({ onNavigate }) => {
                 quantity: item.quantity
               })),
               user_name: user.full_name || user.user_metadata?.full_name || user.email?.split('@')[0],
-              user_email: user.email
+              user_email: user.email,
+              payment_reference: paymentReference.trim()
             };
             notifyAdminNewPayment(orderForNotification, notificationWhatsapp, language);
           } catch (e) {
@@ -822,6 +846,9 @@ const CartPage = ({ onNavigate }) => {
 
       // Run post-creation tasks WITHOUT awaiting - don't block modal
       postCreationTasks().catch(e => console.warn('Post-creation tasks error:', e));
+
+      // Clear cart immediately after successful order creation
+      clearCart();
 
       // ALWAYS show confirmation modal after order is created
       setConfirmedOrderInfo(orderInfo);
@@ -1157,6 +1184,21 @@ const CartPage = ({ onNavigate }) => {
             />
           </div>
 
+          {/* Payment Reference Field */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {language === 'es' ? 'Titular/Empresa que realiza el pago' : 'Payer Name/Company'} <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={paymentReference}
+              onChange={(e) => setPaymentReference(e.target.value)}
+              placeholder={language === 'es' ? 'Ej: Juan Perez / Empresa ABC LLC' : 'E.g.: John Smith / ABC Corp LLC'}
+              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              required
+            />
+          </div>
+
           {/* WhatsApp Contact Section */}
           <motion.div
             initial={{ opacity: 0, y: -10 }}
@@ -1210,7 +1252,7 @@ const CartPage = ({ onNavigate }) => {
               className="flex-1"
               size="lg"
               style={getPrimaryButtonStyle(visualSettings)}
-              disabled={!paymentProof || uploadingProof || processingPayment}
+              disabled={!paymentProof || !paymentReference.trim() || uploadingProof || processingPayment}
             >
               {processingPayment ? (
                 language === 'es' ? 'Procesando...' : 'Processing...'

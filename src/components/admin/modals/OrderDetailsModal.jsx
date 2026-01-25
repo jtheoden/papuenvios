@@ -143,13 +143,26 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
               <InfoItem label={t('common.date')} value={formatDate(normalizedOrder.created_at)} />
               <InfoItem label={t('activityLog.user')} value={normalizedOrder.user_name} />
               <InfoItem label={t('common.email')} value={normalizedOrder.user_email} />
-              <InfoItem label={t('adminOrders.table.type')} value={normalizedOrder.order_type} />
+              <InfoItem label={t('adminOrders.table.type')} value={getOrderTypeText(normalizedOrder.order_type, t)} />
               <InfoItem
                 label={t('adminOrders.table.paymentStatus.label')}
-                value={getStatusText(normalizedOrder.payment_status, t)}
+                value={getPaymentStatusText(normalizedOrder.payment_status, t)}
               />
-              <InfoItem label={t('adminOrders.table.orderStatus.label')} value={normalizedOrder.status} />
+              <InfoItem
+                label={t('adminOrders.table.orderStatus.label')}
+                value={getOrderStatusText(normalizedOrder.status, t)}
+              />
               <InfoItem label={t('adminOrders.detail.paymentMethod')} value={normalizedOrder.payment_method} />
+              {normalizedOrder.payment_reference && (
+                <InfoItem
+                  label={t('remittances.paymentReferenceLabel')}
+                  value={normalizedOrder.payment_reference}
+                />
+              )}
+              <InfoItem
+                label={t('adminOrders.table.total')}
+                value={formatCurrency(normalizedOrder.total_amount, normalizedOrder.currencies?.code)}
+              />
             </div>
 
             {/* Recipient Details Section */}
@@ -435,24 +448,36 @@ const InfoItem = ({ label, value }) => (
   </div>
 );
 
-// Helper Functions (moved from AdminOrdersTab)
-const PAYMENT_STATUS = {
-  PENDING: 'pending',
-  CONFIRMED: 'confirmed',
-  REJECTED: 'rejected'
+// Helper Functions - Unified status text mapping (same as OrderTableConfig)
+/**
+ * Get translated payment status text
+ * @param {string} status - Payment status value
+ * @param {function} t - Translation function
+ */
+const getPaymentStatusText = (status, t) => {
+  const translationKey = `adminOrders.table.paymentStatus.${status}`;
+  return t(translationKey, { defaultValue: status });
 };
 
-const getStatusText = (paymentStatus, t) => {
-  if (paymentStatus === PAYMENT_STATUS.PENDING) {
-    return t('adminOrders.table.paymentStatus.pending');
-  }
-  if (paymentStatus === PAYMENT_STATUS.REJECTED) {
-    return t('adminOrders.table.paymentStatus.rejected');
-  }
-  if (paymentStatus === PAYMENT_STATUS.CONFIRMED) {
-    return t('adminOrders.table.paymentStatus.confirmed');
-  }
-  return paymentStatus;
+/**
+ * Get translated order status text
+ * @param {string} status - Order status value
+ * @param {function} t - Translation function
+ */
+const getOrderStatusText = (status, t) => {
+  const translationKey = `adminOrders.table.orderStatus.${status}`;
+  return t(translationKey, { defaultValue: status });
 };
+
+/**
+ * Get translated order type text
+ * @param {string} type - Order type value (product, remittance, mixed)
+ * @param {function} t - Translation function
+ */
+const getOrderTypeText = (type, t) => {
+  const translationKey = `adminOrders.types.${type}`;
+  return t(translationKey, { defaultValue: type });
+};
+
 
 export default OrderDetailsModal;

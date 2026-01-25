@@ -975,10 +975,16 @@ export const getAllOrders = async (filters = {}) => {
         const profileMap = new Map(profiles.map(p => [p.user_id, p]));
 
         // Enrich each order with its user profile
-        return orders.map(order => ({
-          ...order,
-          user_profiles: profileMap.get(order.user_id) || { user_id: order.user_id, full_name: null, email: null }
-        }));
+        return orders.map(order => {
+          const profile = profileMap.get(order.user_id) || { user_id: order.user_id, full_name: null, email: null };
+          return {
+            ...order,
+            user_profiles: profile,
+            // Map to user_name and user_email for table columns compatibility
+            user_name: order.user_name || profile.full_name || null,
+            user_email: order.user_email || profile.email || null
+          };
+        });
       }
     }
 
@@ -1513,10 +1519,11 @@ export const updateOrderStatus = async (orderId, newStatus, adminId, notes = '')
  * @param {File} file - Image file
  * @param {string} orderId - Order ID
  * @param {string} userId - User ID (for authorization)
+ * @param {string} paymentReference - Payer name/company (titular/empresa que realiza el pago)
  * @throws {AppError} If validation fails, authorization fails, or upload fails
  * @returns {Promise<string>} Public URL of uploaded proof
  */
-export const uploadPaymentProof = async (file, orderId, userId) => {
+export const uploadPaymentProof = async (file, orderId, userId, paymentReference = '') => {
   try {
     if (!file || !orderId || !userId) {
       throw createValidationError({
@@ -1593,15 +1600,22 @@ export const uploadPaymentProof = async (file, orderId, userId) => {
       .from('order-documents')
       .getPublicUrl(filePath);
 
-    // Update order with proof URL and mark as proof uploaded
+    // Update order with proof URL, payment reference, and mark as proof uploaded
+    const updateData = {
+      payment_proof_url: urlData.publicUrl,
+      payment_status: PAYMENT_STATUS.PROOF_UPLOADED,
+      rejection_reason: null,
+      updated_at: new Date().toISOString()
+    };
+
+    // Include payment_reference if provided
+    if (paymentReference && paymentReference.trim()) {
+      updateData.payment_reference = paymentReference.trim();
+    }
+
     const { error: updateError } = await supabase
       .from('orders')
-      .update({
-        payment_proof_url: urlData.publicUrl,
-        payment_status: PAYMENT_STATUS.PROOF_UPLOADED,
-        rejection_reason: null,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', orderId);
 
     if (updateError) {
