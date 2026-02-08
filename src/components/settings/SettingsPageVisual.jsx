@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Palette, Upload, Plus, Trash2, Check, RefreshCw, Save, Eye, Image, ShoppingBag } from 'lucide-react';
+import { Palette, Upload, Plus, Trash2, Check, RefreshCw, Save, Eye, Image, ShoppingBag, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -10,8 +10,9 @@ import { validateAndProcessImage } from '@/lib/imageUtils';
 import { DEFAULT_VISUAL_SETTINGS, clearVisualSettingsCache, saveVisualSettings, applyVisualSettingsToDOM } from '@/lib/businessVisualSettingsService';
 import {
   getCarouselSlides, createCarouselSlide, updateCarouselSlide,
-  hardDeleteCarouselSlide
+  hardDeleteCarouselSlide, toggleCarouselSlideActive
 } from '@/lib/carouselService';
+import { useRealtimeCarouselSlides } from '@/hooks/useRealtimeSubscription';
 
 const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVisualSettings }) => {
   const { t, language } = useLanguage();
@@ -54,7 +55,10 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     pageBgColor: visualSettings.pageBgColor || '#f9fafb',
     cardBgColor: visualSettings.cardBgColor || '#ffffff',
     showCompanyName: visualSettings.showCompanyName !== undefined ? visualSettings.showCompanyName : true,
-    logoMaxHeight: visualSettings.logoMaxHeight || 40
+    logoMaxHeight: visualSettings.logoMaxHeight || 40,
+    carouselEnabled: visualSettings.carouselEnabled !== undefined ? visualSettings.carouselEnabled : true,
+    carouselAutoplaySpeed: visualSettings.carouselAutoplaySpeed || 5000,
+    carouselTransitionSpeed: visualSettings.carouselTransitionSpeed || 1000
   });
   const [logoPreview, setLogoPreview] = useState(visualSettings.logo || '');
   const [faviconPreview, setFaviconPreview] = useState(visualSettings.favicon || '');
@@ -66,6 +70,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
   const [savedSlide, setSavedSlide] = useState(null);
   const [slidePreviews, setSlidePreviews] = useState({});
   const [slideDebounceTimers, setSlideDebounceTimers] = useState({});
+  const [expandedSlide, setExpandedSlide] = useState(null);
 
   useEffect(() => {
     loadCarouselSlides();
@@ -111,7 +116,10 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       destructiveHoverBgColor: visualSettings.destructiveHoverBgColor || '#b91c1c',
       accentColor: visualSettings.accentColor || '#9333ea',
       pageBgColor: visualSettings.pageBgColor || '#f9fafb',
-      cardBgColor: visualSettings.cardBgColor || '#ffffff'
+      cardBgColor: visualSettings.cardBgColor || '#ffffff',
+      carouselEnabled: visualSettings.carouselEnabled !== undefined ? visualSettings.carouselEnabled : true,
+      carouselAutoplaySpeed: visualSettings.carouselAutoplaySpeed || 5000,
+      carouselTransitionSpeed: visualSettings.carouselTransitionSpeed || 1000
     };
     setAppearance(newAppearance);
     setLogoPreview(visualSettings.logo || '');
@@ -242,7 +250,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       if (!result.success) {
         console.error('[RestoreTheme] Failed to save defaults to DB:', result.error);
         toast({
-          title: 'Error',
+          title: t('common.error'),
           description: result.error || 'Error al restaurar configuración',
           variant: 'destructive'
         });
@@ -280,7 +288,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     } catch (err) {
       console.error('[RestoreTheme] Exception:', err);
       toast({
-        title: 'Error',
+        title: t('common.error'),
         description: err.message,
         variant: 'destructive'
       });
@@ -308,19 +316,30 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
 
   const handleAddSlide = async () => {
     try {
-      await createCarouselSlide({
-        title_es: '', title_en: '', subtitle_es: '', subtitle_en: '',
+      const newSlide = await createCarouselSlide({
+        title_es: t('settings.visual.newSlideDefaultEs'),
+        title_en: t('settings.visual.newSlideDefaultEn'),
+        subtitle_es: '', subtitle_en: '',
         image_url: '', link_url: '', is_active: false
       });
 
       await loadCarouselSlides();
+
+      // Auto-expand and scroll to the new slide
+      if (newSlide?.id) {
+        setExpandedSlide(newSlide.id);
+        setTimeout(() => {
+          document.getElementById(`slide-${newSlide.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+      }
+
       toast({
         title: t('settings.visual.slideCreated')
       });
     } catch (error) {
       console.error('Error creating slide:', error);
       toast({
-        title: 'Error',
+        title: t('common.error'),
         description: error.message,
         variant: 'destructive'
       });
@@ -391,7 +410,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     } catch (error) {
       console.error('Error deleting slide:', error);
       toast({
-        title: 'Error',
+        title: t('common.error'),
         description: error.message,
         variant: 'destructive'
       });
@@ -418,7 +437,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       console.error('Error updating slide order:', error);
       setSavingSlide(null);
       toast({
-        title: 'Error',
+        title: t('common.error'),
         description: error.message,
         variant: 'destructive'
       });
@@ -456,6 +475,30 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       });
     }
   };
+
+  const handleToggleSlideActive = async (slideId, currentActive) => {
+    try {
+      await toggleCarouselSlideActive(slideId, !currentActive);
+      setCarouselSlides(prev =>
+        prev.map(s => s.id === slideId ? { ...s, is_active: !currentActive } : s)
+      );
+      toast({
+        title: !currentActive ? t('settings.visual.slideActive') : t('settings.visual.slideInactive')
+      });
+    } catch (error) {
+      console.error('Error toggling slide active:', error);
+      toast({
+        title: t('common.error'),
+        description: error.message,
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Realtime: reload slides when changed externally
+  useRealtimeCarouselSlides({
+    onUpdate: () => loadCarouselSlides()
+  });
 
   return (
     <>
@@ -834,7 +877,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       </motion.div>
 
       {/* Carousel Slides Section */}
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="glass-effect p-8 rounded-2xl mt-8">
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="glass-effect p-4 sm:p-8 rounded-2xl mt-8">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
           <h2 className="text-xl sm:text-2xl font-semibold">{t('settings.visual.slides')}</h2>
           <Button
@@ -848,6 +891,67 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
           </Button>
         </div>
 
+        {/* Carousel Configuration */}
+        <div className="mb-6 p-3 sm:p-4 bg-gray-50 rounded-xl space-y-3 sm:space-y-4">
+          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">{t('settings.visual.carouselSettings')}</h3>
+
+          {/* Global enable toggle */}
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={appearance.carouselEnabled}
+              onChange={e => updateAppearance('carouselEnabled', e.target.checked)}
+              className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm font-medium">{t('settings.visual.carouselEnabled')}</span>
+          </label>
+
+          {/* Slide duration slider */}
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-600 mb-1">
+                {t('settings.visual.carouselAutoplaySpeed')}
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={2000}
+                  max={15000}
+                  step={500}
+                  value={appearance.carouselAutoplaySpeed}
+                  onChange={e => updateAppearance('carouselAutoplaySpeed', parseInt(e.target.value))}
+                  className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                />
+                <span className="text-sm font-semibold text-gray-700 min-w-[3rem] text-right">
+                  {(appearance.carouselAutoplaySpeed / 1000).toFixed(1)}s
+                </span>
+              </div>
+            </div>
+
+            {/* Transition speed slider */}
+            <div>
+              <label className="block text-sm font-medium text-gray-600 mb-1">
+                {t('settings.visual.carouselTransitionSpeed')}
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={300}
+                  max={3000}
+                  step={100}
+                  value={appearance.carouselTransitionSpeed}
+                  onChange={e => updateAppearance('carouselTransitionSpeed', parseInt(e.target.value))}
+                  className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                />
+                <span className="text-sm font-semibold text-gray-700 min-w-[3rem] text-right">
+                  {(appearance.carouselTransitionSpeed / 1000).toFixed(1)}s
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Slides List */}
         {loadingSlides ? (
           <div className="text-center py-8 text-gray-500">
             {t('settings.visual.loadingSlides')}
@@ -857,137 +961,200 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
             {t('settings.visual.noSlides')}
           </div>
         ) : (
-          <div className="space-y-4">
-            {carouselSlides.map(slide => (
-              <div key={slide.id} className="p-4 border rounded-lg space-y-3">
-                {savingSlide === slide.id && (
-                  <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 p-2 rounded">
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    <span>{t('settings.visual.saving')}</span>
-                  </div>
-                )}
-                {savedSlide === slide.id && savingSlide !== slide.id && (
-                  <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded">
-                    <Check className="h-4 w-4" />
-                    <span>{t('settings.visual.saved')}</span>
-                  </div>
-                )}
+          <div className="space-y-3">
+            {carouselSlides.map((slide, idx) => {
+              const isExpanded = expandedSlide === slide.id;
+              const slideTitle = (language === 'es' ? slide.title_es : slide.title_en) || slide.title_es || slide.title_en || '—';
 
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">{t('settings.visual.order')}</label>
-                    <input
-                      type="number"
-                      value={slide.display_order ?? 0}
-                      onChange={e => handleSlideOrderChange(slide.id, e.target.value)}
-                      className="input-style w-full"
-                      min="0"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">{t('settings.visual.linkUrl')}</label>
-                    <input
-                      type="url"
-                      value={slide.link_url || ''}
-                      onChange={e => handleSlideChange(slide.id, { link_url: e.target.value })}
-                      placeholder="https://..."
-                      className="input-style w-full"
-                    />
-                  </div>
-                </div>
-
-                {(slide.image_url || slidePreviews[slide.id]) && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-700 mb-2">
-                      {t('settings.visual.preview')}
-                    </p>
-                    <div className="relative w-full aspect-[16/9] max-w-2xl rounded-lg overflow-hidden border-2 border-gray-300 bg-gray-100">
-                      <img
-                        src={slidePreviews[slide.id] || slide.image_url}
-                        alt="Preview"
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">{t('settings.visual.image')}</label>
-                  <input
-                    type="url"
-                    value={slide.image_url || ''}
-                    onChange={e => handleSlideChange(slide.id, { image_url: e.target.value })}
-                    placeholder="https://..."
-                    className="input-style w-full mb-2"
-                  />
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={(e) => handleSlideImageUpload(slide.id, e)}
-                    className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                  />
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">{t('settings.visual.mainText')} (ES)</label>
-                    <input
-                      type="text"
-                      value={slide.title_es || ''}
-                      onChange={e => handleSlideTextChange(slide.id, 'title_es', e.target.value)}
-                      placeholder="Título en español"
-                      className="input-style w-full"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">{t('settings.visual.mainText')} (EN)</label>
-                    <input
-                      type="text"
-                      value={slide.title_en || ''}
-                      onChange={e => handleSlideTextChange(slide.id, 'title_en', e.target.value)}
-                      placeholder="Title in English"
-                      className="input-style w-full"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">{t('settings.visual.secondaryText')} (ES)</label>
-                    <input
-                      type="text"
-                      value={slide.subtitle_es || ''}
-                      onChange={e => handleSlideTextChange(slide.id, 'subtitle_es', e.target.value)}
-                      placeholder="Subtítulo en español"
-                      className="input-style w-full"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">{t('settings.visual.secondaryText')} (EN)</label>
-                    <input
-                      type="text"
-                      value={slide.subtitle_en || ''}
-                      onChange={e => handleSlideTextChange(slide.id, 'subtitle_en', e.target.value)}
-                      placeholder="Subtitle in English"
-                      className="input-style w-full"
-                    />
-                  </div>
-                </div>
-
-                <div className="text-right">
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    className="h-8 px-2 sm:px-3"
-                    onClick={() => handleRemoveSlide(slide.id)}
-                    title={t('common.delete')}
+              return (
+                <div
+                  key={slide.id}
+                  id={`slide-${slide.id}`}
+                  className={`border rounded-xl overflow-hidden transition-all ${
+                    slide.is_active ? 'border-gray-200' : 'border-dashed border-gray-300 opacity-60'
+                  }`}
+                >
+                  {/* Summary Row — always visible */}
+                  <div
+                    className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                    onClick={() => setExpandedSlide(isExpanded ? null : slide.id)}
                   >
-                    <Trash2 className="h-4 w-4 sm:mr-2" />
-                    <span className="hidden sm:inline">{t('common.delete')}</span>
-                  </Button>
+                    {/* Thumbnail */}
+                    <div className="w-10 h-6 sm:w-16 sm:h-9 rounded overflow-hidden bg-gray-100 flex-shrink-0">
+                      {(slidePreviews[slide.id] || slide.image_url) ? (
+                        <img
+                          src={slidePreviews[slide.id] || slide.image_url}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Image className="h-4 w-4 text-gray-300" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Title + Order */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono text-gray-400">#{slide.display_order ?? idx}</span>
+                        <span className="text-sm font-medium truncate">{slideTitle}</span>
+                      </div>
+                    </div>
+
+                    {/* Save indicators */}
+                    {savingSlide === slide.id && (
+                      <RefreshCw className="h-4 w-4 animate-spin text-blue-500 flex-shrink-0" />
+                    )}
+                    {savedSlide === slide.id && savingSlide !== slide.id && (
+                      <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
+                    )}
+
+                    {/* Active toggle */}
+                    <label
+                      className="flex items-center gap-1.5 cursor-pointer flex-shrink-0"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={slide.is_active}
+                        onChange={() => handleToggleSlideActive(slide.id, slide.is_active)}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className={`hidden sm:inline text-xs font-medium ${slide.is_active ? 'text-green-600' : 'text-gray-400'}`}>
+                        {slide.is_active ? t('settings.visual.slideActive') : t('settings.visual.slideInactive')}
+                      </span>
+                    </label>
+
+                    {/* Delete */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-gray-400 hover:text-red-500 flex-shrink-0"
+                      onClick={e => { e.stopPropagation(); handleRemoveSlide(slide.id); }}
+                      title={t('common.delete')}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+
+                    {/* Expand indicator */}
+                    {isExpanded
+                      ? <ChevronUp className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                      : <ChevronDown className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                    }
+                  </div>
+
+                  {/* Expanded Edit Form */}
+                  {isExpanded && (
+                    <div className="p-3 sm:p-4 border-t bg-white space-y-3 sm:space-y-4">
+                      {/* Order + Link URL */}
+                      <div className="grid sm:grid-cols-2 gap-3 sm:gap-4">
+                        <div>
+                          <label className="block text-sm font-medium mb-1">{t('settings.visual.order')}</label>
+                          <input
+                            type="number"
+                            value={slide.display_order ?? 0}
+                            onChange={e => handleSlideOrderChange(slide.id, e.target.value)}
+                            className="input-style w-full"
+                            min="0"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">{t('settings.visual.linkUrl')}</label>
+                          <input
+                            type="url"
+                            value={slide.link_url || ''}
+                            onChange={e => handleSlideChange(slide.id, { link_url: e.target.value })}
+                            placeholder="https://..."
+                            className="input-style w-full"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Image preview */}
+                      {(slide.image_url || slidePreviews[slide.id]) && (
+                        <div>
+                          <p className="text-sm font-medium text-gray-700 mb-1">{t('settings.visual.preview')}</p>
+                          <div className="relative w-full aspect-[16/9] rounded-lg overflow-hidden border-2 border-gray-300 bg-gray-100">
+                            <img
+                              src={slidePreviews[slide.id] || slide.image_url}
+                              alt={t('settings.visual.preview')}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Image URL + file upload */}
+                      <div>
+                        <label className="block text-sm font-medium mb-1">{t('settings.visual.image')}</label>
+                        <input
+                          type="url"
+                          value={slide.image_url || ''}
+                          onChange={e => handleSlideChange(slide.id, { image_url: e.target.value })}
+                          placeholder="https://..."
+                          className="input-style w-full mb-2"
+                        />
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={(e) => handleSlideImageUpload(slide.id, e)}
+                          className="w-full text-sm text-gray-500 file:mr-4 file:py-1 file:px-3 sm:file:py-2 sm:file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        />
+                      </div>
+
+                      {/* Title ES/EN */}
+                      <div className="grid sm:grid-cols-2 gap-3 sm:gap-4">
+                        <div>
+                          <label className="block text-sm font-medium mb-1">{t('settings.visual.mainText')} (ES)</label>
+                          <input
+                            type="text"
+                            value={slide.title_es || ''}
+                            onChange={e => handleSlideTextChange(slide.id, 'title_es', e.target.value)}
+                            placeholder={t('settings.visual.placeholderTitleEs')}
+                            className="input-style w-full"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">{t('settings.visual.mainText')} (EN)</label>
+                          <input
+                            type="text"
+                            value={slide.title_en || ''}
+                            onChange={e => handleSlideTextChange(slide.id, 'title_en', e.target.value)}
+                            placeholder={t('settings.visual.placeholderTitleEn')}
+                            className="input-style w-full"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Subtitle ES/EN */}
+                      <div className="grid sm:grid-cols-2 gap-3 sm:gap-4">
+                        <div>
+                          <label className="block text-sm font-medium mb-1">{t('settings.visual.secondaryText')} (ES)</label>
+                          <input
+                            type="text"
+                            value={slide.subtitle_es || ''}
+                            onChange={e => handleSlideTextChange(slide.id, 'subtitle_es', e.target.value)}
+                            placeholder={t('settings.visual.placeholderSubtitleEs')}
+                            className="input-style w-full"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">{t('settings.visual.secondaryText')} (EN)</label>
+                          <input
+                            type="text"
+                            value={slide.subtitle_en || ''}
+                            onChange={e => handleSlideTextChange(slide.id, 'subtitle_en', e.target.value)}
+                            placeholder={t('settings.visual.placeholderSubtitleEn')}
+                            className="input-style w-full"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </motion.div>
