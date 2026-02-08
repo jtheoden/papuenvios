@@ -36,7 +36,11 @@
     "filters": "Filters",
     "clearFilters": "Clear Filters",
     "saveSettings": "Save Settings",
-    "showing": "Showing"
+    "showing": "Showing",
+    "copied": "Copied!",
+    "copiedToClipboard": "{label} copied to clipboard",
+    "copyError": "Error copying to clipboard",
+    "amount": "Amount"
   },
   "nav": {
     "home": "Home",
@@ -48,7 +52,8 @@
     "settings": "Settings",
     "cart": "Cart",
     "userPanel": "My Panel",
-    "userManagement": "User Management"
+    "userManagement": "User Management",
+    "guides": "Guides"
   },
   "home": {
     "hero": {
@@ -101,6 +106,11 @@
     "testimonials": {
       "title": "What our customers say",
       "subtitle": "Real experiences from satisfied platform users."
+    },
+    "guides": {
+      "title": "Platform Guides",
+      "subtitle": "Everything you need to know to use our platform",
+      "viewAll": "View all guides"
     }
   },
   "footer": {
@@ -207,7 +217,8 @@
       "notes": "Additional notes",
       "bankName": "Bank Name",
       "accountNumber": "Account Number",
-      "confirm": "Confirm and Send"
+      "confirm": "Confirm and Send",
+      "card": "Card"
     },
     "status": {
       "paymentPending": "Payment Pending",
@@ -327,7 +338,44 @@
       "paymentProofSection": "Payment Proof",
       "noPaymentProof": "No payment proof",
       "deliveryProofSection": "Delivery Evidence",
-      "noPendingDeliveryProof": "Delivery evidence pending"
+      "noPendingDeliveryProof": "Delivery evidence pending",
+      "conversion": "Conversion",
+      "limits": "Limits",
+      "commission": "Commission",
+      "delivery": "Delivery",
+      "maxTime": "Max Time",
+      "alertDays": "Alert",
+      "selectCurrency": "Select currency",
+      "selectBothCurrencies": "Select origin and delivery currencies",
+      "inactiveCurrency": "One of the selected currencies is not active",
+      "deliveryRate": "Delivery Rate",
+      "deliveryRateHint": "What the recipient receives per unit sent",
+      "marketRate": "Market Rate",
+      "marketRateHint": "Actual market exchange rate",
+      "calculatedCommission": "Calculated commission",
+      "marginPerUnit": "Margin per unit",
+      "deliveryRateTooHigh": "Delivery rate cannot exceed the market rate",
+      "advancedCommission": "Additional fixed commission (Advanced)",
+      "advancedCommissionWarning": "Fixed commission makes the effective rate vary by amount sent",
+      "simulator": {
+        "title": "Simulator",
+        "testAmount": "Test Amount",
+        "youSend": "You Send",
+        "theyReceive": "They Receive",
+        "amountSent": "Amount sent",
+        "commissionPct": "Commission (%)",
+        "commissionFixed": "Fixed commission",
+        "totalCommission": "Total commission",
+        "netAmount": "Net amount",
+        "exchangeRateApplied": "Market rate applied",
+        "amountToDeliver": "Amount to deliver",
+        "effectiveRate": "Effective rate",
+        "perSent": "per each",
+        "sent": "sent",
+        "enterValidRate": "Enter a valid exchange rate",
+        "enterValidAmount": "Enter a valid test amount",
+        "mustSend": "Must send"
+      }
     },
     "user": {
       "trackYourRemittances": "Track the status of your money transfers",
@@ -462,7 +510,25 @@
       "belowMinAmount": "Minimum amount: {min} {currency}",
       "aboveMaxAmount": "Maximum amount: {max} {currency}",
       "sendingEquivalent": "(you're sending ~{amount} USD)",
-      "selectTypeFirst": "Select a type first"
+      "selectTypeFirst": "Select a type first",
+      "dataRestored": "Data restored",
+      "dataRestoredDesc": "Your remittance in progress has been restored.",
+      "loginRequiredMessage": "To continue with your remittance, you need to log in. Your information will be saved.",
+      "selectBankAccountCurrency": "You must select a bank account in {currency} for this remittance type. If the recipient doesn't have a compatible account, create a new one.",
+      "placeholderSend": "E.g.: 100.00",
+      "placeholderReceive": "E.g.: 10,000",
+      "destinationBankAccount": "Destination Bank Account",
+      "bankLabel": "Bank",
+      "accountTypeLabel": "Account Type",
+      "currencyLabel": "Currency",
+      "last4Digits": "Last 4 Digits",
+      "holderLabel": "Holder",
+      "verifyDataWarning": "Verify the information is correct before confirming the remittance.",
+      "remittanceCreatedTitle": "Remittance Created!",
+      "paymentInstructions": "Now make the payment and upload the proof to complete the process.",
+      "proofSubmittedSuccess": "Proof submitted successfully!",
+      "submitProofAndComplete": "Submit Proof and Complete",
+      "estimatedDeliveryTime": "24-72 hours"
     }
   },
   "vendor": {
@@ -868,12 +934,49 @@
       "changesSaved": "Visual changes have been saved and synchronized",
       "changesDiscarded": "Theme restored",
       "settingsRestored": "Visual settings have been reset to factory defaults",
-      "restoreTheme": "Restore Theme"
+      "restoreTheme": "Restore Theme",
+      "showCompanyName": "Show company name in header",
+      "logoMaxHeight": "Logo size in header",
+      "headerPreview": "Header Preview",
+      "removeLogo": "Remove Logo",
+      "logoRemoved": "Logo removed",
+      "noLogoUploaded": "No logo uploaded",
+      "logoHint": "Formats: PNG, SVG, WebP. Max 2MB. Original proportions preserved.",
+      "logoSizePx": "px"
     },
     "notifications": {
       "title": "Notification Settings",
       "whatsapp": "WhatsApp number for notifications",
       "adminEmail": "Admin email for notifications"
+    },
+    "content": {
+      "homeFeatures": "Home Page Features",
+      "homeFeaturesHint": "Configure the feature cards shown on the home page",
+      "addFeature": "Add Feature",
+      "featureTitle": "Title",
+      "featureDescription": "Description",
+      "featureIcon": "Icon",
+      "featureNavigateTo": "Navigate to",
+      "featureAdminOnly": "Admins only",
+      "featureActive": "Active",
+      "featureInactive": "Inactive",
+      "featureRemoved": "Feature removed",
+      "confirmDeleteFeature": "Delete this feature?",
+      "navDashboard": "Dashboard",
+      "navAdmin": "Administration",
+      "navVendor": "Vendor",
+      "navCart": "Cart",
+      "featureSaved": "Features saved",
+      "publications": "Publications & Guides",
+      "publicationsHint": "Create articles with text, images and videos to guide users",
+      "addPublication": "Add Publication",
+      "pubTitle": "Title",
+      "pubContent": "Content",
+      "pubCoverImage": "Cover image",
+      "pubVideoUrl": "Video URL (YouTube/Vimeo)",
+      "pubCategory": "Category",
+      "pubSaved": "Publications saved",
+      "pubRemoved": "Publication removed"
     },
     "saveSuccess": "Settings saved successfully"
   },
@@ -909,7 +1012,45 @@
       "uploadProof": "Upload Payment Proof",
       "confirm": "Confirm Payment",
       "recipientTitle": "Delivery/Recipient Details",
-      "whatsappNotConfigured": "WhatsApp number not configured"
+      "whatsappNotConfigured": "WhatsApp number not configured",
+      "proofRequired": "Proof required",
+      "proofRequiredDesc": "Please upload payment proof",
+      "payerRequired": "Payer required",
+      "payerRequiredDesc": "Please provide the payer name/company",
+      "payerLabel": "Payer Name/Company",
+      "payerPlaceholder": "E.g.: John Smith / ABC Corp LLC",
+      "proofMandatoryBanner": "You must upload the payment proof and the payer name to confirm your order.",
+      "missingProof": "Payment proof not uploaded",
+      "missingPayer": "Payer name/company missing",
+      "confirmOrder": "Confirm order?",
+      "confirmOrderMessage": "Are you sure you want to confirm this order?\n\n{summary}\n\nOnce confirmed, we will process your order.",
+      "confirmOrderYes": "Yes, confirm",
+      "recipientLabel": "Recipient",
+      "productsLabel": "Products",
+      "itemCount": "{count} item(s)",
+      "noZelleAccount": "No Zelle account available.",
+      "applyCoupon": "Apply Coupon Code",
+      "enterCouponCode": "Enter coupon code",
+      "validating": "Validating...",
+      "apply": "Apply",
+      "couponApplied": "Coupon applied",
+      "remove": "Remove",
+      "categoryDiscount": "Category discount",
+      "offerDiscount": "Offer discount",
+      "discountedSubtotal": "Discounted subtotal",
+      "shipping": "Shipping",
+      "invalidFileType": "Invalid file type",
+      "invalidFileTypeDesc": "Only JPG, PNG or WebP images are allowed",
+      "fileTooLarge": "File too large",
+      "fileTooLargeDesc": "Maximum size is 5MB",
+      "proofLoaded": "Proof uploaded",
+      "proofLoadedDesc": "Image uploaded successfully",
+      "uploadError": "Upload error",
+      "whatsappQuestion": "Questions about payment? Contact us via WhatsApp",
+      "contactWhatsapp": "Contact via WhatsApp",
+      "back": "Back",
+      "processing": "Processing...",
+      "estimatedDelivery": "24-72 hours"
     },
     "restored": {
       "title": "Welcome back!",
@@ -1453,6 +1594,21 @@
         "excerpt": "Take advantage of the exclusive promotions available this month."
       }
     }
+  },
+  "guides": {
+    "title": "Platform Guides",
+    "subtitle": "Learn how to use all the features of our platform",
+    "filterAll": "All",
+    "filterOrders": "Orders",
+    "filterRemittances": "Remittances",
+    "filterRecipients": "Recipients",
+    "filterUserPanel": "User Panel",
+    "filterGeneral": "General",
+    "readMore": "Read more",
+    "viewAll": "View all guides",
+    "noArticles": "No guides available in this category",
+    "backToList": "Back to list",
+    "watchVideo": "Watch video"
   },
   "tables": {
     "noData": "No data available",

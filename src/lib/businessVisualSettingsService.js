@@ -45,7 +45,61 @@ export const DEFAULT_VISUAL_SETTINGS = {
   accentColor: '#9333ea',
   // Background colors
   pageBgColor: '#f9fafb',
-  cardBgColor: '#ffffff'
+  cardBgColor: '#ffffff',
+  // Logo & branding display
+  showCompanyName: true,
+  logoMaxHeight: 40,
+  // Home page feature cards
+  homeFeatures: [
+    {
+      id: 'products',
+      icon: 'ShoppingBag',
+      titleEs: 'Venta de Productos',
+      titleEn: 'Product Sales',
+      descriptionEs: 'Plataforma completa para vendedores independientes con cálculo automático de precios',
+      descriptionEn: 'Complete platform for independent sellers with automatic price calculation',
+      navigateTo: 'products',
+      adminOnly: false,
+      isActive: true,
+      displayOrder: 0
+    },
+    {
+      id: 'remittances',
+      icon: 'DollarSign',
+      titleEs: 'Remesas a Cuba',
+      titleEn: 'Remittances to Cuba',
+      descriptionEs: 'Envía dinero a Cuba desde USA y España de forma rápida y segura',
+      descriptionEn: 'Send money to Cuba from USA and Spain quickly and securely',
+      navigateTo: 'remittances',
+      adminOnly: false,
+      isActive: true,
+      displayOrder: 1
+    },
+    {
+      id: 'analytics',
+      icon: 'TrendingUp',
+      titleEs: 'Panel de Ganancias',
+      titleEn: 'Profit Dashboard',
+      descriptionEs: 'Visualiza tus ganancias diarias y mensuales en tiempo real',
+      descriptionEn: 'View your daily and monthly profits in real time',
+      navigateTo: 'dashboard',
+      adminOnly: true,
+      isActive: true,
+      displayOrder: 2
+    },
+    {
+      id: 'vendors',
+      icon: 'Users',
+      titleEs: 'Gestión de Vendedores',
+      titleEn: 'Vendor Management',
+      descriptionEs: 'Herramientas completas para que vendedores independientes gestionen su inventario',
+      descriptionEn: 'Complete tools for independent vendors to manage inventory',
+      navigateTo: 'admin',
+      adminOnly: true,
+      isActive: true,
+      displayOrder: 3
+    }
+  ]
 };
 
 /**

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Edit, Trash2, Save, X, DollarSign, TrendingUp, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Plus, Edit, Trash2, Save, X, DollarSign, TrendingUp, AlertCircle, Eye, EyeOff, Calculator, ArrowRight, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useModal } from '@/contexts/ModalContext';
@@ -14,6 +14,33 @@ import {
 import { getCurrenciesWithRates } from '@/lib/currencyService';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
+
+// Forward simulation (mirrors remittanceService.calculateRemittance)
+const simulateRemittance = ({ amount, exchangeRate, commissionPercentage, commissionFixed }) => {
+  const commPctAmount = (amount * (commissionPercentage || 0)) / 100;
+  const commFixedAmount = commissionFixed || 0;
+  const totalCommission = commPctAmount + commFixedAmount;
+  const netAmount = amount - totalCommission;
+  const amountToDeliver = netAmount * exchangeRate;
+  const effectiveRate = amount > 0 ? amountToDeliver / amount : 0;
+  return { amount, commPctAmount, commFixedAmount, totalCommission, netAmount, exchangeRate, amountToDeliver, effectiveRate };
+};
+
+// Reverse simulation (mirrors remittanceService.calculateReverseRemittance)
+const simulateReverseRemittance = ({ desiredDeliveryAmount, exchangeRate, commissionPercentage, commissionFixed }) => {
+  const denominator = 1 - ((commissionPercentage || 0) / 100);
+  if (denominator <= 0) return null;
+  const amountToSend = ((desiredDeliveryAmount / exchangeRate) + (commissionFixed || 0)) / denominator;
+  return simulateRemittance({ amount: amountToSend, exchangeRate, commissionPercentage, commissionFixed });
+};
+
+// Calculate commission % from market rate and delivery rate
+const calcCommissionFromRates = (marketRate, deliveryRate) => {
+  if (!marketRate || marketRate <= 0) return 0;
+  if (!deliveryRate || deliveryRate <= 0) return 100;
+  if (deliveryRate >= marketRate) return 0;
+  return ((1 - deliveryRate / marketRate) * 100);
+};
 
 const RemittanceTypesConfig = () => {
   const { t, language } = useLanguage();
@@ -31,6 +58,7 @@ const RemittanceTypesConfig = () => {
     currency_code: '',
     delivery_currency: '',
     exchange_rate: '',
+    delivery_rate: '',
     commission_percentage: '0',
     commission_fixed: '0',
     min_amount: '',
@@ -44,10 +72,49 @@ const RemittanceTypesConfig = () => {
     display_order: 0
   });
 
+  // Simulator state
+  const [simMode, setSimMode] = useState('send'); // 'send' or 'receive'
+  const [simAmount, setSimAmount] = useState('100');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   useEffect(() => {
     loadTypes();
     loadCurrencies();
   }, []);
+
+  // Auto-calculate commission_percentage when market rate or delivery rate change
+  useEffect(() => {
+    const marketRate = parseFloat(formData.exchange_rate);
+    const deliveryRate = parseFloat(formData.delivery_rate);
+    if (marketRate > 0 && deliveryRate > 0) {
+      const pct = calcCommissionFromRates(marketRate, deliveryRate);
+      setFormData(prev => ({ ...prev, commission_percentage: pct.toString() }));
+    }
+  }, [formData.exchange_rate, formData.delivery_rate]);
+
+  // Show advanced if commission_fixed > 0 on load
+  useEffect(() => {
+    if (parseFloat(formData.commission_fixed) > 0) {
+      setShowAdvanced(true);
+    }
+  }, [editingType]);
+
+  // Simulator computation
+  const simResult = useMemo(() => {
+    const exchangeRate = parseFloat(formData.exchange_rate);
+    const commissionPercentage = parseFloat(formData.commission_percentage) || 0;
+    const commissionFixed = parseFloat(formData.commission_fixed) || 0;
+    const amount = parseFloat(simAmount);
+
+    if (!exchangeRate || exchangeRate <= 0) return null;
+    if (!amount || amount <= 0) return null;
+
+    if (simMode === 'send') {
+      return simulateRemittance({ amount, exchangeRate, commissionPercentage, commissionFixed });
+    } else {
+      return simulateReverseRemittance({ desiredDeliveryAmount: amount, exchangeRate, commissionPercentage, commissionFixed });
+    }
+  }, [formData.exchange_rate, formData.commission_percentage, formData.commission_fixed, simAmount, simMode]);
 
   const loadCurrencies = async () => {
     try {
@@ -98,6 +165,7 @@ const RemittanceTypesConfig = () => {
       currency_code: defaultOrigin?.code || '',
       delivery_currency: defaultDelivery?.code || '',
       exchange_rate: '',
+      delivery_rate: '',
       commission_percentage: '0',
       commission_fixed: '0',
       min_amount: '',
@@ -110,16 +178,24 @@ const RemittanceTypesConfig = () => {
       is_active: true,
       display_order: types.length
     });
+    setSimAmount('100');
+    setSimMode('send');
+    setShowAdvanced(false);
     setShowForm(true);
   };
 
   const handleEdit = (type) => {
     setEditingType(type);
+    // Derive delivery_rate from existing exchange_rate and commission_percentage
+    const rate = type.exchange_rate || 0;
+    const pct = type.commission_percentage || 0;
+    const derivedDeliveryRate = rate * (1 - pct / 100);
     setFormData({
       name: type.name,
       currency_code: type.currency_code,
       delivery_currency: type.delivery_currency,
       exchange_rate: type.exchange_rate.toString(),
+      delivery_rate: derivedDeliveryRate > 0 ? derivedDeliveryRate.toFixed(2) : '',
       commission_percentage: (type.commission_percentage || 0).toString(),
       commission_fixed: (type.commission_fixed || 0).toString(),
       min_amount: type.min_amount.toString(),
@@ -132,6 +208,9 @@ const RemittanceTypesConfig = () => {
       is_active: type.is_active,
       display_order: type.display_order
     });
+    setSimAmount('100');
+    setSimMode('send');
+    setShowAdvanced(parseFloat(type.commission_fixed) > 0);
     setShowForm(true);
   };
 
@@ -159,7 +238,7 @@ const RemittanceTypesConfig = () => {
     if (!formData.currency_code || !formData.delivery_currency) {
       toast({
         title: t('common.error'),
-        description: language === 'es' ? 'Selecciona las monedas de origen y destino' : 'Select origin and delivery currencies',
+        description: t('remittances.admin.selectBothCurrencies'),
         variant: 'destructive'
       });
       return;
@@ -171,7 +250,19 @@ const RemittanceTypesConfig = () => {
     if (!originCurrency || !deliveryCurrency) {
       toast({
         title: t('common.error'),
-        description: language === 'es' ? 'Una de las monedas seleccionadas no está activa' : 'One of the selected currencies is not active',
+        description: t('remittances.admin.inactiveCurrency'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Validate delivery rate vs market rate
+    const marketRate = parseFloat(formData.exchange_rate);
+    const deliveryRate = parseFloat(formData.delivery_rate);
+    if (deliveryRate > 0 && marketRate > 0 && deliveryRate > marketRate) {
+      toast({
+        title: t('common.error'),
+        description: t('remittances.admin.deliveryRateTooHigh'),
         variant: 'destructive'
       });
       return;
@@ -374,7 +465,7 @@ const RemittanceTypesConfig = () => {
                 className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
               >
-                <option value="">{language === 'es' ? 'Seleccionar moneda' : 'Select currency'}</option>
+                <option value="">{t('remittances.admin.selectCurrency')}</option>
                 {currencies.map(c => (
                   <option key={c.id} value={c.code}>
                     {c.code} - {language === 'es' ? c.name_es : c.name_en}
@@ -393,7 +484,7 @@ const RemittanceTypesConfig = () => {
                 className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
               >
-                <option value="">{language === 'es' ? 'Seleccionar moneda' : 'Select currency'}</option>
+                <option value="">{t('remittances.admin.selectCurrency')}</option>
                 {currencies.map(c => (
                   <option key={c.id} value={c.code}>
                     {c.code} - {language === 'es' ? c.name_es : c.name_en}
@@ -402,53 +493,206 @@ const RemittanceTypesConfig = () => {
               </select>
             </div>
 
-            {/* Tasa de Cambio */}
+            {/* Market Rate (Exchange Rate) */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {t('remittances.admin.exchangeRate')} *
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {t('remittances.admin.marketRate')} *
               </label>
+              <p className="text-xs text-gray-400 mb-2">{t('remittances.admin.marketRateHint')}</p>
               <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <TrendingUp className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   type="number"
                   step="0.01"
                   value={formData.exchange_rate}
                   onChange={(e) => setFormData({ ...formData, exchange_rate: e.target.value })}
                   className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="320.00"
+                  placeholder="472.00"
                   required
                 />
               </div>
             </div>
 
-            {/* Comisiones */}
+            {/* Delivery Rate */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {t('remittances.admin.commissionPercent')}
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {t('remittances.admin.deliveryRate')} *
               </label>
-              <input
-                type="number"
-                step="0.01"
-                value={formData.commission_percentage}
-                onChange={(e) => setFormData({ ...formData, commission_percentage: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="2.5"
-              />
+              <p className="text-xs text-gray-400 mb-2">{t('remittances.admin.deliveryRateHint')}</p>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-green-500" />
+                <input
+                  type="number"
+                  step="0.01"
+                  value={formData.delivery_rate}
+                  onChange={(e) => setFormData({ ...formData, delivery_rate: e.target.value })}
+                  className={`w-full pl-10 pr-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    parseFloat(formData.delivery_rate) > parseFloat(formData.exchange_rate) && parseFloat(formData.exchange_rate) > 0
+                      ? 'border-red-400 bg-red-50'
+                      : 'border-gray-300'
+                  }`}
+                  placeholder="470.00"
+                  required
+                />
+              </div>
+              {parseFloat(formData.delivery_rate) > parseFloat(formData.exchange_rate) && parseFloat(formData.exchange_rate) > 0 && (
+                <p className="text-xs text-red-500 mt-1">{t('remittances.admin.deliveryRateTooHigh')}</p>
+              )}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {t('remittances.admin.commissionFixed')}
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                value={formData.commission_fixed}
-                onChange={(e) => setFormData({ ...formData, commission_fixed: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="5.00"
-              />
+            {/* Auto-calculated commission display */}
+            {parseFloat(formData.exchange_rate) > 0 && parseFloat(formData.delivery_rate) > 0 && (
+              <div className="md:col-span-2">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex flex-wrap items-center gap-x-6 gap-y-2">
+                  <div className="flex items-center gap-2">
+                    <Info className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                    <span className="text-sm text-blue-700 font-medium">{t('remittances.admin.calculatedCommission')}:</span>
+                    <span className="text-sm font-bold text-blue-800">
+                      {parseFloat(formData.commission_percentage || 0)}%
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-blue-700 font-medium">{t('remittances.admin.marginPerUnit')}:</span>
+                    <span className="text-sm font-bold text-blue-800">
+                      {(parseFloat(formData.exchange_rate) - parseFloat(formData.delivery_rate)).toFixed(2)} {formData.delivery_currency || ''}/{formData.currency_code || ''}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Advanced: Fixed commission (collapsible) */}
+            <div className="md:col-span-2">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                {t('remittances.admin.advancedCommission')}
+              </button>
+              {showAdvanced && (
+                <div className="mt-3 space-y-2">
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.commission_fixed}
+                    onChange={(e) => setFormData({ ...formData, commission_fixed: e.target.value })}
+                    className="w-full max-w-xs px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="0.00"
+                  />
+                  {parseFloat(formData.commission_fixed) > 0 && (
+                    <p className="text-xs text-amber-600 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {t('remittances.admin.advancedCommissionWarning')}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
+
+            {/* Simulator */}
+            {parseFloat(formData.exchange_rate) > 0 && parseFloat(formData.delivery_rate) > 0 && (
+              <div className="md:col-span-2 bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                  <Calculator className="h-4 w-4" />
+                  {t('remittances.admin.simulator.title')}
+                </h4>
+
+                {/* Mode toggle + Amount */}
+                <div className="flex flex-wrap items-center gap-3 mb-4">
+                  <div className="flex bg-white border border-gray-300 rounded-lg overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setSimMode('send')}
+                      className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                        simMode === 'send' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      {t('remittances.admin.simulator.youSend')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSimMode('receive')}
+                      className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                        simMode === 'receive' ? 'bg-green-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      {t('remittances.admin.simulator.theyReceive')}
+                    </button>
+                  </div>
+                  <div className="relative flex-1 min-w-[120px] max-w-[200px]">
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={simAmount}
+                      onChange={(e) => setSimAmount(e.target.value)}
+                      className="w-full px-3 py-1.5 pr-14 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      placeholder="100"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-medium">
+                      {simMode === 'send' ? formData.currency_code : formData.delivery_currency}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Results */}
+                {simResult ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <p className="text-gray-500">{t('remittances.admin.simulator.amountSent')}</p>
+                      <p className="font-semibold">{simResult.amount.toFixed(2)} {formData.currency_code}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">{t('remittances.admin.simulator.commissionPct')}</p>
+                      <p className="font-semibold">{simResult.commPctAmount.toFixed(2)} {formData.currency_code}</p>
+                    </div>
+                    {simResult.commFixedAmount > 0 && (
+                      <div>
+                        <p className="text-gray-500">{t('remittances.admin.simulator.commissionFixed')}</p>
+                        <p className="font-semibold">{simResult.commFixedAmount.toFixed(2)} {formData.currency_code}</p>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-gray-500">{t('remittances.admin.simulator.totalCommission')}</p>
+                      <p className="font-semibold text-red-600">{simResult.totalCommission.toFixed(2)} {formData.currency_code}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">{t('remittances.admin.simulator.netAmount')}</p>
+                      <p className="font-semibold">{simResult.netAmount.toFixed(2)} {formData.currency_code}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">{t('remittances.admin.simulator.exchangeRateApplied')}</p>
+                      <p className="font-semibold">{simResult.exchangeRate}</p>
+                    </div>
+
+                    {/* Highlighted results */}
+                    <div className="col-span-2 sm:col-span-3 grid grid-cols-2 gap-3 mt-1">
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-2">
+                        <p className="text-green-600 text-[10px] uppercase font-medium">{t('remittances.admin.simulator.amountToDeliver')}</p>
+                        <p className="font-bold text-green-700 text-base">{simResult.amountToDeliver.toFixed(2)} {formData.delivery_currency}</p>
+                      </div>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+                        <p className="text-blue-600 text-[10px] uppercase font-medium">{t('remittances.admin.simulator.effectiveRate')}</p>
+                        <p className="font-bold text-blue-700 text-base">
+                          {simResult.effectiveRate.toFixed(2)} {formData.delivery_currency}/{formData.currency_code}
+                        </p>
+                      </div>
+                    </div>
+
+                    {simMode === 'receive' && (
+                      <div className="col-span-2 sm:col-span-3 text-xs text-gray-500 mt-1">
+                        {t('remittances.admin.simulator.mustSend')}: <span className="font-semibold">{simResult.amount.toFixed(2)} {formData.currency_code}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400">
+                    {!parseFloat(formData.exchange_rate) ? t('remittances.admin.simulator.enterValidRate') : t('remittances.admin.simulator.enterValidAmount')}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Límites */}
             <div>
@@ -493,7 +737,7 @@ const RemittanceTypesConfig = () => {
               >
                 <option value={DELIVERY_METHODS.CASH}>{t('remittances.recipient.cash')}</option>
                 <option value={DELIVERY_METHODS.TRANSFER}>{t('remittances.recipient.transfer')}</option>
-                <option value={DELIVERY_METHODS.CARD}>Tarjeta</option>
+                <option value={DELIVERY_METHODS.CARD}>{t('remittances.recipient.card')}</option>
               </select>
             </div>
 
@@ -645,39 +889,45 @@ const RemittanceTypesConfig = () => {
                 {/* Info grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4">
                   <div>
-                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">Conversión</p>
-                    <p className="text-xs sm:text-sm font-semibold">
-                      1 {type.currency_code} = {type.exchange_rate} {type.delivery_currency}
+                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">{t('remittances.admin.deliveryRate')}</p>
+                    <p className="text-xs sm:text-sm font-bold text-green-700">
+                      {(type.exchange_rate * (1 - (type.commission_percentage || 0) / 100)).toFixed(2)} {type.delivery_currency}/{type.currency_code}
                     </p>
                   </div>
 
                   <div>
-                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">Límites</p>
+                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">{t('remittances.admin.marketRate')}</p>
+                    <p className="text-xs sm:text-sm font-semibold">
+                      {type.exchange_rate} {type.delivery_currency}/{type.currency_code}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">{t('remittances.admin.commission')}</p>
+                    <p className="text-xs sm:text-sm font-semibold">
+                      {(type.commission_percentage || 0).toFixed(2)}%
+                      {type.commission_fixed > 0 && ` + ${type.commission_fixed} ${type.currency_code}`}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">{t('remittances.admin.limits')}</p>
                     <p className="text-xs sm:text-sm font-semibold">
                       {type.min_amount} - {type.max_amount || '∞'} {type.currency_code}
                     </p>
                   </div>
 
                   <div>
-                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">Comisión</p>
-                    <p className="text-xs sm:text-sm font-semibold">
-                      {type.commission_percentage}% + {type.commission_fixed} {type.currency_code}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">Entrega</p>
+                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">{t('remittances.admin.delivery')}</p>
                     <p className="text-xs sm:text-sm font-semibold capitalize">{type.delivery_method}</p>
                   </div>
 
                   <div>
-                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">Tiempo Máx</p>
-                    <p className="text-xs sm:text-sm font-semibold">{type.max_delivery_days} {type.max_delivery_days === 1 ? t('adminOrders.days.singular') : t('adminOrders.days.plural')}</p>
-                  </div>
-
-                  <div>
-                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">Alerta</p>
-                    <p className="text-xs sm:text-sm font-semibold">{type.warning_days} {type.warning_days === 1 ? t('adminOrders.days.singular') : t('adminOrders.days.plural')}</p>
+                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">{t('remittances.admin.maxTime')}</p>
+                    <p className="text-xs sm:text-sm font-semibold">
+                      {type.max_delivery_days} {type.max_delivery_days === 1 ? t('adminOrders.days.singular') : t('adminOrders.days.plural')}
+                      <span className="text-gray-400 ml-1">({t('remittances.admin.alertDays')}: {type.warning_days})</span>
+                    </p>
                   </div>
                 </div>
 

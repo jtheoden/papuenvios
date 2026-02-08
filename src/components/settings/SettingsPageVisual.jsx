@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Palette, Upload, Plus, Trash2, Check, RefreshCw, Save, Eye } from 'lucide-react';
+import { Palette, Upload, Plus, Trash2, Check, RefreshCw, Save, Eye, Image, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -52,7 +52,9 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     destructiveHoverBgColor: visualSettings.destructiveHoverBgColor || '#b91c1c',
     accentColor: visualSettings.accentColor || '#9333ea',
     pageBgColor: visualSettings.pageBgColor || '#f9fafb',
-    cardBgColor: visualSettings.cardBgColor || '#ffffff'
+    cardBgColor: visualSettings.cardBgColor || '#ffffff',
+    showCompanyName: visualSettings.showCompanyName !== undefined ? visualSettings.showCompanyName : true,
+    logoMaxHeight: visualSettings.logoMaxHeight || 40
   });
   const [logoPreview, setLogoPreview] = useState(visualSettings.logo || '');
   const [faviconPreview, setFaviconPreview] = useState(visualSettings.favicon || '');
@@ -493,18 +495,60 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
           {/* Logo Upload */}
           <div>
             <label className="block text-sm font-medium mb-2">{t('settings.visual.logo')}</label>
-            {logoPreview && (
-              <div className="mb-4">
-                <img src={logoPreview} alt="Logo preview" className="h-16 w-auto" />
-              </div>
-            )}
+            <div className="mb-3 p-4 border border-gray-200 rounded-lg bg-gray-50 min-h-[80px] flex items-center justify-center">
+              {logoPreview ? (
+                <div className="flex items-center gap-4">
+                  <img src={logoPreview} alt="Logo preview" className="max-h-[120px] w-auto object-contain" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLogoPreview('');
+                      updateAppearance('logo', '');
+                      toast({ title: t('settings.visual.logoRemoved') });
+                    }}
+                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                    title={t('settings.visual.removeLogo')}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="text-center text-gray-400">
+                  <Image className="h-8 w-8 mx-auto mb-1" />
+                  <p className="text-xs">{t('settings.visual.noLogoUploaded')}</p>
+                </div>
+              )}
+            </div>
             <div className="flex items-center gap-4">
               <label className="flex items-center gap-2 cursor-pointer px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50" title={t('settings.visual.uploadLogo')}>
                 <Upload className="h-4 w-4" />
                 <span className="hidden sm:inline">{t('settings.visual.uploadLogo')}</span>
-                <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                <input type="file" accept="image/png,image/svg+xml,image/webp" onChange={handleLogoUpload} className="hidden" />
               </label>
             </div>
+            <p className="text-xs text-gray-500 mt-2">{t('settings.visual.logoHint')}</p>
+
+            {/* Logo Size Slider */}
+            {logoPreview && (
+              <div className="mt-4">
+                <label className="block text-sm font-medium mb-2">
+                  {t('settings.visual.logoMaxHeight')}: {appearance.logoMaxHeight}{t('settings.visual.logoSizePx')}
+                </label>
+                <input
+                  type="range"
+                  min="24"
+                  max="64"
+                  step="2"
+                  value={appearance.logoMaxHeight}
+                  onChange={e => updateAppearance('logoMaxHeight', parseInt(e.target.value))}
+                  className="w-full accent-blue-600"
+                />
+                <div className="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>24px</span>
+                  <span>64px</span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Favicon Upload */}
@@ -548,6 +592,57 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
               className="input-style w-full"
               placeholder="PapuEnvios - Remesas y E-Commerce"
             />
+          </div>
+        </div>
+
+        {/* Header Preview Mockup */}
+        <div className="mb-6">
+          <label className="flex items-center gap-2 text-sm font-medium mb-3 text-gray-700">
+            <Eye className="h-4 w-4" />
+            {t('settings.visual.headerPreview')}
+          </label>
+          <div
+            className="rounded-xl border border-gray-200 shadow-sm overflow-hidden"
+            style={{ backgroundColor: appearance.headerBgColor }}
+          >
+            <div className="flex items-center gap-2 px-4 py-3">
+              {logoPreview ? (
+                <img
+                  src={logoPreview}
+                  alt="Logo"
+                  className="object-contain flex-shrink-0"
+                  style={{ maxHeight: `${appearance.logoMaxHeight}px`, width: 'auto' }}
+                />
+              ) : (
+                <div
+                  className="rounded-lg flex items-center justify-center flex-shrink-0"
+                  style={{
+                    width: `${Math.min(appearance.logoMaxHeight, 32)}px`,
+                    height: `${Math.min(appearance.logoMaxHeight, 32)}px`,
+                    background: appearance.useGradient
+                      ? `linear-gradient(to right, ${appearance.primaryColor}, ${appearance.secondaryColor})`
+                      : appearance.primaryColor
+                  }}
+                >
+                  <ShoppingBag className="w-4 h-4 text-white" />
+                </div>
+              )}
+              {appearance.showCompanyName && (
+                <span
+                  className="text-lg font-bold truncate"
+                  style={{
+                    backgroundImage: appearance.useGradient
+                      ? `linear-gradient(to right, ${appearance.primaryColor}, ${appearance.secondaryColor})`
+                      : `linear-gradient(to right, ${appearance.primaryColor}, ${appearance.primaryColor})`,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text'
+                  }}
+                >
+                  {appearance.companyName || 'PapuEnvíos'}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -656,6 +751,15 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
 
         {/* Toggles */}
         <div className="space-y-3 mb-6">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={appearance.showCompanyName}
+              onChange={e => updateAppearance('showCompanyName', e.target.checked)}
+              className="rounded"
+            />
+            <span className="text-sm font-medium">{t('settings.visual.showCompanyName')}</span>
+          </label>
           <label className="flex items-center gap-2">
             <input
               type="checkbox"

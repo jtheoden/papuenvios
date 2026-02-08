@@ -36,7 +36,11 @@
     "filters": "Filtros",
     "clearFilters": "Limpiar Filtros",
     "saveSettings": "Guardar Ajustes",
-    "showing": "Mostrando"
+    "showing": "Mostrando",
+    "copied": "¡Copiado!",
+    "copiedToClipboard": "{label} copiado al portapapeles",
+    "copyError": "Error al copiar al portapapeles",
+    "amount": "Monto"
   },
   "nav": {
     "home": "Inicio",
@@ -48,7 +52,8 @@
     "settings": "Configuración",
     "cart": "Carrito",
     "userPanel": "Mi Panel",
-    "userManagement": "Gestión de Usuarios"
+    "userManagement": "Gestión de Usuarios",
+    "guides": "Guías"
   },
   "home": {
     "hero": {
@@ -101,6 +106,11 @@
     "testimonials": {
       "title": "Lo que dicen nuestros clientes",
       "subtitle": "Experiencias reales de usuarios satisfechos con nuestra plataforma."
+    },
+    "guides": {
+      "title": "Guías de la Plataforma",
+      "subtitle": "Todo lo que necesitas saber para usar nuestra plataforma",
+      "viewAll": "Ver todas las guías"
     }
   },
   "footer": {
@@ -207,7 +217,8 @@
       "notes": "Notas adicionales",
       "bankName": "Nombre del Banco",
       "accountNumber": "Número de Cuenta",
-      "confirm": "Confirmar y Enviar"
+      "confirm": "Confirmar y Enviar",
+      "card": "Tarjeta"
     },
     "status": {
       "paymentPending": "Pendiente de Pago",
@@ -327,7 +338,44 @@
       "paymentProofSection": "Comprobante de Pago",
       "noPaymentProof": "Sin comprobante de pago",
       "deliveryProofSection": "Evidencia de Entrega",
-      "noPendingDeliveryProof": "Evidencia de entrega pendiente"
+      "noPendingDeliveryProof": "Evidencia de entrega pendiente",
+      "conversion": "Conversión",
+      "limits": "Límites",
+      "commission": "Comisión",
+      "delivery": "Entrega",
+      "maxTime": "Tiempo Máx",
+      "alertDays": "Alerta",
+      "selectCurrency": "Seleccionar moneda",
+      "selectBothCurrencies": "Selecciona las monedas de origen y destino",
+      "inactiveCurrency": "Una de las monedas seleccionadas no está activa",
+      "deliveryRate": "Tasa de Entrega",
+      "deliveryRateHint": "Lo que el destinatario recibe por cada unidad enviada",
+      "marketRate": "Tasa de Mercado",
+      "marketRateHint": "Tasa de cambio real del mercado",
+      "calculatedCommission": "Comisión calculada",
+      "marginPerUnit": "Margen por unidad",
+      "deliveryRateTooHigh": "La tasa de entrega no puede ser mayor a la tasa de mercado",
+      "advancedCommission": "Comisión fija adicional (Avanzado)",
+      "advancedCommissionWarning": "La comisión fija hace que la tasa efectiva varíe según el monto enviado",
+      "simulator": {
+        "title": "Simulador",
+        "testAmount": "Monto de Prueba",
+        "youSend": "Envía",
+        "theyReceive": "Reciben",
+        "amountSent": "Monto enviado",
+        "commissionPct": "Comisión (%)",
+        "commissionFixed": "Comisión fija",
+        "totalCommission": "Comisión total",
+        "netAmount": "Monto neto",
+        "exchangeRateApplied": "Tasa de mercado aplicada",
+        "amountToDeliver": "Monto a entregar",
+        "effectiveRate": "Tasa efectiva",
+        "perSent": "por cada",
+        "sent": "enviado",
+        "enterValidRate": "Ingrese una tasa de cambio válida",
+        "enterValidAmount": "Ingrese un monto de prueba válido",
+        "mustSend": "Debe enviar"
+      }
     },
     "user": {
       "trackYourRemittances": "Consulte el estado de sus envíos de dinero",
@@ -471,7 +519,25 @@
       "belowMinAmount": "Monto mínimo: {min} {currency}",
       "aboveMaxAmount": "Monto máximo: {max} {currency}",
       "sendingEquivalent": "(estás enviando ~{amount} USD)",
-      "selectTypeFirst": "Selecciona un tipo primero"
+      "selectTypeFirst": "Selecciona un tipo primero",
+      "dataRestored": "Datos restaurados",
+      "dataRestoredDesc": "Tu remesa en progreso ha sido restaurada.",
+      "loginRequiredMessage": "Para continuar con tu remesa, necesitas iniciar sesión. Tu información será guardada.",
+      "selectBankAccountCurrency": "Debes seleccionar una cuenta bancaria en {currency} para este tipo de remesa. Si el destinatario no tiene una cuenta compatible, crea una nueva.",
+      "placeholderSend": "Ej: 100.00",
+      "placeholderReceive": "Ej: 10,000",
+      "destinationBankAccount": "Cuenta Bancaria de Destino",
+      "bankLabel": "Banco",
+      "accountTypeLabel": "Tipo de Cuenta",
+      "currencyLabel": "Moneda",
+      "last4Digits": "Últimos 4 Dígitos",
+      "holderLabel": "Titular",
+      "verifyDataWarning": "Verifica que los datos sean correctos antes de confirmar la remesa.",
+      "remittanceCreatedTitle": "¡Remesa Creada!",
+      "paymentInstructions": "Ahora realiza el pago y sube el comprobante para completar el proceso.",
+      "proofSubmittedSuccess": "¡Comprobante enviado exitosamente!",
+      "submitProofAndComplete": "Enviar Comprobante y Completar",
+      "estimatedDeliveryTime": "24-72 horas"
     }
   },
   "vendor": {
@@ -877,12 +943,49 @@
       "changesSaved": "Los cambios visuales se han guardado y sincronizado",
       "changesDiscarded": "Tema restaurado",
       "settingsRestored": "Se restauró la configuración visual a valores de fábrica",
-      "restoreTheme": "Restaurar Tema"
+      "restoreTheme": "Restaurar Tema",
+      "showCompanyName": "Mostrar nombre de empresa en header",
+      "logoMaxHeight": "Tamaño del logo en header",
+      "headerPreview": "Vista previa del Header",
+      "removeLogo": "Quitar Logo",
+      "logoRemoved": "Logo eliminado",
+      "noLogoUploaded": "No se ha subido ningún logo",
+      "logoHint": "Formatos: PNG, SVG, WebP. Máx 2MB. Se preserva la proporción original.",
+      "logoSizePx": "px"
     },
     "notifications": {
       "title": "Ajustes de Notificación",
       "whatsapp": "Número de WhatsApp para Notificaciones",
       "adminEmail": "Email de Administración para Notificaciones"
+    },
+    "content": {
+      "homeFeatures": "Funcionalidades de la Página Principal",
+      "homeFeaturesHint": "Configura las tarjetas de funcionalidades que aparecen en la página de inicio",
+      "addFeature": "Agregar Funcionalidad",
+      "featureTitle": "Título",
+      "featureDescription": "Descripción",
+      "featureIcon": "Ícono",
+      "featureNavigateTo": "Navegar a",
+      "featureAdminOnly": "Solo administradores",
+      "featureActive": "Activa",
+      "featureInactive": "Inactiva",
+      "featureRemoved": "Funcionalidad eliminada",
+      "confirmDeleteFeature": "¿Eliminar esta funcionalidad?",
+      "navDashboard": "Panel de Control",
+      "navAdmin": "Administración",
+      "navVendor": "Vendedor",
+      "navCart": "Carrito",
+      "featureSaved": "Funcionalidades guardadas",
+      "publications": "Publicaciones y Guías",
+      "publicationsHint": "Crea artículos con texto, imágenes y videos para guiar a los usuarios",
+      "addPublication": "Agregar Publicación",
+      "pubTitle": "Título",
+      "pubContent": "Contenido",
+      "pubCoverImage": "Imagen de portada",
+      "pubVideoUrl": "URL del video (YouTube/Vimeo)",
+      "pubCategory": "Categoría",
+      "pubSaved": "Publicaciones guardadas",
+      "pubRemoved": "Publicación eliminada"
     },
     "saveSuccess": "Ajustes guardados exitosamente"
   },
@@ -918,7 +1021,45 @@
       "uploadProof": "Subir Comprobante de Pago",
       "confirm": "Confirmar Pago",
       "recipientTitle": "Datos de Entrega/Destinatario",
-      "whatsappNotConfigured": "Número de WhatsApp no configurado"
+      "whatsappNotConfigured": "Número de WhatsApp no configurado",
+      "proofRequired": "Comprobante requerido",
+      "proofRequiredDesc": "Por favor sube el comprobante de pago",
+      "payerRequired": "Titular requerido",
+      "payerRequiredDesc": "Por favor indica el titular/empresa que realiza el pago",
+      "payerLabel": "Titular/Empresa que realiza el pago",
+      "payerPlaceholder": "Ej: Juan Perez / Empresa ABC LLC",
+      "proofMandatoryBanner": "Debes subir el comprobante de pago y el nombre del titular para poder confirmar tu pedido.",
+      "missingProof": "Falta subir comprobante de pago",
+      "missingPayer": "Falta nombre del titular/empresa",
+      "confirmOrder": "¿Confirmar pedido?",
+      "confirmOrderMessage": "¿Estás seguro de que deseas confirmar este pedido?\n\n{summary}\n\nUna vez confirmado, procesaremos tu pedido.",
+      "confirmOrderYes": "Sí, confirmar",
+      "recipientLabel": "Destinatario",
+      "productsLabel": "Productos",
+      "itemCount": "{count} artículo(s)",
+      "noZelleAccount": "No hay cuenta Zelle disponible.",
+      "applyCoupon": "Aplicar Cupón de Descuento",
+      "enterCouponCode": "Ingresa código de cupón",
+      "validating": "Validando...",
+      "apply": "Aplicar",
+      "couponApplied": "Cupón aplicado",
+      "remove": "Remover",
+      "categoryDiscount": "Descuento categoría",
+      "offerDiscount": "Descuento por oferta",
+      "discountedSubtotal": "Subtotal con descuentos",
+      "shipping": "Envío",
+      "invalidFileType": "Tipo de archivo inválido",
+      "invalidFileTypeDesc": "Solo se permiten imágenes JPG, PNG o WebP",
+      "fileTooLarge": "Archivo muy grande",
+      "fileTooLargeDesc": "El tamaño máximo es 5MB",
+      "proofLoaded": "Comprobante cargado",
+      "proofLoadedDesc": "La imagen se ha cargado correctamente",
+      "uploadError": "Error al cargar",
+      "whatsappQuestion": "¿Tienes dudas sobre el pago? Contáctanos por WhatsApp",
+      "contactWhatsapp": "Contactar por WhatsApp",
+      "back": "Atrás",
+      "processing": "Procesando...",
+      "estimatedDelivery": "24-72 horas"
     },
     "restored": {
       "title": "¡Bienvenido de vuelta!",
@@ -1462,6 +1603,21 @@
         "excerpt": "Aprovecha las promociones exclusivas disponibles este mes."
       }
     }
+  },
+  "guides": {
+    "title": "Guías de la Plataforma",
+    "subtitle": "Aprende a usar todas las funcionalidades de nuestra plataforma",
+    "filterAll": "Todas",
+    "filterOrders": "Pedidos",
+    "filterRemittances": "Remesas",
+    "filterRecipients": "Destinatarios",
+    "filterUserPanel": "Panel de Usuario",
+    "filterGeneral": "General",
+    "readMore": "Leer más",
+    "viewAll": "Ver todas las guías",
+    "noArticles": "No hay guías disponibles en esta categoría",
+    "backToList": "Volver a la lista",
+    "watchVideo": "Ver video"
   },
   "tables": {
     "noData": "No hay datos disponibles",

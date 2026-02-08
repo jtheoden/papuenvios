@@ -181,28 +181,33 @@ export const DELIVERY_METHODS = {
  * @param {number} fallbackRate - Fallback rate from remittance_type if not found
  * @returns {Promise<{rate: number, source: 'configured'|'fallback'}>} Exchange rate and its source
  */
-export const getRemittanceExchangeRate = async (fromCurrencyCode, toCurrencyCode, fallbackRate) => {
+export const getRemittanceExchangeRate = async (fromCurrencyCode, toCurrencyCode, typeRate) => {
   try {
     // Same currency = 1:1 rate
     if (fromCurrencyCode === toCurrencyCode) {
       return { rate: 1, source: 'configured' };
     }
 
-    // Try to get rate from exchange_rates table via currencyService
+    // The type's exchange_rate is authoritative when set (admin configured it explicitly)
+    if (typeRate && typeRate > 0) {
+      console.log(`[getRemittanceExchangeRate] Using type rate for ${fromCurrencyCode}→${toCurrencyCode}: ${typeRate}`);
+      return { rate: typeRate, source: 'type' };
+    }
+
+    // Fallback to exchange_rates table when the type doesn't have its own rate
     const configuredRate = await getCurrencyExchangeRate(fromCurrencyCode, toCurrencyCode);
 
     if (configuredRate && configuredRate > 0) {
-      console.log(`[getRemittanceExchangeRate] Using configured rate for ${fromCurrencyCode}→${toCurrencyCode}: ${configuredRate}`);
+      console.log(`[getRemittanceExchangeRate] Using exchange_rates table for ${fromCurrencyCode}→${toCurrencyCode}: ${configuredRate}`);
       return { rate: configuredRate, source: 'configured' };
     }
 
-    // Fallback to remittance_type rate
-    console.log(`[getRemittanceExchangeRate] No configured rate found for ${fromCurrencyCode}→${toCurrencyCode}, using fallback: ${fallbackRate}`);
-    return { rate: fallbackRate, source: 'fallback' };
+    console.warn(`[getRemittanceExchangeRate] No rate found for ${fromCurrencyCode}→${toCurrencyCode}, using 1`);
+    return { rate: 1, source: 'fallback' };
   } catch (error) {
-    // If any error, use fallback rate
-    console.warn(`[getRemittanceExchangeRate] Error getting rate for ${fromCurrencyCode}→${toCurrencyCode}, using fallback: ${fallbackRate}`, error);
-    return { rate: fallbackRate, source: 'fallback' };
+    // If any error, use type rate or 1
+    console.warn(`[getRemittanceExchangeRate] Error getting rate for ${fromCurrencyCode}→${toCurrencyCode}`, error);
+    return { rate: typeRate || 1, source: 'fallback' };
   }
 };
 

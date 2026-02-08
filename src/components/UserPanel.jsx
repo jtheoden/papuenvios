@@ -4,10 +4,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useModal } from '@/contexts/ModalContext';
-import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users, Crown, TrendingDown, Gift, Truck, Upload, EyeOff, Filter, ChevronDown } from 'lucide-react';
+import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users, Crown, TrendingDown, Gift, Truck, Upload, EyeOff, Filter, ChevronDown, BookOpen } from 'lucide-react';
 import { getUserOrders, getOrderById, getAllOrders, validatePayment, rejectPayment, cancelOrderByUser, uploadPaymentProof, markOrderAsDispatched, markOrderAsDelivered, completeOrder, reopenOrder, ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderService';
 import { getUserTestimonial, createTestimonial, updateTestimonial } from '@/lib/testimonialService';
 import { getMyRemittances, generateProofSignedUrl } from '@/lib/remittanceService';
+import { getPublications } from '@/lib/publicationService';
 import { getHeadingStyle, getTextStyle, getPillStyle, getStatusStyle } from '@/lib/styleUtils';
 import { generateWhatsAppURL } from '@/lib/whatsappService';
 import { getActiveWhatsappRecipient } from '@/lib/notificationSettingsService';
@@ -51,6 +52,7 @@ const UserPanel = ({ onNavigate }) => {
   const [hideCompletedOrders, setHideCompletedOrders] = useState(true); // Ocultar pedidos finalizados/cancelados por defecto
   const [orderDeliveryProofSignedUrl, setOrderDeliveryProofSignedUrl] = useState(null);
   const [loadingOrderDeliveryProof, setLoadingOrderDeliveryProof] = useState(false);
+  const [guideArticles, setGuideArticles] = useState([]);
 
   // Paginación de órdenes
   const [visibleOrdersCount, setVisibleOrdersCount] = useState(ORDERS_PER_PAGE);
@@ -174,6 +176,12 @@ const UserPanel = ({ onNavigate }) => {
     // Load user testimonial only for regular users
     if (userRole !== 'admin' && userRole !== 'super_admin') {
       loadUserTestimonial();
+      // Load guide articles for quick guides section
+      getPublications().then(pubs => {
+        // Show up to 3 articles relevant to user panel
+        const relevant = pubs.filter(p => ['orders', 'remittances', 'recipients', 'user-panel', 'general'].includes(p.category));
+        setGuideArticles(relevant.slice(0, 3));
+      }).catch(console.error);
     }
   }, [user, userRole, loadUserRemittances]);
 
@@ -646,6 +654,61 @@ const UserPanel = ({ onNavigate }) => {
                 <MessageCircle className="h-4 w-4 mr-2" />
                 {language === 'es' ? 'Contactar' : 'Contact'}
               </Button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Quick Guides Section - Only for regular users */}
+        {userRole !== 'admin' && userRole !== 'super_admin' && guideArticles.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.12 }}
+            className="mb-6"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <BookOpen className="h-5 w-5" style={{ color: visualSettings.primaryColor || '#2563eb' }} />
+                <h3 className="font-semibold" style={getTextStyle(visualSettings, 'primary')}>
+                  {language === 'es' ? 'Guías Rápidas' : 'Quick Guides'}
+                </h3>
+              </div>
+              <button
+                onClick={() => onNavigate('guides')}
+                className="text-sm font-medium flex items-center gap-1"
+                style={{ color: visualSettings.primaryColor || '#2563eb' }}
+              >
+                {language === 'es' ? 'Ver todas' : 'View all'}
+                <ArrowRight className="h-3 w-3" />
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {guideArticles.map((pub) => {
+                const title = language === 'es' ? pub.title_es : pub.title_en;
+                return (
+                  <button
+                    key={pub.id}
+                    onClick={() => onNavigate('guides')}
+                    className="p-4 rounded-xl border border-gray-200 bg-white hover:shadow-md transition-all text-left flex items-center gap-3"
+                  >
+                    <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
+                      {pub.cover_image_url ? (
+                        <img src={pub.cover_image_url} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div
+                          className="w-full h-full flex items-center justify-center"
+                          style={{ background: `${visualSettings.primaryColor || '#2563eb'}15` }}
+                        >
+                          <FileText className="h-4 w-4 text-gray-400" />
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-sm font-medium line-clamp-2" style={getTextStyle(visualSettings, 'primary')}>
+                      {title}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </motion.div>
         )}

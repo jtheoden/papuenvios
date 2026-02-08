@@ -236,10 +236,8 @@ const SendRemittancePage = ({ onNavigate }) => {
                 setCalculation(calc);
                 setStep(2);
                 toast({
-                  title: language === 'es' ? 'Datos restaurados' : 'Data restored',
-                  description: language === 'es'
-                    ? 'Tu remesa en progreso ha sido restaurada.'
-                    : 'Your remittance in progress has been restored.'
+                  title: t('remittances.wizard.dataRestored'),
+                  description: t('remittances.wizard.dataRestoredDesc')
                 });
               })
               .catch((err) => {
@@ -376,9 +374,7 @@ const SendRemittancePage = ({ onNavigate }) => {
       showModal({
         type: 'info',
         title: t('auth.loginRequired'),
-        message: language === 'es'
-          ? 'Para continuar con tu remesa, necesitas iniciar sesión. Tu información será guardada.'
-          : 'To continue with your remittance, you need to log in. Your information will be saved.',
+        message: t('remittances.wizard.loginRequiredMessage'),
         confirmText: t('auth.goToLogin'),
         cancelText: t('common.cancel')
       }).then((confirmed) => {
@@ -398,7 +394,7 @@ const SendRemittancePage = ({ onNavigate }) => {
       console.error('Error calculating remittance:', error);
       toast({
         title: t('common.error'),
-        description: error?.message || t('remittances.wizard.errorCalculating') || 'Error al calcular la remesa',
+        description: error?.message || t('remittances.wizard.errorCalculating'),
         variant: 'destructive'
       });
     } finally {
@@ -410,7 +406,7 @@ const SendRemittancePage = ({ onNavigate }) => {
     if (!selectedRecipientData) {
       toast({
         title: t('common.error'),
-        description: t('remittances.wizard.selectRecipient') || 'Selecciona un destinatario',
+        description: t('remittances.wizard.selectRecipient'),
         variant: 'destructive'
       });
       return;
@@ -428,7 +424,7 @@ const SendRemittancePage = ({ onNavigate }) => {
     if (!selectedZelle) {
       toast({
         title: t('common.error'),
-        description: t('zelle.selectAccountRequired') || 'Selecciona una cuenta Zelle',
+        description: t('zelle.selectAccountRequired'),
         variant: 'destructive'
       });
       return;
@@ -441,10 +437,8 @@ const SendRemittancePage = ({ onNavigate }) => {
       toast({
         title: t('common.error'),
         description: deliveryCurrency
-          ? (language === 'es'
-            ? `Debes seleccionar una cuenta bancaria en ${deliveryCurrency} para este tipo de remesa. Si el destinatario no tiene una cuenta compatible, crea una nueva.`
-            : `You must select a bank account in ${deliveryCurrency} for this remittance type. If the recipient doesn't have a compatible account, create a new one.`)
-          : (t('remittances.wizard.selectBankAccountRequired') || 'Debes seleccionar una cuenta bancaria para este tipo de remesa'),
+          ? t('remittances.wizard.selectBankAccountCurrency', { currency: deliveryCurrency })
+          : t('remittances.wizard.selectBankAccountRequired'),
         variant: 'destructive'
       });
       return;
@@ -501,7 +495,7 @@ const SendRemittancePage = ({ onNavigate }) => {
       console.error('Error creating remittance:', error);
       toast({
         title: t('common.error'),
-        description: error?.message || t('remittances.wizard.errorCreatingRemittance') || 'Error al crear la remesa',
+        description: error?.message || t('remittances.wizard.errorCreatingRemittance'),
         variant: 'destructive'
       });
     } finally {
@@ -513,13 +507,13 @@ const SendRemittancePage = ({ onNavigate }) => {
     navigator.clipboard.writeText(text).then(() => {
       toast({
         title: t('common.success'),
-        description: `${label} copiado al portapapeles`,
+        description: t('common.copiedToClipboard', { label }),
         variant: 'default'
       });
     }).catch(() => {
       toast({
         title: t('common.error'),
-        description: 'Error al copiar al portapapeles',
+        description: t('common.copyError'),
         variant: 'destructive'
       });
     });
@@ -677,7 +671,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                   }}
                   className="w-full p-3 border-2 border-gray-200 rounded-lg bg-white text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 >
-                  <option value="">{t('remittances.wizard.selectType') || 'Selecciona un tipo de remesa'}</option>
+                  <option value="">{t('remittances.wizard.selectType')}</option>
                   {types.map((type) => (
                     <option key={type.id} value={type.id}>
                       {type.name} 
@@ -760,7 +754,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                     }`}
                     placeholder={!selectedType
                       ? t('remittances.wizard.selectTypeFirst')
-                      : (calcMode === 'send' ? 'Ej: 100.00' : 'Ej: 10,000')
+                      : (calcMode === 'send' ? t('remittances.wizard.placeholderSend') : t('remittances.wizard.placeholderReceive'))
                     }
                   />
                 </div>
@@ -1042,12 +1036,12 @@ const SendRemittancePage = ({ onNavigate }) => {
                   <div className="pt-4 border-t">
                     <h3 className="font-semibold mb-3 flex items-center gap-2">
                       <CreditCard className="h-5 w-5 text-blue-600" />
-                      {language === 'es' ? 'Cuenta Bancaria de Destino' : 'Destination Bank Account'}
+                      {t('remittances.wizard.destinationBankAccount')}
                     </h3>
                     <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-700">
-                          {language === 'es' ? 'Banco:' : 'Bank:'}
+                          {t('remittances.wizard.bankLabel')}:
                         </span>
                         <span className="text-sm text-gray-900 font-semibold">
                           {selectedBankAccountDetails.bank?.name}
@@ -1055,7 +1049,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-700">
-                          {language === 'es' ? 'Tipo de Cuenta:' : 'Account Type:'}
+                          {t('remittances.wizard.accountTypeLabel')}:
                         </span>
                         <span className="text-sm text-gray-900">
                           {selectedBankAccountDetails.account_type?.name}
@@ -1063,7 +1057,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-700">
-                          {language === 'es' ? 'Moneda:' : 'Currency:'}
+                          {t('remittances.wizard.currencyLabel')}:
                         </span>
                         <span className="text-sm text-gray-900 font-semibold">
                           {selectedBankAccountDetails.currency?.code}
@@ -1071,7 +1065,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-700">
-                          {language === 'es' ? 'Últimos 4 Dígitos:' : 'Last 4 Digits:'}
+                          {t('remittances.wizard.last4Digits')}:
                         </span>
                         <div className="flex items-center gap-2">
                           <span className="text-lg text-gray-900 font-mono font-bold bg-white px-3 py-1 rounded border-2 border-blue-300">
@@ -1081,7 +1075,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-700">
-                          {language === 'es' ? 'Titular:' : 'Holder:'}
+                          {t('remittances.wizard.holderLabel')}:
                         </span>
                         <span className="text-sm text-gray-900">
                           {selectedBankAccountDetails.account_holder_name}
@@ -1090,9 +1084,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                       <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded">
                         <p className="text-xs text-yellow-800 flex items-start gap-1">
                           <AlertCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
-                          {language === 'es'
-                            ? 'Verifica que los datos sean correctos antes de confirmar la remesa.'
-                            : 'Verify the information is correct before confirming the remittance.'}
+                          {t('remittances.wizard.verifyDataWarning')}
                         </p>
                       </div>
                     </div>
@@ -1134,37 +1126,14 @@ const SendRemittancePage = ({ onNavigate }) => {
             <div className="glass-effect p-6 rounded-xl text-center border-2 border-green-200 bg-green-50">
               <CheckCircle className="h-12 w-12 text-green-600 mx-auto mb-3" />
               <h2 className="text-xl font-bold mb-2 text-green-900">
-                {language === 'es' ? '¡Remesa Creada!' : 'Remittance Created!'}
+                {t('remittances.wizard.remittanceCreatedTitle')}
               </h2>
               <p className="text-gray-600">
-                {language === 'es'
-                  ? 'Ahora realiza el pago y sube el comprobante para completar el proceso.'
-                  : 'Now make the payment and upload the proof to complete the process.'}
+                {t('remittances.wizard.paymentInstructions')}
               </p>
             </div>
 
-            {/* ID de Remesa - COPIAR para descripción del pago */}
-            <div className="glass-effect p-6 rounded-xl border-2 border-purple-200 bg-purple-50">
-              <h3 className="text-lg font-bold mb-3 text-purple-900 flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                {language === 'es' ? 'ID de Remesa (usar en descripción del pago)' : 'Remittance ID (use in payment description)'}
-              </h3>
-              <div className="flex items-center justify-between bg-white p-4 rounded-lg border-2 border-purple-300">
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">{language === 'es' ? 'Incluye este ID en la descripción de tu pago Zelle:' : 'Include this ID in your Zelle payment description:'}</p>
-                  <p className="text-2xl font-mono font-bold text-purple-700">{createdRemittance.id}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleCopyToClipboard(createdRemittance.id, 'ID de remesa')}
-                  className="p-3 bg-purple-100 hover:bg-purple-200 rounded-lg transition-colors flex-shrink-0"
-                  title="Copiar ID"
-                >
-                  <Copy className="h-6 w-6 text-purple-600" />
-                </button>
-              </div>
-            </div>
-
+           
             {/* Datos Zelle para el pago - Using shared component */}
             {selectedZelle && (
               <ZelleAccountDisplay
@@ -1172,7 +1141,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                 showCopyButtons={true}
                 onCopy={(label, value) => {
                   toast({
-                    title: language === 'es' ? '¡Copiado!' : 'Copied!',
+                    title: t('common.copied'),
                     description: `${label}: ${value}`
                   });
                 }}
@@ -1188,8 +1157,8 @@ const SendRemittancePage = ({ onNavigate }) => {
               showCopyButton={true}
               onCopy={(value) => {
                 toast({
-                  title: language === 'es' ? '¡Copiado!' : 'Copied!',
-                  description: `${language === 'es' ? 'Monto' : 'Amount'}: $${value}`
+                  title: t('common.copied'),
+                  description: `${t('common.amount')}: $${value}`
                 });
               }}
             />
@@ -1238,7 +1207,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                     } catch (e) { console.warn('WhatsApp notification failed', e); }
                   }
 
-                  toast({ title: t('common.success'), description: language === 'es' ? '¡Comprobante enviado exitosamente!' : 'Proof submitted successfully!' });
+                  toast({ title: t('common.success'), description: t('remittances.wizard.proofSubmittedSuccess') });
 
                   setConfirmedRemittanceInfo({
                     remittanceNumber: createdRemittance.remittance_number,
@@ -1249,13 +1218,13 @@ const SendRemittancePage = ({ onNavigate }) => {
                   setShowConfirmationModal(true);
                 } catch (error) {
                   console.error('Error uploading proof:', error);
-                  toast({ title: t('common.error'), description: error?.message || 'Error al subir comprobante', variant: 'destructive' });
+                  toast({ title: t('common.error'), description: error?.message || t('remittances.wizard.errorUploadingProof'), variant: 'destructive' });
                 } finally {
                   setSubmitting(false);
                 }
               }}
               submitting={submitting}
-              submitLabel={language === 'es' ? 'Enviar Comprobante y Completar' : 'Submit Proof and Complete'}
+              submitLabel={t('remittances.wizard.submitProofAndComplete')}
               showUploadLater={true}
               onUploadLater={() => onNavigate('my-remittances')}
             />
@@ -1279,7 +1248,7 @@ const SendRemittancePage = ({ onNavigate }) => {
         total={confirmedRemittanceInfo?.total}
         currency={confirmedRemittanceInfo?.currency}
         recipientName={confirmedRemittanceInfo?.recipientName}
-        estimatedDelivery={language === 'es' ? '24-72 horas' : '24-72 hours'}
+        estimatedDelivery={t('remittances.wizard.estimatedDeliveryTime')}
       />
     </div>
   );

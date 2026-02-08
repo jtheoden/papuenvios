@@ -1,12 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingBag, DollarSign, TrendingUp, Users, ChevronLeft, ChevronRight, Star, Gift } from 'lucide-react';
+import {
+  ShoppingBag, DollarSign, TrendingUp, Users, ChevronLeft, ChevronRight, Star, Gift,
+  Package, Truck, CreditCard, Globe, BarChart3, Banknote, Heart, Zap, BookOpen, ArrowRight
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { getActiveCarouselSlides } from '@/lib/carouselService';
+import { getPublications } from '@/lib/publicationService';
 import { getTestimonials } from '@/lib/testimonialService';
 import { getHeadingStyle } from '@/lib/styleUtils';
 import { supabase } from '@/lib/supabase';
@@ -34,35 +38,35 @@ const HomePage = ({ onNavigate }) => {
     years: 1
   });
   const [testimonialIndex, setTestimonialIndex] = useState(0);
+  const [guideArticles, setGuideArticles] = useState([]);
 
-  const features = [
-    {
-      icon: ShoppingBag,
-      title: t('home.features.products.title'),
-      description: t('home.features.products.description'),
-      action: () => onNavigate('products')
-    },
-    {
-      icon: DollarSign,
-      title: t('home.features.remittances.title'),
-      description: t('home.features.remittances.description'),
-      action: () => onNavigate('remittances')
-    },
-    {
-      icon: TrendingUp,
-      title: t('home.features.analytics.title'),
-      description: t('home.features.analytics.description'),
-      action: () => onNavigate('dashboard'),
-      admin: true
-    },
-    {
-      icon: Users,
-      title: t('home.features.vendors.title'),
-      description: t('home.features.vendors.description'),
-      action: () => onNavigate('admin'),
-      admin: true
-    }
-  ].filter(f => !f.admin || isAdmin);
+  // Icon name → component mapping for dynamic features
+  const ICON_MAP = {
+    ShoppingBag, DollarSign, TrendingUp, Users, Package, Truck,
+    CreditCard, Star, Gift, Globe, BarChart3, Banknote, Heart, Zap
+  };
+
+  // Read feature cards from visual settings (admin-customizable) with fallback to i18n defaults
+  const features = (visualSettings.homeFeatures && visualSettings.homeFeatures.length > 0
+    ? visualSettings.homeFeatures
+        .filter(f => f.isActive)
+        .filter(f => !f.adminOnly || isAdmin)
+        .sort((a, b) => a.displayOrder - b.displayOrder)
+        .map(f => ({
+          icon: ICON_MAP[f.icon] || ShoppingBag,
+          title: language === 'es' ? f.titleEs : f.titleEn,
+          description: language === 'es' ? f.descriptionEs : f.descriptionEn,
+          action: () => onNavigate(f.navigateTo)
+        }))
+    : [
+        { icon: ShoppingBag, title: t('home.features.products.title'), description: t('home.features.products.description'), action: () => onNavigate('products') },
+        { icon: DollarSign, title: t('home.features.remittances.title'), description: t('home.features.remittances.description'), action: () => onNavigate('remittances') },
+        ...(isAdmin ? [
+          { icon: TrendingUp, title: t('home.features.analytics.title'), description: t('home.features.analytics.description'), action: () => onNavigate('dashboard') },
+          { icon: Users, title: t('home.features.vendors.title'), description: t('home.features.vendors.description'), action: () => onNavigate('admin') }
+        ] : [])
+      ]
+  );
 
   const [currentSlide, setCurrentSlide] = useState(0);
   const [testimonialsError, setTestimonialsError] = useState(null);
@@ -180,6 +184,17 @@ const HomePage = ({ onNavigate }) => {
   }, []);
 
   useEffect(() => {
+    // Load guide articles for featured section
+    const loadGuideArticles = async () => {
+      try {
+        const pubs = await getPublications();
+        setGuideArticles(pubs.slice(0, 3));
+      } catch (error) {
+        console.error('Error loading guide articles:', error);
+      }
+    };
+    loadGuideArticles();
+
     const fetchLandingData = async () => {
       try {
         const now = new Date();
@@ -547,7 +562,7 @@ const HomePage = ({ onNavigate }) => {
             </p>
           </motion.div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className={`grid md:grid-cols-2 ${features.length <= 2 ? 'lg:grid-cols-2' : features.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-8`}>
             {features.map((feature, index) => (
               <motion.div
                 key={index}
@@ -574,6 +589,86 @@ const HomePage = ({ onNavigate }) => {
           </div>
         </div>
       </section>
+
+      {/* Platform Guides Section */}
+      {guideArticles.length > 0 && (
+        <section className="py-16 px-4 bg-white">
+          <div className="container mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              className="text-center mb-10"
+            >
+              <h2 className="text-4xl font-bold mb-3" style={getHeadingStyle(visualSettings)}>
+                {t('home.guides.title')}
+              </h2>
+              <p className="text-gray-600 text-lg">{t('home.guides.subtitle')}</p>
+            </motion.div>
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+              {guideArticles.map((pub, idx) => {
+                const title = language === 'es' ? pub.title_es : pub.title_en;
+                const content = language === 'es' ? pub.content_es : pub.content_en;
+                const preview = content ? content.substring(0, 100) + (content.length > 100 ? '...' : '') : '';
+
+                return (
+                  <motion.div
+                    key={pub.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.1 }}
+                    className="glass-effect rounded-2xl overflow-hidden hover-lift cursor-pointer group"
+                    onClick={() => onNavigate('guides')}
+                  >
+                    <div className="h-36 overflow-hidden">
+                      {pub.cover_image_url ? (
+                        <img
+                          src={pub.cover_image_url}
+                          alt={title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div
+                          className="w-full h-full flex items-center justify-center"
+                          style={{
+                            background: visualSettings.useGradient
+                              ? `linear-gradient(135deg, ${visualSettings.primaryColor || '#2563eb'}30, ${visualSettings.secondaryColor || '#9333ea'}30)`
+                              : `${visualSettings.primaryColor || '#2563eb'}15`
+                          }}
+                        >
+                          <BookOpen className="h-8 w-8 text-gray-400" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-5">
+                      <h3 className="font-semibold text-lg mb-2 line-clamp-2">{title}</h3>
+                      <p className="text-sm text-gray-500 line-clamp-2">{preview}</p>
+                      <span
+                        className="inline-flex items-center gap-1 mt-3 text-sm font-medium"
+                        style={{ color: visualSettings.primaryColor || '#2563eb' }}
+                      >
+                        {t('guides.readMore')} <ArrowRight className="h-3 w-3" />
+                      </span>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+
+            <div className="text-center">
+              <Button
+                variant="outline"
+                onClick={() => onNavigate('guides')}
+                className="px-6"
+              >
+                <BookOpen className="w-4 h-4 mr-2" />
+                {t('home.guides.viewAll')}
+              </Button>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="py-20 px-4 bg-slate-100/50">
         <div className="container mx-auto">
