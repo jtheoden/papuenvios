@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, ShoppingBag, Globe, DollarSign, BarChart3, Settings, ShoppingCart, User as UserIcon, LogIn, LogOut, ShieldCheck, Users, LayoutDashboard, ChevronDown, Crown, Zap, Star, Home, Package, Banknote } from 'lucide-react';
+import { Menu, X, ShoppingBag, Globe, DollarSign, BarChart3, Settings, ShoppingCart, User as UserIcon, LogIn, LogOut, ShieldCheck, Users, LayoutDashboard, ChevronDown, Crown, Zap, Star, Home, Package, Banknote, BookOpen } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -47,6 +47,7 @@ const Header = ({ currentPage, onNavigate }) => {
     { id: 'home', icon: ShoppingBag, label: t('nav.home') },
     { id: 'products', icon: ShoppingBag, label: t('nav.products') },
     ...(!isAdmin ? [{ id: 'remittances', icon: DollarSign, label: t('nav.remittances') }] : []),
+    { id: 'guides', icon: BookOpen, label: t('nav.guides') },
   ];
 
   
@@ -144,13 +145,15 @@ const Header = ({ currentPage, onNavigate }) => {
             onClick={() => handleNavClick('home')}
           >
             {visualSettings.logo ? (
-              <div className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center flex-shrink-0">
-                <img
-                  src={visualSettings.logo}
-                  alt={visualSettings.companyName || 'Logo'}
-                  className="max-w-full max-h-full object-contain"
-                />
-              </div>
+              <img
+                src={visualSettings.logo}
+                alt={visualSettings.companyName || 'Logo'}
+                className="object-contain flex-shrink-0"
+                style={{
+                  maxHeight: `${visualSettings.logoMaxHeight || 40}px`,
+                  width: 'auto'
+                }}
+              />
             ) : (
               <div
                 className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -163,19 +166,21 @@ const Header = ({ currentPage, onNavigate }) => {
                 <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               </div>
             )}
-            <span
-              className="text-sm sm:text-xl font-bold truncate max-w-[100px] sm:max-w-none"
-              style={{
-                backgroundImage: visualSettings.useGradient
-                  ? `linear-gradient(to right, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.secondaryColor || semanticColors.secondary.hex})`
-                  : `linear-gradient(to right, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.primaryColor || semanticColors.primary.main})`,
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text'
-              }}
-            >
-              {visualSettings?.companyName || 'PapuEnvíos'}
-            </span>
+            {(visualSettings.showCompanyName !== false) && (
+              <span
+                className="text-sm sm:text-xl font-bold truncate max-w-[100px] sm:max-w-none"
+                style={{
+                  backgroundImage: visualSettings.useGradient
+                    ? `linear-gradient(to right, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.secondaryColor || semanticColors.secondary.hex})`
+                    : `linear-gradient(to right, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.primaryColor || semanticColors.primary.main})`,
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text'
+                }}
+              >
+                {visualSettings?.companyName || 'PapuEnvíos'}
+              </span>
+            )}
           </motion.div>
 
           {/* Desktop Navigation */}

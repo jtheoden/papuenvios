@@ -21,6 +21,7 @@ import LoginPage from '@/components/LoginPage';
 import UserPanel from '@/components/UserPanel';
 import UserManagement from '@/components/UserManagement';
 import AuthCallback from '@/components/AuthCallback';
+import GuidesPage from '@/components/GuidesPage';
 import Footer from '@/components/Footer';
 import { withProtectedRoute } from '@/components/withProtectedRoute';
 import { LanguageProvider } from '@/contexts/LanguageContext';
@@ -145,7 +146,8 @@ function App() {
       '/cart': 'cart',
       '/login': 'login',
       '/user-panel': 'user-panel',
-      '/user-management': 'user-management'
+      '/user-management': 'user-management',
+      '/guides': 'guides'
     };
 
     return { page: pathToPage[normalizedPath] || 'home' };
@@ -217,6 +219,7 @@ function App() {
       login: '/login',
       'user-panel': '/user-panel',
       'user-management': '/user-management',
+      guides: '/guides',
       'auth/callback': '/auth/callback'
     };
 
@@ -255,6 +258,8 @@ function App() {
         return <LoginPage onNavigate={handleNavigate} />;
       case 'user-panel':
         return <ProtectedUserPanel onNavigate={handleNavigate} />;
+      case 'guides':
+        return <GuidesPage onNavigate={handleNavigate} />;
       case 'user-management':
         return <ProtectedUserManagement onNavigate={handleNavigate} />;
       case 'auth/callback':
