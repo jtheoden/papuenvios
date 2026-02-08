@@ -14,7 +14,7 @@ import { getPublications } from '@/lib/publicationService';
 import { getTestimonials } from '@/lib/testimonialService';
 import { getHeadingStyle } from '@/lib/styleUtils';
 import { supabase } from '@/lib/supabase';
-import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import { useRealtimeSubscription, useRealtimeCarouselSlides } from '@/hooks/useRealtimeSubscription';
 import SkeletonCard from '@/components/ui/SkeletonCard';
 
 const COMPLETED_REMITTANCE_STATUSES = ['delivered', 'completed'];
@@ -167,21 +167,26 @@ const HomePage = ({ onNavigate }) => {
   }, [dbTestimonials.length]);
 
   // Load carousel slides from database
-  useEffect(() => {
-    const loadSlides = async () => {
-      try {
-        const slides = await getActiveCarouselSlides();
-        setCarouselSlides(slides || []);
-      } catch (error) {
-        console.error('Error loading carousel slides:', error);
-        // Fallback to empty array if database fails
-        setCarouselSlides([]);
-      } finally {
-        setCarouselLoading(false);
-      }
-    };
-    loadSlides();
+  const loadCarouselSlides = useCallback(async () => {
+    try {
+      const slides = await getActiveCarouselSlides();
+      setCarouselSlides(slides || []);
+    } catch (error) {
+      console.error('Error loading carousel slides:', error);
+      setCarouselSlides([]);
+    } finally {
+      setCarouselLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadCarouselSlides();
+  }, [loadCarouselSlides]);
+
+  // Realtime: reload carousel when slides change in admin
+  useRealtimeCarouselSlides({
+    onUpdate: () => loadCarouselSlides()
+  });
 
   useEffect(() => {
     // Load guide articles for featured section
@@ -282,12 +287,17 @@ const HomePage = ({ onNavigate }) => {
     setCurrentSlide(prev => (prev === 0 ? carouselSlides.length - 1 : prev - 1));
   };
 
+  // Carousel settings from admin-configurable visual settings
+  const carouselEnabled = visualSettings.carouselEnabled !== false;
+  const autoplaySpeed = visualSettings.carouselAutoplaySpeed || 5000;
+  const transitionSpeed = (visualSettings.carouselTransitionSpeed || 1000) / 1000;
+
   useEffect(() => {
-    if (carouselSlides.length > 1) {
-      const slideInterval = setInterval(nextSlide, 5000);
+    if (carouselEnabled && carouselSlides.length > 1) {
+      const slideInterval = setInterval(nextSlide, autoplaySpeed);
       return () => clearInterval(slideInterval);
     }
-  }, [carouselSlides.length]);
+  }, [carouselSlides.length, carouselEnabled, autoplaySpeed]);
 
   return (
     <div className="min-h-screen">
@@ -296,7 +306,7 @@ const HomePage = ({ onNavigate }) => {
           <div className="absolute inset-0">
             <SkeletonCard variant="carousel" />
           </div>
-        ) : carouselSlides.length > 0 ? (
+        ) : carouselEnabled && carouselSlides.length > 0 ? (
           <>
             <AnimatePresence initial={false}>
               <motion.div
@@ -304,7 +314,7 @@ const HomePage = ({ onNavigate }) => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 1 }}
+                transition={{ duration: transitionSpeed }}
                 style={{ backgroundImage: `url(${carouselSlides[currentSlide]?.image_url || carouselSlides[currentSlide]?.image_file})` }}
                 className="absolute inset-0 bg-cover bg-center"
               >

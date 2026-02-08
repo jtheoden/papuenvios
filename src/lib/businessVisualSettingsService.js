@@ -99,7 +99,11 @@ export const DEFAULT_VISUAL_SETTINGS = {
       isActive: true,
       displayOrder: 3
     }
-  ]
+  ],
+  // Carousel settings
+  carouselEnabled: true,
+  carouselAutoplaySpeed: 5000,
+  carouselTransitionSpeed: 1000
 };
 
 /**

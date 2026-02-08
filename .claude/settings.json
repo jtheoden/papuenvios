@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(PGHOST=\"db.qcwnlbpultscerwdnzbm.supabase.co\" PGPORT=\"5432\" PGUSER=\"cli_login_postgres\" PGPASSWORD=\"ODYlLDkJOyiuebyJjOXKqayPkpJdDiPx\" PGDATABASE=\"postgres\" psql:*)"
+      "Bash(PGHOST=\"db.qcwnlbpultscerwdnzbm.supabase.co\" PGPORT=\"5432\" PGUSER=\"cli_login_postgres\" PGPASSWORD=\"ODYlLDkJOyiuebyJjOXKqayPkpJdDiPx\" PGDATABASE=\"postgres\" psql:*)",
+      "Bash(PGHOST=\"db.qcwnlbpultscerwdnzbm.supabase.co\" PGPORT=\"5432\" PGUSER=\"cli_login_postgres\" PGPASSWORD=\"QVDdoRiKKtacHdvOeLBzvdaArDGDIkWz\" PGDATABASE=\"postgres\" psql:*)"
     ]
   }
 }

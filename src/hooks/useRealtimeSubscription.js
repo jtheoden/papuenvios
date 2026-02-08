@@ -298,6 +298,22 @@ export const useRealtimeZelleAccounts = ({ onUpdate, enabled = true }) => {
 };
 
 /**
+ * useRealtimeCarouselSlides Hook
+ * Specialized hook for real-time carousel slide updates
+ * Propagates slide changes to public homepage and admin settings in real-time
+ */
+export const useRealtimeCarouselSlides = ({ onUpdate, enabled = true }) => {
+  return useRealtimeSubscription({
+    table: 'carousel_slides',
+    event: '*',
+    enabled,
+    onInsert: onUpdate,
+    onUpdate: onUpdate,
+    onDelete: onUpdate
+  });
+};
+
+/**
  * useUserAlerts Hook
  * Loads and manages user alerts from database with real-time updates.
  * Ensures ALL users receive persistent notifications even if offline when event occurred.
