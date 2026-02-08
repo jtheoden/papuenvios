@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { ShoppingCart, X, Plus, Minus, Copy, Upload, CheckCircle, MessageCircle, ArrowLeft, ArrowRight, Tag, Package } from 'lucide-react';
+import { ShoppingCart, X, Plus, Minus, Copy, Upload, CheckCircle, MessageCircle, ArrowLeft, ArrowRight, Tag, Package, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -604,10 +604,8 @@ const CartPage = ({ onNavigate }) => {
   const handlePrePaymentConfirmation = async () => {
     if (!paymentProof) {
       toast({
-        title: language === 'es' ? 'Comprobante requerido' : 'Proof required',
-        description: language === 'es'
-          ? 'Por favor sube el comprobante de pago'
-          : 'Please upload payment proof',
+        title: t('cart.payment.proofRequired'),
+        description: t('cart.payment.proofRequiredDesc'),
         variant: 'destructive'
       });
       return;
@@ -615,27 +613,21 @@ const CartPage = ({ onNavigate }) => {
 
     if (!paymentReference.trim()) {
       toast({
-        title: language === 'es' ? 'Titular requerido' : 'Payer required',
-        description: language === 'es'
-          ? 'Por favor indica el titular/empresa que realiza el pago'
-          : 'Please provide the payer name/company',
+        title: t('cart.payment.payerRequired'),
+        description: t('cart.payment.payerRequiredDesc'),
         variant: 'destructive'
       });
       return;
     }
 
-    const summaryText = language === 'es'
-      ? `Destinatario: ${recipientDetails.fullName}\nTotal: ${currencySymbol}${convertedTotal?.toFixed(2) || totalAmount.toFixed(2)} ${currencyCode}\nProductos: ${cart.length} artículo(s)`
-      : `Recipient: ${recipientDetails.fullName}\nTotal: ${currencySymbol}${convertedTotal?.toFixed(2) || totalAmount.toFixed(2)} ${currencyCode}\nProducts: ${cart.length} item(s)`;
+    const summaryText = `${t('cart.payment.recipientLabel')}: ${recipientDetails.fullName}\nTotal: ${currencySymbol}${convertedTotal?.toFixed(2) || totalAmount.toFixed(2)} ${currencyCode}\n${t('cart.payment.productsLabel')}: ${t('cart.payment.itemCount', { count: cart.length })}`;
 
     const confirmed = await showModal({
       type: 'confirm',
-      title: language === 'es' ? '¿Confirmar pedido?' : 'Confirm order?',
-      message: language === 'es'
-        ? `¿Estás seguro de que deseas confirmar este pedido?\n\n${summaryText}\n\nUna vez confirmado, procesaremos tu pedido.`
-        : `Are you sure you want to confirm this order?\n\n${summaryText}\n\nOnce confirmed, we will process your order.`,
-      confirmText: language === 'es' ? 'Sí, confirmar' : 'Yes, confirm',
-      cancelText: language === 'es' ? 'Cancelar' : 'Cancel'
+      title: t('cart.payment.confirmOrder'),
+      message: t('cart.payment.confirmOrderMessage', { summary: summaryText }),
+      confirmText: t('cart.payment.confirmOrderYes'),
+      cancelText: t('common.cancel')
     });
 
     if (confirmed) {
@@ -646,10 +638,8 @@ const CartPage = ({ onNavigate }) => {
   const handleConfirmPayment = async () => {
     if (!paymentProof) {
       toast({
-        title: language === 'es' ? 'Comprobante requerido' : 'Proof required',
-        description: language === 'es'
-          ? 'Por favor sube el comprobante de pago'
-          : 'Please upload payment proof',
+        title: t('cart.payment.proofRequired'),
+        description: t('cart.payment.proofRequiredDesc'),
         variant: 'destructive'
       });
       return;
@@ -657,10 +647,8 @@ const CartPage = ({ onNavigate }) => {
 
     if (!paymentReference.trim()) {
       toast({
-        title: language === 'es' ? 'Titular requerido' : 'Payer required',
-        description: language === 'es'
-          ? 'Por favor indica el titular/empresa que realiza el pago'
-          : 'Please provide the payer name/company',
+        title: t('cart.payment.payerRequired'),
+        description: t('cart.payment.payerRequiredDesc'),
         variant: 'destructive'
       });
       return;
@@ -668,10 +656,8 @@ const CartPage = ({ onNavigate }) => {
 
     if (!user) {
       toast({
-        title: language === 'es' ? 'Error de autenticación' : 'Authentication error',
-        description: language === 'es'
-          ? 'Por favor inicia sesión para continuar'
-          : 'Please log in to continue',
+        title: t('auth.loginRequired'),
+        description: t('auth.loginToCheckout'),
         variant: 'destructive'
       });
       return;
@@ -1001,20 +987,20 @@ const CartPage = ({ onNavigate }) => {
               showCopyButtons={true}
               onCopy={(label, value) => {
                 toast({
-                  title: language === 'es' ? '¡Copiado!' : 'Copied!',
+                  title: t('common.copied'),
                   description: `${label}: ${value}`
                 });
               }}
               className="mb-6"
             />
           ) : (
-            <p className="text-red-500 mb-6">{language === 'es' ? 'No hay cuenta Zelle disponible.' : 'No Zelle account available.'}</p>
+            <p className="text-red-500 mb-6">{t('cart.payment.noZelleAccount')}</p>
           )}
 
           {/* Coupon Code Section */}
           <div className="mb-6 glass-effect p-4 rounded-lg border-2 border-yellow-200 bg-yellow-50">
             <h3 className="font-semibold text-yellow-900 mb-3">
-              {language === 'es' ? 'Aplicar Cupón de Descuento' : 'Apply Coupon Code'}
+              {t('cart.payment.applyCoupon')}
             </h3>
             {!appliedOffer ? (
               <div className="space-y-2">
@@ -1026,7 +1012,7 @@ const CartPage = ({ onNavigate }) => {
                       setCouponCode(e.target.value.toUpperCase());
                       setCouponError('');
                     }}
-                    placeholder={language === 'es' ? 'Ingresa código de cupón' : 'Enter coupon code'}
+                    placeholder={t('cart.payment.enterCouponCode')}
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500"
                     disabled={validatingCoupon}
                   />
@@ -1035,7 +1021,7 @@ const CartPage = ({ onNavigate }) => {
                     disabled={!couponCode.trim() || validatingCoupon}
                     className="bg-yellow-600 text-white hover:bg-yellow-700"
                   >
-                    {validatingCoupon ? (language === 'es' ? 'Validando...' : 'Validating...') : (language === 'es' ? 'Aplicar' : 'Apply')}
+                    {validatingCoupon ? t('cart.payment.validating') : t('cart.payment.apply')}
                   </Button>
                 </div>
                 {couponError && (
@@ -1046,7 +1032,7 @@ const CartPage = ({ onNavigate }) => {
               <div className="space-y-2">
                 <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border-l-4 border-green-500">
                   <span className="text-sm font-medium text-green-700">
-                    ✅ {language === 'es' ? 'Cupón aplicado' : 'Coupon applied'}: <strong>{couponCode}</strong>
+                    {t('cart.payment.couponApplied')}: <strong>{couponCode}</strong>
                   </span>
                   <Button
                     onClick={handleRemoveCoupon}
@@ -1054,7 +1040,7 @@ const CartPage = ({ onNavigate }) => {
                     size="sm"
                     className="text-red-600 hover:text-red-700"
                   >
-                    {language === 'es' ? 'Remover' : 'Remove'}
+                    {t('cart.payment.remove')}
                   </Button>
                 </div>
               </div>
@@ -1072,13 +1058,13 @@ const CartPage = ({ onNavigate }) => {
             {/* Price Breakdown */}
             <div className="space-y-2 p-4 bg-gray-50 rounded-lg">
               <div className="flex justify-between text-sm">
-                <span>{language === 'es' ? 'Subtotal' : 'Subtotal'}:</span>
+                <span>{t('cart.subtotal')}:</span>
                 <span>${subtotal.toFixed(2)}</span>
               </div>
               {discountBreakdown.category.amount > 0 && (
                 <div className="flex justify-between text-sm text-green-600">
                   <span>
-                    {language === 'es' ? 'Descuento categoría' : 'Category discount'} ({userCategory} · {discountBreakdown.category.percent}%):
+                    {t('cart.payment.categoryDiscount')} ({userCategory} · {discountBreakdown.category.percent}%):
                   </span>
                   <span>-{currencySymbol}{discountBreakdown.category.amount.toFixed(2)}</span>
                 </div>
@@ -1086,7 +1072,7 @@ const CartPage = ({ onNavigate }) => {
               {discountBreakdown.offer.amount > 0 && appliedOffer && (
                 <div className="flex justify-between text-sm text-green-600">
                   <span>
-                    {language === 'es' ? 'Descuento por oferta' : 'Offer discount'} ({appliedOffer.code} · {appliedOffer.discount_type === 'percentage'
+                    {t('cart.payment.offerDiscount')} ({appliedOffer.code} · {appliedOffer.discount_type === 'percentage'
                       ? `${appliedOffer.discount_value}%`
                       : `${currencySymbol}${appliedOffer.discount_value}`
                     }):
@@ -1096,12 +1082,12 @@ const CartPage = ({ onNavigate }) => {
               )}
               {totalDiscountAmount > 0 && (
                 <div className="flex justify-between text-sm border-t pt-2 font-semibold text-green-700">
-                  <span>{language === 'es' ? 'Subtotal con descuentos' : 'Discounted subtotal'}:</span>
+                  <span>{t('cart.payment.discountedSubtotal')}:</span>
                   <span>${discountedSubtotal.toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm border-t pt-2">
-                <span>{language === 'es' ? 'Envío' : 'Shipping'}:</span>
+                <span>{t('cart.payment.shipping')}:</span>
                 <span>${shippingCost.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-lg font-bold border-t pt-2">
@@ -1117,10 +1103,21 @@ const CartPage = ({ onNavigate }) => {
             </div>
           </div>
 
+          {/* Mandatory payment proof banner */}
+          {!paymentProof && (
+            <div className="mb-6 p-4 rounded-xl border-2 border-amber-300 bg-amber-50 flex items-start gap-3">
+              <AlertCircle className="h-6 w-6 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-amber-800 text-sm">{t('cart.payment.proofRequired')}</p>
+                <p className="text-amber-700 text-sm mt-1">{t('cart.payment.proofMandatoryBanner')}</p>
+              </div>
+            </div>
+          )}
+
           {/* File Upload with Preview Component */}
-          <div className="mb-6">
+          <div className={`mb-6 ${!paymentProof ? 'ring-2 ring-amber-300 rounded-lg p-1' : ''}`}>
             <FileUploadWithPreview
-              label={t('cart.payment.uploadProof') || (language === 'es' ? 'Comprobante de Pago' : 'Payment Proof')}
+              label={t('cart.payment.uploadProof')}
               accept="image/*,.pdf"
               value={paymentProof}
               preview={paymentProofPreview}
@@ -1132,10 +1129,8 @@ const CartPage = ({ onNavigate }) => {
                 // Validate file type
                 if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
                   toast({
-                    title: language === 'es' ? 'Tipo de archivo inválido' : 'Invalid file type',
-                    description: language === 'es'
-                      ? 'Solo se permiten imágenes JPG, PNG o WebP'
-                      : 'Only JPG, PNG or WebP images are allowed',
+                    title: t('cart.payment.invalidFileType'),
+                    description: t('cart.payment.invalidFileTypeDesc'),
                     variant: 'destructive'
                   });
                   return;
@@ -1144,10 +1139,8 @@ const CartPage = ({ onNavigate }) => {
                 // Validate file size
                 if (file.size > FILE_SIZE_LIMITS.PAYMENT_PROOF) {
                   toast({
-                    title: language === 'es' ? 'Archivo muy grande' : 'File too large',
-                    description: language === 'es'
-                      ? 'El tamaño máximo es 5MB'
-                      : 'Maximum size is 5MB',
+                    title: t('cart.payment.fileTooLarge'),
+                    description: t('cart.payment.fileTooLargeDesc'),
                     variant: 'destructive'
                   });
                   return;
@@ -1162,17 +1155,15 @@ const CartPage = ({ onNavigate }) => {
                     setPaymentProofPreview(reader.result);
                     setPaymentProof(file);
                     toast({
-                      title: language === 'es' ? '✅ Comprobante cargado' : '✅ Proof uploaded',
-                      description: language === 'es'
-                        ? 'La imagen se ha cargado correctamente'
-                        : 'Image uploaded successfully'
+                      title: t('cart.payment.proofLoaded'),
+                      description: t('cart.payment.proofLoadedDesc')
                     });
                   };
                   reader.readAsDataURL(file);
                 } catch (error) {
                   console.error('Error uploading payment proof:', error);
                   toast({
-                    title: language === 'es' ? 'Error al cargar' : 'Upload error',
+                    title: t('cart.payment.uploadError'),
                     description: error.message,
                     variant: 'destructive'
                   });
@@ -1187,13 +1178,13 @@ const CartPage = ({ onNavigate }) => {
           {/* Payment Reference Field */}
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              {language === 'es' ? 'Titular/Empresa que realiza el pago' : 'Payer Name/Company'} <span className="text-red-500">*</span>
+              {t('cart.payment.payerLabel')} <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               value={paymentReference}
               onChange={(e) => setPaymentReference(e.target.value)}
-              placeholder={language === 'es' ? 'Ej: Juan Perez / Empresa ABC LLC' : 'E.g.: John Smith / ABC Corp LLC'}
+              placeholder={t('cart.payment.payerPlaceholder')}
               className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
             />
@@ -1218,12 +1209,8 @@ const CartPage = ({ onNavigate }) => {
                   whatsappTarget ? 'text-gray-700' : 'text-yellow-800'
                 }`}>
                   {whatsappTarget
-                    ? (language === 'es'
-                        ? '¿Tienes dudas sobre el pago? Contáctanos por WhatsApp'
-                        : 'Questions about payment? Contact us via WhatsApp')
-                    : (language === 'es'
-                        ? 'Número de WhatsApp de soporte no configurado'
-                        : 'WhatsApp support number not configured')}
+                    ? t('cart.payment.whatsappQuestion')
+                    : t('cart.payment.whatsappNotConfigured')}
                 </p>
                 {whatsappTarget && (
                   <Button
@@ -1231,35 +1218,51 @@ const CartPage = ({ onNavigate }) => {
                     className="w-full bg-green-600 hover:bg-green-700 text-white"
                   >
                     <MessageCircle className="mr-2 h-4 w-4" />
-                    {language === 'es' ? 'Contactar por WhatsApp' : 'Contact via WhatsApp'}
+                    {t('cart.payment.contactWhatsapp')}
                   </Button>
                 )}
               </div>
             </div>
           </motion.div>
 
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              onClick={() => setView('recipient')}
-              className="flex-1"
-              disabled={processingPayment}
-            >
-              {language === 'es' ? 'Atrás' : 'Back'}
-            </Button>
-            <Button
-              onClick={handlePrePaymentConfirmation}
-              className="flex-1"
-              size="lg"
-              style={getPrimaryButtonStyle(visualSettings)}
-              disabled={!paymentProof || !paymentReference.trim() || uploadingProof || processingPayment}
-            >
-              {processingPayment ? (
-                language === 'es' ? 'Procesando...' : 'Processing...'
-              ) : (
-                t('cart.payment.confirm')
-              )}
-            </Button>
+          <div className="space-y-3">
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setView('recipient')}
+                className="flex-1"
+                disabled={processingPayment}
+              >
+                {t('cart.payment.back')}
+              </Button>
+              <Button
+                onClick={handlePrePaymentConfirmation}
+                className="flex-1"
+                size="lg"
+                style={getPrimaryButtonStyle(visualSettings)}
+                disabled={!paymentProof || !paymentReference.trim() || uploadingProof || processingPayment}
+              >
+                {processingPayment ? t('cart.payment.processing') : t('cart.payment.confirm')}
+              </Button>
+            </div>
+
+            {/* Missing fields hint */}
+            {(!paymentProof || !paymentReference.trim()) && !processingPayment && (
+              <div className="text-center space-y-1">
+                {!paymentProof && (
+                  <p className="text-xs text-red-500 font-medium flex items-center justify-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {t('cart.payment.missingProof')}
+                  </p>
+                )}
+                {!paymentReference.trim() && (
+                  <p className="text-xs text-red-500 font-medium flex items-center justify-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {t('cart.payment.missingPayer')}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </motion.div>
 
@@ -1282,7 +1285,7 @@ const CartPage = ({ onNavigate }) => {
           currency={confirmedOrderInfo?.currency}
           recipientName={confirmedOrderInfo?.recipientName}
           itemCount={confirmedOrderInfo?.itemCount}
-          estimatedDelivery={language === 'es' ? '24-72 horas' : '24-72 hours'}
+          estimatedDelivery={t('cart.payment.estimatedDelivery')}
         />
       </div>
     );

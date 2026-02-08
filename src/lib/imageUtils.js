@@ -39,11 +39,12 @@ export const IMAGE_CONSTRAINTS = {
   },
   logo: {
     maxSizeMB: 2,
-    maxWidth: 400,
+    maxWidth: 800,
     maxHeight: 400,
-    aspectRatio: 1, // Square (1:1)
+    aspectRatio: null, // Preserve original aspect ratio
     quality: 0.95,
-    formats: ['image/png', 'image/svg+xml', 'image/webp']
+    formats: ['image/png', 'image/svg+xml', 'image/webp'],
+    outputFormat: 'image/png' // Preserve transparency
   },
   favicon: {
     maxSizeMB: 0.5,
@@ -64,6 +65,14 @@ export const IMAGE_CONSTRAINTS = {
     aspectRatio: null, // Any aspect ratio
     quality: 0.85,
     formats: ['image/jpeg', 'image/png', 'image/webp']
+  },
+  publication: {
+    maxSizeMB: 5,
+    maxWidth: 1200,
+    maxHeight: 800,
+    aspectRatio: null,
+    quality: 0.85,
+    formats: ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
   }
 };
 
