@@ -63,7 +63,6 @@ export const createUserAlert = async (alertData) => {
       throw error;
     }
 
-    console.log(`[UserAlertService] Alert created for user ${userId}:`, alertType);
     return data;
   } catch (error) {
     console.error('[UserAlertService] Failed to create alert:', error);
@@ -103,7 +102,6 @@ export const createUserAlertsBatch = async (alerts) => {
       throw error;
     }
 
-    console.log(`[UserAlertService] ${data.length} alerts created for ${alerts.length} users`);
     return data;
   } catch (error) {
     console.error('[UserAlertService] Failed to create batch alerts:', error);
@@ -201,7 +199,6 @@ export const markAlertAsRead = async (alertId) => {
 
     if (error) throw error;
 
-    console.log(`[UserAlertService] Alert ${alertId} marked as read`);
   } catch (error) {
     console.error('[UserAlertService] Error marking alert as read:', error);
   }
@@ -224,7 +221,6 @@ export const dismissAlert = async (alertId) => {
 
     if (error) throw error;
 
-    console.log(`[UserAlertService] Alert ${alertId} dismissed`);
   } catch (error) {
     console.error('[UserAlertService] Error dismissing alert:', error);
   }
@@ -251,7 +247,6 @@ export const dismissAlertsByOperation = async (userId, operationType, operationI
 
     if (error) throw error;
 
-    console.log(`[UserAlertService] Alerts dismissed for ${operationType}:${operationId}`);
   } catch (error) {
     console.error('[UserAlertService] Error dismissing alerts by operation:', error);
   }

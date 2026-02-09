@@ -290,15 +290,12 @@ export const getCurrencyByCode = async (currencyCode) => {
  * @throws {AppError} NOT_FOUND if no account type found for currency, DB_ERROR on failure
  */
 export const getDefaultAccountTypeForCurrency = async (currencyCode) => {
-  console.log('[getDefaultAccountTypeForCurrency] START - Currency:', currencyCode);
 
   try {
     if (!currencyCode) {
       console.error('[getDefaultAccountTypeForCurrency] ERROR: Missing currency code');
       throw createValidationError({ currencyCode: 'Currency code is required' }, 'Missing currency code');
     }
-
-    console.log('[getDefaultAccountTypeForCurrency] Fetching all account types...');
 
     // Load all account types
     const { data, error } = await supabase
@@ -311,22 +308,11 @@ export const getDefaultAccountTypeForCurrency = async (currencyCode) => {
       throw parseSupabaseError(error);
     }
 
-    console.log('[getDefaultAccountTypeForCurrency] Account types loaded:', data?.length || 0);
-    console.log('[getDefaultAccountTypeForCurrency] All account types:', data);
-
     // Dynamically find matching account type by currency in metadata
     const matchingTypes = (data || []).filter(type => {
       const matches = type.metadata?.currency === currencyCode;
-      console.log(`[getDefaultAccountTypeForCurrency] Checking type "${type.name}":`, {
-        metadata: type.metadata,
-        currencyInMetadata: type.metadata?.currency,
-        searchingFor: currencyCode,
-        matches
-      });
       return matches;
     });
-
-    console.log('[getDefaultAccountTypeForCurrency] Matching types found:', matchingTypes.length);
 
     if (matchingTypes.length === 0) {
       console.error('[getDefaultAccountTypeForCurrency] ERROR: No account type found for currency:', currencyCode);
@@ -338,12 +324,6 @@ export const getDefaultAccountTypeForCurrency = async (currencyCode) => {
 
     // Return first matching type (can be enhanced with is_default flag if needed)
     const selectedType = matchingTypes[0];
-
-    console.log('[getDefaultAccountTypeForCurrency] SUCCESS - Selected account type:', {
-      id: selectedType.id,
-      name: selectedType.name,
-      currency: currencyCode
-    });
 
     return selectedType;
   } catch (error) {

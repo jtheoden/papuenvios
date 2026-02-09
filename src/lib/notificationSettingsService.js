@@ -81,12 +81,10 @@ const mapSettingsFromRows = (rows = []) => {
 };
 
 const mapSettingsFromTable = (rows = []) => {
-  console.log('[NotificationSettings] mapSettingsFromTable - input rows:', rows);
 
   const getValue = (key) => {
     const row = rows.find((row) => row.setting_type === key);
     const value = row?.value ?? '';
-    console.log(`[NotificationSettings] getValue('${key}') = '${value}'`, 'from row:', row);
     return value;
   };
 
@@ -97,7 +95,6 @@ const mapSettingsFromTable = (rows = []) => {
     whatsappTarget: getValue(NOTIFICATION_KEYS.whatsappTarget)
   };
 
-  console.log('[NotificationSettings] mapSettingsFromTable result:', result);
   return result;
 };
 
@@ -138,10 +135,8 @@ export async function loadNotificationSettings() {
   try {
     const settings = await loadNotificationSettingsFromTable();
     if (settings.whatsapp || settings.whatsappGroup || settings.adminEmail) {
-      console.log('[NotificationSettings] Loaded from table:', settings);
       return settings;
     }
-    console.log('[NotificationSettings] Table returned empty settings');
   } catch (err) {
     console.warn('[NotificationSettings] Table load failed (possibly RLS):', err.message);
   }
@@ -165,7 +160,6 @@ export async function loadNotificationSettings() {
         whatsappTarget: data?.whatsappTarget ?? ''
       };
       if (mapped.whatsapp || mapped.whatsappGroup || mapped.adminEmail) {
-        console.log('[NotificationSettings] Loaded from edge function:', mapped);
         return {
           ...mapped,
           whatsappTarget: resolveWhatsappTarget(mapped)
@@ -199,12 +193,9 @@ export async function saveNotificationSettings(settings) {
     whatsappTarget: resolveWhatsappTarget(settings)
   };
 
-  console.log('[NotificationSettings] Saving settings via edge function:', payload);
-
   // 1. Try edge function FIRST (uses service role, bypasses RLS)
   try {
     await callNotificationFunction('PUT', payload);
-    console.log('[NotificationSettings] Settings saved successfully via edge function');
     return true;
   } catch (fnErr) {
     console.warn('[NotificationSettings] Edge function save failed, trying direct DB:', fnErr.message);
@@ -226,7 +217,6 @@ export async function saveNotificationSettings(settings) {
       throw error;
     }
 
-    console.log('[NotificationSettings] Settings saved successfully via direct DB');
     return true;
   } catch (err) {
     console.error('[NotificationSettings] Save error:', err);
@@ -236,15 +226,12 @@ export async function saveNotificationSettings(settings) {
 
 export const getActiveWhatsappRecipient = (settings = {}) => {
   const target = resolveWhatsappTarget(settings);
-  console.log('[NotificationSettings] getActiveWhatsappRecipient - target:', target, 'settings:', settings);
 
   if (target === 'whatsappGroup' && settings.whatsappGroup) {
-    console.log('[NotificationSettings] Returning whatsappGroup:', settings.whatsappGroup);
     return settings.whatsappGroup;
   }
 
   const result = settings.whatsapp || settings.whatsappGroup || '';
-  console.log('[NotificationSettings] Returning whatsapp recipient:', JSON.stringify(result), 'length:', result?.length);
   return result;
 };
 
@@ -255,7 +242,6 @@ export const getActiveWhatsappRecipient = (settings = {}) => {
  * @returns {Promise<Object>} Fresh settings object with whatsapp, whatsappGroup, adminEmail, whatsappTarget
  */
 export async function getFreshNotificationSettings() {
-  console.log('[NotificationSettings] getFreshNotificationSettings called');
 
   // 1. Try direct table read first
   try {
@@ -264,15 +250,10 @@ export async function getFreshNotificationSettings() {
       .select('setting_type, value, is_active')
       .in('setting_type', Object.values(NOTIFICATION_KEYS));
 
-    console.log('[NotificationSettings] Direct table query result:', { data, error: error?.message });
-
     if (!error && data && data.length > 0) {
       const settings = mapSettingsFromTable(data);
-      console.log('[NotificationSettings] Mapped settings from table:', settings);
-      console.log('[NotificationSettings] whatsapp value:', JSON.stringify(settings.whatsapp), 'length:', settings.whatsapp?.length);
 
       if (settings.whatsapp || settings.whatsappGroup || settings.adminEmail) {
-        console.log('[NotificationSettings] Fresh settings from table:', settings);
         return {
           ...settings,
           whatsappTarget: resolveWhatsappTarget(settings)
@@ -297,7 +278,6 @@ export async function getFreshNotificationSettings() {
         whatsappTarget: data?.whatsappTarget ?? ''
       };
       if (mapped.whatsapp || mapped.whatsappGroup || mapped.adminEmail) {
-        console.log('[NotificationSettings] Fresh settings from edge function:', mapped);
         return {
           ...mapped,
           whatsappTarget: resolveWhatsappTarget(mapped)

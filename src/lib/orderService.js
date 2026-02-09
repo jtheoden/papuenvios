@@ -1225,12 +1225,6 @@ export const validatePayment = async (orderId, adminId) => {
     // Sync Zelle transaction history for observabilidad (graceful fallback)
     // CRITICAL: Always register Zelle transaction when validating payment, independent of activity log status
     if (order.zelle_account_id) {
-      console.log('[validatePayment] Registering Zelle transaction:', {
-        orderId,
-        zelleAccountId: order.zelle_account_id,
-        orderType: order.order_type,
-        amount: order.total_amount
-      });
       try {
         const zelleResult = await upsertZelleTransactionStatus({
           referenceId: orderId,
@@ -1242,7 +1236,6 @@ export const validatePayment = async (orderId, adminId) => {
           zelleAccountId: order.zelle_account_id,
           validatedBy: adminId
         });
-        console.log('[validatePayment] Zelle transaction registered successfully:', zelleResult);
       } catch (zelleError) {
         console.error('[validatePayment] ERROR registering Zelle transaction:', zelleError);
         logError(zelleError, { operation: 'validatePayment - zelle sync', orderId });
@@ -1382,11 +1375,6 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
     // Sync Zelle transaction history (graceful fallback)
     // CRITICAL: Always register Zelle transaction when rejecting payment, independent of activity log status
     if (order.zelle_account_id) {
-      console.log('[rejectPayment] Registering Zelle transaction as REJECTED:', {
-        orderId,
-        zelleAccountId: order.zelle_account_id,
-        rejectionReason
-      });
       try {
         const zelleResult = await upsertZelleTransactionStatus({
           referenceId: orderId,
@@ -1398,7 +1386,6 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
           zelleAccountId: order.zelle_account_id,
           validatedBy: adminId
         });
-        console.log('[rejectPayment] Zelle transaction registered successfully:', zelleResult);
       } catch (zelleError) {
         console.error('[rejectPayment] ERROR registering Zelle transaction:', zelleError);
         logError(zelleError, { operation: 'rejectPayment - zelle sync', orderId });

@@ -159,7 +159,6 @@ export async function loadVisualSettings() {
     // Check cache first
     const cached = getCachedSettings();
     if (cached) {
-      console.log('[BusinessVisualSettings] Using cached settings');
       return { ...DEFAULT_VISUAL_SETTINGS, ...cached };
     }
 
@@ -172,7 +171,6 @@ export async function loadVisualSettings() {
     if (error) {
       // If table doesn't exist or no rows, return defaults
       if (error.code === 'PGRST116' || error.code === '42P01') {
-        console.log('[BusinessVisualSettings] No settings found, using defaults');
         return DEFAULT_VISUAL_SETTINGS;
       }
       console.error('[BusinessVisualSettings] Load error:', error);
@@ -181,7 +179,6 @@ export async function loadVisualSettings() {
 
     const settings = { ...DEFAULT_VISUAL_SETTINGS, ...(data?.settings || {}) };
     setCachedSettings(settings);
-    console.log('[BusinessVisualSettings] Loaded from database');
     return settings;
   } catch (err) {
     console.error('[BusinessVisualSettings] Load exception:', err);
@@ -232,7 +229,6 @@ export async function saveVisualSettings(settings) {
     // Re-cache with new settings
     setCachedSettings(settings);
 
-    console.log('[BusinessVisualSettings] Saved to database');
     return { success: true };
   } catch (err) {
     console.error('[BusinessVisualSettings] Save exception:', err);
@@ -279,7 +275,6 @@ export function applyVisualSettingsToDOM(settings) {
       root.style.setProperty('--color-page-bg', settings.pageBgColor);
     }
 
-    console.log('[BusinessVisualSettings] Applied to DOM');
   } catch (err) {
     console.error('[BusinessVisualSettings] DOM apply error:', err);
   }

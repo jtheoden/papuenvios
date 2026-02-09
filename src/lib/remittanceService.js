@@ -191,7 +191,6 @@ export const getRemittanceExchangeRate = async (fromCurrencyCode, toCurrencyCode
 
     // The type's exchange_rate is authoritative when set (admin configured it explicitly)
     if (typeRate && typeRate > 0) {
-      console.log(`[getRemittanceExchangeRate] Using type rate for ${fromCurrencyCode}→${toCurrencyCode}: ${typeRate}`);
       return { rate: typeRate, source: 'type' };
     }
 
@@ -199,7 +198,6 @@ export const getRemittanceExchangeRate = async (fromCurrencyCode, toCurrencyCode
     const configuredRate = await getCurrencyExchangeRate(fromCurrencyCode, toCurrencyCode);
 
     if (configuredRate && configuredRate > 0) {
-      console.log(`[getRemittanceExchangeRate] Using exchange_rates table for ${fromCurrencyCode}→${toCurrencyCode}: ${configuredRate}`);
       return { rate: configuredRate, source: 'configured' };
     }
 
@@ -249,7 +247,6 @@ export const getAllRemittanceTypes = async () => {
  */
 export const getActiveRemittanceTypes = async () => {
   try {
-    console.log('[getActiveRemittanceTypes] Fetching active remittance types...');
 
     const { data, error } = await supabase
       .from('remittance_types')
@@ -263,9 +260,6 @@ export const getActiveRemittanceTypes = async () => {
       logError(appError, { operation: 'getActiveRemittanceTypes' });
       throw appError;
     }
-
-    console.log('[getActiveRemittanceTypes] Types loaded:', data?.length || 0);
-    console.log('[getActiveRemittanceTypes] Types:', data);
 
     return data || [];
   } catch (error) {
@@ -555,7 +549,6 @@ export const recalculateRemittanceAtCurrentRate = async (remittanceId) => {
       throw parseSupabaseError(error);
     }
 
-    console.log(`[recalculateRemittanceAtCurrentRate] Remittance ${remittanceId} updated: rate ${remittance.exchange_rate} → ${currentRate}, deliver ${remittance.amount_to_deliver} → ${amountToDeliver.toFixed(2)}`);
     return data;
   } catch (error) {
     if (error.code) throw error;
@@ -635,8 +628,6 @@ export const calculateRemittance = async (typeId, amount, offer = null) => {
       type.delivery_currency,
       type.exchange_rate
     );
-
-    console.log(`[calculateRemittance] Using ${rateSource} rate: ${exchangeRate} for ${type.currency_code}→${type.delivery_currency}`);
 
     // Calculate commission - single source of truth formula
     const commissionPercentage = (amount * (type.commission_percentage || 0)) / 100;
@@ -740,8 +731,6 @@ export const calculateReverseRemittance = async (typeId, desiredReceiveAmount) =
       type.exchange_rate || 1
     );
 
-    console.log(`[calculateReverseRemittance] Using ${rateSource} rate: ${exchangeRate} for ${type.currency_code}→${type.delivery_currency}`);
-
     const commissionPercentage = type.commission_percentage || 0;
     const commissionFixed = type.commission_fixed || 0;
 
@@ -800,7 +789,6 @@ export const calculateReverseRemittance = async (typeId, desiredReceiveAmount) =
  * @returns {Promise<Object>} Created remittance
  */
 export const createRemittance = async (remittanceData) => {
-  console.log('[createRemittance] START - Input data:', remittanceData);
 
   try {
     const {
@@ -822,15 +810,6 @@ export const createRemittance = async (remittanceData) => {
       discount_amount: passedDiscountAmount
     } = remittanceData;
 
-    console.log('[createRemittance] STEP 1 - Extracted fields:', {
-      remittance_type_id,
-      amount,
-      recipient_name,
-      recipient_phone,
-      has_zelle_account_id: !!zelle_account_id,
-      has_recipient_bank_account_id: !!recipient_bank_account_id
-    });
-
     // Validate required fields
     if (!remittance_type_id || !amount || !recipient_name || !recipient_phone) {
       console.error('[createRemittance] VALIDATION ERROR - Missing fields:', {
@@ -846,8 +825,6 @@ export const createRemittance = async (remittanceData) => {
         recipient_phone: !recipient_phone ? 'Recipient phone is required' : undefined
       }, 'Missing required remittance fields');
     }
-
-    console.log('[createRemittance] STEP 2 - Validation passed, calculating remittance...');
 
     // If offer_id provided, fetch offer for calculation
     let offerForCalc = null;
@@ -874,19 +851,7 @@ export const createRemittance = async (remittanceData) => {
       deliveryMethod
     } = calculation;
 
-    console.log('[createRemittance] STEP 3 - Calculation complete:', {
-      commissionPercentage,
-      commissionFixed,
-      totalCommission,
-      amountToDeliver,
-      exchangeRate,
-      currencyCode,
-      deliveryCurrency,
-      deliveryMethod
-    });
-
     // Get authenticated user
-    console.log('[createRemittance] STEP 4 - Getting authenticated user...');
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError) {
       console.error('[createRemittance] AUTH ERROR:', userError);
@@ -899,8 +864,6 @@ export const createRemittance = async (remittanceData) => {
       console.error('[createRemittance] AUTH ERROR: User not authenticated');
       throw new Error('Not authenticated');
     }
-
-    console.log('[createRemittance] STEP 5 - User authenticated:', { userId: user.id, email: user.email });
 
     // Check if user has admin privileges to create backend transfer records
     let isAdminUser = false;
@@ -919,17 +882,13 @@ export const createRemittance = async (remittanceData) => {
     // Get or find available Zelle account
     let selectedZelleAccountId = zelle_account_id;
     if (!selectedZelleAccountId) {
-      console.log('[createRemittance] STEP 6a - No Zelle account provided, finding available account...');
       const zelleResult = await getAvailableZelleAccount('remittance', amount);
-      console.log('[createRemittance] Zelle account result:', zelleResult);
       if (!zelleResult.success) {
         console.error('[createRemittance] ZELLE ERROR: No accounts available');
         throw new Error('No Zelle accounts available. Please try again later.');
       }
       selectedZelleAccountId = zelleResult.account.id;
-      console.log('[createRemittance] Auto-assigned Zelle account:', selectedZelleAccountId);
     } else {
-      console.log('[createRemittance] STEP 6b - Using provided Zelle account:', selectedZelleAccountId);
     }
 
     // Create remittance with calculated values (single source of truth)
@@ -972,12 +931,6 @@ export const createRemittance = async (remittanceData) => {
       insertData.recipient_address_id = recipient_address_id;
     }
 
-    console.log('[createRemittance] STEP 7 - Insert data prepared:', {
-      ...insertData,
-      delivery_notes: notes ? 'Present' : 'Empty'
-    });
-
-    console.log('[createRemittance] STEP 8 - Inserting into database...');
     const performInsert = async (payload) => supabase
       .from('remittances')
       .insert([payload])
@@ -993,13 +946,7 @@ export const createRemittance = async (remittanceData) => {
       throw appError;
     }
 
-    console.log('[createRemittance] STEP 9 - Database insert successful:', {
-      remittanceId: data.id,
-      remittanceNumber: data.remittance_number
-    });
-
     // Register Zelle transaction (graceful fallback if fails)
-    console.log('[createRemittance] STEP 10 - Registering Zelle transaction...');
     try {
       await registerZelleTransaction({
         zelle_account_id: selectedZelleAccountId,
@@ -1008,7 +955,6 @@ export const createRemittance = async (remittanceData) => {
         amount: amount,
         notes: `Remesa ${data.remittance_number}`
       });
-      console.log('[createRemittance] Zelle transaction registered successfully');
     } catch (zelleError) {
       console.error('[createRemittance] Zelle registration error (non-fatal):', zelleError);
       logError(zelleError, { operation: 'createRemittance - Zelle registration', remittanceId: data.id });
@@ -1028,7 +974,6 @@ export const createRemittance = async (remittanceData) => {
           .is('remittance_id', null)
           .order('created_at', { ascending: false })
           .limit(1);
-        console.log('[createRemittance] Offer usage recorded for offer:', offer_id);
       } catch (offerError) {
         console.error('[createRemittance] Offer usage recording error (non-fatal):', offerError);
       }
@@ -1037,27 +982,22 @@ export const createRemittance = async (remittanceData) => {
     // Create bank transfer for off-cash methods (graceful fallback if fails)
     if (deliveryMethod !== 'cash' && recipient_bank_account_id) {
       if (isAdminUser) {
-        console.log('[createRemittance] STEP 11 - Creating bank transfer for non-cash delivery as admin...');
         try {
           await createBankTransfer(
             data.id,
             recipient_bank_account_id,
             { amount_transferred: amountToDeliver }
           );
-          console.log('[createRemittance] Bank transfer created successfully');
         } catch (bankError) {
           console.error('[createRemittance] Bank transfer creation error (non-fatal):', bankError);
           logError(bankError, { operation: 'createRemittance - bank transfer', remittanceId: data.id });
           // Don't fail remittance creation if bank transfer creation fails
         }
       } else {
-        console.log('[createRemittance] STEP 11 - Skipping bank transfer creation (user lacks admin permissions)');
       }
     } else {
-      console.log('[createRemittance] STEP 11 - Skipping bank transfer (cash delivery or no account)');
     }
 
-    console.log('[createRemittance] SUCCESS - Remittance created:', data);
     return data;
   } catch (error) {
     console.error('[createRemittance] FATAL ERROR:', error);
@@ -1197,7 +1137,6 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
     // This ensures we always use the currently configured phone/group, not stale cached values
     try {
       const whatsappRecipient = await getFreshWhatsappRecipient();
-      console.log('[uploadPaymentProof] Fresh WhatsApp recipient for notification:', whatsappRecipient);
 
       if (whatsappRecipient) {
         const remittanceForNotify = {
