@@ -56,7 +56,6 @@ const ZelleAccountSelector = ({
       if (selectedAccount) {
         const stillExists = filteredAccounts.some(acc => acc.id === selectedAccount.id);
         if (!stillExists) {
-          console.log('[ZelleAccountSelector] Selected account no longer available');
           setAccountInvalidated(true);
           setSelectedAccount(null);
           onSelect(null);
@@ -108,7 +107,6 @@ const ZelleAccountSelector = ({
   // Subscribe to real-time updates
   useRealtimeZelleAccounts({
     onUpdate: (payload) => {
-      console.log('[ZelleAccountSelector] Zelle account changed:', payload.eventType);
       // Reload without showing loading spinner for smoother UX
       loadAccounts(false);
     },

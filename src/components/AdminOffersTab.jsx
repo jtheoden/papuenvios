@@ -105,7 +105,6 @@ const AdminOffersTab = () => {
   useRealtimeOffers({
     enabled: true,
     onUpdate: (payload) => {
-      console.log('[Realtime] Offer update:', payload.eventType);
       // Reload offers when any change occurs
       loadOffers();
     }

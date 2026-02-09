@@ -129,15 +129,11 @@ const RemittanceTypesConfig = () => {
   };
 
   const loadTypes = async () => {
-    console.log('[loadTypes] START');
     setLoading(true);
 
     try {
-      console.log('[loadTypes] Fetching all remittance types...');
       const types = await getAllRemittanceTypes();
-      console.log('[loadTypes] Types loaded:', types?.length || 0);
       setTypes(types || []);
-      console.log('[loadTypes] SUCCESS - Types set in state');
     } catch (error) {
       console.error('[loadTypes] ERROR:', error);
       console.error('[loadTypes] Error details:', {
@@ -152,7 +148,6 @@ const RemittanceTypesConfig = () => {
       setTypes([]);
     } finally {
       setLoading(false);
-      console.log('[loadTypes] Loading state reset');
     }
   };
 
@@ -222,7 +217,6 @@ const RemittanceTypesConfig = () => {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    console.log('[handleSave] START - Editing type:', editingType?.id);
 
     // Validaciones
     if (!formData.name || !formData.exchange_rate || !formData.min_amount) {
@@ -287,8 +281,6 @@ const RemittanceTypesConfig = () => {
       display_order: formData.display_order
     };
 
-    console.log('[handleSave] Type data prepared:', typeData);
-
     try {
       if (editingType) {
         // Detect rate/commission changes and warn admin about affected pending remittances
@@ -316,13 +308,9 @@ const RemittanceTypesConfig = () => {
           }
         }
 
-        console.log('[handleSave] Updating type:', editingType.id);
         await updateRemittanceType(editingType.id, typeData);
-        console.log('[handleSave] Type updated successfully');
       } else {
-        console.log('[handleSave] Creating new type');
         await createRemittanceType(typeData);
-        console.log('[handleSave] Type created successfully');
       }
 
       toast({
@@ -330,10 +318,8 @@ const RemittanceTypesConfig = () => {
         description: editingType ? t('remittances.admin.typeUpdated') : t('remittances.admin.typeCreated')
       });
 
-      console.log('[handleSave] Reloading types...');
       loadTypes();
       handleCancel();
-      console.log('[handleSave] SUCCESS - Operation completed');
     } catch (error) {
       console.error('[handleSave] ERROR:', error);
       console.error('[handleSave] Error details:', {
@@ -349,7 +335,6 @@ const RemittanceTypesConfig = () => {
   };
 
   const handleDelete = async (type) => {
-    console.log('[handleDelete] START - Type:', type.id);
 
     const confirmed = await showModal({
       type: 'danger',
@@ -360,24 +345,18 @@ const RemittanceTypesConfig = () => {
     });
 
     if (!confirmed) {
-      console.log('[handleDelete] User cancelled deletion');
       return;
     }
-
-    console.log('[handleDelete] User confirmed - Deleting type:', type.id);
 
     try {
       await deleteRemittanceType(type.id);
 
-      console.log('[handleDelete] Delete successful');
       toast({
         title: t('common.success'),
         description: t('remittances.admin.typeDeleted')
       });
 
-      console.log('[handleDelete] Reloading types...');
       loadTypes();
-      console.log('[handleDelete] SUCCESS - Delete completed');
     } catch (error) {
       console.error('[handleDelete] ERROR:', error);
       console.error('[handleDelete] Error details:', {
@@ -393,23 +372,18 @@ const RemittanceTypesConfig = () => {
   };
 
   const toggleActive = async (type) => {
-    console.log('[toggleActive] START - Type:', type.id, 'Current status:', type.is_active);
 
     try {
       const newStatus = !type.is_active;
-      console.log('[toggleActive] Updating to:', newStatus);
 
       await updateRemittanceType(type.id, { is_active: newStatus });
 
-      console.log('[toggleActive] Update successful');
       toast({
         title: t('common.success'),
         description: type.is_active ? t('remittances.admin.typeDeactivated') : t('remittances.admin.typeActivated')
       });
 
-      console.log('[toggleActive] Reloading types...');
       loadTypes();
-      console.log('[toggleActive] SUCCESS - Toggle completed');
     } catch (error) {
       console.error('[toggleActive] ERROR:', error);
       console.error('[toggleActive] Error details:', {

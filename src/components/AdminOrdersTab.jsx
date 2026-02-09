@@ -167,7 +167,6 @@ const AdminOrdersTab = () => {
   useRealtimeOrders({
     enabled: true,
     onUpdate: (payload) => {
-      console.log('[Realtime] Order update:', payload.eventType);
       // Reload orders when any change occurs
       loadOrders();
     }
@@ -962,7 +961,6 @@ const StatCard = ({ label, value, icon: Icon, color, isAmount }) => {
     </div>
   );
 };
-
 
 // Modal components extracted to /components/admin/modals/ and imported above
 
