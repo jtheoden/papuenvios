@@ -47,14 +47,15 @@ export const ProductProvider = ({ children }) => {
   };
 
   // Fetch combos from Supabase
-  const refreshCombos = async (includeInactive = false) => {
+  // @param {Array|null} preloadedProducts - Optional pre-fetched products to avoid duplicate query
+  const refreshCombos = async (includeInactive = false, preloadedProducts = null) => {
     try {
       const data = await getCombos(includeInactive);
 
-      // Get current products to check stock
+      // Get current products to check stock (use preloaded if available)
       let productsMap = {};
       try {
-        const productsData = products?.length ? products : await getProducts();
+        const productsData = preloadedProducts || (products?.length ? products : await getProducts());
         (productsData || []).forEach(p => {
           productsMap[p.id] = p;
         });
@@ -141,16 +142,20 @@ export const ProductProvider = ({ children }) => {
   };
 
   // Initial data load
+  // Products load first so combos can reuse the data (avoids duplicate getProducts() query)
   useEffect(() => {
     const loadInitialData = async () => {
       setLoading(true);
-      await Promise.all([
-        refreshProducts(),
+      // Phase 1: Load products + lightweight parallel queries
+      const [productsData] = await Promise.all([
+        getProducts().catch(err => { console.error('Error loading products:', err); return []; }),
         refreshCategories(),
-        refreshCombos(),
         refreshTestimonials(false),
         refreshCarouselSlides(false)
       ]);
+      setProducts(productsData || []);
+      // Phase 2: Combos need products for stock checks — pass preloaded data
+      await refreshCombos(false, productsData || []);
       setLoading(false);
     };
 
