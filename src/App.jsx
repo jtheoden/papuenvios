@@ -21,7 +21,7 @@ import LoginPage from '@/components/LoginPage';
 import UserPanel from '@/components/UserPanel';
 import UserManagement from '@/components/UserManagement';
 import AuthCallback from '@/components/AuthCallback';
-import GuidesPage from '@/components/GuidesPage';
+import BlogPage from '@/components/BlogPage';
 import Footer from '@/components/Footer';
 import { withProtectedRoute } from '@/components/withProtectedRoute';
 import { LanguageProvider } from '@/contexts/LanguageContext';
@@ -147,7 +147,7 @@ function App() {
       '/login': 'login',
       '/user-panel': 'user-panel',
       '/user-management': 'user-management',
-      '/guides': 'guides'
+      '/blog': 'blog'
     };
 
     return { page: pathToPage[normalizedPath] || 'home' };
@@ -219,7 +219,7 @@ function App() {
       login: '/login',
       'user-panel': '/user-panel',
       'user-management': '/user-management',
-      guides: '/guides',
+      blog: '/blog',
       'auth/callback': '/auth/callback'
     };
 
@@ -258,8 +258,8 @@ function App() {
         return <LoginPage onNavigate={handleNavigate} />;
       case 'user-panel':
         return <ProtectedUserPanel onNavigate={handleNavigate} />;
-      case 'guides':
-        return <GuidesPage onNavigate={handleNavigate} />;
+      case 'blog':
+        return <BlogPage onNavigate={handleNavigate} />;
       case 'user-management':
         return <ProtectedUserManagement onNavigate={handleNavigate} />;
       case 'auth/callback':
