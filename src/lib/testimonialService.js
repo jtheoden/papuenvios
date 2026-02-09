@@ -142,6 +142,17 @@ export const createTestimonial = async (testimonialData) => {
       throw createValidationError({ rating: 'Rating must be between 1 and 5' });
     }
 
+    // Check if user already has a testimonial
+    const { data: existing } = await supabase
+      .from('testimonials')
+      .select('id')
+      .eq('user_id', testimonialData.user_id)
+      .maybeSingle();
+
+    if (existing) {
+      throw createValidationError({ duplicate: 'User has already submitted a testimonial' });
+    }
+
     const { data, error } = await supabase
       .from('testimonials')
       .insert([{
