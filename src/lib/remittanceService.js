@@ -6,6 +6,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { logActivity } from '@/lib/activityLogger';
+import { recordOfferUsage } from '@/lib/orderDiscountService';
 import {
   handleError,
   logError,
@@ -458,6 +459,114 @@ export const deleteRemittanceType = async (typeId) => {
   }
 };
 
+/**
+ * Get count of pending remittances for a given type (Admin)
+ * Used to warn admin when changing rates that affect in-flight remittances
+ * @param {string} typeId - Remittance type ID
+ * @returns {Promise<number>} Count of pending remittances
+ */
+export const getPendingRemittancesCountByType = async (typeId) => {
+  try {
+    const { count, error } = await supabase
+      .from('remittances')
+      .select('id', { count: 'exact', head: true })
+      .eq('remittance_type_id', typeId)
+      .in('status', [
+        REMITTANCE_STATUS.PAYMENT_PENDING,
+        REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED,
+        REMITTANCE_STATUS.PAYMENT_VALIDATED,
+        REMITTANCE_STATUS.PROCESSING
+      ]);
+
+    if (error) {
+      console.warn('[getPendingRemittancesCountByType] Error:', error);
+      return 0;
+    }
+    return count || 0;
+  } catch (error) {
+    console.warn('[getPendingRemittancesCountByType] Exception:', error);
+    return 0;
+  }
+};
+
+/**
+ * Recalculate a payment_pending remittance at the current type rate
+ * Only works for payment_pending status (user hasn't paid yet)
+ * @param {string} remittanceId - Remittance ID
+ * @throws {AppError} If remittance not found, wrong status, or update fails
+ * @returns {Promise<Object>} Updated remittance with new rate and amounts
+ */
+export const recalculateRemittanceAtCurrentRate = async (remittanceId) => {
+  try {
+    if (!remittanceId) {
+      throw createValidationError({ remittanceId: 'Remittance ID is required' });
+    }
+
+    // 1. Fetch remittance with type join
+    const remittance = await getRemittanceDetails(remittanceId);
+    if (!remittance) {
+      throw createNotFoundError('Remittance', remittanceId);
+    }
+
+    // 2. Guard: only payment_pending and payment_rejected can be recalculated
+    if (remittance.status !== REMITTANCE_STATUS.PAYMENT_PENDING &&
+        remittance.status !== REMITTANCE_STATUS.PAYMENT_REJECTED) {
+      throw createValidationError(
+        { status: 'Only payment_pending or payment_rejected remittances can be recalculated' },
+        'Cannot recalculate at this status'
+      );
+    }
+
+    // 3. Get current type config
+    const type = remittance.remittance_types;
+    if (!type) {
+      throw createNotFoundError('Remittance type', remittance.remittance_type_id);
+    }
+
+    // 4. Resolve current exchange rate (same logic as creation)
+    const { rate: currentRate } = await getRemittanceExchangeRate(
+      remittance.currency_sent,
+      remittance.currency_delivered,
+      type.exchange_rate
+    );
+    const currentCommPct = type.commission_percentage || 0;
+    const currentCommFixed = type.commission_fixed || 0;
+
+    // 5. Recalculate using the standard formula
+    const commissionTotal = (remittance.amount_sent * currentCommPct / 100) + currentCommFixed;
+    const amountToDeliver = (remittance.amount_sent - commissionTotal) * currentRate;
+
+    // 6. Update remittance record (double-check status in WHERE clause)
+    const { data, error } = await supabase
+      .from('remittances')
+      .update({
+        exchange_rate: currentRate,
+        commission_percentage: currentCommPct,
+        commission_fixed: currentCommFixed,
+        commission_total: parseFloat(commissionTotal.toFixed(2)),
+        amount_to_deliver: parseFloat(amountToDeliver.toFixed(2))
+      })
+      .eq('id', remittanceId)
+      .in('status', [REMITTANCE_STATUS.PAYMENT_PENDING, REMITTANCE_STATUS.PAYMENT_REJECTED])
+      .select('*, remittance_types(*)')
+      .single();
+
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    console.log(`[recalculateRemittanceAtCurrentRate] Remittance ${remittanceId} updated: rate ${remittance.exchange_rate} → ${currentRate}, deliver ${remittance.amount_to_deliver} → ${amountToDeliver.toFixed(2)}`);
+    return data;
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, {
+      operation: 'recalculateRemittanceAtCurrentRate',
+      remittanceId
+    });
+    throw appError;
+  }
+};
+
 // ============================================================================
 // GESTIÓN DE REMESAS (USUARIO)
 // ============================================================================
@@ -472,7 +581,7 @@ export const deleteRemittanceType = async (typeId) => {
  * @throws {AppError} If type not found, amount invalid, or calculation fails
  * @returns {Promise<Object>} Calculation details with commission and delivery amount
  */
-export const calculateRemittance = async (typeId, amount) => {
+export const calculateRemittance = async (typeId, amount, offer = null) => {
   try {
     if (!typeId || amount === undefined || amount === null) {
       throw createValidationError(
@@ -534,8 +643,21 @@ export const calculateRemittance = async (typeId, amount) => {
     const commissionFixed = type.commission_fixed || 0;
     const totalCommission = commissionPercentage + commissionFixed;
 
+    // Apply offer discount to commission if present
+    let discountAmount = 0;
+    if (offer && offer.discount_type && offer.discount_value) {
+      if (offer.discount_type === 'percentage') {
+        discountAmount = totalCommission * (offer.discount_value / 100);
+      } else if (offer.discount_type === 'fixed') {
+        discountAmount = Math.min(offer.discount_value, totalCommission);
+      }
+      discountAmount = Math.round(discountAmount * 100) / 100;
+    }
+
+    const effectiveCommission = Math.max(0, totalCommission - discountAmount);
+
     // Calculate delivery amount using the resolved exchange rate
-    const amountToDeliver = (amount * exchangeRate) - (totalCommission * exchangeRate);
+    const amountToDeliver = (amount * exchangeRate) - (effectiveCommission * exchangeRate);
 
     return {
       amount,
@@ -543,7 +665,9 @@ export const calculateRemittance = async (typeId, amount) => {
       exchangeRateSource: rateSource,
       commissionPercentage: type.commission_percentage || 0,
       commissionFixed: type.commission_fixed || 0,
-      totalCommission,
+      totalCommission: effectiveCommission,
+      originalCommission: totalCommission,
+      discountAmount,
       amountToDeliver,
       currency: type.currency_code,
       deliveryCurrency: type.delivery_currency,
@@ -693,7 +817,9 @@ export const createRemittance = async (remittanceData) => {
       zelle_account_id,
       recipient_id,
       recipient_address_id,
-      recipient_bank_account_id
+      recipient_bank_account_id,
+      offer_id,
+      discount_amount: passedDiscountAmount
     } = remittanceData;
 
     console.log('[createRemittance] STEP 1 - Extracted fields:', {
@@ -723,12 +849,24 @@ export const createRemittance = async (remittanceData) => {
 
     console.log('[createRemittance] STEP 2 - Validation passed, calculating remittance...');
 
-    // Calculate using single source of truth
-    const calculation = await calculateRemittance(remittance_type_id, amount);
+    // If offer_id provided, fetch offer for calculation
+    let offerForCalc = null;
+    if (offer_id) {
+      const { data: offerData } = await supabase
+        .from('offers')
+        .select('discount_type, discount_value')
+        .eq('id', offer_id)
+        .single();
+      if (offerData) offerForCalc = offerData;
+    }
+
+    // Calculate using single source of truth (with optional offer discount)
+    const calculation = await calculateRemittance(remittance_type_id, amount, offerForCalc);
     const {
       commissionPercentage,
       commissionFixed,
       totalCommission,
+      discountAmount: calcDiscountAmount,
       amountToDeliver,
       exchangeRate,
       currency: currencyCode,
@@ -825,6 +963,11 @@ export const createRemittance = async (remittanceData) => {
       insertData.recipient_id = recipient_id;
     }
 
+    if (offer_id) {
+      insertData.offer_id = offer_id;
+      insertData.discount_amount = calcDiscountAmount || passedDiscountAmount || 0;
+    }
+
     if (recipient_address_id) {
       insertData.recipient_address_id = recipient_address_id;
     }
@@ -870,6 +1013,25 @@ export const createRemittance = async (remittanceData) => {
       console.error('[createRemittance] Zelle registration error (non-fatal):', zelleError);
       logError(zelleError, { operation: 'createRemittance - Zelle registration', remittanceId: data.id });
       // Don't fail remittance creation if Zelle registration fails
+    }
+
+    // Record offer usage if an offer was applied (graceful fallback)
+    if (offer_id) {
+      try {
+        await recordOfferUsage(offer_id, user.id, null);
+        // Also update offer_usage with remittance_id
+        await supabase
+          .from('offer_usage')
+          .update({ remittance_id: data.id })
+          .eq('offer_id', offer_id)
+          .eq('user_id', user.id)
+          .is('remittance_id', null)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        console.log('[createRemittance] Offer usage recorded for offer:', offer_id);
+      } catch (offerError) {
+        console.error('[createRemittance] Offer usage recording error (non-fatal):', offerError);
+      }
     }
 
     // Create bank transfer for off-cash methods (graceful fallback if fails)

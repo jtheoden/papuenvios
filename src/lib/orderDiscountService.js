@@ -428,3 +428,28 @@ export const getDiscountBreakdown = async (userId, subtotal = 0) => {
     };
   }
 };
+
+/**
+ * Validate an offer code specifically for remittances
+ * Checks applies_to = 'remittance' in addition to standard validations
+ * @param {string} code - Offer code
+ * @param {number} amount - Remittance amount (for min purchase check)
+ * @param {string} userId - User ID
+ * @returns {object} Validation result (same shape as validateAndGetOffer)
+ */
+export const validateRemittanceOffer = async (code, amount = 0, userId = null) => {
+  const result = await validateAndGetOffer(code, amount, userId);
+  if (!result.valid) return result;
+
+  // Check that the offer applies to remittances
+  if (result.offer.applies_to && result.offer.applies_to !== 'remittance') {
+    return {
+      valid: false,
+      reason: 'This offer is not valid for remittances',
+      errorCode: 'NOT_FOR_REMITTANCES',
+      code
+    };
+  }
+
+  return result;
+};

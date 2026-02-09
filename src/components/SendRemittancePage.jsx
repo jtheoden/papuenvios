@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight, ArrowLeft, Check, DollarSign, User, FileText,
-  AlertCircle, CheckCircle, Calculator, Copy, Target, RefreshCw, CreditCard
+  AlertCircle, CheckCircle, Calculator, Copy, Target, RefreshCw, CreditCard, Tag
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,6 +20,7 @@ import { getActiveShippingZones } from '@/lib/shippingService';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
 import { notifyAdminNewPaymentProof } from '@/lib/whatsappService';
 import { getActiveWhatsappRecipient } from '@/lib/notificationSettingsService';
+import { validateRemittanceOffer } from '@/lib/orderDiscountService';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import RecipientSelector from '@/components/RecipientSelector';
@@ -84,6 +85,44 @@ const SendRemittancePage = ({ onNavigate }) => {
   // Confirmation modal state
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
   const [confirmedRemittanceInfo, setConfirmedRemittanceInfo] = useState(null);
+
+  // Coupon/offer state
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedOffer, setAppliedOffer] = useState(null);
+  const [couponValidation, setCouponValidation] = useState(null);
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
+
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) return;
+    const currentAmount = parseFloat(amount) || 0;
+    if (currentAmount <= 0) {
+      setCouponValidation({ valid: false, message: t('remittances.wizard.enterAmountFirst') });
+      return;
+    }
+    setValidatingCoupon(true);
+    setCouponValidation(null);
+    try {
+      const result = await validateRemittanceOffer(couponCode.trim(), currentAmount, user?.id);
+      if (result.valid) {
+        setAppliedOffer(result.offer);
+        setCouponValidation({ valid: true, message: t('remittances.wizard.couponApplied') });
+      } else {
+        setAppliedOffer(null);
+        setCouponValidation({ valid: false, message: result.error || t('remittances.wizard.couponInvalid') });
+      }
+    } catch (error) {
+      setAppliedOffer(null);
+      setCouponValidation({ valid: false, message: t('remittances.wizard.couponInvalid') });
+    } finally {
+      setValidatingCoupon(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedOffer(null);
+    setCouponCode('');
+    setCouponValidation(null);
+  };
 
   // Validation: Check if amount is within limits for selected type
   // Limits are always in send currency (USD), so we validate the USD amount state
@@ -176,12 +215,14 @@ const SendRemittancePage = ({ onNavigate }) => {
       try {
         if (calcMode === 'send') {
           // Normal calculation: user enters amount to send
-          const result = await calculateRemittance(selectedType.id, parseFloat(amount));
+          const result = await calculateRemittance(selectedType.id, parseFloat(amount), appliedOffer || null);
           setLiveCalc({
             mode: 'send',
             amountToSend: parseFloat(amount),
             amountToReceive: result.amountToDeliver,
             commission: result.totalCommission,
+            originalCommission: result.originalCommission || result.totalCommission,
+            discountAmount: result.discountAmount || 0,
             exchangeRate: result.exchangeRate || selectedType.exchange_rate,
             currency: result.currency,
             deliveryCurrency: result.deliveryCurrency
@@ -210,7 +251,7 @@ const SendRemittancePage = ({ onNavigate }) => {
     }, 400); // 400ms debounce
 
     return () => clearTimeout(timer);
-  }, [selectedType, amount, desiredReceiveAmount, calcMode]);
+  }, [selectedType, amount, desiredReceiveAmount, calcMode, appliedOffer]);
 
   // Restore saved state after login (guest → authenticated flow)
   useEffect(() => {
@@ -387,7 +428,7 @@ const SendRemittancePage = ({ onNavigate }) => {
 
     setCalculating(true);
     try {
-      const calculation = await calculateRemittance(selectedType.id, parseFloat(amount));
+      const calculation = await calculateRemittance(selectedType.id, parseFloat(amount), appliedOffer || null);
       setCalculation(calculation);
       setStep(2);
     } catch (error) {
@@ -479,6 +520,12 @@ const SendRemittancePage = ({ onNavigate }) => {
       // Si es remesa off-cash, incluir recipient_bank_account_id
       if (selectedType?.delivery_method !== 'cash' && selectedBankAccount) {
         remittanceData.recipient_bank_account_id = selectedBankAccount;
+      }
+
+      // Include offer data if coupon applied
+      if (appliedOffer) {
+        remittanceData.offer_id = appliedOffer.id;
+        remittanceData.discount_amount = calculation?.discountAmount || 0;
       }
 
       const remittance = await createRemittance(remittanceData);
@@ -799,8 +846,21 @@ const SendRemittancePage = ({ onNavigate }) => {
                         {/* Commission */}
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">{t('remittances.wizard.commission')}:</span>
-                          <span className="font-medium text-red-600">-{liveCalc.commission.toFixed(2)} {liveCalc.currency}</span>
+                          <span className="font-medium text-red-600">
+                            -{(liveCalc.discountAmount > 0 ? liveCalc.originalCommission : liveCalc.commission).toFixed(2)} {liveCalc.currency}
+                          </span>
                         </div>
+
+                        {/* Coupon discount line */}
+                        {liveCalc.discountAmount > 0 && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-green-600 flex items-center gap-1">
+                              <Tag className="w-3 h-3" />
+                              {t('remittances.wizard.couponDiscount')}:
+                            </span>
+                            <span className="font-medium text-green-600">+{liveCalc.discountAmount.toFixed(2)} {liveCalc.currency}</span>
+                          </div>
+                        )}
 
                         <div className="border-t border-gray-200 pt-2 mt-2">
                           {calcMode === 'send' ? (
@@ -834,6 +894,61 @@ const SendRemittancePage = ({ onNavigate }) => {
                       </div>
                     )}
                   </motion.div>
+                )}
+
+                {/* Coupon/Offer Section */}
+                {selectedType && amount && parseFloat(amount) > 0 && (
+                  <div className="mt-4 p-4 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Tag className="w-4 h-4 text-gray-500" />
+                      <span className="text-sm font-semibold text-gray-700">{t('remittances.wizard.couponLabel')}</span>
+                    </div>
+                    {appliedOffer ? (
+                      <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg p-3">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4 text-green-600" />
+                          <span className="text-sm font-medium text-green-700">
+                            {t('remittances.wizard.couponApplied')}: {appliedOffer.discount_type === 'percentage'
+                              ? `${appliedOffer.discount_value}%`
+                              : `$${appliedOffer.discount_value}`
+                            } {t('remittances.wizard.offCommission')}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleRemoveCoupon}
+                          className="text-xs text-red-500 hover:text-red-700 font-medium"
+                        >
+                          {t('common.remove')}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={couponCode}
+                          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                          placeholder={t('remittances.wizard.couponPlaceholder')}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          onKeyDown={(e) => e.key === 'Enter' && handleApplyCoupon()}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleApplyCoupon}
+                          disabled={!couponCode.trim() || validatingCoupon}
+                          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {validatingCoupon ? '...' : t('remittances.wizard.applyCoupon')}
+                        </button>
+                      </div>
+                    )}
+                    {couponValidation && !couponValidation.valid && (
+                      <p className="mt-2 text-xs text-red-600 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        {couponValidation.message}
+                      </p>
+                    )}
+                  </div>
                 )}
 
                 {selectedType && (
@@ -886,6 +1001,16 @@ const SendRemittancePage = ({ onNavigate }) => {
                     -{calculation.totalCommission.toFixed(2)} {calculation.currency}
                   </p>
                 </div>
+                {calculation.discountAmount > 0 && (
+                  <div className="col-span-2">
+                    <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                      <Tag className="w-4 h-4 text-green-600" />
+                      <span className="text-sm text-green-700 font-medium">
+                        {t('remittances.wizard.couponDiscount')}: +{calculation.discountAmount.toFixed(2)} {calculation.currency}
+                      </span>
+                    </div>
+                  </div>
+                )}
                 <div className="col-span-2 pt-4 border-t-2 border-blue-200">
                   <p className="text-sm text-gray-600 mb-1">{t('remittances.wizard.recipientReceives')}</p>
                   <p className="text-3xl font-bold text-green-600">
