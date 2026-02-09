@@ -46,7 +46,6 @@ const ZellePaymentHistoryTab = () => {
   useRealtimeZelleTransactions({
     enabled: true,
     onUpdate: (payload) => {
-      console.log('[Realtime] Zelle transaction update:', payload.eventType);
       // Reload transactions when any change occurs
       fetchTransactions();
     }

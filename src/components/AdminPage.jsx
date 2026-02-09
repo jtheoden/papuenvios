@@ -9,12 +9,6 @@ const AdminPage = ({ onNavigate }) => {
   const { t } = useLanguage();
   const { user, isAdmin, isSuperAdmin, userRole } = useAuth();
   
-  console.log('AdminPage Access Check:', {
-    user: user?.email,
-    isAdmin,
-    isSuperAdmin,
-    userRole
-  });
 
   if (!user || (!isAdmin && !isSuperAdmin)) {
     return (
