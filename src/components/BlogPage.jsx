@@ -49,7 +49,7 @@ function getCategoryColor(category) {
   return colors[category] || colors.general;
 }
 
-const GuidesPage = ({ onNavigate }) => {
+const BlogPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { visualSettings } = useBusiness();
   const [publications, setPublications] = useState([]);
@@ -112,7 +112,7 @@ const GuidesPage = ({ onNavigate }) => {
             className="mb-6"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            {t('guides.backToList')}
+            {t('blog.backToList')}
           </Button>
 
           <motion.article
@@ -176,10 +176,10 @@ const GuidesPage = ({ onNavigate }) => {
           className="text-center mb-10"
         >
           <h1 className="text-4xl font-bold mb-3" style={getHeadingStyle(visualSettings)}>
-            {t('guides.title')}
+            {t('blog.title')}
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            {t('guides.subtitle')}
+            {t('blog.subtitle')}
           </p>
         </motion.div>
 
@@ -263,7 +263,7 @@ const GuidesPage = ({ onNavigate }) => {
                       {pub.video_url && (
                         <span className="flex items-center gap-1 text-xs text-blue-500">
                           <Play className="h-3 w-3" />
-                          {t('guides.watchVideo')}
+                          {t('blog.watchVideo')}
                         </span>
                       )}
                     </div>
@@ -275,7 +275,7 @@ const GuidesPage = ({ onNavigate }) => {
                       className="inline-block mt-3 text-sm font-medium"
                       style={{ color: visualSettings.primaryColor || '#2563eb' }}
                     >
-                      {t('guides.readMore')} →
+                      {t('blog.readMore')} →
                     </span>
                   </div>
                 </motion.div>
@@ -285,7 +285,7 @@ const GuidesPage = ({ onNavigate }) => {
         ) : (
           <div className="text-center py-16">
             <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500">{t('guides.noArticles')}</p>
+            <p className="text-gray-500">{t('blog.noArticles')}</p>
           </div>
         )}
       </div>
@@ -293,4 +293,4 @@ const GuidesPage = ({ onNavigate }) => {
   );
 };
 
-export default GuidesPage;
+export default BlogPage;

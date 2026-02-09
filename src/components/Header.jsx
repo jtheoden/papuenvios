@@ -47,7 +47,7 @@ const Header = ({ currentPage, onNavigate }) => {
     { id: 'home', icon: ShoppingBag, label: t('nav.home') },
     { id: 'products', icon: ShoppingBag, label: t('nav.products') },
     ...(!isAdmin ? [{ id: 'remittances', icon: DollarSign, label: t('nav.remittances') }] : []),
-    { id: 'guides', icon: BookOpen, label: t('nav.guides') },
+    { id: 'blog', icon: BookOpen, label: t('nav.blog') },
   ];
 
   

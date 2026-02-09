@@ -600,7 +600,7 @@ const HomePage = ({ onNavigate }) => {
         </div>
       </section>
 
-      {/* Platform Guides Section */}
+      {/* Blog Section */}
       {guideArticles.length > 0 && (
         <section className="py-16 px-4 bg-white">
           <div className="container mx-auto">
@@ -611,9 +611,9 @@ const HomePage = ({ onNavigate }) => {
               className="text-center mb-10"
             >
               <h2 className="text-4xl font-bold mb-3" style={getHeadingStyle(visualSettings)}>
-                {t('home.guides.title')}
+                {t('home.blog.title')}
               </h2>
-              <p className="text-gray-600 text-lg">{t('home.guides.subtitle')}</p>
+              <p className="text-gray-600 text-lg">{t('home.blog.subtitle')}</p>
             </motion.div>
 
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
@@ -629,7 +629,7 @@ const HomePage = ({ onNavigate }) => {
                     whileInView={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.1 }}
                     className="glass-effect rounded-2xl overflow-hidden hover-lift cursor-pointer group"
-                    onClick={() => onNavigate('guides')}
+                    onClick={() => onNavigate('blog')}
                   >
                     <div className="h-36 overflow-hidden">
                       {pub.cover_image_url ? (
@@ -658,7 +658,7 @@ const HomePage = ({ onNavigate }) => {
                         className="inline-flex items-center gap-1 mt-3 text-sm font-medium"
                         style={{ color: visualSettings.primaryColor || '#2563eb' }}
                       >
-                        {t('guides.readMore')} <ArrowRight className="h-3 w-3" />
+                        {t('blog.readMore')} <ArrowRight className="h-3 w-3" />
                       </span>
                     </div>
                   </motion.div>
@@ -669,11 +669,11 @@ const HomePage = ({ onNavigate }) => {
             <div className="text-center">
               <Button
                 variant="outline"
-                onClick={() => onNavigate('guides')}
+                onClick={() => onNavigate('blog')}
                 className="px-6"
               >
                 <BookOpen className="w-4 h-4 mr-2" />
-                {t('home.guides.viewAll')}
+                {t('home.blog.viewAll')}
               </Button>
             </div>
           </div>
