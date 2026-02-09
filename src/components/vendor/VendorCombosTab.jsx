@@ -36,6 +36,7 @@ const VendorCombosTab = ({
   const [comboImagePreview, setComboImagePreview] = useState(null);
   const [processingComboId, setProcessingComboId] = useState(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState(null);
+  const [showZeroMarginConfirm, setShowZeroMarginConfirm] = useState(false);
 
   // Refs for form focus and scroll
   const comboFormRef = useRef(null);
@@ -314,7 +315,7 @@ const VendorCombosTab = ({
     setConfirmingDeleteId(null);
   };
 
-  const handleComboSubmit = async () => {
+  const handleComboSubmit = async (bypassZeroConfirm = false) => {
     console.log('[handleComboSubmit] START - Input:', { comboForm, hasId: !!comboForm.id, productCount: comboForm.products?.length || 0 });
 
     if (!comboForm.name) {
@@ -324,6 +325,21 @@ const VendorCombosTab = ({
         description: t('vendor.validation.fillFields'),
         variant: 'destructive'
       });
+      return;
+    }
+
+    // Margin validation
+    const margin = parseFloat(comboForm.profitMargin || financialSettings.comboProfit);
+    if (margin < 0) {
+      toast({
+        title: t('vendor.combos.cannotSaveNegative'),
+        description: t('vendor.combos.negativeMarginWarning'),
+        variant: 'destructive'
+      });
+      return;
+    }
+    if (margin === 0 && !bypassZeroConfirm) {
+      setShowZeroMarginConfirm(true);
       return;
     }
 
@@ -475,8 +491,36 @@ const VendorCombosTab = ({
                 value={comboForm.profitMargin}
                 onChange={e => setComboForm(prev => ({ ...prev, profitMargin: e.target.value }))}
                 placeholder={`${t('vendor.combos.profitMargin')} (def: ${financialSettings.comboProfit}%)`}
-                className="w-full input-style mb-4"
+                className={`w-full input-style ${
+                  parseFloat(comboForm.profitMargin) < 0 ? 'border-red-400 ring-1 ring-red-400' :
+                  parseFloat(comboForm.profitMargin) === 0 ? 'border-orange-400 ring-1 ring-orange-400' :
+                  ''
+                }`}
               />
+              {/* Margin warnings */}
+              {comboForm.profitMargin !== '' && !isNaN(parseFloat(comboForm.profitMargin)) && (
+                <>
+                  {parseFloat(comboForm.profitMargin) < 0 && (
+                    <div className="flex items-center gap-1.5 mt-1.5 text-red-600 text-xs font-medium">
+                      <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                      {t('vendor.combos.negativeMarginWarning')}
+                    </div>
+                  )}
+                  {parseFloat(comboForm.profitMargin) === 0 && (
+                    <div className="flex items-center gap-1.5 mt-1.5 text-orange-600 text-xs font-medium">
+                      <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+                      {t('vendor.combos.zeroMarginWarning')}
+                    </div>
+                  )}
+                  {parseFloat(comboForm.profitMargin) > 0 && parseFloat(comboForm.profitMargin) < 5 && (
+                    <div className="flex items-center gap-1.5 mt-1.5 text-yellow-600 text-xs font-medium">
+                      <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+                      {t('vendor.combos.belowMinMarginWarning')}
+                    </div>
+                  )}
+                </>
+              )}
+              <div className="mb-4" />
 
               {/* Image Preview */}
               {comboImagePreview && (
@@ -565,31 +609,81 @@ const VendorCombosTab = ({
               </div>
             </div>
 
-            {/* Price Summary */}
+            {/* Price Summary with Cost Breakdown */}
             <div className="md:col-span-2">
-              <div className="glass-effect p-4 rounded-lg text-sm">
-                <div className="flex justify-between mb-2">
-                  <span>{t('vendor.combos.basePrice')}:</span>
-                  <span className="font-semibold">
-                    {currencySymbol}{getComboCalculatedPrices(comboForm).base} {currencyCode}
-                  </span>
-                </div>
-                <div className="flex justify-between font-semibold">
-                  <span>{t('vendor.combos.finalPrice')}:</span>
-                  <span className="text-blue-600">
-                    {currencySymbol}{getComboCalculatedPrices(comboForm).final} {currencyCode}
-                  </span>
-                </div>
-              </div>
+              {(() => {
+                const prices = getComboCalculatedPrices(comboForm);
+                const baseNum = parseFloat(prices.base) || 0;
+                const finalNum = parseFloat(prices.final) || 0;
+                const margin = parseFloat(comboForm.profitMargin || financialSettings.comboProfit) || 0;
+                const marginAmount = finalNum - baseNum;
+                return (
+                  <div className="glass-effect p-4 rounded-lg text-sm space-y-2">
+                    <div className="flex justify-between">
+                      <span>{t('vendor.combos.productCosts')}:</span>
+                      <span className="font-semibold">
+                        {currencySymbol}{prices.base} {currencyCode}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-green-700">
+                      <span>{t('vendor.combos.marginAmount')} ({margin}%):</span>
+                      <span className="font-semibold">
+                        +{currencySymbol}{marginAmount.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="border-t border-gray-200 pt-2 flex justify-between font-semibold">
+                      <span>{t('vendor.combos.finalPrice')}:</span>
+                      <span className="text-blue-600">
+                        {currencySymbol}{prices.final} {currencyCode}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
+          {/* Zero Margin Confirmation */}
+          {showZeroMarginConfirm && (
+            <div className="mt-4 p-4 bg-orange-50 border border-orange-300 rounded-lg">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-5 w-5 text-orange-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-orange-800">{t('vendor.combos.confirmZeroMargin')}</p>
+                  <div className="flex gap-2 mt-3">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowZeroMarginConfirm(false)}
+                    >
+                      {t('common.cancel')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => {
+                        setShowZeroMarginConfirm(false);
+                        handleComboSubmit(true);
+                      }}
+                    >
+                      {t('vendor.combos.save')}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Form Actions */}
           <div className="flex justify-end gap-4 mt-6">
-            <Button variant="outline" onClick={() => setComboForm(null)}>
+            <Button variant="outline" onClick={() => { setComboForm(null); setShowZeroMarginConfirm(false); }}>
               {t('common.cancel')}
             </Button>
-            <Button onClick={handleComboSubmit} style={getPrimaryButtonStyle(visualSettings)}>
+            <Button
+              onClick={() => handleComboSubmit()}
+              style={getPrimaryButtonStyle(visualSettings)}
+              disabled={parseFloat(comboForm.profitMargin) < 0}
+            >
               <Save className="w-4 h-4 mr-2" />
               {t('vendor.combos.save')}
             </Button>
