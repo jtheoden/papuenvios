@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { motion } from 'framer-motion';
 import {
   Calendar, DollarSign, User, FileText, AlertCircle, CheckCircle,
-  Clock, XCircle, Upload, Eye, Package, Truck, RefreshCw
+  Clock, XCircle, Upload, Eye, Package, Truck, RefreshCw,
+  TrendingUp, TrendingDown, Info, X
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,6 +15,7 @@ import {
   calculateDeliveryAlert,
   generateProofSignedUrl,
   confirmDelivery,
+  recalculateRemittanceAtCurrentRate,
   REMITTANCE_STATUS
 } from '@/lib/remittanceService';
 import { toast } from '@/components/ui/use-toast';
@@ -51,6 +53,11 @@ const MyRemittancesPage = ({ onNavigate }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
+  // Rate change alert state
+  const [dismissedRateAlerts, setDismissedRateAlerts] = useState(new Set());
+  const [dismissedRateBanner, setDismissedRateBanner] = useState(false);
+  const [recalculating, setRecalculating] = useState(null);
+
   // Filtered remittances based on search and status filter
   const filteredRemittances = useMemo(() => {
     let filtered = remittances;
@@ -86,6 +93,65 @@ const MyRemittancesPage = ({ onNavigate }) => {
 
     return filtered;
   }, [remittances, statusFilter, searchTerm]);
+
+  // Rate change detection helpers
+  const hasRateChanged = (remittance) => {
+    if (!remittance.remittance_types) return false;
+    const snapshotRate = remittance.exchange_rate;
+    const currentRate = remittance.remittance_types.exchange_rate;
+    if (!snapshotRate || !currentRate) return false;
+    return Math.abs(snapshotRate - currentRate) / snapshotRate > 0.0001;
+  };
+
+  const isRateIncrease = (remittance) => {
+    return remittance.remittance_types.exchange_rate > remittance.exchange_rate;
+  };
+
+  const canRecalculate = (status) => {
+    return status === REMITTANCE_STATUS.PAYMENT_PENDING ||
+           status === REMITTANCE_STATUS.PAYMENT_REJECTED;
+  };
+
+  const isInFlight = (status) => {
+    return [
+      REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED,
+      REMITTANCE_STATUS.PAYMENT_VALIDATED,
+      REMITTANCE_STATUS.PROCESSING
+    ].includes(status);
+  };
+
+  // Count remittances with rate changes (non-final statuses)
+  const remittancesWithRateChanges = useMemo(() => {
+    return filteredRemittances.filter(r =>
+      hasRateChanged(r) &&
+      (canRecalculate(r.status) || isInFlight(r.status)) &&
+      !dismissedRateAlerts.has(r.id)
+    );
+  }, [filteredRemittances, dismissedRateAlerts]);
+
+  const handleRecalculateRate = async (remittanceId) => {
+    setRecalculating(remittanceId);
+    try {
+      await recalculateRemittanceAtCurrentRate(remittanceId);
+      toast({
+        title: t('common.success'),
+        description: t('remittances.user.rateUpdated')
+      });
+      await loadRemittances();
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: error.message,
+        variant: 'destructive'
+      });
+    } finally {
+      setRecalculating(null);
+    }
+  };
+
+  const handleDismissRateAlert = (remittanceId) => {
+    setDismissedRateAlerts(prev => new Set([...prev, remittanceId]));
+  };
 
   const loadRemittances = useCallback(async () => {
     setLoading(true);
@@ -511,6 +577,43 @@ const MyRemittancesPage = ({ onNavigate }) => {
         />
       )}
 
+      {/* Rate Change Summary Banner */}
+      {!loading && !dismissedRateBanner && remittancesWithRateChanges.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-amber-800 text-sm">
+                  {t('remittances.user.rateChangedBannerTitle')}
+                </h3>
+                <p className="text-sm text-amber-700 mt-1">
+                  {t('remittances.user.rateChangedBannerMessage')}
+                </p>
+                <div className="mt-2 space-y-1">
+                  <p className="text-xs text-amber-600">
+                    {t('remittances.user.rateChangedBannerPendingHint')}
+                  </p>
+                  <p className="text-xs text-amber-600">
+                    {t('remittances.user.rateChangedBannerLockedHint')}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setDismissedRateBanner(true)}
+              className="p-1 hover:bg-amber-100 rounded-lg transition-colors flex-shrink-0"
+            >
+              <X className="h-4 w-4 text-amber-500" />
+            </button>
+          </div>
+        </motion.div>
+      )}
+
       {loading ? (
         <div className="space-y-4">
           <SkeletonCard variant="remittance" />
@@ -595,6 +698,87 @@ const MyRemittancesPage = ({ onNavigate }) => {
                     <p className="font-semibold">{remittance.recipient_name}</p>
                   </div>
                 </div>
+
+                {/* Rate Change Alert */}
+                {hasRateChanged(remittance) && !dismissedRateAlerts.has(remittance.id) && (canRecalculate(remittance.status) || isInFlight(remittance.status)) && (() => {
+                  const snapshotRate = remittance.exchange_rate;
+                  const currentRate = remittance.remittance_types.exchange_rate;
+                  const rateUp = isRateIncrease(remittance);
+                  const pctChange = ((currentRate - snapshotRate) / snapshotRate * 100).toFixed(2);
+                  const type = remittance.remittance_types;
+                  const newCommPct = type.commission_percentage || 0;
+                  const newCommFixed = type.commission_fixed || 0;
+                  const newCommTotal = (remittance.amount_sent * newCommPct / 100) + newCommFixed;
+                  const newAmountToDeliver = (remittance.amount_sent - newCommTotal) * currentRate;
+                  const canUpdate = canRecalculate(remittance.status);
+
+                  return (
+                    <div className={`mb-4 p-3 rounded-lg border ${
+                      canUpdate
+                        ? (rateUp ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200')
+                        : 'bg-gray-50 border-gray-200'
+                    }`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2 flex-1 min-w-0">
+                          {canUpdate ? (
+                            rateUp
+                              ? <TrendingUp className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                              : <TrendingDown className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                          ) : (
+                            <Info className="h-4 w-4 text-gray-500 flex-shrink-0 mt-0.5" />
+                          )}
+                          <div className="min-w-0">
+                            {canUpdate ? (
+                              <>
+                                <p className={`text-sm font-medium ${rateUp ? 'text-blue-800' : 'text-amber-800'}`}>
+                                  {t('remittances.user.rateChangedFrom')}: {snapshotRate.toFixed(2)} → {currentRate.toFixed(2)} {remittance.currency_delivered}/{remittance.currency_sent} ({pctChange > 0 ? '+' : ''}{pctChange}%)
+                                </p>
+                                <p className={`text-xs mt-1 ${rateUp ? 'text-blue-700' : 'text-amber-700'}`}>
+                                  {t('remittances.user.newAmountWouldBe')}: {newAmountToDeliver.toFixed(2)} {remittance.currency_delivered} ({t('remittances.user.was')} {remittance.amount_to_deliver?.toFixed(2)})
+                                </p>
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleRecalculateRate(remittance.id); }}
+                                    disabled={recalculating === remittance.id}
+                                    className={`inline-flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-lg text-white transition-colors ${
+                                      rateUp
+                                        ? 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400'
+                                        : 'bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400'
+                                    }`}
+                                  >
+                                    <RefreshCw className={`h-3 w-3 ${recalculating === remittance.id ? 'animate-spin' : ''}`} />
+                                    {recalculating === remittance.id
+                                      ? t('remittances.user.recalculating')
+                                      : t('remittances.user.updateToNewRate')
+                                    }
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleDismissRateAlert(remittance.id); }}
+                                    className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100 transition-colors"
+                                  >
+                                    {t('remittances.user.keepCurrentRate')}
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <p className="text-sm text-gray-600">
+                                {t('remittances.user.currentRateIs')} {currentRate.toFixed(2)}. {t('remittances.user.rateLockedNote')} ({snapshotRate.toFixed(2)}).
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        {!canUpdate && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDismissRateAlert(remittance.id); }}
+                            className="p-1 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                          >
+                            <X className="h-3 w-3 text-gray-400" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Time Alert */}
                 {[REMITTANCE_STATUS.PAYMENT_VALIDATED, REMITTANCE_STATUS.PROCESSING].includes(remittance.status) && (
