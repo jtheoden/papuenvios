@@ -203,22 +203,17 @@ const UserPanel = ({ onNavigate }) => {
   const loadUserOrders = async () => {
     if (!user?.id) return;
 
-    console.log('[UserPanel] Loading orders for role:', userRole);
     setLoading(true);
     try {
       // Admin/super_admin see orders needing attention (pending payment, proof uploaded, or rejected)
       // Regular users see their own orders
       if (userRole === 'admin' || userRole === 'super_admin') {
-        console.log('[UserPanel] Loading orders needing admin attention');
         // Fetch all orders with pending status (regardless of payment_status)
         // This includes: proof_uploaded (needs validation), pending (waiting for proof), rejected (needs retry)
         const orders = await getAllOrders();
-        console.log('[UserPanel] Admin orders result:', orders);
         setOrders(orders || []);
       } else {
-        console.log('[UserPanel] Loading user orders for regular user');
         const userOrders = await getUserOrders(user.id);
-        console.log('[UserPanel] User orders result:', userOrders);
         setOrders(userOrders || []);
       }
     } catch (error) {
@@ -238,7 +233,6 @@ const UserPanel = ({ onNavigate }) => {
   useRealtimeOrders({
     enabled: !!user?.id,
     onUpdate: (payload) => {
-      console.log('[UserPanel] Order realtime update:', payload.eventType);
       // Recargar órdenes cuando haya cualquier cambio
       loadUserOrders();
       // Si el modal de detalles está abierto y es la orden que cambió, actualizarla
@@ -259,11 +253,7 @@ const UserPanel = ({ onNavigate }) => {
 
     try {
       const order = await getOrderById(orderId);
-      console.log('[UserPanel] Order details loaded:', order);
       setSelectedOrder(order);
-      console.log('[UserPanel] Selected order payment_status:', order?.payment_status);
-      console.log('[UserPanel] Payment proof URL:', order?.payment_proof_url);
-      console.log('[UserPanel] Current userRole:', userRole);
     } catch (error) {
       console.error('Error loading order details:', error);
     } finally {

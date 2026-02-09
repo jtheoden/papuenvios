@@ -199,7 +199,6 @@ const MyRemittancesPage = ({ onNavigate }) => {
   }, [loadRemittances]);
 
   const handleRealtimeRemittance = useCallback(async (payload) => {
-    console.log('[MyRemittances] Realtime event received:', payload?.eventType, payload?.new?.id);
 
     // Show toast notification when status changes (Req 14)
     if (payload?.eventType === 'UPDATE' && payload?.old?.status !== payload?.new?.status) {
@@ -232,13 +231,11 @@ const MyRemittancesPage = ({ onNavigate }) => {
     }
 
     // Reload the remittances list using ref to avoid stale closure
-    console.log('[MyRemittances] Reloading remittances list...');
     await loadRemittancesRef.current();
 
     // Update the selected remittance if modal is open (using ref to avoid stale closure)
     const currentSelectedId = selectedRemittanceIdRef.current;
     if (currentSelectedId) {
-      console.log('[MyRemittances] Refreshing selected remittance:', currentSelectedId);
       try {
         const updated = await getRemittanceDetails(currentSelectedId);
         if (updated) {
