@@ -40,7 +40,8 @@
     "copied": "¡Copiado!",
     "copiedToClipboard": "{label} copiado al portapapeles",
     "copyError": "Error al copiar al portapapeles",
-    "amount": "Monto"
+    "amount": "Monto",
+    "remove": "Quitar"
   },
   "nav": {
     "home": "Inicio",
@@ -53,7 +54,7 @@
     "cart": "Carrito",
     "userPanel": "Mi Panel",
     "userManagement": "Gestión de Usuarios",
-    "guides": "Guías"
+    "blog": "Blog"
   },
   "home": {
     "hero": {
@@ -107,10 +108,10 @@
       "title": "Lo que dicen nuestros clientes",
       "subtitle": "Experiencias reales de usuarios satisfechos con nuestra plataforma."
     },
-    "guides": {
-      "title": "Guías de la Plataforma",
+    "blog": {
+      "title": "Blog",
       "subtitle": "Todo lo que necesitas saber para usar nuestra plataforma",
-      "viewAll": "Ver todas las guías"
+      "viewAll": "Ver publicaciones"
     }
   },
   "footer": {
@@ -270,6 +271,8 @@
       "typeCreated": "Tipo de remesa creado",
       "typeUpdated": "Tipo de remesa actualizado",
       "typeDeleted": "Tipo de remesa eliminado",
+      "rateChangeWarning": "Cambio de Tasa Detectado",
+      "rateChangeAffected": "Hay {count} remesa(s) pendiente(s) creada(s) con la tasa anterior. Los usuarios serán notificados del cambio en su sección 'Mis Remesas'.",
       "typeActivated": "Tipo activado",
       "typeDeactivated": "Tipo desactivado",
       "pendingValidation": "Pendientes de Validación",
@@ -451,7 +454,21 @@
       "selectEvidencePhoto": "Por favor seleccione una foto de evidencia",
       "evidenceUploadError": "Error al subir foto de evidencia",
       "noResults": "Sin resultados",
-      "noResultsDesc": "No se encontraron remesas con los filtros seleccionados"
+      "noResultsDesc": "No se encontraron remesas con los filtros seleccionados",
+      "rateChanged": "Tasa de cambio actualizada",
+      "rateChangedBannerTitle": "Actualización de Tasa de Cambio",
+      "rateChangedBannerMessage": "La tasa de cambio de algunos tipos de remesa ha cambiado. Las remesas marcadas fueron creadas a una tasa diferente a la actual.",
+      "rateChangedBannerPendingHint": "Las remesas pendientes pueden ser actualizadas a la nueva tasa.",
+      "rateChangedBannerLockedHint": "Las remesas en proceso están bloqueadas a la tasa original.",
+      "rateChangedFrom": "Tasa cambió",
+      "newAmountWouldBe": "Nuevo monto a entregar",
+      "was": "era",
+      "updateToNewRate": "Actualizar a nueva tasa",
+      "keepCurrentRate": "Mantener tasa actual",
+      "rateLockedNote": "Tu remesa está bloqueada a la tasa al momento de su creación",
+      "currentRateIs": "La tasa actual es",
+      "rateUpdated": "Remesa actualizada a la tasa actual",
+      "recalculating": "Recalculando..."
     },
     "wizard": {
       "step1Title": "Tipo y Monto de Remesa",
@@ -537,7 +554,15 @@
       "paymentInstructions": "Ahora realiza el pago y sube el comprobante para completar el proceso.",
       "proofSubmittedSuccess": "¡Comprobante enviado exitosamente!",
       "submitProofAndComplete": "Enviar Comprobante y Completar",
-      "estimatedDeliveryTime": "24-72 horas"
+      "estimatedDeliveryTime": "24-72 horas",
+      "couponLabel": "Cupón de descuento (opcional)",
+      "couponPlaceholder": "Ingresa tu código",
+      "applyCoupon": "Aplicar",
+      "couponApplied": "Cupón aplicado",
+      "couponDiscount": "Descuento cupón",
+      "couponInvalid": "Cupón inválido o expirado",
+      "offCommission": "de descuento en comisión",
+      "enterAmountFirst": "Ingresa un monto primero"
     }
   },
   "vendor": {
@@ -568,7 +593,15 @@
       "image": "Imagen del Producto",
       "upload": "Subir archivo",
       "finalPrice": "Precio Final",
-      "save": "Guardar Producto"
+      "save": "Guardar Producto",
+      "profitMode": "Ganancia del Producto",
+      "profitByPercent": "Porcentaje",
+      "profitByAmount": "Monto Fijo",
+      "profitBySellPrice": "Precio Venta",
+      "profitAmountLabel": "Ganancia en $",
+      "sellPriceLabel": "Precio de Venta Final",
+      "profitPreview": "Vista previa de ganancia",
+      "basePriceRequired": "Ingrese el precio base primero"
     },
     "inventory": {
       "product": "Producto",
@@ -628,7 +661,14 @@
       "finalPrice": "Precio Final",
       "coverImage": "Imagen de Portada",
       "save": "Guardar Combo",
-      "includedProducts": "productos incluidos"
+      "includedProducts": "productos incluidos",
+      "negativeMarginWarning": "El margen negativo genera pérdidas. No se puede guardar.",
+      "zeroMarginWarning": "Margen 0% significa que no habrá ganancia en este combo.",
+      "belowMinMarginWarning": "El margen es menor al 5% recomendado.",
+      "cannotSaveNegative": "No se puede guardar con margen negativo",
+      "confirmZeroMargin": "¿Seguro que desea guardar el combo con margen 0%? No generará ganancia.",
+      "productCosts": "Costo de productos",
+      "marginAmount": "Ganancia"
     },
     "management": {
       "title": "Gestión General",
@@ -1453,7 +1493,10 @@
       "discountPercent": "Descuento (%)",
       "description": "Descripción",
       "noDiscounts": "No hay descuentos definidos",
-      "recalculateSuccessDesc": "Se recalcularon {processed} de {total} usuarios correctamente"
+      "recalculateSuccessDesc": "Se recalcularon {processed} de {total} usuarios correctamente",
+      "ruleUpdated": "Regla de categoría actualizada",
+      "displayName": "Nombre visible",
+      "selectIcon": "Icono"
     }
   },
   "bankAccounts": {
@@ -1616,9 +1659,10 @@
       }
     }
   },
-  "guides": {
-    "title": "Guías de la Plataforma",
-    "subtitle": "Aprende a usar todas las funcionalidades de nuestra plataforma",
+  "blog": {
+    "title": "Blog",
+    "subtitle": "Explora todas las publicaciones de nuestra plataforma",
+    "quickTitle": "Últimas Publicaciones",
     "filterAll": "Todas",
     "filterOrders": "Pedidos",
     "filterRemittances": "Remesas",
@@ -1626,8 +1670,8 @@
     "filterUserPanel": "Panel de Usuario",
     "filterGeneral": "General",
     "readMore": "Leer más",
-    "viewAll": "Ver todas las guías",
-    "noArticles": "No hay guías disponibles en esta categoría",
+    "viewAll": "Ver publicaciones",
+    "noArticles": "No hay publicaciones disponibles en esta categoría",
     "backToList": "Volver a la lista",
     "watchVideo": "Ver video"
   },
