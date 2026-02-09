@@ -136,6 +136,12 @@ export const getZelleTableColumns = (t, formatCurrency) => [
     }
   },
   {
+    key: 'historical_total',
+    label: t('zelle.historicalTotal'),
+    width: 'w-28',
+    render: (value) => <span className="font-mono text-right font-semibold text-indigo-700">{formatCurrency(value || 0)}</span>
+  },
+  {
     key: 'priority_order',
     label: t('zelle.priority'),
     width: 'w-16',
@@ -194,6 +200,11 @@ export const getZelleModalColumns = (t, formatCurrency) => [
     key: 'current_monthly_amount',
     label: t('zelle.currentMonthly'),
     render: (value) => <span className="font-mono">{formatCurrency(value)}</span>
+  },
+  {
+    key: 'historical_total',
+    label: t('zelle.historicalTotal'),
+    render: (value) => <span className="font-mono font-semibold text-indigo-700">{formatCurrency(value || 0)}</span>
   },
   {
     key: 'priority_order',
