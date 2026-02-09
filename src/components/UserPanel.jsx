@@ -6,7 +6,7 @@ import { useBusiness } from '@/contexts/BusinessContext';
 import { useModal } from '@/contexts/ModalContext';
 import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users, Crown, TrendingDown, Gift, Truck, Upload, EyeOff, Filter, ChevronDown, BookOpen } from 'lucide-react';
 import { getUserOrders, getOrderById, getAllOrders, validatePayment, rejectPayment, cancelOrderByUser, uploadPaymentProof, markOrderAsDispatched, markOrderAsDelivered, completeOrder, reopenOrder, ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderService';
-import { getUserTestimonial, createTestimonial, updateTestimonial } from '@/lib/testimonialService';
+import { getUserTestimonial, createTestimonial } from '@/lib/testimonialService';
 import { getMyRemittances, generateProofSignedUrl } from '@/lib/remittanceService';
 import { getPublications } from '@/lib/publicationService';
 import { getHeadingStyle, getTextStyle, getPillStyle, getStatusStyle } from '@/lib/styleUtils';
@@ -462,17 +462,10 @@ const UserPanel = ({ onNavigate }) => {
         comment: comment.trim()
       };
 
-      let result;
-      if (testimonial) {
-        // Update existing
-        result = await updateTestimonial(testimonial.id, { rating, comment: comment.trim() });
-      } else {
-        // Create new
-        result = await createTestimonial(testimonialData);
-      }
+      const result = await createTestimonial(testimonialData);
 
-      if (result.data) {
-        setTestimonial(result.data);
+      if (result) {
+        setTestimonial(result);
         alert(language === 'es'
           ? '¡Gracias por tu testimonio! Será revisado por nuestro equipo.'
           : 'Thank you for your testimonial! It will be reviewed by our team.');
@@ -658,7 +651,7 @@ const UserPanel = ({ onNavigate }) => {
           </motion.div>
         )}
 
-        {/* Quick Guides Section - Only for regular users */}
+        {/* Blog Section - Only for regular users */}
         {userRole !== 'admin' && userRole !== 'super_admin' && guideArticles.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -670,11 +663,11 @@ const UserPanel = ({ onNavigate }) => {
               <div className="flex items-center gap-2">
                 <BookOpen className="h-5 w-5" style={{ color: visualSettings.primaryColor || '#2563eb' }} />
                 <h3 className="font-semibold" style={getTextStyle(visualSettings, 'primary')}>
-                  {language === 'es' ? 'Guías Rápidas' : 'Quick Guides'}
+                  {t('blog.quickTitle')}
                 </h3>
               </div>
               <button
-                onClick={() => onNavigate('guides')}
+                onClick={() => onNavigate('blog')}
                 className="text-sm font-medium flex items-center gap-1"
                 style={{ color: visualSettings.primaryColor || '#2563eb' }}
               >
@@ -688,7 +681,7 @@ const UserPanel = ({ onNavigate }) => {
                 return (
                   <button
                     key={pub.id}
-                    onClick={() => onNavigate('guides')}
+                    onClick={() => onNavigate('blog')}
                     className="p-4 rounded-xl border border-gray-200 bg-white hover:shadow-md transition-all text-left flex items-center gap-3"
                   >
                     <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
@@ -1137,8 +1130,9 @@ const UserPanel = ({ onNavigate }) => {
                     <button
                       key={star}
                       type="button"
-                      onClick={() => setRating(star)}
-                      className="transition-transform hover:scale-110"
+                      onClick={() => !testimonial && setRating(star)}
+                      disabled={!!testimonial}
+                      className={`transition-transform ${testimonial ? 'cursor-default' : 'hover:scale-110'}`}
                     >
                       <Star
                         className="h-8 w-8"
@@ -1157,15 +1151,16 @@ const UserPanel = ({ onNavigate }) => {
                 </label>
                 <textarea
                   value={comment}
-                  onChange={(e) => setComment(e.target.value)}
+                  onChange={(e) => !testimonial && setComment(e.target.value)}
+                  disabled={!!testimonial}
                   placeholder={language === 'es'
                     ? 'Comparte tu experiencia con nosotros...'
                     : 'Share your experience with us...'}
                   rows={4}
-                  className="w-full px-4 py-2 rounded-lg border resize-none"
+                  className={`w-full px-4 py-2 rounded-lg border resize-none ${testimonial ? 'opacity-70 cursor-not-allowed' : ''}`}
                   style={{
                     borderColor: visualSettings.borderColor || '#e5e7eb',
-                    backgroundColor: visualSettings.inputBgColor || '#ffffff',
+                    backgroundColor: testimonial ? '#f3f4f6' : (visualSettings.inputBgColor || '#ffffff'),
                     color: visualSettings.textPrimaryColor || '#1f2937'
                   }}
                 />
@@ -1191,33 +1186,32 @@ const UserPanel = ({ onNavigate }) => {
                 </div>
               )}
 
-              {/* Submit button */}
-              <Button
-                onClick={handleSaveTestimonial}
-                disabled={savingTestimonial || rating === 0}
-                className="w-full"
-                style={{
-                  background: visualSettings.useGradient
-                    ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
-                    : visualSettings.primaryColor || '#2563eb',
-                  color: '#ffffff'
-                }}
-              >
-                {savingTestimonial ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    {language === 'es' ? 'Guardando...' : 'Saving...'}
-                  </>
-                ) : (
-                  <>
-                    <Star className="h-4 w-4 mr-2" />
-                    {testimonial
-                      ? (language === 'es' ? 'Actualizar Testimonio' : 'Update Testimonial')
-                      : (language === 'es' ? 'Enviar Testimonio' : 'Submit Testimonial')
-                    }
-                  </>
-                )}
-              </Button>
+              {/* Submit button - only show if no existing testimonial */}
+              {!testimonial && (
+                <Button
+                  onClick={handleSaveTestimonial}
+                  disabled={savingTestimonial || rating === 0}
+                  className="w-full"
+                  style={{
+                    background: visualSettings.useGradient
+                      ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
+                      : visualSettings.primaryColor || '#2563eb',
+                    color: '#ffffff'
+                  }}
+                >
+                  {savingTestimonial ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      {language === 'es' ? 'Guardando...' : 'Saving...'}
+                    </>
+                  ) : (
+                    <>
+                      <Star className="h-4 w-4 mr-2" />
+                      {language === 'es' ? 'Enviar Testimonio' : 'Submit Testimonial'}
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
           </motion.div>
         )}
