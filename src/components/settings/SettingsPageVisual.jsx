@@ -284,7 +284,6 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
         description: t('settings.visual.settingsRestored')
       });
 
-      console.log('[RestoreTheme] Successfully restored to factory defaults');
     } catch (err) {
       console.error('[RestoreTheme] Exception:', err);
       toast({
