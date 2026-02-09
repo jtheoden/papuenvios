@@ -53,7 +53,6 @@ const ProductsPage = ({ onNavigate }) => {
   useRealtimeProducts({
     enabled: true,
     onUpdate: () => {
-      console.log('[ProductsPage] Products realtime update');
       refreshProducts();
     }
   });
@@ -62,7 +61,6 @@ const ProductsPage = ({ onNavigate }) => {
   useRealtimeCombos({
     enabled: true,
     onUpdate: () => {
-      console.log('[ProductsPage] Combos realtime update');
       refreshProducts();
     }
   });
@@ -157,7 +155,6 @@ const ProductsPage = ({ onNavigate }) => {
       });
     }
   }, [t, refreshProducts]);
-
 
   useEffect(() => {
     // Filter products - Show all products (including zero stock with visual indicator)
@@ -323,7 +320,6 @@ const ProductsPage = ({ onNavigate }) => {
       percent: breakdown.total.percent
     };
   }, [selectedCurrency, convertAmount, userCategoryDiscount]);
-
 
   return (
     <div className="min-h-screen py-8 px-4">
