@@ -27,7 +27,6 @@ export function useVisualSettings() {
         const loadedSettings = await initializeVisualSettings();
         setSettings(loadedSettings);
 
-        console.log('[useVisualSettings] Loaded:', loadedSettings);
       } catch (err) {
         console.error('[useVisualSettings] Error loading settings:', err);
         setError(err);
