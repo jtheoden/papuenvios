@@ -22,7 +22,6 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
   useRealtimeCategories({
     enabled: true,
     onUpdate: () => {
-      console.log('[VendorCategoriesTab] Categories realtime update detected');
       if (refreshCategories) {
         refreshCategories();
       } else if (onCategoriesChange) {
@@ -64,12 +63,10 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
   }, []);
 
   const handleCategorySubmit = async (e) => {
-    console.log('[handleCategorySubmit] START - Input:', { categoryForm, hasId: !!categoryForm.dbId });
     e?.preventDefault?.();
 
     // Validation
     if (!categoryForm.es?.trim() || !categoryForm.en?.trim()) {
-      console.log('[handleCategorySubmit] VALIDATION ERROR - Missing required fields');
       toast({
         title: t('vendor.validation.error'),
         description: t('vendor.validation.fillFields'),
@@ -80,13 +77,11 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
 
     setIsSubmitting(true);
     try {
-      console.log('[handleCategorySubmit] Validation passed, processing submission...');
       const performedBy = user?.email || user?.id || 'anonymous';
 
       if (categoryForm.dbId) {
         // Update existing category
         await updateCategory(categoryForm.dbId, categoryForm, performedBy);
-        console.log('[handleCategorySubmit] SUCCESS - Category updated');
         toast({
           title: language === 'es' ? 'Categoría actualizada' : 'Category updated',
           description: categoryForm.es
@@ -94,7 +89,6 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
       } else {
         // Create new category
         await createCategory(categoryForm, performedBy);
-        console.log('[handleCategorySubmit] SUCCESS - Category created');
         toast({
           title: t('vendor.categoryAdded'),
           description: categoryForm.es
@@ -102,7 +96,6 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
       }
 
       // Refresh categories list immediately
-      console.log('[handleCategorySubmit] Refreshing categories list...');
       if (refreshCategories) {
         await refreshCategories();
       } else if (onCategoriesChange) {
@@ -117,7 +110,6 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
         description_en: ''
       });
       setShowCategoryForm(false);
-      console.log('[handleCategorySubmit] Form reset complete');
     } catch (error) {
       console.error('[handleCategorySubmit] ERROR:', error);
       console.error('[handleCategorySubmit] Error details:', { message: error?.message, code: error?.code });
@@ -132,7 +124,6 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
   };
 
   const handleEditCategory = (category) => {
-    console.log('[handleEditCategory] START - Input:', { categoryId: category.id, categoryName: category.name_es || category.es });
     try {
       setCategoryForm({
         dbId: category.id,
@@ -142,7 +133,6 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
         description_en: category.description_en || ''
       });
       setShowCategoryForm(true);
-      console.log('[handleEditCategory] SUCCESS - Form populated for editing');
       // Scroll to form and focus after state update
       scrollToFormAndFocus();
     } catch (error) {
@@ -176,21 +166,18 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
   };
 
   const handleConfirmDelete = async (categoryId) => {
-    console.log('[handleConfirmDelete] START - Input:', { categoryId });
     setDeletingCategoryId(categoryId);
     setConfirmingDeleteId(null);
     try {
       const performedBy = user?.email || user?.id || 'anonymous';
       const result = await deleteCategory(categoryId, performedBy);
 
-      console.log('[handleConfirmDelete] SUCCESS - Category deleted:', result);
       toast({
         title: t('vendor.categoryRemoved'),
         description: result?.deletedCategory?.name
       });
 
       // Refresh categories list immediately
-      console.log('[handleConfirmDelete] Refreshing categories list...');
       if (refreshCategories) {
         await refreshCategories();
       } else if (onCategoriesChange) {

@@ -94,7 +94,6 @@ const VendorInventoryTab = ({
   useRealtimeProducts({
     enabled: true,
     onUpdate: () => {
-      console.log('[VendorInventoryTab] Products realtime update detected');
       if (onProductsRefresh) {
         onProductsRefresh(true);
       }
@@ -163,7 +162,6 @@ const VendorInventoryTab = ({
   const defaultProfitMargin = financialSettings?.productProfit || DEFAULTS.PRODUCT_PROFIT_MARGIN;
 
   const openNewProductForm = () => {
-    console.log('[openNewProductForm] START - Opening new product form');
     setProductForm({
       id: null,
       name_es: '',
@@ -183,11 +181,9 @@ const VendorInventoryTab = ({
       sellPrice: ''
     });
     setProductImagePreview(null);
-    console.log('[openNewProductForm] SUCCESS - Form initialized');
   };
 
   const openEditProductForm = (product) => {
-    console.log('[openEditProductForm] START - Input:', { productId: product.id, productName: product.name_es || product.name });
     const margin = product.profit_margin || defaultProfitMargin;
     const base = parseFloat(product.base_price || product.basePrice || 0);
     setProductForm({
@@ -210,31 +206,23 @@ const VendorInventoryTab = ({
       sku: product.sku || ''
     });
     setProductImagePreview(product.image_url || product.image_file || product.image || null);
-    console.log('[openEditProductForm] SUCCESS - Form populated for editing');
   };
 
   const handleViewProductDetails = (product) => {
-    console.log('[handleViewProductDetails] START - Input:', { productId: product.id, productName: product.name_es || product.name });
     setSelectedProduct(product);
     setShowProductDetails(true);
-    console.log('[handleViewProductDetails] SUCCESS - Product details modal opened');
   };
 
   const handleProductImageUpload = async (e) => {
-    console.log('[handleProductImageUpload] START - Image upload initiated');
     const file = e.target.files?.[0];
     if (!file) {
-      console.log('[handleProductImageUpload] No file selected');
       return;
     }
 
-    console.log('[handleProductImageUpload] File selected:', { name: file.name, size: file.size, type: file.type });
     try {
-      console.log('[handleProductImageUpload] Validating and processing image...');
       const result = await validateAndProcessImage(file, 'product');
 
       if (!result.success) {
-        console.log('[handleProductImageUpload] VALIDATION ERROR:', result.errors);
         toast({
           title: 'Error de validación',
           description: result.errors.join('\n'),
@@ -243,7 +231,6 @@ const VendorInventoryTab = ({
         return;
       }
 
-      console.log('[handleProductImageUpload] Image processed successfully:', result.metadata);
       setProductImagePreview(result.base64);
       setProductForm(prev => ({ ...prev, image: result.base64 }));
 
@@ -251,7 +238,6 @@ const VendorInventoryTab = ({
         title: 'Imagen optimizada',
         description: `${result.metadata.originalDimensions} → ${result.metadata.finalDimensions} (${result.metadata.compression} compresión)`,
       });
-      console.log('[handleProductImageUpload] SUCCESS - Image uploaded and preview set');
     } catch (error) {
       console.error('[handleProductImageUpload] ERROR:', error);
       console.error('[handleProductImageUpload] Error details:', { message: error?.message, code: error?.code });
@@ -264,10 +250,8 @@ const VendorInventoryTab = ({
   };
 
   const handleSubmitProduct = async () => {
-    console.log('[handleSubmitProduct] START - Input:', { productForm, hasId: !!productForm.id });
 
     if (!productForm.name_es || !productForm.basePrice || !productForm.category) {
-      console.log('[handleSubmitProduct] VALIDATION ERROR - Missing required fields');
       toast({
         title: t('vendor.validation.error'),
         description: t('vendor.validation.fillFields'),
@@ -277,7 +261,6 @@ const VendorInventoryTab = ({
     }
 
     if (!productForm.base_currency_id) {
-      console.log('[handleSubmitProduct] VALIDATION ERROR - Missing currency');
       toast({
         title: 'Error',
         description: language === 'es' ? 'Debe seleccionar una moneda' : 'You must select a currency',
@@ -286,11 +269,9 @@ const VendorInventoryTab = ({
       return;
     }
 
-    console.log('[handleSubmitProduct] Validation passed, processing submission...');
     try {
       const category = categories.find(c => c.id === productForm.category);
       if (!category) {
-        console.log('[handleSubmitProduct] VALIDATION ERROR - Invalid category');
         toast({
           title: 'Error',
           description: 'Categoría no válida',
@@ -299,15 +280,12 @@ const VendorInventoryTab = ({
         return;
       }
 
-      console.log('[handleSubmitProduct] Category validated:', { categoryId: category.id, categoryName: category.name_es });
-
       // Convert price to base currency if different
       let normalizedPrice = parseFloat(productForm.basePrice);
       let finalCurrencyId = productForm.base_currency_id;
       const inputCurrency = getCurrencyById(productForm.base_currency_id);
 
       if (productForm.base_currency_id !== systemBaseCurrencyId) {
-        console.log('[handleSubmitProduct] Converting price to base currency...');
         try {
           normalizedPrice = await convertAmountAsync(
             parseFloat(productForm.basePrice),
@@ -315,10 +293,6 @@ const VendorInventoryTab = ({
             systemBaseCurrencyId
           );
           finalCurrencyId = systemBaseCurrencyId;
-          console.log('[handleSubmitProduct] Price converted:', {
-            original: `${inputCurrency?.code} ${productForm.basePrice}`,
-            converted: `${systemBaseCurrency?.code} ${normalizedPrice.toFixed(2)}`
-          });
         } catch (convError) {
           console.warn('[handleSubmitProduct] Conversion failed, using original:', convError);
           // Fallback: keep original price and currency
@@ -342,12 +316,8 @@ const VendorInventoryTab = ({
         expiryDate: productForm.expiryDate || null
       };
 
-      console.log('[handleSubmitProduct] Product data prepared:', { ...productData, imageLength: productData.image?.length || 0 });
-
       if (productForm.id) {
-        console.log('[handleSubmitProduct] Updating existing product:', productForm.id);
         await updateProductDB(productForm.id, productData);
-        console.log('[handleSubmitProduct] Product updated, logging activity...');
         await logProductActivity('product_updated', productForm.id, `Product ${productData.name_es} updated`, {
           name_es: productData.name_es,
           name_en: productData.name_en,
@@ -361,12 +331,9 @@ const VendorInventoryTab = ({
           sku: productData.sku,
           imageUpdated: Boolean(productData.image)
         });
-        console.log('[handleSubmitProduct] SUCCESS - Product updated');
         toast({ title: t('vendor.productUpdated') });
       } else {
-        console.log('[handleSubmitProduct] Creating new product');
         const createdProduct = await createProduct(productData);
-        console.log('[handleSubmitProduct] Product created:', { id: createdProduct?.id });
         await logProductActivity('product_created', createdProduct?.id || productData.slug || productData.name_es, `Product ${productData.name_es} created`, {
           name_es: productData.name_es,
           name_en: productData.name_en,
@@ -380,15 +347,12 @@ const VendorInventoryTab = ({
           sku: productData.sku,
           imageUpdated: Boolean(productData.image)
         });
-        console.log('[handleSubmitProduct] SUCCESS - Product created');
         toast({ title: t('vendor.productAdded') });
       }
 
-      console.log('[handleSubmitProduct] Refreshing products list...');
       await onProductsRefresh(true);
       setProductForm(null);
       setProductImagePreview(null);
-      console.log('[handleSubmitProduct] Form reset and products refreshed');
     } catch (error) {
       console.error('[handleSubmitProduct] ERROR:', error);
       console.error('[handleSubmitProduct] Error details:', { message: error?.message, code: error?.code, stack: error?.stack });
@@ -401,7 +365,6 @@ const VendorInventoryTab = ({
   };
 
   const handleToggleProductActive = async (product, nextActive) => {
-    console.log('[handleToggleProductActive] START - Input:', { productId: product.id, nextActive });
     setProcessingProductId(product.id);
     try {
       await setProductActiveState(product.id, nextActive);
@@ -420,7 +383,6 @@ const VendorInventoryTab = ({
       });
 
       await onProductsRefresh(true);
-      console.log('[handleToggleProductActive] SUCCESS - Product state updated and list refreshed');
     } catch (error) {
       console.error('[handleToggleProductActive] ERROR:', error);
       console.error('[handleToggleProductActive] Error details:', { message: error?.message, code: error?.code, context: error?.context });
@@ -451,7 +413,6 @@ const VendorInventoryTab = ({
 
   const handleDeleteProduct = async () => {
     if (!productToDelete) return;
-    console.log('[handleDeleteProduct] START - Input:', { productId: productToDelete.id });
     setDeletingProductId(productToDelete.id);
     try {
       // Pass user info for activity logging
@@ -476,7 +437,6 @@ const VendorInventoryTab = ({
       });
       await onProductsRefresh(true);
       setProductToDelete(null);
-      console.log('[handleDeleteProduct] SUCCESS - Product deleted and list refreshed');
     } catch (error) {
       console.error('[handleDeleteProduct] ERROR:', error);
       toast({
