@@ -32,9 +32,7 @@ const VendorPage = () => {
 
   useEffect(() => {
     const fetchCurrencies = async () => {
-      console.log('[fetchCurrencies] START - Loading currencies and exchange rates');
       try {
-        console.log('[fetchCurrencies] Fetching active currencies...');
         const { data, error } = await supabase
           .from('currencies')
           .select('*')
@@ -48,20 +46,16 @@ const VendorPage = () => {
         }
 
         if (data) {
-          console.log('[fetchCurrencies] Currencies loaded:', { count: data.length, currencies: data });
           setCurrencies(data);
           const baseCurrency = data.find(c => c.is_base);
           if (baseCurrency) {
-            console.log('[fetchCurrencies] Base currency found:', { id: baseCurrency.id, code: baseCurrency.code });
             setBaseCurrencyId(baseCurrency.id);
             setSelectedCurrency(baseCurrency.id);
           } else {
-            console.log('[fetchCurrencies] No base currency found in data');
           }
         }
 
         // Load exchange rates
-        console.log('[fetchCurrencies] Fetching exchange rates...');
         const { data: ratesData, error: ratesError } = await supabase
           .from('exchange_rates')
           .select('*')
@@ -74,16 +68,13 @@ const VendorPage = () => {
         }
 
         if (ratesData) {
-          console.log('[fetchCurrencies] Exchange rates loaded:', { count: ratesData.length });
           const ratesMap = {};
           ratesData.forEach(rate => {
             ratesMap[`${rate.from_currency_id}-${rate.to_currency_id}`] = rate.rate;
           });
-          console.log('[fetchCurrencies] Exchange rates map created:', { pairsCount: Object.keys(ratesMap).length });
           setExchangeRates(ratesMap);
         }
 
-        console.log('[fetchCurrencies] SUCCESS - All currency data loaded');
       } catch (error) {
         console.error('[fetchCurrencies] FATAL ERROR:', error);
         console.error('[fetchCurrencies] Error details:', { message: error?.message, code: error?.code, stack: error?.stack });
@@ -91,25 +82,17 @@ const VendorPage = () => {
     };
 
     const fetchAdminData = async () => {
-      console.log('[fetchAdminData] START - Loading admin-specific data');
       try {
-        console.log('[fetchAdminData] Loading products (admin view)...');
         await refreshProducts(true);
-        console.log('[fetchAdminData] Products loaded successfully');
 
         // Load testimonials with admin view
-        console.log('[fetchAdminData] Loading testimonials (admin view)...');
         await refreshTestimonials(true);
-        console.log('[fetchAdminData] Testimonials loaded successfully');
 
         // Load all combos including inactive ones for admin view
-        console.log('[fetchAdminData] Loading combos (admin view)...');
         await refreshCombos(true);
-        console.log('[fetchAdminData] Combos loaded successfully');
 
         // Load all carousel slides
         // await refreshCarouselSlides(false); // Will implement when updating HomePage
-        console.log('[fetchAdminData] SUCCESS - All admin data loaded');
       } catch (error) {
         console.error('[fetchAdminData] ERROR:', error);
         console.error('[fetchAdminData] Error details:', { message: error?.message, code: error?.code, stack: error?.stack });

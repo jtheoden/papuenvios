@@ -43,12 +43,9 @@ const SettingsPage = () => {
 
   // Load official exchange rates
   const loadOfficialRates = async () => {
-    console.log('[loadOfficialRates] START - Loading official exchange rates');
     setLoadingRates(true);
     try {
-      console.log('[loadOfficialRates] Fetching rates from API...');
       const rates = await fetchOfficialRates();
-      console.log('[loadOfficialRates] SUCCESS - Rates loaded:', { count: rates?.length || 0, rates });
       setOfficialRates(rates || []);
     } catch (error) {
       console.error('[loadOfficialRates] ERROR:', error);
@@ -56,7 +53,6 @@ const SettingsPage = () => {
       setOfficialRates([]);
     } finally {
       setLoadingRates(false);
-      console.log('[loadOfficialRates] Loading state set to false');
     }
   };
 
@@ -73,11 +69,8 @@ const SettingsPage = () => {
 
   // Load currencies from database
   const loadCurrencies = async () => {
-    console.log('[loadCurrencies] START - Loading currencies from database');
     try {
-      console.log('[loadCurrencies] Fetching currencies...');
       const currencies = await getCurrencies();
-      console.log('[loadCurrencies] SUCCESS - Currencies loaded:', { count: currencies?.length || 0, currencies });
       setCurrencies(currencies || []);
     } catch (error) {
       console.error('[loadCurrencies] ERROR:', error);
@@ -94,10 +87,8 @@ const SettingsPage = () => {
   };
 
   const handleFinancialSave = () => {
-    console.log('[handleFinancialSave] START - Input:', localFinancial);
     try {
       setFinancialSettings(localFinancial);
-      console.log('[handleFinancialSave] SUCCESS - Financial settings saved');
       toast({ title: t('settings.saveSuccess') });
     } catch (error) {
       console.error('[handleFinancialSave] ERROR:', error);
@@ -108,10 +99,8 @@ const SettingsPage = () => {
 
   // Handle currency form submission (create or update)
   const handleCurrencySubmit = async () => {
-    console.log('[handleCurrencySubmit] START - Input:', { currencyForm, editingCurrency });
 
     if (!currencyForm.code || !currencyForm.name_es || !currencyForm.name_en || !currencyForm.symbol) {
-      console.log('[handleCurrencySubmit] VALIDATION ERROR - Missing required fields');
       toast({
         title: language === 'es' ? 'Error' : 'Error',
         description: language === 'es'
@@ -127,7 +116,6 @@ const SettingsPage = () => {
 
       // If setting as base currency, unset any previous base currency
       if (currencyForm.is_base) {
-        console.log('[handleCurrencySubmit] Unsetting previous base currency...');
         await supabase.from('currencies')
           .update({ is_base: false })
           .eq('is_base', true)
@@ -137,11 +125,9 @@ const SettingsPage = () => {
       let savedCurrency;
       if (editingCurrency) {
         // Update existing currency
-        console.log('[handleCurrencySubmit] Updating existing currency:', editingCurrency.id);
         const { data, error } = await updateCurrency(editingCurrency.id, currencyForm);
         if (error) throw error;
         savedCurrency = data;
-        console.log('[handleCurrencySubmit] Currency updated successfully:', savedCurrency);
 
         toast({
           title: language === 'es' ? 'Moneda actualizada' : 'Currency Updated',
@@ -151,11 +137,9 @@ const SettingsPage = () => {
         });
       } else {
         // Create new currency
-        console.log('[handleCurrencySubmit] Creating new currency');
         const { data, error } = await createCurrency(currencyForm);
         if (error) throw error;
         savedCurrency = data;
-        console.log('[handleCurrencySubmit] Currency created successfully:', savedCurrency);
 
         toast({
           title: language === 'es' ? 'Moneda creada' : 'Currency Created',
@@ -166,11 +150,9 @@ const SettingsPage = () => {
       }
 
       // Reset form and reload
-      console.log('[handleCurrencySubmit] Resetting form and reloading currencies...');
       setCurrencyForm({ code: '', name_es: '', name_en: '', symbol: '', is_base: false });
       setEditingCurrency(null);
       await loadCurrencies();
-      console.log('[handleCurrencySubmit] SUCCESS - Currency submission completed');
     } catch (error) {
       console.error('[handleCurrencySubmit] ERROR:', error);
       console.error('[handleCurrencySubmit] Error details:', { message: error?.message, code: error?.code });
@@ -183,7 +165,6 @@ const SettingsPage = () => {
   };
 
   const handleEditCurrency = async (currency) => {
-    console.log('[handleEditCurrency] START - Input:', currency);
     try {
       setEditingCurrency(currency);
       setCurrencyForm({
@@ -193,7 +174,6 @@ const SettingsPage = () => {
         symbol: currency.symbol,
         is_base: currency.is_base || false
       });
-      console.log('[handleEditCurrency] SUCCESS - Currency form populated for editing');
     } catch (error) {
       console.error('[handleEditCurrency] ERROR:', error);
       console.error('[handleEditCurrency] Error details:', { message: error?.message, code: error?.code });
@@ -202,30 +182,25 @@ const SettingsPage = () => {
   };
 
   const handleRemoveCurrency = async (currencyId) => {
-    console.log('[handleRemoveCurrency] START - Input:', { currencyId });
 
     const confirmMessage = language === 'es'
       ? '¿Está seguro de que desea eliminar esta moneda? Esto también eliminará sus tasas de cambio.'
       : 'Are you sure you want to delete this currency? This will also remove its exchange rates.';
 
     if (!confirm(confirmMessage)) {
-      console.log('[handleRemoveCurrency] User cancelled deletion');
       return;
     }
 
     try {
       // First, deactivate all exchange rates for this currency
-      console.log('[handleRemoveCurrency] Deactivating exchange rates for currency:', currencyId);
       await supabase.from('exchange_rates')
         .update({ is_active: false })
         .or(`from_currency_id.eq.${currencyId},to_currency_id.eq.${currencyId}`);
 
       // Then delete the currency (soft delete)
-      console.log('[handleRemoveCurrency] Deleting currency:', currencyId);
       const { error } = await deleteCurrency(currencyId);
       if (error) throw error;
 
-      console.log('[handleRemoveCurrency] SUCCESS - Currency deleted');
       toast({
         title: language === 'es' ? 'Moneda eliminada' : 'Currency Deleted',
         description: language === 'es'
@@ -251,14 +226,11 @@ const SettingsPage = () => {
   };
 
   const handleNotificationSave = async () => {
-    console.log('[handleNotificationSave] START - Input:', localNotifications);
     try {
-      console.log('[handleNotificationSave] Saving notification settings...');
       await saveNotificationSettings(localNotifications);
       // IMPORTANT: Refresh from DB to ensure all components get the fresh values
       // This ensures the cached values in context are updated immediately
       await refreshNotificationSettings();
-      console.log('[handleNotificationSave] SUCCESS - Notification settings saved and context refreshed');
       toast({ title: t('settings.saveSuccess') });
     } catch (err) {
       console.error('[handleNotificationSave] ERROR:', err);
@@ -272,12 +244,9 @@ const SettingsPage = () => {
 
   // Exchange Rates functions
   const loadExchangeRates = async () => {
-    console.log('[loadExchangeRates] START - Loading exchange rates');
     setLoadingRates2(true);
     try {
-      console.log('[loadExchangeRates] Fetching rates from database...');
       const rates = await getAllExchangeRates();
-      console.log('[loadExchangeRates] SUCCESS - Rates loaded:', { count: rates?.length || 0, rates });
       setExchangeRates(rates || []);
     } catch (error) {
       console.error('[loadExchangeRates] ERROR:', error);
@@ -285,15 +254,12 @@ const SettingsPage = () => {
       setExchangeRates([]);
     } finally {
       setLoadingRates2(false);
-      console.log('[loadExchangeRates] Loading state set to false');
     }
   };
 
   const handleSaveRate = async () => {
-    console.log('[handleSaveRate] START - Input:', newRate);
 
     if (!newRate.fromCurrencyId || !newRate.toCurrencyId || !newRate.rate) {
-      console.log('[handleSaveRate] VALIDATION ERROR - Missing required fields');
       toast({
         title: language === 'es' ? 'Datos incompletos' : 'Incomplete data',
         description: language === 'es'
@@ -305,7 +271,6 @@ const SettingsPage = () => {
     }
 
     if (newRate.fromCurrencyId === newRate.toCurrencyId) {
-      console.log('[handleSaveRate] VALIDATION ERROR - Same currencies selected');
       toast({
         title: language === 'es' ? 'Error' : 'Error',
         description: language === 'es'
@@ -318,10 +283,8 @@ const SettingsPage = () => {
 
     try {
       // Save direct rate (from -> to)
-      console.log('[handleSaveRate] Saving direct rate...');
       const result = await saveExchangeRate(newRate);
       if (result.error) throw result.error;
-      console.log('[handleSaveRate] Direct rate saved:', result);
 
       // Save inverse rate (to -> from)
       const inverseRate = {
@@ -330,10 +293,8 @@ const SettingsPage = () => {
         rate: (1 / parseFloat(newRate.rate)).toString(),
         effectiveDate: newRate.effectiveDate
       };
-      console.log('[handleSaveRate] Saving inverse rate:', inverseRate);
       const inverseResult = await saveExchangeRate(inverseRate);
       if (inverseResult.error) throw inverseResult.error;
-      console.log('[handleSaveRate] Inverse rate saved:', inverseResult);
 
       await loadExchangeRates();
       setShowAddRate(false);
@@ -344,7 +305,6 @@ const SettingsPage = () => {
         effectiveDate: new Date().toISOString().split('T')[0]
       });
 
-      console.log('[handleSaveRate] SUCCESS - Exchange rates saved');
       toast({
         title: language === 'es' ? '✅ Tasas guardadas' : '✅ Rates saved',
         description: language === 'es'
@@ -363,21 +323,16 @@ const SettingsPage = () => {
   };
 
   const handleDeleteRate = async (rateId) => {
-    console.log('[handleDeleteRate] START - Input:', { rateId });
 
     if (!confirm(language === 'es' ? '¿Eliminar esta tasa?' : 'Delete this rate?')) {
-      console.log('[handleDeleteRate] User cancelled deletion');
       return;
     }
 
     try {
-      console.log('[handleDeleteRate] Deleting exchange rate:', rateId);
       const result = await deleteExchangeRate(rateId);
       if (result.error) throw result.error;
-      console.log('[handleDeleteRate] Delete result:', result);
 
       await loadExchangeRates();
-      console.log('[handleDeleteRate] SUCCESS - Exchange rate deleted');
       toast({
         title: language === 'es' ? '✅ Tasa eliminada' : '✅ Rate deleted'
       });
@@ -393,10 +348,8 @@ const SettingsPage = () => {
   };
 
   const handleVisualSave = async () => {
-    console.log('[handleVisualSave] START - Input:', localVisual);
     try {
       setVisualSettings(localVisual);
-      console.log('[handleVisualSave] SUCCESS - Visual settings saved');
       toast({ title: t('settings.saveSuccess') });
     } catch (error) {
       console.error('[handleVisualSave] ERROR:', error);
@@ -488,7 +441,6 @@ const SettingsPage = () => {
               setLocalFinancial={setLocalFinancial}
             />
           )}
-
 
           {/* VISUAL TAB */}
           {activeTab === 'visual' && (
