@@ -88,7 +88,6 @@ export const useRealtimeSubscription = ({
             'postgres_changes',
             changeOptions,
             (payload) => {
-              console.log(`[Realtime] ${table} ${payload.eventType}:`, payload.new?.id || payload.old?.id);
               setLastUpdate(new Date());
 
               // Call specific handlers based on event type
@@ -106,7 +105,6 @@ export const useRealtimeSubscription = ({
           .subscribe((status, err) => {
             if (status === 'SUBSCRIBED') {
               setIsSubscribed(true);
-              console.log(`[Realtime] Subscribed to ${table}`);
               return;
             }
 
@@ -149,7 +147,6 @@ export const useRealtimeSubscription = ({
       if (channel) {
         supabase.removeChannel(channel);
         setIsSubscribed(false);
-        console.log(`[Realtime] Unsubscribed from ${table}`);
       }
     };
   }, [table, event, filter, enabled]);
@@ -378,15 +375,12 @@ export const useUserAlerts = ({ userId, alertType = null, enabled = true }) => {
     filter: userId ? `user_id=eq.${userId}` : null,
     enabled: enabled && !!userId,
     onInsert: () => {
-      console.log('[useUserAlerts] New alert received');
       loadAlerts();
     },
     onUpdate: () => {
-      console.log('[useUserAlerts] Alert updated');
       loadAlerts();
     },
     onDelete: () => {
-      console.log('[useUserAlerts] Alert deleted');
       loadAlerts();
     }
   });

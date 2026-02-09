@@ -72,8 +72,6 @@ export const AuthProvider = ({ children }) => {
       const now = Math.floor(Date.now() / 1000);
       const timeUntilExpiry = expiresAt - now;
 
-      console.log('[Auth] Session check: token expires in', timeUntilExpiry, 'seconds');
-
       if (timeUntilExpiry < 60) {
         console.warn('[Auth] Token expiring soon, attempting refresh...');
         const { data, error: refreshError } = await supabase.auth.refreshSession();
@@ -88,7 +86,6 @@ export const AuthProvider = ({ children }) => {
         }
 
         if (data?.session) {
-          console.log('[Auth] Token refreshed successfully');
           await updateUserState(data.session);
           return true;
         }
@@ -119,7 +116,6 @@ export const AuthProvider = ({ children }) => {
 
         // Retry if attempts remaining
         if (attempt < RETRY_CONFIG.PROFILE_FETCH_ATTEMPTS) {
-          console.log(`[Auth] Retrying profile fetch in ${RETRY_CONFIG.PROFILE_FETCH_DELAY}ms...`);
           await new Promise(resolve => setTimeout(resolve, RETRY_CONFIG.PROFILE_FETCH_DELAY));
           return fetchProfile(uid, attempt + 1);
         }
@@ -133,7 +129,6 @@ export const AuthProvider = ({ children }) => {
 
       // Retry if attempts remaining
       if (attempt < RETRY_CONFIG.PROFILE_FETCH_ATTEMPTS) {
-        console.log(`[Auth] Retrying profile fetch in ${RETRY_CONFIG.PROFILE_FETCH_DELAY}ms...`);
         await new Promise(resolve => setTimeout(resolve, RETRY_CONFIG.PROFILE_FETCH_DELAY));
         return fetchProfile(uid, attempt + 1);
       }
@@ -153,14 +148,6 @@ export const AuthProvider = ({ children }) => {
     }
 
     const uid = session.user.id;
-    console.log('[Auth] Updating user state for:', session.user.email);
-    console.log('[Auth] Session user metadata:', {
-      id: session.user.id,
-      email: session.user.email,
-      provider: session.user.app_metadata?.provider,
-      aud: session.user.aud,
-      expires_at: session.expires_at
-    });
 
     // Fetch profile from database
     const profile = await fetchProfile(uid);
@@ -170,8 +157,6 @@ export const AuthProvider = ({ children }) => {
       console.warn('[Auth] Profile not found, attempting to use cached role as fallback');
       const cachedRoleData = getCachedRole(uid);
       const fallbackRole = cachedRoleData?.role || 'user';
-
-      console.log('[Auth] Using fallback role:', fallbackRole, 'from cache:', !!cachedRoleData);
 
       setUser(session.user);
       setUserRole(fallbackRole);
@@ -225,13 +210,6 @@ export const AuthProvider = ({ children }) => {
     // Cache the role for future use in case of timeout
     setCachedRole(uid, profile.role || 'user');
 
-    console.log('[Auth] User state updated successfully', {
-      role: profile.role,
-      email: mergedUser.email,
-      hasAvatar: !!mergedUser.avatar_url,
-      timestamp: new Date().toISOString()
-    });
-
     // Non-blocking: Sync metadata from OAuth provider
     syncMetadata(uid, session.user, profile);
   };
@@ -277,7 +255,6 @@ export const AuthProvider = ({ children }) => {
     }, TIMEOUTS.INIT_AUTH);
 
     const initialize = async () => {
-      console.log('[Auth] Initializing...');
       setLoading(true);
 
       try {
@@ -304,15 +281,10 @@ export const AuthProvider = ({ children }) => {
 
     // Listen for auth changes (sign in, sign out, token refresh)
     const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] State change:', event, {
-        hasSession: !!session,
-        timestamp: new Date().toISOString()
-      });
 
       if (!mountedRef.current) return;
 
       if (event === 'SIGNED_OUT') {
-        console.log('[Auth] SIGNED_OUT event received - clearing user state');
         setUser(null);
         setUserRole(null);
         setUserCategory(null);
@@ -321,7 +293,6 @@ export const AuthProvider = ({ children }) => {
       }
 
       if (event === 'TOKEN_REFRESHED') {
-        console.log('[Auth] TOKEN_REFRESHED event - session updated');
       }
 
       if (session) {
@@ -332,7 +303,6 @@ export const AuthProvider = ({ children }) => {
     // Set up periodic session check (every 5 minutes)
     sessionCheckIntervalRef.current = setInterval(() => {
       if (mountedRef.current && user) {
-        console.log('[Auth] Running periodic session check...');
         checkAndRefreshSession();
       }
     }, 5 * 60 * 1000); // 5 minutes
