@@ -63,15 +63,11 @@ const BankAccountForm = ({
   const loadBankData = async () => {
     setLoadingData(true);
     try {
-      console.log('🔄 Cargando bancos y monedas...');
 
       const [banksData, currenciesData] = await Promise.all([
         getAllBanks(),
         getAllCurrencies()
       ]);
-
-      console.log('📊 Bancos cargados:', banksData?.length || 0, banksData);
-      console.log('💰 Monedas cargadas:', currenciesData?.length || 0, currenciesData);
 
       setBanks(banksData || []);
       setCurrencies(currenciesData || []);

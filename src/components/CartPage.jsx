@@ -208,7 +208,6 @@ const CartPage = ({ onNavigate }) => {
   const loadShippingZones = async () => {
     try {
       const zones = await getActiveShippingZones();
-      console.log('Shipping zones loaded:', zones);
 
       // Filter zones: exclude zones with shipping_cost = 0 UNLESS they are marked as free_shipping
       const availableZones = (zones || []).filter(zone => {
@@ -217,7 +216,6 @@ const CartPage = ({ onNavigate }) => {
         return zone.free_shipping === true || cost > 0;
       });
       setShippingZones(availableZones);
-      console.log('Zones set:', availableZones.length);
     } catch (error) {
       console.error('Error loading shipping zones:', error);
     }
@@ -269,19 +267,15 @@ const CartPage = ({ onNavigate }) => {
 
   const updateShippingCost = async (provinceName, municipalityName = null) => {
     if (!provinceName) {
-      console.log('[CartPage] No province provided for shipping calculation');
       setShippingCost(0);
       return;
     }
 
-    console.log('[CartPage] Calculating shipping for:', { provinceName, municipalityName, subtotal });
     try {
       // Pass municipality for priority-based cost lookup
       const result = await calculateShippingCost(provinceName, subtotal, municipalityName);
-      console.log('[CartPage] Shipping calculation result:', result);
       const cost = typeof result?.cost === 'number' ? result.cost : 0;
       setShippingCost(cost);
-      console.log('[CartPage] Shipping cost set to:', cost, 'source:', result?.source);
     } catch (error) {
       console.error('[CartPage] Error calculating shipping:', error);
       setShippingCost(0);
@@ -684,7 +678,6 @@ const CartPage = ({ onNavigate }) => {
           const zelleResult = await getAvailableZelleAccount('order', totalAmount);
           if (zelleResult.success && zelleResult.account) {
             selectedZelleAccountId = zelleResult.account.id;
-            console.log('[CartPage] Auto-assigned Zelle account:', selectedZelleAccountId);
           } else {
             console.warn('[CartPage] No Zelle accounts available:', zelleResult.error);
           }
@@ -692,16 +685,9 @@ const CartPage = ({ onNavigate }) => {
           console.error('[CartPage] Error getting Zelle account:', zelleError);
         }
       } else {
-        console.log('[CartPage] Using user-selected Zelle account:', selectedZelleAccountId);
       }
 
       // Debug logs
-      console.log('Creating order with:', {
-        userId: user.id,
-        currencyId: currency.id,
-        shippingZoneId: shippingZone?.id,
-        zelleAccountId: selectedZelleAccountId
-      });
 
       // Prepare order items
       const orderItems = cart.map(item => ({

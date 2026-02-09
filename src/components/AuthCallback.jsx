@@ -19,14 +19,12 @@ const AuthCallback = ({ onNavigate }) => {
     // Si hay una remesa pendiente, redirigir a send-remittance para continuar el flujo
     const pendingRemittance = localStorage.getItem('pendingRemittance');
     if (pendingRemittance) {
-      console.log('[AuthCallback] Detected pending remittance, redirecting to send-remittance');
       return 'send-remittance';
     }
 
     // Si hay un checkout pendiente, redirigir al carrito para continuar el flujo
     const pendingCheckout = localStorage.getItem('pendingCheckout');
     if (pendingCheckout) {
-      console.log('[AuthCallback] Detected pending checkout, redirecting to cart');
       return 'cart';
     }
 
@@ -39,7 +37,6 @@ const AuthCallback = ({ onNavigate }) => {
 
     const handleAuthCallback = async () => {
       try {
-        console.log('[AuthCallback] start handling callback', { href: window.location.href, hash: window.location.hash, search: window.location.search });
 
         // Prevent double-handle in same browser session (StrictMode/dev may mount twice)
         if (sessionStorage.getItem(SUPABASE_AUTH_HANDLED_KEY) === '1') {
@@ -85,8 +82,6 @@ const AuthCallback = ({ onNavigate }) => {
         if (!session?.user) {
           throw new Error('No se pudo establecer la sesión de usuario');
         }
-
-        console.log('[AuthCallback] Auth success for:', session.user.email);
 
         // NOTE: Profile creation is handled by database trigger (handle_new_user)
         // No need to manually create/update profile here - the trigger does it automatically
