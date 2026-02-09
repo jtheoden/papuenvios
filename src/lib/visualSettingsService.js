@@ -83,7 +83,6 @@ export function getCachedVisualSettings() {
     if (cached) {
       const { data, timestamp } = JSON.parse(cached);
       if (Date.now() - timestamp < CACHE_DURATION) {
-        console.log('[VisualSettings] Using cached settings');
         return data;
       }
     }
@@ -199,7 +198,6 @@ export function applyVisualSettings(settings) {
       );
     }
 
-    console.log('[VisualSettings] Applied to DOM');
   } catch (err) {
     console.error('[VisualSettings] DOM apply error:', err);
   }

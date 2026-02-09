@@ -28,11 +28,9 @@ const getWhatsAppConfig = () => {
  * @returns {string} Formatted phone number (empty string if invalid)
  */
 export const formatPhoneForWhatsApp = (phone) => {
-  console.log('[WhatsApp] formatPhoneForWhatsApp input:', JSON.stringify(phone), 'type:', typeof phone);
 
   if (!phone || typeof phone !== 'string') {
     if (!phone) {
-      console.log('[WhatsApp] formatPhoneForWhatsApp: phone is empty/null/undefined');
       return '';
     }
     logError({ code: 'VALIDATION_FAILED', message: 'Invalid phone type' }, {
@@ -43,11 +41,9 @@ export const formatPhoneForWhatsApp = (phone) => {
 
   // Remove all non-digit characters (spaces, dashes, parentheses, +)
   let cleaned = phone.replace(/\D/g, '');
-  console.log('[WhatsApp] formatPhoneForWhatsApp after cleaning:', cleaned, 'length:', cleaned.length);
 
   // If empty after cleaning, return empty
   if (!cleaned) {
-    console.log('[WhatsApp] formatPhoneForWhatsApp: cleaned is empty');
     return '';
   }
 
@@ -55,14 +51,11 @@ export const formatPhoneForWhatsApp = (phone) => {
   if (cleaned.startsWith('00')) {
     // International format with 00 prefix (e.g., 001 for US)
     cleaned = cleaned.substring(2);
-    console.log('[WhatsApp] formatPhoneForWhatsApp: removed 00 prefix, now:', cleaned);
   } else if (cleaned.length > 10 && cleaned.startsWith('0')) {
     // Remove single leading 0 only if number is long enough to have country code
     cleaned = cleaned.substring(1);
-    console.log('[WhatsApp] formatPhoneForWhatsApp: removed leading 0, now:', cleaned);
   }
 
-  console.log('[WhatsApp] formatPhoneForWhatsApp result:', cleaned);
   return cleaned;
 };
 
@@ -73,7 +66,6 @@ export const formatPhoneForWhatsApp = (phone) => {
  * @returns {string} WhatsApp URL (returns empty string if phone invalid)
  */
 export const generateWhatsAppURL = (phone, message = '') => {
-  console.log('[WhatsApp] generateWhatsAppURL called with phone:', phone, 'type:', typeof phone);
 
   if (!phone || typeof phone !== 'string') {
     logError({ code: 'VALIDATION_FAILED', message: 'Phone is required and must be string' }, {
@@ -84,7 +76,6 @@ export const generateWhatsAppURL = (phone, message = '') => {
   }
 
   const formattedPhone = formatPhoneForWhatsApp(phone);
-  console.log('[WhatsApp] Formatted phone:', formattedPhone, 'from original:', phone);
 
   if (!formattedPhone) {
     logError({ code: 'VALIDATION_FAILED', message: 'Phone formatting failed' }, {
@@ -100,7 +91,6 @@ export const generateWhatsAppURL = (phone, message = '') => {
   // Use WhatsApp API URL format
   // Works on both mobile and desktop
   const url = `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
-  console.log('[WhatsApp] Generated URL:', url.substring(0, 100) + '...');
   return url;
 };
 
@@ -111,7 +101,6 @@ export const generateWhatsAppURL = (phone, message = '') => {
  * @requires window.open API (browser environment)
  */
 export const openWhatsAppChat = (phone, message = '') => {
-  console.log('[WhatsApp] openWhatsAppChat called with phone:', phone);
 
   if (!phone || typeof phone !== 'string') {
     logError({ code: 'VALIDATION_FAILED', message: 'Phone is required for WhatsApp chat' }, {
@@ -130,7 +119,6 @@ export const openWhatsAppChat = (phone, message = '') => {
   }
 
   const url = generateWhatsAppURL(phone, message);
-  console.log('[WhatsApp] openWhatsAppChat - generated URL:', url?.substring(0, 100));
 
   if (!url) {
     logError({ code: 'VALIDATION_FAILED', message: 'Failed to generate WhatsApp URL' }, {
@@ -140,7 +128,6 @@ export const openWhatsAppChat = (phone, message = '') => {
     return;
   }
 
-  console.log('[WhatsApp] Opening URL in new tab...');
   window.open(url, '_blank');
 };
 
@@ -152,8 +139,6 @@ export const openWhatsAppChat = (phone, message = '') => {
  * @param {string} [language='es'] - Language for message ('es' or 'en')
  */
 export const notifyAdminNewPayment = (order, adminPhone, language = 'es') => {
-  console.log('[WhatsApp] notifyAdminNewPayment called with adminPhone:', adminPhone);
-  console.log('[WhatsApp] adminPhone type:', typeof adminPhone, 'length:', adminPhone?.length);
 
   if (!adminPhone || typeof adminPhone !== 'string') {
     logError({ code: 'VALIDATION_FAILED', message: 'Admin phone not configured' }, {
@@ -493,8 +478,6 @@ export const isValidPhoneNumber = (phone) => {
  * @param {string} language - Language for message ('es' or 'en')
  */
 export const notifyAdminNewPaymentProof = async (remittance, adminPhone, language = 'es') => {
-  console.log('[WhatsApp] notifyAdminNewPaymentProof called with adminPhone:', adminPhone);
-  console.log('[WhatsApp] adminPhone type:', typeof adminPhone, 'length:', adminPhone?.length);
 
   if (!adminPhone) {
     console.error('[WhatsApp] Admin WhatsApp number not configured or empty');

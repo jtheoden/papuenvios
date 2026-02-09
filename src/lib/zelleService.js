@@ -1059,7 +1059,6 @@ export const deleteZelleAccount = async (accountId, forceDeactivate = false) => 
     let affectedOperations = null;
     if (hasOperationsWithoutProof) {
       affectedOperations = await getAffectedOperations(accountId);
-      console.log(`[deleteZelleAccount] Account ${accountId} has ${affectedOperations.totalAffected} operations without payment proof that will be affected`);
     }
 
     // If there is historical data OR operations without proof OR force, do soft delete
@@ -1085,7 +1084,6 @@ export const deleteZelleAccount = async (accountId, forceDeactivate = false) => 
             language: 'es' // Default to Spanish
           });
           alertsCreated = alerts?.length || 0;
-          console.log(`[deleteZelleAccount] Created ${alertsCreated} alerts in database for affected users`);
 
           // Send email notifications to affected users (async, non-blocking)
           sendZelleDeactivationEmails({
@@ -1106,8 +1104,6 @@ export const deleteZelleAccount = async (accountId, forceDeactivate = false) => 
       if (deps.hasHistoricalTransactions) reasons.push(`${deps.historicalTransactionCount} historical transactions`);
       if (hasOperationsWithoutProof) reasons.push(`${affectedOperations?.totalAffected || 0} pending operations notified (${alertsCreated} alerts created)`);
 
-      console.log(`[deleteZelleAccount] Account ${accountId} deactivated (soft delete) - ${reasons.join(', ')}`);
-
       return {
         deleted: false,
         deactivated: true,
@@ -1127,8 +1123,6 @@ export const deleteZelleAccount = async (accountId, forceDeactivate = false) => 
     if (error) {
       throw parseSupabaseError(error);
     }
-
-    console.log(`[deleteZelleAccount] Account ${accountId} permanently deleted (no dependencies)`);
 
     return {
       deleted: true,
@@ -1592,7 +1586,6 @@ const sendZelleDeactivationEmails = async ({
   affectedRemittances.forEach(rem => rem.user_id && userIds.add(rem.user_id));
 
   if (userIds.size === 0) {
-    console.log('[sendZelleDeactivationEmails] No users to notify');
     return;
   }
 
@@ -1638,7 +1631,6 @@ const sendZelleDeactivationEmails = async ({
       if (error) {
         console.error(`[sendZelleDeactivationEmails] Error sending to ${user.email}:`, error);
       } else {
-        console.log(`[sendZelleDeactivationEmails] Email sent to ${user.email}`);
       }
     } catch (err) {
       console.error(`[sendZelleDeactivationEmails] Exception for ${user.email}:`, err);
@@ -1646,7 +1638,6 @@ const sendZelleDeactivationEmails = async ({
   });
 
   await Promise.allSettled(emailPromises);
-  console.log(`[sendZelleDeactivationEmails] Processed ${users.length} email notifications`);
 };
 
 // ============================================================================

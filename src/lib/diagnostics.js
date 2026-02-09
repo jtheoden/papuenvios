@@ -32,7 +32,6 @@ class SystemDiagnostics {
         this.issues.push(`Missing environment variable: ${varName}`);
         console.error(`❌ ${varName}: NOT SET`);
       } else {
-        console.log(`✅ ${varName}: Configured`);
         this.info.push(`${varName} is set`);
       }
     });
@@ -52,7 +51,6 @@ class SystemDiagnostics {
       localStorage.removeItem('__diagnostics_test');
 
       if (value) {
-        console.log('✅ localStorage: Available and working');
         this.info.push('localStorage functional');
       }
     } catch (e) {
@@ -63,9 +61,7 @@ class SystemDiagnostics {
     // Check for auth session
     const authSession = localStorage.getItem('papuenvios-auth');
     if (authSession) {
-      console.log('✅ Auth session found in storage');
     } else {
-      console.log('ℹ️ No active auth session');
     }
 
     console.groupEnd();
@@ -90,7 +86,6 @@ class SystemDiagnostics {
 
     Object.entries(apis).forEach(([api, supported]) => {
       if (supported) {
-        console.log(`✅ ${api}`);
       } else {
         console.error(`❌ ${api}: NOT SUPPORTED`);
         this.issues.push(`Browser API missing: ${api}`);
@@ -114,7 +109,6 @@ class SystemDiagnostics {
       });
       const endTime = performance.now();
 
-      console.log(`✅ Network: Online (latency: ${(endTime - startTime).toFixed(2)}ms)`);
       this.performance.networkLatency = endTime - startTime;
     } catch (e) {
       this.warnings.push('Network connectivity check failed');
@@ -129,10 +123,6 @@ class SystemDiagnostics {
    */
   checkViewport() {
     console.group('📱 VIEWPORT CHECK');
-
-    console.log(`Screen size: ${window.innerWidth}x${window.innerHeight}`);
-    console.log(`Device pixel ratio: ${window.devicePixelRatio}`);
-    console.log(`User agent: ${navigator.userAgent}`);
 
     if (window.innerWidth < 768) {
       this.info.push('Mobile viewport detected');
@@ -153,10 +143,6 @@ class SystemDiagnostics {
       const responseTime = timing.responseEnd - timing.requestStart;
       const renderTime = timing.domContentLoadedEventEnd - timing.navigationStart;
 
-      console.log(`Page load time: ${loadTime}ms`);
-      console.log(`Server response time: ${responseTime}ms`);
-      console.log(`DOM ready time: ${renderTime}ms`);
-
       this.performance.loadTime = loadTime;
       this.performance.responseTime = responseTime;
       this.performance.renderTime = renderTime;
@@ -168,7 +154,6 @@ class SystemDiagnostics {
 
     if (window.performance && window.performance.memory) {
       const memory = window.performance.memory;
-      console.log(`Memory used: ${(memory.usedJSHeapSize / 1048576).toFixed(2)}MB / ${(memory.jsHeapSizeLimit / 1048576).toFixed(2)}MB`);
       this.performance.memory = {
         used: memory.usedJSHeapSize,
         limit: memory.jsHeapSizeLimit
@@ -186,7 +171,6 @@ class SystemDiagnostics {
 
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     if (supabaseUrl) {
-      console.log(`✅ Supabase: ${supabaseUrl}`);
     } else {
       console.error('❌ Supabase URL not configured');
       this.issues.push('Supabase URL not configured');
@@ -201,14 +185,7 @@ class SystemDiagnostics {
   generateReport() {
     console.group(`📊 DIAGNOSTICS REPORT [${TIMESTAMP}]`);
 
-    console.log(`Version: ${DIAGNOSTICS_VERSION}`);
-    console.log(`Runtime: ${navigator.userAgent.split(' ').slice(-1)[0]}`);
-    console.log(`Timestamp: ${TIMESTAMP}`);
-
     console.group('SUMMARY');
-    console.log(`✅ Checks Passed: ${this.info.length}`);
-    console.log(`⚠️ Warnings: ${this.warnings.length}`);
-    console.log(`❌ Issues: ${this.issues.length}`);
     console.groupEnd();
 
     if (this.issues.length > 0) {
@@ -232,9 +209,6 @@ class SystemDiagnostics {
     console.groupEnd();
 
     console.group('ENVIRONMENT');
-    console.log(`Node environment: ${import.meta.env.MODE}`);
-    console.log(`Dev mode: ${import.meta.env.DEV}`);
-    console.log(`Prod mode: ${import.meta.env.PROD}`);
     console.groupEnd();
 
     console.groupEnd();
@@ -254,7 +228,6 @@ class SystemDiagnostics {
    */
   async runAll() {
     console.clear();
-    console.log('%c🔍 PAPUENVÍOS SYSTEM DIAGNOSTICS STARTING', 'color: blue; font-size: 16px; font-weight: bold');
 
     this.checkEnvironment();
     this.checkStorage();
@@ -274,5 +247,4 @@ export const diagnostics = new SystemDiagnostics();
 // Auto-run on module load in dev mode
 if (import.meta.env.DEV) {
   window.__papuDiagnostics = diagnostics;
-  console.log('💡 Tip: Run window.__papuDiagnostics.runAll() in console for full diagnostic report');
 }

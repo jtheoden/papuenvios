@@ -483,7 +483,6 @@ export const getMunicipalitiesByProvince = async (province) => {
  */
 export const createBankAccount = async (userId, bankData) => {
   try {
-    console.log('[createBankAccount] START - Input data:', { userId, bankData });
 
     const { bankId, accountTypeId, currencyId, accountNumber, accountHolderName } = bankData;
 
@@ -503,12 +502,10 @@ export const createBankAccount = async (userId, bankData) => {
 
     // Auto-convert currency code (e.g., 'USD', 'MLC') to UUID if needed
     if (typeof currencyId === 'string' && currencyId.length <= 4) {
-      console.log('[createBankAccount] Converting currency code to ID:', currencyId);
       try {
         const { getCurrencyByCode } = await import('@/lib/bankService');
         const currencyData = await getCurrencyByCode(currencyId);
         finalCurrencyId = currencyData.id;
-        console.log('[createBankAccount] Currency found:', { code: currencyId, id: finalCurrencyId });
       } catch (error) {
         console.error('[createBankAccount] Currency lookup failed:', error);
         throw new Error(`La moneda '${currencyId}' no está disponible en el sistema. Por favor, contacta al administrador para agregar esta moneda.`);
@@ -517,12 +514,10 @@ export const createBankAccount = async (userId, bankData) => {
 
     // Auto-detect account type based on currency if not provided
     if (!accountTypeId) {
-      console.log('[createBankAccount] Auto-detecting account type for currency:', currencyId);
       try {
         const { getDefaultAccountTypeForCurrency } = await import('@/lib/bankService');
         const accountTypeData = await getDefaultAccountTypeForCurrency(currencyId);
         finalAccountTypeId = accountTypeData.id;
-        console.log('[createBankAccount] Account type found:', finalAccountTypeId);
       } catch (error) {
         console.error('[createBankAccount] Account type lookup failed:', error);
         throw new Error(`No se encontró un tipo de cuenta para la moneda '${currencyId}'. Por favor, contacta al administrador.`);
@@ -542,11 +537,9 @@ export const createBankAccount = async (userId, bankData) => {
     const accountNumberLast4 = accountNumber.slice(-4);
 
     // Encrypt full account number for admin access
-    console.log('[createBankAccount] Encrypting account number...');
     const encryptedAccountNumber = await encryptData(accountNumber);
 
     // Check if account already exists (including soft-deleted ones)
-    console.log('[createBankAccount] Checking for existing account with hash:', accountNumberHash);
     const { data: existingAccount } = await supabase
       .from('bank_accounts')
       .select('id, is_active, deleted_at')
@@ -556,7 +549,6 @@ export const createBankAccount = async (userId, bankData) => {
 
     // If account exists and is soft-deleted, reactivate it
     if (existingAccount && existingAccount.deleted_at) {
-      console.log('[createBankAccount] Reactivating soft-deleted account:', existingAccount.id);
       const { data: reactivatedAccount, error: reactivateError } = await supabase
         .from('bank_accounts')
         .update({
@@ -572,7 +564,6 @@ export const createBankAccount = async (userId, bankData) => {
         throw parseSupabaseError(reactivateError);
       }
 
-      console.log('[createBankAccount] Account reactivated successfully');
       return reactivatedAccount;
     }
 
@@ -586,7 +577,6 @@ export const createBankAccount = async (userId, bankData) => {
     }
 
     // Create new account
-    console.log('[createBankAccount] Creating new bank account...');
     const { data, error } = await supabase
       .from('bank_accounts')
       .insert([
@@ -609,7 +599,6 @@ export const createBankAccount = async (userId, bankData) => {
       throw parseSupabaseError(error);
     }
 
-    console.log('[createBankAccount] Bank account created successfully:', data.id);
     return data;
   } catch (error) {
     if (error.code) throw error;
