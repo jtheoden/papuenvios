@@ -64,9 +64,10 @@ const SettingsZelleTab = () => {
   const loadAccounts = async () => {
     setLoading(true);
     try {
-      const [data, usageSummary] = await Promise.all([
+      const [data, usageSummary, historicalTotals] = await Promise.all([
         zelleService.getAllZelleAccounts(),
-        zelleService.getZelleAccountUsageSummary()
+        zelleService.getZelleAccountUsageSummary(),
+        zelleService.getZelleAccountHistoricalTotals()
       ]);
 
       const enriched = (data || []).map((account) => {
@@ -74,7 +75,8 @@ const SettingsZelleTab = () => {
         return {
           ...account,
           current_daily_amount: usage.dailyAmount ?? account.current_daily_amount ?? 0,
-          current_monthly_amount: usage.monthlyAmount ?? account.current_monthly_amount ?? 0
+          current_monthly_amount: usage.monthlyAmount ?? account.current_monthly_amount ?? 0,
+          historical_total: historicalTotals?.[account.id] ?? 0
         };
       });
 
