@@ -14,19 +14,60 @@ import {
  * Get all category rules
  * @returns {Promise<Array>} Category rules with thresholds
  */
-export const getCategoryRules = async () => {
+export const getCategoryRules = async (includeDisabled = false) => {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('category_rules')
       .select('*')
-      .eq('enabled', true)
       .order('interaction_threshold', { ascending: true });
+
+    if (!includeDisabled) {
+      query = query.eq('enabled', true);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw parseSupabaseError(error);
     return data || [];
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getCategoryRules' });
+    logError(appError);
+    throw appError;
+  }
+};
+
+/**
+ * Update a category rule
+ * @param {string} ruleId - Rule UUID
+ * @param {Object} data - Fields to update (interaction_threshold, icon, display_name_es, display_name_en, enabled)
+ * @returns {Promise<Object>} Updated rule
+ */
+export const updateCategoryRule = async (ruleId, data) => {
+  try {
+    if (!ruleId) {
+      throw createValidationError({ ruleId: 'Rule ID is required' });
+    }
+
+    const updatePayload = { updated_at: new Date().toISOString() };
+    if (data.interaction_threshold !== undefined) updatePayload.interaction_threshold = data.interaction_threshold;
+    if (data.icon !== undefined) updatePayload.icon = data.icon;
+    if (data.display_name_es !== undefined) updatePayload.display_name_es = data.display_name_es;
+    if (data.display_name_en !== undefined) updatePayload.display_name_en = data.display_name_en;
+    if (data.enabled !== undefined) updatePayload.enabled = data.enabled;
+
+    const { data: result, error } = await supabase
+      .from('category_rules')
+      .update(updatePayload)
+      .eq('id', ruleId)
+      .select()
+      .single();
+
+    if (error) throw parseSupabaseError(error);
+    return result;
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'updateCategoryRule', ruleId });
     logError(appError);
     throw appError;
   }

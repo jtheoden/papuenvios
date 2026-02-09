@@ -13,7 +13,8 @@ import CategoryBadge from '@/components/CategoryBadge';
 import UserAvatar from '@/components/avatars/UserAvatar';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import { getUserTableColumns, getUserModalColumns } from '@/components/admin/UserTableConfig';
-import { getCategoryRules, getCategoryDiscounts, recalculateAllCategories, updateCategoryDiscount } from '@/lib/userCategorizationService';
+import { getCategoryRules, getCategoryDiscounts, recalculateAllCategories, updateCategoryDiscount, updateCategoryRule } from '@/lib/userCategorizationService';
+import { ICON_MAP } from '@/components/CategoryBadge';
 
 const UserManagement = () => {
   const { t } = useLanguage();
@@ -28,6 +29,8 @@ const UserManagement = () => {
   const [lastRecalculateTime, setLastRecalculateTime] = useState(null);
   const [editingDiscountId, setEditingDiscountId] = useState(null);
   const [editingDiscountData, setEditingDiscountData] = useState(null);
+  const [editingRuleId, setEditingRuleId] = useState(null);
+  const [editingRuleData, setEditingRuleData] = useState(null);
 
   const logUserManagementAction = async (action, details = {}, tab = activeTab) => {
     const logPayload = {
@@ -122,7 +125,7 @@ const UserManagement = () => {
     try {
       console.log('[fetchCategoryData] Fetching rules and discounts in parallel...');
       const [rulesData, discountsData] = await Promise.all([
-        getCategoryRules(),
+        getCategoryRules(true),
         getCategoryDiscounts()
       ]);
       console.log('[fetchCategoryData] Data fetched:', {
@@ -505,6 +508,56 @@ const UserManagement = () => {
       console.error('[handleSaveDiscount] ERROR:', error);
       console.error('[handleSaveDiscount] Error details:', { message: error?.message, code: error?.code, categoryName });
       logUserManagementAction('save_discount_error', { category: categoryName, message: error.message }, 'categories');
+      toast({
+        title: t('common.error'),
+        description: error.message,
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleEditRule = (rule) => {
+    setEditingRuleId(rule.id);
+    setEditingRuleData({
+      interaction_threshold: rule.interaction_threshold,
+      icon: rule.icon || 'Star',
+      display_name_es: rule.display_name_es || '',
+      display_name_en: rule.display_name_en || '',
+      enabled: rule.enabled
+    });
+  };
+
+  const handleSaveRule = async (ruleId) => {
+    if (!editingRuleData) return;
+    try {
+      await updateCategoryRule(ruleId, editingRuleData);
+      toast({
+        title: t('common.success'),
+        description: t('users.categories.ruleUpdated')
+      });
+      await fetchCategoryData();
+      setEditingRuleId(null);
+      setEditingRuleData(null);
+    } catch (error) {
+      console.error('[handleSaveRule] ERROR:', error);
+      toast({
+        title: t('common.error'),
+        description: error.message,
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleToggleRuleEnabled = async (rule) => {
+    try {
+      await updateCategoryRule(rule.id, { enabled: !rule.enabled });
+      toast({
+        title: t('common.success'),
+        description: t('users.categories.ruleUpdated')
+      });
+      await fetchCategoryData();
+    } catch (error) {
+      console.error('[handleToggleRuleEnabled] ERROR:', error);
       toast({
         title: t('common.error'),
         description: error.message,
@@ -1005,28 +1058,130 @@ const UserManagement = () => {
                       {t('users.categories.categoryName')}
                     </th>
                     <th className="px-4 py-2 text-left font-semibold text-gray-700">
+                      {t('users.categories.displayName')}
+                    </th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700">
+                      {t('users.categories.selectIcon')}
+                    </th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700">
                       {t('users.categories.status')}
+                    </th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700">
+                      {t('common.actions')}
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {categoryRules.map((rule) => (
-                    <tr key={rule.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-gray-900">{rule.interaction_threshold}</td>
-                      <td className="px-4 py-3">
-                        <CategoryBadge categoryName={rule.category_name} readOnly />
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
-                          rule.enabled
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {rule.enabled ? t('common.active') : t('common.inactive')}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {categoryRules.map((rule) => {
+                    const isEditing = editingRuleId === rule.id;
+                    return (
+                      <tr key={rule.id} className={`hover:bg-gray-50 ${!rule.enabled ? 'opacity-50' : ''}`}>
+                        <td className="px-4 py-3">
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              min="0"
+                              value={editingRuleData.interaction_threshold}
+                              onChange={e => setEditingRuleData(prev => ({ ...prev, interaction_threshold: parseInt(e.target.value) || 0 }))}
+                              className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+                            />
+                          ) : (
+                            <span className="text-gray-900">{rule.interaction_threshold}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <CategoryBadge categoryName={rule.category_name} rule={rule} readOnly />
+                        </td>
+                        <td className="px-4 py-3">
+                          {isEditing ? (
+                            <div className="flex gap-1">
+                              <input
+                                type="text"
+                                value={editingRuleData.display_name_es}
+                                onChange={e => setEditingRuleData(prev => ({ ...prev, display_name_es: e.target.value }))}
+                                placeholder="ES"
+                                className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+                              />
+                              <input
+                                type="text"
+                                value={editingRuleData.display_name_en}
+                                onChange={e => setEditingRuleData(prev => ({ ...prev, display_name_en: e.target.value }))}
+                                placeholder="EN"
+                                className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+                              />
+                            </div>
+                          ) : (
+                            <span className="text-gray-600 text-xs">
+                              {rule.display_name_es || rule.category_name} / {rule.display_name_en || rule.category_name}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {isEditing ? (
+                            <select
+                              value={editingRuleData.icon}
+                              onChange={e => setEditingRuleData(prev => ({ ...prev, icon: e.target.value }))}
+                              className="px-2 py-1 border border-gray-300 rounded text-sm"
+                            >
+                              {Object.keys(ICON_MAP).map(iconName => {
+                                const IconComp = ICON_MAP[iconName];
+                                return (
+                                  <option key={iconName} value={iconName}>{iconName}</option>
+                                );
+                              })}
+                            </select>
+                          ) : (
+                            (() => {
+                              const IconComp = ICON_MAP[rule.icon] || ICON_MAP.Star;
+                              return <IconComp className="h-4 w-4 text-gray-600" />;
+                            })()
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => handleToggleRuleEnabled(rule)}
+                            className={`inline-flex px-2 py-1 rounded-full text-xs font-medium cursor-pointer transition-colors ${
+                              rule.enabled
+                                ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                                : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                            }`}
+                          >
+                            {rule.enabled ? t('common.active') : t('common.inactive')}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3">
+                          {isEditing ? (
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                className="bg-green-600 hover:bg-green-700 text-white h-8 px-2"
+                                onClick={() => handleSaveRule(rule.id)}
+                              >
+                                <Save className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 px-2"
+                                onClick={() => { setEditingRuleId(null); setEditingRuleData(null); }}
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 px-2"
+                              onClick={() => handleEditRule(rule)}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
