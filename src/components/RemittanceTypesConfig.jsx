@@ -9,6 +9,7 @@ import {
   createRemittanceType,
   updateRemittanceType,
   deleteRemittanceType,
+  getPendingRemittancesCountByType,
   DELIVERY_METHODS
 } from '@/lib/remittanceService';
 import { getCurrenciesWithRates } from '@/lib/currencyService';
@@ -290,6 +291,31 @@ const RemittanceTypesConfig = () => {
 
     try {
       if (editingType) {
+        // Detect rate/commission changes and warn admin about affected pending remittances
+        const oldRate = editingType.exchange_rate;
+        const newRate = parseFloat(formData.exchange_rate);
+        const oldCommPct = editingType.commission_percentage || 0;
+        const newCommPct = parseFloat(formData.commission_percentage) || 0;
+
+        const rateChanged = Math.abs(oldRate - newRate) > 0.0001 ||
+                            Math.abs(oldCommPct - newCommPct) > 0.01;
+
+        if (rateChanged) {
+          const pendingCount = await getPendingRemittancesCountByType(editingType.id);
+          if (pendingCount > 0) {
+            const msg = t('remittances.admin.rateChangeAffected', { count: pendingCount })
+              || `There are ${pendingCount} pending remittance(s) created at the previous rate. Users will be notified of the change.`;
+            const confirmed = await showModal({
+              type: 'warning',
+              title: t('remittances.admin.rateChangeWarning') || 'Rate Change Detected',
+              message: msg,
+              confirmText: t('common.confirm'),
+              cancelText: t('common.cancel')
+            });
+            if (!confirmed) return;
+          }
+        }
+
         console.log('[handleSave] Updating type:', editingType.id);
         await updateRemittanceType(editingType.id, typeData);
         console.log('[handleSave] Type updated successfully');
