@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Save, Edit, X, RefreshCw } from 'lucide-react';
+import { Plus, Save, Edit, X, RefreshCw, Percent, DollarSign, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -13,6 +13,7 @@ import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import { getTableColumns, getModalColumns } from './ProductTableConfig';
 import { logActivity } from '@/lib/activityLogger';
 import { useRealtimeProducts } from '@/hooks/useRealtimeSubscription';
+import { DEFAULTS } from '@/lib/constants';
 
 /**
  * Vendor Inventory Tab Component
@@ -26,6 +27,7 @@ const VendorInventoryTab = ({
   baseCurrencyId,
   selectedCurrency,
   exchangeRates,
+  financialSettings,
   onSelectedCurrencyChange,
   onProductsRefresh
 }) => {
@@ -118,6 +120,48 @@ const VendorInventoryTab = ({
     setProductForm(prev => ({ ...prev, [field]: value }));
   };
 
+  // Cross-calculate profit fields when any one changes
+  const handleProfitChange = (mode, value) => {
+    const basePrice = parseFloat(productForm?.basePrice || 0);
+    const numVal = parseFloat(value);
+
+    if (mode === 'percentage') {
+      const margin = isNaN(numVal) ? '' : numVal;
+      const amount = (!isNaN(numVal) && basePrice > 0) ? (basePrice * numVal / 100).toFixed(2) : '';
+      const sell = (!isNaN(numVal) && basePrice > 0) ? (basePrice * (1 + numVal / 100)).toFixed(2) : '';
+      setProductForm(prev => ({ ...prev, profitMargin: margin, profitAmount: amount, sellPrice: sell, profitMode: 'percentage' }));
+    } else if (mode === 'amount') {
+      const amount = isNaN(numVal) ? '' : value;
+      const margin = (!isNaN(numVal) && basePrice > 0) ? ((numVal / basePrice) * 100) : '';
+      const sell = (!isNaN(numVal) && basePrice > 0) ? (basePrice + numVal).toFixed(2) : '';
+      setProductForm(prev => ({ ...prev, profitMargin: margin !== '' ? parseFloat(margin.toFixed(4)) : '', profitAmount: amount, sellPrice: sell, profitMode: 'amount' }));
+    } else if (mode === 'sellPrice') {
+      const sell = isNaN(numVal) ? '' : value;
+      const margin = (!isNaN(numVal) && basePrice > 0) ? (((numVal / basePrice) - 1) * 100) : '';
+      const amount = (!isNaN(numVal) && basePrice > 0) ? (numVal - basePrice).toFixed(2) : '';
+      setProductForm(prev => ({ ...prev, profitMargin: margin !== '' ? parseFloat(margin.toFixed(4)) : '', profitAmount: amount, sellPrice: sell, profitMode: 'sellPrice' }));
+    }
+  };
+
+  // Recalculate secondary profit fields when basePrice changes
+  const handleBasePriceChange = (value) => {
+    const basePrice = parseFloat(value);
+    setProductForm(prev => {
+      const updated = { ...prev, basePrice: value };
+      const margin = parseFloat(prev.profitMargin);
+      if (!isNaN(margin) && basePrice > 0) {
+        updated.profitAmount = (basePrice * margin / 100).toFixed(2);
+        updated.sellPrice = (basePrice * (1 + margin / 100)).toFixed(2);
+      } else {
+        updated.profitAmount = '';
+        updated.sellPrice = '';
+      }
+      return updated;
+    });
+  };
+
+  const defaultProfitMargin = financialSettings?.productProfit || DEFAULTS.PRODUCT_PROFIT_MARGIN;
+
   const openNewProductForm = () => {
     console.log('[openNewProductForm] START - Opening new product form');
     setProductForm({
@@ -132,7 +176,11 @@ const VendorInventoryTab = ({
       stock: '',
       min_stock_alert: '',
       expiryDate: '',
-      image: ''
+      image: '',
+      profitMargin: defaultProfitMargin,
+      profitMode: 'percentage',
+      profitAmount: '',
+      sellPrice: ''
     });
     setProductImagePreview(null);
     console.log('[openNewProductForm] SUCCESS - Form initialized');
@@ -140,6 +188,8 @@ const VendorInventoryTab = ({
 
   const openEditProductForm = (product) => {
     console.log('[openEditProductForm] START - Input:', { productId: product.id, productName: product.name_es || product.name });
+    const margin = product.profit_margin || defaultProfitMargin;
+    const base = parseFloat(product.base_price || product.basePrice || 0);
     setProductForm({
       id: product.id,
       name_es: product.name_es || product.name || '',
@@ -147,7 +197,10 @@ const VendorInventoryTab = ({
       description_es: product.description_es || '',
       description_en: product.description_en || '',
       basePrice: product.base_price || product.basePrice || '',
-      profitMargin: product.profit_margin || 40,
+      profitMargin: margin,
+      profitMode: 'percentage',
+      profitAmount: base > 0 ? (base * margin / 100).toFixed(2) : '',
+      sellPrice: base > 0 ? (base * (1 + margin / 100)).toFixed(2) : '',
       base_currency_id: product.base_currency_id || baseCurrencyId || '',
       category: product.category?.id || product.category_id || '',
       stock: product.stock || '',
@@ -613,7 +666,7 @@ const VendorInventoryTab = ({
                 type="number"
                 step="0.01"
                 value={productForm.basePrice}
-                onChange={e => handleInputChange('basePrice', e.target.value)}
+                onChange={e => handleBasePriceChange(e.target.value)}
                 placeholder="0.00"
                 className="w-full input-style"
                 required
@@ -654,6 +707,119 @@ const VendorInventoryTab = ({
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Profit Mode */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {t('vendor.addProduct.profitMode')}
+              </label>
+              {/* Mode Toggle */}
+              <div className="flex gap-1 mb-3 bg-gray-100 p-1 rounded-lg w-fit">
+                {[
+                  { id: 'percentage', icon: Percent, label: t('vendor.addProduct.profitByPercent') },
+                  { id: 'amount', icon: DollarSign, label: t('vendor.addProduct.profitByAmount') },
+                  { id: 'sellPrice', icon: Tag, label: t('vendor.addProduct.profitBySellPrice') }
+                ].map(mode => (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => {
+                      if (parseFloat(productForm.basePrice || 0) <= 0 && mode.id !== 'percentage') {
+                        toast({
+                          title: t('vendor.addProduct.basePriceRequired'),
+                          variant: 'destructive'
+                        });
+                        return;
+                      }
+                      setProductForm(prev => ({ ...prev, profitMode: mode.id }));
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      productForm.profitMode === mode.id
+                        ? 'bg-white shadow text-gray-900'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <mode.icon className="h-3.5 w-3.5" />
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Dynamic Input */}
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  {productForm.profitMode === 'percentage' && (
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">{t('vendor.addProduct.profitByPercent')}</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={productForm.profitMargin}
+                          onChange={e => handleProfitChange('percentage', e.target.value)}
+                          placeholder={String(defaultProfitMargin)}
+                          className="w-full input-style pr-8"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                      </div>
+                    </div>
+                  )}
+                  {productForm.profitMode === 'amount' && (
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">{t('vendor.addProduct.profitAmountLabel')}</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={productForm.profitAmount}
+                          onChange={e => handleProfitChange('amount', e.target.value)}
+                          placeholder="0.00"
+                          className="w-full input-style pl-7"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {productForm.profitMode === 'sellPrice' && (
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">{t('vendor.addProduct.sellPriceLabel')}</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={productForm.sellPrice}
+                          onChange={e => handleProfitChange('sellPrice', e.target.value)}
+                          placeholder="0.00"
+                          className="w-full input-style pl-7"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Live Preview */}
+                {parseFloat(productForm.basePrice || 0) > 0 && productForm.profitMargin !== '' && !isNaN(parseFloat(productForm.profitMargin)) && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 flex flex-col justify-center text-sm">
+                    <p className="text-gray-500 text-xs mb-1">{t('vendor.addProduct.profitPreview')}</p>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      <span className="font-medium text-gray-700">
+                        {t('vendor.addProduct.profitByPercent')}: <span className="text-blue-600">{parseFloat(productForm.profitMargin).toFixed(2)}%</span>
+                      </span>
+                      <span className="font-medium text-gray-700">
+                        = <span className="text-green-600">${parseFloat(productForm.profitAmount || 0).toFixed(2)}</span>
+                      </span>
+                      <span className="font-medium text-gray-700">
+                        | {t('vendor.addProduct.profitBySellPrice')}: <span className="text-purple-600">${parseFloat(productForm.sellPrice || 0).toFixed(2)}</span>
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Stock */}
