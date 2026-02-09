@@ -40,7 +40,8 @@
     "copied": "Copied!",
     "copiedToClipboard": "{label} copied to clipboard",
     "copyError": "Error copying to clipboard",
-    "amount": "Amount"
+    "amount": "Amount",
+    "remove": "Remove"
   },
   "nav": {
     "home": "Home",
@@ -53,7 +54,7 @@
     "cart": "Cart",
     "userPanel": "My Panel",
     "userManagement": "User Management",
-    "guides": "Guides"
+    "blog": "Blog"
   },
   "home": {
     "hero": {
@@ -107,10 +108,10 @@
       "title": "What our customers say",
       "subtitle": "Real experiences from satisfied platform users."
     },
-    "guides": {
-      "title": "Platform Guides",
+    "blog": {
+      "title": "Blog",
       "subtitle": "Everything you need to know to use our platform",
-      "viewAll": "View all guides"
+      "viewAll": "View posts"
     }
   },
   "footer": {
@@ -270,6 +271,8 @@
       "typeCreated": "Remittance type created",
       "typeUpdated": "Remittance type updated",
       "typeDeleted": "Remittance type deleted",
+      "rateChangeWarning": "Rate Change Detected",
+      "rateChangeAffected": "There are {count} pending remittance(s) created at the previous rate. Users will be notified of the change in their 'My Remittances' section.",
       "typeActivated": "Type activated",
       "typeDeactivated": "Type deactivated",
       "pendingValidation": "Pending Validation",
@@ -442,7 +445,21 @@
       "evidenceUploadError": "Error uploading evidence photo",
       "send": "Send",
       "noResults": "No results",
-      "noResultsDesc": "No remittances found with the selected filters"
+      "noResultsDesc": "No remittances found with the selected filters",
+      "rateChanged": "Exchange rate updated",
+      "rateChangedBannerTitle": "Exchange Rate Update",
+      "rateChangedBannerMessage": "The exchange rate for some of your remittance types has changed. Remittances marked below were created at a different rate than the current one.",
+      "rateChangedBannerPendingHint": "Pending remittances can be updated to the new rate.",
+      "rateChangedBannerLockedHint": "In-progress remittances are locked at the original rate.",
+      "rateChangedFrom": "Rate changed",
+      "newAmountWouldBe": "New amount to deliver",
+      "was": "was",
+      "updateToNewRate": "Update to new rate",
+      "keepCurrentRate": "Keep current rate",
+      "rateLockedNote": "Your remittance is locked at the rate at time of creation",
+      "currentRateIs": "Current rate is",
+      "rateUpdated": "Remittance updated to current rate",
+      "recalculating": "Recalculating..."
     },
     "wizard": {
       "step1Title": "Remittance Type and Amount",
@@ -528,7 +545,15 @@
       "paymentInstructions": "Now make the payment and upload the proof to complete the process.",
       "proofSubmittedSuccess": "Proof submitted successfully!",
       "submitProofAndComplete": "Submit Proof and Complete",
-      "estimatedDeliveryTime": "24-72 hours"
+      "estimatedDeliveryTime": "24-72 hours",
+      "couponLabel": "Discount coupon (optional)",
+      "couponPlaceholder": "Enter your code",
+      "applyCoupon": "Apply",
+      "couponApplied": "Coupon applied",
+      "couponDiscount": "Coupon discount",
+      "couponInvalid": "Invalid or expired coupon",
+      "offCommission": "off commission",
+      "enterAmountFirst": "Enter an amount first"
     }
   },
   "vendor": {
@@ -559,7 +584,15 @@
       "image": "Product Image",
       "upload": "Upload file",
       "finalPrice": "Final Price",
-      "save": "Save Product"
+      "save": "Save Product",
+      "profitMode": "Product Profit",
+      "profitByPercent": "Percentage",
+      "profitByAmount": "Fixed Amount",
+      "profitBySellPrice": "Sell Price",
+      "profitAmountLabel": "Profit in $",
+      "sellPriceLabel": "Final Sell Price",
+      "profitPreview": "Profit preview",
+      "basePriceRequired": "Enter base price first"
     },
     "inventory": {
       "product": "Product",
@@ -619,7 +652,14 @@
       "finalPrice": "Final Price",
       "coverImage": "Cover Image",
       "save": "Save Combo",
-      "includedProducts": "included products"
+      "includedProducts": "included products",
+      "negativeMarginWarning": "Negative margin causes losses. Cannot save.",
+      "zeroMarginWarning": "0% margin means no profit on this combo.",
+      "belowMinMarginWarning": "Margin is below the recommended 5% minimum.",
+      "cannotSaveNegative": "Cannot save with negative margin",
+      "confirmZeroMargin": "Are you sure you want to save this combo with 0% margin? It will generate no profit.",
+      "productCosts": "Product costs",
+      "marginAmount": "Margin"
     },
     "management": {
       "title": "General Management",
@@ -1444,7 +1484,10 @@
       "discountPercent": "Discount (%)",
       "description": "Description",
       "noDiscounts": "No discounts defined",
-      "recalculateSuccessDesc": "Successfully recalculated {processed} of {total} users"
+      "recalculateSuccessDesc": "Successfully recalculated {processed} of {total} users",
+      "ruleUpdated": "Category rule updated",
+      "displayName": "Display name",
+      "selectIcon": "Icon"
     }
   },
   "bankAccounts": {
@@ -1607,9 +1650,10 @@
       }
     }
   },
-  "guides": {
-    "title": "Platform Guides",
-    "subtitle": "Learn how to use all the features of our platform",
+  "blog": {
+    "title": "Blog",
+    "subtitle": "Explore all posts from our platform",
+    "quickTitle": "Latest Posts",
     "filterAll": "All",
     "filterOrders": "Orders",
     "filterRemittances": "Remittances",
@@ -1617,8 +1661,8 @@
     "filterUserPanel": "User Panel",
     "filterGeneral": "General",
     "readMore": "Read more",
-    "viewAll": "View all guides",
-    "noArticles": "No guides available in this category",
+    "viewAll": "View posts",
+    "noArticles": "No posts available in this category",
     "backToList": "Back to list",
     "watchVideo": "Watch video"
   },
