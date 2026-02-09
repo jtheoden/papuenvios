@@ -629,6 +629,43 @@ export const getZelleAccountUsageSummary = async () => {
   }
 };
 
+/**
+ * Get historical total validated amount for each Zelle account (all-time)
+ * @returns {Promise<Object>} Map keyed by accountId with historicalTotal
+ */
+export const getZelleAccountHistoricalTotals = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('zelle_transaction_history')
+      .select('zelle_account_id, amount')
+      .eq('status', 'validated');
+
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    const totals = {};
+    (data || []).forEach((tx) => {
+      const accountId = tx.zelle_account_id;
+      if (!totals[accountId]) {
+        totals[accountId] = 0;
+      }
+      totals[accountId] += parseFloat(tx.amount) || 0;
+    });
+
+    return totals;
+  } catch (error) {
+    if (error instanceof AppError) {
+      logError(error, { operation: 'getZelleAccountHistoricalTotals' });
+      throw error;
+    }
+
+    const appError = parseSupabaseError(error);
+    logError(appError, { operation: 'getZelleAccountHistoricalTotals' });
+    throw appError;
+  }
+};
+
 // ============================================================================
 // ACCOUNT MANAGEMENT (ADMIN ONLY)
 // ============================================================================
@@ -1624,6 +1661,7 @@ export const zelleService = {
   getZelleAccountTransactions,
   getZelleAccountStats,
   getZelleAccountUsageSummary,
+  getZelleAccountHistoricalTotals,
   resetZelleCounters,
   getAllZellePaymentHistory,
   upsertZelleTransactionStatus,
