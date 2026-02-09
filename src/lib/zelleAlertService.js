@@ -41,7 +41,6 @@ export const addZelleAlert = (alert) => {
     };
     alerts.push(newAlert);
     localStorage.setItem(ALERT_KEY, JSON.stringify(alerts));
-    console.log('[ZelleAlertService] Alert added:', newAlert.id);
     return newAlert;
   } catch (e) {
     console.warn('[ZelleAlertService] Error adding alert:', e);
@@ -64,7 +63,6 @@ export const addZelleAlertsBatch = (alertsData) => {
     }));
     const combined = [...existingAlerts, ...newAlerts];
     localStorage.setItem(ALERT_KEY, JSON.stringify(combined));
-    console.log(`[ZelleAlertService] ${newAlerts.length} alerts added`);
     return newAlerts;
   } catch (e) {
     console.warn('[ZelleAlertService] Error adding alerts batch:', e);
@@ -83,7 +81,6 @@ export const dismissZelleAlert = (alertId) => {
       alert.id === alertId ? { ...alert, dismissed: true } : alert
     );
     localStorage.setItem(ALERT_KEY, JSON.stringify(updated));
-    console.log('[ZelleAlertService] Alert dismissed:', alertId);
   } catch (e) {
     console.warn('[ZelleAlertService] Error dismissing alert:', e);
   }
@@ -98,7 +95,6 @@ export const removeZelleAlert = (alertId) => {
     const alerts = getZelleAlerts();
     const filtered = alerts.filter(alert => alert.id !== alertId);
     localStorage.setItem(ALERT_KEY, JSON.stringify(filtered));
-    console.log('[ZelleAlertService] Alert removed:', alertId);
   } catch (e) {
     console.warn('[ZelleAlertService] Error removing alert:', e);
   }
@@ -116,7 +112,6 @@ export const removeAlertsByOperation = (type, operationId) => {
       !(alert.type === type && alert.operationId === operationId)
     );
     localStorage.setItem(ALERT_KEY, JSON.stringify(filtered));
-    console.log(`[ZelleAlertService] Alerts removed for ${type}:${operationId}`);
   } catch (e) {
     console.warn('[ZelleAlertService] Error removing alerts by operation:', e);
   }
@@ -148,7 +143,6 @@ export const hasActiveAlerts = (userId) => {
  */
 export const clearAllAlerts = () => {
   localStorage.removeItem(ALERT_KEY);
-  console.log('[ZelleAlertService] All alerts cleared');
 };
 
 /**

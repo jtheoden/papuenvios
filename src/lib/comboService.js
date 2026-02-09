@@ -413,8 +413,6 @@ export const deleteCombo = async (comboId) => {
       throw createValidationError({ comboId: 'Combo ID is required' });
     }
 
-    console.log('[deleteCombo] START - Attempting to delete combo:', comboId);
-
     // Fetch combo info for error messages
     const { data: combo, error: fetchError } = await supabase
       .from('combo_products')
@@ -431,12 +429,10 @@ export const deleteCombo = async (comboId) => {
     // ============================================
     // STEP 1: Check for blocking orders
     // ============================================
-    console.log('[deleteCombo] Checking for blocking orders...');
     const { blockingOrders, safeOrders } = await findBlockingOrdersForCombo(comboId);
 
     if (blockingOrders.length > 0) {
       const orderNumbers = blockingOrders.map(o => o.orderNumber).join(', ');
-      console.log('[deleteCombo] BLOCKED - Found blocking orders:', orderNumbers);
 
       throw new AppError(
         `No se puede eliminar el combo "${comboName}" porque tiene órdenes activas en proceso: ${orderNumbers}. Espere a que las órdenes sean despachadas o canceladas.`,
@@ -451,13 +447,10 @@ export const deleteCombo = async (comboId) => {
       );
     }
 
-    console.log('[deleteCombo] No blocking orders. Safe orders found:', safeOrders.length);
-
     // ============================================
     // STEP 2: Clear item_id from safe order_items (dispatched/delivered/completed/cancelled)
     // ============================================
     if (safeOrders.length > 0) {
-      console.log('[deleteCombo] Clearing item_id from order_items for safe orders...');
       const { error: clearError } = await supabase
         .from('order_items')
         .update({ item_id: null })
@@ -478,7 +471,6 @@ export const deleteCombo = async (comboId) => {
     // ============================================
     // STEP 3: Delete combo_items references (FK constraint)
     // ============================================
-    console.log('[deleteCombo] Deleting combo_items references...');
     const { error: comboItemsError } = await supabase
       .from('combo_items')
       .delete()
@@ -497,7 +489,6 @@ export const deleteCombo = async (comboId) => {
     // ============================================
     // STEP 4: Delete the combo
     // ============================================
-    console.log('[deleteCombo] Deleting combo...');
     const { error } = await supabase
       .from('combo_products')
       .delete()
@@ -508,8 +499,6 @@ export const deleteCombo = async (comboId) => {
       logError(appError, { operation: 'deleteCombo', comboId });
       throw appError;
     }
-
-    console.log('[deleteCombo] SUCCESS - Combo deleted:', comboName);
 
     return {
       success: true,

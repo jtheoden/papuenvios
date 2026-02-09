@@ -529,8 +529,6 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
       throw createValidationError({ productId: 'Product ID is required' });
     }
 
-    console.log('[deleteProduct] START - Attempting to delete product:', productId);
-
     // Fetch product info before deletion for logging
     const { data: product, error: fetchProductError } = await supabase
       .from('products')
@@ -547,12 +545,10 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
     // ============================================
     // STEP 1: Check for blocking orders
     // ============================================
-    console.log('[deleteProduct] Checking for blocking orders...');
     const { blockingOrders, safeOrders, inventoryIds } = await findBlockingOrdersForProduct(productId);
 
     if (blockingOrders.length > 0) {
       const orderNumbers = blockingOrders.map(o => o.orderNumber).join(', ');
-      console.log('[deleteProduct] BLOCKED - Found blocking orders:', orderNumbers);
 
       throw new AppError(
         `No se puede eliminar el producto "${productName}" porque tiene órdenes activas en proceso: ${orderNumbers}. Espere a que las órdenes sean despachadas o canceladas.`,
@@ -567,14 +563,11 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
       );
     }
 
-    console.log('[deleteProduct] No blocking orders found. Safe orders to clear:', safeOrders.length);
-
     // ============================================
     // STEP 2: Clear inventory_id from safe orders (dispatched/delivered/completed/cancelled)
     // ============================================
     if (safeOrders.length > 0) {
       const safeOrderItemIds = safeOrders.map(o => o.orderItemId);
-      console.log('[deleteProduct] Clearing inventory_id from order_items:', safeOrderItemIds.length);
 
       const { error: clearError } = await supabase
         .from('order_items')
@@ -608,7 +601,6 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
 
     if (comboItems && comboItems.length > 0) {
       const comboIds = [...new Set(comboItems.map(item => item.combo_id))];
-      console.log('[deleteProduct] Deactivating combos that contain product:', comboIds);
 
       // Fetch combo info before deactivating for logging
       const { data: combos, error: fetchCombosError } = await supabase
@@ -665,7 +657,6 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
     // ============================================
     // STEP 4: Delete combo_items references (FK constraint)
     // ============================================
-    console.log('[deleteProduct] Deleting combo_items references...');
     const { error: comboItemsError } = await supabase
       .from('combo_items')
       .delete()
@@ -684,7 +675,6 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
     // ============================================
     // STEP 5: Get inventory IDs and delete inventory_movements first
     // ============================================
-    console.log('[deleteProduct] Getting inventory IDs for product...');
     const { data: inventoryRecords, error: invFetchError } = await supabase
       .from('inventory')
       .select('id')
@@ -698,7 +688,6 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
 
     if (productInventoryIds.length > 0) {
       // Delete inventory_movements that reference these inventory records
-      console.log('[deleteProduct] Deleting inventory_movements for inventory IDs:', productInventoryIds.length);
       const { error: movementsError } = await supabase
         .from('inventory_movements')
         .delete()
@@ -718,7 +707,6 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
     // ============================================
     // STEP 6: Delete inventory records (now safe - no FK references)
     // ============================================
-    console.log('[deleteProduct] Deleting inventory records...');
     const { error: inventoryError } = await supabase
       .from('inventory')
       .delete()
@@ -737,7 +725,6 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
     // ============================================
     // STEP 7: Delete the product
     // ============================================
-    console.log('[deleteProduct] Deleting product...');
     const { error } = await supabase
       .from('products')
       .delete()
@@ -769,8 +756,6 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
     } catch (logErr) {
       console.warn('[deleteProduct] Failed to log product deletion:', logErr);
     }
-
-    console.log('[deleteProduct] SUCCESS - Product deleted:', productName);
 
     return {
       success: true,
