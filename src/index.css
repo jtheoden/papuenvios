@@ -46,7 +46,22 @@ body {
 }
 
 .gradient-text {
-  @apply bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent;
+  background: linear-gradient(var(--gradient-direction, 135deg), var(--color-primary, #2563eb), var(--color-secondary, #9333ea));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.dynamic-button-shadow {
+  box-shadow: var(--button-shadow, none);
+}
+
+.dynamic-card-shadow {
+  box-shadow: var(--card-shadow, 0 4px 6px -1px rgba(0,0,0,0.1));
+}
+
+.dynamic-text-shadow {
+  text-shadow: var(--text-shadow, none);
 }
 
 .hover-lift {
