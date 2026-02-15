@@ -469,15 +469,11 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
                         const product = products.find(p => p.id === productId);
                         if (!product) return null;
 
-                        // Base price
-                        const basePrice = parseFloat(product.base_price || 0);
-                        const convertedBase = convertAmount(basePrice, product.base_currency_id, selectedCurrency);
+                        // Use actual product final_price (base_price * (1 + profit_margin/100))
+                        const finalPrice = parseFloat(product.final_price || product.base_price || 0);
+                        const convertedFinal = convertAmount(finalPrice, product.base_currency_id, selectedCurrency);
                         const quantity = currentItem.productQuantities?.[productId] || 1;
-
-                        // Apply individual product profit margin
-                        const productMargin = parseFloat(financialSettings.productProfit || 40) / 100;
-                        const priceWithMargin = convertedBase * (1 + productMargin);
-                        const total = priceWithMargin * quantity;
+                        const total = convertedFinal * quantity;
 
                         return (
                           <div key={productId} className="flex justify-between text-xs text-gray-600">
@@ -499,14 +495,10 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
                             (currentItem.products || []).forEach(productId => {
                               const product = products.find(p => p.id === productId);
                               if (product) {
-                                const basePrice = parseFloat(product.base_price || 0);
-                                const convertedBase = convertAmount(basePrice, product.base_currency_id, selectedCurrency);
+                                const finalPrice = parseFloat(product.final_price || product.base_price || 0);
+                                const convertedFinal = convertAmount(finalPrice, product.base_currency_id, selectedCurrency);
                                 const quantity = currentItem.productQuantities?.[productId] || 1;
-
-                                // Apply individual product profit margin
-                                const productMargin = parseFloat(financialSettings.productProfit || 40) / 100;
-                                const priceWithMargin = convertedBase * (1 + productMargin);
-                                total += priceWithMargin * quantity;
+                                total += convertedFinal * quantity;
                               }
                             });
                             return total.toFixed(2);
@@ -527,19 +519,15 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
                       <span className="inline-block bg-green-100 px-4 py-2 rounded-full text-sm font-semibold" style={getHeadingStyle(visualSettings)}>
                         {t('products.detail.youSave')}
                         {currencySymbol}{(() => {
-                          // Calculate total with individual product margins
+                          // Calculate total using actual product final prices
                           let totalIndividual = 0;
                           (currentItem.products || []).forEach(productId => {
                             const product = products.find(p => p.id === productId);
                             if (product) {
-                              const basePrice = parseFloat(product.base_price || 0);
-                              const convertedBase = convertAmount(basePrice, product.base_currency_id, selectedCurrency);
+                              const finalPrice = parseFloat(product.final_price || product.base_price || 0);
+                              const convertedFinal = convertAmount(finalPrice, product.base_currency_id, selectedCurrency);
                               const quantity = currentItem.productQuantities?.[productId] || 1;
-
-                              // Apply individual product profit margin
-                              const productMargin = parseFloat(financialSettings.productProfit || 40) / 100;
-                              const priceWithMargin = convertedBase * (1 + productMargin);
-                              totalIndividual += priceWithMargin * quantity;
+                              totalIndividual += convertedFinal * quantity;
                             }
                           });
 

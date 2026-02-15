@@ -439,19 +439,17 @@ const ProductsPage = ({ onNavigate }) => {
                   (combo.products || []).forEach(productId => {
                     const product = products.find(p => p.id === productId);
                     if (product) {
-                      const basePrice = parseFloat(product.base_price || 0);
                       const productCurrencyId = product.base_currency_id;
                       const quantity = combo.productQuantities?.[productId] || 1;
 
-                      // Convert to selected currency first
-                      let convertedPrice = basePrice;
+                      // Use the actual product final_price (base_price * (1 + profit_margin/100))
+                      const finalPrice = parseFloat(product.final_price || product.base_price || 0);
+                      let convertedPrice = finalPrice;
                       if (productCurrencyId && productCurrencyId !== selectedCurrency) {
-                        convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
+                        convertedPrice = convertAmount(finalPrice, productCurrencyId, selectedCurrency);
                       }
 
-                      const productMargin = parseFloat(financialSettings.productProfit || 40) / 100;
-                      const priceWithMargin = convertedPrice * (1 + productMargin);
-                      totalIndividual += priceWithMargin * quantity;
+                      totalIndividual += convertedPrice * quantity;
                     }
                   });
 
