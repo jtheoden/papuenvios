@@ -52,6 +52,8 @@ export const updateCategoryRule = async (ruleId, data) => {
     const updatePayload = { updated_at: new Date().toISOString() };
     if (data.interaction_threshold !== undefined) updatePayload.interaction_threshold = data.interaction_threshold;
     if (data.icon !== undefined) updatePayload.icon = data.icon;
+    if (data.color_code !== undefined) updatePayload.color_code = data.color_code;
+    if (data.description !== undefined) updatePayload.description = data.description;
     if (data.display_name_es !== undefined) updatePayload.display_name_es = data.display_name_es;
     if (data.display_name_en !== undefined) updatePayload.display_name_en = data.display_name_en;
     if (data.enabled !== undefined) updatePayload.enabled = data.enabled;
@@ -185,21 +187,21 @@ export const getInteractionCount = async (userId) => {
       throw createValidationError({ userId: 'User ID is required' });
     }
 
-    // Count orders
+    // Count completed orders
     const { count: orderCount, error: orderError } = await supabase
       .from('orders')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
-      .neq('status', 'cancelled');
+      .eq('status', 'completed');
 
     if (orderError) throw parseSupabaseError(orderError);
 
-    // Count remittances
+    // Count completed/delivered remittances
     const { count: remittanceCount, error: remittanceError } = await supabase
       .from('remittances')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
-      .neq('status', 'cancelled_at');
+      .in('status', ['completed', 'delivered']);
 
     if (remittanceError) throw parseSupabaseError(remittanceError);
 
@@ -248,23 +250,16 @@ export const getUserCategory = async (userId) => {
       .from('user_categories')
       .select('*')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
 
-    if (error) {
-      // If no category exists yet, return null (will be created)
-      if (error.code === 'PGRST116') return null;
-      throw parseSupabaseError(error);
-    }
+    if (error) throw parseSupabaseError(error);
 
     return data;
   } catch (error) {
-    if (error.code && error.code !== 'PGRST116') throw error;
-    if (!error.code) {
-      const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getUserCategory', userId });
-      logError(appError);
-      throw appError;
-    }
-    return null;
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getUserCategory', userId });
+    logError(appError);
+    throw appError;
   }
 };
 
@@ -340,17 +335,31 @@ export const recalculateUserCategory = async (userId) => {
       throw createValidationError({ userId: 'User ID is required' });
     }
 
-    // Get rules and interaction count
-    const [rules, interactionCount] = await Promise.all([
+    // Get rules, current category, and interaction count
+    const [rules, currentCategoryRecord, interactionCount] = await Promise.all([
       getCategoryRules(),
+      getUserCategory(userId),
       getInteractionCount(userId)
     ]);
 
-    // Calculate appropriate category
-    const newCategory = calculateCategoryByInteractions(interactionCount, rules);
+    // Calculate appropriate category from interaction count
+    const computedCategory = calculateCategoryByInteractions(interactionCount, rules);
+
+    // Respect manual assignments: only allow upward progression
+    // Sort rules ascending by threshold to determine category rank
+    const sortedRules = [...rules].sort((a, b) => a.interaction_threshold - b.interaction_threshold);
+    const computedIdx = sortedRules.findIndex(r => r.category_name === computedCategory);
+    const currentIdx = currentCategoryRecord
+      ? sortedRules.findIndex(r => r.category_name === currentCategoryRecord.category_name)
+      : -1;
+
+    // If user was manually assigned a category, only upgrade (never downgrade)
+    if (currentCategoryRecord?.assignment_reason === 'manual' && currentIdx >= computedIdx) {
+      return currentCategoryRecord; // Keep manual assignment, no downgrade
+    }
 
     // Set the category as automatic
-    const result = await setUserCategory(userId, newCategory, null, 'automatic');
+    const result = await setUserCategory(userId, computedCategory, null, 'automatic');
 
     return result;
   } catch (error) {
@@ -368,10 +377,10 @@ export const recalculateUserCategory = async (userId) => {
  */
 export const recalculateAllCategories = async () => {
   try {
-    // Get all users
+    // Get all users with role 'user'
     const { data: users, error: usersError } = await supabase
       .from('user_profiles')
-      .select('user_id')
+      .select('id')
       .eq('role', 'user');
 
     if (usersError) throw parseSupabaseError(usersError);
@@ -386,7 +395,7 @@ export const recalculateAllCategories = async () => {
     if (users && users.length > 0) {
       for (const user of users) {
         try {
-          await recalculateUserCategory(user.user_id);
+          await recalculateUserCategory(user.id);
           results.processed++;
         } catch (err) {
           results.errors.push({ userId: user.user_id, error: err.message });
