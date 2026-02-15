@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Edit, Save, AlertCircle, AlertTriangle, Box, Trash2, Eye, EyeOff, Loader2, Check, X } from 'lucide-react';
+import { Plus, Edit, Save, AlertCircle, AlertTriangle, Box, Trash2, Eye, EyeOff, Loader2, Check, X, Percent, DollarSign, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -91,6 +91,11 @@ const VendorCombosTab = ({
     return baseCurrency?.code || 'USD';
   }, [currencies]);
 
+  const baseCurrencySymbol = useMemo(() => {
+    const baseCurrency = (currencies || []).find(c => c.is_base);
+    return baseCurrency?.symbol || '$';
+  }, [currencies]);
+
   const selectedCurrencyCode = currencyCodeById[selectedCurrency] || baseCurrencyCode;
 
   const convertPrice = useCallback((amount, fromCurrencyId, toCurrencyId) => {
@@ -110,6 +115,9 @@ const VendorCombosTab = ({
       id: null,
       name: '',
       profitMargin: '',
+      profitMode: 'percentage',
+      profitAmount: '',
+      sellPrice: '',
       shipping: { type: 'paid', value: 0 },
       products: [],
       productQuantities: {},
@@ -133,6 +141,9 @@ const VendorCombosTab = ({
 
     setComboForm({
       ...combo,
+      profitMode: 'percentage',
+      profitAmount: '',
+      sellPrice: '',
       products: productIds,
       productQuantities: productQuantities
     });
@@ -140,6 +151,62 @@ const VendorCombosTab = ({
     // Scroll to form and focus after state update
     scrollToFormAndFocus();
   };
+
+  // Compute combo base price from selected products (in base currency)
+  const comboBasePrice = useMemo(() => {
+    if (!comboForm?.products?.length) return 0;
+    return comboForm.products.reduce((total, productId) => {
+      const product = products.find(p => p.id === productId);
+      if (!product) return total;
+      const qty = comboForm.productQuantities[productId] || 1;
+      const priceInBase = convertPrice(product.base_price, product.base_currency_id, baseCurrencyId);
+      return total + (priceInBase * qty);
+    }, 0);
+  }, [comboForm?.products, comboForm?.productQuantities, products, baseCurrencyId, convertPrice]);
+
+  // Cross-calculate profit fields when any one changes
+  const handleComboProfitChange = (mode, value) => {
+    const basePrice = comboBasePrice;
+    const numVal = parseFloat(value);
+
+    if (mode === 'percentage') {
+      if (!isNaN(numVal) && numVal < 0) {
+        toast({ title: t('vendor.combos.cannotSaveNegative'), description: t('vendor.combos.negativeMarginWarning'), variant: 'destructive' });
+        return;
+      }
+      const margin = isNaN(numVal) ? '' : numVal;
+      const amount = (!isNaN(numVal) && basePrice > 0) ? (basePrice * numVal / 100).toFixed(2) : '';
+      const sell = (!isNaN(numVal) && basePrice > 0) ? (basePrice * (1 + numVal / 100)).toFixed(2) : '';
+      setComboForm(prev => ({ ...prev, profitMargin: margin, profitAmount: amount, sellPrice: sell, profitMode: 'percentage' }));
+    } else if (mode === 'amount') {
+      if (!isNaN(numVal) && numVal < 0) {
+        toast({ title: t('vendor.combos.cannotSaveNegative'), description: t('vendor.combos.negativeMarginWarning'), variant: 'destructive' });
+        return;
+      }
+      const amount = isNaN(numVal) ? '' : value;
+      const margin = (!isNaN(numVal) && basePrice > 0) ? ((numVal / basePrice) * 100) : '';
+      const sell = (!isNaN(numVal) && basePrice > 0) ? (basePrice + numVal).toFixed(2) : '';
+      setComboForm(prev => ({ ...prev, profitMargin: margin !== '' ? parseFloat(margin.toFixed(4)) : '', profitAmount: amount, sellPrice: sell, profitMode: 'amount' }));
+    } else if (mode === 'sellPrice') {
+      if (!isNaN(numVal) && basePrice > 0 && numVal < basePrice) {
+        toast({ title: t('vendor.combos.sellPriceTooLow'), description: t('vendor.combos.sellPriceTooLowDesc'), variant: 'destructive' });
+      }
+      const sell = isNaN(numVal) ? '' : value;
+      const margin = (!isNaN(numVal) && basePrice > 0) ? Math.max(0, ((numVal / basePrice) - 1) * 100) : '';
+      const amount = (!isNaN(numVal) && basePrice > 0) ? Math.max(0, numVal - basePrice).toFixed(2) : '';
+      setComboForm(prev => ({ ...prev, profitMargin: margin !== '' ? parseFloat(margin.toFixed(4)) : '', profitAmount: amount, sellPrice: sell, profitMode: 'sellPrice' }));
+    }
+  };
+
+  // Recalculate profit amount and sell price when comboBasePrice changes (products added/removed)
+  useEffect(() => {
+    if (!comboForm || comboBasePrice <= 0) return;
+    const margin = parseFloat(comboForm.profitMargin);
+    if (isNaN(margin)) return;
+    const amount = (comboBasePrice * margin / 100).toFixed(2);
+    const sell = (comboBasePrice * (1 + margin / 100)).toFixed(2);
+    setComboForm(prev => ({ ...prev, profitAmount: amount, sellPrice: sell }));
+  }, [comboBasePrice]);
 
   const handleComboImageUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -440,20 +507,99 @@ const VendorCombosTab = ({
               />
 
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {t('vendor.combos.profitMargin')}
+                {t('vendor.combos.profitMode')}
               </label>
-              <input
-                type="number"
-                step="0.01"
-                value={comboForm.profitMargin}
-                onChange={e => setComboForm(prev => ({ ...prev, profitMargin: e.target.value }))}
-                placeholder={`${t('vendor.combos.profitMargin')} (def: ${financialSettings.comboProfit}%)`}
-                className={`w-full input-style ${
-                  parseFloat(comboForm.profitMargin) < 0 ? 'border-red-400 ring-1 ring-red-400' :
-                  parseFloat(comboForm.profitMargin) === 0 ? 'border-orange-400 ring-1 ring-orange-400' :
-                  ''
-                }`}
-              />
+              {/* Mode Toggle */}
+              <div className="flex gap-1 mb-3 bg-gray-100 p-1 rounded-lg w-fit">
+                {[
+                  { id: 'percentage', icon: Percent, label: t('vendor.addProduct.profitByPercent') },
+                  { id: 'amount', icon: DollarSign, label: `${t('vendor.addProduct.profitByAmount')} (${baseCurrencyCode})` },
+                  { id: 'sellPrice', icon: Tag, label: `${t('vendor.addProduct.profitBySellPrice')} (${baseCurrencyCode})` }
+                ].map(mode => (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => {
+                      if (comboBasePrice <= 0 && mode.id !== 'percentage') {
+                        toast({ title: t('vendor.combos.addProductsFirst'), variant: 'destructive' });
+                        return;
+                      }
+                      setComboForm(prev => ({ ...prev, profitMode: mode.id }));
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      comboForm.profitMode === mode.id
+                        ? 'bg-white shadow text-gray-900'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <mode.icon className="h-3.5 w-3.5" />
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Dynamic Input per Mode */}
+              {comboForm.profitMode === 'percentage' && (
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">{t('vendor.addProduct.profitByPercent')}</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={comboForm.profitMargin}
+                      onChange={e => handleComboProfitChange('percentage', e.target.value)}
+                      placeholder={`${financialSettings.comboProfit}%`}
+                      className={`w-full input-style pr-8 ${
+                        parseFloat(comboForm.profitMargin) < 0 ? 'border-red-400 ring-1 ring-red-400' :
+                        parseFloat(comboForm.profitMargin) === 0 ? 'border-orange-400 ring-1 ring-orange-400' : ''
+                      }`}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                  </div>
+                </div>
+              )}
+              {comboForm.profitMode === 'amount' && (
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">
+                    {t('vendor.combos.profitAmountLabel').replace('{symbol}', baseCurrencySymbol)}
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{baseCurrencySymbol}</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={comboForm.profitAmount}
+                      onChange={e => handleComboProfitChange('amount', e.target.value)}
+                      placeholder="0.00"
+                      className="w-full input-style pl-7"
+                    />
+                  </div>
+                </div>
+              )}
+              {comboForm.profitMode === 'sellPrice' && (
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">
+                    {t('vendor.combos.sellPriceLabel').replace('{symbol}', baseCurrencySymbol)}
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{baseCurrencySymbol}</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={comboForm.sellPrice}
+                      onChange={e => handleComboProfitChange('sellPrice', e.target.value)}
+                      placeholder="0.00"
+                      className={`w-full input-style pl-7 ${
+                        parseFloat(comboForm.sellPrice || 0) > 0 && parseFloat(comboForm.sellPrice) < comboBasePrice
+                          ? 'border-red-400 ring-1 ring-red-400' : ''
+                      }`}
+                    />
+                  </div>
+                </div>
+              )}
               {/* Margin warnings */}
               {comboForm.profitMargin !== '' && !isNaN(parseFloat(comboForm.profitMargin)) && (
                 <>
@@ -569,11 +715,25 @@ const VendorCombosTab = ({
             {/* Price Summary with Cost Breakdown */}
             <div className="md:col-span-2">
               {(() => {
-                const prices = getComboCalculatedPrices(comboForm);
+                const hasProducts = comboForm.products && comboForm.products.length > 0;
+                const prices = hasProducts ? getComboCalculatedPrices(comboForm) : { base: '0.00', final: '0.00' };
                 const baseNum = parseFloat(prices.base) || 0;
-                const finalNum = parseFloat(prices.final) || 0;
+                const finalNum = hasProducts ? (parseFloat(prices.final) || 0) : 0;
                 const margin = parseFloat(comboForm.profitMargin || financialSettings.comboProfit) || 0;
                 const marginAmount = finalNum - baseNum;
+
+                // Calculate user savings: sum of actual individual product final prices vs combo price
+                const displayCurrencyId = selectedCurrency || baseCurrencyId;
+                const individualTotal = hasProducts ? comboForm.products.reduce((sum, productId) => {
+                  const product = products.find(p => p.id === productId);
+                  if (!product) return sum;
+                  const qty = comboForm.productQuantities[productId] || 1;
+                  const finalInDisplay = convertPrice(parseFloat(product.final_price || product.base_price || 0), product.base_currency_id, displayCurrencyId);
+                  return sum + (finalInDisplay * qty);
+                }, 0) : 0;
+                const savings = individualTotal - finalNum;
+                const savingsPercent = individualTotal > 0 ? ((savings / individualTotal) * 100) : 0;
+
                 return (
                   <div className="glass-effect p-4 rounded-lg text-sm space-y-2">
                     <div className="flex justify-between">
@@ -591,9 +751,42 @@ const VendorCombosTab = ({
                     <div className="border-t border-gray-200 pt-2 flex justify-between font-semibold">
                       <span>{t('vendor.combos.finalPrice')}:</span>
                       <span className="text-blue-600">
-                        {currencySymbol}{prices.final} {currencyCode}
+                        {currencySymbol}{finalNum.toFixed(2)} {currencyCode}
                       </span>
                     </div>
+
+                    {/* User savings preview */}
+                    {hasProducts && individualTotal > 0 && (
+                      <div className={`border-t border-gray-200 pt-2 flex justify-between font-medium ${savings > 0 ? 'text-emerald-600' : savings < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                        <span>{t('vendor.combos.userSavings')}:</span>
+                        <span>
+                          {savings > 0 ? '-' : savings < 0 ? '+' : ''}{currencySymbol}{Math.abs(savings).toFixed(2)} ({savingsPercent.toFixed(1)}%)
+                        </span>
+                      </div>
+                    )}
+                    {hasProducts && individualTotal > 0 && (
+                      <div className="text-xs text-gray-400">
+                        {t('vendor.combos.individualTotal')}: {currencySymbol}{individualTotal.toFixed(2)} {currencyCode}
+                      </div>
+                    )}
+
+                    {/* Cross-mode preview */}
+                    {comboBasePrice > 0 && comboForm.profitMargin !== '' && !isNaN(parseFloat(comboForm.profitMargin)) && (
+                      <div className="border-t border-gray-100 pt-2 mt-1">
+                        <p className="text-gray-500 text-xs mb-1">{t('vendor.combos.profitPreview')}</p>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                          <span className="font-medium text-gray-700">
+                            {t('vendor.addProduct.profitByPercent')}: <span className="text-blue-600">{parseFloat(comboForm.profitMargin).toFixed(2)}%</span>
+                          </span>
+                          <span className="font-medium text-gray-700">
+                            = <span className="text-green-600">{baseCurrencySymbol}{parseFloat(comboForm.profitAmount || 0).toFixed(2)}</span>
+                          </span>
+                          <span className="font-medium text-gray-700">
+                            | {t('vendor.addProduct.profitBySellPrice')}: <span className="text-purple-600">{baseCurrencySymbol}{parseFloat(comboForm.sellPrice || 0).toFixed(2)}</span>
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
