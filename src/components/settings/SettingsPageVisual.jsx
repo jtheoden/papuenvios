@@ -29,6 +29,9 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     primaryColor: visualSettings.primaryColor || '#2563eb',
     secondaryColor: visualSettings.secondaryColor || '#9333ea',
     useGradient: visualSettings.useGradient !== undefined ? visualSettings.useGradient : true,
+    // Nav bar active item
+    navBarActiveBgColor: visualSettings.navBarActiveBgColor || '#2563eb',
+    navBarActiveTextColor: visualSettings.navBarActiveTextColor || '#ffffff',
     // Header/Menu colors
     headerBgColor: visualSettings.headerBgColor || '#ffffff',
     headerTextColor: visualSettings.headerTextColor || '#1f2937',
@@ -44,6 +47,8 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     tabActiveBgColor: visualSettings.tabActiveBgColor || '#eff6ff',
     tabInactiveColor: visualSettings.tabInactiveColor || '#6b7280',
     tabInactiveBgColor: visualSettings.tabInactiveBgColor || '#f9fafb',
+    tabHoverColor: visualSettings.tabHoverColor || '#1f2937',
+    tabHoverBgColor: visualSettings.tabHoverBgColor || '#f3f4f6',
     // Button colors
     buttonBgColor: visualSettings.buttonBgColor || '#2563eb',
     buttonTextColor: visualSettings.buttonTextColor || '#ffffff',
@@ -56,6 +61,33 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     cardBgColor: visualSettings.cardBgColor || '#ffffff',
     showCompanyName: visualSettings.showCompanyName !== undefined ? visualSettings.showCompanyName : true,
     logoMaxHeight: visualSettings.logoMaxHeight || 40,
+    // Header interaction states
+    headerMenuHoverTextColor: visualSettings.headerMenuHoverTextColor || '#1f2937',
+    headerMenuActiveBgColor: visualSettings.headerMenuActiveBgColor || '#eff6ff',
+    useHeaderGradient: visualSettings.useHeaderGradient || false,
+    headerGradientColor: visualSettings.headerGradientColor || '#9333ea',
+    // Semantic status colors
+    successColor: visualSettings.successColor || '#10b981',
+    warningColor: visualSettings.warningColor || '#f59e0b',
+    errorColor: visualSettings.errorColor || '#ef4444',
+    infoColor: visualSettings.infoColor || '#0ea5e9',
+    // Shadow system
+    useButtonShadow: visualSettings.useButtonShadow || false,
+    buttonShadowColor: visualSettings.buttonShadowColor || '#2563eb',
+    useCardShadow: visualSettings.useCardShadow !== undefined ? visualSettings.useCardShadow : true,
+    cardShadowColor: visualSettings.cardShadowColor || '#00000015',
+    useTextShadow: visualSettings.useTextShadow || false,
+    textShadowColor: visualSettings.textShadowColor || '#00000030',
+    // Gradient enhancements
+    gradientDirection: visualSettings.gradientDirection || '135',
+    useButtonGradient: visualSettings.useButtonGradient !== undefined ? visualSettings.useButtonGradient : true,
+    useTabGradient: visualSettings.useTabGradient || false,
+    // Footer colors
+    footerBgColor: visualSettings.footerBgColor || '#ffffff',
+    footerTextColor: visualSettings.footerTextColor || '#374151',
+    footerLinkColor: visualSettings.footerLinkColor || '#2563eb',
+    footerLinkHoverColor: visualSettings.footerLinkHoverColor || '#9333ea',
+    // Carousel
     carouselEnabled: visualSettings.carouselEnabled !== undefined ? visualSettings.carouselEnabled : true,
     carouselAutoplaySpeed: visualSettings.carouselAutoplaySpeed || 5000,
     carouselTransitionSpeed: visualSettings.carouselTransitionSpeed || 1000
@@ -108,6 +140,8 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       tabActiveBgColor: visualSettings.tabActiveBgColor || '#eff6ff',
       tabInactiveColor: visualSettings.tabInactiveColor || '#6b7280',
       tabInactiveBgColor: visualSettings.tabInactiveBgColor || '#f9fafb',
+      tabHoverColor: visualSettings.tabHoverColor || '#1f2937',
+      tabHoverBgColor: visualSettings.tabHoverBgColor || '#f3f4f6',
       buttonBgColor: visualSettings.buttonBgColor || '#2563eb',
       buttonTextColor: visualSettings.buttonTextColor || '#ffffff',
       buttonHoverBgColor: visualSettings.buttonHoverBgColor || '#1d4ed8',
@@ -117,6 +151,38 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       accentColor: visualSettings.accentColor || '#9333ea',
       pageBgColor: visualSettings.pageBgColor || '#f9fafb',
       cardBgColor: visualSettings.cardBgColor || '#ffffff',
+      showCompanyName: visualSettings.showCompanyName !== undefined ? visualSettings.showCompanyName : true,
+      logoMaxHeight: visualSettings.logoMaxHeight || 40,
+      // Nav bar active item
+      navBarActiveBgColor: visualSettings.navBarActiveBgColor || '#2563eb',
+      navBarActiveTextColor: visualSettings.navBarActiveTextColor || '#ffffff',
+      // Header interaction states
+      headerMenuHoverTextColor: visualSettings.headerMenuHoverTextColor || '#1f2937',
+      headerMenuActiveBgColor: visualSettings.headerMenuActiveBgColor || '#eff6ff',
+      useHeaderGradient: visualSettings.useHeaderGradient || false,
+      headerGradientColor: visualSettings.headerGradientColor || '#9333ea',
+      // Semantic status colors
+      successColor: visualSettings.successColor || '#10b981',
+      warningColor: visualSettings.warningColor || '#f59e0b',
+      errorColor: visualSettings.errorColor || '#ef4444',
+      infoColor: visualSettings.infoColor || '#0ea5e9',
+      // Shadow system
+      useButtonShadow: visualSettings.useButtonShadow || false,
+      buttonShadowColor: visualSettings.buttonShadowColor || '#2563eb',
+      useCardShadow: visualSettings.useCardShadow !== undefined ? visualSettings.useCardShadow : true,
+      cardShadowColor: visualSettings.cardShadowColor || '#00000015',
+      useTextShadow: visualSettings.useTextShadow || false,
+      textShadowColor: visualSettings.textShadowColor || '#00000030',
+      // Gradient enhancements
+      gradientDirection: visualSettings.gradientDirection || '135',
+      useButtonGradient: visualSettings.useButtonGradient !== undefined ? visualSettings.useButtonGradient : true,
+      useTabGradient: visualSettings.useTabGradient || false,
+      // Footer colors
+      footerBgColor: visualSettings.footerBgColor || '#ffffff',
+      footerTextColor: visualSettings.footerTextColor || '#374151',
+      footerLinkColor: visualSettings.footerLinkColor || '#2563eb',
+      footerLinkHoverColor: visualSettings.footerLinkHoverColor || '#9333ea',
+      // Carousel
       carouselEnabled: visualSettings.carouselEnabled !== undefined ? visualSettings.carouselEnabled : true,
       carouselAutoplaySpeed: visualSettings.carouselAutoplaySpeed || 5000,
       carouselTransitionSpeed: visualSettings.carouselTransitionSpeed || 1000
@@ -688,173 +754,459 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
           </div>
         </div>
 
-        {/* Brand Colors */}
-        <div className="mb-6">
-          <h3 className="text-lg font-medium mb-3 text-gray-700">
-            {t('settings.visual.brandColors')}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* SECTION 1: Brand & Global Colors                           */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        <div className="mb-8 p-4 bg-gray-50/50 rounded-xl border border-gray-100">
+          <h3 className="text-lg font-semibold mb-4 text-gray-800">
+            {t('settings.visual.brandIdentity')}
           </h3>
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             {[
               { key: 'primaryColor', label: t('settings.visual.primaryColor') },
               { key: 'secondaryColor', label: t('settings.visual.secondaryColor') },
               { key: 'accentColor', label: t('settings.visual.accentColor') },
-              { key: 'headingColor', label: t('settings.visual.headingColor') }
+              { key: 'pageBgColor', label: t('settings.visual.pageBackground') }
             ].map(({ key, label }) => (
               <div key={key}>
-                <label className="block text-sm font-medium mb-2">{label}</label>
-                <input
-                  type="color"
-                  value={appearance[key]}
-                  onChange={e => updateAppearance(key, e.target.value)}
-                  className="w-full h-10 rounded-lg cursor-pointer border border-gray-300"
-                />
+                <label className="block text-xs font-medium mb-1.5 text-gray-600">{label}</label>
+                <input type="color" value={appearance[key]} onChange={e => updateAppearance(key, e.target.value)} className="w-full h-9 rounded-lg cursor-pointer border border-gray-300" />
               </div>
             ))}
           </div>
+          {/* Global toggles */}
+          <div className="flex flex-wrap gap-x-6 gap-y-2 mb-4">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={appearance.useGradient} onChange={e => updateAppearance('useGradient', e.target.checked)} className="rounded" />
+              <span className="text-sm font-medium">{t('settings.visual.useGradient')}</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={appearance.showCompanyName} onChange={e => updateAppearance('showCompanyName', e.target.checked)} className="rounded" />
+              <span className="text-sm font-medium">{t('settings.visual.showCompanyName')}</span>
+            </label>
+          </div>
+          {/* Gradient direction */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5 text-gray-600">
+              {t('settings.visual.gradientAngle')}: {appearance.gradientDirection}°
+            </label>
+            <div className="flex items-center gap-3">
+              <input type="range" min="0" max="360" step="5" value={appearance.gradientDirection} onChange={e => updateAppearance('gradientDirection', e.target.value)} className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+              <div className="w-9 h-9 rounded-lg flex-shrink-0 border border-gray-200" style={{ background: `linear-gradient(${appearance.gradientDirection}deg, ${appearance.primaryColor}, ${appearance.secondaryColor})` }} />
+            </div>
+            <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+              <span>0°</span><span>90°</span><span>180°</span><span>270°</span><span>360°</span>
+            </div>
+          </div>
         </div>
 
-        {/* Header & Menu Colors */}
-        <div className="mb-6">
-          <h3 className="text-lg font-medium mb-3 text-gray-700">
-            {t('settings.visual.headerMenuColors')}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* SECTION 2: Header & Navigation                             */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        <div className="mb-8 p-4 bg-gray-50/50 rounded-xl border border-gray-100">
+          <h3 className="text-lg font-semibold mb-4 text-gray-800">
+            {t('settings.visual.headerNavigation')}
           </h3>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Navigation Bar subsection */}
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">{t('settings.visual.navigationBar')}</p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             {[
-              { key: 'headerBgColor', label: t('settings.visual.headerBackground') },
-              { key: 'headerTextColor', label: t('settings.visual.headerText') },
-              { key: 'headerMenuBgColor', label: t('settings.visual.menuBackground') },
-              { key: 'headerMenuTextColor', label: t('settings.visual.menuText') },
-              { key: 'headerMenuHoverBgColor', label: t('settings.visual.menuHover') },
-              { key: 'headerMenuActiveColor', label: t('settings.visual.menuActive') }
+              { key: 'headerBgColor', label: t('settings.visual.navBarBackground') },
+              { key: 'headerTextColor', label: t('settings.visual.navBarText') },
+              { key: 'navBarActiveBgColor', label: t('settings.visual.navBarActiveBg') },
+              { key: 'navBarActiveTextColor', label: t('settings.visual.navBarActiveText') }
             ].map(({ key, label }) => (
               <div key={key}>
-                <label className="block text-sm font-medium mb-2">{label}</label>
-                <input
-                  type="color"
-                  value={appearance[key]}
-                  onChange={e => updateAppearance(key, e.target.value)}
-                  className="w-full h-10 rounded-lg cursor-pointer border border-gray-300"
-                />
+                <label className="block text-xs font-medium mb-1.5 text-gray-600">{label}</label>
+                <input type="color" value={appearance[key]} onChange={e => updateAppearance(key, e.target.value)} className="w-full h-9 rounded-lg cursor-pointer border border-gray-300" />
               </div>
             ))}
           </div>
+          {/* Dropdown Menus subsection */}
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-4">{t('settings.visual.dropdownMenus')}</p>
+          <div className="grid md:grid-cols-2 gap-4 mb-4">
+            {[
+              { key: 'headerMenuBgColor', label: t('settings.visual.dropdownBackground') },
+              { key: 'headerMenuTextColor', label: t('settings.visual.dropdownText') }
+            ].map(({ key, label }) => (
+              <div key={key}>
+                <label className="block text-xs font-medium mb-1.5 text-gray-600">{label}</label>
+                <input type="color" value={appearance[key]} onChange={e => updateAppearance(key, e.target.value)} className="w-full h-9 rounded-lg cursor-pointer border border-gray-300" />
+              </div>
+            ))}
+          </div>
+          {/* Hover & Active States subsection */}
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-4">{t('settings.visual.hoverActiveStates')}</p>
+          <p className="text-xs text-gray-400 mb-3 italic">{t('settings.visual.hoverActiveHint')}</p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            {[
+              { key: 'headerMenuHoverBgColor', label: t('settings.visual.hoverBackground') },
+              { key: 'headerMenuHoverTextColor', label: t('settings.visual.hoverText') },
+              { key: 'headerMenuActiveBgColor', label: t('settings.visual.activeBackground') },
+              { key: 'headerMenuActiveColor', label: t('settings.visual.activeText') }
+            ].map(({ key, label }) => (
+              <div key={key}>
+                <label className="block text-xs font-medium mb-1.5 text-gray-600">{label}</label>
+                <input type="color" value={appearance[key]} onChange={e => updateAppearance(key, e.target.value)} className="w-full h-9 rounded-lg cursor-pointer border border-gray-300" />
+              </div>
+            ))}
+          </div>
+          {/* Effects */}
+          <div className="flex flex-wrap items-center gap-4 mb-4">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={appearance.useHeaderGradient} onChange={e => updateAppearance('useHeaderGradient', e.target.checked)} className="rounded" />
+              <span className="text-sm font-medium">{t('settings.visual.gradientOnActive')}</span>
+            </label>
+            {appearance.useHeaderGradient && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500">{t('settings.visual.gradientEndColor')}</label>
+                <input type="color" value={appearance.headerGradientColor} onChange={e => updateAppearance('headerGradientColor', e.target.value)} className="w-10 h-8 rounded cursor-pointer border border-gray-300" />
+              </div>
+            )}
+          </div>
+          {/* Header interactive preview */}
+          <div className="p-3 bg-white rounded-lg border border-gray-200">
+            <p className="text-xs text-gray-500 mb-2">{t('settings.visual.headerPreview')}</p>
+            <div className="rounded-lg overflow-hidden" style={{ backgroundColor: appearance.headerBgColor }}>
+              <div className="flex items-center gap-2 px-3 py-2">
+                <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: appearance.useGradient ? `linear-gradient(${appearance.gradientDirection}deg, ${appearance.primaryColor}, ${appearance.secondaryColor})` : appearance.primaryColor }}>
+                  <ShoppingBag className="w-3 h-3 text-white" />
+                </div>
+                {appearance.showCompanyName && (
+                  <span className="text-sm font-bold" style={{ backgroundImage: appearance.useGradient ? `linear-gradient(${appearance.gradientDirection}deg, ${appearance.primaryColor}, ${appearance.secondaryColor})` : `linear-gradient(0deg, ${appearance.primaryColor}, ${appearance.primaryColor})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+                    {appearance.companyName || 'PapuEnvíos'}
+                  </span>
+                )}
+                <div className="flex-1" />
+                <div className="flex gap-1">
+                  {['Home', 'Products', 'Admin'].map((label, i) => {
+                    const isActive = i === 2;
+                    const dir = appearance.gradientDirection || 135;
+                    const navActiveBg = appearance.navBarActiveBgColor || appearance.primaryColor;
+                    const navActiveText = appearance.navBarActiveTextColor || '#ffffff';
+                    const useNavGradient = appearance.useHeaderGradient || appearance.useGradient;
+                    const navGradientEnd = appearance.headerGradientColor || appearance.secondaryColor;
+                    return (
+                      <span
+                        key={label}
+                        className="px-2.5 py-1 rounded-md text-xs font-medium cursor-default transition-colors"
+                        style={isActive ? {
+                          background: useNavGradient
+                            ? `linear-gradient(${dir}deg, ${navActiveBg}, ${navGradientEnd})`
+                            : navActiveBg,
+                          color: navActiveText
+                        } : { color: appearance.headerTextColor }}
+                        onMouseEnter={e => { if (!isActive) { e.currentTarget.style.backgroundColor = appearance.headerMenuHoverBgColor; e.currentTarget.style.color = appearance.headerMenuHoverTextColor; }}}
+                        onMouseLeave={e => { if (!isActive) { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = appearance.headerTextColor; }}}
+                      >
+                        {label}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Tab Colors */}
-        <div className="mb-6">
-          <h3 className="text-lg font-medium mb-3 text-gray-700">
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* SECTION 3: Headings & Text                                 */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        <div className="mb-8 p-4 bg-gray-50/50 rounded-xl border border-gray-100">
+          <h3 className="text-lg font-semibold mb-4 text-gray-800">
+            {t('settings.visual.headingsText')}
+          </h3>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label className="block text-xs font-medium mb-1.5 text-gray-600">{t('settings.visual.headingColor')}</label>
+              <input type="color" value={appearance.headingColor} onChange={e => updateAppearance('headingColor', e.target.value)} className="w-full h-9 rounded-lg cursor-pointer border border-gray-300" />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-2 mb-4">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={appearance.useHeadingGradient} onChange={e => updateAppearance('useHeadingGradient', e.target.checked)} className="rounded" />
+              <span className="text-sm font-medium">{t('settings.visual.useHeadingGradient')}</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={appearance.useTextShadow} onChange={e => updateAppearance('useTextShadow', e.target.checked)} className="rounded" />
+              <span className="text-sm font-medium">{t('settings.visual.useTextShadow')}</span>
+            </label>
+            {appearance.useTextShadow && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500">{t('settings.visual.textShadowColor')}</label>
+                <input type="color" value={appearance.textShadowColor.slice(0, 7)} onChange={e => updateAppearance('textShadowColor', e.target.value)} className="w-10 h-8 rounded cursor-pointer border border-gray-300" />
+              </div>
+            )}
+          </div>
+          {/* Heading preview */}
+          <div className="p-3 bg-white rounded-lg border border-gray-200">
+            <p className="text-xs text-gray-500 mb-2">{t('settings.visual.headingPreview')}</p>
+            <h4
+              className="text-xl font-bold"
+              style={{
+                ...(appearance.useHeadingGradient || appearance.useGradient ? {
+                  backgroundImage: `linear-gradient(${appearance.gradientDirection || 135}deg, ${appearance.primaryColor}, ${appearance.secondaryColor})`,
+                  WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text'
+                } : { color: appearance.headingColor }),
+                textShadow: appearance.useTextShadow ? `0 2px 4px ${appearance.textShadowColor || '#00000030'}` : 'none'
+              }}
+            >
+              {t('settings.visual.headingPreview')}
+            </h4>
+          </div>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* SECTION 4: Tabs                                            */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        <div className="mb-8 p-4 bg-gray-50/50 rounded-xl border border-gray-100">
+          <h3 className="text-lg font-semibold mb-4 text-gray-800">
             {t('settings.visual.tabColors')}
           </h3>
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
             {[
               { key: 'tabActiveColor', label: t('settings.visual.tabActiveText') },
               { key: 'tabActiveBgColor', label: t('settings.visual.tabActiveBg') },
               { key: 'tabInactiveColor', label: t('settings.visual.tabInactiveText') },
-              { key: 'tabInactiveBgColor', label: t('settings.visual.tabInactiveBg') }
+              { key: 'tabInactiveBgColor', label: t('settings.visual.tabInactiveBg') },
+              { key: 'tabHoverColor', label: t('settings.visual.tabHoverText') },
+              { key: 'tabHoverBgColor', label: t('settings.visual.tabHoverBg') }
             ].map(({ key, label }) => (
               <div key={key}>
-                <label className="block text-sm font-medium mb-2">{label}</label>
-                <input
-                  type="color"
-                  value={appearance[key]}
-                  onChange={e => updateAppearance(key, e.target.value)}
-                  className="w-full h-10 rounded-lg cursor-pointer border border-gray-300"
-                />
+                <label className="block text-xs font-medium mb-1.5 text-gray-600">{label}</label>
+                <input type="color" value={appearance[key]} onChange={e => updateAppearance(key, e.target.value)} className="w-full h-9 rounded-lg cursor-pointer border border-gray-300" />
               </div>
             ))}
           </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-2 mb-4">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={appearance.useTabGradient} onChange={e => updateAppearance('useTabGradient', e.target.checked)} className="rounded" />
+              <span className="text-sm font-medium">{t('settings.visual.useTabGradient')}</span>
+            </label>
+          </div>
+          {/* Tab interactive preview */}
+          <div className="p-3 bg-white rounded-lg border border-gray-200">
+            <p className="text-xs text-gray-500 mb-2">{t('settings.visual.tabPreview')}</p>
+            <div className="flex border-b" style={{ borderBottomColor: '#e5e7eb' }}>
+              {[t('settings.visual.tabPreviewGeneral'), t('settings.visual.tabPreviewVisual'), t('settings.visual.tabPreviewFinancial')].map((label, i) => {
+                const isActive = i === 1;
+                return (
+                  <span
+                    key={label}
+                    className="px-4 py-2 text-sm font-medium cursor-default transition-colors rounded-t-lg"
+                    style={isActive
+                      ? (appearance.useTabGradient
+                          ? { background: `linear-gradient(${appearance.gradientDirection || 135}deg, ${appearance.tabActiveColor}, ${appearance.secondaryColor})`, color: '#ffffff', borderBottom: '2px solid transparent' }
+                          : { borderBottom: `2px solid ${appearance.tabActiveColor}`, color: appearance.tabActiveColor, backgroundColor: appearance.tabActiveBgColor })
+                      : { color: appearance.tabInactiveColor, backgroundColor: appearance.tabInactiveBgColor }
+                    }
+                    onMouseEnter={e => { if (!isActive) { e.currentTarget.style.color = appearance.tabHoverColor; e.currentTarget.style.backgroundColor = appearance.tabHoverBgColor; }}}
+                    onMouseLeave={e => { if (!isActive) { e.currentTarget.style.color = appearance.tabInactiveColor; e.currentTarget.style.backgroundColor = appearance.tabInactiveBgColor; }}}
+                  >
+                    {label}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
-        {/* Button & Background Colors */}
-        <div className="mb-6">
-          <h3 className="text-lg font-medium mb-3 text-gray-700">
-            {t('settings.visual.buttonBackgroundColors')}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* SECTION 5: Buttons                                         */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        <div className="mb-8 p-4 bg-gray-50/50 rounded-xl border border-gray-100">
+          <h3 className="text-lg font-semibold mb-4 text-gray-800">
+            {t('settings.visual.buttons')}
           </h3>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Primary button colors */}
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
             {[
               { key: 'buttonBgColor', label: t('settings.visual.buttonColor') },
-              { key: 'buttonHoverBgColor', label: t('settings.visual.buttonHoverColor') },
-              { key: 'destructiveBgColor', label: t('settings.visual.destructiveColor') },
-              { key: 'pageBgColor', label: t('settings.visual.pageBackground') },
-              { key: 'cardBgColor', label: t('settings.visual.cardBackground') }
+              { key: 'buttonTextColor', label: t('settings.visual.buttonTextColor') },
+              { key: 'buttonHoverBgColor', label: t('settings.visual.buttonHoverColor') }
             ].map(({ key, label }) => (
               <div key={key}>
-                <label className="block text-sm font-medium mb-2">{label}</label>
-                <input
-                  type="color"
-                  value={appearance[key]}
-                  onChange={e => updateAppearance(key, e.target.value)}
-                  className="w-full h-10 rounded-lg cursor-pointer border border-gray-300"
-                />
+                <label className="block text-xs font-medium mb-1.5 text-gray-600">{label}</label>
+                <input type="color" value={appearance[key]} onChange={e => updateAppearance(key, e.target.value)} className="w-full h-9 rounded-lg cursor-pointer border border-gray-300" />
               </div>
+            ))}
+          </div>
+          {/* Button gradient + shadow */}
+          <div className="flex flex-wrap gap-x-6 gap-y-2 mb-4">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={appearance.useButtonGradient} onChange={e => updateAppearance('useButtonGradient', e.target.checked)} className="rounded" />
+              <span className="text-sm font-medium">{t('settings.visual.useButtonGradient')}</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={appearance.useButtonShadow} onChange={e => updateAppearance('useButtonShadow', e.target.checked)} className="rounded" />
+              <span className="text-sm font-medium">{t('settings.visual.useButtonShadow')}</span>
+            </label>
+            {appearance.useButtonShadow && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500">{t('settings.visual.buttonShadowColor')}</label>
+                <input type="color" value={appearance.buttonShadowColor.slice(0, 7)} onChange={e => updateAppearance('buttonShadowColor', e.target.value)} className="w-10 h-8 rounded cursor-pointer border border-gray-300" />
+              </div>
+            )}
+          </div>
+          {/* Destructive button colors */}
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-4">{t('settings.visual.dangerButtons')}</p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+            {[
+              { key: 'destructiveBgColor', label: t('settings.visual.destructiveColor') },
+              { key: 'destructiveTextColor', label: t('settings.visual.destructiveTextCol') },
+              { key: 'destructiveHoverBgColor', label: t('settings.visual.destructiveHover') }
+            ].map(({ key, label }) => (
+              <div key={key}>
+                <label className="block text-xs font-medium mb-1.5 text-gray-600">{label}</label>
+                <input type="color" value={appearance[key]} onChange={e => updateAppearance(key, e.target.value)} className="w-full h-9 rounded-lg cursor-pointer border border-gray-300" />
+              </div>
+            ))}
+          </div>
+          {/* Button interactive preview */}
+          <div className="p-3 bg-white rounded-lg border border-gray-200">
+            <p className="text-xs text-gray-500 mb-2">{t('settings.visual.buttonPreview')}</p>
+            <div className="flex flex-wrap gap-3">
+              <div
+                className="px-5 py-2.5 rounded-lg font-semibold text-sm cursor-default transition-all"
+                style={{
+                  background: (appearance.useButtonGradient ?? appearance.useGradient)
+                    ? `linear-gradient(${appearance.gradientDirection || 135}deg, ${appearance.primaryColor}, ${appearance.secondaryColor})`
+                    : appearance.buttonBgColor,
+                  color: appearance.buttonTextColor,
+                  boxShadow: appearance.useButtonShadow ? `0 4px 14px 0 ${appearance.buttonShadowColor || appearance.primaryColor}40` : 'none'
+                }}
+                onMouseEnter={e => { if (!(appearance.useButtonGradient ?? appearance.useGradient)) e.currentTarget.style.background = appearance.buttonHoverBgColor; }}
+                onMouseLeave={e => { if (!(appearance.useButtonGradient ?? appearance.useGradient)) e.currentTarget.style.background = appearance.buttonBgColor; }}
+              >
+                {t('settings.visual.primaryButton')}
+              </div>
+              <div
+                className="px-5 py-2.5 rounded-lg font-semibold text-sm cursor-default transition-all"
+                style={{ backgroundColor: appearance.destructiveBgColor, color: appearance.destructiveTextColor }}
+                onMouseEnter={e => { e.currentTarget.style.backgroundColor = appearance.destructiveHoverBgColor; }}
+                onMouseLeave={e => { e.currentTarget.style.backgroundColor = appearance.destructiveBgColor; }}
+              >
+                {t('settings.visual.deleteButton')}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* SECTION 6: Cards & Backgrounds                             */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        <div className="mb-8 p-4 bg-gray-50/50 rounded-xl border border-gray-100">
+          <h3 className="text-lg font-semibold mb-4 text-gray-800">
+            {t('settings.visual.cardsBackgrounds')}
+          </h3>
+          <div className="grid md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-xs font-medium mb-1.5 text-gray-600">{t('settings.visual.cardBackground')}</label>
+              <input type="color" value={appearance.cardBgColor} onChange={e => updateAppearance('cardBgColor', e.target.value)} className="w-full h-9 rounded-lg cursor-pointer border border-gray-300" />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-4 mb-4">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={appearance.useCardShadow} onChange={e => updateAppearance('useCardShadow', e.target.checked)} className="rounded" />
+              <span className="text-sm font-medium">{t('settings.visual.useCardShadow')}</span>
+            </label>
+            {appearance.useCardShadow && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500">{t('settings.visual.cardShadowColor')}</label>
+                <input type="color" value={appearance.cardShadowColor.slice(0, 7)} onChange={e => updateAppearance('cardShadowColor', e.target.value)} className="w-10 h-8 rounded cursor-pointer border border-gray-300" />
+              </div>
+            )}
+          </div>
+          {/* Card preview */}
+          <div className="p-3 bg-white rounded-lg border border-gray-200">
+            <p className="text-xs text-gray-500 mb-2">{t('settings.visual.cardPreview')}</p>
+            <div
+              className="p-4 rounded-lg border border-gray-100 max-w-xs"
+              style={{
+                backgroundColor: appearance.cardBgColor,
+                boxShadow: appearance.useCardShadow
+                  ? `0 4px 6px -1px ${appearance.cardShadowColor || '#00000015'}, 0 2px 4px -2px ${appearance.cardShadowColor || '#00000010'}`
+                  : 'none'
+              }}
+            >
+              <span className="font-semibold text-sm text-gray-700">{t('settings.visual.cardPreview')}</span>
+              <p className="text-xs text-gray-500 mt-1">Lorem ipsum dolor sit amet consectetur.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* SECTION 7: Status Colors                                   */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        <div className="mb-8 p-4 bg-gray-50/50 rounded-xl border border-gray-100">
+          <h3 className="text-lg font-semibold mb-4 text-gray-800">
+            {t('settings.visual.statusIndicators')}
+          </h3>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            {[
+              { key: 'successColor', label: t('settings.visual.successColor') },
+              { key: 'warningColor', label: t('settings.visual.warningColor') },
+              { key: 'errorColor', label: t('settings.visual.errorColor') },
+              { key: 'infoColor', label: t('settings.visual.infoColor') }
+            ].map(({ key, label }) => (
+              <div key={key}>
+                <label className="block text-xs font-medium mb-1.5 text-gray-600">{label}</label>
+                <input type="color" value={appearance[key]} onChange={e => updateAppearance(key, e.target.value)} className="w-full h-9 rounded-lg cursor-pointer border border-gray-300" />
+              </div>
+            ))}
+          </div>
+          {/* Status preview strip */}
+          <div className="flex flex-wrap gap-2">
+            <span className="text-xs text-gray-500 mr-1 self-center">{t('settings.visual.statusPreview')}:</span>
+            {[
+              { label: 'Success', color: appearance.successColor },
+              { label: 'Warning', color: appearance.warningColor },
+              { label: 'Error', color: appearance.errorColor },
+              { label: 'Info', color: appearance.infoColor }
+            ].map(({ label, color }) => (
+              <span key={label} className="px-3 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: `${color}20`, color }}>
+                {label}
+              </span>
             ))}
           </div>
         </div>
 
-        {/* Toggles */}
-        <div className="space-y-3 mb-6">
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={appearance.showCompanyName}
-              onChange={e => updateAppearance('showCompanyName', e.target.checked)}
-              className="rounded"
-            />
-            <span className="text-sm font-medium">{t('settings.visual.showCompanyName')}</span>
-          </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={appearance.useGradient}
-              onChange={e => updateAppearance('useGradient', e.target.checked)}
-              className="rounded"
-            />
-            <span className="text-sm font-medium">{t('settings.visual.useGradient')}</span>
-          </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={appearance.useHeadingGradient}
-              onChange={e => updateAppearance('useHeadingGradient', e.target.checked)}
-              className="rounded"
-            />
-            <span className="text-sm font-medium">{t('settings.visual.useHeadingGradient')}</span>
-          </label>
-        </div>
-
-        {/* Color Preview */}
-        <div className="p-4 bg-gray-50 rounded-lg mb-6 space-y-3">
-          <div
-            className="px-4 py-3 rounded-lg text-white font-semibold"
-            style={{
-              backgroundColor: appearance.buttonBgColor,
-              color: appearance.buttonTextColor
-            }}
-            onMouseEnter={e => e.currentTarget.style.backgroundColor = appearance.buttonHoverBgColor}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = appearance.buttonBgColor}
-          >
-            {t('settings.visual.primaryButton')}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* SECTION 8: Footer                                          */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        <div className="mb-8 p-4 bg-gray-50/50 rounded-xl border border-gray-100">
+          <h3 className="text-lg font-semibold mb-4 text-gray-800">
+            {t('settings.visual.footerColors')}
+          </h3>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            {[
+              { key: 'footerBgColor', label: t('settings.visual.footerBgColor') },
+              { key: 'footerTextColor', label: t('settings.visual.footerTextColor') },
+              { key: 'footerLinkColor', label: t('settings.visual.footerLinkColor') },
+              { key: 'footerLinkHoverColor', label: t('settings.visual.footerLinkHoverColor') }
+            ].map(({ key, label }) => (
+              <div key={key}>
+                <label className="block text-xs font-medium mb-1.5 text-gray-600">{label}</label>
+                <input type="color" value={appearance[key]} onChange={e => updateAppearance(key, e.target.value)} className="w-full h-9 rounded-lg cursor-pointer border border-gray-300" />
+              </div>
+            ))}
           </div>
-          <div
-            className="px-4 py-3 rounded-lg text-white font-semibold"
-            style={{
-              backgroundColor: appearance.destructiveBgColor,
-              color: appearance.destructiveTextColor
-            }}
-            onMouseEnter={e => e.currentTarget.style.backgroundColor = appearance.destructiveHoverBgColor}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = appearance.destructiveBgColor}
-          >
-            {t('settings.visual.deleteButton')}
-          </div>
-          <div className="flex gap-4 flex-wrap items-center">
-            <div
-              className="px-3 py-1 rounded-full text-xs font-semibold"
-              style={{
-                backgroundColor: `${appearance.accentColor}20`,
-                color: appearance.accentColor
-              }}
-            >
-              {t('settings.visual.badge')}
+          {/* Footer preview */}
+          <div className="p-3 bg-white rounded-lg border border-gray-200">
+            <p className="text-xs text-gray-500 mb-2">{t('settings.visual.footerPreview')}</p>
+            <div className="rounded-lg overflow-hidden" style={{ backgroundColor: appearance.footerBgColor, borderTop: `1px solid ${appearance.primaryColor}20` }}>
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                <span className="text-xs" style={{ color: appearance.footerTextColor }}>© 2026 {appearance.companyName || 'PapuEnvíos'}</span>
+                <span
+                  className="text-xs font-medium cursor-default transition-colors"
+                  style={{ color: appearance.footerLinkColor }}
+                  onMouseEnter={e => { e.currentTarget.style.color = appearance.footerLinkHoverColor; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = appearance.footerLinkColor; }}
+                >
+                  {t('settings.visual.footerPreviewLink')}
+                </span>
+                <span className="text-xs" style={{ color: appearance.footerTextColor }}>{appearance.companyName || 'PapuEnvíos'}</span>
+              </div>
             </div>
           </div>
         </div>
