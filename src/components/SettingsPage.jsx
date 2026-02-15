@@ -408,21 +408,45 @@ const SettingsPage = () => {
               const activeBgColor = visualSettings.tabActiveBgColor || '#ffffff';
               const inactiveColor = visualSettings.tabInactiveColor || '#6b7280';
               const inactiveBgColor = visualSettings.tabInactiveBgColor || '#f9fafb';
+              const hoverColor = visualSettings.tabHoverColor || '#1f2937';
+              const hoverBgColor = visualSettings.tabHoverBgColor || '#f3f4f6';
+              const dir = visualSettings.gradientDirection || 135;
 
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-6 py-2 sm:py-3 rounded-t-lg font-medium transition-all text-sm sm:text-base whitespace-nowrap ${
-                    isActive ? 'shadow-md border-b-2' : 'hover:opacity-80'
+                    isActive ? 'shadow-md border-b-2' : ''
                   }`}
-                  style={isActive ? {
-                    backgroundColor: activeBgColor,
-                    borderBottomColor: activeColor,
-                    color: activeColor
-                  } : {
-                    backgroundColor: inactiveBgColor,
-                    color: inactiveColor
+                  style={isActive
+                    ? (visualSettings.useTabGradient
+                        ? {
+                            background: `linear-gradient(${dir}deg, ${activeColor}, ${visualSettings.secondaryColor || '#9333ea'})`,
+                            color: '#ffffff',
+                            borderBottom: '2px solid transparent'
+                          }
+                        : {
+                            backgroundColor: activeBgColor,
+                            borderBottomColor: activeColor,
+                            color: activeColor
+                          })
+                    : {
+                        backgroundColor: inactiveBgColor,
+                        color: inactiveColor
+                      }
+                  }
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.backgroundColor = hoverBgColor;
+                      e.currentTarget.style.color = hoverColor;
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.backgroundColor = inactiveBgColor;
+                      e.currentTarget.style.color = inactiveColor;
+                    }
                   }}
                 >
                   <tab.icon className="h-4 w-4 sm:h-5 sm:w-5" />
