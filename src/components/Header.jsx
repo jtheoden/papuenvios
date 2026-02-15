@@ -186,44 +186,86 @@ const Header = ({ currentPage, onNavigate }) => {
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center space-x-1">
             {/* Public items */}
-            {publicMenuItems.map((item) => (
-              <Button
-                key={item.id}
-                variant={currentPage === item.id ? "default" : "ghost"}
-                size="sm"
-                onClick={() => handleNavClick(item.id)}
-                className="flex items-center space-x-2"
-                style={currentPage === item.id ? {
-                  background: visualSettings.useGradient
-                    ? `linear-gradient(to right, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.secondaryColor || semanticColors.secondary.hex})`
-                    : visualSettings.buttonBgColor || semanticColors.primary.main,
-                  color: visualSettings.buttonTextColor || semanticColors.background.primary,
-                  border: 'none'
-                } : {
-                  color: visualSettings.headerTextColor || semanticColors.neutral[800]
-                }}
-              >
-                <item.icon className="w-4 h-4" />
-                <span>{item.label}</span>
-              </Button>
-            ))}
+            {publicMenuItems.map((item) => {
+              const isActive = currentPage === item.id;
+              const navHoverBg = visualSettings.headerMenuHoverBgColor || `${visualSettings.primaryColor || '#2563eb'}15`;
+              const navHoverText = visualSettings.headerMenuHoverTextColor || visualSettings.headerTextColor || semanticColors.neutral[800];
+              const navText = visualSettings.headerTextColor || semanticColors.neutral[800];
+              const navActiveBg = visualSettings.navBarActiveBgColor || visualSettings.primaryColor || semanticColors.primary.main;
+              const navActiveText = visualSettings.navBarActiveTextColor || '#ffffff';
+              const useNavGradient = visualSettings.useHeaderGradient || visualSettings.useGradient;
+              const navGradientEnd = visualSettings.headerGradientColor || visualSettings.secondaryColor || semanticColors.secondary.hex;
+              const dir = visualSettings.gradientDirection || 135;
+              return (
+                <Button
+                  key={item.id}
+                  variant={isActive ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => handleNavClick(item.id)}
+                  className="flex items-center space-x-2"
+                  style={isActive ? {
+                    background: useNavGradient
+                      ? `linear-gradient(${dir}deg, ${navActiveBg}, ${navGradientEnd})`
+                      : navActiveBg,
+                    color: navActiveText,
+                    border: 'none'
+                  } : {
+                    color: navText
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.backgroundColor = navHoverBg;
+                      e.currentTarget.style.color = navHoverText;
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = navText;
+                    }
+                  }}
+                >
+                  <item.icon className="w-4 h-4" />
+                  <span>{item.label}</span>
+                </Button>
+              );
+            })}
 
             {/* Admin dropdown */}
-            {isAdmin && (
+            {isAdmin && (() => {
+              const adminIsActive = adminMenuItems.some(i => currentPage === i.id);
+              const adminActiveBg = visualSettings.navBarActiveBgColor || visualSettings.primaryColor || semanticColors.primary.main;
+              const adminActiveText = visualSettings.navBarActiveTextColor || '#ffffff';
+              const useNavGradient = visualSettings.useHeaderGradient || visualSettings.useGradient;
+              const navGradientEnd = visualSettings.headerGradientColor || visualSettings.secondaryColor || semanticColors.secondary.hex;
+              const dir = visualSettings.gradientDirection || 135;
+              return (
               <div className="relative">
                 <Button
-                  variant={adminMenuItems.some(i => currentPage === i.id) ? "default" : "ghost"}
+                  variant={adminIsActive ? "default" : "ghost"}
                   size="sm"
                   onClick={() => setIsAdminMenuOpen(!isAdminMenuOpen)}
                   className="flex items-center space-x-2"
-                  style={adminMenuItems.some(i => currentPage === i.id) ? {
-                    background: visualSettings.useGradient
-                      ? `linear-gradient(to right, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.secondaryColor || semanticColors.secondary.hex})`
-                      : visualSettings.buttonBgColor || semanticColors.primary.main,
-                    color: visualSettings.buttonTextColor || semanticColors.background.primary,
+                  style={adminIsActive ? {
+                    background: useNavGradient
+                      ? `linear-gradient(${dir}deg, ${adminActiveBg}, ${navGradientEnd})`
+                      : adminActiveBg,
+                    color: adminActiveText,
                     border: 'none'
                   } : {
                     color: visualSettings.headerTextColor || semanticColors.neutral[800]
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!adminMenuItems.some(i => currentPage === i.id)) {
+                      e.currentTarget.style.backgroundColor = visualSettings.headerMenuHoverBgColor || `${visualSettings.primaryColor || '#2563eb'}15`;
+                      e.currentTarget.style.color = visualSettings.headerMenuHoverTextColor || visualSettings.headerTextColor || semanticColors.neutral[800];
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!adminMenuItems.some(i => currentPage === i.id)) {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = visualSettings.headerTextColor || semanticColors.neutral[800];
+                    }
                   }}
                 >
                   <ShieldCheck className="w-4 h-4" />
@@ -246,7 +288,24 @@ const Header = ({ currentPage, onNavigate }) => {
                       {adminMenuItems.map((item) => {
                         const isActive = currentPage === item.id;
                         const hoverBgColor = visualSettings.headerMenuHoverBgColor || `${visualSettings.primaryColor}15`;
+                        const hoverTextColor = visualSettings.headerMenuHoverTextColor || visualSettings.headerMenuTextColor || semanticColors.neutral[800];
+                        const activeBgColor = visualSettings.headerMenuActiveBgColor || hoverBgColor;
                         const activeColor = visualSettings.headerMenuActiveColor || visualSettings.primaryColor || semanticColors.primary.main;
+                        const dir = visualSettings.gradientDirection || 135;
+                        const menuTextColor = visualSettings.headerMenuTextColor || visualSettings.headerTextColor || semanticColors.neutral[800];
+
+                        const activeStyle = visualSettings.useHeaderGradient
+                          ? {
+                              backgroundColor: activeBgColor,
+                              backgroundImage: `linear-gradient(${dir}deg, ${activeColor}, ${visualSettings.headerGradientColor || visualSettings.secondaryColor || '#9333ea'})`,
+                              WebkitBackgroundClip: 'text',
+                              WebkitTextFillColor: 'transparent',
+                              backgroundClip: 'text'
+                            }
+                          : {
+                              backgroundColor: activeBgColor,
+                              color: activeColor
+                            };
 
                         return (
                           <Button
@@ -255,20 +314,20 @@ const Header = ({ currentPage, onNavigate }) => {
                             size="sm"
                             onClick={() => handleNavClick(item.id)}
                             className="w-full justify-start flex items-center space-x-2 rounded-none hover:opacity-100"
-                            style={{
-                              backgroundColor: isActive ? hoverBgColor : 'transparent',
-                              color: isActive
-                                ? activeColor
-                                : (visualSettings.headerMenuTextColor || visualSettings.headerTextColor || semanticColors.neutral[800])
-                            }}
+                            style={isActive
+                              ? activeStyle
+                              : { backgroundColor: 'transparent', color: menuTextColor }
+                            }
                             onMouseEnter={(e) => {
                               if (!isActive) {
                                 e.currentTarget.style.backgroundColor = hoverBgColor;
+                                e.currentTarget.style.color = hoverTextColor;
                               }
                             }}
                             onMouseLeave={(e) => {
                               if (!isActive) {
                                 e.currentTarget.style.backgroundColor = 'transparent';
+                                e.currentTarget.style.color = menuTextColor;
                               }
                             }}
                           >
@@ -281,7 +340,8 @@ const Header = ({ currentPage, onNavigate }) => {
                   )}
                 </AnimatePresence>
               </div>
-            )}
+              );
+            })()}
           </nav>
 
           <div className="flex items-center gap-0.5 sm:gap-2 flex-shrink-0">
@@ -432,11 +492,11 @@ const Header = ({ currentPage, onNavigate }) => {
                     onClick={() => handleNavClick(item.id)}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all duration-200 min-w-[85px] justify-center shadow-sm"
                     style={isActive ? {
-                      background: visualSettings.useGradient
-                        ? `linear-gradient(135deg, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.secondaryColor || semanticColors.secondary.hex})`
-                        : visualSettings.primaryColor || semanticColors.primary.main,
-                      color: '#ffffff',
-                      boxShadow: `0 2px 8px ${visualSettings.primaryColor || semanticColors.primary.main}40`
+                      background: (visualSettings.useHeaderGradient || visualSettings.useGradient)
+                        ? `linear-gradient(${visualSettings.gradientDirection || 135}deg, ${visualSettings.navBarActiveBgColor || visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.headerGradientColor || visualSettings.secondaryColor || semanticColors.secondary.hex})`
+                        : visualSettings.navBarActiveBgColor || visualSettings.primaryColor || semanticColors.primary.main,
+                      color: visualSettings.navBarActiveTextColor || '#ffffff',
+                      boxShadow: `0 2px 8px ${visualSettings.navBarActiveBgColor || visualSettings.primaryColor || semanticColors.primary.main}40`
                     } : {
                       backgroundColor: `${visualSettings.primaryColor || semanticColors.primary.main}12`,
                       color: visualSettings.primaryColor || semanticColors.primary.main,
@@ -463,27 +523,45 @@ const Header = ({ currentPage, onNavigate }) => {
             >
               <div className="flex flex-col space-y-2">
                 {/* Public items */}
-                {publicMenuItems.map((item) => (
-                  <Button
-                    key={item.id}
-                    variant={currentPage === item.id ? "default" : "ghost"}
-                    size="sm"
-                    onClick={() => handleNavClick(item.id)}
-                    className="flex items-center space-x-2 justify-start"
-                    style={currentPage === item.id ? {
-                      background: visualSettings.useGradient
-                        ? `linear-gradient(to right, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.secondaryColor || semanticColors.secondary.hex})`
-                        : visualSettings.buttonBgColor || semanticColors.primary.main,
-                      color: visualSettings.buttonTextColor || semanticColors.background.primary,
-                      border: 'none'
-                    } : {
-                      color: visualSettings.headerTextColor || semanticColors.neutral[800]
-                    }}
-                  >
-                    <item.icon className="w-4 h-4" />
-                    <span>{item.label}</span>
-                  </Button>
-                ))}
+                {publicMenuItems.map((item) => {
+                  const isActive = currentPage === item.id;
+                  const navHoverBg = visualSettings.headerMenuHoverBgColor || `${visualSettings.primaryColor || '#2563eb'}15`;
+                  const navHoverText = visualSettings.headerMenuHoverTextColor || visualSettings.headerTextColor || semanticColors.neutral[800];
+                  const navText = visualSettings.headerTextColor || semanticColors.neutral[800];
+                  return (
+                    <Button
+                      key={item.id}
+                      variant={isActive ? "default" : "ghost"}
+                      size="sm"
+                      onClick={() => handleNavClick(item.id)}
+                      className="flex items-center space-x-2 justify-start"
+                      style={isActive ? {
+                        background: (visualSettings.useHeaderGradient || visualSettings.useGradient)
+                          ? `linear-gradient(${visualSettings.gradientDirection || 135}deg, ${visualSettings.navBarActiveBgColor || visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.headerGradientColor || visualSettings.secondaryColor || semanticColors.secondary.hex})`
+                          : visualSettings.navBarActiveBgColor || visualSettings.primaryColor || semanticColors.primary.main,
+                        color: visualSettings.navBarActiveTextColor || '#ffffff',
+                        border: 'none'
+                      } : {
+                        color: navText
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isActive) {
+                          e.currentTarget.style.backgroundColor = navHoverBg;
+                          e.currentTarget.style.color = navHoverText;
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isActive) {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                          e.currentTarget.style.color = navText;
+                        }
+                      }}
+                    >
+                      <item.icon className="w-4 h-4" />
+                      <span>{item.label}</span>
+                    </Button>
+                  );
+                })}
 
                 {/* Admin section */}
                 {isAdmin && (
@@ -494,27 +572,45 @@ const Header = ({ currentPage, onNavigate }) => {
                     >
                       {t('nav.adminMenu')}
                     </div>
-                    {adminMenuItems.map((item) => (
-                      <Button
-                        key={item.id}
-                        variant={currentPage === item.id ? "default" : "ghost"}
-                        size="sm"
-                        onClick={() => handleNavClick(item.id)}
-                        className="flex items-center space-x-2 justify-start"
-                        style={currentPage === item.id ? {
-                          background: visualSettings.useGradient
-                            ? `linear-gradient(to right, ${visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.secondaryColor || semanticColors.secondary.hex})`
-                            : visualSettings.buttonBgColor || semanticColors.primary.main,
-                          color: visualSettings.buttonTextColor || semanticColors.background.primary,
-                          border: 'none'
-                        } : {
-                          color: visualSettings.useGradient || semanticColors.neutral[800]
-                        }}
-                      >
-                        <item.icon className="w-4 h-4" />
-                        <span>{item.label}</span>
-                      </Button>
-                    ))}
+                    {adminMenuItems.map((item) => {
+                      const isActive = currentPage === item.id;
+                      const navHoverBg = visualSettings.headerMenuHoverBgColor || `${visualSettings.primaryColor || '#2563eb'}15`;
+                      const navHoverText = visualSettings.headerMenuHoverTextColor || visualSettings.headerTextColor || semanticColors.neutral[800];
+                      const navText = visualSettings.headerTextColor || semanticColors.neutral[800];
+                      return (
+                        <Button
+                          key={item.id}
+                          variant={isActive ? "default" : "ghost"}
+                          size="sm"
+                          onClick={() => handleNavClick(item.id)}
+                          className="flex items-center space-x-2 justify-start"
+                          style={isActive ? {
+                            background: (visualSettings.useHeaderGradient || visualSettings.useGradient)
+                              ? `linear-gradient(${visualSettings.gradientDirection || 135}deg, ${visualSettings.navBarActiveBgColor || visualSettings.primaryColor || semanticColors.primary.main}, ${visualSettings.headerGradientColor || visualSettings.secondaryColor || semanticColors.secondary.hex})`
+                              : visualSettings.navBarActiveBgColor || visualSettings.primaryColor || semanticColors.primary.main,
+                            color: visualSettings.navBarActiveTextColor || '#ffffff',
+                            border: 'none'
+                          } : {
+                            color: navText
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isActive) {
+                              e.currentTarget.style.backgroundColor = navHoverBg;
+                              e.currentTarget.style.color = navHoverText;
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isActive) {
+                              e.currentTarget.style.backgroundColor = 'transparent';
+                              e.currentTarget.style.color = navText;
+                            }
+                          }}
+                        >
+                          <item.icon className="w-4 h-4" />
+                          <span>{item.label}</span>
+                        </Button>
+                      );
+                    })}
                   </>
                 )}
                 <Button
