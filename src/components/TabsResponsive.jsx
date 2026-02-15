@@ -31,7 +31,8 @@ const TabsResponsive = ({ tabs, activeTab, onTabChange, visualSettings: propVisu
   const tabActiveBgColor = visualSettings.tabActiveBgColor || semanticColors.primary.light;
   const tabInactiveColor = visualSettings.tabInactiveColor || semanticColors.neutral[600];
   const tabInactiveBgColor = visualSettings.tabInactiveBgColor || 'transparent';
-  const hoverColor = visualSettings.tabInactiveColor ? visualSettings.tabActiveColor : semanticColors.neutral[900];
+  const tabHoverColor = visualSettings.tabHoverColor || semanticColors.neutral[900];
+  const tabHoverBgColor = visualSettings.tabHoverBgColor || semanticColors.neutral[50];
 
   const activeTabData = tabs.find(tab => tab.id === activeTab);
 
@@ -48,11 +49,17 @@ const TabsResponsive = ({ tabs, activeTab, onTabChange, visualSettings: propVisu
             onClick={() => onTabChange(tab.id)}
             style={
               activeTab === tab.id
-                ? {
-                    borderBottom: `2px solid ${tabActiveColor}`,
-                    color: tabActiveColor,
-                    backgroundColor: tabActiveBgColor
-                  }
+                ? (visualSettings.useTabGradient
+                    ? {
+                        background: `linear-gradient(${visualSettings.gradientDirection || 135}deg, ${tabActiveColor}, ${visualSettings.secondaryColor || '#9333ea'})`,
+                        color: '#ffffff',
+                        borderBottom: '2px solid transparent'
+                      }
+                    : {
+                        borderBottom: `2px solid ${tabActiveColor}`,
+                        color: tabActiveColor,
+                        backgroundColor: tabActiveBgColor
+                      })
                 : {
                     color: tabInactiveColor,
                     backgroundColor: tabInactiveBgColor,
@@ -61,12 +68,14 @@ const TabsResponsive = ({ tabs, activeTab, onTabChange, visualSettings: propVisu
             }
             onMouseEnter={(e) => {
               if (activeTab !== tab.id) {
-                e.currentTarget.style.color = hoverColor;
+                e.currentTarget.style.color = tabHoverColor;
+                e.currentTarget.style.backgroundColor = tabHoverBgColor;
               }
             }}
             onMouseLeave={(e) => {
               if (activeTab !== tab.id) {
                 e.currentTarget.style.color = tabInactiveColor;
+                e.currentTarget.style.backgroundColor = tabInactiveBgColor;
               }
             }}
             className="px-6 py-3 font-medium text-sm transition-colors rounded-t-lg"
@@ -136,12 +145,14 @@ const TabsResponsive = ({ tabs, activeTab, onTabChange, visualSettings: propVisu
                 }
                 onMouseEnter={(e) => {
                   if (activeTab !== tab.id) {
-                    e.currentTarget.style.backgroundColor = semanticColors.neutral[50];
+                    e.currentTarget.style.backgroundColor = tabHoverBgColor;
+                    e.currentTarget.style.color = tabHoverColor;
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (activeTab !== tab.id) {
                     e.currentTarget.style.backgroundColor = tabInactiveBgColor;
+                    e.currentTarget.style.color = tabInactiveColor;
                   }
                 }}
               >
