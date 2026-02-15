@@ -15,10 +15,11 @@ import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import { getUserTableColumns, getUserModalColumns } from '@/components/admin/UserTableConfig';
 import { getCategoryRules, getCategoryDiscounts, recalculateAllCategories, updateCategoryDiscount, updateCategoryRule } from '@/lib/userCategorizationService';
 import { ICON_MAP } from '@/components/CategoryBadge';
+import SlideToConfirm from '@/components/ui/SlideToConfirm';
 
 const UserManagement = () => {
   const { t } = useLanguage();
-  const { user } = useAuth();
+  const { user, isSuperAdmin } = useAuth();
   const { visualSettings } = useBusiness();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,6 +27,7 @@ const UserManagement = () => {
   const [categoryRules, setCategoryRules] = useState([]);
   const [categoryDiscounts, setCategoryDiscounts] = useState([]);
   const [recalculatingAll, setRecalculatingAll] = useState(false);
+  const [showRecalculateSlider, setShowRecalculateSlider] = useState(false);
   const [lastRecalculateTime, setLastRecalculateTime] = useState(null);
   const [editingDiscountId, setEditingDiscountId] = useState(null);
   const [editingDiscountData, setEditingDiscountData] = useState(null);
@@ -67,28 +69,48 @@ const UserManagement = () => {
 
       if (error) throw error;
 
-      // Fetch categories for each user
+      // Fetch categories and interaction counts for each user
       if (data && data.length > 0) {
-        const { data: categoriesData } = await supabase
-          .from('user_categories')
-          .select('user_id, category_name')
-          .in('user_id', data.map(u => u.id));
+        const userIds = data.map(u => u.id);
 
-        // Map categories to users
+        const [categoriesRes, ordersRes, remittancesRes] = await Promise.all([
+          supabase.from('user_categories').select('user_id, category_name, assignment_reason').in('user_id', userIds),
+          supabase.from('orders').select('user_id').in('user_id', userIds).eq('status', 'completed'),
+          supabase.from('remittances').select('user_id').in('user_id', userIds).in('status', ['completed', 'delivered'])
+        ]);
+
+        // Map categories
         const categoryMap = {};
-        if (categoriesData) {
-          categoriesData.forEach(cat => {
+        const categoryReasonMap = {};
+        if (categoriesRes.data) {
+          categoriesRes.data.forEach(cat => {
             categoryMap[cat.user_id] = cat.category_name;
+            categoryReasonMap[cat.user_id] = cat.assignment_reason;
           });
         }
 
-        // Add category_name to each user
-        const usersWithCategories = data.map(user => ({
+        // Count orders per user
+        const orderCountMap = {};
+        if (ordersRes.data) {
+          ordersRes.data.forEach(o => { orderCountMap[o.user_id] = (orderCountMap[o.user_id] || 0) + 1; });
+        }
+
+        // Count remittances per user
+        const remittanceCountMap = {};
+        if (remittancesRes.data) {
+          remittancesRes.data.forEach(r => { remittanceCountMap[r.user_id] = (remittanceCountMap[r.user_id] || 0) + 1; });
+        }
+
+        const usersWithData = data.map(user => ({
           ...user,
-          category_name: categoryMap[user.id] || null
+          category_name: categoryMap[user.id] || null,
+          category_reason: categoryReasonMap[user.id] || null,
+          order_count: orderCountMap[user.id] || 0,
+          remittance_count: remittanceCountMap[user.id] || 0,
+          interaction_count: (orderCountMap[user.id] || 0) + (remittanceCountMap[user.id] || 0)
         }));
 
-        setUsers(usersWithCategories);
+        setUsers(usersWithData);
       } else {
         setUsers(data || []);
       }
@@ -323,11 +345,7 @@ const UserManagement = () => {
   };
 
   const handleRecalculateAll = async () => {
-    if (!window.confirm(t('users.categories.confirmRecalculateAll'))) {
-      logUserManagementAction('recalculate_all_cancelled', {}, 'categories');
-      return;
-    }
-
+    setShowRecalculateSlider(false);
     setRecalculatingAll(true);
     try {
       logUserManagementAction('recalculate_all_start', {}, 'categories');
@@ -420,6 +438,8 @@ const UserManagement = () => {
     setEditingRuleData({
       interaction_threshold: rule.interaction_threshold,
       icon: rule.icon || 'Star',
+      color_code: rule.color_code || '#808080',
+      description: rule.description || '',
       display_name_es: rule.display_name_es || '',
       display_name_en: rule.display_name_en || '',
       enabled: rule.enabled
@@ -465,7 +485,6 @@ const UserManagement = () => {
     }
   };
 
-  const isSuperAdmin = user?.role === 'super_admin';
   const [selectedUser, setSelectedUser] = useState(null);
   const [showUserModal, setShowUserModal] = useState(false);
 
@@ -510,11 +529,11 @@ const UserManagement = () => {
       baseColumns[categoryColumnIndex] = {
         ...baseColumns[categoryColumnIndex],
         render: (value, row) => {
-          const isSuperAdminUser = row.role === 'super_admin';
-          if (isSuperAdminUser) {
+          // Admin and super_admin users cannot have categories
+          if (row.role === 'super_admin' || row.role === 'admin') {
             return (
               <span className="text-xs text-gray-400 italic">
-                {t('users.protected')}
+                {t('users.notApplicable')}
               </span>
             );
           }
@@ -531,6 +550,36 @@ const UserManagement = () => {
                 </option>
               ))}
             </select>
+          );
+        }
+      };
+    }
+
+    // Add interaction count with category progress
+    const interactionColumnIndex = baseColumns.findIndex(col => col.key === 'interaction_count');
+    if (interactionColumnIndex !== -1) {
+      baseColumns[interactionColumnIndex] = {
+        ...baseColumns[interactionColumnIndex],
+        render: (value, row) => {
+          if (row.role === 'admin' || row.role === 'super_admin') {
+            return <span className="text-xs text-gray-400 italic">{t('users.notApplicable')}</span>;
+          }
+          const count = value || 0;
+          // Use the user's assigned category to find next threshold
+          const sortedRules = [...(categoryRules || [])].filter(r => r.enabled).sort((a, b) => a.interaction_threshold - b.interaction_threshold);
+          const currentCat = row.category_name || 'regular';
+          const currentRuleIdx = sortedRules.findIndex(r => r.category_name === currentCat);
+          const nextRule = currentRuleIdx >= 0 ? sortedRules[currentRuleIdx + 1] : null;
+
+          return (
+            <div className="text-xs">
+              <span className="font-medium text-gray-900">{count}</span>
+              {nextRule && (
+                <span className="text-gray-500 ml-1">
+                  / {nextRule.interaction_threshold} → {nextRule.display_name_es || nextRule.category_name}
+                </span>
+              )}
+            </div>
           );
         }
       };
@@ -637,9 +686,12 @@ const UserManagement = () => {
           data={users}
           columns={userTableColumns}
           onRowClick={(user) => {
-            logUserManagementAction('open_user_modal', { userId: user.id });
-            setSelectedUser(user);
-            setShowUserModal(true);
+            // Only open modal on narrow viewports (mobile/tablet) where table columns are truncated
+            if (window.innerWidth < 768) {
+              logUserManagementAction('open_user_modal', { userId: user.id });
+              setSelectedUser(user);
+              setShowUserModal(true);
+            }
           }}
           isLoading={loading}
           modalTitle={t('users.detail')}
@@ -734,9 +786,9 @@ const UserManagement = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   {t('users.table.category')}
                 </label>
-                {selectedUser.role === 'super_admin' ? (
+                {(selectedUser.role === 'super_admin' || selectedUser.role === 'admin') ? (
                   <span className="text-xs text-gray-400 italic">
-                    {t('users.protected')}
+                    {t('users.notApplicable')}
                   </span>
                 ) : isSuperAdmin ? (
                   <select
@@ -758,6 +810,48 @@ const UserManagement = () => {
                   <CategoryBadge categoryName={selectedUser.category_name || 'regular'} readOnly />
                 )}
               </div>
+
+              {/* Interactions */}
+              {selectedUser.role !== 'admin' && selectedUser.role !== 'super_admin' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {t('users.table.interactions')}
+                  </label>
+                  <div className="text-sm text-gray-900 space-y-1">
+                    <div className="flex gap-4">
+                      <span>{t('users.orders')}: <strong>{selectedUser.order_count || 0}</strong></span>
+                      <span>{t('users.remittances')}: <strong>{selectedUser.remittance_count || 0}</strong></span>
+                      <span>{t('users.total')}: <strong>{selectedUser.interaction_count || 0}</strong></span>
+                    </div>
+                    {(() => {
+                      const count = selectedUser.interaction_count || 0;
+                      const sortedRules = [...(categoryRules || [])].filter(r => r.enabled).sort((a, b) => a.interaction_threshold - b.interaction_threshold);
+                      const currentCat = selectedUser.category_name || 'regular';
+                      const currentRuleIdx = sortedRules.findIndex(r => r.category_name === currentCat);
+                      const currentRule = currentRuleIdx >= 0 ? sortedRules[currentRuleIdx] : null;
+                      const nextRule = currentRuleIdx >= 0 ? sortedRules[currentRuleIdx + 1] : null;
+                      if (!nextRule) return null;
+                      const rangeStart = currentRule?.interaction_threshold || 0;
+                      const rangeSize = nextRule.interaction_threshold - rangeStart;
+                      const progress = rangeSize > 0 ? Math.min(100, ((count - rangeStart) / rangeSize) * 100) : 0;
+                      return (
+                        <div className="mt-2">
+                          <div className="flex justify-between text-xs text-gray-500 mb-1">
+                            <span>{t('users.nextCategory')}: {nextRule.display_name_es || nextRule.category_name}</span>
+                            <span>{count}/{nextRule.interaction_threshold}</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-blue-500 h-2 rounded-full transition-all"
+                              style={{ width: `${Math.max(0, progress)}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
 
               {/* Status */}
               <div>
@@ -909,15 +1003,26 @@ const UserManagement = () => {
             )}
           </div>
           <Button
-            onClick={handleRecalculateAll}
+            onClick={() => setShowRecalculateSlider(prev => !prev)}
             disabled={recalculatingAll}
             className="bg-blue-600 hover:bg-blue-700 text-white h-9 px-3"
             title={t('users.categories.recalculate')}
           >
-            <BarChart3 className="w-4 h-4 sm:mr-2" />
+            <BarChart3 className={`w-4 h-4 sm:mr-2 ${recalculatingAll ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">{recalculatingAll ? t('common.processing') : t('users.categories.recalculate')}</span>
           </Button>
         </div>
+
+        <SlideToConfirm
+          show={showRecalculateSlider && !recalculatingAll}
+          onConfirm={handleRecalculateAll}
+          onCancel={() => {
+            setShowRecalculateSlider(false);
+            logUserManagementAction('recalculate_all_cancelled', {}, 'categories');
+          }}
+          label={t('users.categories.slideToConfirm')}
+          confirmLabel={t('users.categories.releaseToConfirm')}
+        />
       </motion.div>
 
       {/* Category Rules */}
@@ -939,22 +1044,28 @@ const UserManagement = () => {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-700">
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700">
                       {t('users.categories.threshold')}
                     </th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-700">
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700">
                       {t('users.categories.categoryName')}
                     </th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-700">
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700">
                       {t('users.categories.displayName')}
                     </th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-700">
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                      {t('users.categories.color')}
+                    </th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700">
                       {t('users.categories.selectIcon')}
                     </th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-700">
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                      {t('users.categories.description')}
+                    </th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700">
                       {t('users.categories.status')}
                     </th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-700">
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700">
                       {t('common.actions')}
                     </th>
                   </tr>
@@ -964,7 +1075,7 @@ const UserManagement = () => {
                     const isEditing = editingRuleId === rule.id;
                     return (
                       <tr key={rule.id} className={`hover:bg-gray-50 ${!rule.enabled ? 'opacity-50' : ''}`}>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
                           {isEditing ? (
                             <input
                               type="number"
@@ -977,10 +1088,10 @@ const UserManagement = () => {
                             <span className="text-gray-900">{rule.interaction_threshold}</span>
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
                           <CategoryBadge categoryName={rule.category_name} rule={rule} readOnly />
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
                           {isEditing ? (
                             <div className="flex gap-1">
                               <input
@@ -1004,28 +1115,65 @@ const UserManagement = () => {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
+                          {isEditing ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="color"
+                                value={editingRuleData.color_code}
+                                onChange={e => setEditingRuleData(prev => ({ ...prev, color_code: e.target.value }))}
+                                className="w-8 h-8 rounded border border-gray-300 cursor-pointer"
+                              />
+                              <input
+                                type="text"
+                                value={editingRuleData.color_code}
+                                onChange={e => setEditingRuleData(prev => ({ ...prev, color_code: e.target.value }))}
+                                className="w-20 px-2 py-1 border border-gray-300 rounded text-xs font-mono"
+                                placeholder="#808080"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="w-5 h-5 rounded-full border border-gray-200"
+                                style={{ backgroundColor: rule.color_code || '#808080' }}
+                              />
+                              <span className="text-xs text-gray-500 font-mono">{rule.color_code || '#808080'}</span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-3">
                           {isEditing ? (
                             <select
                               value={editingRuleData.icon}
                               onChange={e => setEditingRuleData(prev => ({ ...prev, icon: e.target.value }))}
                               className="px-2 py-1 border border-gray-300 rounded text-sm"
                             >
-                              {Object.keys(ICON_MAP).map(iconName => {
-                                const IconComp = ICON_MAP[iconName];
-                                return (
-                                  <option key={iconName} value={iconName}>{iconName}</option>
-                                );
-                              })}
+                              {Object.keys(ICON_MAP).map(iconName => (
+                                <option key={iconName} value={iconName}>{iconName}</option>
+                              ))}
                             </select>
                           ) : (
                             (() => {
                               const IconComp = ICON_MAP[rule.icon] || ICON_MAP.Star;
-                              return <IconComp className="h-4 w-4 text-gray-600" />;
+                              return <IconComp className="h-4 w-4" style={{ color: rule.color_code || '#808080' }} />;
                             })()
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={editingRuleData.description}
+                              onChange={e => setEditingRuleData(prev => ({ ...prev, description: e.target.value }))}
+                              placeholder={t('users.categories.descriptionPlaceholder')}
+                              className="w-36 px-2 py-1 border border-gray-300 rounded text-sm"
+                            />
+                          ) : (
+                            <span className="text-gray-600 text-xs">{rule.description || '-'}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3">
                           <button
                             onClick={() => handleToggleRuleEnabled(rule)}
                             className={`inline-flex px-2 py-1 rounded-full text-xs font-medium cursor-pointer transition-colors ${
@@ -1037,7 +1185,7 @@ const UserManagement = () => {
                             {rule.enabled ? t('common.active') : t('common.inactive')}
                           </button>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
                           {isEditing ? (
                             <div className="flex gap-1">
                               <Button

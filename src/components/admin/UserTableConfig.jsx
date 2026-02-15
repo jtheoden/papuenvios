@@ -74,11 +74,11 @@ export const getUserTableColumns = (t, isSuperAdmin, currentUserEmail) => {
       label: t('users.table.category'),
       width: '15%',
       render: (value, row) => {
-        const isSuperAdminUser = row.role === 'super_admin';
-        if (isSuperAdminUser) {
+        // Admin and super_admin users cannot have categories
+        if (row.role === 'super_admin' || row.role === 'admin') {
           return (
             <span className="text-xs text-gray-400 italic">
-              {t('users.protected')}
+              {t('users.notApplicable')}
             </span>
           );
         }
@@ -97,9 +97,24 @@ export const getUserTableColumns = (t, isSuperAdmin, currentUserEmail) => {
       }
     },
     {
+      key: 'interaction_count',
+      label: t('users.table.interactions'),
+      width: '12%',
+      render: (value, row) => {
+        // Only show interactions for regular users (admin/super_admin don't have categories)
+        if (row.role === 'admin' || row.role === 'super_admin') {
+          return <span className="text-xs text-gray-400 italic">{t('users.notApplicable')}</span>;
+        }
+        const count = value || 0;
+        return (
+          <span className="text-sm font-medium text-gray-900">{count}</span>
+        );
+      }
+    },
+    {
       key: 'is_enabled',
       label: t('users.table.status'),
-      width: '12%',
+      width: '10%',
       render: (value) => (
         <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
           value ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
@@ -155,6 +170,7 @@ export const getUserModalColumns = (t) => [
   { key: 'full_name', label: t('users.table.name') },
   { key: 'role', label: t('users.table.role') },
   { key: 'category_name', label: t('users.table.category') },
+  { key: 'interaction_count', label: t('users.table.interactions'), render: (value) => value || 0 },
   { key: 'is_enabled', label: t('users.table.status') },
   { key: 'created_at', label: t('common.createdAt') }
 ];
