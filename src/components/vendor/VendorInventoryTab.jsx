@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Save, Edit, X, RefreshCw, Percent, DollarSign, Tag } from 'lucide-react';
+import { Plus, Save, Edit, X, RefreshCw, Percent, DollarSign, Tag, Search, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -43,10 +43,19 @@ const VendorInventoryTab = ({
   const [productToDelete, setProductToDelete] = useState(null);
   const [convertedPreview, setConvertedPreview] = useState(null);
   const [isConverting, setIsConverting] = useState(false);
+  const [filterName, setFilterName] = useState('');
+  const [filterCategories, setFilterCategories] = useState([]);
+  const [filterExpiry, setFilterExpiry] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   // Find base currency from currencies list
   const systemBaseCurrency = currencies.find(c => c.is_base);
   const systemBaseCurrencyId = systemBaseCurrency?.id || baseCurrencyId;
+
+  // Resolve the active form currency (from the currency selector)
+  const formCurrency = getCurrencyById(productForm?.base_currency_id) || systemBaseCurrency;
+  const formCurrencySymbol = formCurrency?.symbol || '$';
+  const formCurrencyCode = formCurrency?.code || 'USD';
 
   // Calculate converted price preview when price or currency changes
   const updateConvertedPreview = useCallback(async (price, fromCurrencyId) => {
@@ -125,19 +134,33 @@ const VendorInventoryTab = ({
     const numVal = parseFloat(value);
 
     if (mode === 'percentage') {
+      // Block negative margins (would cause sell price < base price)
+      if (!isNaN(numVal) && numVal < 0) {
+        toast({ title: t('vendor.addProduct.sellPriceTooLow'), description: t('vendor.addProduct.sellPriceTooLowDesc'), variant: 'destructive' });
+        return;
+      }
       const margin = isNaN(numVal) ? '' : numVal;
       const amount = (!isNaN(numVal) && basePrice > 0) ? (basePrice * numVal / 100).toFixed(2) : '';
       const sell = (!isNaN(numVal) && basePrice > 0) ? (basePrice * (1 + numVal / 100)).toFixed(2) : '';
       setProductForm(prev => ({ ...prev, profitMargin: margin, profitAmount: amount, sellPrice: sell, profitMode: 'percentage' }));
     } else if (mode === 'amount') {
+      // Block negative profit (would cause sell price < base price)
+      if (!isNaN(numVal) && numVal < 0) {
+        toast({ title: t('vendor.addProduct.sellPriceTooLow'), description: t('vendor.addProduct.sellPriceTooLowDesc'), variant: 'destructive' });
+        return;
+      }
       const amount = isNaN(numVal) ? '' : value;
       const margin = (!isNaN(numVal) && basePrice > 0) ? ((numVal / basePrice) * 100) : '';
       const sell = (!isNaN(numVal) && basePrice > 0) ? (basePrice + numVal).toFixed(2) : '';
       setProductForm(prev => ({ ...prev, profitMargin: margin !== '' ? parseFloat(margin.toFixed(4)) : '', profitAmount: amount, sellPrice: sell, profitMode: 'amount' }));
     } else if (mode === 'sellPrice') {
+      // Block sell price below base price
+      if (!isNaN(numVal) && basePrice > 0 && numVal < basePrice) {
+        toast({ title: t('vendor.addProduct.sellPriceTooLow'), description: t('vendor.addProduct.sellPriceTooLowDesc'), variant: 'destructive' });
+      }
       const sell = isNaN(numVal) ? '' : value;
-      const margin = (!isNaN(numVal) && basePrice > 0) ? (((numVal / basePrice) - 1) * 100) : '';
-      const amount = (!isNaN(numVal) && basePrice > 0) ? (numVal - basePrice).toFixed(2) : '';
+      const margin = (!isNaN(numVal) && basePrice > 0) ? Math.max(0, ((numVal / basePrice) - 1) * 100) : '';
+      const amount = (!isNaN(numVal) && basePrice > 0) ? Math.max(0, numVal - basePrice).toFixed(2) : '';
       setProductForm(prev => ({ ...prev, profitMargin: margin !== '' ? parseFloat(margin.toFixed(4)) : '', profitAmount: amount, sellPrice: sell, profitMode: 'sellPrice' }));
     }
   };
@@ -493,6 +516,48 @@ const VendorInventoryTab = ({
     };
   });
 
+  // Apply filters
+  const filteredProducts = useMemo(() => {
+    let result = productsWithConvertedPrices;
+
+    // Filter by name
+    if (filterName.trim()) {
+      const search = filterName.trim().toLowerCase();
+      result = result.filter(p =>
+        (p.name_es || '').toLowerCase().includes(search) ||
+        (p.name_en || '').toLowerCase().includes(search)
+      );
+    }
+
+    // Filter by categories (multi-select)
+    if (filterCategories.length > 0) {
+      result = result.filter(p => {
+        const catId = p.category?.id || p.category_id;
+        return filterCategories.includes(catId);
+      });
+    }
+
+    // Filter by expiry date
+    if (filterExpiry) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      result = result.filter(p => {
+        const expiry = p.expiry_date || p.expiryDate;
+        if (!expiry) return filterExpiry === 'none';
+        const expiryDate = new Date(expiry);
+        expiryDate.setHours(0, 0, 0, 0);
+        const daysLeft = Math.floor((expiryDate - today) / (1000 * 60 * 60 * 24));
+        if (filterExpiry === 'expired') return daysLeft < 0;
+        if (filterExpiry === 'week') return daysLeft >= 0 && daysLeft <= 7;
+        if (filterExpiry === 'month') return daysLeft >= 0 && daysLeft <= 30;
+        if (filterExpiry === 'none') return !expiry;
+        return true;
+      });
+    }
+
+    return result;
+  }, [productsWithConvertedPrices, filterName, filterCategories, filterExpiry]);
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       {/* Header con selector de moneda y botón agregar */}
@@ -678,8 +743,8 @@ const VendorInventoryTab = ({
               <div className="flex gap-1 mb-3 bg-gray-100 p-1 rounded-lg w-fit">
                 {[
                   { id: 'percentage', icon: Percent, label: t('vendor.addProduct.profitByPercent') },
-                  { id: 'amount', icon: DollarSign, label: t('vendor.addProduct.profitByAmount') },
-                  { id: 'sellPrice', icon: Tag, label: t('vendor.addProduct.profitBySellPrice') }
+                  { id: 'amount', icon: DollarSign, label: `${t('vendor.addProduct.profitByAmount')} (${formCurrencyCode})` },
+                  { id: 'sellPrice', icon: Tag, label: `${t('vendor.addProduct.profitBySellPrice')} (${formCurrencyCode})` }
                 ].map(mode => (
                   <button
                     key={mode.id}
@@ -728,9 +793,9 @@ const VendorInventoryTab = ({
                   )}
                   {productForm.profitMode === 'amount' && (
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">{t('vendor.addProduct.profitAmountLabel')}</label>
+                      <label className="block text-xs text-gray-500 mb-1">{t('vendor.addProduct.profitAmountLabel').replace('{symbol}', formCurrencySymbol)}</label>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{formCurrencySymbol}</span>
                         <input
                           type="number"
                           step="0.01"
@@ -745,9 +810,9 @@ const VendorInventoryTab = ({
                   )}
                   {productForm.profitMode === 'sellPrice' && (
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">{t('vendor.addProduct.sellPriceLabel')}</label>
+                      <label className="block text-xs text-gray-500 mb-1">{t('vendor.addProduct.sellPriceLabel').replace('{symbol}', formCurrencySymbol)}</label>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{formCurrencySymbol}</span>
                         <input
                           type="number"
                           step="0.01"
@@ -755,7 +820,11 @@ const VendorInventoryTab = ({
                           value={productForm.sellPrice}
                           onChange={e => handleProfitChange('sellPrice', e.target.value)}
                           placeholder="0.00"
-                          className="w-full input-style pl-7"
+                          className={`w-full input-style pl-7 ${
+                            parseFloat(productForm.sellPrice || 0) > 0 && parseFloat(productForm.sellPrice) < parseFloat(productForm.basePrice || 0)
+                              ? 'border-red-400 ring-1 ring-red-400'
+                              : ''
+                          }`}
                         />
                       </div>
                     </div>
@@ -771,10 +840,10 @@ const VendorInventoryTab = ({
                         {t('vendor.addProduct.profitByPercent')}: <span className="text-blue-600">{parseFloat(productForm.profitMargin).toFixed(2)}%</span>
                       </span>
                       <span className="font-medium text-gray-700">
-                        = <span className="text-green-600">${parseFloat(productForm.profitAmount || 0).toFixed(2)}</span>
+                        = <span className="text-green-600">{formCurrencySymbol}{parseFloat(productForm.profitAmount || 0).toFixed(2)}</span>
                       </span>
                       <span className="font-medium text-gray-700">
-                        | {t('vendor.addProduct.profitBySellPrice')}: <span className="text-purple-600">${parseFloat(productForm.sellPrice || 0).toFixed(2)}</span>
+                        | {t('vendor.addProduct.profitBySellPrice')}: <span className="text-purple-600">{formCurrencySymbol}{parseFloat(productForm.sellPrice || 0).toFixed(2)}</span>
                       </span>
                     </div>
                   </div>
@@ -869,9 +938,117 @@ const VendorInventoryTab = ({
         </motion.div>
       )}
 
+      {/* Filter Bar */}
+      <div className="mb-4 space-y-3">
+        {/* Search + Toggle */}
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              value={filterName}
+              onChange={e => setFilterName(e.target.value)}
+              placeholder={t('vendor.inventory.searchPlaceholder')}
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            />
+            {filterName && (
+              <button onClick={() => setFilterName('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg transition-colors ${
+              showFilters || filterCategories.length > 0 || filterExpiry
+                ? 'bg-purple-50 border-purple-300 text-purple-700'
+                : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <Filter className="h-4 w-4" />
+            <span className="hidden sm:inline">{t('vendor.inventory.filters')}</span>
+            {(filterCategories.length > 0 || filterExpiry) && (
+              <span className="bg-purple-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
+                {filterCategories.length + (filterExpiry ? 1 : 0)}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Expanded Filters */}
+        {showFilters && (
+          <div className="flex flex-col sm:flex-row gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+            {/* Category Multi-Select */}
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                {t('vendor.inventory.filterByCategory')}
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {categories.map(cat => {
+                  const isSelected = filterCategories.includes(cat.id);
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setFilterCategories(prev =>
+                        isSelected ? prev.filter(id => id !== cat.id) : [...prev, cat.id]
+                      )}
+                      className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                        isSelected
+                          ? 'bg-purple-100 border-purple-400 text-purple-700 font-medium'
+                          : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
+                      }`}
+                    >
+                      {language === 'es' ? cat.name_es : cat.name_en}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Expiry Date Filter */}
+            <div className="sm:w-48">
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                {t('vendor.inventory.filterByExpiry')}
+              </label>
+              <select
+                value={filterExpiry}
+                onChange={e => setFilterExpiry(e.target.value)}
+                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              >
+                <option value="">{t('vendor.inventory.expiryAll')}</option>
+                <option value="expired">{t('vendor.inventory.expiryExpired')}</option>
+                <option value="week">{t('vendor.inventory.expiryWeek')}</option>
+                <option value="month">{t('vendor.inventory.expiryMonth')}</option>
+                <option value="none">{t('vendor.inventory.expiryNone')}</option>
+              </select>
+            </div>
+
+            {/* Clear Filters */}
+            {(filterCategories.length > 0 || filterExpiry) && (
+              <div className="sm:self-end">
+                <button
+                  onClick={() => { setFilterCategories([]); setFilterExpiry(''); }}
+                  className="text-xs text-purple-600 hover:text-purple-800 font-medium whitespace-nowrap"
+                >
+                  {t('vendor.inventory.clearFilters')}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Results count when filtering */}
+        {(filterName || filterCategories.length > 0 || filterExpiry) && (
+          <p className="text-xs text-gray-500">
+            {t('vendor.inventory.showingResults').replace('{count}', filteredProducts.length).replace('{total}', products.length)}
+          </p>
+        )}
+      </div>
+
       {/* Responsive Products Table */}
       <ResponsiveTableWrapper
-        data={productsWithConvertedPrices}
+        data={filteredProducts}
         columns={getTableColumns(t, language, currencies, {
           onToggleActive: handleToggleProductActive,
           togglingId: processingProductId,
@@ -880,6 +1057,8 @@ const VendorInventoryTab = ({
         })}
         onRowClick={handleViewProductDetails}
         emptyMessage={t('vendor.inventory.noProducts') || 'No products found'}
+        pageSize={10}
+        pageSizeOptions={[10, 20, 50]}
       />
 
       {/* Delete Confirmation Modal */}
