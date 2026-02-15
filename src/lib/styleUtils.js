@@ -32,13 +32,19 @@ export const getCardStyle = (visualSettings) => {
 export const getPrimaryButtonStyle = (visualSettings) => {
   if (!visualSettings) return {};
 
-  return {
-    background: visualSettings.useGradient
-      ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
+  const dir = visualSettings.gradientDirection || 135;
+  const useGrad = visualSettings.useButtonGradient ?? visualSettings.useGradient;
+  const style = {
+    background: useGrad
+      ? `linear-gradient(${dir}deg, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
       : visualSettings.buttonBgColor || visualSettings.primaryColor || '#2563eb',
     color: visualSettings.buttonTextColor || '#ffffff',
     border: 'none'
   };
+  if (visualSettings.useButtonShadow) {
+    style.boxShadow = `0 4px 14px 0 ${visualSettings.buttonShadowColor || visualSettings.primaryColor || '#2563eb'}40`;
+  }
+  return style;
 };
 
 /**
@@ -78,18 +84,23 @@ export const getDestructiveButtonStyle = (visualSettings) => {
 export const getHeadingStyle = (visualSettings) => {
   if (!visualSettings) return {};
 
+  const dir = visualSettings.gradientDirection || 135;
+  const style = {};
+
   if (visualSettings.useHeadingGradient || visualSettings.useGradient) {
-    return {
-      backgroundImage: `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`,
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
-      backgroundClip: 'text'
-    };
+    style.backgroundImage = `linear-gradient(${dir}deg, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`;
+    style.WebkitBackgroundClip = 'text';
+    style.WebkitTextFillColor = 'transparent';
+    style.backgroundClip = 'text';
+  } else {
+    style.color = visualSettings.headingColor || visualSettings.primaryColor || '#1f2937';
   }
 
-  return {
-    color: visualSettings.headingColor || visualSettings.primaryColor || '#1f2937'
-  };
+  if (visualSettings.useTextShadow) {
+    style.textShadow = `0 2px 4px ${visualSettings.textShadowColor || '#00000030'}`;
+  }
+
+  return style;
 };
 
 /**
@@ -139,9 +150,9 @@ export const getPillStyle = (visualSettings, variant = 'default') => {
       borderColor: visualSettings.errorColor || '#ef4444'
     },
     info: {
-      backgroundColor: `${visualSettings.primaryColor || '#2563eb'}20`,
-      color: visualSettings.primaryColor || '#2563eb',
-      borderColor: visualSettings.primaryColor || '#2563eb'
+      backgroundColor: `${visualSettings.infoColor || '#0ea5e9'}20`,
+      color: visualSettings.infoColor || '#0ea5e9',
+      borderColor: visualSettings.infoColor || '#0ea5e9'
     }
   };
   return variants[variant] || variants.default;
@@ -188,9 +199,10 @@ export const getStatusStyle = (status, visualSettings) => {
  */
 export const getIconBackgroundStyle = (visualSettings) => {
   if (!visualSettings) return {};
+  const dir = visualSettings.gradientDirection || 135;
   return {
     background: visualSettings.useGradient
-      ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
+      ? `linear-gradient(${dir}deg, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
       : visualSettings.primaryColor || '#2563eb'
   };
 };
@@ -272,9 +284,9 @@ export const getAlertStyle = (visualSettings, variant = 'info') => {
       color: visualSettings.errorColor || '#ef4444'
     },
     info: {
-      backgroundColor: `${visualSettings.primaryColor || '#2563eb'}10`,
-      borderColor: visualSettings.primaryColor || '#2563eb',
-      color: visualSettings.primaryColor || '#2563eb'
+      backgroundColor: `${visualSettings.infoColor || '#0ea5e9'}10`,
+      borderColor: visualSettings.infoColor || '#0ea5e9',
+      color: visualSettings.infoColor || '#0ea5e9'
     }
   };
   return variants[variant] || variants.info;
@@ -346,4 +358,36 @@ export const hexWithOpacity = (hexColor, opacity) => {
   const b = parseInt(hex.substr(4, 2), 16);
 
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+};
+
+/**
+ * Get button shadow style
+ */
+export const getButtonShadowStyle = (visualSettings) => {
+  if (!visualSettings?.useButtonShadow) return {};
+  const color = visualSettings.buttonShadowColor || visualSettings.primaryColor || '#2563eb';
+  return {
+    boxShadow: `0 4px 14px 0 ${color}40`
+  };
+};
+
+/**
+ * Get card shadow style
+ */
+export const getCardShadowStyle = (visualSettings) => {
+  if (!visualSettings?.useCardShadow) return {};
+  const color = visualSettings.cardShadowColor || '#00000015';
+  return {
+    boxShadow: `0 4px 6px -1px ${color}, 0 2px 4px -2px ${color}`
+  };
+};
+
+/**
+ * Get text shadow style
+ */
+export const getTextShadowStyle = (visualSettings) => {
+  if (!visualSettings?.useTextShadow) return {};
+  return {
+    textShadow: `0 2px 4px ${visualSettings.textShadowColor || '#00000030'}`
+  };
 };
