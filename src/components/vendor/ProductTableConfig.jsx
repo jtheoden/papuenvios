@@ -100,8 +100,8 @@ export const getTableColumns = (t, language, currencies, options = {}) => {
     key: 'base_currency_id',
     label: language === 'es' ? 'Moneda' : 'Currency',
     width: '100px',
-    render: (value) => {
-      const currency = currencies.find(c => c.id === value);
+    render: (value, row) => {
+      const currency = currencies.find(c => c.id === (row.display_currency_id || value));
       return (
         <span className="text-xs bg-gray-200 px-2 py-1 rounded">
           {currency?.code || 'USD'}
@@ -145,7 +145,7 @@ export const getTableColumns = (t, language, currencies, options = {}) => {
     label: t('vendor.inventory.price'),
     width: '120px',
     render: (value, row) => {
-      const currency = currencies.find(c => c.id === row.base_currency_id);
+      const currency = currencies.find(c => c.id === (row.display_currency_id || row.base_currency_id));
       const price = value || row.base_price || '0.00';
       return (
         <span className="text-sm font-medium">
@@ -216,8 +216,8 @@ export const getModalColumns = (t, language, currencies) => [
   {
     key: 'base_currency_id',
     label: language === 'es' ? 'Moneda' : 'Currency',
-    render: (value) => {
-      const currency = currencies.find(c => c.id === value);
+    render: (value, row) => {
+      const currency = currencies.find(c => c.id === (row.display_currency_id || value));
       return currency?.code || 'USD';
     }
   },
@@ -225,7 +225,7 @@ export const getModalColumns = (t, language, currencies) => [
     key: 'base_price',
     label: t('vendor.inventory.basePrice'),
     render: (value, row) => {
-      const currency = currencies.find(c => c.id === row.base_currency_id);
+      const currency = currencies.find(c => c.id === (row.display_currency_id || row.base_currency_id));
       return `${currency?.symbol || '$'}${Number(value || 0).toFixed(2)}`;
     }
   },
@@ -233,7 +233,7 @@ export const getModalColumns = (t, language, currencies) => [
     key: 'final_price',
     label: t('vendor.inventory.finalPrice'),
     render: (value, row) => {
-      const currency = currencies.find(c => c.id === row.base_currency_id);
+      const currency = currencies.find(c => c.id === (row.display_currency_id || row.base_currency_id));
       return `${currency?.symbol || '$'}${Number(value || 0).toFixed(2)}`;
     }
   },
