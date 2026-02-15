@@ -33,6 +33,8 @@ export const DEFAULT_VISUAL_SETTINGS = {
   tabActiveBgColor: '#eff6ff',
   tabInactiveColor: '#6b7280',
   tabInactiveBgColor: '#f9fafb',
+  tabHoverColor: '#1f2937',
+  tabHoverBgColor: '#f3f4f6',
   // Button colors
   buttonBgColor: '#2563eb',
   buttonTextColor: '#ffffff',
@@ -100,6 +102,35 @@ export const DEFAULT_VISUAL_SETTINGS = {
       displayOrder: 3
     }
   ],
+  // Nav bar active item colors (decoupled from buttons)
+  navBarActiveBgColor: '#2563eb',
+  navBarActiveTextColor: '#ffffff',
+  // Header interaction states
+  headerMenuHoverTextColor: '#1f2937',
+  headerMenuActiveBgColor: '#eff6ff',
+  useHeaderGradient: false,
+  headerGradientColor: '#9333ea',
+  // Semantic status colors
+  successColor: '#10b981',
+  warningColor: '#f59e0b',
+  errorColor: '#ef4444',
+  infoColor: '#0ea5e9',
+  // Shadow system
+  useButtonShadow: false,
+  buttonShadowColor: '#2563eb',
+  useCardShadow: true,
+  cardShadowColor: '#00000015',
+  useTextShadow: false,
+  textShadowColor: '#00000030',
+  // Gradient enhancements
+  gradientDirection: '135',
+  useButtonGradient: true,
+  useTabGradient: false,
+  // Footer colors
+  footerBgColor: '#ffffff',
+  footerTextColor: '#374151',
+  footerLinkColor: '#2563eb',
+  footerLinkHoverColor: '#9333ea',
   // Carousel settings
   carouselEnabled: true,
   carouselAutoplaySpeed: 5000,
@@ -262,18 +293,41 @@ export function applyVisualSettingsToDOM(settings) {
 
     // Set CSS custom properties for global access
     const root = document.documentElement;
-    if (settings.primaryColor) {
-      root.style.setProperty('--color-primary', settings.primaryColor);
-    }
-    if (settings.secondaryColor) {
-      root.style.setProperty('--color-secondary', settings.secondaryColor);
-    }
-    if (settings.accentColor) {
-      root.style.setProperty('--color-accent', settings.accentColor);
-    }
-    if (settings.pageBgColor) {
-      root.style.setProperty('--color-page-bg', settings.pageBgColor);
-    }
+
+    // Brand colors
+    root.style.setProperty('--color-primary', settings.primaryColor || '#2563eb');
+    root.style.setProperty('--color-secondary', settings.secondaryColor || '#9333ea');
+    root.style.setProperty('--color-accent', settings.accentColor || '#9333ea');
+    root.style.setProperty('--color-page-bg', settings.pageBgColor || '#f9fafb');
+
+    // Status colors
+    root.style.setProperty('--color-success', settings.successColor || '#10b981');
+    root.style.setProperty('--color-warning', settings.warningColor || '#f59e0b');
+    root.style.setProperty('--color-error', settings.errorColor || '#ef4444');
+    root.style.setProperty('--color-info', settings.infoColor || '#0ea5e9');
+
+    // Gradient direction
+    root.style.setProperty('--gradient-direction', `${settings.gradientDirection || 135}deg`);
+
+    // Shadow variables
+    root.style.setProperty('--button-shadow',
+      settings.useButtonShadow
+        ? `0 4px 14px 0 ${settings.buttonShadowColor || settings.primaryColor || '#2563eb'}40`
+        : 'none'
+    );
+    root.style.setProperty('--card-shadow',
+      settings.useCardShadow
+        ? `0 4px 6px -1px ${settings.cardShadowColor || '#00000015'}, 0 2px 4px -2px ${settings.cardShadowColor || '#00000010'}`
+        : 'none'
+    );
+    root.style.setProperty('--text-shadow',
+      settings.useTextShadow
+        ? `0 2px 4px ${settings.textShadowColor || '#00000030'}`
+        : 'none'
+    );
+
+    // Apply page background to body
+    document.body.style.backgroundColor = settings.pageBgColor || '#f9fafb';
 
   } catch (err) {
     console.error('[BusinessVisualSettings] DOM apply error:', err);
