@@ -7,22 +7,22 @@ const Footer = () => {
   const { visualSettings } = useBusiness();
   const currentDate = new Date().toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US');
 
-  // Use light colors from visual settings
+  // Use footer-specific colors from visual settings with backward-compatible fallbacks
   const footerStyle = {
-    backgroundColor: visualSettings?.cardBgColor || '#ffffff',
+    backgroundColor: visualSettings?.footerBgColor || visualSettings?.cardBgColor || '#ffffff',
     borderTop: `1px solid ${visualSettings?.primaryColor || '#e5e7eb'}20`
   };
 
   const textStyle = {
-    color: visualSettings?.headingColor || '#374151'
+    color: visualSettings?.footerTextColor || visualSettings?.headingColor || '#374151'
   };
 
   const linkStyle = {
-    color: visualSettings?.primaryColor || '#2563eb'
+    color: visualSettings?.footerLinkColor || visualSettings?.primaryColor || '#2563eb'
   };
 
   const linkHoverStyle = {
-    color: visualSettings?.accentColor || '#9333ea'
+    color: visualSettings?.footerLinkHoverColor || visualSettings?.accentColor || '#9333ea'
   };
 
   const companyNameStyle = {
