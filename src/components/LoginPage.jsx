@@ -82,9 +82,31 @@ const LoginPage = ({ onNavigate }) => {
 
           {/* Info text */}
           <p className="text-center text-xs text-gray-500 mt-4">
-            {language === 'es'
-              ? 'Al continuar, aceptas nuestros términos de servicio y política de privacidad.'
-              : 'By continuing, you agree to our terms of service and privacy policy.'}
+            {language === 'es' ? (
+              <>
+                Al continuar, aceptas nuestros{' '}
+                <button onClick={() => onNavigate('terms')} className="underline hover:text-gray-700">
+                  términos de servicio
+                </button>{' '}
+                y{' '}
+                <button onClick={() => onNavigate('privacy')} className="underline hover:text-gray-700">
+                  política de privacidad
+                </button>
+                .
+              </>
+            ) : (
+              <>
+                By continuing, you agree to our{' '}
+                <button onClick={() => onNavigate('terms')} className="underline hover:text-gray-700">
+                  terms of service
+                </button>{' '}
+                and{' '}
+                <button onClick={() => onNavigate('privacy')} className="underline hover:text-gray-700">
+                  privacy policy
+                </button>
+                .
+              </>
+            )}
           </p>
         </div>
 

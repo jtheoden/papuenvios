@@ -10,7 +10,13 @@ import {
   handleError, logError, createValidationError,
   createNotFoundError, createPermissionError, parseSupabaseError, ERROR_CODES
 } from './errorHandler';
-import { encryptData } from '@/lib/encryption';
+async function encryptData(plaintext) {
+  const { data, error } = await supabase.functions.invoke('bank-account-crypto', {
+    body: { action: 'encrypt', data: plaintext },
+  });
+  if (error) throw new Error('Failed to encrypt data');
+  return data.encrypted;
+}
 
 const formatServiceError = (error, context = {}, defaultCode = ERROR_CODES.DB_ERROR) => {
   const parsedError = error instanceof AppError ? error : (parseSupabaseError(error) || error);

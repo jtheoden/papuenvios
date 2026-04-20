@@ -24,7 +24,14 @@ import {
   getBankAccountByRecipientId,
   REMITTANCE_STATUS
 } from '@/lib/remittanceService';
-import { decryptData } from '@/lib/encryption';
+async function decryptData(encryptedBase64) {
+  const { supabase: sb } = await import('@/lib/supabase');
+  const { data, error } = await sb.functions.invoke('bank-account-crypto', {
+    body: { action: 'decrypt', data: encryptedBase64 },
+  });
+  if (error) throw new Error('Failed to decrypt data');
+  return data.decrypted;
+}
 import { toast } from '@/components/ui/use-toast';
 import ImageProofModal from './ImageProofModal';
 import TooltipButton from './TooltipButton';

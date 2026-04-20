@@ -1,3 +1,7 @@
+# Secrets — never commit
+client_secret_*.json
+*.client_secret.json
+
 # Dependencies
 node_modules/
 /.pnp

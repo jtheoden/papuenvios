@@ -10,6 +10,17 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/tests/setup.js'],
+    include: ['src/tests/unit/**/*.test.js'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      include: ['src/lib/priceCalculationService.js', 'src/lib/remittanceCalculations.js'],
+    },
+  },
    server: {
     host: true,
     port: 5173,               // SIGUE SIENDO 5173
