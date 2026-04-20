@@ -1,0 +1,132 @@
+project: PapuEnvios
+activated: 2026-04-20
+version: main@0cebb670
+readiness_score: 52/100
+
+summary: >
+  Plataforma eCommerce brownfield para envío de remesas y compra de artículos
+  con entrega en Cuba, dirigida a emigrantes cubanos en EE.UU. Stack: React +
+  TypeScript + Vite (Vercel) + Supabase (PostgreSQL + Edge Functions). Lista
+  para lanzamiento público pendiente de resolver 5 bloqueadores críticos.
+
+assumptions:
+  - compliance: OFAC/MSB no analizado — se asume requerido hasta tener opinión legal
+  - accessibility: WCAG 2.1 AA preferido, no requerido en lanzamiento inicial
+  - non_goals: no se define internacionalización más allá de ES/EN en esta fase
+  - external_apis: Zelle para pagos, Resend para emails — confirmado por schema DB
+  - budget: sin presupuesto definido; escalar si aumenta tráfico
+
+active_agents:
+  - product-owner:
+      role: Priorización de features y scope para lanzamiento público
+      reason: Always active
+  - software-architect:
+      role: Decisiones de arquitectura para transacciones atómicas y cifrado server-side
+      reason: Always active
+  - lead-engineer:
+      role: Coordinación de implementación de P0/P1, code standards
+      reason: Always active
+  - cybersecurity-expert:
+      role: VETO en cada phase gate. Bloqueadores P0 de seguridad identificados
+      reason: Always active + pagos/PII/datos financieros
+  - qa-engineer:
+      role: Diseño de suite de tests (cero cobertura actual)
+      reason: Always active
+  - backend-engineer:
+      role: RPCs PostgreSQL para transacciones atómicas, Edge Functions cifrado
+      reason: Lógica de backend crítica identificada
+  - database-architect:
+      role: available_quantity GENERATED, pg_cron reset Zelle, columnas duplicadas
+      reason: Múltiples issues de schema identificados
+  - frontend-engineer:
+      role: Code splitting React.lazy, accesibilidad, UX tooltips
+      reason: Frontend work + performance P1
+  - devops-engineer:
+      role: Vercel headers CSP, Sentry, alertas Supabase
+      reason: Operaciones P1 críticas
+  - code-reviewer:
+      role: Review de zelleService.js y encryption.js (issues de seguridad activos)
+      reason: Brownfield con deuda técnica identificada
+  - ux-ui-expert:
+      role: Flujo de remesas para usuarios no técnicos, onboarding
+      reason: UX crítica para adopción
+  - data-analyst:
+      role: Definir KPIs de conversión y métricas post-lanzamiento
+      reason: Success metric undefined (tasa conversión > 3%)
+
+inactive_agents:
+  - graphic-designer: no hay activos gráficos nuevos en scope
+  - marketing-expert: lanzamiento ya alcanzado, no hay campaña planificada
+  - economy-expert: modelo de negocio definido, sin análisis de pricing en scope
+  - seo-expert: SEO no es prioridad vs. bloqueadores de seguridad/legal
+  - psychology-expert: deferido a post-lanzamiento cuando haya datos de conversión
+  - cloud-engineer: Vercel + Supabase son managed, no hay infra custom
+  - automation-expert: no hay pipelines CI/CD a configurar en esta fase
+  - business-analyst: requirements ya capturados en intake
+
+phase_plan:
+  - phase: Architecture Review
+    lead: software-architect
+    gate: ADRs escritos para cifrado server-side y transacciones atómicas
+    blocker: cybersecurity-expert veto
+
+  - phase: P0 Security Fixes
+    lead: lead-engineer
+    gate: client secret revocado + cifrado migrado a server-side + zelleService corregido
+    blocker: cybersecurity-expert veto sign-off
+
+  - phase: Legal & Compliance
+    lead: product-owner (+ abogado externo)
+    gate: opinión legal OFAC/MSB documentada + páginas /privacy y /terms live
+    blocker: no lanzar sin este gate
+
+  - phase: P1 Implementation
+    lead: lead-engineer
+    gate: tests green (E2E flujo remesa) + Sentry activo + bundle < 800KB + alertas configuradas
+    blocker: qa-engineer sign-off
+
+  - phase: P2 Hardening
+    lead: lead-engineer
+    gate: pg_cron activo + order_analytics restringida + runbook escrito
+    blocker: ninguno (puede lanzar con P2 en progreso)
+
+  - phase: Public Launch
+    lead: product-owner
+    gate: P0 + P1 + Legal completos. Readiness score >= 75/100
+    blocker: cybersecurity-expert + qa-engineer sign-off
+
+  - phase: Post-Launch
+    lead: data-analyst
+    gate: baseline de métricas establecido (conversión, carga, errores)
+    target_metric: conversión > 3%, carga < 2s
+
+top_risks:
+  - risk: Operación sin licencia MSB ante FinCEN
+    severity: CRÍTICO
+    owner: product-owner + abogado
+    mitigation: Consulta legal antes de cualquier transacción real de usuarios públicos
+
+  - risk: Clave de cifrado bancario en bundle JS expuesta públicamente
+    severity: CRÍTICO
+    owner: lead-engineer
+    mitigation: Migrar a Edge Function en P0. Rotar clave y re-cifrar datos existentes
+
+  - risk: Fraude via comprobantes Zelle falsificados
+    severity: ALTO
+    owner: backend-engineer + product-owner
+    mitigation: Proceso de validación manual documentado. Transacciones atómicas para evitar doble validación. Considerar validación automatizada a futuro
+
+operating_model:
+  decisions:
+    architecture: software-architect (veto: cybersecurity-expert)
+    scope: product-owner
+    security_gates: cybersecurity-expert (veto absoluto)
+    release: lead-engineer (sign-off: qa-engineer + cybersecurity-expert)
+  communication: conversación con Claude Code en rama de feature
+  branches: feature/* → main (nunca commit directo a main)
+  commits: Conventional Commits (feat:/fix:/refactor:/chore:/docs:)
+
+files:
+  intake: .claude/project-intake.md
+  audit: .claude/docs/audit-report-2026-04-20.md
+  tracking: .claude/TRACKING_PROGRESS.md

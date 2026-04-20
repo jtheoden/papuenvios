@@ -22,6 +22,8 @@ import UserPanel from '@/components/UserPanel';
 import UserManagement from '@/components/UserManagement';
 import AuthCallback from '@/components/AuthCallback';
 import BlogPage from '@/components/BlogPage';
+import PrivacyPage from '@/components/PrivacyPage';
+import TermsPage from '@/components/TermsPage';
 import Footer from '@/components/Footer';
 import { withProtectedRoute } from '@/components/withProtectedRoute';
 import { LanguageProvider } from '@/contexts/LanguageContext';
@@ -260,6 +262,10 @@ function App() {
         return <ProtectedUserPanel onNavigate={handleNavigate} />;
       case 'blog':
         return <BlogPage onNavigate={handleNavigate} />;
+      case 'privacy':
+        return <PrivacyPage onNavigate={handleNavigate} />;
+      case 'terms':
+        return <TermsPage onNavigate={handleNavigate} />;
       case 'user-management':
         return <ProtectedUserManagement onNavigate={handleNavigate} />;
       case 'auth/callback':

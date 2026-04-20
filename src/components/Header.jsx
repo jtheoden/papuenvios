@@ -455,7 +455,7 @@ const Header = ({ currentPage, onNavigate }) => {
               </div>
             ) : (
               /* Guest: User icon → login (Req 10) */
-              <Button variant="ghost" size="icon" onClick={handleLogin} className="h-8 w-8 sm:h-9 sm:w-9" title={t('auth.login')}>
+              <Button variant="ghost" size="icon" onClick={handleLogin} className="h-8 w-8 sm:h-9 sm:w-9" title={t('auth.login')} data-testid="login-button">
                 <UserIcon className="w-4 h-4 sm:w-5 sm:h-5" />
               </Button>
             )}
