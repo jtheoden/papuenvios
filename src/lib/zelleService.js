@@ -14,7 +14,6 @@ import {
   createPermissionError,
   parseSupabaseError
 } from '@/lib/errorHandler';
-import { USER_ROLES } from '@/lib/constants';
 import { createZelleDeactivationAlerts } from '@/lib/userAlertService';
 
 // ============================================================================
@@ -36,21 +35,6 @@ export const ZELLE_TRANSACTION_TYPES = {
 // ============================================================================
 // AUTHORIZATION HELPERS
 // ============================================================================
-
-/**
- * Verify user is authenticated and has admin role
- * @param {object} user - User object from auth
- * @throws {AppError} If not authenticated or lacks admin role
- */
-const verifyAdminRole = (user) => {
-  if (!user) {
-    throw createPermissionError('access this resource', 'admin');
-  }
-
-  if (user.user_metadata?.role !== USER_ROLES.ADMIN && user.user_metadata?.role !== USER_ROLES.SUPER_ADMIN) {
-    throw createPermissionError('access this resource', 'admin');
-  }
-};
 
 // ============================================================================
 // INPUT VALIDATION HELPERS

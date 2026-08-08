@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { buildCorsHeaders } from "../_shared/cors.ts";
 
 /**
  * Edge Function: notify-zelle-deactivation
@@ -9,12 +10,6 @@ const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 const FROM_EMAIL = Deno.env.get('FROM_EMAIL') || 'noreply@papuenvios.com';
 const APP_NAME = 'PapuEnvíos';
 const APP_URL = Deno.env.get('APP_URL') || 'https://papuenvios.com';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
 
 // Email templates by language
 const templates = {
@@ -62,10 +57,18 @@ interface RequestBody {
 }
 
 serve(async (req: Request) => {
+  const corsHeaders = buildCorsHeaders(req, 'POST, OPTIONS');
+
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { status: 200, headers: corsHeaders });
   }
+
+  const json = (data: unknown, status = 200) =>
+    new Response(JSON.stringify(data), {
+      status,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
 
   try {
     if (!RESEND_API_KEY) {
@@ -182,10 +185,3 @@ serve(async (req: Request) => {
     return json({ error: err?.message || String(err) }, 500);
   }
 });
-
-function json(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders }
-  });
-}
