@@ -69,7 +69,7 @@ Plan completo: `.claude/docs/plan_admin-bulk-ops-reset-audit.md` (generado con `
   - `src/lib/bulkDeleteService.js` — capa JS, TDD (tests en rojo antes de implementar).
   - `src/components/tables/ResponsiveTableWrapper.jsx` — soporte de selección genérico y reusable (checkbox por fila + "seleccionar todo" de la página actual), en las 3 vistas responsive.
   - `src/components/tables/BulkDeleteBar.jsx` — barra flotante + modal de confirmación (requiere escribir "ELIMINAR").
-  - Conectado en `VendorInventoryTab.jsx` (productos), gateado a `isSuperAdmin` — **Categorías queda para un siguiente incremento** (su tab usa un layout de tarjetas propio, no `ResponsiveTableWrapper`; requiere wiring distinto, no técnica nueva).
+  - Conectado en `VendorInventoryTab.jsx` (productos) y `VendorCategoriesTab.jsx` (categorías, checkbox en su layout de tarjetas propio), ambos gateados a `isSuperAdmin` — completado 2026-08-08.
   - Ofertas/combos: fuera de esta iteración, sigue condicional a confirmar volumen (NEEDS-DISCUSSION del plan).
   - Sin `p_idempotency_token` en esta primera versión — evaluado y descartado explícitamente (ver plan doc) para no sobre-ingenierizar el primer pase.
   - Tests: 59/59 verdes, incluye un test de componente nuevo (`ResponsiveTableWrapper.selection.test.jsx`, primer test de UI en este proyecto — hasta ahora solo había tests de funciones puras). Gotcha documentado en el test: jsdom no aplica CSS real, las 3 vistas responsive (mobile/tablet/desktop) coexisten en el DOM simultáneamente, hay que scopear queries con `within(table)`.

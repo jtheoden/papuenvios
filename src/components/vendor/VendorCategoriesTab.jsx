@@ -7,7 +7,9 @@ import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/use-toast';
 import { createCategory, updateCategory, deleteCategory } from '@/lib/productService';
+import { bulkDeleteCategories } from '@/lib/bulkDeleteService';
 import { useRealtimeCategories } from '@/hooks/useRealtimeSubscription';
+import BulkDeleteBar from '@/components/tables/BulkDeleteBar';
 
 /**
  * Vendor Categories Tab Component
@@ -16,7 +18,30 @@ import { useRealtimeCategories } from '@/hooks/useRealtimeSubscription';
 const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings }) => {
   const { t, language } = useLanguage();
   const { products, refreshCategories } = useBusiness();
-  const { user } = useAuth();
+  const { user, isSuperAdmin } = useAuth();
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState([]);
+
+  const handleBulkDeleteCategories = async (ids) => {
+    const outcome = await bulkDeleteCategories(ids);
+    if (outcome.deleted.length > 0) {
+      toast({
+        title: language === 'es' ? 'Categorías eliminadas' : 'Categories deleted',
+        description: `${outcome.deleted.length} ${language === 'es' ? 'eliminada(s)' : 'deleted'}`
+      });
+      if (refreshCategories) refreshCategories(); else if (onCategoriesChange) onCategoriesChange();
+    }
+    return outcome;
+  };
+
+  const getCategoryLabelById = (id) => {
+    const category = categories.find((c) => c.id === id);
+    if (!category) return id;
+    return language === 'es' ? (category.name_es || category.es) : (category.name_en || category.en);
+  };
+
+  const toggleCategorySelection = (id) => {
+    setSelectedCategoryIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
 
   // Real-time subscription for category updates
   useRealtimeCategories({
@@ -384,6 +409,15 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
                       : 'bg-slate-50 hover:bg-slate-100'
                   }`}
                 >
+                  {isSuperAdmin && (
+                    <input
+                      type="checkbox"
+                      checked={selectedCategoryIds.includes(c.id)}
+                      onChange={() => toggleCategorySelection(c.id)}
+                      className="h-4 w-4 mr-3 flex-shrink-0"
+                      aria-label={language === 'es' ? 'Seleccionar categoría' : 'Select category'}
+                    />
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-col sm:flex-row sm:gap-4 sm:items-center">
                       <span className="font-semibold text-sm sm:text-base truncate">{categoryName}</span>
@@ -477,6 +511,15 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
           </ul>
         )}
       </motion.div>
+
+      {isSuperAdmin && (
+        <BulkDeleteBar
+          selectedIds={selectedCategoryIds}
+          onClearSelection={(remainingIds) => setSelectedCategoryIds(remainingIds || [])}
+          onConfirmDelete={handleBulkDeleteCategories}
+          getItemLabel={getCategoryLabelById}
+        />
+      )}
     </div>
   );
 };
