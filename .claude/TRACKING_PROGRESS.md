@@ -56,3 +56,37 @@
 - Carga de página: < 2s
 - Error rate: < 0.1%
 - Bundle JS inicial: < 800KB (actualmente 1.5MB)
+
+---
+
+## 🆕 Plan estratégico 2026-08-07 — Bulk-delete, reset de plataforma, auditoría
+
+Plan completo: `.claude/docs/plan_admin-bulk-ops-reset-audit.md` (generado con `/strategic-plan-workflow`, validado con crítica adversarial + cross-check independiente).
+
+- [ ] **SEC-08**: Purgar `PGPASSWORD` hardcodeado de la historia de `.claude/settings.json` (commits `4b7f21dd`, `75e2b1f2`) con `git filter-repo` + force-push — autorizado por el usuario
+- [ ] **ADMIN-01**: Selección múltiple + borrado masivo en tablas admin (productos, categorías; ofertas/combos condicional) — RPC transaccional reusando la cascada de borrado físico existente, no soft-delete (no existe convención `activa` en este proyecto)
+- [ ] **ADMIN-02**: Mecanismo de reset a estado inicial — flag en tabla `platform_reset_control` activable únicamente vía SQL directo, RPC `SECURITY DEFINER` con advisory lock exclusivo + auto-desarme, backup obligatorio previo
+- [ ] **DATA-05** (nuevo): Auditar y modificar RPCs de checkout/pago para tomar `pg_advisory_xact_lock_shared` del namespace `platform_reset`, sin lo cual el lock del reset no serializa nada
+- [x] Fase 0 del plan — **completada 2026-08-07, ambos hallazgos CONFIRMADOS con evidencia** (ver `.claude/docs/plan_admin-bulk-ops-reset-audit.md`)
+
+### ✅ SEC-09 (CRÍTICO — dinero real, independiente de Frentes 1/2) — implementado 2026-08-07, pendiente de aplicar a Supabase remoto
+
+`select_available_zelle_account` (SELECT sin `FOR UPDATE`) + `update_zelle_account_usage` (RPC separado, invocado después en el flujo) tenían una ventana TOCTOU real: dos órdenes/remesas concurrentes podían pasar el chequeo de límite y reservar la misma cuenta Zelle, superando `daily_limit`/`security_limit`. **Corrige la conclusión de la auditoría previa (2026-04-20, §5.3), que calificaba este patrón como "✅ evita race conditions" — esa conclusión queda superada.**
+
+**Implementado** (rama `feat/admin-bulk-ops-reset-audit`, TDD — tests en rojo antes, 51/51 verdes ahora, build OK):
+- `supabase/migrations/20260807000001_atomic_zelle_account_reservation.sql`: RPC `reserve_zelle_account` — selección + reserva atómica con `FOR UPDATE SKIP LOCKED` (no bloquea checkouts concurrentes entre sí, favorece redes de alto tráfico). **Aplicada a Supabase remoto 2026-08-07** (`apply_migration`, confirmado por el usuario) — verificada con `pg_proc` (`SECURITY INVOKER`, `SKIP LOCKED` presente) y `get_advisors(security)` sin hallazgos nuevos.
+- `src/lib/zelleService.js`: `getAvailableZelleAccount` → `reserveZelleAccount`, usa el nuevo RPC; `registerZelleTransaction` ya no llama a `update_zelle_account_usage` (evita doble conteo).
+- `src/tests/unit/zelleService.test.js`: cobertura de la capa JS (llamada única al RPC atómico, no a los dos viejos). **La atomicidad en sí la garantiza el lock de Postgres, no hay harness de concurrencia real en este proyecto (vitest+jsdom) — no se reclama cobertura de concurrencia que no existe.**
+
+**Dos bugs adicionales encontrados y corregidos en el mismo cambio** (no eran parte del hallazgo original, se descubrieron auditando estos call sites):
+1. `CartPage.jsx:678` llamaba con `transactionType='order'`, valor inválido (el enum solo acepta `remittance`/`product`/`combo`) — la asignación automática de cuenta Zelle para **órdenes de producto fallaba siempre**, silenciosamente, dejando `zelle_account_id = null`.
+2. Ambos call sites (`CartPage.jsx`, `remittanceService.js:885`) leían `zelleResult.success`/`zelleResult.account`, pero la función siempre devolvió el registro de cuenta directamente o lanzó una excepción — ese shape nunca existió. En remesas esto hacía fallar la creación cuando no se pasaba `zelle_account_id` explícito; en órdenes fallaba en silencio.
+
+**Resuelto con la lógica dada por el usuario 2026-08-07**: alcance de bulk-delete (ofertas/combos SÍ, resto según Frente 1) y qué limpia el reset (orders, remittances, recipient_bank_accounts/remittance_bank_transfers, ofertas, combos, inventario, stats de cuentas Zelle, todos los usuarios no-superadmin; `publications` queda fuera por ser contenido editorial, no operacional).
+
+**Decidido por el usuario 2026-08-07**:
+- SEC-09 (bug de concurrencia Zelle) se implementa **primero**, antes que Frentes 1/2.
+- Borrado de usuarios de prueba: **Opción A** — `is_enabled=false` en `user_profiles` + purga de actividad transaccional, sin tocar `auth.users`.
+- Reset también limpia métricas/estadísticas de actividad de prueba: `order_status_history`, `zelle_payment_stats`, `site_visits`, `user_category_history` (no `user_categories`/`category_rules`/`category_discounts` — esas son configuración, no datos generados por uso).
+
+**Pendiente**: confirmar PITR activo en Supabase Dashboard → Database → Backups.
