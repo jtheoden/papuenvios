@@ -8,8 +8,10 @@ import { useCurrency } from '@/contexts/CurrencyContext';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { createProduct, deleteProduct, setProductActiveState, updateProduct as updateProductDB } from '@/lib/productService';
+import { bulkDeleteProducts } from '@/lib/bulkDeleteService';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
+import BulkDeleteBar from '@/components/tables/BulkDeleteBar';
 import { getTableColumns, getModalColumns } from './ProductTableConfig';
 import { logActivity } from '@/lib/activityLogger';
 import { useRealtimeProducts } from '@/hooks/useRealtimeSubscription';
@@ -32,7 +34,7 @@ const VendorInventoryTab = ({
   onProductsRefresh
 }) => {
   const { t, language } = useLanguage();
-  const { user } = useAuth();
+  const { user, isSuperAdmin } = useAuth();
   const { convertAmountAsync, getCurrencyById } = useCurrency();
   const [productForm, setProductForm] = useState(null);
   const [productImagePreview, setProductImagePreview] = useState(null);
@@ -41,6 +43,7 @@ const VendorInventoryTab = ({
   const [processingProductId, setProcessingProductId] = useState(null);
   const [deletingProductId, setDeletingProductId] = useState(null);
   const [productToDelete, setProductToDelete] = useState(null);
+  const [selectedProductIds, setSelectedProductIds] = useState([]);
   const [convertedPreview, setConvertedPreview] = useState(null);
   const [isConverting, setIsConverting] = useState(false);
   const [filterName, setFilterName] = useState('');
@@ -470,6 +473,23 @@ const VendorInventoryTab = ({
     } finally {
       setDeletingProductId(null);
     }
+  };
+
+  const handleBulkDeleteProducts = async (ids) => {
+    const outcome = await bulkDeleteProducts(ids);
+    if (outcome.deleted.length > 0) {
+      toast({
+        title: t('vendor.inventory.productDeleted'),
+        description: (t('tables.bulkDeleteSuccess') || '{count} item(s) deleted').replace('{count}', outcome.deleted.length)
+      });
+      await onProductsRefresh(true);
+    }
+    return outcome;
+  };
+
+  const getProductLabelById = (id) => {
+    const product = products.find((p) => p.id === id);
+    return product ? (product.name_es || product.name_en || id) : id;
   };
 
   // Función para convertir precio según moneda seleccionada
@@ -1059,7 +1079,19 @@ const VendorInventoryTab = ({
         emptyMessage={t('vendor.inventory.noProducts') || 'No products found'}
         pageSize={10}
         pageSizeOptions={[10, 20, 50]}
+        selectable={isSuperAdmin}
+        selectedIds={selectedProductIds}
+        onSelectionChange={setSelectedProductIds}
       />
+
+      {isSuperAdmin && (
+        <BulkDeleteBar
+          selectedIds={selectedProductIds}
+          onClearSelection={(remainingIds) => setSelectedProductIds(remainingIds || [])}
+          onConfirmDelete={handleBulkDeleteProducts}
+          getItemLabel={getProductLabelById}
+        />
+      )}
 
       {/* Delete Confirmation Modal */}
       {productToDelete && (

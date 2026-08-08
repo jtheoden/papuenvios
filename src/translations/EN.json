@@ -1799,6 +1799,21 @@
     "firstPage": "First page",
     "prevPage": "Previous page",
     "nextPage": "Next page",
-    "lastPage": "Last page"
+    "lastPage": "Last page",
+    "selectRow": "Select row",
+    "selectAll": "Select all",
+    "selectedCount": "{count} selected",
+    "clearSelection": "Clear selection",
+    "deleteSelected": "Delete selected",
+    "bulkDeleteConfirmTitle": "Confirm bulk delete",
+    "bulkDeleteConfirmBody": "You are about to permanently delete {count} item(s). This action cannot be undone.",
+    "bulkDeleteConfirmInput": "Type DELETE to confirm",
+    "bulkDeleteConfirmButton": "Delete permanently",
+    "bulkDeleteCancelButton": "Cancel",
+    "bulkDeleteSuccess": "{count} item(s) deleted",
+    "bulkDeleteBlocked": "{count} item(s) could not be deleted",
+    "bulkDeleteReasonBlockingOrders": "has active orders",
+    "bulkDeleteReasonHasProducts": "has associated products",
+    "bulkDeleteReasonNotFound": "no longer exists"
   }
 }

@@ -64,7 +64,15 @@
 Plan completo: `.claude/docs/plan_admin-bulk-ops-reset-audit.md` (generado con `/strategic-plan-workflow`, validado con crítica adversarial + cross-check independiente).
 
 - [x] **SEC-08**: Purgado `PGPASSWORD` de la historia con `git filter-repo --replace-text` + `push --force-with-lease` a `origin/main` — completado 2026-08-08. Verificado: 0 ocurrencias de ambos passwords en `git log --all -p`, redacción presente donde correspondía. Solo `main` contenía los commits afectados (de 54 ramas remotas, ninguna otra los incluía — no fue necesario tocarlas).
-- [ ] **ADMIN-01**: Selección múltiple + borrado masivo en tablas admin (productos, categorías; ofertas/combos condicional) — RPC transaccional reusando la cascada de borrado físico existente, no soft-delete (no existe convención `activa` en este proyecto)
+- [x] **ADMIN-01**: Selección múltiple + borrado masivo de productos y categorías — implementado 2026-08-08, **migración NO aplicada a Supabase todavía** (pendiente de confirmación, igual que SEC-09):
+  - `supabase/migrations/20260808000001_bulk_delete_products_categories.sql`: `bulk_delete_products`/`bulk_delete_categories` (`SECURITY DEFINER`, exclusivo `super_admin`, `pg_advisory_xact_lock` por tipo de entidad, reporte parcial por ítem `deleted`/`blocked`/`block_reason`). Incluye el fix de RLS de Fase 0 (`categories_all_admin` → DELETE ahora requiere `is_super_admin()`, no `is_admin_user()`).
+  - `src/lib/bulkDeleteService.js` — capa JS, TDD (tests en rojo antes de implementar).
+  - `src/components/tables/ResponsiveTableWrapper.jsx` — soporte de selección genérico y reusable (checkbox por fila + "seleccionar todo" de la página actual), en las 3 vistas responsive.
+  - `src/components/tables/BulkDeleteBar.jsx` — barra flotante + modal de confirmación (requiere escribir "ELIMINAR").
+  - Conectado en `VendorInventoryTab.jsx` (productos), gateado a `isSuperAdmin` — **Categorías queda para un siguiente incremento** (su tab usa un layout de tarjetas propio, no `ResponsiveTableWrapper`; requiere wiring distinto, no técnica nueva).
+  - Ofertas/combos: fuera de esta iteración, sigue condicional a confirmar volumen (NEEDS-DISCUSSION del plan).
+  - Sin `p_idempotency_token` en esta primera versión — evaluado y descartado explícitamente (ver plan doc) para no sobre-ingenierizar el primer pase.
+  - Tests: 59/59 verdes, incluye un test de componente nuevo (`ResponsiveTableWrapper.selection.test.jsx`, primer test de UI en este proyecto — hasta ahora solo había tests de funciones puras). Gotcha documentado en el test: jsdom no aplica CSS real, las 3 vistas responsive (mobile/tablet/desktop) coexisten en el DOM simultáneamente, hay que scopear queries con `within(table)`.
 - [ ] **ADMIN-02**: Mecanismo de reset a estado inicial — flag en tabla `platform_reset_control` activable únicamente vía SQL directo, RPC `SECURITY DEFINER` con advisory lock exclusivo + auto-desarme, backup obligatorio previo
 - [ ] **DATA-05** (nuevo): Auditar y modificar RPCs de checkout/pago para tomar `pg_advisory_xact_lock_shared` del namespace `platform_reset`, sin lo cual el lock del reset no serializa nada
 - [x] Fase 0 del plan — **completada 2026-08-07, ambos hallazgos CONFIRMADOS con evidencia** (ver `.claude/docs/plan_admin-bulk-ops-reset-audit.md`)

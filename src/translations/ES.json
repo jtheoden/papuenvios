@@ -1808,6 +1808,21 @@
     "firstPage": "Primera página",
     "prevPage": "Página anterior",
     "nextPage": "Página siguiente",
-    "lastPage": "Última página"
+    "lastPage": "Última página",
+    "selectRow": "Seleccionar fila",
+    "selectAll": "Seleccionar todo",
+    "selectedCount": "{count} seleccionado(s)",
+    "clearSelection": "Limpiar selección",
+    "deleteSelected": "Eliminar seleccionados",
+    "bulkDeleteConfirmTitle": "Confirmar borrado masivo",
+    "bulkDeleteConfirmBody": "Vas a eliminar permanentemente {count} elemento(s). Esta acción no se puede deshacer.",
+    "bulkDeleteConfirmInput": "Escribí ELIMINAR para confirmar",
+    "bulkDeleteConfirmButton": "Eliminar definitivamente",
+    "bulkDeleteCancelButton": "Cancelar",
+    "bulkDeleteSuccess": "{count} elemento(s) eliminado(s)",
+    "bulkDeleteBlocked": "{count} elemento(s) no se pudieron eliminar",
+    "bulkDeleteReasonBlockingOrders": "tiene órdenes activas",
+    "bulkDeleteReasonHasProducts": "tiene productos asociados",
+    "bulkDeleteReasonNotFound": "ya no existe"
   }
 }

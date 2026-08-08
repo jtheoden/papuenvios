@@ -78,13 +78,13 @@ FASE 5 — Cierre
 
 - **UI**: extender `src/components/tables/ResponsiveTableWrapper.jsx` (o `DataTable.jsx`, que ya tiene TODOs explícitos de "bulk actions" sin implementar, líneas 96-99) con columna de checkbox + barra de acción flotante "N seleccionados → Eliminar". Visible solo si `role === 'super_admin'` (gate de UX; la seguridad real vive en el RPC).
 - **Confirmación**: modal con conteo explícito; el RPC re-valida ese conteo contra `SELECT COUNT(*)` real de los IDs recibidos antes de ejecutar — no confía en el conteo del cliente.
-- **RPC** `bulk_delete_entity(p_entity_type text, p_ids uuid[], p_idempotency_token uuid)`, `SECURITY DEFINER`:
-  - `PERFORM assert_super_admin();`
-  - `PERFORM pg_advisory_xact_lock(hashtext('bulk_delete:' || p_entity_type));`
-  - Reutiliza la **misma cascada de borrado físico que ya existe** en `deleteProduct`/`deleteCategory` (`productService.js:526-771` y `943-1039`), portada a SQL o invocada en loop dentro de una única transacción — no soft-delete inventado, porque `is_active` no es un mecanismo de borrado en este proyecto (verificado: 0 usos de `activa` en todo el repo).
-  - Retorna `{deleted: uuid[], blocked: uuid[], reason: text[]}` — reporte parcial, no todo-o-nada (una orden bloqueante en un ítem no debe abortar el resto del batch).
-  - Idempotente vía `p_idempotency_token`: reintento tras timeout de red devuelve el resultado cacheado del log, no re-ejecuta.
-- **RLS a corregir como prerequisito** (sujeto a verificación de Fase 0): si se confirma que `categories_all_admin` usa `is_admin_user()` en vez de `is_super_admin()` para DELETE, se endurece en la misma migración.
+- **RPC**: `bulk_delete_products(p_ids uuid[])` y `bulk_delete_categories(p_ids uuid[])` — dos funciones delgadas (no una `bulk_delete_entity` genérica, per YAGNI) en `supabase/migrations/20260808000001_bulk_delete_products_categories.sql`, `SECURITY DEFINER`:
+  - Verifica `is_super_admin()` al inicio, `RAISE EXCEPTION` si no.
+  - `PERFORM pg_advisory_xact_lock(hashtext('bulk_delete:products'))` / `'bulk_delete:categories'` — serializa bulk-deletes concurrentes del mismo tipo de entidad.
+  - Reutiliza la **misma cascada de borrado físico que ya existe** en `deleteProduct`/`deleteCategory` (`productService.js:526-771` y `943-1039`), portada a SQL dentro de una única transacción — no soft-delete inventado, porque `is_active` no es un mecanismo de borrado en este proyecto (verificado: 0 usos de `activa` en todo el repo).
+  - Retorna una fila por ID solicitado (`deleted_id`/`blocked_id`/`block_reason`) — reporte parcial, no todo-o-nada; el cliente compara el largo del resultado contra los IDs enviados como re-validación implícita del conteo, sin necesidad de un parámetro `p_expected_count` separado.
+  - **Sin `p_idempotency_token`** en esta primera implementación (se había propuesto en el borrador del plan, pero construir el replay-log completo era sobre-ingeniería para el primer pase — se descartó explícitamente, no quedó a medio hacer). Si se observan reintentos de red duplicando reportes de "not_found" en vez de "deleted" tras un timeout, se revisita como fast-follow.
+- **RLS corregida** (Fase 0 confirmada): `categories_all_admin` (`FOR ALL` con `is_admin_user()`) se reemplaza por policies separadas — `INSERT`/`UPDATE` siguen en `is_admin_user()` (sin cambio de comportamiento), `DELETE` pasa a requerir `is_super_admin()`, mismo nivel que exige el RPC.
 
 ### Límite YAGNI
 

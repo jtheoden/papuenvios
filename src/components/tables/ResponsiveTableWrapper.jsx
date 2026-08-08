@@ -21,6 +21,10 @@ import { useBusiness } from '@/contexts/BusinessContext';
  * @prop {string} className - Additional CSS classes
  * @prop {number} pageSize - Items per page (enables pagination when > 0)
  * @prop {array} pageSizeOptions - Page size options (e.g. [10, 20, 50])
+ * @prop {boolean} selectable - Enables the checkbox selection column (bulk actions)
+ * @prop {array} selectedIds - Controlled array of selected row IDs
+ * @prop {function} onSelectionChange - Callback(nextSelectedIds: array)
+ * @prop {function} getRowId - Extracts a row's ID, defaults to row.id
  */
 const ResponsiveTableWrapper = ({
   data = [],
@@ -31,7 +35,11 @@ const ResponsiveTableWrapper = ({
   modalColumns = [],
   className = '',
   pageSize = 0,
-  pageSizeOptions = []
+  pageSizeOptions = [],
+  selectable = false,
+  selectedIds = [],
+  onSelectionChange,
+  getRowId = (row) => row.id
 }) => {
   const { t } = useLanguage();
   const { visualSettings } = useBusiness();
@@ -40,6 +48,14 @@ const ResponsiveTableWrapper = ({
   const [showModal, setShowModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [currentPageSize, setCurrentPageSize] = useState(pageSize);
+  const selectedSet = new Set(selectedIds);
+
+  const toggleRowSelection = (id, e) => {
+    e?.stopPropagation();
+    const next = new Set(selectedSet);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    onSelectionChange?.(Array.from(next));
+  };
 
   // Reset to page 1 when data changes (e.g. filter applied)
   useEffect(() => {
@@ -52,6 +68,18 @@ const ResponsiveTableWrapper = ({
   const paginatedData = isPaginated
     ? data.slice((safePage - 1) * currentPageSize, safePage * currentPageSize)
     : data;
+
+  const pageIds = selectable ? paginatedData.map(getRowId) : [];
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedSet.has(id));
+  const toggleSelectAllOnPage = () => {
+    const next = new Set(selectedSet);
+    if (allPageSelected) {
+      pageIds.forEach((id) => next.delete(id));
+    } else {
+      pageIds.forEach((id) => next.add(id));
+    }
+    onSelectionChange?.(Array.from(next));
+  };
 
   const handleRowClick = (row) => {
     setSelectedRow(row);
@@ -90,6 +118,16 @@ const ResponsiveTableWrapper = ({
             style={{ borderColor: semanticColors.neutral[200], border: `1px solid ${semanticColors.neutral[200]}` }}
           >
             <div className="flex items-center justify-between gap-2">
+              {selectable && (
+                <input
+                  type="checkbox"
+                  checked={selectedSet.has(getRowId(row))}
+                  onChange={(e) => toggleRowSelection(getRowId(row), e)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex-shrink-0 h-4 w-4"
+                  aria-label={t('tables.selectRow') || 'Select row'}
+                />
+              )}
               <div className="flex-1 min-w-0">
                 {/* Show first two columns on xs */}
                 {columns.slice(0, 2).map((col) => (
@@ -118,6 +156,18 @@ const ResponsiveTableWrapper = ({
             className="bg-white rounded-lg p-4 hover:shadow-lg transition-shadow cursor-pointer"
             style={{ border: `1px solid ${semanticColors.neutral[200]}` }}
           >
+            {selectable && (
+              <div className="flex justify-end mb-2">
+                <input
+                  type="checkbox"
+                  checked={selectedSet.has(getRowId(row))}
+                  onChange={(e) => toggleRowSelection(getRowId(row), e)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-4 w-4"
+                  aria-label={t('tables.selectRow') || 'Select row'}
+                />
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               {columns.slice(0, 4).map((col) => (
                 <div key={col.key}>
@@ -143,6 +193,17 @@ const ResponsiveTableWrapper = ({
         <table className="w-full">
           <thead style={{ backgroundColor: semanticColors.neutral[50], borderBottom: `1px solid ${semanticColors.neutral[200]}` }}>
             <tr>
+              {selectable && (
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allPageSelected}
+                    onChange={toggleSelectAllOnPage}
+                    className="h-4 w-4"
+                    aria-label={t('tables.selectAll') || 'Select all'}
+                  />
+                </th>
+              )}
               {columns.map((col) => (
                 <th
                   key={col.key}
@@ -166,6 +227,17 @@ const ResponsiveTableWrapper = ({
                 onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = semanticColors.neutral[50]; }}
                 onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
               >
+                {selectable && (
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedSet.has(getRowId(row))}
+                      onChange={(e) => toggleRowSelection(getRowId(row), e)}
+                      className="h-4 w-4"
+                      aria-label={t('tables.selectRow') || 'Select row'}
+                    />
+                  </td>
+                )}
                 {columns.map((col) => (
                   <td
                     key={col.key}
