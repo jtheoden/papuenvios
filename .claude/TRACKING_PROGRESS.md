@@ -14,30 +14,30 @@
 
 ## 🔴 P0 — Bloqueadores (no lanzar sin esto)
 
-- [ ] **SEC-01**: Revocar client secret de Google OAuth en GCloud Console + limpiar historial git
-- [ ] **SEC-02**: Migrar cifrado bancario a Edge Function server-side (src/lib/encryption.js)
+- [ ] **SEC-01**: Revocar client secret de Google OAuth en GCloud Console + limpiar historial git — **NO re-verificado 2026-08-08, requiere chequeo separado** (ver auditoría Frente 3)
+- [x] **SEC-02**: ✅ **Ya resuelto, verificado 2026-08-08** — cifrado bancario migrado a Edge Function `bank-account-crypto` (server-side, sin fallback inseguro). `src/lib/encryption.js` ya no existe.
 - [ ] **LEGAL-01**: Consulta legal OFAC/MSB para operación de remesas Cuba-USA
 - [ ] **LEGAL-02**: Implementar páginas `/privacy` y `/terms` con contenido legal real
-- [ ] **TEST-01**: Suite mínima E2E para flujo remesa completo + unit tests calculation engine
+- [ ] **TEST-01**: Premisa parcialmente desactualizada — ya no es "cero tests" (64 tests unitarios en verde tras esta sesión), pero sigue faltando E2E de flujo completo. Ver auditoría Frente 3.
 
 ## 🟡 P1 — Alta prioridad (completar antes de lanzamiento)
 
-- [ ] **SEC-03**: Corregir autorización dual en zelleService.js (usar user_profiles.role)
-- [ ] **SEC-04**: Restringir CORS wildcard en notify-order y notify-zelle-deactivation
-- [ ] **PERF-01**: Code splitting con React.lazy() para AdminPage, UserManagement, VendorPage
+- [x] **SEC-03**: Corregido 2026-08-08 — `verifyAdminRole()` (leía `user_metadata.role`, 0 call sites) era código muerto, no explotable (el gate real ya era la RLS `zelle_accounts_manage` vía `is_admin_user()`). Eliminado.
+- [x] **SEC-04**: Corregido 2026-08-08, **no desplegado** — CORS allowlist real (`supabase/functions/_shared/cors.ts`) reemplaza el wildcard `'*'` en `notify-order`/`notify-zelle-deactivation`, y el anti-patrón "reflected origin + Allow-Credentials:true" en `notification-settings`. Requiere `supabase functions deploy` (pendiente de confirmación, mismo nivel que `apply_migration`).
+- [ ] **PERF-01**: Code splitting con React.lazy() para AdminPage, UserManagement, VendorPage — confirmado vigente 2026-08-08, bundle actual 1,607.87 KB
 - [ ] **OPS-01**: Integrar Sentry para monitoring de errores en producción
 - [ ] **DATA-01**: RPCs PostgreSQL para transacciones atómicas (validate_order_payment, create_remittance, apply_offer)
-- [ ] **DATA-02**: Convertir available_quantity a GENERATED ALWAYS AS o trigger BEFORE UPDATE
+- [ ] **DATA-02**: Convertir available_quantity a GENERATED ALWAYS AS o trigger BEFORE UPDATE — relevante de nuevo: el reset de plataforma (ADMIN-02) vacía inventory completo, probar recarga post-reset antes de confiar en el flujo
 - [ ] **OPS-02**: Configurar alertas en Supabase Dashboard y Vercel
 
 ## 🟠 P2 — Importante (puede lanzar, pero resolver pronto)
 
 - [ ] **SEC-05**: Customizar rate limiting en Supabase Auth + hCaptcha en registro
 - [ ] **DATA-03**: pg_cron job para reset automático de límites Zelle
-- [ ] **SEC-06**: Restringir order_analytics para no exponer emails a usuarios normales
+- [x] **SEC-06**: ✅ **Ya resuelto, verificado 2026-08-08** — la vista `order_analytics` tiene `security_invoker=true` (confirmado en `pg_class.reloptions`), respeta la RLS de `orders` (`user_id = auth.uid() OR is_admin_user()`). Un usuario normal no puede ver emails de otros clientes.
 - [ ] **OPS-03**: Escribir runbook de incidentes
 - [ ] **DATA-04**: Deprecar columna `estimated_delivery` duplicada en orders
-- [ ] **SEC-07**: Redacción de PII en activity_logs + TTL 90 días
+- [ ] **SEC-07**: Redacción de PII en activity_logs + TTL 90 días — confirmado vigente 2026-08-08 (sin columna de expiración, `metadata` jsonb libre sin redacción)
 - [ ] **UX-01**: Tooltips en conceptos financieros del flujo de remesa
 
 ## 🟢 P3 — Mejoras (post-lanzamiento)
@@ -81,7 +81,7 @@ Plan completo: `.claude/docs/plan_admin-bulk-ops-reset-audit.md` (generado con `
   - UI: pestaña "Sistema" en Configuración, visible solo para `super_admin` (`SettingsSystemTab.jsx`), botón deshabilitado hasta que el flag esté activo en BD, confirmación exige escribir "RESETEAR".
   - Runbook operativo: `.claude/docs/runbook_platform_reset.md` (backup/PITR previo, cómo activar el flag, qué hacer después).
   - Tests TDD: `src/tests/unit/platformResetService.test.js`, 64/64 tests totales en verde.
-- [ ] **DATA-05** (nuevo): Auditar y modificar RPCs de checkout/pago para tomar `pg_advisory_xact_lock_shared` del namespace `platform_reset`, sin lo cual el lock del reset no serializa nada
+- [x] **DATA-05** (nuevo) — resuelto de forma distinta a la prevista: no existen RPCs de checkout/pago (orderService.js/remittanceService.js insertan directo). Se implementó como trigger `BEFORE INSERT` en `orders`/`remittances` (`guard_platform_reset_lock()`, en `20260808000002_platform_reset.sql`) — cubre cualquier vía de inserción sin depender de que exista un RPC.
 - [x] Fase 0 del plan — **completada 2026-08-07, ambos hallazgos CONFIRMADOS con evidencia** (ver `.claude/docs/plan_admin-bulk-ops-reset-audit.md`)
 
 ### ✅ SEC-09 (CRÍTICO — dinero real, independiente de Frentes 1/2) — implementado 2026-08-07, pendiente de aplicar a Supabase remoto
@@ -105,3 +105,7 @@ Plan completo: `.claude/docs/plan_admin-bulk-ops-reset-audit.md` (generado con `
 - Reset también limpia métricas/estadísticas de actividad de prueba: `order_status_history`, `zelle_payment_stats`, `site_visits`, `user_category_history` (no `user_categories`/`category_rules`/`category_discounts` — esas son configuración, no datos generados por uso).
 
 **Pendiente**: confirmar PITR activo en Supabase Dashboard → Database → Backups.
+
+### 🆕 Auditoría Frente 3 completada 2026-08-08
+
+Documento completo: `.claude/docs/audit-frente3-2026-08-08.md`. Re-verificó con evidencia directa (no solo carried-forward) los hallazgos de seguridad de 2026-04-20 que seguían "abiertos": **SEC-02 y SEC-06 resultaron ya resueltos** (sin atribuirse a esta sesión), **SEC-03 y SEC-04 corregidos** en esta sesión (código listo, SEC-04 pendiente de `supabase functions deploy`), race conditions de Frentes 1/2 auditadas y confirmadas mitigadas. Deja explícito qué NO se re-verificó (SEC-01, SEC-05, LEGAL, OPS, DATA-01/03/04, UX-01) para no blanquear nada por omisión.
