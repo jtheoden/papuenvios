@@ -63,7 +63,7 @@
 
 Plan completo: `.claude/docs/plan_admin-bulk-ops-reset-audit.md` (generado con `/strategic-plan-workflow`, validado con crítica adversarial + cross-check independiente).
 
-- [ ] **SEC-08**: Purgar `PGPASSWORD` hardcodeado de la historia de `.claude/settings.json` (commits `4b7f21dd`, `75e2b1f2`) con `git filter-repo` + force-push — autorizado por el usuario
+- [x] **SEC-08**: Purgado `PGPASSWORD` de la historia con `git filter-repo --replace-text` + `push --force-with-lease` a `origin/main` — completado 2026-08-08. Verificado: 0 ocurrencias de ambos passwords en `git log --all -p`, redacción presente donde correspondía. Solo `main` contenía los commits afectados (de 54 ramas remotas, ninguna otra los incluía — no fue necesario tocarlas).
 - [ ] **ADMIN-01**: Selección múltiple + borrado masivo en tablas admin (productos, categorías; ofertas/combos condicional) — RPC transaccional reusando la cascada de borrado físico existente, no soft-delete (no existe convención `activa` en este proyecto)
 - [ ] **ADMIN-02**: Mecanismo de reset a estado inicial — flag en tabla `platform_reset_control` activable únicamente vía SQL directo, RPC `SECURITY DEFINER` con advisory lock exclusivo + auto-desarme, backup obligatorio previo
 - [ ] **DATA-05** (nuevo): Auditar y modificar RPCs de checkout/pago para tomar `pg_advisory_xact_lock_shared` del namespace `platform_reset`, sin lo cual el lock del reset no serializa nada
