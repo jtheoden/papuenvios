@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Helmet, HelmetProvider } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster } from '@/components/ui/toaster';
@@ -13,18 +13,21 @@ import RemittancesPage from '@/components/RemittancesPage';
 import SendRemittancePage from '@/components/SendRemittancePage';
 import MyRemittancesPage from '@/components/MyRemittancesPage';
 import MyRecipientsPage from '@/components/MyRecipientsPage';
-import DashboardPage from '@/components/DashboardPage';
-import AdminPage from '@/components/AdminPage';
-import SettingsPage from '@/components/SettingsPage';
 import CartPage from '@/components/CartPage';
 import LoginPage from '@/components/LoginPage';
 import UserPanel from '@/components/UserPanel';
-import UserManagement from '@/components/UserManagement';
 import AuthCallback from '@/components/AuthCallback';
 import BlogPage from '@/components/BlogPage';
 import PrivacyPage from '@/components/PrivacyPage';
 import TermsPage from '@/components/TermsPage';
 import Footer from '@/components/Footer';
+
+// PERF-01: admin-only areas are code-split out of the main bundle — they're never
+// touched by the public/customer golden path (home, products, cart, remittances).
+const DashboardPage = lazy(() => import('@/components/DashboardPage'));
+const AdminPage = lazy(() => import('@/components/AdminPage'));
+const SettingsPage = lazy(() => import('@/components/SettingsPage'));
+const UserManagement = lazy(() => import('@/components/UserManagement'));
 import { withProtectedRoute } from '@/components/withProtectedRoute';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { BusinessProvider, useBusiness } from '@/contexts/BusinessContext';
@@ -33,6 +36,15 @@ import { ModalProvider } from '@/contexts/ModalContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { trackPageVisit } from '@/lib/analyticsService';
+
+// Lightweight fallback for lazy-loaded routes (admin area) — a full LoadingScreen
+// splash on every navigation between admin tabs would be a heavier UX than the
+// chunk fetch it's covering for.
+const RouteLoadingFallback = () => (
+  <div className="flex items-center justify-center min-h-[50vh]">
+    <div className="h-8 w-8 rounded-full border-2 border-gray-300 border-t-blue-600 animate-spin" />
+  </div>
+);
 
 // Component to dynamically update page title and apply visual settings
 function DynamicVisualSettings() {
@@ -310,7 +322,9 @@ function App() {
                             exit={{ opacity: 0, y: -20 }}
                             transition={{ duration: 0.3 }}
                           >
-                            {renderPage()}
+                            <Suspense fallback={<RouteLoadingFallback />}>
+                              {renderPage()}
+                            </Suspense>
                           </motion.div>
                         </AnimatePresence>
                       </main>
