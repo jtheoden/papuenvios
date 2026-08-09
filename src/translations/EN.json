@@ -476,6 +476,8 @@
       "amountSent": "Amount sent",
       "amountReceived": "Amount received",
       "exchangeRateLabel": "Exchange rate",
+      "exchangeRateTooltip": "This is the reference value we use to convert your USD amount into the currency the recipient will receive. It may vary depending on the selected remittance type.",
+      "commissionTooltip": "This is the cost of the sending service. It's calculated on the amount you choose to send and deducted before conversion to the delivery currency.",
       "youMustSend": "You must send",
       "theyWillReceive": "They will receive",
       "limits": "Limits",
