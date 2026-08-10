@@ -1,8 +1,5 @@
 {
   "permissions": {
-    "allow": [
-      "Bash(PGHOST=\"db.qcwnlbpultscerwdnzbm.supabase.co\" PGPORT=\"5432\" PGUSER=\"cli_login_postgres\" PGPASSWORD=\"REDACTED-ROTATE-THIS-CREDENTIAL\" PGDATABASE=\"postgres\" psql:*)",
-      "Bash(PGHOST=\"db.qcwnlbpultscerwdnzbm.supabase.co\" PGPORT=\"5432\" PGUSER=\"cli_login_postgres\" PGPASSWORD=\"REDACTED-ROTATE-THIS-CREDENTIAL\" PGDATABASE=\"postgres\" psql:*)"
-    ]
+    "allow": []
   }
 }

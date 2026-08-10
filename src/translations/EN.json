@@ -476,6 +476,8 @@
       "amountSent": "Amount sent",
       "amountReceived": "Amount received",
       "exchangeRateLabel": "Exchange rate",
+      "exchangeRateTooltip": "This is the reference value we use to convert your USD amount into the currency the recipient will receive. It may vary depending on the selected remittance type.",
+      "commissionTooltip": "This is the cost of the sending service. It's calculated on the amount you choose to send and deducted before conversion to the delivery currency.",
       "youMustSend": "You must send",
       "theyWillReceive": "They will receive",
       "limits": "Limits",
@@ -1799,6 +1801,21 @@
     "firstPage": "First page",
     "prevPage": "Previous page",
     "nextPage": "Next page",
-    "lastPage": "Last page"
+    "lastPage": "Last page",
+    "selectRow": "Select row",
+    "selectAll": "Select all",
+    "selectedCount": "{count} selected",
+    "clearSelection": "Clear selection",
+    "deleteSelected": "Delete selected",
+    "bulkDeleteConfirmTitle": "Confirm bulk delete",
+    "bulkDeleteConfirmBody": "You are about to permanently delete {count} item(s). This action cannot be undone.",
+    "bulkDeleteConfirmInput": "Type DELETE to confirm",
+    "bulkDeleteConfirmButton": "Delete permanently",
+    "bulkDeleteCancelButton": "Cancel",
+    "bulkDeleteSuccess": "{count} item(s) deleted",
+    "bulkDeleteBlocked": "{count} item(s) could not be deleted",
+    "bulkDeleteReasonBlockingOrders": "has active orders",
+    "bulkDeleteReasonHasProducts": "has associated products",
+    "bulkDeleteReasonNotFound": "no longer exists"
   }
 }

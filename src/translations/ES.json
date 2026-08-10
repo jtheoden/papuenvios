@@ -485,6 +485,8 @@
       "amountSent": "Monto enviado",
       "amountReceived": "Monto recibido",
       "exchangeRateLabel": "Tasa de cambio",
+      "exchangeRateTooltip": "Es el valor de referencia que usamos para convertir tu monto en USD a la moneda que recibirá el destinatario. Puede variar según el tipo de remesa seleccionado.",
+      "commissionTooltip": "Es el costo del servicio de envío. Se calcula sobre el monto que decides enviar y se descuenta antes de la conversión a la moneda de entrega.",
       "youMustSend": "Debes enviar",
       "theyWillReceive": "Recibirán",
       "limits": "Límites",
@@ -1808,6 +1810,21 @@
     "firstPage": "Primera página",
     "prevPage": "Página anterior",
     "nextPage": "Página siguiente",
-    "lastPage": "Última página"
+    "lastPage": "Última página",
+    "selectRow": "Seleccionar fila",
+    "selectAll": "Seleccionar todo",
+    "selectedCount": "{count} seleccionado(s)",
+    "clearSelection": "Limpiar selección",
+    "deleteSelected": "Eliminar seleccionados",
+    "bulkDeleteConfirmTitle": "Confirmar borrado masivo",
+    "bulkDeleteConfirmBody": "Vas a eliminar permanentemente {count} elemento(s). Esta acción no se puede deshacer.",
+    "bulkDeleteConfirmInput": "Escribí ELIMINAR para confirmar",
+    "bulkDeleteConfirmButton": "Eliminar definitivamente",
+    "bulkDeleteCancelButton": "Cancelar",
+    "bulkDeleteSuccess": "{count} elemento(s) eliminado(s)",
+    "bulkDeleteBlocked": "{count} elemento(s) no se pudieron eliminar",
+    "bulkDeleteReasonBlockingOrders": "tiene órdenes activas",
+    "bulkDeleteReasonHasProducts": "tiene productos asociados",
+    "bulkDeleteReasonNotFound": "ya no existe"
   }
 }

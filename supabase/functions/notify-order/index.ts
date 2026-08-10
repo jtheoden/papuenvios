@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { buildCorsHeaders } from "../_shared/cors.ts";
 
 // Optional: If you need to query Supabase inside the function, uncomment below
 // import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -9,9 +10,17 @@ const WHATSAPP_API_TOKEN = Deno.env.get('WHATSAPP_API_TOKEN'); // Meta Business 
 const FROM_EMAIL = Deno.env.get('FROM_EMAIL') || 'noreply@papuenvios.com';
 
 serve(async (req: Request) => {
+  const corsHeaders = buildCorsHeaders(req, 'POST, OPTIONS');
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { status: 200, headers: corsHeaders });
   }
+
+  const json = (data: unknown, status = 200) =>
+    new Response(JSON.stringify(data), {
+      status,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
 
   try {
     const { orderData, notificationSettings } = await req.json();
@@ -88,17 +97,3 @@ serve(async (req: Request) => {
     return json({ error: err?.message || String(err) }, 500);
   }
 });
-
-// Helpers
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-
-function json(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders }
-  });
-}

@@ -28,6 +28,7 @@ import ZelleAccountSelector from '@/components/ZelleAccountSelector';
 import ZelleAccountAlert from '@/components/ZelleAccountAlert';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import ZelleAccountDisplay from '@/components/shared/ZelleAccountDisplay';
+import { InfoTooltip } from '@/components/ui/InfoTooltip';
 import AmountDisplayCard from '@/components/shared/AmountDisplayCard';
 import PaymentProofForm from '@/components/shared/PaymentProofForm';
 
@@ -839,13 +840,19 @@ const SendRemittancePage = ({ onNavigate }) => {
                       <div className="space-y-2">
                         {/* Exchange Rate */}
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">{t('remittances.wizard.exchangeRateLabel')}:</span>
+                          <span className="text-gray-600 flex items-center gap-1">
+                            {t('remittances.wizard.exchangeRateLabel')}:
+                            <InfoTooltip text={t('remittances.wizard.exchangeRateTooltip')} />
+                          </span>
                           <span className="font-medium">1 {liveCalc.currency} = {liveCalc.exchangeRate} {liveCalc.deliveryCurrency}</span>
                         </div>
 
                         {/* Commission */}
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">{t('remittances.wizard.commission')}:</span>
+                          <span className="text-gray-600 flex items-center gap-1">
+                            {t('remittances.wizard.commission')}:
+                            <InfoTooltip text={t('remittances.wizard.commissionTooltip')} />
+                          </span>
                           <span className="font-medium text-red-600">
                             -{(liveCalc.discountAmount > 0 ? liveCalc.originalCommission : liveCalc.commission).toFixed(2)} {liveCalc.currency}
                           </span>
@@ -996,7 +1003,10 @@ const SendRemittancePage = ({ onNavigate }) => {
                   <p className="text-2xl font-bold">{calculation.amount} {calculation.currency}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">{t('remittances.wizard.commission')}</p>
+                  <p className="text-sm text-gray-600 flex items-center gap-1">
+                    {t('remittances.wizard.commission')}
+                    <InfoTooltip text={t('remittances.wizard.commissionTooltip')} />
+                  </p>
                   <p className="text-xl font-semibold text-red-600">
                     -{calculation.totalCommission.toFixed(2)} {calculation.currency}
                   </p>

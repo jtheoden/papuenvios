@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.58.0";
+import { buildCorsHeaders } from "../_shared/cors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -12,25 +13,12 @@ const NOTIFICATION_KEYS = {
   whatsappTarget: "whatsapp_target",
 };
 
-function buildCorsHeaders(req: Request) {
-  const origin = req.headers.get("Origin") ?? "*";
-
-  return {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, prefer",
-    "Access-Control-Max-Age": "86400",
-    ...(origin !== "*" ? { Vary: "Origin" } : {}),
-  };
-}
-
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error("Missing Supabase configuration. Ensure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set.");
 }
 
 serve(async (req: Request) => {
-  const corsHeaders = buildCorsHeaders(req);
+  const corsHeaders = buildCorsHeaders(req, "GET, PUT, OPTIONS");
 
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders, status: 200 });

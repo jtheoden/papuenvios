@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { DollarSign, Bell, Save, Palette, Truck, CreditCard } from 'lucide-react';
+import { DollarSign, Bell, Save, Palette, Truck, CreditCard, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -16,6 +16,7 @@ import SettingsPageShipping from '@/components/settings/SettingsPageShipping';
 import SettingsPageVisual from '@/components/settings/SettingsPageVisual';
 import SettingsPageContent from '@/components/settings/SettingsPageContent';
 import SettingsZelleTab from '@/components/settings/SettingsZelleTab';
+import SettingsSystemTab from '@/components/settings/SettingsSystemTab';
 
 const SettingsPage = () => {
   const { t, language } = useLanguage();
@@ -26,7 +27,7 @@ const SettingsPage = () => {
     visualSettings, setVisualSettings,
     zelleAccounts, setZelleAccounts
   } = useBusiness();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isSuperAdmin } = useAuth();
 
   // Tab management
   const [activeTab, setActiveTab] = useState('financiero');
@@ -388,7 +389,13 @@ const SettingsPage = () => {
       label: language === 'es' ? 'Contenido' : 'Content',
       icon: Bell,
       color: '#10b981'
-    }
+    },
+    ...(isSuperAdmin ? [{
+      id: 'sistema',
+      label: language === 'es' ? 'Sistema' : 'System',
+      icon: ShieldAlert,
+      color: '#dc2626'
+    }] : [])
   ];
 
   return (
@@ -498,6 +505,11 @@ const SettingsPage = () => {
               visualSettings={visualSettings}
               setVisualSettings={setVisualSettings}
             />
+          )}
+
+          {/* SISTEMA TAB (solo super_admin) */}
+          {activeTab === 'sistema' && isSuperAdmin && (
+            <SettingsSystemTab />
           )}
         </div>
       </div>

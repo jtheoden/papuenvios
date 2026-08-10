@@ -24,7 +24,7 @@ import {
 } from '@/lib/whatsappService';
 import { getFreshWhatsappRecipient } from '@/lib/notificationSettingsService';
 import {
-  getAvailableZelleAccount,
+  reserveZelleAccount,
   registerZelleTransaction,
   upsertZelleTransactionStatus,
   ZELLE_STATUS,
@@ -882,13 +882,15 @@ export const createRemittance = async (remittanceData) => {
     // Get or find available Zelle account
     let selectedZelleAccountId = zelle_account_id;
     if (!selectedZelleAccountId) {
-      const zelleResult = await getAvailableZelleAccount('remittance', amount);
-      if (!zelleResult.success) {
-        console.error('[createRemittance] ZELLE ERROR: No accounts available');
+      // reserveZelleAccount atomically selects AND increments usage counters (SEC-09).
+      let reservedAccount;
+      try {
+        reservedAccount = await reserveZelleAccount(ZELLE_TRANSACTION_TYPES.REMITTANCE, amount);
+      } catch (zelleError) {
+        console.error('[createRemittance] ZELLE ERROR: No accounts available', zelleError);
         throw new Error('No Zelle accounts available. Please try again later.');
       }
-      selectedZelleAccountId = zelleResult.account.id;
-    } else {
+      selectedZelleAccountId = reservedAccount.id;
     }
 
     // Create remittance with calculated values (single source of truth)

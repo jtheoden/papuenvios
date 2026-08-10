@@ -14,7 +14,6 @@ import {
   createPermissionError,
   parseSupabaseError
 } from '@/lib/errorHandler';
-import { USER_ROLES } from '@/lib/constants';
 import { createZelleDeactivationAlerts } from '@/lib/userAlertService';
 
 // ============================================================================
@@ -36,21 +35,6 @@ export const ZELLE_TRANSACTION_TYPES = {
 // ============================================================================
 // AUTHORIZATION HELPERS
 // ============================================================================
-
-/**
- * Verify user is authenticated and has admin role
- * @param {object} user - User object from auth
- * @throws {AppError} If not authenticated or lacks admin role
- */
-const verifyAdminRole = (user) => {
-  if (!user) {
-    throw createPermissionError('access this resource', 'admin');
-  }
-
-  if (user.user_metadata?.role !== USER_ROLES.ADMIN && user.user_metadata?.role !== USER_ROLES.SUPER_ADMIN) {
-    throw createPermissionError('access this resource', 'admin');
-  }
-};
 
 // ============================================================================
 // INPUT VALIDATION HELPERS
@@ -137,19 +121,21 @@ const validateTransactionData = (data) => {
 // ============================================================================
 
 /**
- * Obtener cuenta Zelle disponible con rotación automática
- * Calls the database RPC function that handles rotation logic and load balancing
+ * Reservar cuenta Zelle disponible con rotación automática (SEC-09 fix)
+ * Atomically selects AND reserves capacity on an account in one RPC call
+ * (FOR UPDATE SKIP LOCKED), closing the TOCTOU window that existed between
+ * the old select_available_zelle_account + update_zelle_account_usage pair.
  *
  * @param {string} transactionType - Type of transaction: 'remittance', 'product', or 'combo'
  * @param {number} amount - Amount of the transaction in USD
- * @returns {Promise<object>} Available Zelle account with full details
+ * @returns {Promise<object>} Reserved Zelle account with full details
  * @throws {AppError} If no available accounts or database error
  *
  * @example
- * const account = await getAvailableZelleAccount('remittance', 250);
+ * const account = await reserveZelleAccount('remittance', 250);
  * // Returns: { id: 'acc-123', phone_number: '+1234567890', holder_name: 'Juan Perez', ... }
  */
-export const getAvailableZelleAccount = async (transactionType, amount) => {
+export const reserveZelleAccount = async (transactionType, amount) => {
   try {
     // Validate input
     if (!transactionType || !Object.values(ZELLE_TRANSACTION_TYPES).includes(transactionType)) {
@@ -163,8 +149,8 @@ export const getAvailableZelleAccount = async (transactionType, amount) => {
       throw createValidationError({ amount: 'Must be a positive number' }, 'Invalid amount');
     }
 
-    // Call RPC function to select account with rotation logic
-    const { data, error } = await supabase.rpc('select_available_zelle_account', {
+    // Atomic select + reserve — replaces the non-atomic select/update pair.
+    const { data, error } = await supabase.rpc('reserve_zelle_account', {
       p_transaction_type: transactionType,
       p_amount: amount
     });
@@ -200,12 +186,12 @@ export const getAvailableZelleAccount = async (transactionType, amount) => {
     return account;
   } catch (error) {
     if (error instanceof AppError) {
-      logError(error, { operation: 'getAvailableZelleAccount', transactionType, amount });
+      logError(error, { operation: 'reserveZelleAccount', transactionType, amount });
       throw error;
     }
 
     const appError = parseSupabaseError(error);
-    logError(appError, { operation: 'getAvailableZelleAccount', transactionType, amount });
+    logError(appError, { operation: 'reserveZelleAccount', transactionType, amount });
     throw appError;
   }
 };
@@ -216,12 +202,9 @@ export const getAvailableZelleAccount = async (transactionType, amount) => {
 
 /**
  * Registrar transacción en el historial
- * Inserts a new transaction record and atomically updates account usage counters
- *
- * TRANSACTION BOUNDARY:
- * This operation should be atomic with RPC update_zelle_account_usage.
- * Current implementation: Insert transaction, then update counters via RPC.
- * Future improvement: Use database transaction or mark for batching if needed.
+ * Inserts a new transaction record. Usage counters are NOT touched here —
+ * they were already incremented atomically by reserveZelleAccount() (SEC-09).
+ * This function only records the history row for the reservation already made.
  *
  * @param {object} transactionData - Transaction information
  * @param {string} transactionData.zelle_account_id - ID of the Zelle account
@@ -263,32 +246,6 @@ export const registerZelleTransaction = async (transactionData) => {
 
     if (error) {
       throw parseSupabaseError(error);
-    }
-
-    // Update account usage counters (non-critical RPC, graceful failure)
-    try {
-      const { error: rpcError } = await supabase.rpc('update_zelle_account_usage', {
-        p_account_id: transactionData.zelle_account_id,
-        p_amount: transactionData.amount
-      });
-
-      if (rpcError) {
-        logError(rpcError, {
-          operation: 'registerZelleTransaction',
-          context: 'RPC update_zelle_account_usage failed',
-          accountId: transactionData.zelle_account_id,
-          transactionId: data.id
-        });
-        // Log but don't throw - transaction was already recorded
-      }
-    } catch (rpcError) {
-      logError(rpcError, {
-        operation: 'registerZelleTransaction',
-        context: 'RPC call exception',
-        accountId: transactionData.zelle_account_id,
-        transactionId: data.id
-      });
-      // Continue - transaction was already recorded
     }
 
     return data;

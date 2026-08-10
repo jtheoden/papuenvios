@@ -15,7 +15,7 @@ import { convertCurrency } from '@/lib/currencyService';
 import { generateWhatsAppURL, notifyAdminNewPayment, openWhatsAppChat } from '@/lib/whatsappService';
 import { getActiveWhatsappRecipient, getFreshWhatsappRecipient, getFreshNotificationSettings } from '@/lib/notificationSettingsService';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
-import { getAvailableZelleAccount } from '@/lib/zelleService';
+import { reserveZelleAccount, registerZelleTransaction, ZELLE_TRANSACTION_TYPES } from '@/lib/zelleService';
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
 import { calculateOrderTotal } from '@/lib/priceCalculationService';
@@ -674,17 +674,13 @@ const CartPage = ({ onNavigate }) => {
 
       if (!selectedZelleAccountId) {
         // User didn't select a Zelle account, assign one automatically
+        // (reserveZelleAccount atomically increments usage counters — SEC-09)
         try {
-          const zelleResult = await getAvailableZelleAccount('order', totalAmount);
-          if (zelleResult.success && zelleResult.account) {
-            selectedZelleAccountId = zelleResult.account.id;
-          } else {
-            console.warn('[CartPage] No Zelle accounts available:', zelleResult.error);
-          }
+          const reservedAccount = await reserveZelleAccount(ZELLE_TRANSACTION_TYPES.PRODUCT, totalAmount);
+          selectedZelleAccountId = reservedAccount.id;
         } catch (zelleError) {
-          console.error('[CartPage] Error getting Zelle account:', zelleError);
+          console.error('[CartPage] No Zelle account available:', zelleError);
         }
-      } else {
       }
 
       // Debug logs
