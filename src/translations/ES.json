@@ -1819,12 +1819,22 @@
     "bulkDeleteConfirmTitle": "Confirmar borrado masivo",
     "bulkDeleteConfirmBody": "Vas a eliminar permanentemente {count} elemento(s). Esta acción no se puede deshacer.",
     "bulkDeleteConfirmInput": "Escribí ELIMINAR para confirmar",
+    "bulkDeleteConfirmWord": "ELIMINAR",
     "bulkDeleteConfirmButton": "Eliminar definitivamente",
     "bulkDeleteCancelButton": "Cancelar",
     "bulkDeleteSuccess": "{count} elemento(s) eliminado(s)",
     "bulkDeleteBlocked": "{count} elemento(s) no se pudieron eliminar",
     "bulkDeleteReasonBlockingOrders": "tiene órdenes activas",
     "bulkDeleteReasonHasProducts": "tiene productos asociados",
-    "bulkDeleteReasonNotFound": "ya no existe"
+    "bulkDeleteReasonNotFound": "ya no existe",
+    "bulkDeletePreviewLoading": "Calculando elementos relacionados...",
+    "bulkDeletePreviewError": "No se pudo calcular el impacto del borrado.",
+    "bulkDeletePreviewWillDelete": "Se eliminará junto con:",
+    "bulkDeletePreviewBlockingOrders": "{count} orden(es) bloqueante(s)",
+    "bulkDeletePreviewCombos": "{count} combo(s) a desactivar",
+    "bulkDeletePreviewInventoryRows": "{count} fila(s) de inventario",
+    "bulkDeletePreviewInventoryMovements": "{count} movimiento(s) de inventario",
+    "bulkDeletePreviewProducts": "{count} producto(s) asociado(s)",
+    "bulkDeletePreviewNoImpact": "sin elementos relacionados"
   }
 }
