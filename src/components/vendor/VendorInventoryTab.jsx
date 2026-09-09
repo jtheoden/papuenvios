@@ -8,7 +8,7 @@ import { useCurrency } from '@/contexts/CurrencyContext';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { createProduct, deleteProduct, setProductActiveState, updateProduct as updateProductDB } from '@/lib/productService';
-import { bulkDeleteProducts } from '@/lib/bulkDeleteService';
+import { bulkDeleteProducts, previewBulkDeleteProducts } from '@/lib/bulkDeleteService';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import BulkDeleteBar from '@/components/tables/BulkDeleteBar';
@@ -1089,6 +1089,7 @@ const VendorInventoryTab = ({
           selectedIds={selectedProductIds}
           onClearSelection={(remainingIds) => setSelectedProductIds(remainingIds || [])}
           onConfirmDelete={handleBulkDeleteProducts}
+          onPreview={previewBulkDeleteProducts}
           getItemLabel={getProductLabelById}
         />
       )}

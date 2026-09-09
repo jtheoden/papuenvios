@@ -1,0 +1,23 @@
+-- SEC: elimina vw_user_profiles_public, marcada por el Supabase security
+-- advisor (security_definer_view, nivel ERROR).
+--
+-- Causa raiz: la vista fue creada en 20260210000001_security_hardening.sql
+-- para reducir columnas expuestas (issue previo: filtraba email/role/
+-- is_enabled), pero a diferencia de order_analytics (misma migracion, misma
+-- seccion) nunca se le agrego WITH (security_invoker = true). Sin esa
+-- clausula Postgres ejecuta la vista con los permisos del owner (postgres),
+-- bypasseando RLS de user_profiles.
+--
+-- Impacto real verificado: GRANT SELECT ... TO authenticated + RLS
+-- bypasseado = cualquier usuario autenticado podia leer full_name y
+-- avatar_url de TODOS los usuarios via GET /rest/v1/vw_user_profiles_public,
+-- sin pasar por la policy user_profiles_select_own (id = auth.uid()).
+--
+-- No hay referencias a esta vista en src/, supabase/functions/, ni otras
+-- vistas/funciones dependientes (verificado via pg_depend) - vista huerfana,
+-- sin uso activo en la app. Se elimina en lugar de repararla (YAGNI): el
+-- patron correcto para exponer perfil publico acotado ya existe en el
+-- proyecto via get_testimonial_author_profiles(p_user_ids uuid[]), un RPC
+-- que limita la exposicion a IDs explicitos en lugar de una vista abierta.
+
+DROP VIEW IF EXISTS public.vw_user_profiles_public;

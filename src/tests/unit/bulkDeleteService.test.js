@@ -8,7 +8,7 @@ vi.mock('@/lib/supabase', () => ({
   }
 }));
 
-import { bulkDeleteProducts, bulkDeleteCategories } from '@/lib/bulkDeleteService';
+import { bulkDeleteProducts, bulkDeleteCategories, previewBulkDeleteProducts, previewBulkDeleteCategories } from '@/lib/bulkDeleteService';
 
 describe('bulkDeleteProducts', () => {
   beforeEach(() => {
@@ -62,5 +62,70 @@ describe('bulkDeleteCategories', () => {
     expect(rpcMock).toHaveBeenCalledWith('bulk_delete_categories', { p_ids: ['c1', 'c2'] });
     expect(result.deleted).toEqual(['c1']);
     expect(result.blocked).toEqual([{ id: 'c2', reason: 'has_products' }]);
+  });
+});
+
+describe('previewBulkDeleteProducts', () => {
+  beforeEach(() => {
+    rpcMock.mockReset();
+  });
+
+  it('calls preview_bulk_delete_products and returns the cascade impact per item', async () => {
+    rpcMock.mockResolvedValue({
+      data: [
+        {
+          id: 'p1', name: 'Producto 1', can_delete: true, block_reason: null,
+          blocking_orders_count: 0, combos_to_deactivate: 2, inventory_rows: 3, inventory_movements: 5
+        },
+        {
+          id: 'p2', name: 'Producto 2', can_delete: false, block_reason: 'blocking_orders',
+          blocking_orders_count: 1, combos_to_deactivate: 0, inventory_rows: 1, inventory_movements: 0
+        }
+      ],
+      error: null
+    });
+
+    const result = await previewBulkDeleteProducts(['p1', 'p2']);
+
+    expect(rpcMock).toHaveBeenCalledWith('preview_bulk_delete_products', { p_ids: ['p1', 'p2'] });
+    expect(result).toEqual([
+      {
+        id: 'p1', name: 'Producto 1', canDelete: true, blockReason: null,
+        counts: { blockingOrders: 0, combosToDeactivate: 2, inventoryRows: 3, inventoryMovements: 5 }
+      },
+      {
+        id: 'p2', name: 'Producto 2', canDelete: false, blockReason: 'blocking_orders',
+        counts: { blockingOrders: 1, combosToDeactivate: 0, inventoryRows: 1, inventoryMovements: 0 }
+      }
+    ]);
+  });
+
+  it('throws on empty selection instead of calling the RPC', async () => {
+    await expect(previewBulkDeleteProducts([])).rejects.toThrow();
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('previewBulkDeleteCategories', () => {
+  beforeEach(() => {
+    rpcMock.mockReset();
+  });
+
+  it('calls preview_bulk_delete_categories and returns the cascade impact per item', async () => {
+    rpcMock.mockResolvedValue({
+      data: [
+        { id: 'c1', name: 'Categoria 1', can_delete: true, block_reason: null, products_count: 0 },
+        { id: 'c2', name: 'Categoria 2', can_delete: false, block_reason: 'has_products', products_count: 4 }
+      ],
+      error: null
+    });
+
+    const result = await previewBulkDeleteCategories(['c1', 'c2']);
+
+    expect(rpcMock).toHaveBeenCalledWith('preview_bulk_delete_categories', { p_ids: ['c1', 'c2'] });
+    expect(result).toEqual([
+      { id: 'c1', name: 'Categoria 1', canDelete: true, blockReason: null, counts: { products: 0 } },
+      { id: 'c2', name: 'Categoria 2', canDelete: false, blockReason: 'has_products', counts: { products: 4 } }
+    ]);
   });
 });

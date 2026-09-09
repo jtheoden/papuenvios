@@ -1810,12 +1810,22 @@
     "bulkDeleteConfirmTitle": "Confirm bulk delete",
     "bulkDeleteConfirmBody": "You are about to permanently delete {count} item(s). This action cannot be undone.",
     "bulkDeleteConfirmInput": "Type DELETE to confirm",
+    "bulkDeleteConfirmWord": "DELETE",
     "bulkDeleteConfirmButton": "Delete permanently",
     "bulkDeleteCancelButton": "Cancel",
     "bulkDeleteSuccess": "{count} item(s) deleted",
     "bulkDeleteBlocked": "{count} item(s) could not be deleted",
     "bulkDeleteReasonBlockingOrders": "has active orders",
     "bulkDeleteReasonHasProducts": "has associated products",
-    "bulkDeleteReasonNotFound": "no longer exists"
+    "bulkDeleteReasonNotFound": "no longer exists",
+    "bulkDeletePreviewLoading": "Calculating related items...",
+    "bulkDeletePreviewError": "Could not calculate the delete impact.",
+    "bulkDeletePreviewWillDelete": "Will be deleted, along with:",
+    "bulkDeletePreviewBlockingOrders": "{count} blocking order(s)",
+    "bulkDeletePreviewCombos": "{count} combo(s) to deactivate",
+    "bulkDeletePreviewInventoryRows": "{count} inventory row(s)",
+    "bulkDeletePreviewInventoryMovements": "{count} inventory movement(s)",
+    "bulkDeletePreviewProducts": "{count} associated product(s)",
+    "bulkDeletePreviewNoImpact": "no related items"
   }
 }

@@ -7,7 +7,7 @@ import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/use-toast';
 import { createCategory, updateCategory, deleteCategory } from '@/lib/productService';
-import { bulkDeleteCategories } from '@/lib/bulkDeleteService';
+import { bulkDeleteCategories, previewBulkDeleteCategories } from '@/lib/bulkDeleteService';
 import { useRealtimeCategories } from '@/hooks/useRealtimeSubscription';
 import BulkDeleteBar from '@/components/tables/BulkDeleteBar';
 
@@ -517,6 +517,7 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
           selectedIds={selectedCategoryIds}
           onClearSelection={(remainingIds) => setSelectedCategoryIds(remainingIds || [])}
           onConfirmDelete={handleBulkDeleteCategories}
+          onPreview={previewBulkDeleteCategories}
           getItemLabel={getCategoryLabelById}
         />
       )}

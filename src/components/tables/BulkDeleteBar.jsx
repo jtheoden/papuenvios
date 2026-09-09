@@ -21,23 +21,58 @@ const REASON_KEYS = {
  * @prop {function} onClearSelection
  * @prop {function} onConfirmDelete - async (ids) => { deleted, blocked }
  * @prop {function} getItemLabel - (id) => string, used for the blocked-items report
+ * @prop {function} [onPreview] - optional async (ids) => Array<{id, name, canDelete, blockReason, counts}>.
+ *   When provided, fetched as soon as the confirm modal opens and rendered
+ *   BEFORE the user types the confirmation word, so the cascade impact
+ *   (related rows that will also be affected) is visible up front.
  */
-const BulkDeleteBar = ({ selectedIds = [], onClearSelection, onConfirmDelete, getItemLabel = (id) => id }) => {
+const BulkDeleteBar = ({ selectedIds = [], onClearSelection, onConfirmDelete, onPreview, getItemLabel = (id) => id }) => {
   const { t } = useLanguage();
   const [showConfirm, setShowConfirm] = useState(false);
   const [confirmText, setConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [result, setResult] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
 
-  const confirmWord = t('tables.bulkDeleteConfirmInput')?.split(' ').pop() || 'ELIMINAR';
+  const confirmWord = t('tables.bulkDeleteConfirmWord') || 'ELIMINAR';
   const count = selectedIds.length;
 
   if (count === 0) return null;
+
+  const openConfirm = () => {
+    setShowConfirm(true);
+    if (onPreview) {
+      setPreviewLoading(true);
+      setPreviewError(false);
+      onPreview(selectedIds)
+        .then(setPreview)
+        .catch(() => setPreviewError(true))
+        .finally(() => setPreviewLoading(false));
+    }
+  };
 
   const closeConfirm = () => {
     setShowConfirm(false);
     setConfirmText('');
     setResult(null);
+    setPreview(null);
+    setPreviewError(false);
+  };
+
+  const formatCount = (key, n) => (t(key) || `${n}`).replace('{count}', n);
+
+  const previewLine = (item) => {
+    if (!item.canDelete) {
+      return t(REASON_KEYS[item.blockReason]) || item.blockReason;
+    }
+    const parts = [];
+    if (item.counts?.combosToDeactivate) parts.push(formatCount('tables.bulkDeletePreviewCombos', item.counts.combosToDeactivate));
+    if (item.counts?.inventoryRows) parts.push(formatCount('tables.bulkDeletePreviewInventoryRows', item.counts.inventoryRows));
+    if (item.counts?.inventoryMovements) parts.push(formatCount('tables.bulkDeletePreviewInventoryMovements', item.counts.inventoryMovements));
+    if (item.counts?.products) parts.push(formatCount('tables.bulkDeletePreviewProducts', item.counts.products));
+    return parts.length > 0 ? parts.join(', ') : (t('tables.bulkDeletePreviewNoImpact') || 'no related items');
   };
 
   const handleConfirm = async () => {
@@ -70,7 +105,7 @@ const BulkDeleteBar = ({ selectedIds = [], onClearSelection, onConfirmDelete, ge
           <X className="h-4 w-4 mr-1" />
           {t('tables.clearSelection') || 'Clear'}
         </Button>
-        <Button variant="destructive" size="sm" onClick={() => setShowConfirm(true)}>
+        <Button variant="destructive" size="sm" onClick={openConfirm}>
           <Trash2 className="h-4 w-4 mr-1" />
           {t('tables.deleteSelected') || 'Delete selected'}
         </Button>
@@ -100,6 +135,35 @@ const BulkDeleteBar = ({ selectedIds = [], onClearSelection, onConfirmDelete, ge
               <p className="text-sm mb-4" style={{ color: semanticColors.neutral[700] }}>
                 {(t('tables.bulkDeleteConfirmBody') || 'You are about to delete {count} item(s). This cannot be undone.').replace('{count}', count)}
               </p>
+
+              {!result && onPreview && (
+                <div className="mb-4 text-sm rounded border p-3 max-h-48 overflow-y-auto" style={{ borderColor: semanticColors.neutral[200] }}>
+                  {previewLoading && (
+                    <p style={{ color: semanticColors.neutral[500] }}>
+                      {t('tables.bulkDeletePreviewLoading') || 'Calculating related items...'}
+                    </p>
+                  )}
+                  {!previewLoading && previewError && (
+                    <p className="text-amber-700">
+                      {t('tables.bulkDeletePreviewError') || 'Could not calculate the delete impact.'}
+                    </p>
+                  )}
+                  {!previewLoading && !previewError && preview && (
+                    <>
+                      <p className="font-medium mb-1" style={{ color: semanticColors.neutral[700] }}>
+                        {t('tables.bulkDeletePreviewWillDelete') || 'Will be deleted, along with:'}
+                      </p>
+                      <ul className="list-disc list-inside space-y-0.5">
+                        {preview.map((item) => (
+                          <li key={item.id} className={item.canDelete ? '' : 'text-amber-700'}>
+                            {item.name || getItemLabel(item.id)} — {previewLine(item)}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              )}
 
               {!result && (
                 <>
