@@ -113,3 +113,31 @@ Plan completo: `.claude/docs/plan_admin-bulk-ops-reset-audit.md` (generado con `
 ### 🆕 Auditoría Frente 3 completada 2026-08-08
 
 Documento completo: `.claude/docs/audit-frente3-2026-08-08.md`. Re-verificó con evidencia directa (no solo carried-forward) los hallazgos de seguridad de 2026-04-20 que seguían "abiertos": **SEC-02 y SEC-06 resultaron ya resueltos** (sin atribuirse a esta sesión), **SEC-03 y SEC-04 corregidos** en esta sesión (código listo, SEC-04 pendiente de `supabase functions deploy`), race conditions de Frentes 1/2 auditadas y confirmadas mitigadas. Deja explícito qué NO se re-verificó (SEC-01, SEC-05, LEGAL, OPS, DATA-01/03/04, UX-01) para no blanquear nada por omisión.
+
+
+### 🆕 SEC-10 / SEC-11 — logging de actividad muerto desde SEC-07 y remesas reescribibles por su propietario (2026-10-02)
+
+Rama `fix/activity-logs-zelle-remittance-guard`. **Migraciones NO aplicadas a remoto — requieren confirmación explícita.** Sin commit ni push.
+
+**Hallazgo 1 (SEC-10) — el logging de actividad desde el cliente no funciona desde SEC-07.** `activity_logs_redact_pii()` (trigger `BEFORE INSERT` de `activity_logs`) es `SECURITY INVOKER` y llama a `redact_pii_jsonb(jsonb)`, cuyo ACL quedó en `{postgres=X/postgres}`. Todo INSERT del rol `authenticated` falla con `42501`; las últimas filas originadas en cliente son de 2026-08-07. Efecto colateral: `validatePayment`/`rejectPayment` de remesas solo sincronizaban `zelle_transaction_history` si el log devolvía `status === 'inserted'` (acoplamiento introducido en el commit `a5750a21`), por lo que el estado Zelle no se sincronizaba nunca.
+- `supabase/migrations/20261002000001_fix_activity_logs_redact_pii_definer.sql`: `ALTER FUNCTION ... SECURITY DEFINER` + `SET search_path = public`, sin ampliar el ACL de `redact_pii_jsonb`; incluye una comprobación que aborta la migración si el owner no puede ejecutar el helper.
+- `src/lib/remittanceService.js`: la sincronización Zelle en `validatePayment`/`rejectPayment` depende solo de `zelle_account_id` (mismo patrón que ya usaba `orderService.js`). `upsertZelleTransactionStatus` solo actualiza/crea la fila de historial, no toca contadores de uso: desacoplar no produce doble conteo.
+- Corrección adicional en las mismas líneas: el monto enviado al historial Zelle era `remittance.amount || remittance.amount_to_deliver` (`amount` no existe como columna, por lo que se sobrescribía el monto en USD con el monto a entregar en moneda destino). Ahora se envía `amount_sent`, igual que en `createRemittance`.
+
+**Hallazgo 2 (SEC-11) — el propietario puede reescribir su propia remesa.** La policy `"users can update own remittances"` no restringe estado ni columnas: un cliente autenticado podía poner `status='completed'`, `payment_validated=true` o cambiar montos vía PostgREST. Sin evidencia de abuso en el historial de producción.
+- `supabase/migrations/20261002000002_guard_remittance_owner_update.sql`: trigger `BEFORE UPDATE` `guard_remittance_owner_update`. Omite el control si `auth.uid() IS NULL` (service role) o si el usuario es admin/super_admin. Para el propietario solo permite: (1) subida de comprobante `payment_pending|payment_rejected → payment_proof_uploaded`; (2) cancelación `payment_pending|payment_rejected → cancelled`; (3) recálculo de tasa en `payment_pending|payment_rejected` sin cambio de estado. Cada transición tiene lista cerrada de columnas; el resto falla con `42501`. Policies y GRANTs sin cambios.
+- Riesgo residual documentado: en la transición (3) los montos los calcula el cliente (igual que en el INSERT); el guard cierra la ventana a partir de la subida del comprobante. Mover el cálculo a un RPC queda como endurecimiento posterior.
+- Comportamiento que cambia: `cancelRemittance` (servicio) aceptaba cancelar desde `payment_proof_uploaded`/`payment_validated`/`processing`; la UI solo ofrece cancelar en `payment_pending`. Tras el guard, la cancelación por el propietario desde esos estados posteriores queda bloqueada en BD.
+- Código muerto detectado (no modificado): el botón "subir evidencia de entrega" de `MyRemittancesPage.jsx` llama a `confirmDelivery`, que exige estado `processing` mientras el botón solo aparece en `delivered`; ya fallaba antes del guard.
+
+**Verificación**: TDD (rojo 19 fallos → verde). `npx vitest run`: 10 archivos, 96/96 tests (base previa: 73). Build de prueba OK (fuera de `dist`). Tests nuevos: `src/tests/unit/remittancePaymentZelleSync.test.js`, `src/tests/unit/securityMigrations.test.js` (estático sobre los `.sql`). Los `.sql` no se ejecutaron contra ninguna base de datos.
+
+**Pendiente**: aplicar ambas migraciones a remoto (con confirmación) y ejecutar `.claude/docs/runbook_remittance-owner-guard.md` (verificación en `BEGIN … ROLLBACK` + rollback). Confirmar en remoto si `audit_remittance_status` es `BEFORE` o `AFTER UPDATE` (su definición no está en el repositorio).
+
+**Ampliación tras revisión independiente (2026-10-02, misma rama, migraciones siguen SIN aplicar)**:
+- El guard pasa a `BEFORE INSERT OR UPDATE`: la policy de INSERT solo comprobaba `user_id`, por lo que un propietario podía crear una remesa ya validada o entregada. En INSERT de un no-admin se exige `status = 'payment_pending'`, `payment_validated` no verdadero y `NULL` en las columnas de validación, rechazo, procesamiento, entrega, finalización y cancelación. `createRemittance` no envía ninguna de esas columnas (verificado en `remittanceService.js`, objeto `insertData`).
+- `cancelRemittance` alineado con el guard y con su propio docstring: solo desde `payment_pending` / `payment_rejected`. Su único llamador es `MyRemittancesPage.jsx` (propietario); no existe flujo de cancelación para administradores a través de esta función.
+- `activity_logs_redact_pii()` usa `search_path = public, pg_temp`.
+- Test anti-deriva: compara las listas de columnas del guard (parseadas del `.sql`) con las claves de los `.update({...})` de `uploadPaymentProof`, `cancelRemittance` y `recalculateRemittanceAtCurrentRate`, y verifica que `createRemittance` no envía columnas vetadas en INSERT.
+- **Riesgo residual declarado**: montos y tasa siguen calculándose en el cliente en el INSERT y en el recálculo; cerrarlo requiere cálculo en servidor.
+- `npx vitest run`: 11 archivos, 126/126 tests. Build de prueba OK.
