@@ -18,8 +18,8 @@ import {
 } from '@/lib/remittanceService';
 import { getActiveShippingZones } from '@/lib/shippingService';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
-import { notifyAdminNewPaymentProof } from '@/lib/whatsappService';
-import { getActiveWhatsappRecipient } from '@/lib/notificationSettingsService';
+import { buildAdminNewPaymentProofWhatsAppUrl, buildAdminNewRemittanceWhatsAppUrl } from '@/lib/whatsappService';
+import { getFreshGuidedWhatsappPhone } from '@/lib/notificationSettingsService';
 import { validateRemittanceOffer } from '@/lib/orderDiscountService';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
@@ -1324,31 +1324,36 @@ const SendRemittancePage = ({ onNavigate }) => {
                 try {
                   await uploadPaymentProof(createdRemittance.id, paymentData.file, paymentData.reference, paymentData.notes);
 
-                  const notificationWhatsapp = getActiveWhatsappRecipient(notificationSettings);
-                  if (notificationWhatsapp) {
-                    try {
-                      const enrichedRemittance = {
-                        ...createdRemittance,
-                        remittance_types: selectedType,
-                        amount: parseFloat(amount),
-                        currency: calculation?.currency || 'USD',
-                        amount_to_deliver: calculation?.amountToDeliver,
-                        delivery_currency: calculation?.deliveryCurrency,
-                        payment_reference: paymentData.reference,
-                        user_email: user?.email,
-                        user_name: user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0]
-                      };
-                      await notifyAdminNewPaymentProof(enrichedRemittance, notificationWhatsapp, language);
-                    } catch (e) { console.warn('WhatsApp notification failed', e); }
-                  }
+                  // Guided WhatsApp step: build the URL here, the user opens it via a click in the modal
+                  // Recipient comes from fresh settings; group targets fall back to the admin phone
+                  const recipient = await getFreshGuidedWhatsappPhone(notificationSettings);
+                  let whatsappUrl = '';
+                  try {
+                    const enrichedRemittance = {
+                      ...createdRemittance,
+                      remittance_types: selectedType,
+                      amount: parseFloat(amount),
+                      currency: calculation?.currency || 'USD',
+                      amount_to_deliver: calculation?.amountToDeliver ?? createdRemittance.amount_to_deliver,
+                      delivery_currency: calculation?.deliveryCurrency ?? createdRemittance.delivery_currency,
+                      payment_reference: paymentData.reference,
+                      user_email: user?.email,
+                      user_name: user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0]
+                    };
+                    whatsappUrl = recipient
+                      ? await buildAdminNewPaymentProofWhatsAppUrl(enrichedRemittance, recipient, language)
+                      : '';
+                  } catch (e) { console.warn('WhatsApp URL build failed', e); }
 
                   toast({ title: t('common.success'), description: t('remittances.wizard.proofSubmittedSuccess') });
 
                   setConfirmedRemittanceInfo({
                     remittanceNumber: createdRemittance.remittance_number,
-                    total: calculation?.amountToDeliver || parseFloat(amount),
-                    currency: calculation?.deliveryCurrency || 'CUP',
-                    recipientName: recipientData.name
+                    total: calculation?.amountToDeliver || createdRemittance.amount_to_deliver || parseFloat(amount) || 0,
+                    currency: calculation?.deliveryCurrency || createdRemittance.currency_delivered || 'CUP',
+                    recipientName: recipientData.name,
+                    whatsappUrl,
+                    whatsappNumber: recipient
                   });
                   setShowConfirmationModal(true);
                 } catch (error) {
@@ -1361,7 +1366,43 @@ const SendRemittancePage = ({ onNavigate }) => {
               submitting={submitting}
               submitLabel={t('remittances.wizard.submitProofAndComplete')}
               showUploadLater={true}
-              onUploadLater={() => onNavigate('my-remittances')}
+              onUploadLater={async () => {
+                if (!createdRemittance) {
+                  onNavigate('my-remittances');
+                  return;
+                }
+
+                // Remittance exists but the proof is pending: guide the client to notify the admin.
+                // Awaiting here is fine: the user gesture that matters is the click on the modal link.
+                const recipient = await getFreshGuidedWhatsappPhone(notificationSettings);
+                let whatsappUrl = '';
+                try {
+                  const enrichedRemittance = {
+                    ...createdRemittance,
+                    remittance_types: selectedType,
+                    amount: parseFloat(amount),
+                    currency: calculation?.currency || 'USD',
+                    amount_to_deliver: calculation?.amountToDeliver ?? createdRemittance.amount_to_deliver,
+                    delivery_currency: calculation?.deliveryCurrency ?? createdRemittance.delivery_currency,
+                    user_email: user?.email,
+                    user_name: user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0]
+                  };
+                  whatsappUrl = recipient
+                    ? buildAdminNewRemittanceWhatsAppUrl(enrichedRemittance, recipient, language)
+                    : '';
+                } catch (e) { console.warn('WhatsApp URL build failed', e); }
+
+                setConfirmedRemittanceInfo({
+                  remittanceNumber: createdRemittance.remittance_number,
+                  total: calculation?.amountToDeliver || createdRemittance.amount_to_deliver || parseFloat(amount) || 0,
+                  currency: calculation?.deliveryCurrency || createdRemittance.currency_delivered || 'CUP',
+                  recipientName: recipientData.name,
+                  whatsappUrl,
+                  whatsappNumber: recipient,
+                  proofPending: true
+                });
+                setShowConfirmationModal(true);
+              }}
             />
           </motion.div>
         )}
@@ -1384,6 +1425,9 @@ const SendRemittancePage = ({ onNavigate }) => {
         currency={confirmedRemittanceInfo?.currency}
         recipientName={confirmedRemittanceInfo?.recipientName}
         estimatedDelivery={t('remittances.wizard.estimatedDeliveryTime')}
+        whatsappUrl={confirmedRemittanceInfo?.whatsappUrl}
+        whatsappNumber={confirmedRemittanceInfo?.whatsappNumber}
+        proofPending={confirmedRemittanceInfo?.proofPending}
       />
     </div>
   );

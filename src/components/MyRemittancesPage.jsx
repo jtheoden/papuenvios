@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBusiness } from '@/contexts/BusinessContext';
 import {
   getMyRemittances,
   getRemittanceDetails,
@@ -27,11 +28,15 @@ import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import SkeletonCard from '@/components/ui/SkeletonCard';
 import SearchFilterBar from '@/components/ui/SearchFilterBar';
 import RemittanceTimeline from '@/components/ui/RemittanceTimeline';
+import ConfirmationModal from '@/components/ui/ConfirmationModal';
+import { buildAdminNewPaymentProofWhatsAppUrl } from '@/lib/whatsappService';
+import { getFreshGuidedWhatsappPhone } from '@/lib/notificationSettingsService';
 
 const MyRemittancesPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { user, isAdmin, isSuperAdmin } = useAuth();
   const { showModal } = useModal();
+  const { notificationSettings } = useBusiness();
 
   const [remittances, setRemittances] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +53,10 @@ const MyRemittancesPage = ({ onNavigate }) => {
   });
   const [imagePreview, setImagePreview] = useState(null);
   const [deliveryProofPreview, setDeliveryProofPreview] = useState(null);
+
+  // Guided WhatsApp confirmation shown after a late payment-proof upload
+  const [showProofConfirmation, setShowProofConfirmation] = useState(false);
+  const [proofConfirmationInfo, setProofConfirmationInfo] = useState(null);
 
   // Search and filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -388,6 +397,23 @@ const MyRemittancesPage = ({ onNavigate }) => {
         uploadData.notes
       );
 
+      // Guided WhatsApp step: the client opens the prepared message with a real click in the modal
+      // Recipient comes from fresh settings; group targets fall back to the admin phone (wa.me needs a phone)
+      const recipient = await getFreshGuidedWhatsappPhone(notificationSettings);
+      let whatsappUrl = '';
+      try {
+        const remittanceForNotify = {
+          ...result,
+          user_email: user?.email,
+          user_name: user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0]
+        };
+        whatsappUrl = recipient
+          ? await buildAdminNewPaymentProofWhatsAppUrl(remittanceForNotify, recipient, language)
+          : '';
+      } catch (urlError) {
+        console.warn('WhatsApp URL build failed', urlError);
+      }
+
       toast({
         title: t('common.success'),
         description: t('remittances.user.proofUploaded')
@@ -399,6 +425,15 @@ const MyRemittancesPage = ({ onNavigate }) => {
         reference: '',
         notes: ''
       });
+      setProofConfirmationInfo({
+        remittanceNumber: result?.remittance_number,
+        total: result?.amount_to_deliver,
+        currency: result?.currency_delivered,
+        recipientName: result?.recipient_name,
+        whatsappUrl,
+        whatsappNumber: recipient
+      });
+      setShowProofConfirmation(true);
       await loadRemittances();
       setSelectedRemittance(result);
     } catch (error) {
@@ -1257,6 +1292,21 @@ const MyRemittancesPage = ({ onNavigate }) => {
           </motion.div>
         </div>
       )}
+
+      {/* Guided WhatsApp confirmation after a late payment-proof upload */}
+      <ConfirmationModal
+        isOpen={showProofConfirmation}
+        onClose={() => setShowProofConfirmation(false)}
+        onViewOrders={() => setShowProofConfirmation(false)}
+        orderNumber={proofConfirmationInfo?.remittanceNumber}
+        orderType="remittance"
+        total={proofConfirmationInfo?.total}
+        currency={proofConfirmationInfo?.currency}
+        recipientName={proofConfirmationInfo?.recipientName}
+        estimatedDelivery={t('remittances.wizard.estimatedDeliveryTime')}
+        whatsappUrl={proofConfirmationInfo?.whatsappUrl}
+        whatsappNumber={proofConfirmationInfo?.whatsappNumber}
+      />
     </div>
   );
 };

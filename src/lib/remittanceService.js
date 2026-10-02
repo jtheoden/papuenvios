@@ -17,12 +17,10 @@ import {
   ERROR_CODES
 } from './errorHandler';
 import {
-  notifyAdminNewPaymentProof,
   notifyUserPaymentValidated,
   notifyUserPaymentRejected,
   notifyUserRemittanceDelivered
 } from '@/lib/whatsappService';
-import { getFreshWhatsappRecipient } from '@/lib/notificationSettingsService';
 import {
   reserveZelleAccount,
   registerZelleTransaction,
@@ -1134,26 +1132,8 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
       }
     });
 
-    // Notify admin (graceful fallback if fails - don't block remittance creation)
-    // IMPORTANT: Use getFreshWhatsappRecipient to get settings from notification_settings table
-    // This ensures we always use the currently configured phone/group, not stale cached values
-    try {
-      const whatsappRecipient = await getFreshWhatsappRecipient();
-
-      if (whatsappRecipient) {
-        const remittanceForNotify = {
-          ...updatedRemittance,
-          user_email: user.email,
-          user_name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0]
-        };
-        await notifyAdminNewPaymentProof(remittanceForNotify, whatsappRecipient, 'es');
-      } else {
-        console.warn('[uploadPaymentProof] No WhatsApp recipient configured in notification_settings');
-      }
-    } catch (notifyError) {
-      logError(notifyError, { operation: 'uploadPaymentProof - notification', remittanceId });
-      // Don't fail proof upload if notification fails
-    }
+    // Admin WhatsApp notification is handled by the callers through the guided step
+    // in ConfirmationModal (user-gesture link); no auto window.open here.
 
     return updatedRemittance;
   } catch (error) {

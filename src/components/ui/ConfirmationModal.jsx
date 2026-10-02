@@ -20,12 +20,17 @@ const ConfirmationModal = ({
   currency = 'USD',
   recipientName,
   itemCount,
-  estimatedDelivery = '24-72 horas'
+  estimatedDelivery = '24-72 horas',
+  whatsappUrl = '',
+  whatsappNumber = '',
+  whatsappLoading = false,
+  proofPending = false // remittance registered but payment proof not uploaded yet
 }) => {
   const { language } = useLanguage();
   const { visualSettings } = useBusiness();
 
   const isRemittance = orderType === 'remittance';
+  const isProofPending = isRemittance && Boolean(proofPending);
 
   const texts = {
     es: {
@@ -39,6 +44,7 @@ const ConfirmationModal = ({
       itemsLabel: isRemittance ? 'Tipo de envío' : 'Productos',
       itemsValue: isRemittance ? 'Transferencia' : `${itemCount} artículo${itemCount !== 1 ? 's' : ''}`,
       nextStepsTitle: '¿Qué sigue?',
+      stepWhatsapp: 'Envíanos el comprobante por WhatsApp con el botón de abajo',
       step1: 'Verificaremos tu comprobante de pago',
       step2: isRemittance
         ? 'Procesaremos tu remesa en las próximas horas'
@@ -47,7 +53,11 @@ const ConfirmationModal = ({
       estimatedLabel: 'Tiempo estimado de entrega',
       viewOrdersBtn: isRemittance ? 'Ver Mis Remesas' : 'Ver Mis Pedidos',
       closeBtn: 'Cerrar',
-      whatsappHint: '¿Tienes preguntas? Contáctanos por WhatsApp'
+      whatsappHint: '¿Tienes preguntas? Contáctanos por WhatsApp',
+      whatsappSendBtn: 'Enviar comprobante por WhatsApp',
+      whatsappChatWith: `Se abrirá un chat con ${whatsappNumber}`,
+      whatsappPreparing: 'Preparando mensaje de WhatsApp…',
+      whatsappNotConfigured: 'WhatsApp del administrador no configurado. Contacta al soporte.'
     },
     en: {
       title: isRemittance ? 'Remittance Sent!' : 'Order Confirmed!',
@@ -60,6 +70,7 @@ const ConfirmationModal = ({
       itemsLabel: isRemittance ? 'Transfer type' : 'Products',
       itemsValue: isRemittance ? 'Transfer' : `${itemCount} item${itemCount !== 1 ? 's' : ''}`,
       nextStepsTitle: 'What\'s next?',
+      stepWhatsapp: 'Send us the payment proof via WhatsApp using the button below',
       step1: 'We will verify your payment proof',
       step2: isRemittance
         ? 'We will process your remittance in the next hours'
@@ -68,11 +79,42 @@ const ConfirmationModal = ({
       estimatedLabel: 'Estimated delivery time',
       viewOrdersBtn: isRemittance ? 'View My Remittances' : 'View My Orders',
       closeBtn: 'Close',
-      whatsappHint: 'Have questions? Contact us on WhatsApp'
+      whatsappHint: 'Have questions? Contact us on WhatsApp',
+      whatsappSendBtn: 'Send proof via WhatsApp',
+      whatsappChatWith: `A chat with ${whatsappNumber} will open`,
+      whatsappPreparing: 'Preparing WhatsApp message…',
+      whatsappNotConfigured: 'Administrator WhatsApp not configured. Contact support.'
     }
   };
 
-  const t = texts[language] || texts.es;
+  // Overrides for the "upload proof later" variant (remittance only)
+  const proofPendingTexts = {
+    es: {
+      title: '¡Remesa Registrada!',
+      subtitle: 'Falta subir tu comprobante de pago',
+      stepWhatsapp: 'Avísanos por WhatsApp que registraste la remesa con el botón de abajo',
+      step1: 'Sube tu comprobante de pago desde Mis Remesas',
+      step2: 'Procesaremos tu remesa cuando validemos el pago',
+      whatsappSendBtn: 'Avisar al administrador por WhatsApp'
+    },
+    en: {
+      title: 'Remittance Registered!',
+      subtitle: 'Your payment proof is still pending',
+      stepWhatsapp: 'Let us know via WhatsApp that you registered the remittance using the button below',
+      step1: 'Upload your payment proof from My Remittances',
+      step2: 'We will process your remittance once the payment is validated',
+      whatsappSendBtn: 'Notify the administrator via WhatsApp'
+    }
+  };
+
+  const baseTexts = texts[language] || texts.es;
+  const t = isProofPending
+    ? { ...baseTexts, ...(proofPendingTexts[language] || proofPendingTexts.es) }
+    : baseTexts;
+  const hasWhatsappUrl = Boolean(whatsappUrl);
+  const steps = hasWhatsappUrl
+    ? [t.stepWhatsapp, t.step1, t.step2, t.step3]
+    : [t.step1, t.step2, t.step3];
 
   if (!isOpen) return null;
 
@@ -83,7 +125,7 @@ const ConfirmationModal = ({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
           onClick={(e) => e.target === e.currentTarget && onClose?.()}
         >
           <motion.div
@@ -178,7 +220,7 @@ const ConfirmationModal = ({
                 {t.nextStepsTitle}
               </h3>
               <ol className="space-y-2">
-                {[t.step1, t.step2, t.step3].map((step, idx) => (
+                {steps.map((step, idx) => (
                   <li key={idx} className="flex items-start gap-2 text-sm text-gray-600">
                     <span
                       className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium text-white"
@@ -194,6 +236,35 @@ const ConfirmationModal = ({
 
             {/* Actions */}
             <div className="px-6 py-4 space-y-3">
+              {/* Guided WhatsApp step: user-gesture link, never popup-blocked */}
+              {hasWhatsappUrl ? (
+                <div className="space-y-1.5">
+                  <a
+                    href={whatsappUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="confirmation-whatsapp-link"
+                    className="flex items-center justify-center w-full h-12 rounded-md text-base font-medium text-white bg-[#25D366] hover:bg-[#1ebe5d] transition-colors focus:outline-none focus:ring-2 focus:ring-[#25D366] focus:ring-offset-2"
+                  >
+                    <MessageCircle className="mr-2 h-5 w-5" />
+                    {t.whatsappSendBtn}
+                  </a>
+                  <p className="text-xs text-center text-gray-500">{t.whatsappChatWith}</p>
+                </div>
+              ) : whatsappLoading ? (
+                <button
+                  type="button"
+                  disabled
+                  aria-busy="true"
+                  className="flex items-center justify-center w-full h-12 rounded-md text-base font-medium text-white bg-[#25D366] opacity-60 cursor-not-allowed"
+                >
+                  <MessageCircle className="mr-2 h-5 w-5" />
+                  {t.whatsappPreparing}
+                </button>
+              ) : (
+                <p className="text-xs text-center text-amber-700" role="status">{t.whatsappNotConfigured}</p>
+              )}
+
               <Button
                 onClick={onViewOrders}
                 className="w-full h-12 text-base font-medium"

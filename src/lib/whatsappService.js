@@ -60,6 +60,14 @@ export const formatPhoneForWhatsApp = (phone) => {
 };
 
 /**
+ * Whether the configured recipient is a URL (e.g. a WhatsApp group invite link)
+ * instead of a phone number. wa.me deep links only accept phone numbers.
+ * @param {string} recipient - Configured recipient
+ * @returns {boolean}
+ */
+const isUrlRecipient = (recipient) => /^https?:\/\//i.test(recipient.trim());
+
+/**
  * Generate WhatsApp message URL
  * @param {string} phone - Recipient phone number
  * @param {string} [message=''] - Pre-filled message (optional)
@@ -132,31 +140,12 @@ export const openWhatsAppChat = (phone, message = '') => {
 };
 
 /**
- * Notify admin about new payment submission
- * Opens WhatsApp directly from user's device
+ * Build the admin notification message for a new order payment (pure, no side effects)
  * @param {Object} order - Order details object
- * @param {string} adminPhone - Admin phone from settings
  * @param {string} [language='es'] - Language for message ('es' or 'en')
+ * @returns {string} Message text
  */
-export const notifyAdminNewPayment = (order, adminPhone, language = 'es') => {
-
-  if (!adminPhone || typeof adminPhone !== 'string') {
-    logError({ code: 'VALIDATION_FAILED', message: 'Admin phone not configured' }, {
-      operation: 'notifyAdminNewPayment'
-    });
-    console.error('[WhatsApp] Admin phone validation failed:', { adminPhone, type: typeof adminPhone });
-    alert('Número de WhatsApp del administrador no configurado. Contacte al soporte.');
-    return;
-  }
-
-  if (!order || typeof order !== 'object') {
-    logError({ code: 'VALIDATION_FAILED', message: 'Invalid order object' }, {
-      operation: 'notifyAdminNewPayment', orderType: typeof order
-    });
-    return;
-  }
-
-  const config = getWhatsAppConfig();
+export const buildAdminNewPaymentMessage = (order, language = 'es') => {
 
   // Build items list
   const itemsList = order.order_items?.map((item, i) =>
@@ -215,7 +204,56 @@ export const notifyAdminNewPayment = (order, adminPhone, language = 'es') => {
         `_Message from PapuEnvíos_`
   };
 
-  const url = generateWhatsAppURL(adminPhone, messages[language] || messages.es);
+  return messages[language] || messages.es;
+};
+
+/**
+ * Build the wa.me URL to notify the admin about a new order payment.
+ * Does NOT open any window - meant for user-gesture links (e.g. confirmation modal).
+ * @param {Object} order - Order details object
+ * @param {string} adminPhone - Admin phone from settings
+ * @param {string} [language='es'] - Language for message ('es' or 'en')
+ * @returns {string} WhatsApp URL, or '' when phone/order are missing or invalid
+ */
+export const buildAdminNewPaymentWhatsAppUrl = (order, adminPhone, language = 'es') => {
+  if (!adminPhone || typeof adminPhone !== 'string' || isUrlRecipient(adminPhone)) {
+    return '';
+  }
+
+  if (!order || typeof order !== 'object') {
+    return '';
+  }
+
+  return generateWhatsAppURL(adminPhone, buildAdminNewPaymentMessage(order, language));
+};
+
+/**
+ * Notify admin about new payment submission
+ * Opens WhatsApp directly from user's device
+ * @param {Object} order - Order details object
+ * @param {string} adminPhone - Admin phone from settings
+ * @param {string} [language='es'] - Language for message ('es' or 'en')
+ */
+export const notifyAdminNewPayment = (order, adminPhone, language = 'es') => {
+
+  if (!adminPhone || typeof adminPhone !== 'string') {
+    logError({ code: 'VALIDATION_FAILED', message: 'Admin phone not configured' }, {
+      operation: 'notifyAdminNewPayment'
+    });
+    console.error('[WhatsApp] Admin phone validation failed:', { adminPhone, type: typeof adminPhone });
+    alert('Número de WhatsApp del administrador no configurado. Contacte al soporte.');
+    return;
+  }
+
+  if (!order || typeof order !== 'object') {
+    logError({ code: 'VALIDATION_FAILED', message: 'Invalid order object' }, {
+      operation: 'notifyAdminNewPayment', orderType: typeof order
+    });
+    return;
+  }
+
+  const url = buildAdminNewPaymentWhatsAppUrl(order, adminPhone, language);
+  if (!url) return;
   window.open(url, '_blank');
 };
 
@@ -472,20 +510,13 @@ export const isValidPhoneNumber = (phone) => {
 // ============================================================================
 
 /**
- * Notify admin about new payment proof upload (Remittance)
+ * Build the admin notification message for a new remittance payment proof.
+ * Resolves a signed URL for storage-path proofs (bucket 'remittance-proofs').
  * @param {Object} remittance - Remittance details with remittance_types
- * @param {string} adminPhone - Admin phone from settings
- * @param {string} language - Language for message ('es' or 'en')
+ * @param {string} [language='es'] - Language for message ('es' or 'en')
+ * @returns {Promise<string>} Message text
  */
-export const notifyAdminNewPaymentProof = async (remittance, adminPhone, language = 'es') => {
-
-  if (!adminPhone) {
-    console.error('[WhatsApp] Admin WhatsApp number not configured or empty');
-    alert('Número de WhatsApp del administrador no configurado. Contacte al soporte.');
-    return;
-  }
-
-  const config = getWhatsAppConfig();
+export const buildAdminNewPaymentProofMessage = async (remittance, language = 'es') => {
   const type = remittance.remittance_types || remittance.remittance_type;
   const userEmail = remittance.user_email || remittance?.user?.email || remittance?.email || 'No disponible';
   const userName = remittance.user_name || remittance?.user?.user_metadata?.full_name || remittance?.user?.user_metadata?.name || null;
@@ -502,7 +533,7 @@ export const notifyAdminNewPaymentProof = async (remittance, adminPhone, languag
         proofLink = data.signedUrl;
       }
     } catch (storageError) {
-      logError(storageError, { operation: 'notifyAdminNewPaymentProof - signedUrl', proofLink });
+      logError(storageError, { operation: 'buildAdminNewPaymentProofMessage - signedUrl', proofLink });
     }
   }
 
@@ -573,7 +604,155 @@ export const notifyAdminNewPaymentProof = async (remittance, adminPhone, languag
         `─────────────────────────────────`
   };
 
-  const url = generateWhatsAppURL(adminPhone, messages[language] || messages.es);
+  return messages[language] || messages.es;
+};
+
+/**
+ * Build the wa.me URL to notify the admin about a new remittance payment proof.
+ * Does NOT open any window - meant for user-gesture links (e.g. confirmation modal).
+ * @param {Object} remittance - Remittance details with remittance_types
+ * @param {string} adminPhone - Admin phone from settings
+ * @param {string} [language='es'] - Language for message ('es' or 'en')
+ * @returns {Promise<string>} WhatsApp URL, or '' when phone/remittance are missing or invalid
+ */
+export const buildAdminNewPaymentProofWhatsAppUrl = async (remittance, adminPhone, language = 'es') => {
+  if (!adminPhone || typeof adminPhone !== 'string' || isUrlRecipient(adminPhone)) {
+    return '';
+  }
+
+  if (!remittance || typeof remittance !== 'object') {
+    return '';
+  }
+
+  const message = await buildAdminNewPaymentProofMessage(remittance, language);
+  return generateWhatsAppURL(adminPhone, message);
+};
+
+/**
+ * Build the admin notification message for a newly registered remittance whose
+ * payment proof is still pending (client chose to upload it later).
+ * Pure and synchronous: no storage lookups, no side effects.
+ * @param {Object} remittance - Remittance details with remittance_types
+ * @param {string} [language='es'] - Language for message ('es' or 'en')
+ * @returns {string} Message text
+ */
+export const buildAdminNewRemittanceMessage = (remittance, language = 'es') => {
+  const NOT_AVAILABLE = 'N/A';
+  const orNA = (value) => (value === undefined || value === null || value === '' ? NOT_AVAILABLE : value);
+  // A missing amount renders N/A (never a bare currency); 0 is a valid amount.
+  const withCurrency = (value, currency) => (
+    value === '' || value == null ? NOT_AVAILABLE : [String(value), currency].filter(Boolean).join(' ')
+  );
+
+  const type = remittance.remittance_types || remittance.remittance_type;
+  const userEmail = remittance.user_email || remittance?.user?.email || remittance?.email || NOT_AVAILABLE;
+  const userName = remittance.user_name || remittance?.user?.user_metadata?.full_name || remittance?.user?.user_metadata?.name || NOT_AVAILABLE;
+
+  const amountToDeliver = Number(remittance.amount_to_deliver);
+  const amountSentText = withCurrency(remittance.amount_sent, remittance.currency_sent);
+  const amountToDeliverText = withCurrency(
+    Number.isFinite(amountToDeliver) && remittance.amount_to_deliver !== null && remittance.amount_to_deliver !== ''
+      ? amountToDeliver.toFixed(2)
+      : '',
+    remittance.currency_delivered
+  );
+
+  const systemLink = `${window.location.origin}/dashboard?tab=remittances&id=${orNA(remittance.id)}`;
+
+  const messages = {
+    es: `💸 *NUEVA REMESA REGISTRADA*\n` +
+        `════════════════════════════════\n\n` +
+        `📋 *ID Remesa:* ${orNA(remittance.remittance_number)}\n` +
+        `🆔 *Número interno:* ${orNA(remittance.id)}\n\n` +
+        `👤 *Usuario:*\n` +
+        `┌─────────────────────\n` +
+        `│ Nombre: ${userName}\n` +
+        `│ 📧 Email: ${userEmail}\n` +
+        `└─────────────────────\n\n` +
+        `💰 *Detalles del Pago*\n` +
+        `┌─────────────────────\n` +
+        `│ Monto enviado: ${amountSentText}\n` +
+        `│ Monto a entregar: ${amountToDeliverText}\n` +
+        `│ Tipo: ${type?.name || NOT_AVAILABLE}\n` +
+        `└─────────────────────\n\n` +
+        `👤 *Destinatario*\n` +
+        `┌─────────────────────\n` +
+        `│ ${orNA(remittance.recipient_name)}\n` +
+        `│ 📱 ${orNA(remittance.recipient_phone)}\n` +
+        `│ 📍 ${orNA(remittance.recipient_province)}\n` +
+        `└─────────────────────\n\n` +
+        `⏳ Comprobante de pago: PENDIENTE (el cliente lo subirá después)\n\n` +
+        `─────────────────────────────────\n` +
+        `✅ Revisar en sistema\n (debe estar logueado como administrador): ${systemLink}\n` +
+        `─────────────────────────────────`,
+
+    en: `💸 *NEW REMITTANCE REGISTERED*\n` +
+        `════════════════════════════════\n\n` +
+        `📋 *Remittance ID:* ${orNA(remittance.remittance_number)}\n` +
+        `🆔 *Internal Number:* ${orNA(remittance.id)}\n\n` +
+        `👤 *User:*\n` +
+        `┌─────────────────────\n` +
+        `│ Name: ${userName}\n` +
+        `│ 📧 Email: ${userEmail}\n` +
+        `└─────────────────────\n\n` +
+        `💰 *Payment Details*\n` +
+        `┌─────────────────────\n` +
+        `│ Amount Sent: ${amountSentText}\n` +
+        `│ Amount to Deliver: ${amountToDeliverText}\n` +
+        `│ Type: ${type?.name || NOT_AVAILABLE}\n` +
+        `└─────────────────────\n\n` +
+        `👤 *Recipient*\n` +
+        `┌─────────────────────\n` +
+        `│ ${orNA(remittance.recipient_name)}\n` +
+        `│ 📱 ${orNA(remittance.recipient_phone)}\n` +
+        `│ 📍 ${orNA(remittance.recipient_province)}\n` +
+        `└─────────────────────\n\n` +
+        `⏳ Payment proof: PENDING (the client will upload it later)\n\n` +
+        `─────────────────────────────────\n` +
+        `✅ Check in system\n (must be logged in as administrator): ${systemLink}\n` +
+        `─────────────────────────────────`
+  };
+
+  return messages[language] || messages.es;
+};
+
+/**
+ * Build the wa.me URL to notify the admin about a newly registered remittance
+ * with its payment proof still pending.
+ * Does NOT open any window - meant for user-gesture links (e.g. confirmation modal).
+ * @param {Object} remittance - Remittance details with remittance_types
+ * @param {string} adminPhone - Admin phone from settings
+ * @param {string} [language='es'] - Language for message ('es' or 'en')
+ * @returns {string} WhatsApp URL, or '' when phone/remittance are missing or invalid
+ */
+export const buildAdminNewRemittanceWhatsAppUrl = (remittance, adminPhone, language = 'es') => {
+  if (!adminPhone || typeof adminPhone !== 'string' || isUrlRecipient(adminPhone)) {
+    return '';
+  }
+
+  if (!remittance || typeof remittance !== 'object') {
+    return '';
+  }
+
+  return generateWhatsAppURL(adminPhone, buildAdminNewRemittanceMessage(remittance, language));
+};
+
+/**
+ * Notify admin about new payment proof upload (Remittance)
+ * @param {Object} remittance - Remittance details with remittance_types
+ * @param {string} adminPhone - Admin phone from settings
+ * @param {string} language - Language for message ('es' or 'en')
+ */
+export const notifyAdminNewPaymentProof = async (remittance, adminPhone, language = 'es') => {
+
+  if (!adminPhone) {
+    console.error('[WhatsApp] Admin WhatsApp number not configured or empty');
+    alert('Número de WhatsApp del administrador no configurado. Contacte al soporte.');
+    return;
+  }
+
+  const url = await buildAdminNewPaymentProofWhatsAppUrl(remittance, adminPhone, language);
+  if (!url) return;
   window.open(url, '_blank');
 };
 
