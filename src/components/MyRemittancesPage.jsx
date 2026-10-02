@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import {
   Calendar, DollarSign, User, FileText, AlertCircle, CheckCircle,
   Clock, XCircle, Upload, Eye, Package, Truck, RefreshCw,
-  TrendingUp, TrendingDown, Info, X
+  TrendingUp, TrendingDown, Info, X, MessageCircle
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -29,7 +29,13 @@ import SkeletonCard from '@/components/ui/SkeletonCard';
 import SearchFilterBar from '@/components/ui/SearchFilterBar';
 import RemittanceTimeline from '@/components/ui/RemittanceTimeline';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
-import { buildAdminNewPaymentProofWhatsAppUrl } from '@/lib/whatsappService';
+import {
+  ADMIN_NOTIFICATION_LANGUAGE,
+  buildAdminNewPaymentProofWhatsAppUrl,
+  buildRemittanceNotificationPayload,
+  getAdminNotificationUrlBuilder,
+  openAdminNotification
+} from '@/lib/whatsappService';
 import { getFreshGuidedWhatsappPhone } from '@/lib/notificationSettingsService';
 
 const MyRemittancesPage = ({ onNavigate }) => {
@@ -57,6 +63,8 @@ const MyRemittancesPage = ({ onNavigate }) => {
   // Guided WhatsApp confirmation shown after a late payment-proof upload
   const [showProofConfirmation, setShowProofConfirmation] = useState(false);
   const [proofConfirmationInfo, setProofConfirmationInfo] = useState(null);
+  // Remittance whose admin re-notification is in flight (prevents re-entrancy)
+  const [notifyingId, setNotifyingId] = useState(null);
 
   // Search and filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -402,13 +410,12 @@ const MyRemittancesPage = ({ onNavigate }) => {
       const recipient = await getFreshGuidedWhatsappPhone(notificationSettings);
       let whatsappUrl = '';
       try {
-        const remittanceForNotify = {
-          ...result,
-          user_email: user?.email,
-          user_name: user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0]
-        };
         whatsappUrl = recipient
-          ? await buildAdminNewPaymentProofWhatsAppUrl(remittanceForNotify, recipient, language)
+          ? await buildAdminNewPaymentProofWhatsAppUrl(
+              buildRemittanceNotificationPayload(result, user),
+              recipient,
+              ADMIN_NOTIFICATION_LANGUAGE
+            )
           : '';
       } catch (urlError) {
         console.warn('WhatsApp URL build failed', urlError);
@@ -443,6 +450,56 @@ const MyRemittancesPage = ({ onNavigate }) => {
         description: error?.message || t('remittances.wizard.errorUploadingProof') || t('common.error'),
         variant: 'destructive'
       });
+    }
+  };
+
+  // Persistent re-send of the admin notice. Must be called straight from a click handler:
+  // openAdminNotification opens the tab synchronously, before any await.
+  const handleNotifyAdmin = async (remittance) => {
+    const buildNotificationUrl = getAdminNotificationUrlBuilder(remittance);
+    if (!buildNotificationUrl || notifyingId === remittance.id) return;
+
+    setNotifyingId(remittance.id);
+    try {
+      const payload = buildRemittanceNotificationPayload(remittance, user);
+      const result = await openAdminNotification({
+        resolvePhone: () => getFreshGuidedWhatsappPhone(notificationSettings),
+        buildUrl: (phone) => buildNotificationUrl(payload, phone, ADMIN_NOTIFICATION_LANGUAGE)
+      });
+
+      if (result.opened) return;
+
+      if (result.blocked) {
+        // Popup blocked: offer the same message as a regular link in the resend modal
+        setProofConfirmationInfo({
+          remittanceNumber: remittance.remittance_number,
+          total: remittance.amount_to_deliver,
+          currency: remittance.currency_delivered,
+          recipientName: remittance.recipient_name,
+          whatsappUrl: result.url,
+          whatsappNumber: result.phone,
+          variant: 'resend'
+        });
+        setShowProofConfirmation(true);
+        return;
+      }
+
+      toast({
+        title: t('common.error'),
+        description: result.error
+          ? t('remittances.user.notifyAdminError')
+          : t('cart.payment.whatsappNotConfigured'),
+        variant: 'destructive'
+      });
+    } catch (error) {
+      console.error('Error notifying admin via WhatsApp:', error);
+      toast({
+        title: t('common.error'),
+        description: t('remittances.user.notifyAdminError'),
+        variant: 'destructive'
+      });
+    } finally {
+      setNotifyingId(null);
     }
   };
 
@@ -875,6 +932,21 @@ const MyRemittancesPage = ({ onNavigate }) => {
                       <span className="hidden sm:inline">{t('remittances.user.viewDetails')}</span>
                     </TooltipButton>
 
+                    {/* Re-send the admin notice at any time while the payment awaits proof or validation */}
+                    {getAdminNotificationUrlBuilder(remittance) && (
+                      <TooltipButton
+                        tooltipText={t('remittances.user.notifyAdminWhatsapp')}
+                        onClick={() => handleNotifyAdmin(remittance)}
+                        disabled={notifyingId === remittance.id}
+                        className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-[#075E54] text-white rounded-lg hover:bg-[#064c44] transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                        title={t('remittances.user.notifyAdminWhatsapp')}
+                        aria-label={t('remittances.user.notifyAdminWhatsapp')}
+                      >
+                        <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                        <span className="hidden sm:inline">{t('remittances.user.notifyAdminWhatsapp')}</span>
+                      </TooltipButton>
+                    )}
+
                     {remittance.status === REMITTANCE_STATUS.PAYMENT_PENDING && (
                       <>
                         <TooltipButton
@@ -1306,6 +1378,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
         estimatedDelivery={t('remittances.wizard.estimatedDeliveryTime')}
         whatsappUrl={proofConfirmationInfo?.whatsappUrl}
         whatsappNumber={proofConfirmationInfo?.whatsappNumber}
+        variant={proofConfirmationInfo?.variant}
       />
     </div>
   );

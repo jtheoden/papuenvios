@@ -381,6 +381,8 @@
       }
     },
     "user": {
+      "notifyAdminWhatsapp": "Notify the administrator via WhatsApp",
+      "notifyAdminError": "WhatsApp could not be opened. Please try again.",
       "searchPlaceholder": "Search by name, reference...",
       "trackYourRemittances": "Track the status of your money transfers",
       "trackRemittances": "Track the status of your money transfers",

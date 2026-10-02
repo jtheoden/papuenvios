@@ -293,16 +293,6 @@ export async function getFreshNotificationSettings() {
   return { ...DEFAULT_SETTINGS };
 }
 
-/**
- * Get the active WhatsApp recipient from fresh database data (bypasses all caches)
- * Use this when sending critical notifications to ensure correct recipient
- * @returns {Promise<string>} The phone number or group URL to send notifications to
- */
-export async function getFreshWhatsappRecipient() {
-  const settings = await getFreshNotificationSettings();
-  return getActiveWhatsappRecipient(settings);
-}
-
 const isUrlRecipient = (value) => /^https?:\/\//i.test(String(value || '').trim());
 
 /**

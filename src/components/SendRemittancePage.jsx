@@ -18,7 +18,12 @@ import {
 } from '@/lib/remittanceService';
 import { getActiveShippingZones } from '@/lib/shippingService';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
-import { buildAdminNewPaymentProofWhatsAppUrl, buildAdminNewRemittanceWhatsAppUrl } from '@/lib/whatsappService';
+import {
+  ADMIN_NOTIFICATION_LANGUAGE,
+  buildAdminNewPaymentProofWhatsAppUrl,
+  buildAdminNewRemittanceWhatsAppUrl,
+  buildRemittanceNotificationPayload
+} from '@/lib/whatsappService';
 import { getFreshGuidedWhatsappPhone } from '@/lib/notificationSettingsService';
 import { validateRemittanceOffer } from '@/lib/orderDiscountService';
 import { toast } from '@/components/ui/use-toast';
@@ -1322,26 +1327,21 @@ const SendRemittancePage = ({ onNavigate }) => {
               onSubmit={async () => {
                 setSubmitting(true);
                 try {
-                  await uploadPaymentProof(createdRemittance.id, paymentData.file, paymentData.reference, paymentData.notes);
+                  const uploadedRemittance = await uploadPaymentProof(createdRemittance.id, paymentData.file, paymentData.reference, paymentData.notes);
 
                   // Guided WhatsApp step: build the URL here, the user opens it via a click in the modal
                   // Recipient comes from fresh settings; group targets fall back to the admin phone
                   const recipient = await getFreshGuidedWhatsappPhone(notificationSettings);
                   let whatsappUrl = '';
                   try {
-                    const enrichedRemittance = {
-                      ...createdRemittance,
-                      remittance_types: selectedType,
-                      amount: parseFloat(amount),
-                      currency: calculation?.currency || 'USD',
-                      amount_to_deliver: calculation?.amountToDeliver ?? createdRemittance.amount_to_deliver,
-                      delivery_currency: calculation?.deliveryCurrency ?? createdRemittance.delivery_currency,
-                      payment_reference: paymentData.reference,
-                      user_email: user?.email,
-                      user_name: user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0]
-                    };
+                    // The message is built from the row the service persisted (status, proof path,
+                    // reference and amounts), not from wizard state
                     whatsappUrl = recipient
-                      ? await buildAdminNewPaymentProofWhatsAppUrl(enrichedRemittance, recipient, language)
+                      ? await buildAdminNewPaymentProofWhatsAppUrl(
+                          buildRemittanceNotificationPayload(uploadedRemittance, user),
+                          recipient,
+                          ADMIN_NOTIFICATION_LANGUAGE
+                        )
                       : '';
                   } catch (e) { console.warn('WhatsApp URL build failed', e); }
 
@@ -1377,18 +1377,13 @@ const SendRemittancePage = ({ onNavigate }) => {
                 const recipient = await getFreshGuidedWhatsappPhone(notificationSettings);
                 let whatsappUrl = '';
                 try {
-                  const enrichedRemittance = {
+                  const enrichedRemittance = buildRemittanceNotificationPayload({
                     ...createdRemittance,
                     remittance_types: selectedType,
-                    amount: parseFloat(amount),
-                    currency: calculation?.currency || 'USD',
-                    amount_to_deliver: calculation?.amountToDeliver ?? createdRemittance.amount_to_deliver,
-                    delivery_currency: calculation?.deliveryCurrency ?? createdRemittance.delivery_currency,
-                    user_email: user?.email,
-                    user_name: user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0]
-                  };
+                    amount_to_deliver: calculation?.amountToDeliver ?? createdRemittance.amount_to_deliver
+                  }, user);
                   whatsappUrl = recipient
-                    ? buildAdminNewRemittanceWhatsAppUrl(enrichedRemittance, recipient, language)
+                    ? buildAdminNewRemittanceWhatsAppUrl(enrichedRemittance, recipient, ADMIN_NOTIFICATION_LANGUAGE)
                     : '';
                 } catch (e) { console.warn('WhatsApp URL build failed', e); }
 

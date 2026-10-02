@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({ language: 'es' })
@@ -132,5 +132,167 @@ describe('ConfirmationModal pending-proof variant', () => {
 
     expect(screen.getByText('¡Pedido Confirmado!')).toBeInTheDocument();
     expect(screen.getByTestId('confirmation-whatsapp-link')).toHaveTextContent('Enviar comprobante por WhatsApp');
+  });
+});
+
+describe('ConfirmationModal skip guard for the guided WhatsApp step', () => {
+  const SKIP_WARNING = 'El administrador aún no fue notificado. Envía el mensaje por WhatsApp para que procese tu operación.';
+  const guardedProps = { ...baseProps, whatsappUrl: WHATSAPP_URL, whatsappNumber: WHATSAPP_NUMBER };
+  const clickClose = () => fireEvent.click(screen.getByText('Cerrar'));
+
+  beforeEach(() => {
+    baseProps.onClose.mockClear();
+    baseProps.onViewOrders.mockClear();
+  });
+
+  it('warns instead of closing on the first close attempt, then closes on the second', () => {
+    render(<ConfirmationModal {...guardedProps} />);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    clickClose();
+
+    expect(baseProps.onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(SKIP_WARNING);
+
+    clickClose();
+    expect(baseProps.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies the same rule to the X button and the backdrop', () => {
+    render(<ConfirmationModal {...guardedProps} />);
+
+    fireEvent.click(screen.getByLabelText('Cerrar'));
+    expect(baseProps.onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('¡Pedido Confirmado!').closest('.fixed'));
+    expect(baseProps.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes on the first attempt once the WhatsApp link was clicked', () => {
+    render(<ConfirmationModal {...guardedProps} />);
+
+    fireEvent.click(screen.getByTestId('confirmation-whatsapp-link'));
+    clickClose();
+
+    expect(baseProps.onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('closes on the first attempt when there is no WhatsApp URL', () => {
+    render(<ConfirmationModal {...baseProps} />);
+
+    clickClose();
+
+    expect(baseProps.onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('guards the close while the WhatsApp message is still loading', () => {
+    render(<ConfirmationModal {...baseProps} whatsappLoading={true} />);
+
+    clickClose();
+    expect(baseProps.onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(SKIP_WARNING);
+
+    clickClose();
+    expect(baseProps.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the warning visible when the URL arrives after a guarded attempt during loading', () => {
+    const { rerender } = render(<ConfirmationModal {...baseProps} whatsappLoading={true} />);
+
+    clickClose();
+    rerender(<ConfirmationModal {...guardedProps} whatsappLoading={false} />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent(SKIP_WARNING);
+    expect(screen.getByTestId('confirmation-whatsapp-link')).toBeInTheDocument();
+  });
+
+  it('counts a middle-click on the WhatsApp link as having opened it', () => {
+    render(<ConfirmationModal {...guardedProps} />);
+
+    fireEvent(
+      screen.getByTestId('confirmation-whatsapp-link'),
+      new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 })
+    );
+    clickClose();
+
+    expect(baseProps.onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('guards the view-orders button with the same rule', () => {
+    render(<ConfirmationModal {...guardedProps} />);
+    const viewOrders = screen.getByRole('button', { name: /Ver Mis Pedidos/ });
+
+    fireEvent.click(viewOrders);
+    expect(baseProps.onViewOrders).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(SKIP_WARNING);
+
+    fireEvent.click(viewOrders);
+    expect(baseProps.onViewOrders).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets view-orders through on the first attempt after the link was clicked', () => {
+    render(<ConfirmationModal {...guardedProps} />);
+
+    fireEvent.click(screen.getByTestId('confirmation-whatsapp-link'));
+    fireEvent.click(screen.getByRole('button', { name: /Ver Mis Pedidos/ }));
+
+    expect(baseProps.onViewOrders).toHaveBeenCalledTimes(1);
+  });
+
+  it('resets the guard every time the modal opens', () => {
+    const { rerender } = render(<ConfirmationModal {...guardedProps} />);
+
+    fireEvent.click(screen.getByTestId('confirmation-whatsapp-link'));
+    rerender(<ConfirmationModal {...guardedProps} isOpen={false} />);
+    rerender(<ConfirmationModal {...guardedProps} />);
+    clickClose();
+
+    expect(baseProps.onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
+  describe('resend variant', () => {
+    const resendProps = {
+      ...guardedProps,
+      orderNumber: 'REM-1',
+      orderType: 'remittance',
+      variant: 'resend'
+    };
+
+    it('shows the re-notify texts instead of the success ones and no steps list', () => {
+      render(<ConfirmationModal {...resendProps} proofPending={true} />);
+
+      expect(screen.getByText('Notifica al administrador por WhatsApp')).toBeInTheDocument();
+      expect(screen.queryByText('¡Remesa Enviada!')).not.toBeInTheDocument();
+      expect(screen.queryByText('¡Remesa Registrada!')).not.toBeInTheDocument();
+      expect(screen.queryByText('¿Qué sigue?')).not.toBeInTheDocument();
+      expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+      expect(screen.getByTestId('confirmation-whatsapp-link')).toHaveAttribute('href', WHATSAPP_URL);
+      expect(screen.getByText('REM-1')).toBeInTheDocument();
+    });
+
+    it('closes on the first attempt without any warning', () => {
+      render(<ConfirmationModal {...resendProps} />);
+
+      clickClose();
+
+      expect(baseProps.onClose).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+  });
+
+  it('renders view-orders as a secondary full-width action only when the WhatsApp URL is present', () => {
+    const { rerender } = render(<ConfirmationModal {...guardedProps} />);
+    const secondary = screen.getByRole('button', { name: /Ver Mis Pedidos/ });
+
+    expect(secondary).toHaveClass('w-full');
+    expect(secondary.style.backgroundColor).toBe('');
+
+    rerender(<ConfirmationModal {...baseProps} />);
+    expect(screen.getByRole('button', { name: /Ver Mis Pedidos/ }).style.backgroundColor).not.toBe('');
   });
 });
