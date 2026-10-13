@@ -1157,6 +1157,12 @@
     "saveSuccess": "Ajustes guardados exitosamente"
   },
   "cart": {
+    "clearAll": {
+      "button": "Vaciar carrito",
+      "title": "¿Vaciar el carrito?",
+      "message": "Se quitarán todos los productos del carrito. Esta acción no se puede deshacer.",
+      "confirm": "Sí, vaciar"
+    },
     "title": "Tu Carrito de Compras",
     "empty": "Tu carrito está vacío.",
     "browse": "Explorar productos",

@@ -1148,6 +1148,12 @@
     "saveSuccess": "Settings saved successfully"
   },
   "cart": {
+    "clearAll": {
+      "button": "Empty cart",
+      "title": "Empty your cart?",
+      "message": "All items will be removed from your cart. This action cannot be undone.",
+      "confirm": "Yes, empty it"
+    },
     "title": "Your Shopping Cart",
     "empty": "Your cart is empty.",
     "browse": "Browse products",
