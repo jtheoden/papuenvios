@@ -21,7 +21,7 @@ import SettingsSystemTab from '@/components/settings/SettingsSystemTab';
 const SettingsPage = () => {
   const { t, language } = useLanguage();
   const {
-    financialSettings, setFinancialSettings,
+    financialSettings,
     notificationSettings, setNotificationSettings,
     refreshNotificationSettings,
     visualSettings, setVisualSettings,
@@ -37,6 +37,15 @@ const SettingsPage = () => {
   const [localVisual, setLocalVisual] = useState(visualSettings);
 
   // Currency and exchange rate state/functions now handled by SettingsPageFinancial component
+
+  // Keep the margin inputs in sync once the DB values arrive (admins) or after a save
+  useEffect(() => {
+    setLocalFinancial(prev => ({
+      ...prev,
+      productProfit: financialSettings.productProfit,
+      comboProfit: financialSettings.comboProfit
+    }));
+  }, [financialSettings.productProfit, financialSettings.comboProfit]);
 
   useEffect(() => {
     setLocalNotifications(notificationSettings);
@@ -84,17 +93,6 @@ const SettingsPage = () => {
           : 'Error loading currencies',
         variant: 'destructive'
       });
-    }
-  };
-
-  const handleFinancialSave = () => {
-    try {
-      setFinancialSettings(localFinancial);
-      toast({ title: t('settings.saveSuccess') });
-    } catch (error) {
-      console.error('[handleFinancialSave] ERROR:', error);
-      console.error('[handleFinancialSave] Error details:', { message: error?.message, code: error?.code });
-      throw error;
     }
   };
 

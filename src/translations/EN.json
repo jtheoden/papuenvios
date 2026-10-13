@@ -875,6 +875,8 @@
       "usdToLocal": "USD to Local Currency",
       "productProfit": "Product Profit (%)",
       "comboProfit": "Combo Profit (%)",
+      "marginInvalid": "Margin must be a number between 0 and 999.99",
+      "marginSaveError": "Could not save the profit margin. Please try again.",
       "remittanceProfit": "Remittance Profit (%)",
       "currencies": "Currencies Management",
       "addCurrency": "Add Currency",

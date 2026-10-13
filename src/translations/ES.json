@@ -884,6 +884,8 @@
       "usdToLocal": "USD a Moneda Nacional",
       "productProfit": "Ganancia Productos (%)",
       "comboProfit": "Ganancia Combos (%)",
+      "marginInvalid": "El margen debe ser un número entre 0 y 999.99",
+      "marginSaveError": "No se pudo guardar el margen de ganancia. Intenta de nuevo.",
       "remittanceProfit": "Ganancia Remesas (%)",
       "currencies": "Gestión de Monedas",
       "addCurrency": "Agregar Moneda",
