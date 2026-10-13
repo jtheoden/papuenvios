@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { getMarginSettings } from '@/lib/financialSettingsService';
 import { DEFAULT_SETTINGS, loadNotificationSettings, getFreshNotificationSettings } from '@/lib/notificationSettingsService';
 import {
   DEFAULT_VISUAL_SETTINGS,
@@ -41,7 +42,7 @@ const useLocalStorage = (key, initialValue) => {
  * Only re-renders components that depend on settings
  */
 export const SettingsProvider = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isAdmin } = useAuth();
   const [zelleAccounts, setZelleAccounts] = useLocalStorage('zelleAccounts', [
     {
       id: 1,
@@ -63,7 +64,7 @@ export const SettingsProvider = ({ children }) => {
     }
   ]);
 
-  const [financialSettings, setFinancialSettings] = useLocalStorage('financialSettings', {
+  const [localFinancialSettings, setFinancialSettings] = useLocalStorage('financialSettings', {
     usdToLocal: 36.5,
     currencies: [
       { code: 'USD', name: 'US Dollar', rate: 1, symbol: '$' },
@@ -77,6 +78,47 @@ export const SettingsProvider = ({ children }) => {
     shippingFixedAmount: 0,
     shippingFreeThreshold: 100 // Free shipping over this amount
   });
+
+  // Global profit margins live in system_config (admin-readable only). For admins the DB
+  // values override the per-device localStorage ones; everyone else keeps the local fallback.
+  const [dbMargins, setDbMargins] = useState(null);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setDbMargins(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    getMarginSettings()
+      .then((margins) => {
+        if (!cancelled) setDbMargins(margins);
+      })
+      .catch(() => {
+        // Service already logged the error; keep the localStorage/default fallback.
+        if (!cancelled) setDbMargins(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin]);
+
+  const applyMarginSettings = useCallback((margins) => {
+    setDbMargins(margins);
+  }, []);
+
+  const financialSettings = useMemo(() => {
+    if (!dbMargins) return localFinancialSettings;
+    const merged = { ...localFinancialSettings };
+    if (dbMargins.productProfit !== null && dbMargins.productProfit !== undefined) {
+      merged.productProfit = dbMargins.productProfit;
+    }
+    if (dbMargins.comboProfit !== null && dbMargins.comboProfit !== undefined) {
+      merged.comboProfit = dbMargins.comboProfit;
+    }
+    return merged;
+  }, [localFinancialSettings, dbMargins]);
 
   // Notification settings now loaded from Supabase system_config table
   const [notificationSettings, setNotificationSettings] = useState(DEFAULT_SETTINGS);
@@ -182,6 +224,7 @@ export const SettingsProvider = ({ children }) => {
     // Financial settings
     financialSettings,
     setFinancialSettings,
+    applyMarginSettings,
     // Notification settings
     notificationSettings,
     setNotificationSettings,
