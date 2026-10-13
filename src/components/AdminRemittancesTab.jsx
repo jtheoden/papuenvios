@@ -1313,6 +1313,14 @@ const AdminRemittancesTab = () => {
                   </div>
                 )}
 
+                {/* Payer contact phone */}
+                {selectedRemittance.payer_phone && (
+                  <div>
+                    <p className="text-xs sm:text-sm text-gray-600 font-medium mb-2">{t('remittances.admin.payerPhoneLabel')}</p>
+                    <p className="font-mono bg-gray-50 p-3 rounded-lg text-xs sm:text-sm">{selectedRemittance.payer_phone}</p>
+                  </div>
+                )}
+
                 {/* Notes */}
                 {selectedRemittance.notes && (
                   <div>

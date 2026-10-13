@@ -518,6 +518,9 @@ export const buildRemittanceProofMessage = (remittance, { language = 'es', proof
     .filter(Boolean)
     .join(', ');
   const locationLine = location ? `│ 📍 ${location}\n` : '';
+  const payerPhone = typeof remittance.payer_phone === 'string' ? remittance.payer_phone.trim() : '';
+  const payerPhoneLineEs = payerPhone ? `📞 Teléfono del pagador: ${payerPhone}\n` : '';
+  const payerPhoneLineEn = payerPhone ? `📞 Payer phone: ${payerPhone}\n` : '';
 
   const messages = {
     es: `💸 *NUEVO COMPROBANTE DE REMESA*\n` +
@@ -546,7 +549,9 @@ export const buildRemittanceProofMessage = (remittance, { language = 'es', proof
         `👆 Toca para ver imagen:\n` +
         `${formattedProofLink}\n` +
         `━━━━━━━━━━━━━━━━━━━━\n\n` +
-        `📝 Titular/Empresa: ${remittance.payment_reference || 'Pendiente'}\n\n` +
+        `📝 Titular/Empresa: ${remittance.payment_reference || 'Pendiente'}\n` +
+        payerPhoneLineEs +
+        `\n` +
         `─────────────────────────────────\n` +
         `✅ Revisar en sistema\n (debe estar logueado como administrador): ${systemLink}\n` +
         `─────────────────────────────────`,
@@ -577,7 +582,9 @@ export const buildRemittanceProofMessage = (remittance, { language = 'es', proof
         `👆 Tap to view image:\n` +
         `${formattedProofLink}\n` +
         `━━━━━━━━━━━━━━━━━━━━\n\n` +
-        `📝 Payer Name/Company: ${remittance.payment_reference || 'Pending'}\n\n` +
+        `📝 Payer Name/Company: ${remittance.payment_reference || 'Pending'}\n` +
+        payerPhoneLineEn +
+        `\n` +
         `─────────────────────────────────\n` +
         `✅ Check in system\n (must be logued as administrator): ${systemLink}\n` +
         `─────────────────────────────────`

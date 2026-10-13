@@ -5,6 +5,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { isValidPayerPhone, normalizePayerPhone } from '@/lib/payerPhone';
 import { logActivity } from '@/lib/activityLogger';
 import { recordOfferUsage } from '@/lib/orderDiscountService';
 import {
@@ -1025,17 +1026,19 @@ export const createRemittance = async (remittanceData) => {
  * @param {string} notes - Optional payment notes
  * @param {Object} [options]
  * @param {string} [options.language='es'] - Language of the admin WhatsApp message ('es' | 'en')
+ * @param {string} options.payerPhone - Payer contact phone (required; stored in remittances.payer_phone)
  * @throws {AppError} If validation fails, upload fails, or remittance not found
  * @returns {Promise<Object>} Updated remittance with proof details
  */
 export const uploadPaymentProof = async (remittanceId, file, reference, notes = '', options = {}) => {
-  const { language = 'es' } = options || {};
+  const { language = 'es', payerPhone } = options || {};
   try {
-    if (!remittanceId || !file || !reference) {
+    if (!remittanceId || !file || !reference || !isValidPayerPhone(payerPhone)) {
       throw createValidationError({
         remittanceId: !remittanceId ? 'Remittance ID is required' : undefined,
         file: !file ? 'Proof file is required' : undefined,
-        reference: !reference ? 'Payment reference is required' : undefined
+        reference: !reference ? 'Payment reference is required' : undefined,
+        payerPhone: !isValidPayerPhone(payerPhone) ? 'A valid payer contact phone is required' : undefined
       }, 'Missing required fields for proof upload');
     }
 
@@ -1109,6 +1112,7 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
         payment_proof_url: filePath,
         payment_reference: reference,
         payment_proof_notes: notes,
+        payer_phone: normalizePayerPhone(payerPhone),
         payment_proof_uploaded_at: new Date().toISOString(),
         status: REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED,
         updated_at: new Date().toISOString()

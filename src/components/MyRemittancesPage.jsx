@@ -29,6 +29,7 @@ import SearchFilterBar from '@/components/ui/SearchFilterBar';
 import RemittanceTimeline from '@/components/ui/RemittanceTimeline';
 import NotifyAdminWhatsAppButton from '@/components/NotifyAdminWhatsAppButton';
 import RecipientLocation from '@/components/RecipientLocation';
+import { isValidPayerPhone, normalizePayerPhone, PAYER_PHONE_MAX_LENGTH } from '@/lib/payerPhone';
 
 const MyRemittancesPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
@@ -46,6 +47,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
   const [uploadData, setUploadData] = useState({
     file: null,
     reference: '',
+    payerPhone: '',
     notes: ''
   });
   const [imagePreview, setImagePreview] = useState(null);
@@ -331,6 +333,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
     setUploadData({
       file: null,
       reference: remittance.remittance_number, // Auto-load remittance ID
+      payerPhone: remittance.payer_phone || '',
       notes: ''
     });
     setImagePreview(null);
@@ -382,13 +385,22 @@ const MyRemittancesPage = ({ onNavigate }) => {
       return;
     }
 
+    if (!isValidPayerPhone(uploadData.payerPhone)) {
+      toast({
+        title: t('common.error'),
+        description: t('remittances.user.payerPhoneInvalid'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
     try {
       const result = await uploadPaymentProof(
         selectedRemittance.id,
         uploadData.file,
         uploadData.reference,
         uploadData.notes,
-        { language }
+        { language, payerPhone: uploadData.payerPhone }
       );
 
       toast({
@@ -400,6 +412,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
       setUploadData({
         file: null,
         reference: '',
+        payerPhone: '',
         notes: ''
       });
       await loadRemittances();
@@ -936,6 +949,29 @@ const MyRemittancesPage = ({ onNavigate }) => {
               </div>
 
               <div>
+                <label htmlFor="my-remittances-payer-phone" className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                  {t('remittances.user.payerPhoneLabel')}
+                </label>
+                <input
+                  id="my-remittances-payer-phone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  maxLength={PAYER_PHONE_MAX_LENGTH}
+                  value={uploadData.payerPhone}
+                  onChange={(e) => setUploadData({ ...uploadData, payerPhone: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  placeholder={t('remittances.user.payerPhonePlaceholder')}
+                  required
+                />
+                {normalizePayerPhone(uploadData.payerPhone) !== '' && !isValidPayerPhone(uploadData.payerPhone) && (
+                  <p role="alert" className="mt-1 text-sm text-red-600">
+                    {t('remittances.user.payerPhoneInvalid')}
+                  </p>
+                )}
+              </div>
+
+              <div>
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
                   {t('remittances.user.additionalNotesLabel')}
                 </label>
@@ -1099,6 +1135,12 @@ const MyRemittancesPage = ({ onNavigate }) => {
                       <div className="mt-3 bg-blue-50 p-3 rounded-lg">
                         <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.paymentReferenceLabel')}</p>
                         <p className="font-semibold text-blue-900 text-sm">{selectedRemittance.payment_reference}</p>
+                      </div>
+                    )}
+                    {selectedRemittance.payer_phone && (
+                      <div className="mt-3 bg-blue-50 p-3 rounded-lg">
+                        <p className="text-xs sm:text-sm text-gray-600">{t('remittances.user.payerPhoneShortLabel')}</p>
+                        <p className="font-semibold text-blue-900 text-sm">{selectedRemittance.payer_phone}</p>
                       </div>
                     )}
                     {selectedRemittance.status === REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED && (

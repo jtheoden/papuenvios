@@ -74,6 +74,7 @@ const SendRemittancePage = ({ onNavigate }) => {
   const [paymentData, setPaymentData] = useState({
     file: null,
     reference: '',
+    payerPhone: '',
     notes: ''
   });
 
@@ -1302,6 +1303,9 @@ const SendRemittancePage = ({ onNavigate }) => {
               reference={paymentData.reference}
               notes={paymentData.notes}
               requireReference={true}
+              requirePayerPhone={true}
+              payerPhone={paymentData.payerPhone}
+              onPayerPhoneChange={(value) => setPaymentData({ ...paymentData, payerPhone: value })}
               showNotesField={true}
               onFileChange={(e) => {
                 const file = e.target.files[0];
@@ -1325,7 +1329,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                     paymentData.file,
                     paymentData.reference,
                     paymentData.notes,
-                    { language }
+                    { language, payerPhone: paymentData.payerPhone }
                   );
 
                   toast({ title: t('common.success'), description: t('remittances.wizard.proofSubmittedSuccess') });

@@ -79,4 +79,17 @@ describe('buildRemittanceProofMessage', () => {
     const without = buildRemittanceProofMessage(baseRemittance);
     expect(without).toContain('/dashboard?tab=remittances&id=rem-uuid-1');
   });
+
+  it('includes the payer phone line in Spanish and English when present', () => {
+    const remittance = { ...baseRemittance, payer_phone: '+1 305 555 0100' };
+    const es = buildRemittanceProofMessage(remittance);
+    const en = buildRemittanceProofMessage(remittance, { language: 'en' });
+    expect(es).toContain('Teléfono del pagador: +1 305 555 0100');
+    expect(en).toContain('Payer phone: +1 305 555 0100');
+  });
+
+  it('omits the payer phone line when absent', () => {
+    expect(buildRemittanceProofMessage(baseRemittance)).not.toContain('Teléfono del pagador');
+    expect(buildRemittanceProofMessage(baseRemittance, { language: 'en' })).not.toContain('Payer phone');
+  });
 });
