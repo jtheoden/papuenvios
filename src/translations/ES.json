@@ -1699,6 +1699,9 @@
     "updateButton": "Actualizar Destinatario"
   },
   "zelle": {
+    "showEmail": "Mostrar email a los clientes",
+    "showPhone": "Mostrar teléfono a los clientes",
+    "atLeastOneVisible": "Al menos uno de email o teléfono debe estar visible para los clientes",
     "accounts": "Cuentas Zelle",
     "selectAccount": "Seleccionar Cuenta Zelle",
     "selectAccountRequired": "Debe seleccionar una cuenta Zelle para continuar",

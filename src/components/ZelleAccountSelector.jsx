@@ -19,6 +19,7 @@ import { CreditCard, AlertCircle, AlertTriangle, RefreshCw } from 'lucide-react'
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
 import { getAllZelleAccounts } from '@/lib/zelleService';
+import { getZelleAccountPublicContact } from '@/lib/zelleVisibility';
 import { useRealtimeZelleAccounts } from '@/hooks/useRealtimeSubscription';
 
 const ZelleAccountSelector = ({
@@ -220,7 +221,7 @@ const ZelleAccountSelector = ({
                         <CreditCard className="w-4 h-4 text-blue-600" />
                         <p className="font-semibold text-gray-900">{account.account_name}</p>
                       </div>
-                      <p className="text-sm text-gray-600">{account.email}</p>
+                      <p className="text-sm text-gray-600">{getZelleAccountPublicContact(account).email}</p>
                       {account.priority_order && (
                         <p className="text-xs text-gray-500 mt-1">
                           {t('zelle.priority')}: #{account.priority_order}
@@ -255,7 +256,7 @@ const ZelleAccountSelector = ({
               <option value="">{t('zelle.selectAccountPlaceholder') || 'Selecciona una cuenta Zelle'}</option>
               {accounts.map((account) => (
                 <option key={account.id} value={account.id}>
-                  {account.account_name} - {account.email}
+                  {[account.account_name, getZelleAccountPublicContact(account).email].filter(Boolean).join(' - ')}
                 </option>
               ))}
             </select>
@@ -275,7 +276,7 @@ const ZelleAccountSelector = ({
                   {t('zelle.active')}
                 </span>
               </div>
-              <p className="text-sm text-gray-600">{selectedAccount.email}</p>
+              <p className="text-sm text-gray-600">{getZelleAccountPublicContact(selectedAccount).email}</p>
             </motion.div>
           )}
         </div>
