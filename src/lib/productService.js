@@ -7,6 +7,7 @@
 import { supabase } from './supabase';
 import { generateSlug, getCurrentTimestamp } from './queryHelpers';
 import { DEFAULTS } from './constants';
+import { validateMarginPercent, MARGIN_MIN, MARGIN_MAX } from './marginResolver';
 import {
   AppError,
   handleError,
@@ -782,7 +783,7 @@ export const getCategories = async () => {
   try {
     const { data, error } = await supabase
       .from('product_categories')
-      .select('id, slug, name_es, name_en, description_es, description_en, display_order, is_active')
+      .select('id, slug, name_es, name_en, description_es, description_en, display_order, is_active, profit_margin')
       .eq('is_active', true)
       .order('display_order', { ascending: true });
 
@@ -801,6 +802,25 @@ export const getCategories = async () => {
 };
 
 /**
+ * Normalize an optional category margin: empty -> null (no category margin),
+ * otherwise a number within 0..999.99 (matches the DB CHECK).
+ * @param {unknown} raw
+ * @returns {number|null}
+ */
+const normalizeCategoryMargin = (raw) => {
+  if (raw === null || raw === undefined || (typeof raw === 'string' && raw.trim() === '')) {
+    return null;
+  }
+  if (!validateMarginPercent(raw)) {
+    throw createValidationError(
+      { profit_margin: `Margin must be a number between ${MARGIN_MIN} and ${MARGIN_MAX}` },
+      'Invalid category profit margin'
+    );
+  }
+  return Number(raw);
+};
+
+/**
  * Create a new product category
  * @param {Object} categoryData - Category data with es and en names
  * @throws {AppError} If validation fails or creation fails
@@ -815,6 +835,8 @@ export const createCategory = async (categoryData, performedBy = 'system') => {
       );
     }
 
+    const profitMargin = normalizeCategoryMargin(categoryData.profit_margin);
+
     const { data, error } = await supabase
       .from('product_categories')
       .insert([{
@@ -822,6 +844,7 @@ export const createCategory = async (categoryData, performedBy = 'system') => {
         name_en: categoryData.en,
         description_es: categoryData.description_es || '',
         description_en: categoryData.description_en || '',
+        profit_margin: profitMargin,
         slug: generateSlug(categoryData.es),
         is_active: true,
         display_order: DEFAULTS.DISPLAY_ORDER
@@ -882,6 +905,11 @@ export const updateCategory = async (categoryId, categoryData, performedBy = 'sy
       );
     }
 
+    // Only touch the margin when the caller provides the field (undefined = leave as is)
+    const marginPatch = categoryData.profit_margin === undefined
+      ? {}
+      : { profit_margin: normalizeCategoryMargin(categoryData.profit_margin) };
+
     const { data, error } = await supabase
       .from('product_categories')
       .update({
@@ -889,6 +917,7 @@ export const updateCategory = async (categoryId, categoryData, performedBy = 'sy
         name_en: categoryData.en,
         description_es: categoryData.description_es || '',
         description_en: categoryData.description_en || '',
+        ...marginPatch,
         slug: generateSlug(categoryData.es),
         updated_at: getCurrentTimestamp()
       })
