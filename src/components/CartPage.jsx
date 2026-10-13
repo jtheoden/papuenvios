@@ -829,7 +829,14 @@ const CartPage = ({ onNavigate }) => {
               payment_reference: paymentReference.trim(),
               payer_phone: normalizePayerPhone(payerPhone)
             };
-            notifyAdminNewPayment(orderForNotification, notificationWhatsapp, language);
+            const notifyResult = notifyAdminNewPayment(orderForNotification, notificationWhatsapp, language);
+            if (!notifyResult?.opened) {
+              toast({
+                title: t('remittances.notifyAdmin.noRecipientTitle'),
+                description: t('remittances.notifyAdmin.noRecipient'),
+                variant: 'destructive'
+              });
+            }
           } catch (e) {
             console.warn('WhatsApp notification failed:', e);
           }

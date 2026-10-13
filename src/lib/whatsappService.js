@@ -134,10 +134,12 @@ export const openWhatsAppChat = (phone, message = '') => {
 
 /**
  * Notify admin about new payment submission
- * Opens WhatsApp directly from user's device
+ * Opens WhatsApp directly from user's device. No UI side effects: the outcome is
+ * returned so callers can surface it (toast) if they want to.
  * @param {Object} order - Order details object
  * @param {string} adminPhone - Admin phone from settings
  * @param {string} [language='es'] - Language for message ('es' or 'en')
+ * @returns {{opened: boolean, reason?: 'no_recipient'|'invalid_url'|'invalid_order'}}
  */
 export const notifyAdminNewPayment = (order, adminPhone, language = 'es') => {
 
@@ -145,16 +147,14 @@ export const notifyAdminNewPayment = (order, adminPhone, language = 'es') => {
     logError({ code: 'VALIDATION_FAILED', message: 'Admin phone not configured' }, {
       operation: 'notifyAdminNewPayment'
     });
-    console.error('[WhatsApp] Admin phone validation failed:', { adminPhone, type: typeof adminPhone });
-    alert('Número de WhatsApp del administrador no configurado. Contacte al soporte.');
-    return;
+    return { opened: false, reason: 'no_recipient' };
   }
 
   if (!order || typeof order !== 'object') {
     logError({ code: 'VALIDATION_FAILED', message: 'Invalid order object' }, {
       operation: 'notifyAdminNewPayment', orderType: typeof order
     });
-    return;
+    return { opened: false, reason: 'invalid_order' };
   }
 
   const config = getWhatsAppConfig();
@@ -224,7 +224,12 @@ export const notifyAdminNewPayment = (order, adminPhone, language = 'es') => {
   };
 
   const url = generateWhatsAppURL(adminPhone, messages[language] || messages.es);
+  if (!url) {
+    return { opened: false, reason: 'invalid_url' };
+  }
+
   window.open(url, '_blank');
+  return { opened: true };
 };
 
 /**
