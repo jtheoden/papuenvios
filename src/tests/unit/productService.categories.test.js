@@ -87,10 +87,17 @@ describe('productService categories - profit_margin', () => {
   });
 
   describe('getCategories', () => {
-    it('selects profit_margin so the product form can use it', async () => {
+    it('does not select profit_margin for the public catalog by default', async () => {
       const c = chain({ data: [], error: null });
       fromMock.mockImplementation(() => c);
       await getCategories();
+      expect(c.select.mock.calls[0][0]).not.toContain('profit_margin');
+    });
+
+    it('selects profit_margin only when includeMargin is requested (admin product form)', async () => {
+      const c = chain({ data: [], error: null });
+      fromMock.mockImplementation(() => c);
+      await getCategories({ includeMargin: true });
       expect(c.select.mock.calls[0][0]).toContain('profit_margin');
     });
   });
