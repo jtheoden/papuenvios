@@ -60,7 +60,8 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
     es: '',
     en: '',
     description_es: '',
-    description_en: ''
+    description_en: '',
+    profit_margin: ''
   });
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -132,7 +133,8 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
         es: '',
         en: '',
         description_es: '',
-        description_en: ''
+        description_en: '',
+        profit_margin: ''
       });
       setShowCategoryForm(false);
     } catch (error) {
@@ -155,7 +157,8 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
         es: category.name_es || category.es || '',
         en: category.name_en || category.en || '',
         description_es: category.description_es || '',
-        description_en: category.description_en || ''
+        description_en: category.description_en || '',
+        profit_margin: category.profit_margin ?? ''
       });
       setShowCategoryForm(true);
       // Scroll to form and focus after state update
@@ -173,7 +176,8 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
       es: '',
       en: '',
       description_es: '',
-      description_en: ''
+      description_en: '',
+      profit_margin: ''
     });
     setShowCategoryForm(true);
     scrollToFormAndFocus();
@@ -185,7 +189,8 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
       es: '',
       en: '',
       description_es: '',
-      description_en: ''
+      description_en: '',
+      profit_margin: ''
     });
     setShowCategoryForm(false);
   };
@@ -336,6 +341,28 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
                   />
                 </div>
               </div>
+
+              {/* Optional category profit margin */}
+              <div className="sm:max-w-xs">
+                <label htmlFor="category-profit-margin" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
+                  {language === 'es' ? 'Margen de ganancia (%) - opcional' : 'Profit margin (%) - optional'}
+                </label>
+                <input
+                  id="category-profit-margin"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="999.99"
+                  value={categoryForm.profit_margin}
+                  onChange={e => setCategoryForm({ ...categoryForm, profit_margin: e.target.value })}
+                  className="input-style w-full text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {language === 'es'
+                    ? 'Se sugiere al crear o editar productos de esta categoría. No cambia los precios existentes. Vacío = usar el margen global.'
+                    : 'Suggested when creating or editing products in this category. Does not change existing prices. Empty = use the global margin.'}
+                </p>
+              </div>
             </div>
 
             {/* Form Actions */}
@@ -422,6 +449,14 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
                     <div className="flex flex-col sm:flex-row sm:gap-4 sm:items-center">
                       <span className="font-semibold text-sm sm:text-base truncate">{categoryName}</span>
                       <span className="text-gray-500 text-xs sm:text-sm">({c.slug})</span>
+                      {c.profit_margin !== null && c.profit_margin !== undefined && (
+                        <span
+                          className="text-xs font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 self-start"
+                          title={language === 'es' ? 'Margen de ganancia de la categoría' : 'Category profit margin'}
+                        >
+                          {Number(c.profit_margin)}%
+                        </span>
+                      )}
                     </div>
                     {(c.description_es || c.description_en) && (
                       <p className="text-xs sm:text-sm text-gray-600 mt-1 truncate">
@@ -482,6 +517,7 @@ const VendorCategoriesTab = ({ categories, onCategoriesChange, visualSettings })
                           <Button
                             variant="ghost"
                             size="icon"
+                            aria-label={language === 'es' ? 'Editar categoría' : 'Edit category'}
                             onClick={() => handleEditCategory(c)}
                             disabled={isDeleting}
                             className="h-8 w-8"

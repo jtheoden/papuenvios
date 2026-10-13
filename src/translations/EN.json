@@ -614,7 +614,12 @@
       "basePriceRequired": "Enter base price first",
       "sellPriceTooLow": "Invalid sell price",
       "sellPriceTooLowDesc": "Sell price cannot be less than base price",
-      "profitInBase": "profit in base currency"
+      "profitInBase": "profit in base currency",
+      "marginSource": {
+        "product": "Product own margin",
+        "category": "Suggested from the category margin",
+        "global": "Global default margin"
+      }
     },
     "inventory": {
       "product": "Product",

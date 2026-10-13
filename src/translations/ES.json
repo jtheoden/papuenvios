@@ -623,7 +623,12 @@
       "basePriceRequired": "Ingrese el precio base primero",
       "sellPriceTooLow": "Precio de venta inválido",
       "sellPriceTooLowDesc": "El precio de venta no puede ser menor que el precio base",
-      "profitInBase": "ganancia en moneda base"
+      "profitInBase": "ganancia en moneda base",
+      "marginSource": {
+        "product": "Margen propio del producto",
+        "category": "Sugerido por el margen de la categoría",
+        "global": "Margen global por defecto"
+      }
     },
     "inventory": {
       "product": "Producto",
