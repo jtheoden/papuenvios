@@ -8,13 +8,15 @@ import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/use-toast';
 import { getPendingOrdersCount } from '@/lib/orderService';
+import { getPendingRemittancesCount } from '@/lib/remittanceService';
+import { useRealtimeOrders, useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import { semanticColors } from '@/lib/colorTokens';
 
 const Header = ({ currentPage, onNavigate }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
   const [isMobileUser, setIsMobileUser] = useState(false);
   const { language, setLanguage, t } = useLanguage();
   const { cart, visualSettings } = useBusiness();
@@ -79,25 +81,31 @@ const Header = ({ currentPage, onNavigate }) => {
     setIsUserMenuOpen(false);
   };
 
-  // Load pending orders count for admin
-  useEffect(() => {
-    if (userRole === 'admin' || userRole === 'super_admin') {
-      loadPendingOrders();
-      // Refresh every 30 seconds
-      const interval = setInterval(loadPendingOrders, 30000);      
-      return () => clearInterval(interval);
-    }
-  }, [userRole]);
+  const isAdminRole = userRole === 'admin' || userRole === 'super_admin';
 
-  const loadPendingOrders = async () => {
-    try {
-      const count = await getPendingOrdersCount();
-      setPendingOrdersCount(count || 0);
-    } catch (error) {
-      console.error('Error loading pending orders:', error);
-      setPendingOrdersCount(0);
-    }
-  };
+  // Pending work for admins: orders + remittances. A failing source counts as 0 without hiding the other.
+  const loadPendingCount = useCallback(async () => {
+    const [orders, remittances] = await Promise.all([
+      getPendingOrdersCount().catch((error) => {
+        console.error('Error loading pending orders:', error);
+        return 0;
+      }),
+      getPendingRemittancesCount()
+    ]);
+    setPendingCount((orders || 0) + (remittances || 0));
+  }, []);
+
+  // Initial load + 30s polling as a safety net in case a realtime event is missed
+  useEffect(() => {
+    if (!isAdminRole) return undefined;
+    loadPendingCount();
+    const interval = setInterval(loadPendingCount, 30000);
+    return () => clearInterval(interval);
+  }, [isAdminRole, loadPendingCount]);
+
+  // Real time: any change in orders/remittances (e.g. a new remittance registered) refreshes the badge
+  useRealtimeOrders({ onUpdate: loadPendingCount, enabled: isAdminRole });
+  useRealtimeRemittances({ onUpdate: loadPendingCount, enabled: isAdminRole });
 
   const getCategoryIndicatorConfig = (categoryName) => {
     const normalized = categoryName || 'regular';
@@ -399,9 +407,9 @@ const Header = ({ currentPage, onNavigate }) => {
                   <div className="relative">
                     {renderCategoryIndicator()}
                     <UserAvatar user={user} />
-                    {(userRole === 'admin' || userRole === 'super_admin') && pendingOrdersCount > 0 && (
+                    {isAdminRole && pendingCount > 0 && (
                       <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center font-bold shadow-lg">
-                        {pendingOrdersCount}
+                        {pendingCount}
                       </span>
                     )}
                   </div>
