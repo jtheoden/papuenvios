@@ -521,32 +521,22 @@ export const recalculateRemittanceAtCurrentRate = async (remittanceId) => {
       throw createNotFoundError('Remittance type', remittance.remittance_type_id);
     }
 
-    // 4. Resolve current exchange rate (same logic as creation)
-    const { rate: currentRate } = await getRemittanceExchangeRate(
-      remittance.currency_sent,
-      remittance.currency_delivered,
-      type.exchange_rate
-    );
-    const currentCommPct = type.commission_percentage || 0;
-    const currentCommFixed = type.commission_fixed || 0;
+    // 4. Recalculate server-side. The RPC is SECURITY DEFINER and re-validates
+    //    ownership and status; clients cannot write money columns directly
+    //    (see migration 20261013170000_remittances_owner_update_guard.sql).
+    const { error: rpcError } = await supabase.rpc('recalculate_remittance_at_current_rate', {
+      p_remittance_id: remittanceId
+    });
 
-    // 5. Recalculate using the standard formula
-    const commissionTotal = (remittance.amount_sent * currentCommPct / 100) + currentCommFixed;
-    const amountToDeliver = (remittance.amount_sent - commissionTotal) * currentRate;
+    if (rpcError) {
+      throw parseSupabaseError(rpcError);
+    }
 
-    // 6. Update remittance record (double-check status in WHERE clause)
+    // 5. Re-read the updated remittance with its joined type
     const { data, error } = await supabase
       .from('remittances')
-      .update({
-        exchange_rate: currentRate,
-        commission_percentage: currentCommPct,
-        commission_fixed: currentCommFixed,
-        commission_total: parseFloat(commissionTotal.toFixed(2)),
-        amount_to_deliver: parseFloat(amountToDeliver.toFixed(2))
-      })
-      .eq('id', remittanceId)
-      .in('status', [REMITTANCE_STATUS.PAYMENT_PENDING, REMITTANCE_STATUS.PAYMENT_REJECTED])
       .select('*, remittance_types(*)')
+      .eq('id', remittanceId)
       .single();
 
     if (error) {
