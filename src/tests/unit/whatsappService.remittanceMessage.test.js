@@ -92,4 +92,23 @@ describe('buildRemittanceProofMessage', () => {
     expect(buildRemittanceProofMessage(baseRemittance)).not.toContain('Teléfono del pagador');
     expect(buildRemittanceProofMessage(baseRemittance, { language: 'en' })).not.toContain('Payer phone');
   });
+
+  it('includes the delivery cost and total lines when delivery_cost > 0', () => {
+    const remittance = { ...baseRemittance, delivery_cost: '7.50' };
+    const es = buildRemittanceProofMessage(remittance);
+    const en = buildRemittanceProofMessage(remittance, { language: 'en' });
+    expect(es).toContain('Costo de entrega: 7.50 USD');
+    expect(es).toContain('Total pagado: 157.50 USD');
+    expect(en).toContain('Delivery cost: 7.50 USD');
+    expect(en).toContain('Total paid: 157.50 USD');
+  });
+
+  it('omits the delivery cost lines when delivery_cost is 0 or absent', () => {
+    const zero = buildRemittanceProofMessage({ ...baseRemittance, delivery_cost: 0 });
+    const absent = buildRemittanceProofMessage(baseRemittance, { language: 'en' });
+    expect(zero).not.toContain('Costo de entrega');
+    expect(zero).not.toContain('Total pagado');
+    expect(absent).not.toContain('Delivery cost');
+    expect(absent).not.toContain('Total paid');
+  });
 });

@@ -51,3 +51,15 @@ export function roundtrip(params) {
   const result = calcForward({ ...params, amount: send });
   return result.amountToDeliver;
 }
+
+/**
+ * Total the SENDER pays: amount sent plus the cash delivery cost (decision D2).
+ * The delivery cost is never deducted from the amount delivered, so calcForward and
+ * calcReverse do not take it into account. Negative or non-numeric costs count as 0.
+ */
+export function calcTotalToPay({ amountSent, deliveryCost = 0 }) {
+  const sent = Number(amountSent);
+  const cost = Number(deliveryCost);
+  const safeCost = Number.isFinite(cost) && cost > 0 ? cost : 0;
+  return Math.round((sent + safeCost) * 100) / 100;
+}

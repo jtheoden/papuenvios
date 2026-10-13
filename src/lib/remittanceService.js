@@ -32,6 +32,9 @@ import {
   ZELLE_TRANSACTION_TYPES
 } from '@/lib/zelleService';
 import { getExchangeRate as getCurrencyExchangeRate } from '@/lib/currencyService';
+import { calcTotalToPay } from '@/lib/remittanceCalculations';
+import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingService';
+import { getShippingState } from '@/lib/shippingZoneRules';
 
 /**
  * Extract file path from a Supabase storage URL or return path as-is
@@ -852,6 +855,27 @@ export const createRemittance = async (remittanceData) => {
       deliveryMethod
     } = calculation;
 
+    // Cash deliveries add the destination's shipping cost to what the sender pays (D2).
+    // The cost is never deducted from amountToDeliver. shippingService is the only source.
+    const destinationProvince = recipient_province || recipient_city || null;
+    const destinationMunicipality = recipient_municipality || recipient_city || null;
+    let deliveryCost = 0;
+    let shippingZoneId = null;
+    if (deliveryMethod === 'cash') {
+      const zones = await getActiveShippingZones();
+      const shippingState = getShippingState(zones, destinationProvince, destinationMunicipality);
+      if (shippingState.status !== 'available') {
+        throw createValidationError(
+          { recipient_province: 'Cash delivery is not available for the selected destination' },
+          'Delivery not available for the selected destination'
+        );
+      }
+      const shipping = await calculateShippingCost(destinationProvince, amount, destinationMunicipality);
+      deliveryCost = shipping.cost;
+      shippingZoneId = shipping.zone?.id ?? null;
+    }
+    const totalToPay = calcTotalToPay({ amountSent: amount, deliveryCost });
+
     // Get authenticated user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError) {
@@ -886,7 +910,7 @@ export const createRemittance = async (remittanceData) => {
       // reserveZelleAccount atomically selects AND increments usage counters (SEC-09).
       let reservedAccount;
       try {
-        reservedAccount = await reserveZelleAccount(ZELLE_TRANSACTION_TYPES.REMITTANCE, amount);
+        reservedAccount = await reserveZelleAccount(ZELLE_TRANSACTION_TYPES.REMITTANCE, totalToPay);
       } catch (zelleError) {
         console.error('[createRemittance] ZELLE ERROR: No accounts available', zelleError);
         throw new Error('No Zelle accounts available. Please try again later.');
@@ -899,6 +923,8 @@ export const createRemittance = async (remittanceData) => {
       user_id: user.id,
       remittance_type_id,
       amount_sent: amount,
+      delivery_cost: deliveryCost,
+      shipping_zone_id: shippingZoneId,
       exchange_rate: exchangeRate,
       commission_percentage: commissionPercentage,
       commission_fixed: commissionFixed,
@@ -955,7 +981,7 @@ export const createRemittance = async (remittanceData) => {
         zelle_account_id: selectedZelleAccountId,
         transaction_type: ZELLE_TRANSACTION_TYPES.REMITTANCE,
         reference_id: data.id,
-        amount: amount,
+        amount: totalToPay,
         notes: `Remesa ${data.remittance_number}`
       });
     } catch (zelleError) {

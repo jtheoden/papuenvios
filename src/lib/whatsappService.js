@@ -6,6 +6,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { logError } from './errorHandler';
+import { calcTotalToPay } from '@/lib/remittanceCalculations';
 
 /**
  * Get WhatsApp configuration from environment or settings
@@ -529,6 +530,19 @@ export const buildRemittanceProofMessage = (remittance, { language = 'es', proof
   const payerPhoneLineEs = payerPhone ? `📞 Teléfono del pagador: ${payerPhone}\n` : '';
   const payerPhoneLineEn = payerPhone ? `📞 Payer phone: ${payerPhone}\n` : '';
 
+  // Cash deliveries add a delivery cost on top of the amount sent; show it with the total the sender paid
+  const deliveryCost = Number(remittance.delivery_cost);
+  const hasDeliveryCost = Number.isFinite(deliveryCost) && deliveryCost > 0;
+  const totalPaid = calcTotalToPay({ amountSent: remittance.amount_sent, deliveryCost });
+  const deliveryCostLinesEs = hasDeliveryCost
+    ? `│ Costo de entrega: ${deliveryCost.toFixed(2)} ${remittance.currency_sent}\n` +
+      `│ Total pagado: ${totalPaid.toFixed(2)} ${remittance.currency_sent}\n`
+    : '';
+  const deliveryCostLinesEn = hasDeliveryCost
+    ? `│ Delivery cost: ${deliveryCost.toFixed(2)} ${remittance.currency_sent}\n` +
+      `│ Total paid: ${totalPaid.toFixed(2)} ${remittance.currency_sent}\n`
+    : '';
+
   const messages = {
     es: `💸 *NUEVO COMPROBANTE DE REMESA*\n` +
         `════════════════════════════════\n\n` +
@@ -542,6 +556,7 @@ export const buildRemittanceProofMessage = (remittance, { language = 'es', proof
         `💰 *Detalles del Pago*\n` +
         `┌─────────────────────\n` +
         `│ Monto enviado: ${remittance.amount_sent} ${remittance.currency_sent}\n` +
+        deliveryCostLinesEs +
         `│ Monto a entregar: ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.currency_delivered}\n` +
         `│ Tipo: ${type?.name || 'N/A'}\n` +
         `└─────────────────────\n\n` +
@@ -575,6 +590,7 @@ export const buildRemittanceProofMessage = (remittance, { language = 'es', proof
         `💰 *Payment Details*\n` +
         `┌─────────────────────\n` +
         `│ Amount Sent: ${remittance.amount_sent} ${remittance.currency_sent}\n` +
+        deliveryCostLinesEn +
         `│ Amount to Deliver: ${remittance.amount_to_deliver?.toFixed(2)} ${remittance.currency_delivered}\n` +
         `│ Type: ${type?.name || 'N/A'}\n` +
         `└─────────────────────\n\n` +

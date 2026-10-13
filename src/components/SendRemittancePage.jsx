@@ -17,7 +17,9 @@ import {
 } from '@/lib/remittanceService';
 import { getActiveShippingZones } from '@/lib/shippingService';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
-import { getSelectableProvinces, isCashDeliveryBlocked } from '@/lib/shippingZoneRules';
+import { getSelectableProvinces, isCashDeliveryBlocked, getShippingState } from '@/lib/shippingZoneRules';
+import { calcTotalToPay } from '@/lib/remittanceCalculations';
+import { pickRecipientAddress } from '@/lib/recipientInfo';
 import NotifyAdminWhatsAppButton from '@/components/NotifyAdminWhatsAppButton';
 import { validateRemittanceOffer } from '@/lib/orderDiscountService';
 import { toast } from '@/components/ui/use-toast';
@@ -447,6 +449,15 @@ const SendRemittancePage = ({ onNavigate }) => {
     deliveryMethod: selectedType?.delivery_method || 'cash',
     province: recipientData.province,
     municipality: recipientData.municipality
+  });
+
+  // Cash deliveries add the zone's shipping cost to what the sender pays (never deducted from the delivered amount)
+  const previewDeliveryCost = selectedType?.delivery_method === 'cash'
+    ? getShippingState(allShippingZones, recipientData.province, recipientData.municipality).cost
+    : 0;
+  const previewTotalToPay = calcTotalToPay({
+    amountSent: calculation?.amount,
+    deliveryCost: previewDeliveryCost
   });
 
   const handleRecipientSubmit = async () => {
@@ -1077,7 +1088,10 @@ const SendRemittancePage = ({ onNavigate }) => {
 
                   if (recipientData.recipientData) {
                     // Existing recipient selected
-                    const primaryAddress = recipientData.recipientData.addresses?.[0];
+                    const primaryAddress = pickRecipientAddress(
+                      recipientData.recipientData.addresses,
+                      recipientData.addressId
+                    );
                     setRecipientData({
                       name: recipientData.recipientData.full_name || '',
                       phone: recipientData.recipientData.phone || '',
@@ -1166,6 +1180,19 @@ const SendRemittancePage = ({ onNavigate }) => {
                     {calculation.amount} {calculation.currency}
                   </p>
                 </div>
+
+                {previewDeliveryCost > 0 && (
+                  <div>
+                    <h3 className="font-semibold mb-2">{t('remittances.wizard.deliveryCost')}</h3>
+                    <p className="text-lg font-bold text-gray-700">
+                      +{previewDeliveryCost.toFixed(2)} {calculation.currency}
+                    </p>
+                    <h3 className="font-semibold mt-3 mb-2">{t('remittances.wizard.totalToPay')}</h3>
+                    <p className="text-2xl font-bold text-blue-600">
+                      {previewTotalToPay.toFixed(2)} {calculation.currency}
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <h3 className="font-semibold mb-2">{t('remittances.wizard.recipientReceives')}</h3>
@@ -1307,7 +1334,12 @@ const SendRemittancePage = ({ onNavigate }) => {
 
             {/* Monto a Transferir - Using shared component */}
             <AmountDisplayCard
-              amount={calculation?.amount}
+              amount={calcTotalToPay({
+                amountSent: createdRemittance.amount_sent ?? calculation?.amount,
+                deliveryCost: createdRemittance.delivery_cost
+              })}
+              deliveryCost={Number(createdRemittance.delivery_cost) || 0}
+              amountSent={createdRemittance.amount_sent ?? calculation?.amount}
               currency={calculation?.currency || 'USD'}
               deliveryAmount={calculation?.amountToDeliver}
               deliveryCurrency={calculation?.deliveryCurrency}

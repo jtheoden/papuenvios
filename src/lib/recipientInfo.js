@@ -37,3 +37,16 @@ export const formatRecipientLocation = (municipality, province) =>
     .filter((part) => typeof part === 'string' && part.trim() !== '')
     .map((part) => part.trim())
     .join(', ');
+
+/**
+ * Address the user actually selected for a recipient. Falls back to the first
+ * address when no id is given or the id is not in the list.
+ *
+ * @param {Array<{ id: string }>|null|undefined} addresses
+ * @param {string|null|undefined} addressId
+ * @returns {object|undefined}
+ */
+export const pickRecipientAddress = (addresses, addressId) => {
+  if (!Array.isArray(addresses) || addresses.length === 0) return undefined;
+  return addresses.find((address) => address.id === addressId) || addresses[0];
+};

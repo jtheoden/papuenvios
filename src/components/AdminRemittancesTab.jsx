@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useModal } from '@/contexts/ModalContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
+import { calcTotalToPay } from '@/lib/remittanceCalculations';
 import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import {
   getAllRemittances,
@@ -331,7 +332,7 @@ const AdminRemittancesTab = () => {
   const handleValidatePayment = async (remittance) => {
     const notes = await showModal({
       title: t('remittances.admin.validate'),
-      message: t('remittances.admin.confirmValidateMessage', { amount: remittance.amount_sent, currency: remittance.currency_sent }),
+      message: t('remittances.admin.confirmValidateMessage', { amount: calcTotalToPay({ amountSent: remittance.amount_sent, deliveryCost: remittance.delivery_cost }), currency: remittance.currency_sent }),
       input: true,
       inputLabel: t('remittances.admin.validationNotes') + ' (opcional)',
       inputPlaceholder: t('remittances.admin.validationNotesPlaceholder'),
@@ -936,6 +937,11 @@ const AdminRemittancesTab = () => {
                   <p className="text-xs sm:text-sm font-semibold">
                     {remittance.amount_sent} {remittance.currency_sent}
                   </p>
+                  {Number(remittance.delivery_cost) > 0 && (
+                    <p className="text-[10px] sm:text-xs text-gray-500">
+                      {t('remittances.admin.totalPaid')}: {calcTotalToPay({ amountSent: remittance.amount_sent, deliveryCost: remittance.delivery_cost }).toFixed(2)} {remittance.currency_sent}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -1100,6 +1106,18 @@ const AdminRemittancesTab = () => {
                       <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.amountSent')}</p>
                       <p className="text-base sm:text-lg font-bold text-blue-600">{selectedRemittance.amount_sent} {selectedRemittance.currency_sent}</p>
                     </div>
+                    {Number(selectedRemittance.delivery_cost) > 0 && (
+                      <>
+                        <div>
+                          <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.deliveryCost')}</p>
+                          <p className="text-base sm:text-lg font-bold text-gray-700">{Number(selectedRemittance.delivery_cost).toFixed(2)} {selectedRemittance.currency_sent}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.totalPaid')}</p>
+                          <p className="text-base sm:text-lg font-bold text-blue-600">{calcTotalToPay({ amountSent: selectedRemittance.amount_sent, deliveryCost: selectedRemittance.delivery_cost }).toFixed(2)} {selectedRemittance.currency_sent}</p>
+                        </div>
+                      </>
+                    )}
                     <div>
                       <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.toDeliver')}</p>
                       <p className="text-base sm:text-lg font-bold text-green-600">{selectedRemittance.amount_to_deliver?.toFixed(2)} {selectedRemittance.currency_delivered}</p>
