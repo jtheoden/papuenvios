@@ -488,6 +488,32 @@ export const getPendingRemittancesCountByType = async (typeId) => {
 };
 
 /**
+ * Get count of remittances that still need admin attention (awaiting payment or proof validation).
+ * Feeds the admin avatar badge in the top bar; never throws so the header keeps rendering.
+ * @returns {Promise<number>} Count of pending remittances
+ */
+export const getPendingRemittancesCount = async () => {
+  try {
+    const { count, error } = await supabase
+      .from('remittances')
+      .select('id', { count: 'exact', head: true })
+      .in('status', [
+        REMITTANCE_STATUS.PAYMENT_PENDING,
+        REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED
+      ]);
+
+    if (error) {
+      console.warn('[getPendingRemittancesCount] Error:', error);
+      return 0;
+    }
+    return count || 0;
+  } catch (error) {
+    console.warn('[getPendingRemittancesCount] Exception:', error);
+    return 0;
+  }
+};
+
+/**
  * Recalculate a payment_pending remittance at the current type rate
  * Only works for payment_pending status (user hasn't paid yet)
  * @param {string} remittanceId - Remittance ID
