@@ -35,6 +35,8 @@ async function decryptData(encryptedBase64) {
 import { toast } from '@/components/ui/use-toast';
 import ImageProofModal from './ImageProofModal';
 import TooltipButton from './TooltipButton';
+import RecipientLocation from './RecipientLocation';
+import { formatRecipientLocation } from '@/lib/recipientInfo';
 
 const AdminRemittancesTab = () => {
   const { t, language } = useLanguage();
@@ -948,12 +950,11 @@ const AdminRemittancesTab = () => {
                   <p className="text-xs sm:text-sm font-semibold capitalize">{remittance.remittance_types?.delivery_method}</p>
                 </div>
 
-                {remittance.recipient_city && (
+                {formatRecipientLocation(remittance.recipient_municipality, remittance.recipient_province) && (
                   <div className="col-span-2 sm:col-span-1">
-                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">{t('remittances.recipient.city')}</p>
+                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">{t('remittances.recipient.location')}</p>
                     <p className="text-xs sm:text-sm font-semibold truncate">
-                      {remittance.recipient_city}
-                      {remittance.recipient_province && `, ${remittance.recipient_province}`}
+                      {formatRecipientLocation(remittance.recipient_municipality, remittance.recipient_province)}
                     </p>
                   </div>
                 )}
@@ -1112,12 +1113,11 @@ const AdminRemittancesTab = () => {
                   <div className="bg-gray-50 rounded-lg p-3 sm:p-4 space-y-2 text-xs sm:text-sm">
                     <p><span className="font-medium">{t('remittances.admin.recipientName')}</span> {selectedRemittance.recipient_name || 'N/A'}</p>
                     <p><span className="font-medium">{t('remittances.admin.recipientPhone')}</span> {selectedRemittance.recipient_phone || 'N/A'}</p>
-                    {selectedRemittance.recipient_city && (
-                      <p>
-                        <span className="font-medium">{t('remittances.admin.recipientLocation')}</span> {selectedRemittance.recipient_city}
-                        {selectedRemittance.recipient_province && `, ${selectedRemittance.recipient_province}`}
-                        {selectedRemittance.recipient_municipality && `, ${selectedRemittance.recipient_municipality}`}
-                      </p>
+                    {selectedRemittance.remittance_types?.delivery_method !== 'cash' && (
+                      <RecipientLocation
+                        label={t('remittances.admin.recipientLocation')}
+                        remittance={selectedRemittance}
+                      />
                     )}
                   </div>
                 </div>

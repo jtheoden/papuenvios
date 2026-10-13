@@ -28,6 +28,7 @@ import SkeletonCard from '@/components/ui/SkeletonCard';
 import SearchFilterBar from '@/components/ui/SearchFilterBar';
 import RemittanceTimeline from '@/components/ui/RemittanceTimeline';
 import NotifyAdminWhatsAppButton from '@/components/NotifyAdminWhatsAppButton';
+import RecipientLocation from '@/components/RecipientLocation';
 
 const MyRemittancesPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
@@ -1019,9 +1020,11 @@ const MyRemittancesPage = ({ onNavigate }) => {
                   <div className="space-y-2 bg-gray-50 p-3 sm:p-4 rounded-lg text-xs sm:text-sm">
                     <p><span className="text-gray-600">{t('remittances.user.recipientName')}</span> <span className="font-medium">{selectedRemittance.recipient_name}</span></p>
                     <p><span className="text-gray-600">{t('remittances.user.recipientPhone')}</span> <span className="font-medium">{selectedRemittance.recipient_phone}</span></p>
-                    {selectedRemittance.recipient_city && (
-                      <p><span className="font-medium">{t('remittances.user.recipientCity')}</span> {selectedRemittance.recipient_city}{selectedRemittance.recipient_province && `, ${selectedRemittance.recipient_province}`}{selectedRemittance.recipient_municipality && `, ${selectedRemittance.recipient_municipality}`}</p>
-                    )}
+                    <RecipientLocation
+                      label={t('remittances.user.recipientLocation')}
+                      remittance={selectedRemittance}
+                      labelClassName="text-gray-600"
+                    />
                     {selectedRemittance.recipient_address && (
                       <p><span className="text-gray-600">{t('remittances.user.recipientAddress')}</span> <span className="font-medium">{selectedRemittance.recipient_address}</span></p>
                     )}
