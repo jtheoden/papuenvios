@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { ShoppingCart, X, Plus, Minus, Copy, Upload, CheckCircle, MessageCircle, ArrowLeft, ArrowRight, Tag, Package, AlertCircle } from 'lucide-react';
+import { ShoppingCart, X, Plus, Minus, Copy, Upload, CheckCircle, MessageCircle, ArrowLeft, ArrowRight, Tag, Package, AlertCircle, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -295,6 +295,20 @@ const CartPage = ({ onNavigate }) => {
     total: convertedTotal !== null ? convertedTotal : totalAmount,
     categoryDiscount: categoryDiscountAmount * exchangeRateForDisplay,
     offerDiscount: offerDiscountAmount * exchangeRateForDisplay
+  };
+
+  const handleClearCart = async () => {
+    const confirmed = await showModal({
+      type: 'danger',
+      title: t('cart.clearAll.title'),
+      message: t('cart.clearAll.message'),
+      confirmText: t('cart.clearAll.confirm'),
+      cancelText: t('common.cancel')
+    });
+
+    if (confirmed) {
+      clearCart();
+    }
   };
 
   const handleCheckout = async () => {
@@ -1526,6 +1540,10 @@ const CartPage = ({ onNavigate }) => {
 
                 <Button onClick={handleCheckout} className="w-full" size="lg" style={getPrimaryButtonStyle(visualSettings)}>
                   {t('cart.checkout')}
+                </Button>
+                <Button onClick={handleClearCart} variant="outline" className="w-full">
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  {t('cart.clearAll.button')}
                 </Button>
               </motion.div>
             </div>
