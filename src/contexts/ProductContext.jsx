@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { getProducts, getCategories } from '@/lib/productService';
+import { useAuth } from '@/contexts/AuthContext';
 import { getCombos } from '@/lib/comboService';
 import { getTestimonials } from '@/lib/testimonialService';
 import { getCarouselSlides } from '@/lib/carouselService';
@@ -21,6 +22,9 @@ export const ProductProvider = ({ children }) => {
   const [carouselSlides, setCarouselSlides] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const { userRole } = useAuth();
+  // Category profit margins are internal: only admins load them
+  const canSeeMargins = userRole === 'admin' || userRole === 'super_admin';
 
   // Fetch products from Supabase
   const refreshProducts = async (includeInactive = false) => {
@@ -38,7 +42,7 @@ export const ProductProvider = ({ children }) => {
   const refreshCategories = async () => {
     try {
       setError(null);
-      const data = await getCategories();
+      const data = await getCategories(canSeeMargins ? { includeMargin: true } : undefined);
       setCategories(data || []);
     } catch (error) {
       console.error('Error refreshing categories:', error);
@@ -161,6 +165,15 @@ export const ProductProvider = ({ children }) => {
 
     loadInitialData();
   }, []);
+
+  // The role resolves after sign-in/out: reload categories when margin visibility changes
+  // (the initial load above already used the value at mount time)
+  const previousCanSeeMargins = useRef(canSeeMargins);
+  useEffect(() => {
+    if (previousCanSeeMargins.current === canSeeMargins) return;
+    previousCanSeeMargins.current = canSeeMargins;
+    refreshCategories();
+  }, [canSeeMargins]);
 
   // Helper functions for products
   const addProduct = (product) => setProducts(prev => [...prev, product]);

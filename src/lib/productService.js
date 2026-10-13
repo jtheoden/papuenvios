@@ -779,11 +779,13 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
  * @throws {AppError} If database query fails
  * @returns {Promise<Array>} Array of active categories
  */
-export const getCategories = async () => {
+export const getCategories = async ({ includeMargin = false } = {}) => {
   try {
+    // profit_margin is internal business data: only admin callers ask for it
+    const publicColumns = 'id, slug, name_es, name_en, description_es, description_en, display_order, is_active';
     const { data, error } = await supabase
       .from('product_categories')
-      .select('id, slug, name_es, name_en, description_es, description_en, display_order, is_active, profit_margin')
+      .select(includeMargin ? `${publicColumns}, profit_margin` : publicColumns)
       .eq('is_active', true)
       .order('display_order', { ascending: true });
 
