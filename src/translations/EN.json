@@ -1690,6 +1690,9 @@
     "updateButton": "Update Recipient"
   },
   "zelle": {
+    "showEmail": "Show email to customers",
+    "showPhone": "Show phone to customers",
+    "atLeastOneVisible": "At least one of email or phone must be visible to customers",
     "accounts": "Zelle Accounts",
     "selectAccount": "Select Zelle Account",
     "selectAccountRequired": "You must select a Zelle account to continue",

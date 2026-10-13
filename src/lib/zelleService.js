@@ -168,12 +168,11 @@ export const reserveZelleAccount = async (transactionType, amount) => {
       );
     }
 
-    // Fetch complete account details
-    const { data: account, error: accountError } = await supabase
-      .from('zelle_accounts')
-      .select('*')
-      .eq('id', data)
-      .single();
+    // Customer-safe account details: email/phone come back NULL when the admin hid them.
+    const { data: rows, error: accountError } = await supabase.rpc('get_zelle_account_public', {
+      p_id: data
+    });
+    const account = Array.isArray(rows) ? rows[0] : rows;
 
     if (accountError) {
       throw parseSupabaseError(accountError);

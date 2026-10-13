@@ -979,7 +979,7 @@ export const createRemittance = async (remittanceData) => {
     const performInsert = async (payload) => supabase
       .from('remittances')
       .insert([payload])
-      .select('*, zelle_accounts(*)')
+      .select('*')
       .single();
 
     const { data, error } = await performInsert(insertData);

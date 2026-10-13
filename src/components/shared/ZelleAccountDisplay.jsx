@@ -6,6 +6,7 @@
 
 import { Copy, CreditCard } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { getZelleAccountPublicContact } from '@/lib/zelleVisibility';
 
 const ZelleAccountDisplay = ({
   account,
@@ -18,8 +19,7 @@ const ZelleAccountDisplay = ({
   if (!account) return null;
 
   const accountName = account.account_name || account.account_holder || account.name;
-  const email = account.email || account.zelle_email;
-  const phone = account.phone_number || account.phone;
+  const { email, phone } = getZelleAccountPublicContact(account);
 
   const handleCopy = (value, label) => {
     navigator.clipboard.writeText(value).then(() => {

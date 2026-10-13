@@ -26,18 +26,14 @@ describe('reserveZelleAccount', () => {
   });
 
   it('reserves via a single atomic RPC call, not the old two-step select+update pair', async () => {
-    rpcMock.mockResolvedValue({ data: 'acc-1', error: null });
-    fromMock.mockReturnValue({
-      select: () => ({
-        eq: () => ({
-          single: () => Promise.resolve({ data: { id: 'acc-1', holder_name: 'Juan' }, error: null })
-        })
-      })
-    });
+    rpcMock.mockImplementation((name) => Promise.resolve(
+      name === 'reserve_zelle_account'
+        ? { data: 'acc-1', error: null }
+        : { data: [{ id: 'acc-1', account_holder: 'Juan', email: 'a@b.com', phone: '+1555' }], error: null }
+    ));
 
     const account = await reserveZelleAccount('remittance', 250);
 
-    expect(rpcMock).toHaveBeenCalledTimes(1);
     expect(rpcMock).toHaveBeenCalledWith('reserve_zelle_account', {
       p_transaction_type: 'remittance',
       p_amount: 250
@@ -45,7 +41,23 @@ describe('reserveZelleAccount', () => {
     // Must never call the old non-atomic pair.
     expect(rpcMock).not.toHaveBeenCalledWith('select_available_zelle_account', expect.anything());
     expect(rpcMock).not.toHaveBeenCalledWith('update_zelle_account_usage', expect.anything());
-    expect(account).toEqual({ id: 'acc-1', holder_name: 'Juan' });
+    expect(account).toEqual({ id: 'acc-1', account_holder: 'Juan', email: 'a@b.com', phone: '+1555' });
+    // Customer path must not read the table directly (would bypass the visibility flags).
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it('returns the account through get_zelle_account_public with hidden contact fields as null', async () => {
+    rpcMock.mockImplementation((name) => Promise.resolve(
+      name === 'reserve_zelle_account'
+        ? { data: 'acc-2', error: null }
+        : { data: [{ id: 'acc-2', account_holder: 'Ana', email: null, phone: '+1555' }], error: null }
+    ));
+
+    const account = await reserveZelleAccount('product', 40);
+
+    expect(rpcMock).toHaveBeenCalledWith('get_zelle_account_public', { p_id: 'acc-2' });
+    expect(account.email).toBeNull();
+    expect(account.phone).toBe('+1555');
   });
 
   it('throws when no account is available (RPC returns null)', async () => {
