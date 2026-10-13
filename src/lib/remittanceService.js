@@ -1023,10 +1023,13 @@ export const createRemittance = async (remittanceData) => {
  * @param {File} file - Proof file to upload
  * @param {string} reference - Payment reference
  * @param {string} notes - Optional payment notes
+ * @param {Object} [options]
+ * @param {string} [options.language='es'] - Language of the admin WhatsApp message ('es' | 'en')
  * @throws {AppError} If validation fails, upload fails, or remittance not found
  * @returns {Promise<Object>} Updated remittance with proof details
  */
-export const uploadPaymentProof = async (remittanceId, file, reference, notes = '') => {
+export const uploadPaymentProof = async (remittanceId, file, reference, notes = '', options = {}) => {
+  const { language = 'es' } = options || {};
   try {
     if (!remittanceId || !file || !reference) {
       throw createValidationError({
@@ -1146,7 +1149,7 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
           user_email: user.email,
           user_name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0]
         };
-        await notifyAdminNewPaymentProof(remittanceForNotify, whatsappRecipient, 'es');
+        await notifyAdminNewPaymentProof(remittanceForNotify, whatsappRecipient, language);
       } else {
         console.warn('[uploadPaymentProof] No WhatsApp recipient configured in notification_settings');
       }

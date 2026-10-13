@@ -27,6 +27,7 @@ import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import SkeletonCard from '@/components/ui/SkeletonCard';
 import SearchFilterBar from '@/components/ui/SearchFilterBar';
 import RemittanceTimeline from '@/components/ui/RemittanceTimeline';
+import NotifyAdminWhatsAppButton from '@/components/NotifyAdminWhatsAppButton';
 
 const MyRemittancesPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
@@ -385,7 +386,8 @@ const MyRemittancesPage = ({ onNavigate }) => {
         selectedRemittance.id,
         uploadData.file,
         uploadData.reference,
-        uploadData.notes
+        uploadData.notes,
+        { language }
       );
 
       toast({
@@ -1095,6 +1097,13 @@ const MyRemittancesPage = ({ onNavigate }) => {
                         <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.paymentReferenceLabel')}</p>
                         <p className="font-semibold text-blue-900 text-sm">{selectedRemittance.payment_reference}</p>
                       </div>
+                    )}
+                    {selectedRemittance.status === REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED && (
+                      <NotifyAdminWhatsAppButton
+                        remittance={selectedRemittance}
+                        user={user}
+                        className="mt-3"
+                      />
                     )}
                   </div>
                 ) : (

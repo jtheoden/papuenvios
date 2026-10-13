@@ -20,7 +20,8 @@ const ConfirmationModal = ({
   currency = 'USD',
   recipientName,
   itemCount,
-  estimatedDelivery = '24-72 horas'
+  estimatedDelivery = '24-72 horas',
+  extraActions = null
 }) => {
   const { language } = useLanguage();
   const { visualSettings } = useBusiness();
@@ -194,6 +195,7 @@ const ConfirmationModal = ({
 
             {/* Actions */}
             <div className="px-6 py-4 space-y-3">
+              {extraActions}
               <Button
                 onClick={onViewOrders}
                 className="w-full h-12 text-base font-medium"

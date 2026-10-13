@@ -472,25 +472,14 @@ export const isValidPhoneNumber = (phone) => {
 // ============================================================================
 
 /**
- * Notify admin about new payment proof upload (Remittance)
- * @param {Object} remittance - Remittance details with remittance_types
- * @param {string} adminPhone - Admin phone from settings
- * @param {string} language - Language for message ('es' or 'en')
+ * Resolve a link to the payment proof usable inside a WhatsApp message.
+ * Storage paths are converted to a 24h signed URL; absolute URLs are returned as is.
+ * Never throws: on failure the raw value is returned.
+ * @param {Object} remittance - Remittance with payment_proof_url
+ * @returns {Promise<string>} Proof link ('' when there is no proof)
  */
-export const notifyAdminNewPaymentProof = async (remittance, adminPhone, language = 'es') => {
-
-  if (!adminPhone) {
-    console.error('[WhatsApp] Admin WhatsApp number not configured or empty');
-    alert('Número de WhatsApp del administrador no configurado. Contacte al soporte.');
-    return;
-  }
-
-  const config = getWhatsAppConfig();
-  const type = remittance.remittance_types || remittance.remittance_type;
-  const userEmail = remittance.user_email || remittance?.user?.email || remittance?.email || 'No disponible';
-  const userName = remittance.user_name || remittance?.user?.user_metadata?.full_name || remittance?.user?.user_metadata?.name || null;
-
-  let proofLink = remittance.payment_proof_url || '';
+export const resolveRemittanceProofLink = async (remittance) => {
+  let proofLink = remittance?.payment_proof_url || '';
   if (proofLink && !proofLink.startsWith('http')) {
     try {
       const { data, error } = await supabase
@@ -502,12 +491,33 @@ export const notifyAdminNewPaymentProof = async (remittance, adminPhone, languag
         proofLink = data.signedUrl;
       }
     } catch (storageError) {
-      logError(storageError, { operation: 'notifyAdminNewPaymentProof - signedUrl', proofLink });
+      logError(storageError, { operation: 'resolveRemittanceProofLink', proofLink });
     }
   }
+  return proofLink;
+};
+
+/**
+ * Build the admin WhatsApp message for a new remittance payment proof.
+ * Pure: no side effects, no window.open.
+ * @param {Object} remittance - Remittance details (optionally with remittance_types and user_email/user_name)
+ * @param {Object} [options]
+ * @param {string} [options.language='es'] - 'es' or 'en' (unknown values fall back to 'es')
+ * @param {string} [options.proofLink=''] - Resolved link to the proof image
+ * @returns {string} Message text
+ */
+export const buildRemittanceProofMessage = (remittance, { language = 'es', proofLink = '' } = {}) => {
+  const type = remittance.remittance_types || remittance.remittance_type;
+  const userEmail = remittance.user_email || remittance?.user?.email || remittance?.email || 'No disponible';
+  const userName = remittance.user_name || remittance?.user?.user_metadata?.full_name || remittance?.user?.user_metadata?.name || null;
 
   const systemLink = `${window.location.origin}/dashboard?tab=remittances&id=${remittance.id}`;
   const formattedProofLink = proofLink || systemLink;
+
+  const location = [remittance.recipient_municipality, remittance.recipient_province]
+    .filter(Boolean)
+    .join(', ');
+  const locationLine = location ? `│ 📍 ${location}\n` : '';
 
   const messages = {
     es: `💸 *NUEVO COMPROBANTE DE REMESA*\n` +
@@ -529,7 +539,7 @@ export const notifyAdminNewPaymentProof = async (remittance, adminPhone, languag
         `┌─────────────────────\n` +
         `│ ${remittance.recipient_name}\n` +
         `│ 📱 ${remittance.recipient_phone}\n` +
-        `│ 📍 ${remittance.recipient_province || 'N/A'}\n` +
+        locationLine +
         `└─────────────────────\n\n` +
         `📸 *COMPROBANTE DE PAGO*\n` +
         `━━━━━━━━━━━━━━━━━━━━\n` +
@@ -560,7 +570,7 @@ export const notifyAdminNewPaymentProof = async (remittance, adminPhone, languag
         `┌─────────────────────\n` +
         `│ ${remittance.recipient_name}\n` +
         `│ 📱 ${remittance.recipient_phone}\n` +
-        `│ 📍 ${remittance.recipient_province || 'N/A'}\n` +
+        locationLine +
         `└─────────────────────\n\n` +
         `📸 *PAYMENT PROOF*\n` +
         `━━━━━━━━━━━━━━━━━━━━\n` +
@@ -573,8 +583,36 @@ export const notifyAdminNewPaymentProof = async (remittance, adminPhone, languag
         `─────────────────────────────────`
   };
 
-  const url = generateWhatsAppURL(adminPhone, messages[language] || messages.es);
+  return messages[language] || messages.es;
+};
+
+/**
+ * Open WhatsApp with the new-payment-proof message for the admin (Remittance).
+ * Single automatic notification point. No UI side effects: the outcome is returned
+ * so callers can surface it (toast) if they want to.
+ * @param {Object} remittance - Remittance details with remittance_types
+ * @param {string} adminPhone - Admin phone from settings
+ * @param {string} language - Language for message ('es' or 'en')
+ * @returns {Promise<{opened: boolean, reason?: 'no_recipient'|'invalid_url'}>}
+ */
+export const notifyAdminNewPaymentProof = async (remittance, adminPhone, language = 'es') => {
+  if (!adminPhone) {
+    logError({ code: 'VALIDATION_FAILED', message: 'Admin WhatsApp number not configured or empty' }, {
+      operation: 'notifyAdminNewPaymentProof'
+    });
+    return { opened: false, reason: 'no_recipient' };
+  }
+
+  const proofLink = await resolveRemittanceProofLink(remittance);
+  const message = buildRemittanceProofMessage(remittance, { language, proofLink });
+
+  const url = generateWhatsAppURL(adminPhone, message);
+  if (!url) {
+    return { opened: false, reason: 'invalid_url' };
+  }
+
   window.open(url, '_blank');
+  return { opened: true };
 };
 
 /**

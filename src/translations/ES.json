@@ -471,6 +471,12 @@
       "rateUpdated": "Remesa actualizada a la tasa actual",
       "recalculating": "Recalculando..."
     },
+    "notifyAdmin": {
+      "button": "Avisar al administrador por WhatsApp",
+      "hint": "Se abrirá WhatsApp con el comprobante listo para enviar. Solo falta que pulses enviar.",
+      "noRecipientTitle": "No se pudo avisar al administrador",
+      "noRecipient": "El número de WhatsApp del administrador no está disponible. Contacta al soporte."
+    },
     "wizard": {
       "step1Title": "Tipo y Monto de Remesa",
       "step2Title": "Datos del Destinatario",

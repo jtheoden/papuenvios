@@ -462,6 +462,12 @@
       "rateUpdated": "Remittance updated to current rate",
       "recalculating": "Recalculating..."
     },
+    "notifyAdmin": {
+      "button": "Notify the administrator via WhatsApp",
+      "hint": "WhatsApp will open with the payment proof ready to send. You only need to press send.",
+      "noRecipientTitle": "Could not notify the administrator",
+      "noRecipient": "The administrator's WhatsApp number is not available. Please contact support."
+    },
     "wizard": {
       "step1Title": "Remittance Type and Amount",
       "step2Title": "Recipient Details",

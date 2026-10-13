@@ -7,7 +7,6 @@ import {
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useModal } from '@/contexts/ModalContext';
-import { useBusiness } from '@/contexts/BusinessContext';
 import {
   getActiveRemittanceTypes,
   getRemittanceExchangeRate,
@@ -18,8 +17,7 @@ import {
 } from '@/lib/remittanceService';
 import { getActiveShippingZones } from '@/lib/shippingService';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
-import { notifyAdminNewPaymentProof } from '@/lib/whatsappService';
-import { getActiveWhatsappRecipient } from '@/lib/notificationSettingsService';
+import NotifyAdminWhatsAppButton from '@/components/NotifyAdminWhatsAppButton';
 import { validateRemittanceOffer } from '@/lib/orderDiscountService';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
@@ -36,7 +34,6 @@ const SendRemittancePage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { user, isAdmin, isSuperAdmin } = useAuth();
   const { showModal } = useModal();
-  const { notificationSettings } = useBusiness();
 
   const recipientSelectorRef = useRef();
 
@@ -1322,25 +1319,14 @@ const SendRemittancePage = ({ onNavigate }) => {
               onSubmit={async () => {
                 setSubmitting(true);
                 try {
-                  await uploadPaymentProof(createdRemittance.id, paymentData.file, paymentData.reference, paymentData.notes);
-
-                  const notificationWhatsapp = getActiveWhatsappRecipient(notificationSettings);
-                  if (notificationWhatsapp) {
-                    try {
-                      const enrichedRemittance = {
-                        ...createdRemittance,
-                        remittance_types: selectedType,
-                        amount: parseFloat(amount),
-                        currency: calculation?.currency || 'USD',
-                        amount_to_deliver: calculation?.amountToDeliver,
-                        delivery_currency: calculation?.deliveryCurrency,
-                        payment_reference: paymentData.reference,
-                        user_email: user?.email,
-                        user_name: user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0]
-                      };
-                      await notifyAdminNewPaymentProof(enrichedRemittance, notificationWhatsapp, language);
-                    } catch (e) { console.warn('WhatsApp notification failed', e); }
-                  }
+                  // uploadPaymentProof is the single automatic admin-notification point
+                  const uploadedRemittance = await uploadPaymentProof(
+                    createdRemittance.id,
+                    paymentData.file,
+                    paymentData.reference,
+                    paymentData.notes,
+                    { language }
+                  );
 
                   toast({ title: t('common.success'), description: t('remittances.wizard.proofSubmittedSuccess') });
 
@@ -1348,7 +1334,8 @@ const SendRemittancePage = ({ onNavigate }) => {
                     remittanceNumber: createdRemittance.remittance_number,
                     total: calculation?.amountToDeliver || parseFloat(amount),
                     currency: calculation?.deliveryCurrency || 'CUP',
-                    recipientName: recipientData.name
+                    recipientName: recipientData.name,
+                    remittance: uploadedRemittance
                   });
                   setShowConfirmationModal(true);
                 } catch (error) {
@@ -1384,6 +1371,11 @@ const SendRemittancePage = ({ onNavigate }) => {
         currency={confirmedRemittanceInfo?.currency}
         recipientName={confirmedRemittanceInfo?.recipientName}
         estimatedDelivery={t('remittances.wizard.estimatedDeliveryTime')}
+        extraActions={
+          confirmedRemittanceInfo?.remittance ? (
+            <NotifyAdminWhatsAppButton remittance={confirmedRemittanceInfo.remittance} user={user} />
+          ) : null
+        }
       />
     </div>
   );
