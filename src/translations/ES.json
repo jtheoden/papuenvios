@@ -1179,6 +1179,8 @@
     "free": "Gratis",
     "total": "Total",
     "checkout": "Proceder al Pago",
+    "shippingUnavailable": "No realizamos envíos a este destino por ahora. Elige otro municipio o provincia, o contacta a soporte.",
+    "shippingUnavailableShort": "No disponible",
     "validation": {
       "selectRecipient": "Selecciona un destinatario",
       "selectZelleAccount": "Selecciona una cuenta Zelle"

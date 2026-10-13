@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight, ArrowLeft, Check, DollarSign, User, FileText,
@@ -17,6 +17,7 @@ import {
 } from '@/lib/remittanceService';
 import { getActiveShippingZones } from '@/lib/shippingService';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
+import { getSelectableProvinces, isCashDeliveryBlocked } from '@/lib/shippingZoneRules';
 import NotifyAdminWhatsAppButton from '@/components/NotifyAdminWhatsAppButton';
 import { validateRemittanceOffer } from '@/lib/orderDiscountService';
 import { toast } from '@/components/ui/use-toast';
@@ -55,7 +56,9 @@ const SendRemittancePage = ({ onNavigate }) => {
 
   const [selectedRecipientData, setSelectedRecipientData] = useState(null);
   const [selectedZelle, setSelectedZelle] = useState(null);
-  const [shippingZones, setShippingZones] = useState([]);
+  const [allShippingZones, setAllShippingZones] = useState([]);
+  // Provinces/municipalities the customer may pick (province selectable if any municipality is available)
+  const shippingZones = useMemo(() => getSelectableProvinces(allShippingZones), [allShippingZones]);
   const [municipalities, setMunicipalities] = useState([]);
   const [selectedBankAccount, setSelectedBankAccount] = useState(null);
   const [selectedBankAccountDetails, setSelectedBankAccountDetails] = useState(null);
@@ -310,11 +313,7 @@ const SendRemittancePage = ({ onNavigate }) => {
   const loadShippingZones = async () => {
     try {
       const zones = await getActiveShippingZones();
-      const availableZones = (zones || []).filter(zone => {
-        const cost = parseFloat(zone.shipping_cost || 0);
-        return zone.free_shipping === true || cost > 0;
-      });
-      setShippingZones(availableZones);
+      setAllShippingZones(zones || []);
     } catch (error) {
       console.error('Error loading shipping zones:', error);
     }
@@ -442,6 +441,14 @@ const SendRemittancePage = ({ onNavigate }) => {
     }
   };
 
+  // Cash deliveries need an available destination zone; other delivery methods are not zone-bound
+  const deliveryZoneBlocked = isCashDeliveryBlocked({
+    zones: allShippingZones,
+    deliveryMethod: selectedType?.delivery_method || 'cash',
+    province: recipientData.province,
+    municipality: recipientData.municipality
+  });
+
   const handleRecipientSubmit = async () => {
     if (!selectedRecipientData) {
       toast({
@@ -456,6 +463,15 @@ const SendRemittancePage = ({ onNavigate }) => {
       toast({
         title: t('common.error'),
         description: t('remittances.wizard.fillRecipientInfo'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (deliveryZoneBlocked) {
+      toast({
+        title: t('common.error'),
+        description: t('cart.shippingUnavailable'),
         variant: 'destructive'
       });
       return;
@@ -1096,6 +1112,13 @@ const SendRemittancePage = ({ onNavigate }) => {
               />
             </div>
 
+            {deliveryZoneBlocked && (
+              <div role="alert" className="flex items-start gap-2 p-4 rounded-lg border-2 border-red-200 bg-red-50 text-sm font-medium text-red-700">
+                <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                {t('cart.shippingUnavailable')}
+              </div>
+            )}
+
             <div className="flex justify-between">
               <button
                 onClick={() => setStep(1)}
@@ -1106,7 +1129,8 @@ const SendRemittancePage = ({ onNavigate }) => {
               </button>
               <button
                 onClick={handleRecipientSubmit}
-                className={`${getPrimaryButtonStyle()} flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200`}
+                disabled={deliveryZoneBlocked}
+                className={`${getPrimaryButtonStyle()} flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 {t('remittances.wizard.continue')}
                 <ArrowRight className="h-6 w-6" />

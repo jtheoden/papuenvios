@@ -10,6 +10,7 @@ import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle, getAlertStyle } from '@/lib/styleUtils';
 import { processImage } from '@/lib/imageUtils';
 import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingService';
+import { getSelectableProvinces, getShippingState, isShippingBlocked } from '@/lib/shippingZoneRules';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
 import { convertCurrency } from '@/lib/currencyService';
 import { generateWhatsAppURL, notifyAdminNewPayment, openWhatsAppChat } from '@/lib/whatsappService';
@@ -61,9 +62,14 @@ const CartPage = ({ onNavigate }) => {
   const [payerPhone, setPayerPhone] = useState('');
   const [uploadingProof, setUploadingProof] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
-  const [shippingZones, setShippingZones] = useState([]);
+  const [allShippingZones, setAllShippingZones] = useState([]);
+  // Provinces/municipalities the customer may pick (province selectable if any municipality is available)
+  const shippingZones = useMemo(() => getSelectableProvinces(allShippingZones), [allShippingZones]);
   const [municipalities, setMunicipalities] = useState([]);
   const [shippingCost, setShippingCost] = useState(0);
+  // True when the chosen destination has no available zone or the cost lookup failed.
+  // Never fall back to a shipping cost of 0: the checkout is blocked instead.
+  const [shippingUnavailable, setShippingUnavailable] = useState(false);
   const [convertedSubtotal, setConvertedSubtotal] = useState(null);
   const [convertedDiscountedSubtotal, setConvertedDiscountedSubtotal] = useState(null);
   const [convertedShipping, setConvertedShipping] = useState(null);
@@ -200,7 +206,7 @@ const CartPage = ({ onNavigate }) => {
       updateShippingCost(recipientDetails.province, recipientDetails.municipality);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recipientDetails.province, recipientDetails.municipality, subtotal]);
+  }, [recipientDetails.province, recipientDetails.municipality, subtotal, allShippingZones]);
 
   // Convert amounts when currency or totals change
   useEffect(() => {
@@ -211,14 +217,7 @@ const CartPage = ({ onNavigate }) => {
   const loadShippingZones = async () => {
     try {
       const zones = await getActiveShippingZones();
-
-      // Filter zones: exclude zones with shipping_cost = 0 UNLESS they are marked as free_shipping
-      const availableZones = (zones || []).filter(zone => {
-        const cost = parseFloat(zone.shipping_cost || 0);
-        // Show if: free_shipping is true OR shipping_cost > 0
-        return zone.free_shipping === true || cost > 0;
-      });
-      setShippingZones(availableZones);
+      setAllShippingZones(zones || []);
     } catch (error) {
       console.error('Error loading shipping zones:', error);
     }
@@ -271,17 +270,31 @@ const CartPage = ({ onNavigate }) => {
   const updateShippingCost = async (provinceName, municipalityName = null) => {
     if (!provinceName) {
       setShippingCost(0);
+      setShippingUnavailable(false);
+      return;
+    }
+
+    // Decide availability from the zone rules first: a zone with cost 0 that is not
+    // flagged free means "not available", not "free shipping".
+    const state = getShippingState(allShippingZones, provinceName, municipalityName);
+    if (isShippingBlocked(state)) {
+      setShippingCost(0);
+      setShippingUnavailable(true);
       return;
     }
 
     try {
       // Pass municipality for priority-based cost lookup
       const result = await calculateShippingCost(provinceName, subtotal, municipalityName);
-      const cost = typeof result?.cost === 'number' ? result.cost : 0;
-      setShippingCost(cost);
+      if (typeof result?.cost !== 'number') {
+        throw new Error('Shipping cost lookup returned no numeric cost');
+      }
+      setShippingCost(result.cost);
+      setShippingUnavailable(false);
     } catch (error) {
       console.error('[CartPage] Error calculating shipping:', error);
       setShippingCost(0);
+      setShippingUnavailable(true);
     }
   };
 
@@ -374,6 +387,15 @@ const CartPage = ({ onNavigate }) => {
       toast({
         title: t('common.error'),
         description: t('cart.validation.selectRecipient'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (shippingUnavailable) {
+      toast({
+        title: t('common.error'),
+        description: t('cart.shippingUnavailable'),
         variant: 'destructive'
       });
       return;
@@ -646,6 +668,15 @@ const CartPage = ({ onNavigate }) => {
     // Validate proof, payer and payer phone BEFORE createOrder and any proof upload
     if (notifyPaymentBlocker()) return;
 
+    if (shippingUnavailable) {
+      toast({
+        title: t('common.error'),
+        description: t('cart.shippingUnavailable'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
     if (!user) {
       toast({
         title: t('auth.loginRequired'),
@@ -913,7 +944,20 @@ const CartPage = ({ onNavigate }) => {
           </div>
 
           {/* Shipping Cost Summary */}
-          {recipientDetails.province && (
+          {recipientDetails.province && shippingUnavailable && (
+            <motion.div
+              role="alert"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="glass-effect p-6 rounded-xl border-2 border-red-200 bg-red-50"
+            >
+              <p className="text-sm font-medium text-red-700 flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                {t('cart.shippingUnavailable')}
+              </p>
+            </motion.div>
+          )}
+          {recipientDetails.province && !shippingUnavailable && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -943,6 +987,7 @@ const CartPage = ({ onNavigate }) => {
             </Button>
             <Button
               onClick={handleRecipientSubmit}
+              disabled={shippingUnavailable}
               style={getPrimaryButtonStyle(visualSettings)}
               className="flex-1 flex items-center justify-center gap-2"
             >

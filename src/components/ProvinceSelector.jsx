@@ -1,11 +1,13 @@
 /**
  * ProvinceSelector Component
  * Reusable selector for Province and Municipality
- * Supports municipality-specific shipping costs with fallback to province default
+ * Supports municipality-specific shipping costs with fallback to province default.
+ * Rules live in @/lib/shippingZoneRules (province selectable if any municipality is available)
  */
 
 import { useMemo } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { getSelectableProvinces, getShippingState, isZoneAvailable } from '@/lib/shippingZoneRules';
 
 const ProvinceSelector = ({
   shippingZones = [],
@@ -17,22 +19,17 @@ const ProvinceSelector = ({
   showLabel = true,
   showCosts = true
 }) => {
-  const { language } = useLanguage();
+  const { t, language } = useLanguage();
 
-  // Separate province-level and municipality-level zones
-  // Include ALL provinces but mark which are disabled (cost=0 AND free_shipping=false)
-  const { provinceZones, disabledProvinces, municipalityZonesMap } = useMemo(() => {
-    const allProvinceZones = shippingZones.filter(z => !z.municipality_name);
-
-    // Disabled provinces: cost = 0 AND free_shipping = false
-    const disabledProvinces = new Set(
-      allProvinceZones
-        .filter(z => parseFloat(z.shipping_cost) === 0 && z.free_shipping !== true)
-        .map(z => z.province_name)
-    );
+  // A province is listed when it is selectable (own row available OR any of its
+  // municipality rows available). Provinces like Camaguey have a province row with
+  // cost 0 and are selectable only through their priced municipalities.
+  const { provinceZones, municipalityZonesMap } = useMemo(() => {
+    const selectable = getSelectableProvinces(shippingZones);
+    const provinceZones = selectable.filter(z => !z.municipality_name);
 
     const municipalityZonesMap = {};
-    shippingZones
+    selectable
       .filter(z => z.municipality_name)
       .forEach(z => {
         if (!municipalityZonesMap[z.province_name]) {
@@ -41,43 +38,27 @@ const ProvinceSelector = ({
         municipalityZonesMap[z.province_name][z.municipality_name] = z;
       });
 
-    return { provinceZones: allProvinceZones, disabledProvinces, municipalityZonesMap };
+    return { provinceZones, municipalityZonesMap };
   }, [shippingZones]);
 
-  // Check if a province is disabled
-  const isProvinceDisabled = (provinceName) => disabledProvinces.has(provinceName);
-
-  // Get cost display for a municipality
+  // Get cost display for a municipality (rules shared with checkout: never "free" unless flagged free)
   const getMunicipalityCost = (provinceName, municipalityName) => {
-    const munZone = municipalityZonesMap[provinceName]?.[municipalityName];
-    if (munZone) {
-      // Municipality-specific cost
-      if (munZone.free_shipping || parseFloat(munZone.shipping_cost) === 0) {
-        return { cost: 0, label: language === 'es' ? 'Envío Gratis' : 'Free Shipping', isSpecific: true };
-      }
-      return { cost: parseFloat(munZone.shipping_cost), label: `$${parseFloat(munZone.shipping_cost).toFixed(2)}`, isSpecific: true };
-    }
+    const state = getShippingState(shippingZones, provinceName, municipalityName);
+    const isSpecific = state.source === 'municipality';
 
-    // Fallback to province default
-    const provinceZone = provinceZones.find(z => z.province_name === provinceName);
-    if (provinceZone) {
-      if (provinceZone.free_shipping || parseFloat(provinceZone.shipping_cost) === 0) {
-        return { cost: 0, label: language === 'es' ? 'Envío Gratis' : 'Free Shipping', isSpecific: false };
-      }
-      return { cost: parseFloat(provinceZone.shipping_cost), label: `$${parseFloat(provinceZone.shipping_cost).toFixed(2)}`, isSpecific: false };
+    if (state.status !== 'available') {
+      return { cost: 0, label: t('cart.shippingUnavailableShort'), isSpecific: false, unavailable: true };
     }
-
-    return { cost: 0, label: '', isSpecific: false };
+    if (state.freeShipping) {
+      return { cost: 0, label: language === 'es' ? 'Envío Gratis' : 'Free Shipping', isSpecific, unavailable: false };
+    }
+    return { cost: state.cost, label: `$${state.cost.toFixed(2)}`, isSpecific, unavailable: false };
   };
 
-  // Get the province cost for display
+  // Province label: its own fee when the province row is available, nothing otherwise
+  // (a province selectable only through municipalities shows the prices per municipality)
   const getProvinceCostLabel = (zone) => {
-    if (!showCosts) return '';
-
-    // Check if disabled (cost=0 AND NOT free_shipping)
-    if (parseFloat(zone.shipping_cost) === 0 && zone.free_shipping !== true) {
-      return ` - ${language === 'es' ? '⚠️ Envío deshabilitado' : '⚠️ Shipping disabled'}`;
-    }
+    if (!showCosts || !isZoneAvailable(zone)) return '';
 
     // Free shipping
     if (zone.free_shipping) {
@@ -106,19 +87,11 @@ const ProvinceSelector = ({
           <option value="">
             {language === 'es' ? 'Seleccione una provincia' : 'Select a province'}
           </option>
-          {provinceZones.map(zone => {
-            const disabled = isProvinceDisabled(zone.province_name);
-            return (
-              <option
-                key={zone.id}
-                value={zone.province_name}
-                disabled={disabled}
-                className={disabled ? 'text-gray-400' : ''}
-              >
-                {zone.province_name}{getProvinceCostLabel(zone)}
-              </option>
-            );
-          })}
+          {provinceZones.map(zone => (
+            <option key={zone.id} value={zone.province_name}>
+              {zone.province_name}{getProvinceCostLabel(zone)}
+            </option>
+          ))}
         </select>
       </div>
 
@@ -142,7 +115,7 @@ const ProvinceSelector = ({
             {municipalities.map(mun => {
               const costInfo = getMunicipalityCost(selectedProvince, mun);
               return (
-                <option key={mun} value={mun}>
+                <option key={mun} value={mun} disabled={costInfo.unavailable}>
                   {mun}
                   {showCosts && costInfo.label && ` - ${costInfo.label}`}
                   {showCosts && costInfo.isSpecific && ` *`}

@@ -1170,6 +1170,8 @@
     "free": "Free",
     "total": "Total",
     "checkout": "Proceed to Checkout",
+    "shippingUnavailable": "We do not ship to this destination right now. Choose another municipality or province, or contact support.",
+    "shippingUnavailableShort": "Unavailable",
     "validation": {
       "selectRecipient": "Select a recipient",
       "selectZelleAccount": "Select a Zelle account"

@@ -12,6 +12,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
 import { getMyRecipients, createRecipient, addRecipientAddress } from '@/lib/recipientService';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
+import { isProvinceSelectable } from '@/lib/shippingZoneRules';
 import RecipientForm from '@/components/RecipientForm';
 import BankAccountSelector from '@/components/BankAccountSelector';
 
@@ -124,16 +125,14 @@ const RecipientSelector = React.forwardRef((
     setMunicipalities([]);
   };
 
-  // Helper: Check if a province has a valid shipping zone (cost > 0 OR free_shipping = true)
+  // Helper: a province is valid when its own zone or any of its municipality zones is
+  // available (cost > 0 or free_shipping = true). See shippingZoneRules.
   const hasValidShippingZone = (provinceName) => {
     if (!provinceName || shippingZones.length === 0) return false;
-    const zone = shippingZones.find(z =>
-      z.province_name?.toLowerCase().trim() === provinceName.toLowerCase().trim() &&
-      z.municipality_name === null // Province-level zone
-    );
-    if (!zone) return false;
-    // Valid if: has shipping cost > 0 OR is marked as free shipping
-    return zone.shipping_cost > 0 || zone.free_shipping === true;
+    const canonical = shippingZones.find(z =>
+      z.province_name?.toLowerCase().trim() === provinceName.toLowerCase().trim()
+    )?.province_name;
+    return isProvinceSelectable(shippingZones, canonical);
   };
 
   // Helper: Check if recipient has at least one address with valid shipping zone
@@ -157,13 +156,6 @@ const RecipientSelector = React.forwardRef((
       r.email?.toLowerCase().includes(term)
     );
   }, [recipients, searchTerm, shippingZones]);
-
-  // Get valid provinces (those with shipping cost > 0 or free_shipping = true)
-  const validProvinces = useMemo(() => {
-    return shippingZones
-      .filter(z => z.municipality_name === null && (z.shipping_cost > 0 || z.free_shipping === true))
-      .map(z => z.province_name);
-  }, [shippingZones]);
 
   const handleRecipientSelect = (recipient) => {
     setSelectedRecipient(recipient);
