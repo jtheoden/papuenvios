@@ -71,10 +71,11 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
     loadDeliveryProofUrl();
   }, [normalizedOrder?.delivery_proof_url]);
 
-  if (!normalizedOrder) return null;
-
-  // Handle Escape key to close modal
+  // Handle Escape key to close modal (only while an order is displayed)
+  const hasOrder = Boolean(normalizedOrder);
   useEffect(() => {
+    if (!hasOrder) return undefined;
+
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         onClose();
@@ -88,7 +89,10 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [onClose]);
+  }, [onClose, hasOrder]);
+
+  // All hooks must run before this early return (rules of hooks)
+  if (!normalizedOrder) return null;
 
   return (
     <div
