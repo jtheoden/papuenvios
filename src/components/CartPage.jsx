@@ -71,6 +71,8 @@ const CartPage = ({ onNavigate }) => {
   // True when the chosen destination has no available zone or the cost lookup failed.
   // Never fall back to a shipping cost of 0: the checkout is blocked instead.
   const [shippingUnavailable, setShippingUnavailable] = useState(false);
+  // Monotonic id of the latest shipping cost request; stale responses are ignored
+  const shippingRequestIdRef = useRef(0);
   const [convertedSubtotal, setConvertedSubtotal] = useState(null);
   const [convertedDiscountedSubtotal, setConvertedDiscountedSubtotal] = useState(null);
   const [convertedShipping, setConvertedShipping] = useState(null);
@@ -247,6 +249,11 @@ const CartPage = ({ onNavigate }) => {
   };
 
   const updateShippingCost = async (provinceName, municipalityName = null) => {
+    // Every call (including synchronous outcomes) supersedes any in-flight request,
+    // so a late response for an older destination can never overwrite newer state.
+    shippingRequestIdRef.current += 1;
+    const requestId = shippingRequestIdRef.current;
+
     if (!provinceName) {
       setShippingCost(0);
       setShippingUnavailable(false);
@@ -265,12 +272,14 @@ const CartPage = ({ onNavigate }) => {
     try {
       // Pass municipality for priority-based cost lookup
       const result = await calculateShippingCost(provinceName, subtotal, municipalityName);
+      if (requestId !== shippingRequestIdRef.current) return;
       if (typeof result?.cost !== 'number') {
         throw new Error('Shipping cost lookup returned no numeric cost');
       }
       setShippingCost(result.cost);
       setShippingUnavailable(false);
     } catch (error) {
+      if (requestId !== shippingRequestIdRef.current) return;
       console.error('[CartPage] Error calculating shipping:', error);
       setShippingCost(0);
       setShippingUnavailable(true);
