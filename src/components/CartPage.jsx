@@ -19,6 +19,7 @@ import { reserveZelleAccount, registerZelleTransaction, ZELLE_TRANSACTION_TYPES 
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
 import { calculateOrderTotal } from '@/lib/priceCalculationService';
+import { getCartItemUnitPrice } from '@/lib/cartPricing';
 import { validateAndGetOffer, recordOfferUsage } from '@/lib/orderDiscountService';
 import { buildDiscountBreakdown } from '@/lib/discountDisplayService';
 import { logActivity } from '@/lib/activityLogger';
@@ -80,39 +81,17 @@ const CartPage = ({ onNavigate }) => {
   const [couponError, setCouponError] = useState('');
   const [validatingCoupon, setValidatingCoupon] = useState(false);
 
-  // Calculate item price based on type (product or combo) - memoized with useCallback
-  const getItemPrice = useCallback((item) => {
-    if (!item) return 0;
+  // Base (USD) currency id: the cart subtotal is treated as USD downstream (convertAmounts)
+  const baseCurrencyId = useMemo(
+    () => currencies?.find(currency => currency.is_base)?.id ?? null,
+    [currencies]
+  );
 
-    // Use displayed price if available (price shown when added to cart)
-    // But convert from the currency it was displayed in to the currently selected currency
-    if (item.displayed_price && item.displayed_currency_id) {
-      const displayedPrice = parseFloat(item.displayed_price);
-      // If prices are in different currencies, convert them
-      if (item.displayed_currency_id !== selectedCurrency) {
-        return convertAmount(displayedPrice, item.displayed_currency_id, selectedCurrency);
-      }
-      return displayedPrice;
-    }
-
-    // Fallback: use calculated_price_usd if available
-    if (item.calculated_price_usd) {
-      return parseFloat(item.calculated_price_usd);
-    }
-
-    // Legacy fallback (for old items in cart)
-    if (item.products) {
-      // It's a combo - use baseTotalPrice with combo profit margin
-      const basePrice = parseFloat(item.baseTotalPrice || 0);
-      const profitMargin = parseFloat(item.profitMargin || financialSettings.comboProfit || 35) / 100;
-      return basePrice * (1 + profitMargin);
-    } else {
-      // It's a product - use base_price with product profit margin
-      const basePrice = parseFloat(item.base_price || item.basePrice || 0);
-      const profitMargin = parseFloat(financialSettings.productProfit || 40) / 100;
-      return basePrice * (1 + profitMargin);
-    }
-  }, [financialSettings, selectedCurrency, convertAmount]);
+  // Unit price of a cart item (product or combo). Logic lives in src/lib/cartPricing.js
+  const getItemPrice = useCallback(
+    (item) => getCartItemUnitPrice(item, { selectedCurrency, baseCurrencyId, convertAmount, financialSettings }),
+    [financialSettings, selectedCurrency, baseCurrencyId, convertAmount]
+  );
 
   // Calculate subtotal - memoized to avoid recalculation on every render
   const subtotal = useMemo(() => {
