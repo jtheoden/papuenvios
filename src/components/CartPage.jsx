@@ -15,6 +15,8 @@ import { convertCurrency } from '@/lib/currencyService';
 import { generateWhatsAppURL, notifyAdminNewPayment, openWhatsAppChat } from '@/lib/whatsappService';
 import { getActiveWhatsappRecipient, getFreshWhatsappRecipient, getFreshNotificationSettings } from '@/lib/notificationSettingsService';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
+import { getPaymentConfirmationBlocker } from '@/lib/orderPayerPhone';
+import { isValidPayerPhone, normalizePayerPhone, PAYER_PHONE_MAX_LENGTH } from '@/lib/payerPhone';
 import { reserveZelleAccount, registerZelleTransaction, ZELLE_TRANSACTION_TYPES } from '@/lib/zelleService';
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
@@ -56,6 +58,7 @@ const CartPage = ({ onNavigate }) => {
   const [paymentProof, setPaymentProof] = useState(null);
   const [paymentProofPreview, setPaymentProofPreview] = useState(null);
   const [paymentReference, setPaymentReference] = useState('');
+  const [payerPhone, setPayerPhone] = useState('');
   const [uploadingProof, setUploadingProof] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [shippingZones, setShippingZones] = useState([]);
@@ -594,25 +597,35 @@ const CartPage = ({ onNavigate }) => {
     }
   };
 
-  // Pre-payment confirmation modal
-  const handlePrePaymentConfirmation = async () => {
-    if (!paymentProof) {
+  const paymentBlocker = getPaymentConfirmationBlocker({ paymentProof, paymentReference, payerPhone });
+
+  // Shows the toast for the first missing payment field. Returns true when blocked.
+  const notifyPaymentBlocker = () => {
+    if (paymentBlocker === 'proof') {
       toast({
         title: t('cart.payment.proofRequired'),
         description: t('cart.payment.proofRequiredDesc'),
         variant: 'destructive'
       });
-      return;
-    }
-
-    if (!paymentReference.trim()) {
+    } else if (paymentBlocker === 'payer') {
       toast({
         title: t('cart.payment.payerRequired'),
         description: t('cart.payment.payerRequiredDesc'),
         variant: 'destructive'
       });
-      return;
+    } else if (paymentBlocker === 'payerPhone') {
+      toast({
+        title: t('cart.payment.payerPhoneRequired'),
+        description: t('cart.payment.payerPhoneRequiredDesc'),
+        variant: 'destructive'
+      });
     }
+    return paymentBlocker !== null;
+  };
+
+  // Pre-payment confirmation modal
+  const handlePrePaymentConfirmation = async () => {
+    if (notifyPaymentBlocker()) return;
 
     const summaryText = `${t('cart.payment.recipientLabel')}: ${recipientDetails.fullName}\nTotal: ${currencySymbol}${convertedTotal?.toFixed(2) || totalAmount.toFixed(2)} ${currencyCode}\n${t('cart.payment.productsLabel')}: ${t('cart.payment.itemCount', { count: cart.length })}`;
 
@@ -630,23 +643,8 @@ const CartPage = ({ onNavigate }) => {
   };
 
   const handleConfirmPayment = async () => {
-    if (!paymentProof) {
-      toast({
-        title: t('cart.payment.proofRequired'),
-        description: t('cart.payment.proofRequiredDesc'),
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    if (!paymentReference.trim()) {
-      toast({
-        title: t('cart.payment.payerRequired'),
-        description: t('cart.payment.payerRequiredDesc'),
-        variant: 'destructive'
-      });
-      return;
-    }
+    // Validate proof, payer and payer phone BEFORE createOrder and any proof upload
+    if (notifyPaymentBlocker()) return;
 
     if (!user) {
       toast({
@@ -710,6 +708,7 @@ const CartPage = ({ onNavigate }) => {
         paymentMethod: 'zelle',
         shippingZoneId: shippingZone?.id || null,
         zelleAccountId: selectedZelleAccountId,
+        payerPhone: normalizePayerPhone(payerPhone),
         // Offer/coupon code - added from Phase 3.13
         offerId: appliedOffer?.id || null
       };
@@ -745,7 +744,13 @@ const CartPage = ({ onNavigate }) => {
         // Upload payment proof with payer reference
         let uploadedProofUrl = null;
         try {
-          uploadedProofUrl = await uploadPaymentProof(paymentProof, createdOrder.id, user.id, paymentReference.trim());
+          uploadedProofUrl = await uploadPaymentProof(
+            paymentProof,
+            createdOrder.id,
+            user.id,
+            paymentReference.trim(),
+            { payerPhone: normalizePayerPhone(payerPhone) }
+          );
           logActivity({
             action: 'payment_proof_uploaded',
             entityType: 'order',
@@ -788,7 +793,8 @@ const CartPage = ({ onNavigate }) => {
               })),
               user_name: user.full_name || user.user_metadata?.full_name || user.email?.split('@')[0],
               user_email: user.email,
-              payment_reference: paymentReference.trim()
+              payment_reference: paymentReference.trim(),
+              payer_phone: normalizePayerPhone(payerPhone)
             };
             notifyAdminNewPayment(orderForNotification, notificationWhatsapp, language);
           } catch (e) {
@@ -1172,6 +1178,31 @@ const CartPage = ({ onNavigate }) => {
             />
           </div>
 
+          {/* Payer Contact Phone Field */}
+          <div className="mb-6">
+            <label htmlFor="cart-payer-phone" className="block text-sm font-medium text-gray-700 mb-2">
+              {t('cart.payment.payerPhoneLabel')} <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="cart-payer-phone"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              maxLength={PAYER_PHONE_MAX_LENGTH}
+              value={payerPhone}
+              onChange={(e) => setPayerPhone(e.target.value)}
+              placeholder={t('cart.payment.payerPhonePlaceholder')}
+              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              aria-invalid={normalizePayerPhone(payerPhone) !== '' && !isValidPayerPhone(payerPhone)}
+              required
+            />
+            {normalizePayerPhone(payerPhone) !== '' && !isValidPayerPhone(payerPhone) && (
+              <p role="alert" className="mt-1 text-sm text-red-600">
+                {t('cart.payment.payerPhoneInvalid')}
+              </p>
+            )}
+          </div>
+
           {/* WhatsApp Contact Section */}
           <motion.div
             initial={{ opacity: 0, y: -10 }}
@@ -1222,14 +1253,14 @@ const CartPage = ({ onNavigate }) => {
                 className="flex-1"
                 size="lg"
                 style={getPrimaryButtonStyle(visualSettings)}
-                disabled={!paymentProof || !paymentReference.trim() || uploadingProof || processingPayment}
+                disabled={paymentBlocker !== null || uploadingProof || processingPayment}
               >
                 {processingPayment ? t('cart.payment.processing') : t('cart.payment.confirm')}
               </Button>
             </div>
 
             {/* Missing fields hint */}
-            {(!paymentProof || !paymentReference.trim()) && !processingPayment && (
+            {paymentBlocker !== null && !processingPayment && (
               <div className="text-center space-y-1">
                 {!paymentProof && (
                   <p className="text-xs text-red-500 font-medium flex items-center justify-center gap-1">
@@ -1241,6 +1272,12 @@ const CartPage = ({ onNavigate }) => {
                   <p className="text-xs text-red-500 font-medium flex items-center justify-center gap-1">
                     <AlertCircle className="h-3 w-3" />
                     {t('cart.payment.missingPayer')}
+                  </p>
+                )}
+                {!isValidPayerPhone(payerPhone) && (
+                  <p className="text-xs text-red-500 font-medium flex items-center justify-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {t('cart.payment.missingPayerPhone')}
                   </p>
                 )}
               </div>

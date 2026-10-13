@@ -5,6 +5,8 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useModal } from '@/contexts/ModalContext';
 import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users, Crown, TrendingDown, Gift, Truck, Upload, EyeOff, Filter, ChevronDown, BookOpen } from 'lucide-react';
+import { getPaymentConfirmationBlocker } from '@/lib/orderPayerPhone';
+import { isValidPayerPhone, normalizePayerPhone, PAYER_PHONE_MAX_LENGTH } from '@/lib/payerPhone';
 import { getUserOrders, getOrderById, getAllOrders, validatePayment, rejectPayment, cancelOrderByUser, uploadPaymentProof, markOrderAsDispatched, markOrderAsDelivered, completeOrder, reopenOrder, ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderService';
 import { getUserTestimonial, createTestimonial } from '@/lib/testimonialService';
 import { getMyRemittances, generateProofSignedUrl } from '@/lib/remittanceService';
@@ -48,6 +50,7 @@ const UserPanel = ({ onNavigate }) => {
   const [deliveryProofFile, setDeliveryProofFile] = useState(null);
   const [retryProofFile, setRetryProofFile] = useState(null);
   const [retryProofReference, setRetryProofReference] = useState('');
+  const [retryPayerPhone, setRetryPayerPhone] = useState('');
   const [processingAction, setProcessingAction] = useState(false);
   const [hideCompletedOrders, setHideCompletedOrders] = useState(true); // Ocultar pedidos finalizados/cancelados por defecto
   const [orderDeliveryProofSignedUrl, setOrderDeliveryProofSignedUrl] = useState(null);
@@ -418,17 +421,30 @@ const UserPanel = ({ onNavigate }) => {
     }
   };
 
+  const retryBlocker = getPaymentConfirmationBlocker({
+    paymentProof: retryProofFile,
+    paymentReference: retryProofReference,
+    payerPhone: retryPayerPhone
+  });
+
   const handleRetryPaymentProof = async () => {
-    if (!selectedOrder?.id || !retryProofFile || !retryProofReference.trim()) return;
+    if (!selectedOrder?.id || retryBlocker !== null) return;
     setProcessingAction(true);
     try {
-      await uploadPaymentProof(retryProofFile, selectedOrder.id, user.id, retryProofReference.trim());
+      await uploadPaymentProof(
+        retryProofFile,
+        selectedOrder.id,
+        user.id,
+        retryProofReference.trim(),
+        { payerPhone: normalizePayerPhone(retryPayerPhone) }
+      );
       await loadUserOrders();
       const refreshed = await getOrderById(selectedOrder.id);
       setSelectedOrder(refreshed);
       // Clear form after success
       setRetryProofFile(null);
       setRetryProofReference('');
+      setRetryPayerPhone('');
     } catch (error) {
       console.error('Error uploading new payment proof:', error);
     } finally {
@@ -1726,9 +1742,32 @@ const UserPanel = ({ onNavigate }) => {
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             />
                           </div>
+                          <div>
+                            <label htmlFor="retry-payer-phone" className="block text-sm font-medium text-gray-700 mb-1">
+                              {language === 'es' ? 'Tu teléfono para contactarte' : 'Your phone number so we can contact you'} <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              id="retry-payer-phone"
+                              type="tel"
+                              inputMode="tel"
+                              autoComplete="tel"
+                              maxLength={PAYER_PHONE_MAX_LENGTH}
+                              value={retryPayerPhone}
+                              onChange={(e) => setRetryPayerPhone(e.target.value)}
+                              placeholder={language === 'es' ? 'Ej: +1 305 555 0100' : 'E.g.: +1 305 555 0100'}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                            {normalizePayerPhone(retryPayerPhone) !== '' && !isValidPayerPhone(retryPayerPhone) && (
+                              <p role="alert" className="mt-1 text-sm text-red-600">
+                                {language === 'es'
+                                  ? 'Ingresa un teléfono válido (entre 8 y 15 dígitos).'
+                                  : 'Enter a valid phone number (8 to 15 digits).'}
+                              </p>
+                            )}
+                          </div>
                           <Button
                             onClick={handleRetryPaymentProof}
-                            disabled={processingAction || !retryProofFile || !retryProofReference.trim()}
+                            disabled={processingAction || retryBlocker !== null}
                             className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                           >
                             {processingAction ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Upload className="h-4 w-4 mr-2" />}

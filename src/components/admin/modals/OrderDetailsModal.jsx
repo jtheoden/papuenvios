@@ -153,6 +153,12 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
                   value={normalizedOrder.payment_reference}
                 />
               )}
+              {normalizedOrder.payer_phone && (
+                <InfoItem
+                  label={t('adminOrders.detail.payerPhone')}
+                  value={normalizedOrder.payer_phone}
+                />
+              )}
               <InfoItem
                 label={t('adminOrders.table.total')}
                 value={formatCurrency(normalizedOrder.total_amount, normalizedOrder.currencies?.code)}

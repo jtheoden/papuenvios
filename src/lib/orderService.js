@@ -15,6 +15,7 @@ import {
   ERROR_CODES
 } from './errorHandler';
 import { logActivity } from './activityLogger';
+import { isValidPayerPhone, normalizePayerPhone } from './payerPhone';
 import { getUserCategoryWithDiscount } from './orderDiscountService';
 import { ZELLE_STATUS, ZELLE_TRANSACTION_TYPES, upsertZelleTransactionStatus } from './zelleService';
 
@@ -288,8 +289,14 @@ export const createOrder = async (orderData, items) => {
       }, 'Missing required order fields');
     }
 
-    // Note: No validation needed for initial order creation
-    // Orders always start in PENDING status
+    // The payer contact phone is mandatory; reject before any DB access
+    if (!isValidPayerPhone(orderData.payerPhone)) {
+      throw createValidationError({
+        payerPhone: 'A valid payer contact phone is required'
+      }, 'Missing payer phone');
+    }
+
+    // Note: Orders always start in PENDING status
 
     // Generate order number
     const orderNumber = await generateOrderNumber();
@@ -313,6 +320,7 @@ export const createOrder = async (orderData, items) => {
       payment_status: PAYMENT_STATUS.PENDING,
       payment_reference: orderData.paymentReference || '',
       payment_proof_url: orderData.paymentProofUrl || null,
+      payer_phone: normalizePayerPhone(orderData.payerPhone),
       shipping_zone_id: orderData.shippingZoneId || null,
       zelle_account_id: orderData.zelleAccountId || null,
       notes: orderData.notes || '',
@@ -1507,16 +1515,20 @@ export const updateOrderStatus = async (orderId, newStatus, adminId, notes = '')
  * @param {string} orderId - Order ID
  * @param {string} userId - User ID (for authorization)
  * @param {string} paymentReference - Payer name/company (titular/empresa que realiza el pago)
+ * @param {Object} [options]
+ * @param {string} options.payerPhone - Payer contact phone (required; stored in orders.payer_phone)
  * @throws {AppError} If validation fails, authorization fails, or upload fails
  * @returns {Promise<string>} Public URL of uploaded proof
  */
-export const uploadPaymentProof = async (file, orderId, userId, paymentReference = '') => {
+export const uploadPaymentProof = async (file, orderId, userId, paymentReference = '', options = {}) => {
   try {
-    if (!file || !orderId || !userId) {
+    const { payerPhone } = options || {};
+    if (!file || !orderId || !userId || !isValidPayerPhone(payerPhone)) {
       throw createValidationError({
         file: !file ? 'Proof file is required' : undefined,
         orderId: !orderId ? 'Order ID is required' : undefined,
-        userId: !userId ? 'User ID is required' : undefined
+        userId: !userId ? 'User ID is required' : undefined,
+        payerPhone: !isValidPayerPhone(payerPhone) ? 'A valid payer contact phone is required' : undefined
       }, 'Missing required fields for proof upload');
     }
 
@@ -1591,6 +1603,7 @@ export const uploadPaymentProof = async (file, orderId, userId, paymentReference
     const updateData = {
       payment_proof_url: urlData.publicUrl,
       payment_status: PAYMENT_STATUS.PROOF_UPLOADED,
+      payer_phone: normalizePayerPhone(payerPhone),
       rejection_reason: null,
       updated_at: new Date().toISOString()
     };

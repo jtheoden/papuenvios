@@ -177,6 +177,11 @@ export const notifyAdminNewPayment = (order, adminPhone, language = 'es') => {
   // System link with order ID for direct navigation
   const systemLink = `${window.location.origin}/dashboard?tab=orders&id=${order.id}`;
 
+  // Payer contact phone: line only when present
+  const payerPhone = typeof order.payer_phone === 'string' ? order.payer_phone.trim() : '';
+  const payerPhoneLineEs = payerPhone ? `📞 *Teléfono del pagador:* ${payerPhone}\n` : '';
+  const payerPhoneLineEn = payerPhone ? `📞 *Payer Phone:* ${payerPhone}\n` : '';
+
   const messages = {
     es: `🆕 *Nueva Orden Registrada*\n\n` +
         `📋 *Orden:* ${order.order_number}\n` +
@@ -185,7 +190,8 @@ export const notifyAdminNewPayment = (order, adminPhone, language = 'es') => {
         `📦 *Items:*\n   ${itemsList}\n\n` +
         `💰 *Total:* ${order.total_amount} ${order.currency?.code || order.currencies?.code || 'USD'}\n` +
         `💳 *Método de Pago:* ${order.payment_method || 'N/A'}\n` +
-        `📝 *Titular/Empresa:* ${order.payment_reference || 'N/A'}\n\n` +
+        `📝 *Titular/Empresa:* ${order.payment_reference || 'N/A'}\n` +
+        payerPhoneLineEs + `\n` +
         `📍 *Destinatario para Entrega*\n` +
         `┌─────────────────────\n` +
         `│ 👤 ${recipientInfo.fullName || 'N/A'}\n` +
@@ -203,7 +209,8 @@ export const notifyAdminNewPayment = (order, adminPhone, language = 'es') => {
         `📦 *Items:*\n   ${itemsList}\n\n` +
         `💰 *Total:* ${order.total_amount} ${order.currency?.code || order.currencies?.code || 'USD'}\n` +
         `💳 *Payment Method:* ${order.payment_method || 'N/A'}\n` +
-        `📝 *Payer Name/Company:* ${order.payment_reference || 'N/A'}\n\n` +
+        `📝 *Payer Name/Company:* ${order.payment_reference || 'N/A'}\n` +
+        payerPhoneLineEn + `\n` +
         `📍 *Delivery Recipient*\n` +
         `┌─────────────────────\n` +
         `│ 👤 ${recipientInfo.fullName || 'N/A'}\n` +
