@@ -18,6 +18,9 @@ vi.mock('@/contexts/AuthContext', () => ({
 vi.mock('@/contexts/ModalContext', () => ({
   useModal: () => ({ showModal: vi.fn().mockResolvedValue(true) }),
 }));
+vi.mock('@/contexts/BusinessContext', () => ({
+  useBusiness: () => ({ notificationSettings: null }),
+}));
 
 vi.mock('@/hooks/usePaymentMethods', async () => {
   const service = await import('@/lib/paymentMethodsService');
