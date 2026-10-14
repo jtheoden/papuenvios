@@ -281,7 +281,8 @@ export const useRealtimeCategories = ({ onUpdate, enabled = true }) => {
 /**
  * useRealtimeZelleAccounts Hook
  * Specialized hook for real-time Zelle account updates
- * Propagates account changes immediately across all components
+ * ADMIN SCREENS ONLY: once zelle_accounts SELECT is admin-only, customers receive
+ * no events from this table (ZelleAccountSelector polls the RPC instead).
  */
 export const useRealtimeZelleAccounts = ({ onUpdate, enabled = true }) => {
   return useRealtimeSubscription({

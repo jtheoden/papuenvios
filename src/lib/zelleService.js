@@ -623,11 +623,58 @@ export const getZelleAccountHistoricalTotals = async () => {
 };
 
 // ============================================================================
+// CUSTOMER-FACING ACCOUNT LIST (RPC, honors show_email / show_phone)
+// ============================================================================
+
+const CUSTOMER_ZELLE_USAGES = ['products', 'remittances'];
+
+/**
+ * List the active Zelle accounts a customer may pay into.
+ * Goes through the SECURITY DEFINER RPC list_zelle_accounts_public, which NULLs
+ * email/phone when the admin hid them and never exposes limits or usage amounts.
+ * Customers must NOT read the zelle_accounts table directly.
+ *
+ * @param {'products'|'remittances'} usage - Which flow the account is for
+ * @returns {Promise<Array>} Customer-safe accounts ordered by priority
+ * @throws {AppError} If usage is invalid or the RPC fails
+ */
+export const getZelleAccountsForCustomer = async (usage) => {
+  try {
+    if (!CUSTOMER_ZELLE_USAGES.includes(usage)) {
+      throw createValidationError(
+        { usage: `Must be one of: ${CUSTOMER_ZELLE_USAGES.join(', ')}` },
+        'Invalid Zelle usage'
+      );
+    }
+
+    const { data, error } = await supabase.rpc('list_zelle_accounts_public', { p_usage: usage });
+
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    // The RPC only returns active rows; keep is_active so UI badges stay valid.
+    return (data || []).map((row) => ({ ...row, is_active: true }));
+  } catch (error) {
+    if (error instanceof AppError) {
+      logError(error, { operation: 'getZelleAccountsForCustomer', usage });
+      throw error;
+    }
+
+    const appError = parseSupabaseError(error);
+    logError(appError, { operation: 'getZelleAccountsForCustomer', usage });
+    throw appError;
+  }
+};
+
+// ============================================================================
 // ACCOUNT MANAGEMENT (ADMIN ONLY)
 // ============================================================================
 
 /**
  * Obtener todas las cuentas Zelle (Admin only)
+ * ADMIN SCREENS ONLY: reads zelle_accounts directly (all columns, incl. limits and
+ * hidden contact data). Customer-facing code must use getZelleAccountsForCustomer.
  * Retrieves all Zelle accounts sorted by priority order and name
  *
  * @returns {Promise<Array>} List of all Zelle account records
@@ -1601,6 +1648,7 @@ const sendZelleDeactivationEmails = async ({
 // ============================================================================
 
 export const zelleService = {
+  getZelleAccountsForCustomer,
   getAllZelleAccounts,
   createZelleAccount,
   updateZelleAccount,

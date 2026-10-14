@@ -4,7 +4,9 @@
  * Usado en SendRemittancePage y CartPage
  *
  * Features:
- * - Real-time updates when accounts change
+ * - Reads accounts ONLY through the list_zelle_accounts_public RPC (visibility
+ *   flags applied server-side); customers have no direct table access
+ * - Periodic + on-focus refresh keeps the list current (no table realtime)
  * - Auto-detects when selected account becomes unavailable
  * - Shows warning if selection is invalidated
  *
@@ -18,9 +20,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { CreditCard, AlertCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
-import { getAllZelleAccounts } from '@/lib/zelleService';
+import { getZelleAccountsForCustomer } from '@/lib/zelleService';
 import { getZelleAccountPublicContact } from '@/lib/zelleVisibility';
-import { useRealtimeZelleAccounts } from '@/hooks/useRealtimeSubscription';
+
+export const ZELLE_REFRESH_INTERVAL_MS = 30000;
+
+const getContactLine = (account) => {
+  const { email, phone } = getZelleAccountPublicContact(account);
+  return email || phone || null;
+};
 
 const ZelleAccountSelector = ({
   onSelect,
@@ -38,20 +46,8 @@ const ZelleAccountSelector = ({
   const loadAccounts = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      const allAccounts = await getAllZelleAccounts();
-
-      // Filter active accounts by usage type
-      const filteredAccounts = (allAccounts || []).filter(account => {
-        if (!account.is_active) return false;
-
-        if (usageType === 'products') {
-          return account.for_products === true;
-        } else if (usageType === 'remittances') {
-          return account.for_remittances === true;
-        }
-
-        return false;
-      });
+      // The RPC already returns only active accounts for this usage type
+      const filteredAccounts = (await getZelleAccountsForCustomer(usageType)) || [];
 
       // Check if currently selected account is still valid
       if (selectedAccount) {
@@ -91,28 +87,45 @@ const ZelleAccountSelector = ({
       }
     } catch (error) {
       console.error('Error loading Zelle accounts:', error);
-      toast({
-        title: t('common.error'),
-        description: error?.message || t('zelle.loadError'),
-        variant: 'destructive'
-      });
+      // Background refreshes fail silently; only the explicit/initial load alerts the user
+      if (showLoading) {
+        toast({
+          title: t('common.error'),
+          description: error?.message || t('zelle.loadError'),
+          variant: 'destructive'
+        });
+      }
     }
     if (showLoading) setLoading(false);
   }, [usageType, selectedAccount, selectedAccountId, onSelect, t]);
+
+  // Always call the latest loader from timers/listeners (it closes over the selection)
+  const loadAccountsRef = useRef(loadAccounts);
+  useEffect(() => {
+    loadAccountsRef.current = loadAccounts;
+  }, [loadAccounts]);
 
   // Initial load
   useEffect(() => {
     loadAccounts();
   }, [usageType]);
 
-  // Subscribe to real-time updates
-  useRealtimeZelleAccounts({
-    onUpdate: (payload) => {
-      // Reload without showing loading spinner for smoother UX
-      loadAccounts(false);
-    },
-    enabled: true
-  });
+  // Refresh periodically and when the user returns to the tab/window, so a
+  // deactivated account is detected without table realtime (customers get no events).
+  useEffect(() => {
+    const refresh = () => loadAccountsRef.current(false);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    const intervalId = setInterval(refresh, ZELLE_REFRESH_INTERVAL_MS);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [usageType]);
 
   const handleSelect = (account) => {
     setSelectedAccount(account);
@@ -221,7 +234,7 @@ const ZelleAccountSelector = ({
                         <CreditCard className="w-4 h-4 text-blue-600" />
                         <p className="font-semibold text-gray-900">{account.account_name}</p>
                       </div>
-                      <p className="text-sm text-gray-600">{getZelleAccountPublicContact(account).email}</p>
+                      <p className="text-sm text-gray-600">{getContactLine(account)}</p>
                       {account.priority_order && (
                         <p className="text-xs text-gray-500 mt-1">
                           {t('zelle.priority')}: #{account.priority_order}
@@ -256,7 +269,7 @@ const ZelleAccountSelector = ({
               <option value="">{t('zelle.selectAccountPlaceholder') || 'Selecciona una cuenta Zelle'}</option>
               {accounts.map((account) => (
                 <option key={account.id} value={account.id}>
-                  {[account.account_name, getZelleAccountPublicContact(account).email].filter(Boolean).join(' - ')}
+                  {[account.account_name, getContactLine(account)].filter(Boolean).join(' - ')}
                 </option>
               ))}
             </select>
@@ -276,7 +289,7 @@ const ZelleAccountSelector = ({
                   {t('zelle.active')}
                 </span>
               </div>
-              <p className="text-sm text-gray-600">{getZelleAccountPublicContact(selectedAccount).email}</p>
+              <p className="text-sm text-gray-600">{getContactLine(selectedAccount)}</p>
             </motion.div>
           )}
         </div>
