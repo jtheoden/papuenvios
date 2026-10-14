@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { ShoppingCart, X, Plus, Minus, Copy, Upload, CheckCircle, MessageCircle, ArrowLeft, ArrowRight, Tag, Package, AlertCircle } from 'lucide-react';
+import { ShoppingCart, X, Plus, Minus, Copy, Upload, CheckCircle, MessageCircle, ArrowLeft, ArrowRight, Tag, Package, AlertCircle, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -10,15 +10,19 @@ import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle, getAlertStyle } from '@/lib/styleUtils';
 import { processImage } from '@/lib/imageUtils';
 import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingService';
+import { getSelectableProvinces, getShippingState, isShippingBlocked } from '@/lib/shippingZoneRules';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
 import { convertCurrency } from '@/lib/currencyService';
-import { generateWhatsAppURL, notifyAdminNewPayment, openWhatsAppChat } from '@/lib/whatsappService';
-import { getActiveWhatsappRecipient, getFreshWhatsappRecipient, getFreshNotificationSettings } from '@/lib/notificationSettingsService';
+import { generateWhatsAppURL, buildAdminNewPaymentWhatsAppUrl, openWhatsAppChat } from '@/lib/whatsappService';
+import { getActiveWhatsappRecipient, getGuidedWhatsappPhone, getFreshNotificationSettings } from '@/lib/notificationSettingsService';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
+import { getPaymentConfirmationBlocker } from '@/lib/orderPayerPhone';
+import { isValidPayerPhone, normalizePayerPhone, PAYER_PHONE_MAX_LENGTH } from '@/lib/payerPhone';
 import { reserveZelleAccount, registerZelleTransaction, ZELLE_TRANSACTION_TYPES } from '@/lib/zelleService';
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
 import { calculateOrderTotal } from '@/lib/priceCalculationService';
+import { getCartItemUnitPrice } from '@/lib/cartPricing';
 import { validateAndGetOffer, recordOfferUsage } from '@/lib/orderDiscountService';
 import { buildDiscountBreakdown } from '@/lib/discountDisplayService';
 import { logActivity } from '@/lib/activityLogger';
@@ -56,11 +60,19 @@ const CartPage = ({ onNavigate }) => {
   const [paymentProof, setPaymentProof] = useState(null);
   const [paymentProofPreview, setPaymentProofPreview] = useState(null);
   const [paymentReference, setPaymentReference] = useState('');
+  const [payerPhone, setPayerPhone] = useState('');
   const [uploadingProof, setUploadingProof] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
-  const [shippingZones, setShippingZones] = useState([]);
+  const [allShippingZones, setAllShippingZones] = useState([]);
+  // Provinces/municipalities the customer may pick (province selectable if any municipality is available)
+  const shippingZones = useMemo(() => getSelectableProvinces(allShippingZones), [allShippingZones]);
   const [municipalities, setMunicipalities] = useState([]);
   const [shippingCost, setShippingCost] = useState(0);
+  // True when the chosen destination has no available zone or the cost lookup failed.
+  // Never fall back to a shipping cost of 0: the checkout is blocked instead.
+  const [shippingUnavailable, setShippingUnavailable] = useState(false);
+  // Monotonic id of the latest shipping cost request; stale responses are ignored
+  const shippingRequestIdRef = useRef(0);
   const [convertedSubtotal, setConvertedSubtotal] = useState(null);
   const [convertedDiscountedSubtotal, setConvertedDiscountedSubtotal] = useState(null);
   const [convertedShipping, setConvertedShipping] = useState(null);
@@ -80,39 +92,17 @@ const CartPage = ({ onNavigate }) => {
   const [couponError, setCouponError] = useState('');
   const [validatingCoupon, setValidatingCoupon] = useState(false);
 
-  // Calculate item price based on type (product or combo) - memoized with useCallback
-  const getItemPrice = useCallback((item) => {
-    if (!item) return 0;
+  // Base (USD) currency id: the cart subtotal is treated as USD downstream (convertAmounts)
+  const baseCurrencyId = useMemo(
+    () => currencies?.find(currency => currency.is_base)?.id ?? null,
+    [currencies]
+  );
 
-    // Use displayed price if available (price shown when added to cart)
-    // But convert from the currency it was displayed in to the currently selected currency
-    if (item.displayed_price && item.displayed_currency_id) {
-      const displayedPrice = parseFloat(item.displayed_price);
-      // If prices are in different currencies, convert them
-      if (item.displayed_currency_id !== selectedCurrency) {
-        return convertAmount(displayedPrice, item.displayed_currency_id, selectedCurrency);
-      }
-      return displayedPrice;
-    }
-
-    // Fallback: use calculated_price_usd if available
-    if (item.calculated_price_usd) {
-      return parseFloat(item.calculated_price_usd);
-    }
-
-    // Legacy fallback (for old items in cart)
-    if (item.products) {
-      // It's a combo - use baseTotalPrice with combo profit margin
-      const basePrice = parseFloat(item.baseTotalPrice || 0);
-      const profitMargin = parseFloat(item.profitMargin || financialSettings.comboProfit || 35) / 100;
-      return basePrice * (1 + profitMargin);
-    } else {
-      // It's a product - use base_price with product profit margin
-      const basePrice = parseFloat(item.base_price || item.basePrice || 0);
-      const profitMargin = parseFloat(financialSettings.productProfit || 40) / 100;
-      return basePrice * (1 + profitMargin);
-    }
-  }, [financialSettings, selectedCurrency, convertAmount]);
+  // Unit price of a cart item (product or combo). Logic lives in src/lib/cartPricing.js
+  const getItemPrice = useCallback(
+    (item) => getCartItemUnitPrice(item, { selectedCurrency, baseCurrencyId, convertAmount, financialSettings }),
+    [financialSettings, selectedCurrency, baseCurrencyId, convertAmount]
+  );
 
   // Calculate subtotal - memoized to avoid recalculation on every render
   const subtotal = useMemo(() => {
@@ -197,7 +187,7 @@ const CartPage = ({ onNavigate }) => {
       updateShippingCost(recipientDetails.province, recipientDetails.municipality);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recipientDetails.province, recipientDetails.municipality, subtotal]);
+  }, [recipientDetails.province, recipientDetails.municipality, subtotal, allShippingZones]);
 
   // Convert amounts when currency or totals change
   useEffect(() => {
@@ -208,14 +198,7 @@ const CartPage = ({ onNavigate }) => {
   const loadShippingZones = async () => {
     try {
       const zones = await getActiveShippingZones();
-
-      // Filter zones: exclude zones with shipping_cost = 0 UNLESS they are marked as free_shipping
-      const availableZones = (zones || []).filter(zone => {
-        const cost = parseFloat(zone.shipping_cost || 0);
-        // Show if: free_shipping is true OR shipping_cost > 0
-        return zone.free_shipping === true || cost > 0;
-      });
-      setShippingZones(availableZones);
+      setAllShippingZones(zones || []);
     } catch (error) {
       console.error('Error loading shipping zones:', error);
     }
@@ -266,19 +249,40 @@ const CartPage = ({ onNavigate }) => {
   };
 
   const updateShippingCost = async (provinceName, municipalityName = null) => {
+    // Every call (including synchronous outcomes) supersedes any in-flight request,
+    // so a late response for an older destination can never overwrite newer state.
+    shippingRequestIdRef.current += 1;
+    const requestId = shippingRequestIdRef.current;
+
     if (!provinceName) {
       setShippingCost(0);
+      setShippingUnavailable(false);
+      return;
+    }
+
+    // Decide availability from the zone rules first: a zone with cost 0 that is not
+    // flagged free means "not available", not "free shipping".
+    const state = getShippingState(allShippingZones, provinceName, municipalityName);
+    if (isShippingBlocked(state)) {
+      setShippingCost(0);
+      setShippingUnavailable(true);
       return;
     }
 
     try {
       // Pass municipality for priority-based cost lookup
       const result = await calculateShippingCost(provinceName, subtotal, municipalityName);
-      const cost = typeof result?.cost === 'number' ? result.cost : 0;
-      setShippingCost(cost);
+      if (requestId !== shippingRequestIdRef.current) return;
+      if (typeof result?.cost !== 'number') {
+        throw new Error('Shipping cost lookup returned no numeric cost');
+      }
+      setShippingCost(result.cost);
+      setShippingUnavailable(false);
     } catch (error) {
+      if (requestId !== shippingRequestIdRef.current) return;
       console.error('[CartPage] Error calculating shipping:', error);
       setShippingCost(0);
+      setShippingUnavailable(true);
     }
   };
 
@@ -300,6 +304,20 @@ const CartPage = ({ onNavigate }) => {
     total: convertedTotal !== null ? convertedTotal : totalAmount,
     categoryDiscount: categoryDiscountAmount * exchangeRateForDisplay,
     offerDiscount: offerDiscountAmount * exchangeRateForDisplay
+  };
+
+  const handleClearCart = async () => {
+    const confirmed = await showModal({
+      type: 'danger',
+      title: t('cart.clearAll.title'),
+      message: t('cart.clearAll.message'),
+      confirmText: t('cart.clearAll.confirm'),
+      cancelText: t('common.cancel')
+    });
+
+    if (confirmed) {
+      clearCart();
+    }
   };
 
   const handleCheckout = async () => {
@@ -371,6 +389,15 @@ const CartPage = ({ onNavigate }) => {
       toast({
         title: t('common.error'),
         description: t('cart.validation.selectRecipient'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (shippingUnavailable) {
+      toast({
+        title: t('common.error'),
+        description: t('cart.shippingUnavailable'),
         variant: 'destructive'
       });
       return;
@@ -594,25 +621,35 @@ const CartPage = ({ onNavigate }) => {
     }
   };
 
-  // Pre-payment confirmation modal
-  const handlePrePaymentConfirmation = async () => {
-    if (!paymentProof) {
+  const paymentBlocker = getPaymentConfirmationBlocker({ paymentProof, paymentReference, payerPhone });
+
+  // Shows the toast for the first missing payment field. Returns true when blocked.
+  const notifyPaymentBlocker = () => {
+    if (paymentBlocker === 'proof') {
       toast({
         title: t('cart.payment.proofRequired'),
         description: t('cart.payment.proofRequiredDesc'),
         variant: 'destructive'
       });
-      return;
-    }
-
-    if (!paymentReference.trim()) {
+    } else if (paymentBlocker === 'payer') {
       toast({
         title: t('cart.payment.payerRequired'),
         description: t('cart.payment.payerRequiredDesc'),
         variant: 'destructive'
       });
-      return;
+    } else if (paymentBlocker === 'payerPhone') {
+      toast({
+        title: t('cart.payment.payerPhoneRequired'),
+        description: t('cart.payment.payerPhoneRequiredDesc'),
+        variant: 'destructive'
+      });
     }
+    return paymentBlocker !== null;
+  };
+
+  // Pre-payment confirmation modal
+  const handlePrePaymentConfirmation = async () => {
+    if (notifyPaymentBlocker()) return;
 
     const summaryText = `${t('cart.payment.recipientLabel')}: ${recipientDetails.fullName}\nTotal: ${currencySymbol}${convertedTotal?.toFixed(2) || totalAmount.toFixed(2)} ${currencyCode}\n${t('cart.payment.productsLabel')}: ${t('cart.payment.itemCount', { count: cart.length })}`;
 
@@ -630,19 +667,13 @@ const CartPage = ({ onNavigate }) => {
   };
 
   const handleConfirmPayment = async () => {
-    if (!paymentProof) {
-      toast({
-        title: t('cart.payment.proofRequired'),
-        description: t('cart.payment.proofRequiredDesc'),
-        variant: 'destructive'
-      });
-      return;
-    }
+    // Validate proof, payer and payer phone BEFORE createOrder and any proof upload
+    if (notifyPaymentBlocker()) return;
 
-    if (!paymentReference.trim()) {
+    if (shippingUnavailable) {
       toast({
-        title: t('cart.payment.payerRequired'),
-        description: t('cart.payment.payerRequiredDesc'),
+        title: t('common.error'),
+        description: t('cart.shippingUnavailable'),
         variant: 'destructive'
       });
       return;
@@ -710,6 +741,7 @@ const CartPage = ({ onNavigate }) => {
         paymentMethod: 'zelle',
         shippingZoneId: shippingZone?.id || null,
         zelleAccountId: selectedZelleAccountId,
+        payerPhone: normalizePayerPhone(payerPhone),
         // Offer/coupon code - added from Phase 3.13
         offerId: appliedOffer?.id || null
       };
@@ -728,7 +760,8 @@ const CartPage = ({ onNavigate }) => {
         total: totalAmount,
         currency: currency.code || 'USD',
         recipientName: recipientDetails.fullName,
-        itemCount: cart.length
+        itemCount: cart.length,
+        whatsappLoading: true
       };
 
       // Run all post-creation tasks in parallel, non-blocking
@@ -745,7 +778,13 @@ const CartPage = ({ onNavigate }) => {
         // Upload payment proof with payer reference
         let uploadedProofUrl = null;
         try {
-          uploadedProofUrl = await uploadPaymentProof(paymentProof, createdOrder.id, user.id, paymentReference.trim());
+          uploadedProofUrl = await uploadPaymentProof(
+            paymentProof,
+            createdOrder.id,
+            user.id,
+            paymentReference.trim(),
+            { payerPhone: normalizePayerPhone(payerPhone) }
+          );
           logActivity({
             action: 'payment_proof_uploaded',
             entityType: 'order',
@@ -767,36 +806,43 @@ const CartPage = ({ onNavigate }) => {
         }
 
         // Get fresh notification settings
-        let freshSettings = notificationSettings;
-        let notificationWhatsapp = getActiveWhatsappRecipient(notificationSettings);
+        // The guided step needs a phone (wa.me): group targets fall back to the admin phone.
+        let notificationWhatsapp = getGuidedWhatsappPhone(notificationSettings);
         try {
-          freshSettings = await getFreshNotificationSettings();
-          notificationWhatsapp = getActiveWhatsappRecipient(freshSettings);
+          const freshSettings = await getFreshNotificationSettings();
+          notificationWhatsapp = getGuidedWhatsappPhone(freshSettings) || notificationWhatsapp;
         } catch (e) {
           console.warn('Fresh settings fetch failed, using cached:', e);
         }
 
-        // Notify admin via WhatsApp
-        if (notificationWhatsapp) {
-          try {
-            const orderForNotification = {
-              ...createdOrder,
-              order_items: orderItems.map(item => ({
-                item_name_es: language === 'es' ? item.name : item.nameEn || item.name,
-                item_name_en: item.nameEn || item.name,
-                quantity: item.quantity
-              })),
-              user_name: user.full_name || user.user_metadata?.full_name || user.email?.split('@')[0],
-              user_email: user.email,
-              payment_reference: paymentReference.trim()
-            };
-            notifyAdminNewPayment(orderForNotification, notificationWhatsapp, language);
-          } catch (e) {
-            console.warn('WhatsApp notification failed:', e);
-          }
-        }
+        const orderForNotification = {
+          ...createdOrder,
+          order_items: orderItems.map(item => ({
+            item_name_es: language === 'es' ? item.name : item.nameEn || item.name,
+            item_name_en: item.nameEn || item.name,
+            quantity: item.quantity
+          })),
+          user_name: user.full_name || user.user_metadata?.full_name || user.email?.split('@')[0],
+          user_email: user.email,
+          payment_reference: paymentReference.trim(),
+          payer_phone: normalizePayerPhone(payerPhone)
+        };
 
-        // Note: Edge function 'notify-order' removed - notifications handled by notifyAdminNewPayment above
+        // Guided WhatsApp step: expose the prepared URL in the confirmation modal.
+        // Always ends the loading state, even when no recipient is configured.
+        let whatsappUrl = '';
+        try {
+          whatsappUrl = notificationWhatsapp
+            ? buildAdminNewPaymentWhatsAppUrl(orderForNotification, notificationWhatsapp, language)
+            : '';
+        } catch (e) {
+          console.warn('WhatsApp URL build failed:', e);
+        }
+        setConfirmedOrderInfo(prev => prev
+          ? { ...prev, whatsappUrl, whatsappNumber: notificationWhatsapp, whatsappLoading: false }
+          : prev);
+
+        // Admin notification is the guided WhatsApp link in the confirmation modal (no auto-open).
 
         // Log activity
         logActivity({
@@ -907,7 +953,20 @@ const CartPage = ({ onNavigate }) => {
           </div>
 
           {/* Shipping Cost Summary */}
-          {recipientDetails.province && (
+          {recipientDetails.province && shippingUnavailable && (
+            <motion.div
+              role="alert"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="glass-effect p-6 rounded-xl border-2 border-red-200 bg-red-50"
+            >
+              <p className="text-sm font-medium text-red-700 flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                {t('cart.shippingUnavailable')}
+              </p>
+            </motion.div>
+          )}
+          {recipientDetails.province && !shippingUnavailable && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -937,6 +996,7 @@ const CartPage = ({ onNavigate }) => {
             </Button>
             <Button
               onClick={handleRecipientSubmit}
+              disabled={shippingUnavailable}
               style={getPrimaryButtonStyle(visualSettings)}
               className="flex-1 flex items-center justify-center gap-2"
             >
@@ -1172,6 +1232,31 @@ const CartPage = ({ onNavigate }) => {
             />
           </div>
 
+          {/* Payer Contact Phone Field */}
+          <div className="mb-6">
+            <label htmlFor="cart-payer-phone" className="block text-sm font-medium text-gray-700 mb-2">
+              {t('cart.payment.payerPhoneLabel')} <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="cart-payer-phone"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              maxLength={PAYER_PHONE_MAX_LENGTH}
+              value={payerPhone}
+              onChange={(e) => setPayerPhone(e.target.value)}
+              placeholder={t('cart.payment.payerPhonePlaceholder')}
+              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              aria-invalid={normalizePayerPhone(payerPhone) !== '' && !isValidPayerPhone(payerPhone)}
+              required
+            />
+            {normalizePayerPhone(payerPhone) !== '' && !isValidPayerPhone(payerPhone) && (
+              <p role="alert" className="mt-1 text-sm text-red-600">
+                {t('cart.payment.payerPhoneInvalid')}
+              </p>
+            )}
+          </div>
+
           {/* WhatsApp Contact Section */}
           <motion.div
             initial={{ opacity: 0, y: -10 }}
@@ -1222,14 +1307,14 @@ const CartPage = ({ onNavigate }) => {
                 className="flex-1"
                 size="lg"
                 style={getPrimaryButtonStyle(visualSettings)}
-                disabled={!paymentProof || !paymentReference.trim() || uploadingProof || processingPayment}
+                disabled={paymentBlocker !== null || uploadingProof || processingPayment}
               >
                 {processingPayment ? t('cart.payment.processing') : t('cart.payment.confirm')}
               </Button>
             </div>
 
             {/* Missing fields hint */}
-            {(!paymentProof || !paymentReference.trim()) && !processingPayment && (
+            {paymentBlocker !== null && !processingPayment && (
               <div className="text-center space-y-1">
                 {!paymentProof && (
                   <p className="text-xs text-red-500 font-medium flex items-center justify-center gap-1">
@@ -1241,6 +1326,12 @@ const CartPage = ({ onNavigate }) => {
                   <p className="text-xs text-red-500 font-medium flex items-center justify-center gap-1">
                     <AlertCircle className="h-3 w-3" />
                     {t('cart.payment.missingPayer')}
+                  </p>
+                )}
+                {!isValidPayerPhone(payerPhone) && (
+                  <p className="text-xs text-red-500 font-medium flex items-center justify-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {t('cart.payment.missingPayerPhone')}
                   </p>
                 )}
               </div>
@@ -1268,6 +1359,9 @@ const CartPage = ({ onNavigate }) => {
           recipientName={confirmedOrderInfo?.recipientName}
           itemCount={confirmedOrderInfo?.itemCount}
           estimatedDelivery={t('cart.payment.estimatedDelivery')}
+          whatsappUrl={confirmedOrderInfo?.whatsappUrl}
+          whatsappNumber={confirmedOrderInfo?.whatsappNumber}
+          whatsappLoading={confirmedOrderInfo?.whatsappLoading}
         />
       </div>
     );
@@ -1466,6 +1560,10 @@ const CartPage = ({ onNavigate }) => {
                 <Button onClick={handleCheckout} className="w-full" size="lg" style={getPrimaryButtonStyle(visualSettings)}>
                   {t('cart.checkout')}
                 </Button>
+                <Button onClick={handleClearCart} variant="outline" className="w-full">
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  {t('cart.clearAll.button')}
+                </Button>
               </motion.div>
             </div>
           </div>
@@ -1492,6 +1590,9 @@ const CartPage = ({ onNavigate }) => {
         recipientName={confirmedOrderInfo?.recipientName}
         itemCount={confirmedOrderInfo?.itemCount}
         estimatedDelivery={language === 'es' ? '24-72 horas' : '24-72 hours'}
+        whatsappUrl={confirmedOrderInfo?.whatsappUrl}
+        whatsappNumber={confirmedOrderInfo?.whatsappNumber}
+        whatsappLoading={confirmedOrderInfo?.whatsappLoading}
       />
     </div>
   );

@@ -3,10 +3,11 @@ import { motion } from 'framer-motion';
 import {
   Calendar, DollarSign, User, FileText, AlertCircle, CheckCircle,
   Clock, XCircle, Upload, Eye, Package, Truck, RefreshCw,
-  TrendingUp, TrendingDown, Info, X
+  TrendingUp, TrendingDown, Info, X, MessageCircle
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBusiness } from '@/contexts/BusinessContext';
 import {
   getMyRemittances,
   getRemittanceDetails,
@@ -27,11 +28,24 @@ import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import SkeletonCard from '@/components/ui/SkeletonCard';
 import SearchFilterBar from '@/components/ui/SearchFilterBar';
 import RemittanceTimeline from '@/components/ui/RemittanceTimeline';
+import NotifyAdminWhatsAppButton from '@/components/NotifyAdminWhatsAppButton';
+import RecipientLocation from '@/components/RecipientLocation';
+import { isValidPayerPhone, normalizePayerPhone, PAYER_PHONE_MAX_LENGTH } from '@/lib/payerPhone';
+import ConfirmationModal from '@/components/ui/ConfirmationModal';
+import {
+  ADMIN_NOTIFICATION_LANGUAGE,
+  buildAdminNewPaymentProofWhatsAppUrl,
+  buildRemittanceNotificationPayload,
+  getAdminNotificationUrlBuilder,
+  openAdminNotification
+} from '@/lib/whatsappService';
+import { getFreshGuidedWhatsappPhone } from '@/lib/notificationSettingsService';
 
 const MyRemittancesPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { user, isAdmin, isSuperAdmin } = useAuth();
   const { showModal } = useModal();
+  const { notificationSettings } = useBusiness();
 
   const [remittances, setRemittances] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -44,10 +58,17 @@ const MyRemittancesPage = ({ onNavigate }) => {
   const [uploadData, setUploadData] = useState({
     file: null,
     reference: '',
+    payerPhone: '',
     notes: ''
   });
   const [imagePreview, setImagePreview] = useState(null);
   const [deliveryProofPreview, setDeliveryProofPreview] = useState(null);
+
+  // Guided WhatsApp confirmation shown after a late payment-proof upload
+  const [showProofConfirmation, setShowProofConfirmation] = useState(false);
+  const [proofConfirmationInfo, setProofConfirmationInfo] = useState(null);
+  // Remittance whose admin re-notification is in flight (prevents re-entrancy)
+  const [notifyingId, setNotifyingId] = useState(null);
 
   // Search and filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -329,6 +350,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
     setUploadData({
       file: null,
       reference: remittance.remittance_number, // Auto-load remittance ID
+      payerPhone: remittance.payer_phone || '',
       notes: ''
     });
     setImagePreview(null);
@@ -380,13 +402,39 @@ const MyRemittancesPage = ({ onNavigate }) => {
       return;
     }
 
+    if (!isValidPayerPhone(uploadData.payerPhone)) {
+      toast({
+        title: t('common.error'),
+        description: t('remittances.user.payerPhoneInvalid'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
     try {
       const result = await uploadPaymentProof(
         selectedRemittance.id,
         uploadData.file,
         uploadData.reference,
-        uploadData.notes
+        uploadData.notes,
+        { payerPhone: uploadData.payerPhone }
       );
+
+      // Guided WhatsApp step: the client opens the prepared message with a real click in the modal
+      // Recipient comes from fresh settings; group targets fall back to the admin phone (wa.me needs a phone)
+      const recipient = await getFreshGuidedWhatsappPhone(notificationSettings);
+      let whatsappUrl = '';
+      try {
+        whatsappUrl = recipient
+          ? await buildAdminNewPaymentProofWhatsAppUrl(
+              buildRemittanceNotificationPayload(result, user),
+              recipient,
+              ADMIN_NOTIFICATION_LANGUAGE
+            )
+          : '';
+      } catch (urlError) {
+        console.warn('WhatsApp URL build failed', urlError);
+      }
 
       toast({
         title: t('common.success'),
@@ -397,8 +445,18 @@ const MyRemittancesPage = ({ onNavigate }) => {
       setUploadData({
         file: null,
         reference: '',
+        payerPhone: '',
         notes: ''
       });
+      setProofConfirmationInfo({
+        remittanceNumber: result?.remittance_number,
+        total: result?.amount_to_deliver,
+        currency: result?.currency_delivered,
+        recipientName: result?.recipient_name,
+        whatsappUrl,
+        whatsappNumber: recipient
+      });
+      setShowProofConfirmation(true);
       await loadRemittances();
       setSelectedRemittance(result);
     } catch (error) {
@@ -408,6 +466,56 @@ const MyRemittancesPage = ({ onNavigate }) => {
         description: error?.message || t('remittances.wizard.errorUploadingProof') || t('common.error'),
         variant: 'destructive'
       });
+    }
+  };
+
+  // Persistent re-send of the admin notice. Must be called straight from a click handler:
+  // openAdminNotification opens the tab synchronously, before any await.
+  const handleNotifyAdmin = async (remittance) => {
+    const buildNotificationUrl = getAdminNotificationUrlBuilder(remittance);
+    if (!buildNotificationUrl || notifyingId === remittance.id) return;
+
+    setNotifyingId(remittance.id);
+    try {
+      const payload = buildRemittanceNotificationPayload(remittance, user);
+      const result = await openAdminNotification({
+        resolvePhone: () => getFreshGuidedWhatsappPhone(notificationSettings),
+        buildUrl: (phone) => buildNotificationUrl(payload, phone, ADMIN_NOTIFICATION_LANGUAGE)
+      });
+
+      if (result.opened) return;
+
+      if (result.blocked) {
+        // Popup blocked: offer the same message as a regular link in the resend modal
+        setProofConfirmationInfo({
+          remittanceNumber: remittance.remittance_number,
+          total: remittance.amount_to_deliver,
+          currency: remittance.currency_delivered,
+          recipientName: remittance.recipient_name,
+          whatsappUrl: result.url,
+          whatsappNumber: result.phone,
+          variant: 'resend'
+        });
+        setShowProofConfirmation(true);
+        return;
+      }
+
+      toast({
+        title: t('common.error'),
+        description: result.error
+          ? t('remittances.user.notifyAdminError')
+          : t('cart.payment.whatsappNotConfigured'),
+        variant: 'destructive'
+      });
+    } catch (error) {
+      console.error('Error notifying admin via WhatsApp:', error);
+      toast({
+        title: t('common.error'),
+        description: t('remittances.user.notifyAdminError'),
+        variant: 'destructive'
+      });
+    } finally {
+      setNotifyingId(null);
     }
   };
 
@@ -840,6 +948,21 @@ const MyRemittancesPage = ({ onNavigate }) => {
                       <span className="hidden sm:inline">{t('remittances.user.viewDetails')}</span>
                     </TooltipButton>
 
+                    {/* Re-send the admin notice at any time while the payment awaits proof or validation */}
+                    {getAdminNotificationUrlBuilder(remittance) && (
+                      <TooltipButton
+                        tooltipText={t('remittances.user.notifyAdminWhatsapp')}
+                        onClick={() => handleNotifyAdmin(remittance)}
+                        disabled={notifyingId === remittance.id}
+                        className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-[#075E54] text-white rounded-lg hover:bg-[#064c44] transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                        title={t('remittances.user.notifyAdminWhatsapp')}
+                        aria-label={t('remittances.user.notifyAdminWhatsapp')}
+                      >
+                        <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                        <span className="hidden sm:inline">{t('remittances.user.notifyAdminWhatsapp')}</span>
+                      </TooltipButton>
+                    )}
+
                     {remittance.status === REMITTANCE_STATUS.PAYMENT_PENDING && (
                       <>
                         <TooltipButton
@@ -933,6 +1056,29 @@ const MyRemittancesPage = ({ onNavigate }) => {
               </div>
 
               <div>
+                <label htmlFor="my-remittances-payer-phone" className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                  {t('remittances.user.payerPhoneLabel')}
+                </label>
+                <input
+                  id="my-remittances-payer-phone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  maxLength={PAYER_PHONE_MAX_LENGTH}
+                  value={uploadData.payerPhone}
+                  onChange={(e) => setUploadData({ ...uploadData, payerPhone: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  placeholder={t('remittances.user.payerPhonePlaceholder')}
+                  required
+                />
+                {normalizePayerPhone(uploadData.payerPhone) !== '' && !isValidPayerPhone(uploadData.payerPhone) && (
+                  <p role="alert" className="mt-1 text-sm text-red-600">
+                    {t('remittances.user.payerPhoneInvalid')}
+                  </p>
+                )}
+              </div>
+
+              <div>
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
                   {t('remittances.user.additionalNotesLabel')}
                 </label>
@@ -1017,9 +1163,11 @@ const MyRemittancesPage = ({ onNavigate }) => {
                   <div className="space-y-2 bg-gray-50 p-3 sm:p-4 rounded-lg text-xs sm:text-sm">
                     <p><span className="text-gray-600">{t('remittances.user.recipientName')}</span> <span className="font-medium">{selectedRemittance.recipient_name}</span></p>
                     <p><span className="text-gray-600">{t('remittances.user.recipientPhone')}</span> <span className="font-medium">{selectedRemittance.recipient_phone}</span></p>
-                    {selectedRemittance.recipient_city && (
-                      <p><span className="font-medium">{t('remittances.user.recipientCity')}</span> {selectedRemittance.recipient_city}{selectedRemittance.recipient_province && `, ${selectedRemittance.recipient_province}`}{selectedRemittance.recipient_municipality && `, ${selectedRemittance.recipient_municipality}`}</p>
-                    )}
+                    <RecipientLocation
+                      label={t('remittances.user.recipientLocation')}
+                      remittance={selectedRemittance}
+                      labelClassName="text-gray-600"
+                    />
                     {selectedRemittance.recipient_address && (
                       <p><span className="text-gray-600">{t('remittances.user.recipientAddress')}</span> <span className="font-medium">{selectedRemittance.recipient_address}</span></p>
                     )}
@@ -1095,6 +1243,19 @@ const MyRemittancesPage = ({ onNavigate }) => {
                         <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.paymentReferenceLabel')}</p>
                         <p className="font-semibold text-blue-900 text-sm">{selectedRemittance.payment_reference}</p>
                       </div>
+                    )}
+                    {selectedRemittance.payer_phone && (
+                      <div className="mt-3 bg-blue-50 p-3 rounded-lg">
+                        <p className="text-xs sm:text-sm text-gray-600">{t('remittances.user.payerPhoneShortLabel')}</p>
+                        <p className="font-semibold text-blue-900 text-sm">{selectedRemittance.payer_phone}</p>
+                      </div>
+                    )}
+                    {selectedRemittance.status === REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED && (
+                      <NotifyAdminWhatsAppButton
+                        remittance={selectedRemittance}
+                        user={user}
+                        className="mt-3"
+                      />
                     )}
                   </div>
                 ) : (
@@ -1257,6 +1418,22 @@ const MyRemittancesPage = ({ onNavigate }) => {
           </motion.div>
         </div>
       )}
+
+      {/* Guided WhatsApp confirmation after a late payment-proof upload */}
+      <ConfirmationModal
+        isOpen={showProofConfirmation}
+        onClose={() => setShowProofConfirmation(false)}
+        onViewOrders={() => setShowProofConfirmation(false)}
+        orderNumber={proofConfirmationInfo?.remittanceNumber}
+        orderType="remittance"
+        total={proofConfirmationInfo?.total}
+        currency={proofConfirmationInfo?.currency}
+        recipientName={proofConfirmationInfo?.recipientName}
+        estimatedDelivery={t('remittances.wizard.estimatedDeliveryTime')}
+        whatsappUrl={proofConfirmationInfo?.whatsappUrl}
+        whatsappNumber={proofConfirmationInfo?.whatsappNumber}
+        variant={proofConfirmationInfo?.variant}
+      />
     </div>
   );
 };

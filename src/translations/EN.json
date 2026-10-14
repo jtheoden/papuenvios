@@ -213,6 +213,7 @@
       "fullName": "Full Name",
       "phone": "Phone",
       "city": "City",
+      "location": "Location",
       "address": "Address",
       "idNumber": "ID Number",
       "notes": "Additional notes",
@@ -322,6 +323,8 @@
       "amountInfoTitle": "Amount Information",
       "amountSent": "Amount Sent:",
       "toDeliver": "To Deliver:",
+      "deliveryCost": "Delivery cost:",
+      "totalPaid": "Total paid:",
       "recipientInfoTitle": "Recipient Information",
       "recipientName": "Name:",
       "recipientPhone": "Phone:",
@@ -337,6 +340,7 @@
       "transfer": "🏦 Bank Transfer",
       "card": "💳 Card",
       "paymentReferenceLabel": "Payer Name/Company",
+      "payerPhoneLabel": "Payer phone",
       "notesLabel": "Notes",
       "paymentProofSection": "Payment Proof",
       "noPaymentProof": "No payment proof",
@@ -381,6 +385,8 @@
       }
     },
     "user": {
+      "notifyAdminWhatsapp": "Notify the administrator via WhatsApp",
+      "notifyAdminError": "WhatsApp could not be opened. Please try again.",
       "searchPlaceholder": "Search by name, reference...",
       "trackYourRemittances": "Track the status of your money transfers",
       "trackRemittances": "Track the status of your money transfers",
@@ -411,6 +417,10 @@
       "remittanceLabel": "Remittance",
       "paymentProofLabel": "Payment Proof *",
       "paymentReferenceLabel": "Payer Name/Company *",
+      "payerPhoneLabel": "Your phone number so we can contact you *",
+      "payerPhoneShortLabel": "Payer contact phone",
+      "payerPhonePlaceholder": "E.g.: +1 305 555 0100",
+      "payerPhoneInvalid": "Enter a valid phone number (8 to 15 digits).",
       "referenceExample": "E.g.: ZELLE123456",
       "additionalNotesLabel": "Additional Notes",
       "additionalDetailsPlaceholder": "Additional details...",
@@ -421,7 +431,7 @@
       "recipient": "Recipient",
       "recipientName": "Name:",
       "recipientPhone": "Phone:",
-      "recipientCity": "City:",
+      "recipientLocation": "Location:",
       "recipientAddress": "Address:",
       "amounts": "Amounts",
       "amountSentLabel": "Amount Sent:",
@@ -462,6 +472,12 @@
       "rateUpdated": "Remittance updated to current rate",
       "recalculating": "Recalculating..."
     },
+    "notifyAdmin": {
+      "button": "Notify the administrator via WhatsApp",
+      "hint": "WhatsApp will open with the payment proof ready to send. You only need to press send.",
+      "noRecipientTitle": "Could not notify the administrator",
+      "noRecipient": "The administrator's WhatsApp number is not available. Please contact support."
+    },
     "wizard": {
       "step1Title": "Remittance Type and Amount",
       "step2Title": "Recipient Details",
@@ -485,6 +501,8 @@
       "youSend": "Amount to send",
       "commission": "Commission",
       "recipientReceives": "Recipient receives",
+      "deliveryCost": "Delivery cost",
+      "totalToPay": "Total to pay",
       "confirmAndCreate": "Confirm Remittance",
       "remittanceCreated": "Remittance Created",
       "uploadLater": "Upload Later",
@@ -598,7 +616,12 @@
       "basePriceRequired": "Enter base price first",
       "sellPriceTooLow": "Invalid sell price",
       "sellPriceTooLowDesc": "Sell price cannot be less than base price",
-      "profitInBase": "profit in base currency"
+      "profitInBase": "profit in base currency",
+      "marginSource": {
+        "product": "Product own margin",
+        "category": "Suggested from the category margin",
+        "global": "Global default margin"
+      }
     },
     "inventory": {
       "product": "Product",
@@ -875,6 +898,8 @@
       "usdToLocal": "USD to Local Currency",
       "productProfit": "Product Profit (%)",
       "comboProfit": "Combo Profit (%)",
+      "marginInvalid": "Margin must be a number between 0 and 999.99",
+      "marginSaveError": "Could not save the profit margin. Please try again.",
       "remittanceProfit": "Remittance Profit (%)",
       "currencies": "Currencies Management",
       "addCurrency": "Add Currency",
@@ -1148,6 +1173,12 @@
     "saveSuccess": "Settings saved successfully"
   },
   "cart": {
+    "clearAll": {
+      "button": "Empty cart",
+      "title": "Empty your cart?",
+      "message": "All items will be removed from your cart. This action cannot be undone.",
+      "confirm": "Yes, empty it"
+    },
     "title": "Your Shopping Cart",
     "empty": "Your cart is empty.",
     "browse": "Browse products",
@@ -1157,6 +1188,8 @@
     "free": "Free",
     "total": "Total",
     "checkout": "Proceed to Checkout",
+    "shippingUnavailable": "We do not ship to this destination right now. Choose another municipality or province, or contact support.",
+    "shippingUnavailableShort": "Unavailable",
     "validation": {
       "selectRecipient": "Select a recipient",
       "selectZelleAccount": "Select a Zelle account"
@@ -1189,6 +1222,12 @@
       "proofMandatoryBanner": "You must upload the payment proof and the payer name to confirm your order.",
       "missingProof": "Payment proof not uploaded",
       "missingPayer": "Payer name/company missing",
+      "payerPhoneLabel": "Your phone number so we can contact you",
+      "payerPhonePlaceholder": "E.g.: +1 305 555 0100",
+      "payerPhoneRequired": "Phone required",
+      "payerPhoneRequiredDesc": "Enter a valid phone number (8 to 15 digits) so we can contact you",
+      "payerPhoneInvalid": "Enter a valid phone number (8 to 15 digits).",
+      "missingPayerPhone": "Your contact phone is missing",
       "confirmOrder": "Confirm order?",
       "confirmOrderMessage": "Are you sure you want to confirm this order?\n\n{summary}\n\nOnce confirmed, we will process your order.",
       "confirmOrderYes": "Yes, confirm",
@@ -1345,6 +1384,7 @@
       "title": "Order Details",
       "order": "Order Number",
       "email": "Email",
+      "payerPhone": "Payer phone",
       "paymentMethod": "Payment Method",
       "subtotal": "Subtotal",
       "shipping": "Shipping Cost",
@@ -1657,6 +1697,9 @@
     "updateButton": "Update Recipient"
   },
   "zelle": {
+    "showEmail": "Show email to customers",
+    "showPhone": "Show phone to customers",
+    "atLeastOneVisible": "At least one of email or phone must be visible to customers",
     "accounts": "Zelle Accounts",
     "selectAccount": "Select Zelle Account",
     "selectAccountRequired": "You must select a Zelle account to continue",

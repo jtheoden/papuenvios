@@ -213,6 +213,7 @@
       "fullName": "Nombre Completo",
       "phone": "Teléfono",
       "city": "Ciudad",
+      "location": "Ubicación",
       "address": "Dirección",
       "idNumber": "Carnet de Identidad",
       "notes": "Notas adicionales",
@@ -321,6 +322,8 @@
       "adminCannotSendRemittance": "Esta página es solo para usuarios. Los administradores deben usar el panel de gestión de remesas.",
       "amountInfoTitle": "Información de Monto",
       "amountSent": "Monto Enviado:",
+      "deliveryCost": "Costo de entrega:",
+      "totalPaid": "Total pagado:",
       "toDeliver": "A Entregar:",
       "recipientInfoTitle": "Información del Destinatario",
       "recipientName": "Nombre:",
@@ -337,6 +340,7 @@
       "transfer": "🏦 Transferencia Bancaria",
       "card": "💳 Tarjeta",
       "paymentReferenceLabel": "Titular/Empresa que realiza el pago",
+      "payerPhoneLabel": "Teléfono del pagador",
       "notesLabel": "Notas",
       "paymentProofSection": "Comprobante de Pago",
       "noPaymentProof": "Sin comprobante de pago",
@@ -381,6 +385,8 @@
       }
     },
     "user": {
+      "notifyAdminWhatsapp": "Notificar al administrador por WhatsApp",
+      "notifyAdminError": "No se pudo abrir WhatsApp. Inténtalo de nuevo.",
       "searchPlaceholder": "Buscar por nombre, referencia...",
       "trackYourRemittances": "Consulte el estado de sus envíos de dinero",
       "trackRemittances": "Consulte el estado de sus envíos de dinero",
@@ -436,11 +442,15 @@
       "cancelReasonLabel": "Razón (opcional)",
       "paymentProofLabel": "Comprobante de pago *",
       "paymentReferenceLabel": "Titular/Empresa *",
+      "payerPhoneLabel": "Tu teléfono para contactarte *",
+      "payerPhoneShortLabel": "Teléfono de contacto del pagador",
+      "payerPhonePlaceholder": "Ej: +1 305 555 0100",
+      "payerPhoneInvalid": "Ingresa un teléfono válido (entre 8 y 15 dígitos).",
       "referenceExample": "Ej: ZELLE123456",
       "additionalNotesLabel": "Notas Adicionales",
       "recipientName": "Nombre:",
       "recipientPhone": "Teléfono:",
-      "recipientCity": "Ciudad:",
+      "recipientLocation": "Ubicación:",
       "recipientAddress": "Dirección:",
       "paymentProofSection": "Comprobante de Pago",
       "deliveryEvidenceTitle": "Evidencia de Entrega",
@@ -471,6 +481,12 @@
       "rateUpdated": "Remesa actualizada a la tasa actual",
       "recalculating": "Recalculando..."
     },
+    "notifyAdmin": {
+      "button": "Avisar al administrador por WhatsApp",
+      "hint": "Se abrirá WhatsApp con el comprobante listo para enviar. Solo falta que pulses enviar.",
+      "noRecipientTitle": "No se pudo avisar al administrador",
+      "noRecipient": "El número de WhatsApp del administrador no está disponible. Contacta al soporte."
+    },
     "wizard": {
       "step1Title": "Tipo y Monto de Remesa",
       "step2Title": "Datos del Destinatario",
@@ -494,6 +510,8 @@
       "youSend": "Monto a enviar",
       "commission": "Comisión",
       "recipientReceives": "Destinatario recibirá",
+      "deliveryCost": "Costo de entrega",
+      "totalToPay": "Total a pagar",
       "confirmAndCreate": "Confirmar Remesa",
       "remittanceCreated": "Remesa Creada",
       "uploadLater": "Subir Después",
@@ -607,7 +625,12 @@
       "basePriceRequired": "Ingrese el precio base primero",
       "sellPriceTooLow": "Precio de venta inválido",
       "sellPriceTooLowDesc": "El precio de venta no puede ser menor que el precio base",
-      "profitInBase": "ganancia en moneda base"
+      "profitInBase": "ganancia en moneda base",
+      "marginSource": {
+        "product": "Margen propio del producto",
+        "category": "Sugerido por el margen de la categoría",
+        "global": "Margen global por defecto"
+      }
     },
     "inventory": {
       "product": "Producto",
@@ -884,6 +907,8 @@
       "usdToLocal": "USD a Moneda Nacional",
       "productProfit": "Ganancia Productos (%)",
       "comboProfit": "Ganancia Combos (%)",
+      "marginInvalid": "El margen debe ser un número entre 0 y 999.99",
+      "marginSaveError": "No se pudo guardar el margen de ganancia. Intenta de nuevo.",
       "remittanceProfit": "Ganancia Remesas (%)",
       "currencies": "Gestión de Monedas",
       "addCurrency": "Agregar Moneda",
@@ -1157,6 +1182,12 @@
     "saveSuccess": "Ajustes guardados exitosamente"
   },
   "cart": {
+    "clearAll": {
+      "button": "Vaciar carrito",
+      "title": "¿Vaciar el carrito?",
+      "message": "Se quitarán todos los productos del carrito. Esta acción no se puede deshacer.",
+      "confirm": "Sí, vaciar"
+    },
     "title": "Tu Carrito de Compras",
     "empty": "Tu carrito está vacío.",
     "browse": "Explorar productos",
@@ -1166,6 +1197,8 @@
     "free": "Gratis",
     "total": "Total",
     "checkout": "Proceder al Pago",
+    "shippingUnavailable": "No realizamos envíos a este destino por ahora. Elige otro municipio o provincia, o contacta a soporte.",
+    "shippingUnavailableShort": "No disponible",
     "validation": {
       "selectRecipient": "Selecciona un destinatario",
       "selectZelleAccount": "Selecciona una cuenta Zelle"
@@ -1198,6 +1231,12 @@
       "proofMandatoryBanner": "Debes subir el comprobante de pago y el nombre del titular para poder confirmar tu pedido.",
       "missingProof": "Falta subir comprobante de pago",
       "missingPayer": "Falta nombre del titular/empresa",
+      "payerPhoneLabel": "Tu teléfono para contactarte",
+      "payerPhonePlaceholder": "Ej: +1 305 555 0100",
+      "payerPhoneRequired": "Teléfono requerido",
+      "payerPhoneRequiredDesc": "Ingresa un teléfono válido (entre 8 y 15 dígitos) para que podamos contactarte",
+      "payerPhoneInvalid": "Ingresa un teléfono válido (entre 8 y 15 dígitos).",
+      "missingPayerPhone": "Falta tu teléfono de contacto",
       "confirmOrder": "¿Confirmar pedido?",
       "confirmOrderMessage": "¿Estás seguro de que deseas confirmar este pedido?\n\n{summary}\n\nUna vez confirmado, procesaremos tu pedido.",
       "confirmOrderYes": "Sí, confirmar",
@@ -1354,6 +1393,7 @@
       "title": "Detalles de la Orden",
       "order": "Número de Orden",
       "email": "Correo Electrónico",
+      "payerPhone": "Teléfono del pagador",
       "paymentMethod": "Método de Pago",
       "subtotal": "Subtotal",
       "shipping": "Costo de Envío",
@@ -1666,6 +1706,9 @@
     "updateButton": "Actualizar Destinatario"
   },
   "zelle": {
+    "showEmail": "Mostrar email a los clientes",
+    "showPhone": "Mostrar teléfono a los clientes",
+    "atLeastOneVisible": "Al menos uno de email o teléfono debe estar visible para los clientes",
     "accounts": "Cuentas Zelle",
     "selectAccount": "Seleccionar Cuenta Zelle",
     "selectAccountRequired": "Debe seleccionar una cuenta Zelle para continuar",

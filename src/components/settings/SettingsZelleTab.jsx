@@ -14,6 +14,7 @@ import { toast } from '@/components/ui/use-toast';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import TableDetailModal from '@/components/modals/TableDetailModal';
 import { zelleService } from '@/lib/zelleService';
+import { validateZelleVisibility } from '@/lib/zelleVisibility';
 import { getZelleTableColumns, getZelleModalColumns } from './ZelleAccountTableConfig';
 
 const SettingsZelleTab = () => {
@@ -53,7 +54,9 @@ const SettingsZelleTab = () => {
     notes: '',
     is_active: true,
     for_products: true,
-    for_remittances: true
+    for_remittances: true,
+    show_email: true,
+    show_phone: true
   });
 
   // Load accounts on mount
@@ -159,7 +162,9 @@ const SettingsZelleTab = () => {
       notes: '',
       is_active: true,
       for_products: true,
-      for_remittances: true
+      for_remittances: true,
+      show_email: true,
+      show_phone: true
     });
     setSelectedAccount(null);
     setShowFormModal(true);
@@ -179,7 +184,9 @@ const SettingsZelleTab = () => {
       notes: account.notes || '',
       is_active: account.is_active,
       for_products: account.for_products,
-      for_remittances: account.for_remittances
+      for_remittances: account.for_remittances,
+      show_email: account.show_email !== false,
+      show_phone: account.show_phone !== false
     });
     setShowFormModal(true);
   };
@@ -191,6 +198,15 @@ const SettingsZelleTab = () => {
         description: language === 'es'
           ? 'Por favor complete los campos requeridos'
           : 'Please fill in all required fields',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (!validateZelleVisibility(formData).valid) {
+      toast({
+        title: t('zelle.errorRequiredFields') || 'Required fields',
+        description: t('zelle.atLeastOneVisible'),
         variant: 'destructive'
       });
       return;
@@ -559,6 +575,24 @@ const SettingsZelleTab = () => {
                     className="rounded"
                   />
                   <span className="text-sm">{t('zelle.forRemittances')}</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.show_email}
+                    onChange={(e) => setFormData({...formData, show_email: e.target.checked})}
+                    className="rounded"
+                  />
+                  <span className="text-sm">{t('zelle.showEmail')}</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.show_phone}
+                    onChange={(e) => setFormData({...formData, show_phone: e.target.checked})}
+                    className="rounded"
+                  />
+                  <span className="text-sm">{t('zelle.showPhone')}</span>
                 </label>
               </div>
             </div>

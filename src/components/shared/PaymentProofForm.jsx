@@ -8,6 +8,7 @@ import { Upload, AlertCircle, CheckCircle } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import FileUploadWithPreview from '@/components/FileUploadWithPreview';
+import { isValidPayerPhone, normalizePayerPhone, PAYER_PHONE_MAX_LENGTH } from '@/lib/payerPhone';
 
 const PaymentProofForm = ({
   // File handling
@@ -19,6 +20,11 @@ const PaymentProofForm = ({
   reference = '',
   onReferenceChange,
   requireReference = false,
+
+  // Payer contact phone (required for remittances)
+  payerPhone = '',
+  onPayerPhoneChange,
+  requirePayerPhone = false,
 
   // Notes field (optional)
   notes = '',
@@ -51,6 +57,11 @@ const PaymentProofForm = ({
       'proofLabel': language === 'es' ? 'Comprobante de pago' : 'Payment proof',
       'referenceLabel': language === 'es' ? 'Titular/Empresa que realiza el pago' : 'Payer Name/Company',
       'referencePlaceholder': language === 'es' ? 'Ej: Juan Perez / Empresa ABC LLC' : 'E.g.: John Smith / ABC Corp LLC',
+      'payerPhoneLabel': language === 'es' ? 'Tu teléfono para contactarte' : 'Your phone number so we can contact you',
+      'payerPhonePlaceholder': language === 'es' ? 'Ej: +1 305 555 0100' : 'E.g.: +1 305 555 0100',
+      'payerPhoneError': language === 'es'
+        ? 'Ingresa un teléfono válido (entre 8 y 15 dígitos).'
+        : 'Enter a valid phone number (8 to 15 digits).',
       'notesLabel': language === 'es' ? 'Notas adicionales (opcional)' : 'Additional notes (optional)',
       'notesPlaceholder': language === 'es' ? 'Detalles adicionales...' : 'Additional details...',
       'submitDefault': language === 'es' ? 'Enviar Comprobante' : 'Submit Proof',
@@ -71,13 +82,16 @@ const PaymentProofForm = ({
     };
   };
 
-  const isValid = requireReference
-    ? (file && reference.trim())
-    : !!file;
+  const phoneIsValid = !requirePayerPhone || isValidPayerPhone(payerPhone);
+  const showPhoneError = requirePayerPhone && normalizePayerPhone(payerPhone) !== '' && !phoneIsValid;
+
+  const isValid = (requireReference
+    ? !!(file && reference.trim())
+    : !!file) && phoneIsValid;
 
   const handleSubmit = () => {
     if (!isValid || disabled || submitting) return;
-    onSubmit?.();
+    onSubmit?.({ payerPhone: normalizePayerPhone(payerPhone) });
   };
 
   return (
@@ -124,6 +138,34 @@ const PaymentProofForm = ({
               placeholder={t('referencePlaceholder')}
               required
             />
+          </div>
+        )}
+
+        {/* Payer contact phone (conditional) */}
+        {requirePayerPhone && (
+          <div>
+            <label htmlFor="payer-phone" className="block text-sm font-medium text-gray-700 mb-2">
+              {t('payerPhoneLabel')} <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="payer-phone"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              maxLength={PAYER_PHONE_MAX_LENGTH}
+              value={payerPhone}
+              onChange={(e) => onPayerPhoneChange?.(e.target.value)}
+              className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder={t('payerPhonePlaceholder')}
+              aria-invalid={showPhoneError}
+              aria-describedby={showPhoneError ? 'payer-phone-error' : undefined}
+              required
+            />
+            {showPhoneError && (
+              <p id="payer-phone-error" role="alert" className="mt-1 text-sm text-red-600">
+                {t('payerPhoneError')}
+              </p>
+            )}
           </div>
         )}
 

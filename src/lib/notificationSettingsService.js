@@ -293,14 +293,45 @@ export async function getFreshNotificationSettings() {
   return { ...DEFAULT_SETTINGS };
 }
 
+const isUrlRecipient = (value) => /^https?:\/\//i.test(String(value || '').trim());
+
 /**
- * Get the active WhatsApp recipient from fresh database data (bypasses all caches)
- * Use this when sending critical notifications to ensure correct recipient
- * @returns {Promise<string>} The phone number or group URL to send notifications to
+ * Resolve the phone used by the guided WhatsApp step (wa.me link in the confirmation modal).
+ * wa.me links only work with phone numbers, so when the active recipient is a group URL
+ * this falls back to the admin phone.
+ * @param {Object} settings - Notification settings
+ * @returns {string} Phone number, or '' when no phone is configured
  */
-export async function getFreshWhatsappRecipient() {
-  const settings = await getFreshNotificationSettings();
-  return getActiveWhatsappRecipient(settings);
+export const getGuidedWhatsappPhone = (settings = {}) => {
+  const safeSettings = settings || {};
+  const active = getActiveWhatsappRecipient(safeSettings);
+
+  if (active && !isUrlRecipient(active)) {
+    return active;
+  }
+
+  const phone = safeSettings.whatsapp || '';
+  return isUrlRecipient(phone) ? '' : phone;
+};
+
+/**
+ * Resolve the guided WhatsApp phone from fresh database settings.
+ * Falls back to the provided (cached) settings when the fresh fetch fails or has no phone.
+ * @param {Object} fallbackSettings - Cached settings (e.g. from BusinessContext)
+ * @returns {Promise<string>} Phone number, or '' when no phone is configured
+ */
+export async function getFreshGuidedWhatsappPhone(fallbackSettings) {
+  try {
+    const fresh = await getFreshNotificationSettings();
+    const phone = getGuidedWhatsappPhone(fresh);
+    if (phone) {
+      return phone;
+    }
+  } catch (err) {
+    console.warn('[NotificationSettings] Fresh guided phone lookup failed:', err?.message);
+  }
+
+  return getGuidedWhatsappPhone(fallbackSettings);
 }
 
 export { DEFAULT_SETTINGS };

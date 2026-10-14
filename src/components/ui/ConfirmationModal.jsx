@@ -4,8 +4,9 @@
  * Shows order number, summary, and next steps
  */
 
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle, Package, Clock, MessageCircle, X, ArrowRight } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Package, Clock, MessageCircle, X, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -20,12 +21,30 @@ const ConfirmationModal = ({
   currency = 'USD',
   recipientName,
   itemCount,
-  estimatedDelivery = '24-72 horas'
+  estimatedDelivery = '24-72 horas',
+  whatsappUrl = '',
+  whatsappNumber = '',
+  whatsappLoading = false,
+  proofPending = false, // remittance registered but payment proof not uploaded yet
+  variant = 'confirmation' // 'confirmation' | 'resend' (re-notify the admin for an existing operation)
 }) => {
   const { language } = useLanguage();
   const { visualSettings } = useBusiness();
 
+  // Skip guard for the guided WhatsApp step: the first attempt to leave without
+  // having opened the WhatsApp link only shows a warning; the second one goes through.
+  const [whatsappClicked, setWhatsappClicked] = useState(false);
+  const [skipWarningShown, setSkipWarningShown] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setWhatsappClicked(false);
+      setSkipWarningShown(false);
+    }
+  }, [isOpen]);
+
   const isRemittance = orderType === 'remittance';
+  const isProofPending = isRemittance && Boolean(proofPending);
 
   const texts = {
     es: {
@@ -39,6 +58,7 @@ const ConfirmationModal = ({
       itemsLabel: isRemittance ? 'Tipo de envío' : 'Productos',
       itemsValue: isRemittance ? 'Transferencia' : `${itemCount} artículo${itemCount !== 1 ? 's' : ''}`,
       nextStepsTitle: '¿Qué sigue?',
+      stepWhatsapp: 'Envíanos el comprobante por WhatsApp con el botón de abajo',
       step1: 'Verificaremos tu comprobante de pago',
       step2: isRemittance
         ? 'Procesaremos tu remesa en las próximas horas'
@@ -47,7 +67,12 @@ const ConfirmationModal = ({
       estimatedLabel: 'Tiempo estimado de entrega',
       viewOrdersBtn: isRemittance ? 'Ver Mis Remesas' : 'Ver Mis Pedidos',
       closeBtn: 'Cerrar',
-      whatsappHint: '¿Tienes preguntas? Contáctanos por WhatsApp'
+      whatsappHint: '¿Tienes preguntas? Contáctanos por WhatsApp',
+      whatsappSendBtn: 'Enviar comprobante por WhatsApp',
+      whatsappChatWith: `Se abrirá un chat con ${whatsappNumber}`,
+      whatsappPreparing: 'Preparando mensaje de WhatsApp…',
+      whatsappNotConfigured: 'WhatsApp del administrador no configurado. Contacta al soporte.',
+      whatsappSkipWarning: 'El administrador aún no fue notificado. Envía el mensaje por WhatsApp para que procese tu operación.'
     },
     en: {
       title: isRemittance ? 'Remittance Sent!' : 'Order Confirmed!',
@@ -60,6 +85,7 @@ const ConfirmationModal = ({
       itemsLabel: isRemittance ? 'Transfer type' : 'Products',
       itemsValue: isRemittance ? 'Transfer' : `${itemCount} item${itemCount !== 1 ? 's' : ''}`,
       nextStepsTitle: 'What\'s next?',
+      stepWhatsapp: 'Send us the payment proof via WhatsApp using the button below',
       step1: 'We will verify your payment proof',
       step2: isRemittance
         ? 'We will process your remittance in the next hours'
@@ -68,11 +94,85 @@ const ConfirmationModal = ({
       estimatedLabel: 'Estimated delivery time',
       viewOrdersBtn: isRemittance ? 'View My Remittances' : 'View My Orders',
       closeBtn: 'Close',
-      whatsappHint: 'Have questions? Contact us on WhatsApp'
+      whatsappHint: 'Have questions? Contact us on WhatsApp',
+      whatsappSendBtn: 'Send proof via WhatsApp',
+      whatsappChatWith: `A chat with ${whatsappNumber} will open`,
+      whatsappPreparing: 'Preparing WhatsApp message…',
+      whatsappNotConfigured: 'Administrator WhatsApp not configured. Contact support.',
+      whatsappSkipWarning: 'The administrator has not been notified yet. Send the WhatsApp message so your operation can be processed.'
     }
   };
 
-  const t = texts[language] || texts.es;
+  // Overrides for the "upload proof later" variant (remittance only)
+  const proofPendingTexts = {
+    es: {
+      title: '¡Remesa Registrada!',
+      subtitle: 'Falta subir tu comprobante de pago',
+      stepWhatsapp: 'Avísanos por WhatsApp que registraste la remesa con el botón de abajo',
+      step1: 'Sube tu comprobante de pago desde Mis Remesas',
+      step2: 'Procesaremos tu remesa cuando validemos el pago',
+      whatsappSendBtn: 'Avisar al administrador por WhatsApp'
+    },
+    en: {
+      title: 'Remittance Registered!',
+      subtitle: 'Your payment proof is still pending',
+      stepWhatsapp: 'Let us know via WhatsApp that you registered the remittance using the button below',
+      step1: 'Upload your payment proof from My Remittances',
+      step2: 'We will process your remittance once the payment is validated',
+      whatsappSendBtn: 'Notify the administrator via WhatsApp'
+    }
+  };
+
+  // Overrides for the "resend" variant: nothing was just created, the user only re-notifies
+  const resendTexts = {
+    es: {
+      title: 'Notifica al administrador por WhatsApp',
+      subtitle: 'Tu navegador bloqueó la ventana. Abre el chat con el botón de abajo.',
+      whatsappSendBtn: 'Abrir WhatsApp'
+    },
+    en: {
+      title: 'Notify the administrator via WhatsApp',
+      subtitle: 'Your browser blocked the window. Open the chat with the button below.',
+      whatsappSendBtn: 'Open WhatsApp'
+    }
+  };
+
+  const isResend = variant === 'resend';
+  const baseTexts = texts[language] || texts.es;
+  const t = {
+    ...baseTexts,
+    ...(isProofPending ? (proofPendingTexts[language] || proofPendingTexts.es) : {}),
+    ...(isResend ? (resendTexts[language] || resendTexts.es) : {})
+  };
+  const hasWhatsappUrl = Boolean(whatsappUrl);
+  const steps = hasWhatsappUrl
+    ? [t.stepWhatsapp, t.step1, t.step2, t.step3]
+    : [t.step1, t.step2, t.step3];
+
+  // The guard also covers the loading phase (URL still being prepared); the resend variant has none
+  const guardActive = !isResend && (hasWhatsappUrl || whatsappLoading);
+
+  // Runs the leave action unless the guided step is still pending and unwarned
+  const guardLeave = (leave) => {
+    if (guardActive && !whatsappClicked && !skipWarningShown) {
+      setSkipWarningShown(true);
+      return;
+    }
+    leave?.();
+  };
+  const handleClose = () => guardLeave(onClose);
+  const handleViewOrders = () => guardLeave(onViewOrders);
+  const markWhatsappClicked = () => setWhatsappClicked(true);
+  const showSkipWarning = guardActive && skipWarningShown && !whatsappClicked;
+  const skipWarning = showSkipWarning ? (
+    <p
+      role="alert"
+      className="flex items-start gap-2 p-3 text-sm text-amber-900 bg-amber-50 border border-amber-300 rounded-lg"
+    >
+      <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
+      <span>{t.whatsappSkipWarning}</span>
+    </p>
+  ) : null;
 
   if (!isOpen) return null;
 
@@ -83,8 +183,8 @@ const ConfirmationModal = ({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-          onClick={(e) => e.target === e.currentTarget && onClose?.()}
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          onClick={(e) => e.target === e.currentTarget && handleClose()}
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -95,7 +195,7 @@ const ConfirmationModal = ({
           >
             {/* Close button */}
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors z-10"
               aria-label={language === 'es' ? 'Cerrar' : 'Close'}
             >
@@ -171,33 +271,72 @@ const ConfirmationModal = ({
               </div>
             </div>
 
-            {/* Next steps */}
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                <Package className="h-4 w-4" />
-                {t.nextStepsTitle}
-              </h3>
-              <ol className="space-y-2">
-                {[t.step1, t.step2, t.step3].map((step, idx) => (
-                  <li key={idx} className="flex items-start gap-2 text-sm text-gray-600">
-                    <span
-                      className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium text-white"
-                      style={{ backgroundColor: visualSettings.primaryColor || '#2563eb' }}
-                    >
-                      {idx + 1}
-                    </span>
-                    {step}
-                  </li>
-                ))}
-              </ol>
-            </div>
+            {/* Next steps (not applicable when only re-notifying) */}
+            {!isResend && (
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  {t.nextStepsTitle}
+                </h3>
+                <ol className="space-y-2">
+                  {steps.map((step, idx) => (
+                    <li key={idx} className="flex items-start gap-2 text-sm text-gray-600">
+                      <span
+                        className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium text-white"
+                        style={{ backgroundColor: visualSettings.primaryColor || '#2563eb' }}
+                      >
+                        {idx + 1}
+                      </span>
+                      {step}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
 
             {/* Actions */}
             <div className="px-6 py-4 space-y-3">
+              {/* Guided WhatsApp step: user-gesture link, never popup-blocked */}
+              {hasWhatsappUrl ? (
+                <div className="space-y-1.5">
+                  <a
+                    href={whatsappUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="confirmation-whatsapp-link"
+                    onClick={markWhatsappClicked}
+                    onAuxClick={markWhatsappClicked}
+                    className="flex items-center justify-center w-full h-12 rounded-md text-base font-medium text-white bg-[#25D366] hover:bg-[#1ebe5d] transition-colors focus:outline-none focus:ring-2 focus:ring-[#25D366] focus:ring-offset-2"
+                  >
+                    <MessageCircle className="mr-2 h-5 w-5" />
+                    {t.whatsappSendBtn}
+                  </a>
+                  <p className="text-xs text-center text-gray-500">{t.whatsappChatWith}</p>
+                  {skipWarning}
+                </div>
+              ) : whatsappLoading ? (
+                <div className="space-y-1.5">
+                  <button
+                    type="button"
+                    disabled
+                    aria-busy="true"
+                    className="flex items-center justify-center w-full h-12 rounded-md text-base font-medium text-white bg-[#25D366] opacity-60 cursor-not-allowed"
+                  >
+                    <MessageCircle className="mr-2 h-5 w-5" />
+                    {t.whatsappPreparing}
+                  </button>
+                  {skipWarning}
+                </div>
+              ) : (
+                <p className="text-xs text-center text-amber-700" role="status">{t.whatsappNotConfigured}</p>
+              )}
+
+              {/* With a WhatsApp URL the link above is the primary action; this one turns secondary */}
               <Button
-                onClick={onViewOrders}
-                className="w-full h-12 text-base font-medium"
-                style={{
+                onClick={handleViewOrders}
+                variant={hasWhatsappUrl ? 'outline' : 'default'}
+                className={`w-full h-12 text-base font-medium ${hasWhatsappUrl ? 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50' : ''}`}
+                style={hasWhatsappUrl ? undefined : {
                   backgroundColor: visualSettings.primaryColor || '#2563eb',
                   color: 'white'
                 }}
@@ -206,7 +345,7 @@ const ConfirmationModal = ({
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
               >
                 {t.closeBtn}

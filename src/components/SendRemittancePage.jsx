@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight, ArrowLeft, Check, DollarSign, User, FileText,
@@ -7,7 +7,6 @@ import {
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useModal } from '@/contexts/ModalContext';
-import { useBusiness } from '@/contexts/BusinessContext';
 import {
   getActiveRemittanceTypes,
   getRemittanceExchangeRate,
@@ -18,8 +17,16 @@ import {
 } from '@/lib/remittanceService';
 import { getActiveShippingZones } from '@/lib/shippingService';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
-import { notifyAdminNewPaymentProof } from '@/lib/whatsappService';
-import { getActiveWhatsappRecipient } from '@/lib/notificationSettingsService';
+import { getSelectableProvinces, isCashDeliveryBlocked, getShippingState } from '@/lib/shippingZoneRules';
+import { calcTotalToPay } from '@/lib/remittanceCalculations';
+import { pickRecipientAddress } from '@/lib/recipientInfo';
+import {
+  ADMIN_NOTIFICATION_LANGUAGE,
+  buildAdminNewPaymentProofWhatsAppUrl,
+  buildAdminNewRemittanceWhatsAppUrl,
+  buildRemittanceNotificationPayload
+} from '@/lib/whatsappService';
+import { getFreshGuidedWhatsappPhone } from '@/lib/notificationSettingsService';
 import { validateRemittanceOffer } from '@/lib/orderDiscountService';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
@@ -36,7 +43,6 @@ const SendRemittancePage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { user, isAdmin, isSuperAdmin } = useAuth();
   const { showModal } = useModal();
-  const { notificationSettings } = useBusiness();
 
   const recipientSelectorRef = useRef();
 
@@ -58,7 +64,9 @@ const SendRemittancePage = ({ onNavigate }) => {
 
   const [selectedRecipientData, setSelectedRecipientData] = useState(null);
   const [selectedZelle, setSelectedZelle] = useState(null);
-  const [shippingZones, setShippingZones] = useState([]);
+  const [allShippingZones, setAllShippingZones] = useState([]);
+  // Provinces/municipalities the customer may pick (province selectable if any municipality is available)
+  const shippingZones = useMemo(() => getSelectableProvinces(allShippingZones), [allShippingZones]);
   const [municipalities, setMunicipalities] = useState([]);
   const [selectedBankAccount, setSelectedBankAccount] = useState(null);
   const [selectedBankAccountDetails, setSelectedBankAccountDetails] = useState(null);
@@ -77,6 +85,7 @@ const SendRemittancePage = ({ onNavigate }) => {
   const [paymentData, setPaymentData] = useState({
     file: null,
     reference: '',
+    payerPhone: '',
     notes: ''
   });
 
@@ -312,11 +321,7 @@ const SendRemittancePage = ({ onNavigate }) => {
   const loadShippingZones = async () => {
     try {
       const zones = await getActiveShippingZones();
-      const availableZones = (zones || []).filter(zone => {
-        const cost = parseFloat(zone.shipping_cost || 0);
-        return zone.free_shipping === true || cost > 0;
-      });
-      setShippingZones(availableZones);
+      setAllShippingZones(zones || []);
     } catch (error) {
       console.error('Error loading shipping zones:', error);
     }
@@ -444,6 +449,23 @@ const SendRemittancePage = ({ onNavigate }) => {
     }
   };
 
+  // Cash deliveries need an available destination zone; other delivery methods are not zone-bound
+  const deliveryZoneBlocked = isCashDeliveryBlocked({
+    zones: allShippingZones,
+    deliveryMethod: selectedType?.delivery_method || 'cash',
+    province: recipientData.province,
+    municipality: recipientData.municipality
+  });
+
+  // Cash deliveries add the zone's shipping cost to what the sender pays (never deducted from the delivered amount)
+  const previewDeliveryCost = selectedType?.delivery_method === 'cash'
+    ? getShippingState(allShippingZones, recipientData.province, recipientData.municipality).cost
+    : 0;
+  const previewTotalToPay = calcTotalToPay({
+    amountSent: calculation?.amount,
+    deliveryCost: previewDeliveryCost
+  });
+
   const handleRecipientSubmit = async () => {
     if (!selectedRecipientData) {
       toast({
@@ -458,6 +480,15 @@ const SendRemittancePage = ({ onNavigate }) => {
       toast({
         title: t('common.error'),
         description: t('remittances.wizard.fillRecipientInfo'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (deliveryZoneBlocked) {
+      toast({
+        title: t('common.error'),
+        description: t('cart.shippingUnavailable'),
         variant: 'destructive'
       });
       return;
@@ -1063,7 +1094,10 @@ const SendRemittancePage = ({ onNavigate }) => {
 
                   if (recipientData.recipientData) {
                     // Existing recipient selected
-                    const primaryAddress = recipientData.recipientData.addresses?.[0];
+                    const primaryAddress = pickRecipientAddress(
+                      recipientData.recipientData.addresses,
+                      recipientData.addressId
+                    );
                     setRecipientData({
                       name: recipientData.recipientData.full_name || '',
                       phone: recipientData.recipientData.phone || '',
@@ -1098,6 +1132,13 @@ const SendRemittancePage = ({ onNavigate }) => {
               />
             </div>
 
+            {deliveryZoneBlocked && (
+              <div role="alert" className="flex items-start gap-2 p-4 rounded-lg border-2 border-red-200 bg-red-50 text-sm font-medium text-red-700">
+                <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                {t('cart.shippingUnavailable')}
+              </div>
+            )}
+
             <div className="flex justify-between">
               <button
                 onClick={() => setStep(1)}
@@ -1108,7 +1149,8 @@ const SendRemittancePage = ({ onNavigate }) => {
               </button>
               <button
                 onClick={handleRecipientSubmit}
-                className={`${getPrimaryButtonStyle()} flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200`}
+                disabled={deliveryZoneBlocked}
+                className={`${getPrimaryButtonStyle()} flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 {t('remittances.wizard.continue')}
                 <ArrowRight className="h-6 w-6" />
@@ -1144,6 +1186,19 @@ const SendRemittancePage = ({ onNavigate }) => {
                     {calculation.amount} {calculation.currency}
                   </p>
                 </div>
+
+                {previewDeliveryCost > 0 && (
+                  <div>
+                    <h3 className="font-semibold mb-2">{t('remittances.wizard.deliveryCost')}</h3>
+                    <p className="text-lg font-bold text-gray-700">
+                      +{previewDeliveryCost.toFixed(2)} {calculation.currency}
+                    </p>
+                    <h3 className="font-semibold mt-3 mb-2">{t('remittances.wizard.totalToPay')}</h3>
+                    <p className="text-2xl font-bold text-blue-600">
+                      {previewTotalToPay.toFixed(2)} {calculation.currency}
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <h3 className="font-semibold mb-2">{t('remittances.wizard.recipientReceives')}</h3>
@@ -1285,7 +1340,12 @@ const SendRemittancePage = ({ onNavigate }) => {
 
             {/* Monto a Transferir - Using shared component */}
             <AmountDisplayCard
-              amount={calculation?.amount}
+              amount={calcTotalToPay({
+                amountSent: createdRemittance.amount_sent ?? calculation?.amount,
+                deliveryCost: createdRemittance.delivery_cost
+              })}
+              deliveryCost={Number(createdRemittance.delivery_cost) || 0}
+              amountSent={createdRemittance.amount_sent ?? calculation?.amount}
               currency={calculation?.currency || 'USD'}
               deliveryAmount={calculation?.amountToDeliver}
               deliveryCurrency={calculation?.deliveryCurrency}
@@ -1305,6 +1365,9 @@ const SendRemittancePage = ({ onNavigate }) => {
               reference={paymentData.reference}
               notes={paymentData.notes}
               requireReference={true}
+              requirePayerPhone={true}
+              payerPhone={paymentData.payerPhone}
+              onPayerPhoneChange={(value) => setPaymentData({ ...paymentData, payerPhone: value })}
               showNotesField={true}
               onFileChange={(e) => {
                 const file = e.target.files[0];
@@ -1322,33 +1385,39 @@ const SendRemittancePage = ({ onNavigate }) => {
               onSubmit={async () => {
                 setSubmitting(true);
                 try {
-                  await uploadPaymentProof(createdRemittance.id, paymentData.file, paymentData.reference, paymentData.notes);
+                  const uploadedRemittance = await uploadPaymentProof(
+                    createdRemittance.id,
+                    paymentData.file,
+                    paymentData.reference,
+                    paymentData.notes,
+                    { payerPhone: paymentData.payerPhone }
+                  );
 
-                  const notificationWhatsapp = getActiveWhatsappRecipient(notificationSettings);
-                  if (notificationWhatsapp) {
-                    try {
-                      const enrichedRemittance = {
-                        ...createdRemittance,
-                        remittance_types: selectedType,
-                        amount: parseFloat(amount),
-                        currency: calculation?.currency || 'USD',
-                        amount_to_deliver: calculation?.amountToDeliver,
-                        delivery_currency: calculation?.deliveryCurrency,
-                        payment_reference: paymentData.reference,
-                        user_email: user?.email,
-                        user_name: user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0]
-                      };
-                      await notifyAdminNewPaymentProof(enrichedRemittance, notificationWhatsapp, language);
-                    } catch (e) { console.warn('WhatsApp notification failed', e); }
-                  }
+                  // Guided WhatsApp step: build the URL here, the user opens it via a click in the modal
+                  // Recipient comes from fresh settings; group targets fall back to the admin phone
+                  const recipient = await getFreshGuidedWhatsappPhone(notificationSettings);
+                  let whatsappUrl = '';
+                  try {
+                    // The message is built from the row the service persisted (status, proof path,
+                    // reference and amounts), not from wizard state
+                    whatsappUrl = recipient
+                      ? await buildAdminNewPaymentProofWhatsAppUrl(
+                          buildRemittanceNotificationPayload(uploadedRemittance, user),
+                          recipient,
+                          ADMIN_NOTIFICATION_LANGUAGE
+                        )
+                      : '';
+                  } catch (e) { console.warn('WhatsApp URL build failed', e); }
 
                   toast({ title: t('common.success'), description: t('remittances.wizard.proofSubmittedSuccess') });
 
                   setConfirmedRemittanceInfo({
                     remittanceNumber: createdRemittance.remittance_number,
-                    total: calculation?.amountToDeliver || parseFloat(amount),
-                    currency: calculation?.deliveryCurrency || 'CUP',
-                    recipientName: recipientData.name
+                    total: calculation?.amountToDeliver || createdRemittance.amount_to_deliver || parseFloat(amount) || 0,
+                    currency: calculation?.deliveryCurrency || createdRemittance.currency_delivered || 'CUP',
+                    recipientName: recipientData.name,
+                    whatsappUrl,
+                    whatsappNumber: recipient
                   });
                   setShowConfirmationModal(true);
                 } catch (error) {
@@ -1361,7 +1430,38 @@ const SendRemittancePage = ({ onNavigate }) => {
               submitting={submitting}
               submitLabel={t('remittances.wizard.submitProofAndComplete')}
               showUploadLater={true}
-              onUploadLater={() => onNavigate('my-remittances')}
+              onUploadLater={async () => {
+                if (!createdRemittance) {
+                  onNavigate('my-remittances');
+                  return;
+                }
+
+                // Remittance exists but the proof is pending: guide the client to notify the admin.
+                // Awaiting here is fine: the user gesture that matters is the click on the modal link.
+                const recipient = await getFreshGuidedWhatsappPhone(notificationSettings);
+                let whatsappUrl = '';
+                try {
+                  const enrichedRemittance = buildRemittanceNotificationPayload({
+                    ...createdRemittance,
+                    remittance_types: selectedType,
+                    amount_to_deliver: calculation?.amountToDeliver ?? createdRemittance.amount_to_deliver
+                  }, user);
+                  whatsappUrl = recipient
+                    ? buildAdminNewRemittanceWhatsAppUrl(enrichedRemittance, recipient, ADMIN_NOTIFICATION_LANGUAGE)
+                    : '';
+                } catch (e) { console.warn('WhatsApp URL build failed', e); }
+
+                setConfirmedRemittanceInfo({
+                  remittanceNumber: createdRemittance.remittance_number,
+                  total: calculation?.amountToDeliver || createdRemittance.amount_to_deliver || parseFloat(amount) || 0,
+                  currency: calculation?.deliveryCurrency || createdRemittance.currency_delivered || 'CUP',
+                  recipientName: recipientData.name,
+                  whatsappUrl,
+                  whatsappNumber: recipient,
+                  proofPending: true
+                });
+                setShowConfirmationModal(true);
+              }}
             />
           </motion.div>
         )}
@@ -1384,6 +1484,9 @@ const SendRemittancePage = ({ onNavigate }) => {
         currency={confirmedRemittanceInfo?.currency}
         recipientName={confirmedRemittanceInfo?.recipientName}
         estimatedDelivery={t('remittances.wizard.estimatedDeliveryTime')}
+        whatsappUrl={confirmedRemittanceInfo?.whatsappUrl}
+        whatsappNumber={confirmedRemittanceInfo?.whatsappNumber}
+        proofPending={confirmedRemittanceInfo?.proofPending}
       />
     </div>
   );

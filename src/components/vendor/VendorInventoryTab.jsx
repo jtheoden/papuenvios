@@ -16,6 +16,7 @@ import { getTableColumns, getModalColumns } from './ProductTableConfig';
 import { logActivity } from '@/lib/activityLogger';
 import { useRealtimeProducts } from '@/hooks/useRealtimeSubscription';
 import { DEFAULTS } from '@/lib/constants';
+import { resolveMargin } from '@/lib/marginResolver';
 
 /**
  * Vendor Inventory Tab Component
@@ -145,7 +146,7 @@ const VendorInventoryTab = ({
       const margin = isNaN(numVal) ? '' : numVal;
       const amount = (!isNaN(numVal) && basePrice > 0) ? (basePrice * numVal / 100).toFixed(2) : '';
       const sell = (!isNaN(numVal) && basePrice > 0) ? (basePrice * (1 + numVal / 100)).toFixed(2) : '';
-      setProductForm(prev => ({ ...prev, profitMargin: margin, profitAmount: amount, sellPrice: sell, profitMode: 'percentage' }));
+      setProductForm(prev => ({ ...prev, profitMargin: margin, profitAmount: amount, sellPrice: sell, profitMode: 'percentage', marginSource: 'product', marginTouched: true }));
     } else if (mode === 'amount') {
       // Block negative profit (would cause sell price < base price)
       if (!isNaN(numVal) && numVal < 0) {
@@ -155,7 +156,7 @@ const VendorInventoryTab = ({
       const amount = isNaN(numVal) ? '' : value;
       const margin = (!isNaN(numVal) && basePrice > 0) ? ((numVal / basePrice) * 100) : '';
       const sell = (!isNaN(numVal) && basePrice > 0) ? (basePrice + numVal).toFixed(2) : '';
-      setProductForm(prev => ({ ...prev, profitMargin: margin !== '' ? parseFloat(margin.toFixed(4)) : '', profitAmount: amount, sellPrice: sell, profitMode: 'amount' }));
+      setProductForm(prev => ({ ...prev, profitMargin: margin !== '' ? parseFloat(margin.toFixed(4)) : '', profitAmount: amount, sellPrice: sell, profitMode: 'amount', marginSource: 'product', marginTouched: true }));
     } else if (mode === 'sellPrice') {
       // Block sell price below base price
       if (!isNaN(numVal) && basePrice > 0 && numVal < basePrice) {
@@ -164,7 +165,7 @@ const VendorInventoryTab = ({
       const sell = isNaN(numVal) ? '' : value;
       const margin = (!isNaN(numVal) && basePrice > 0) ? Math.max(0, ((numVal / basePrice) - 1) * 100) : '';
       const amount = (!isNaN(numVal) && basePrice > 0) ? Math.max(0, numVal - basePrice).toFixed(2) : '';
-      setProductForm(prev => ({ ...prev, profitMargin: margin !== '' ? parseFloat(margin.toFixed(4)) : '', profitAmount: amount, sellPrice: sell, profitMode: 'sellPrice' }));
+      setProductForm(prev => ({ ...prev, profitMargin: margin !== '' ? parseFloat(margin.toFixed(4)) : '', profitAmount: amount, sellPrice: sell, profitMode: 'sellPrice', marginSource: 'product', marginTouched: true }));
     }
   };
 
@@ -187,6 +188,34 @@ const VendorInventoryTab = ({
 
   const defaultProfitMargin = financialSettings?.productProfit || DEFAULTS.PRODUCT_PROFIT_MARGIN;
 
+  // Precedence: product's own margin > category margin > global default.
+  // Only used to pre-fill the form; existing product prices are never recomputed.
+  const getEffectiveMargin = (productMargin, categoryId) => {
+    const category = categories.find(c => c.id === categoryId);
+    return resolveMargin({
+      product: productMargin,
+      category: category?.profit_margin,
+      global: defaultProfitMargin
+    });
+  };
+
+  // Re-suggest the margin from the newly selected category unless the admin already set one
+  const handleCategoryChange = (categoryId) => {
+    setProductForm(prev => {
+      const next = { ...prev, category: categoryId };
+      if (prev.marginTouched) return next;
+      const effective = getEffectiveMargin(null, categoryId);
+      const basePrice = parseFloat(prev.basePrice);
+      return {
+        ...next,
+        profitMargin: effective.value,
+        marginSource: effective.source,
+        profitAmount: basePrice > 0 ? (basePrice * effective.value / 100).toFixed(2) : '',
+        sellPrice: basePrice > 0 ? (basePrice * (1 + effective.value / 100)).toFixed(2) : ''
+      };
+    });
+  };
+
   const openNewProductForm = () => {
     setProductForm({
       id: null,
@@ -202,6 +231,8 @@ const VendorInventoryTab = ({
       expiryDate: '',
       image: '',
       profitMargin: defaultProfitMargin,
+      marginSource: 'global',
+      marginTouched: false,
       profitMode: 'percentage',
       profitAmount: '',
       sellPrice: ''
@@ -210,7 +241,11 @@ const VendorInventoryTab = ({
   };
 
   const openEditProductForm = (product) => {
-    const margin = product.profit_margin || defaultProfitMargin;
+    // A product's own margin always wins; NULL falls back to category, then global
+    const { value: margin, source: marginSource } = getEffectiveMargin(
+      product.profit_margin,
+      product.category?.id || product.category_id
+    );
     const base = parseFloat(product.base_price || product.basePrice || 0);
     setProductForm({
       id: product.id,
@@ -220,6 +255,8 @@ const VendorInventoryTab = ({
       description_en: product.description_en || '',
       basePrice: product.base_price || product.basePrice || '',
       profitMargin: margin,
+      marginSource,
+      marginTouched: marginSource === 'product',
       profitMode: 'percentage',
       profitAmount: base > 0 ? (base * margin / 100).toFixed(2) : '',
       sellPrice: base > 0 ? (base * (1 + margin / 100)).toFixed(2) : '',
@@ -652,7 +689,7 @@ const VendorInventoryTab = ({
               </label>
               <select
                 value={productForm.category}
-                onChange={e => handleInputChange('category', e.target.value)}
+                onChange={e => handleCategoryChange(e.target.value)}
                 className="w-full input-style"
                 required
               >
@@ -806,9 +843,19 @@ const VendorInventoryTab = ({
                           onChange={e => handleProfitChange('percentage', e.target.value)}
                           placeholder={String(defaultProfitMargin)}
                           className="w-full input-style pr-8"
+                          data-testid="product-profit-margin-input"
                         />
                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
                       </div>
+                      {productForm.marginSource && (
+                        <p
+                          className="text-xs text-gray-500 mt-1"
+                          data-testid="product-margin-source"
+                          data-source={productForm.marginSource}
+                        >
+                          {t(`vendor.addProduct.marginSource.${productForm.marginSource}`)}
+                        </p>
+                      )}
                     </div>
                   )}
                   {productForm.profitMode === 'amount' && (

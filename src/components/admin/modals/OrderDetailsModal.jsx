@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { X, TrendingDown, User, Truck, Loader2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { generateProofSignedUrl } from '@/lib/remittanceService';
+import { parseRecipientInfo } from '@/lib/recipientInfo';
 
 /**
  * Order Details Modal Component
@@ -26,15 +27,8 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
   const normalizedOrder = useMemo(() => {
     if (!order) return null;
 
-    // Parse recipient_info if it's a JSON string
-    let recipientInfo = order.recipient_info;
-    if (typeof recipientInfo === 'string' && recipientInfo) {
-      try {
-        recipientInfo = JSON.parse(recipientInfo);
-      } catch {
-        recipientInfo = {};
-      }
-    }
+    // recipient_info may be an object, a JSON string, or double-encoded JSON
+    const recipientInfo = parseRecipientInfo(order.recipient_info);
 
     return {
       ...order,
@@ -42,7 +36,7 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
       user_name: order.user_name || order.user_profiles?.full_name || 'N/A',
       user_email: order.user_email || order.user_profiles?.email || 'N/A',
       // Parsed recipient info
-      recipient_info: recipientInfo || {}
+      recipient_info: recipientInfo
     };
   }, [order]);
 
@@ -77,10 +71,11 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
     loadDeliveryProofUrl();
   }, [normalizedOrder?.delivery_proof_url]);
 
-  if (!normalizedOrder) return null;
-
-  // Handle Escape key to close modal
+  // Handle Escape key to close modal (only while an order is displayed)
+  const hasOrder = Boolean(normalizedOrder);
   useEffect(() => {
+    if (!hasOrder) return undefined;
+
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         onClose();
@@ -94,7 +89,10 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [onClose]);
+  }, [onClose, hasOrder]);
+
+  // All hooks must run before this early return (rules of hooks)
+  if (!normalizedOrder) return null;
 
   return (
     <div
@@ -155,8 +153,14 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
               <InfoItem label={t('adminOrders.detail.paymentMethod')} value={normalizedOrder.payment_method} />
               {normalizedOrder.payment_reference && (
                 <InfoItem
-                  label={t('remittances.paymentReferenceLabel')}
+                  label={t('remittances.admin.paymentReferenceLabel')}
                   value={normalizedOrder.payment_reference}
+                />
+              )}
+              {normalizedOrder.payer_phone && (
+                <InfoItem
+                  label={t('adminOrders.detail.payerPhone')}
+                  value={normalizedOrder.payer_phone}
                 />
               )}
               <InfoItem
@@ -177,18 +181,24 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
                     <span className="text-gray-500">{t('common.name')}:</span>
                     <span className="ml-2 font-medium text-gray-900">{normalizedOrder.recipient_info.fullName || 'N/A'}</span>
                   </div>
-                  <div>
-                    <span className="text-gray-500">{t('common.phone')}:</span>
-                    <span className="ml-2 font-medium text-gray-900">{normalizedOrder.recipient_info.phone || 'N/A'}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">{t('recipients.provinceLabel')}:</span>
-                    <span className="ml-2 font-medium text-gray-900">{normalizedOrder.recipient_info.province || normalizedOrder.shipping_zones?.province_name || 'N/A'}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">{t('recipients.municipalityLabel')}:</span>
-                    <span className="ml-2 font-medium text-gray-900">{normalizedOrder.recipient_info.municipality || normalizedOrder.shipping_zones?.municipality_name || 'N/A'}</span>
-                  </div>
+                  {normalizedOrder.recipient_info.phone && (
+                    <div>
+                      <span className="text-gray-500">{t('common.phone')}:</span>
+                      <span className="ml-2 font-medium text-gray-900">{normalizedOrder.recipient_info.phone}</span>
+                    </div>
+                  )}
+                  {(normalizedOrder.recipient_info.province || normalizedOrder.shipping_zones?.province_name) && (
+                    <div>
+                      <span className="text-gray-500">{t('recipients.provinceLabel')}:</span>
+                      <span className="ml-2 font-medium text-gray-900">{normalizedOrder.recipient_info.province || normalizedOrder.shipping_zones?.province_name}</span>
+                    </div>
+                  )}
+                  {(normalizedOrder.recipient_info.municipality || normalizedOrder.shipping_zones?.municipality_name) && (
+                    <div>
+                      <span className="text-gray-500">{t('recipients.municipalityLabel')}:</span>
+                      <span className="ml-2 font-medium text-gray-900">{normalizedOrder.recipient_info.municipality || normalizedOrder.shipping_zones?.municipality_name}</span>
+                    </div>
+                  )}
                   <div className="md:col-span-2">
                     <span className="text-gray-500">{t('common.address')}:</span>
                     <span className="ml-2 font-medium text-gray-900">{normalizedOrder.recipient_info.address || normalizedOrder.shipping_address || 'N/A'}</span>

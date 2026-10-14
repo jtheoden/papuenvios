@@ -11,6 +11,8 @@ import {
   fetchOfficialRates, getAllExchangeRates, saveExchangeRate, deleteExchangeRate, deleteExchangeRatePair, updateExchangeRatePair
 } from '@/lib/currencyService';
 import { supabase } from '@/lib/supabase';
+import { saveMarginSettings } from '@/lib/financialSettingsService';
+import { ERROR_CODES } from '@/lib/errorHandler';
 
 /**
  * Confirmation Modal Component with framer-motion animations
@@ -127,7 +129,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
  */
 const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   const { t, language } = useLanguage();
-  const { visualSettings } = useBusiness();
+  const { visualSettings, applyMarginSettings } = useBusiness();
 
   // Currency states
   const [currencies, setCurrencies] = useState([]);
@@ -227,8 +229,24 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   }, []);
 
   // ===== FINANCIAL HANDLERS =====
-  const handleFinancialSave = () => {
-    toast({ title: t('settings.saveSuccess') });
+  const handleFinancialSave = async () => {
+    try {
+      const saved = await saveMarginSettings({
+        productProfit: localFinancial.productProfit,
+        comboProfit: localFinancial.comboProfit
+      });
+      applyMarginSettings(saved);
+      toast({ title: t('settings.saveSuccess') });
+    } catch (error) {
+      const isValidation = error?.code === ERROR_CODES.VALIDATION_FAILED;
+      toast({
+        title: t('common.error'),
+        description: isValidation
+          ? t('settings.financial.marginInvalid')
+          : t('settings.financial.marginSaveError'),
+        variant: 'destructive'
+      });
+    }
   };
 
   // ===== OFFICIAL RATES HANDLERS =====

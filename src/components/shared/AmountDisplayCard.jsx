@@ -9,6 +9,8 @@ import { useLanguage } from '@/contexts/LanguageContext';
 
 const AmountDisplayCard = ({
   amount,
+  amountSent = null,
+  deliveryCost = 0,
   currency = 'USD',
   deliveryAmount = null,
   deliveryCurrency = null,
@@ -40,6 +42,13 @@ const AmountDisplayCard = ({
           <p className="text-3xl font-bold text-green-600">
             ${amount} {currency}
           </p>
+          {deliveryCost > 0 && amountSent !== null && (
+            <p className="text-sm text-gray-500 mt-1">
+              {language === 'es' ? 'Envío' : 'Amount sent'}: ${amountSent} {currency}
+              {' + '}
+              {language === 'es' ? 'Costo de entrega' : 'Delivery cost'}: ${Number(deliveryCost).toFixed(2)} {currency}
+            </p>
+          )}
           {deliveryAmount && deliveryCurrency && (
             <p className="text-sm text-gray-500 mt-1">
               {language === 'es' ? 'El destinatario recibirá:' : 'Recipient will receive:'}{' '}

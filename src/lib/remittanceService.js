@@ -5,6 +5,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { isValidPayerPhone, normalizePayerPhone } from '@/lib/payerPhone';
 import { logActivity } from '@/lib/activityLogger';
 import { recordOfferUsage } from '@/lib/orderDiscountService';
 import {
@@ -17,12 +18,10 @@ import {
   ERROR_CODES
 } from './errorHandler';
 import {
-  notifyAdminNewPaymentProof,
   notifyUserPaymentValidated,
   notifyUserPaymentRejected,
   notifyUserRemittanceDelivered
 } from '@/lib/whatsappService';
-import { getFreshWhatsappRecipient } from '@/lib/notificationSettingsService';
 import {
   reserveZelleAccount,
   registerZelleTransaction,
@@ -31,6 +30,9 @@ import {
   ZELLE_TRANSACTION_TYPES
 } from '@/lib/zelleService';
 import { getExchangeRate as getCurrencyExchangeRate } from '@/lib/currencyService';
+import { calcTotalToPay } from '@/lib/remittanceCalculations';
+import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingService';
+import { getShippingState } from '@/lib/shippingZoneRules';
 
 /**
  * Extract file path from a Supabase storage URL or return path as-is
@@ -484,6 +486,32 @@ export const getPendingRemittancesCountByType = async (typeId) => {
 };
 
 /**
+ * Get count of remittances that still need admin attention (awaiting payment or proof validation).
+ * Feeds the admin avatar badge in the top bar; never throws so the header keeps rendering.
+ * @returns {Promise<number>} Count of pending remittances
+ */
+export const getPendingRemittancesCount = async () => {
+  try {
+    const { count, error } = await supabase
+      .from('remittances')
+      .select('id', { count: 'exact', head: true })
+      .in('status', [
+        REMITTANCE_STATUS.PAYMENT_PENDING,
+        REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED
+      ]);
+
+    if (error) {
+      console.warn('[getPendingRemittancesCount] Error:', error);
+      return 0;
+    }
+    return count || 0;
+  } catch (error) {
+    console.warn('[getPendingRemittancesCount] Exception:', error);
+    return 0;
+  }
+};
+
+/**
  * Recalculate a payment_pending remittance at the current type rate
  * Only works for payment_pending status (user hasn't paid yet)
  * @param {string} remittanceId - Remittance ID
@@ -517,32 +545,22 @@ export const recalculateRemittanceAtCurrentRate = async (remittanceId) => {
       throw createNotFoundError('Remittance type', remittance.remittance_type_id);
     }
 
-    // 4. Resolve current exchange rate (same logic as creation)
-    const { rate: currentRate } = await getRemittanceExchangeRate(
-      remittance.currency_sent,
-      remittance.currency_delivered,
-      type.exchange_rate
-    );
-    const currentCommPct = type.commission_percentage || 0;
-    const currentCommFixed = type.commission_fixed || 0;
+    // 4. Recalculate server-side. The RPC is SECURITY DEFINER and re-validates
+    //    ownership and status; clients cannot write money columns directly
+    //    (see migration 20261013170000_remittances_owner_update_guard.sql).
+    const { error: rpcError } = await supabase.rpc('recalculate_remittance_at_current_rate', {
+      p_remittance_id: remittanceId
+    });
 
-    // 5. Recalculate using the standard formula
-    const commissionTotal = (remittance.amount_sent * currentCommPct / 100) + currentCommFixed;
-    const amountToDeliver = (remittance.amount_sent - commissionTotal) * currentRate;
+    if (rpcError) {
+      throw parseSupabaseError(rpcError);
+    }
 
-    // 6. Update remittance record (double-check status in WHERE clause)
+    // 5. Re-read the updated remittance with its joined type
     const { data, error } = await supabase
       .from('remittances')
-      .update({
-        exchange_rate: currentRate,
-        commission_percentage: currentCommPct,
-        commission_fixed: currentCommFixed,
-        commission_total: parseFloat(commissionTotal.toFixed(2)),
-        amount_to_deliver: parseFloat(amountToDeliver.toFixed(2))
-      })
-      .eq('id', remittanceId)
-      .in('status', [REMITTANCE_STATUS.PAYMENT_PENDING, REMITTANCE_STATUS.PAYMENT_REJECTED])
       .select('*, remittance_types(*)')
+      .eq('id', remittanceId)
       .single();
 
     if (error) {
@@ -851,6 +869,27 @@ export const createRemittance = async (remittanceData) => {
       deliveryMethod
     } = calculation;
 
+    // Cash deliveries add the destination's shipping cost to what the sender pays (D2).
+    // The cost is never deducted from amountToDeliver. shippingService is the only source.
+    const destinationProvince = recipient_province || recipient_city || null;
+    const destinationMunicipality = recipient_municipality || recipient_city || null;
+    let deliveryCost = 0;
+    let shippingZoneId = null;
+    if (deliveryMethod === 'cash') {
+      const zones = await getActiveShippingZones();
+      const shippingState = getShippingState(zones, destinationProvince, destinationMunicipality);
+      if (shippingState.status !== 'available') {
+        throw createValidationError(
+          { recipient_province: 'Cash delivery is not available for the selected destination' },
+          'Delivery not available for the selected destination'
+        );
+      }
+      const shipping = await calculateShippingCost(destinationProvince, amount, destinationMunicipality);
+      deliveryCost = shipping.cost;
+      shippingZoneId = shipping.zone?.id ?? null;
+    }
+    const totalToPay = calcTotalToPay({ amountSent: amount, deliveryCost });
+
     // Get authenticated user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError) {
@@ -885,7 +924,7 @@ export const createRemittance = async (remittanceData) => {
       // reserveZelleAccount atomically selects AND increments usage counters (SEC-09).
       let reservedAccount;
       try {
-        reservedAccount = await reserveZelleAccount(ZELLE_TRANSACTION_TYPES.REMITTANCE, amount);
+        reservedAccount = await reserveZelleAccount(ZELLE_TRANSACTION_TYPES.REMITTANCE, totalToPay);
       } catch (zelleError) {
         console.error('[createRemittance] ZELLE ERROR: No accounts available', zelleError);
         throw new Error('No Zelle accounts available. Please try again later.');
@@ -898,6 +937,8 @@ export const createRemittance = async (remittanceData) => {
       user_id: user.id,
       remittance_type_id,
       amount_sent: amount,
+      delivery_cost: deliveryCost,
+      shipping_zone_id: shippingZoneId,
       exchange_rate: exchangeRate,
       commission_percentage: commissionPercentage,
       commission_fixed: commissionFixed,
@@ -936,7 +977,7 @@ export const createRemittance = async (remittanceData) => {
     const performInsert = async (payload) => supabase
       .from('remittances')
       .insert([payload])
-      .select('*, zelle_accounts(*)')
+      .select('*')
       .single();
 
     const { data, error } = await performInsert(insertData);
@@ -954,7 +995,7 @@ export const createRemittance = async (remittanceData) => {
         zelle_account_id: selectedZelleAccountId,
         transaction_type: ZELLE_TRANSACTION_TYPES.REMITTANCE,
         reference_id: data.id,
-        amount: amount,
+        amount: totalToPay,
         notes: `Remesa ${data.remittance_number}`
       });
     } catch (zelleError) {
@@ -1018,21 +1059,26 @@ export const createRemittance = async (remittanceData) => {
 
 /**
  * Upload payment proof for a remittance (User)
- * Validates remittance state, stores proof file, updates status, notifies admin
+ * Validates remittance state, stores proof file, updates status.
+ * The admin WhatsApp notification is a guided user-gesture step handled by the callers.
  * @param {string} remittanceId - Remittance ID
  * @param {File} file - Proof file to upload
  * @param {string} reference - Payment reference
  * @param {string} notes - Optional payment notes
+ * @param {Object} [options]
+ * @param {string} options.payerPhone - Payer contact phone (required; stored in remittances.payer_phone)
  * @throws {AppError} If validation fails, upload fails, or remittance not found
  * @returns {Promise<Object>} Updated remittance with proof details
  */
-export const uploadPaymentProof = async (remittanceId, file, reference, notes = '') => {
+export const uploadPaymentProof = async (remittanceId, file, reference, notes = '', options = {}) => {
+  const { payerPhone } = options || {};
   try {
-    if (!remittanceId || !file || !reference) {
+    if (!remittanceId || !file || !reference || !isValidPayerPhone(payerPhone)) {
       throw createValidationError({
         remittanceId: !remittanceId ? 'Remittance ID is required' : undefined,
         file: !file ? 'Proof file is required' : undefined,
-        reference: !reference ? 'Payment reference is required' : undefined
+        reference: !reference ? 'Payment reference is required' : undefined,
+        payerPhone: !isValidPayerPhone(payerPhone) ? 'A valid payer contact phone is required' : undefined
       }, 'Missing required fields for proof upload');
     }
 
@@ -1106,6 +1152,7 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
         payment_proof_url: filePath,
         payment_reference: reference,
         payment_proof_notes: notes,
+        payer_phone: normalizePayerPhone(payerPhone),
         payment_proof_uploaded_at: new Date().toISOString(),
         status: REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED,
         updated_at: new Date().toISOString()
@@ -1134,26 +1181,8 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
       }
     });
 
-    // Notify admin (graceful fallback if fails - don't block remittance creation)
-    // IMPORTANT: Use getFreshWhatsappRecipient to get settings from notification_settings table
-    // This ensures we always use the currently configured phone/group, not stale cached values
-    try {
-      const whatsappRecipient = await getFreshWhatsappRecipient();
-
-      if (whatsappRecipient) {
-        const remittanceForNotify = {
-          ...updatedRemittance,
-          user_email: user.email,
-          user_name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0]
-        };
-        await notifyAdminNewPaymentProof(remittanceForNotify, whatsappRecipient, 'es');
-      } else {
-        console.warn('[uploadPaymentProof] No WhatsApp recipient configured in notification_settings');
-      }
-    } catch (notifyError) {
-      logError(notifyError, { operation: 'uploadPaymentProof - notification', remittanceId });
-      // Don't fail proof upload if notification fails
-    }
+    // Admin WhatsApp notification is handled by the callers through the guided step
+    // in ConfirmationModal (user-gesture link); no auto window.open here.
 
     return updatedRemittance;
   } catch (error) {
@@ -1313,14 +1342,15 @@ export const cancelRemittance = async (remittanceId, reason = '') => {
       throw createNotFoundError('Remittance', remittanceId);
     }
 
-    // Check cancellation eligibility - cannot cancel completed, delivered, or already cancelled
-    const nonCancellableStatuses = [
-      REMITTANCE_STATUS.DELIVERED,
-      REMITTANCE_STATUS.COMPLETED,
-      REMITTANCE_STATUS.CANCELLED
+    // Check cancellation eligibility - the owner may cancel until an admin validates the payment.
+    // Mirrors the database guard (guard_remittance_owner_update).
+    const cancellableStatuses = [
+      REMITTANCE_STATUS.PAYMENT_PENDING,
+      REMITTANCE_STATUS.PAYMENT_REJECTED,
+      REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED
     ];
 
-    if (nonCancellableStatuses.includes(remittance.status)) {
+    if (!cancellableStatuses.includes(remittance.status)) {
       throw createValidationError(
         { status: `Cannot cancel remittance in ${remittance.status} state` },
         'Remittance cannot be cancelled in its current state'
@@ -1585,7 +1615,7 @@ export const validatePayment = async (remittanceId, notes = '') => {
       throw appError;
     }
 
-    const activityResult = await logRemittancePaymentActivity({
+    await logRemittancePaymentActivity({
       action: 'payment_validated',
       remittance: updatedRemittance,
       performedBy: user?.email || user?.id,
@@ -1599,14 +1629,16 @@ export const validatePayment = async (remittanceId, notes = '') => {
       }
     });
 
-    // Sync Zelle transaction history (graceful fallback)
-    if (remittance.zelle_account_id && activityResult?.status === 'inserted') {
+    // Sync Zelle transaction history (graceful fallback).
+    // Independent of the activity log result: a failed audit insert must not
+    // leave the Zelle history out of sync with the remittance status.
+    if (remittance.zelle_account_id) {
       try {
         await upsertZelleTransactionStatus({
           referenceId: remittanceId,
           transactionType: ZELLE_TRANSACTION_TYPES.REMITTANCE,
           status: ZELLE_STATUS.VALIDATED,
-          amount: remittance.amount || remittance.amount_to_deliver || 0,
+          amount: remittance.amount_sent || 0,
           zelleAccountId: remittance.zelle_account_id,
           validatedBy: user.id
         });
@@ -1717,7 +1749,7 @@ export const rejectPayment = async (remittanceId, reason) => {
       // Don't fail rejection if notification fails
     }
 
-    const activityResult = await logRemittancePaymentActivity({
+    await logRemittancePaymentActivity({
       action: 'payment_rejected',
       remittance: updatedRemittance,
       performedBy: user?.email || user?.id,
@@ -1731,14 +1763,16 @@ export const rejectPayment = async (remittanceId, reason) => {
       }
     });
 
-    // Sync Zelle transaction history (graceful fallback)
-    if (remittance.zelle_account_id && activityResult?.status === 'inserted') {
+    // Sync Zelle transaction history (graceful fallback).
+    // Independent of the activity log result: a failed audit insert must not
+    // leave the Zelle history out of sync with the remittance status.
+    if (remittance.zelle_account_id) {
       try {
         await upsertZelleTransactionStatus({
           referenceId: remittanceId,
           transactionType: ZELLE_TRANSACTION_TYPES.REMITTANCE,
           status: ZELLE_STATUS.REJECTED,
-          amount: remittance.amount || remittance.amount_to_deliver || 0,
+          amount: remittance.amount_sent || 0,
           zelleAccountId: remittance.zelle_account_id,
           validatedBy: user.id
         });

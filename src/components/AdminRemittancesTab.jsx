@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useModal } from '@/contexts/ModalContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
+import { calcTotalToPay } from '@/lib/remittanceCalculations';
 import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import {
   getAllRemittances,
@@ -35,6 +36,8 @@ async function decryptData(encryptedBase64) {
 import { toast } from '@/components/ui/use-toast';
 import ImageProofModal from './ImageProofModal';
 import TooltipButton from './TooltipButton';
+import RecipientLocation from './RecipientLocation';
+import { formatRecipientLocation } from '@/lib/recipientInfo';
 
 const AdminRemittancesTab = () => {
   const { t, language } = useLanguage();
@@ -329,7 +332,7 @@ const AdminRemittancesTab = () => {
   const handleValidatePayment = async (remittance) => {
     const notes = await showModal({
       title: t('remittances.admin.validate'),
-      message: t('remittances.admin.confirmValidateMessage', { amount: remittance.amount_sent, currency: remittance.currency_sent }),
+      message: t('remittances.admin.confirmValidateMessage', { amount: calcTotalToPay({ amountSent: remittance.amount_sent, deliveryCost: remittance.delivery_cost }), currency: remittance.currency_sent }),
       input: true,
       inputLabel: t('remittances.admin.validationNotes') + ' (opcional)',
       inputPlaceholder: t('remittances.admin.validationNotesPlaceholder'),
@@ -934,6 +937,11 @@ const AdminRemittancesTab = () => {
                   <p className="text-xs sm:text-sm font-semibold">
                     {remittance.amount_sent} {remittance.currency_sent}
                   </p>
+                  {Number(remittance.delivery_cost) > 0 && (
+                    <p className="text-[10px] sm:text-xs text-gray-500">
+                      {t('remittances.admin.totalPaid')}: {calcTotalToPay({ amountSent: remittance.amount_sent, deliveryCost: remittance.delivery_cost }).toFixed(2)} {remittance.currency_sent}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -948,12 +956,11 @@ const AdminRemittancesTab = () => {
                   <p className="text-xs sm:text-sm font-semibold capitalize">{remittance.remittance_types?.delivery_method}</p>
                 </div>
 
-                {remittance.recipient_city && (
+                {formatRecipientLocation(remittance.recipient_municipality, remittance.recipient_province) && (
                   <div className="col-span-2 sm:col-span-1">
-                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">{t('remittances.recipient.city')}</p>
+                    <p className="text-[10px] sm:text-xs text-gray-500 mb-0.5">{t('remittances.recipient.location')}</p>
                     <p className="text-xs sm:text-sm font-semibold truncate">
-                      {remittance.recipient_city}
-                      {remittance.recipient_province && `, ${remittance.recipient_province}`}
+                      {formatRecipientLocation(remittance.recipient_municipality, remittance.recipient_province)}
                     </p>
                   </div>
                 )}
@@ -1099,6 +1106,18 @@ const AdminRemittancesTab = () => {
                       <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.amountSent')}</p>
                       <p className="text-base sm:text-lg font-bold text-blue-600">{selectedRemittance.amount_sent} {selectedRemittance.currency_sent}</p>
                     </div>
+                    {Number(selectedRemittance.delivery_cost) > 0 && (
+                      <>
+                        <div>
+                          <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.deliveryCost')}</p>
+                          <p className="text-base sm:text-lg font-bold text-gray-700">{Number(selectedRemittance.delivery_cost).toFixed(2)} {selectedRemittance.currency_sent}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.totalPaid')}</p>
+                          <p className="text-base sm:text-lg font-bold text-blue-600">{calcTotalToPay({ amountSent: selectedRemittance.amount_sent, deliveryCost: selectedRemittance.delivery_cost }).toFixed(2)} {selectedRemittance.currency_sent}</p>
+                        </div>
+                      </>
+                    )}
                     <div>
                       <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.toDeliver')}</p>
                       <p className="text-base sm:text-lg font-bold text-green-600">{selectedRemittance.amount_to_deliver?.toFixed(2)} {selectedRemittance.currency_delivered}</p>
@@ -1112,12 +1131,11 @@ const AdminRemittancesTab = () => {
                   <div className="bg-gray-50 rounded-lg p-3 sm:p-4 space-y-2 text-xs sm:text-sm">
                     <p><span className="font-medium">{t('remittances.admin.recipientName')}</span> {selectedRemittance.recipient_name || 'N/A'}</p>
                     <p><span className="font-medium">{t('remittances.admin.recipientPhone')}</span> {selectedRemittance.recipient_phone || 'N/A'}</p>
-                    {selectedRemittance.recipient_city && (
-                      <p>
-                        <span className="font-medium">{t('remittances.admin.recipientLocation')}</span> {selectedRemittance.recipient_city}
-                        {selectedRemittance.recipient_province && `, ${selectedRemittance.recipient_province}`}
-                        {selectedRemittance.recipient_municipality && `, ${selectedRemittance.recipient_municipality}`}
-                      </p>
+                    {selectedRemittance.remittance_types?.delivery_method !== 'cash' && (
+                      <RecipientLocation
+                        label={t('remittances.admin.recipientLocation')}
+                        remittance={selectedRemittance}
+                      />
                     )}
                   </div>
                 </div>
@@ -1310,6 +1328,14 @@ const AdminRemittancesTab = () => {
                   <div>
                     <p className="text-xs sm:text-sm text-gray-600 font-medium mb-2">{t('remittances.admin.paymentReferenceLabel')}</p>
                     <p className="font-mono bg-gray-50 p-3 rounded-lg text-xs sm:text-sm">{selectedRemittance.payment_reference}</p>
+                  </div>
+                )}
+
+                {/* Payer contact phone */}
+                {selectedRemittance.payer_phone && (
+                  <div>
+                    <p className="text-xs sm:text-sm text-gray-600 font-medium mb-2">{t('remittances.admin.payerPhoneLabel')}</p>
+                    <p className="font-mono bg-gray-50 p-3 rounded-lg text-xs sm:text-sm">{selectedRemittance.payer_phone}</p>
                   </div>
                 )}
 

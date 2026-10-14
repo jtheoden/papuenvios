@@ -14,7 +14,8 @@ import { useBusiness } from '@/contexts/BusinessContext';
  *
  * @prop {array} data - Array of row objects
  * @prop {array} columns - Column configuration: {key, label, render, sortable, width}
- * @prop {function} onRowClick - Callback when row is clicked/expanded
+ * @prop {function} onRowClick - Callback when row is clicked. When provided, it REPLACES the built-in
+ *   detail modal (the consumer renders its own detail UI); without it the generic modal opens.
  * @prop {boolean} isLoading - Loading state
  * @prop {string} modalTitle - i18n key for modal title
  * @prop {array} modalColumns - Column config for modal detail view
@@ -82,9 +83,14 @@ const ResponsiveTableWrapper = ({
   };
 
   const handleRowClick = (row) => {
+    // A consumer-provided onRowClick owns the detail UI; opening the generic
+    // modal as well would stack two modals on mobile.
+    if (onRowClick) {
+      onRowClick(row);
+      return;
+    }
     setSelectedRow(row);
     setShowModal(true);
-    onRowClick?.(row);
   };
 
   if (isLoading) {
