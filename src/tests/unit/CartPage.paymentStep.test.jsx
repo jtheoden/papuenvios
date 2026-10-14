@@ -95,7 +95,7 @@ vi.mock('@/lib/notificationSettingsService', () => ({
 }));
 vi.mock('@/lib/orderService', () => ({ createOrder: vi.fn(), uploadPaymentProof: vi.fn() }));
 vi.mock('@/lib/zelleService', () => ({
-  reserveZelleAccount: vi.fn(async () => ({ id: 'z1' })),
+  pickAvailableZelleAccount: vi.fn(async () => ({ id: 'z1' })),
   registerZelleTransaction: vi.fn(),
   ZELLE_TRANSACTION_TYPES: { PRODUCT: 'product' },
 }));

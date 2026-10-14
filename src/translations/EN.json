@@ -1753,6 +1753,8 @@
     "notesPlaceholder": "Additional notes about this account",
     "accountUnavailable": "Zelle account unavailable",
     "selectAnotherAccount": "The selected Zelle account is no longer available. Please select another one.",
+    "limitsHelp": "Limits are advisory: automatic assignment respects them and the selector warns, but they never block a payment or an order. 0 or empty = no cap. Usage is computed from orders and remittances in USD, with day and month in New York time.",
+    "overLimitWarning": "This account may be near its limit; you can still use it",
     "accountInvalidated": "Your selected account is no longer available",
     "pleaseSelectNew": "The Zelle account you selected has been deactivated. Please choose another one to continue.",
     "loadError": "Error loading Zelle accounts",

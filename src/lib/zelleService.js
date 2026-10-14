@@ -121,23 +121,31 @@ const validateTransactionData = (data) => {
 // ============================================================================
 
 /**
- * Reservar cuenta Zelle disponible con rotación automática (SEC-09 fix)
- * Atomically selects AND reserves capacity on an account in one RPC call
- * (FOR UPDATE SKIP LOCKED), closing the TOCTOU window that existed between
- * the old select_available_zelle_account + update_zelle_account_usage pair.
+ * Usage assumptions shared with the SQL helper zelle_account_usage (single place
+ * on the DB side). Zelle-only, amounts in USD, day/month windows in America/New_York.
+ * A new payment method or currency (e.g. Bizum: EUR, phone-identified) must change
+ * the SQL usage function first; this constant is only used for UI wording/validation.
+ */
+export const ZELLE_USAGE_CURRENCY = 'USD';
+
+/**
+ * Pick an available Zelle account for auto-assignment (READ-ONLY).
+ * Limits are advisory: usage is computed server-side from orders/remittances
+ * (select_available_zelle_account), nothing is reserved or incremented here.
  *
- * @param {string} transactionType - Type of transaction: 'remittance', 'product', or 'combo'
- * @param {number} amount - Amount of the transaction in USD
- * @returns {Promise<object>} Reserved Zelle account with full details
+ * Extension point: this is the "pick available payment account" entry point; another
+ * payment method would get its own pick RPC and be dispatched from here.
+ *
+ * @param {string} transactionType - 'remittance', 'product', or 'combo'
+ * @param {number} amount - Amount of the transaction in USD (ZELLE_USAGE_CURRENCY)
+ * @returns {Promise<object>} Customer-safe Zelle account (hidden contact fields are null)
  * @throws {AppError} If no available accounts or database error
  *
  * @example
- * const account = await reserveZelleAccount('remittance', 250);
- * // Returns: { id: 'acc-123', phone_number: '+1234567890', holder_name: 'Juan Perez', ... }
+ * const account = await pickAvailableZelleAccount('remittance', 250);
  */
-export const reserveZelleAccount = async (transactionType, amount) => {
+export const pickAvailableZelleAccount = async (transactionType, amount) => {
   try {
-    // Validate input
     if (!transactionType || !Object.values(ZELLE_TRANSACTION_TYPES).includes(transactionType)) {
       throw createValidationError(
         { transactionType: `Must be one of: ${Object.values(ZELLE_TRANSACTION_TYPES).join(', ')}` },
@@ -145,12 +153,11 @@ export const reserveZelleAccount = async (transactionType, amount) => {
       );
     }
 
-    if (typeof amount !== 'number' || amount <= 0) {
+    if (typeof amount !== 'number' || !(amount > 0)) {
       throw createValidationError({ amount: 'Must be a positive number' }, 'Invalid amount');
     }
 
-    // Atomic select + reserve — replaces the non-atomic select/update pair.
-    const { data, error } = await supabase.rpc('reserve_zelle_account', {
+    const { data, error } = await supabase.rpc('select_available_zelle_account', {
       p_transaction_type: transactionType,
       p_amount: amount
     });
@@ -185,12 +192,12 @@ export const reserveZelleAccount = async (transactionType, amount) => {
     return account;
   } catch (error) {
     if (error instanceof AppError) {
-      logError(error, { operation: 'reserveZelleAccount', transactionType, amount });
+      logError(error, { operation: 'pickAvailableZelleAccount', transactionType, amount });
       throw error;
     }
 
     const appError = parseSupabaseError(error);
-    logError(appError, { operation: 'reserveZelleAccount', transactionType, amount });
+    logError(appError, { operation: 'pickAvailableZelleAccount', transactionType, amount });
     throw appError;
   }
 };
@@ -202,7 +209,7 @@ export const reserveZelleAccount = async (transactionType, amount) => {
 /**
  * Registrar transacción en el historial
  * Inserts a new transaction record. Usage counters are NOT touched here —
- * they were already incremented atomically by reserveZelleAccount() (SEC-09).
+ * usage is computed from orders/remittances, not stored counters.
  * This function only records the history row for the reservation already made.
  *
  * @param {object} transactionData - Transaction information
@@ -530,12 +537,25 @@ export const rejectZelleTransaction = async (transactionId, reason = null) => {
 };
 
 /**
- * Get usage summary (daily/monthly) for all Zelle accounts based on transaction history
- * Aggregates validated and pending transactions (ignores rejected reversals)
+ * Get usage summary (daily/monthly) for all Zelle accounts (admin).
+ * Primary source: get_zelle_accounts_usage (usage computed server-side from orders and
+ * remittances, USD, America/New_York windows). If that RPC fails, falls back to
+ * aggregating zelle_transaction_history (ignores rejected reversals).
  * @returns {Promise<Object>} Map keyed by accountId with dailyAmount and monthlyAmount
  */
 export const getZelleAccountUsageSummary = async () => {
   try {
+    const { data: computed, error: computedError } = await supabase.rpc('get_zelle_accounts_usage');
+    if (!computedError && Array.isArray(computed)) {
+      return computed.reduce((acc, row) => {
+        acc[row.id] = {
+          dailyAmount: parseFloat(row.daily_usage) || 0,
+          monthlyAmount: parseFloat(row.monthly_usage) || 0
+        };
+        return acc;
+      }, {});
+    }
+    // Fall through to the legacy history-based aggregation.
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -635,10 +655,12 @@ const CUSTOMER_ZELLE_USAGES = ['products', 'remittances'];
  * Customers must NOT read the zelle_accounts table directly.
  *
  * @param {'products'|'remittances'} usage - Which flow the account is for
+ * @param {number} [amount] - Order/remittance total in USD; when positive, each row gets an
+ *   ADVISORY `available` flag (false = the amount would exceed a limit; never blocks)
  * @returns {Promise<Array>} Customer-safe accounts ordered by priority
  * @throws {AppError} If usage is invalid or the RPC fails
  */
-export const getZelleAccountsForCustomer = async (usage) => {
+export const getZelleAccountsForCustomer = async (usage, amount) => {
   try {
     if (!CUSTOMER_ZELLE_USAGES.includes(usage)) {
       throw createValidationError(
@@ -647,7 +669,11 @@ export const getZelleAccountsForCustomer = async (usage) => {
       );
     }
 
-    const { data, error } = await supabase.rpc('list_zelle_accounts_public', { p_usage: usage });
+    const params = { p_usage: usage };
+    if (typeof amount === 'number' && Number.isFinite(amount) && amount > 0) {
+      params.p_amount = amount;
+    }
+    const { data, error } = await supabase.rpc('list_zelle_accounts_public', params);
 
     if (error) {
       throw parseSupabaseError(error);

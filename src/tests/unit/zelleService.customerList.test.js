@@ -35,6 +35,28 @@ describe('getZelleAccountsForCustomer', () => {
     expect(fromMock).not.toHaveBeenCalled();
   });
 
+  it('passes p_amount when an amount is given and keeps the available flag', async () => {
+    rpcMock.mockResolvedValue({
+      data: [{ id: 'a1', account_name: 'Main', priority_order: 1, available: false }],
+      error: null
+    });
+
+    const accounts = await getZelleAccountsForCustomer('products', 150);
+
+    expect(rpcMock).toHaveBeenCalledWith('list_zelle_accounts_public', { p_usage: 'products', p_amount: 150 });
+    expect(accounts[0].available).toBe(false);
+  });
+
+  it('omits p_amount when the amount is missing or not positive', async () => {
+    rpcMock.mockResolvedValue({ data: [], error: null });
+
+    await getZelleAccountsForCustomer('products', 0);
+    await getZelleAccountsForCustomer('products', undefined);
+
+    expect(rpcMock).toHaveBeenNthCalledWith(1, 'list_zelle_accounts_public', { p_usage: 'products' });
+    expect(rpcMock).toHaveBeenNthCalledWith(2, 'list_zelle_accounts_public', { p_usage: 'products' });
+  });
+
   it('supports the remittances usage', async () => {
     rpcMock.mockResolvedValue({ data: [], error: null });
 
