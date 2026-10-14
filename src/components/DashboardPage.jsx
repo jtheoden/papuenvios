@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart3, TrendingUp, DollarSign, Package, Users, AlertTriangle, Eye, Users2, RefreshCw, FileText, List, Send, Settings, Clock, CheckCircle, Ticket, CreditCard, ShieldCheck, Truck, Tag, Calendar } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -6,6 +6,15 @@ import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { getHeadingStyle } from '@/lib/styleUtils';
+import {
+  ACTIVE_ORDER_STATUSES,
+  buildMarginLookup,
+  computeCombinedRevenue,
+  computeOrderCounters,
+  computeOrderProfitTotals,
+  computeOrderTotals,
+  groupItemsByOrder
+} from '@/lib/dashboardMetrics';
 import { useRealtimeOrders, useRealtimeRemittances, useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import TabsResponsive from './TabsResponsive';
 import AdminOrdersTab from './AdminOrdersTab';
@@ -40,6 +49,7 @@ const DashboardPage = ({ onNavigate }) => {
     totalCombos: 0,
     totalUsers: 0,
     pendingOrders: 0,
+    proofToReview: 0,
     completedOrders: 0,
     dailyRevenue: 0,
     monthlyRevenue: 0,
@@ -72,6 +82,9 @@ const DashboardPage = ({ onNavigate }) => {
     paymentMethodBreakdown: {},
     loading: true
   });
+
+  // Inputs for the estimated order profit (orders + order lines + per-item margins)
+  const [profitSource, setProfitSource] = useState(null);
 
   const [visitStats, setVisitStats] = useState({
     weekly: 0,
@@ -194,14 +207,16 @@ const DashboardPage = ({ onNavigate }) => {
       setStats(prev => ({ ...prev, loading: true }));
 
       // Get counts
-      const [productsRes, combosRes, usersRes, ordersRes, remittancesRes, remittanceTypesRes, zelleRes] = await Promise.all([
+      const [productsRes, combosRes, usersRes, ordersRes, remittancesRes, remittanceTypesRes, zelleRes, productMarginsRes, comboMarginsRes] = await Promise.all([
         supabase.from('products').select('id', { count: 'exact', head: true }),
         supabase.from('combo_products').select('id', { count: 'exact', head: true }),
         supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
         supabase.from('orders').select('id, status, payment_status, total_amount, shipping_cost, discount_amount, payment_method, created_at'),
         supabase.from('remittances').select('id, status, commission_total, amount_sent, amount_to_deliver, discount_amount, created_at, delivered_at, completed_at, updated_at'),
         supabase.from('remittance_types').select('id', { count: 'exact', head: true }).eq('is_active', true),
-        supabase.from('zelle_transaction_history').select('id, amount, status, transaction_type, transaction_date, zelle_account_id').eq('status', 'validated')
+        supabase.from('zelle_transaction_history').select('id, amount, status, transaction_type, transaction_date, zelle_account_id').eq('status', 'validated'),
+        supabase.from('products').select('id, profit_margin'),
+        supabase.from('combo_products').select('id, profit_margin')
       ]);
 
       if (productsRes.error) throw productsRes.error;
@@ -210,6 +225,8 @@ const DashboardPage = ({ onNavigate }) => {
       if (ordersRes.error) throw ordersRes.error;
       if (remittancesRes.error) throw remittancesRes.error;
       if (remittanceTypesRes.error) throw remittanceTypesRes.error;
+      if (productMarginsRes.error) throw productMarginsRes.error;
+      if (comboMarginsRes.error) throw comboMarginsRes.error;
       // Zelle query is non-critical - graceful fallback
       const zelleTransactions = (!zelleRes.error && zelleRes.data) ? zelleRes.data : [];
 
@@ -224,68 +241,58 @@ const DashboardPage = ({ onNavigate }) => {
       // Calculate remittance stats by status
       const remittances = remittancesRes.data || [];
 
-      const paymentPending = orders.filter(o => o.payment_status === 'pending').length;
-      const paymentValidated = orders.filter(o => o.payment_status === 'validated' && o.status === 'pending').length;
-      const processing = orders.filter(o => o.status === 'processing').length;
-      const dispatched = orders.filter(o => o.status === 'dispatched').length;
-      const delivered = orders.filter(o => o.status === 'delivered').length;
-      const completedOrders = orders.filter(o => o.status === 'completed').length;
-      const cancelled = orders.filter(o => o.status === 'cancelled').length;
-      const totalActive = paymentPending + paymentValidated + processing + dispatched + delivered;
+      const {
+        paymentPending,
+        paymentValidated,
+        proofToReview,
+        processing,
+        dispatched,
+        delivered,
+        completedOrders,
+        cancelled,
+        totalActive,
+        pendingOrders
+      } = computeOrderCounters(orders);
 
-      // Legacy field for compatibility
-      const pendingOrders = paymentPending + paymentValidated;
-
-      // Calculate revenue (last 24 hours and last 30 days)
+      // Revenue, shipping, discounts and payment breakdown (shared ACTIVE_ORDER_STATUSES)
       const now = new Date();
       const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
       const oneMonthAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
       const oneYearAgo = new Date(now - 365 * 24 * 60 * 60 * 1000);
 
-      const dailyRevenue = orders
-        .filter(o => new Date(o.created_at) >= oneDayAgo && ['delivered', 'completed', 'processing'].includes(o.status))
-        .reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
+      const {
+        dailyRevenue,
+        monthlyRevenue,
+        yearlyRevenue,
+        dailyShippingCost,
+        monthlyShippingCost,
+        yearlyShippingCost,
+        dailyDiscounts: dailyOrderDiscounts,
+        monthlyDiscounts: monthlyOrderDiscounts,
+        yearlyDiscounts: yearlyOrderDiscounts,
+        paymentMethodBreakdown
+      } = computeOrderTotals(orders, now);
 
-      const monthlyRevenue = orders
-        .filter(o => new Date(o.created_at) >= oneMonthAgo && ['delivered', 'completed', 'processing'].includes(o.status))
-        .reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
-
-      const yearlyRevenue = orders
-        .filter(o => new Date(o.created_at) >= oneYearAgo && ['delivered', 'completed', 'processing'].includes(o.status))
-        .reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
-
-      // Shipping costs (active orders with shipping)
-      const activeOrderStatuses = ['delivered', 'completed', 'processing', 'dispatched'];
-      const dailyShippingCost = orders
-        .filter(o => new Date(o.created_at) >= oneDayAgo && activeOrderStatuses.includes(o.status))
-        .reduce((sum, o) => sum + (parseFloat(o.shipping_cost) || 0), 0);
-      const monthlyShippingCost = orders
-        .filter(o => new Date(o.created_at) >= oneMonthAgo && activeOrderStatuses.includes(o.status))
-        .reduce((sum, o) => sum + (parseFloat(o.shipping_cost) || 0), 0);
-      const yearlyShippingCost = orders
-        .filter(o => new Date(o.created_at) >= oneYearAgo && activeOrderStatuses.includes(o.status))
-        .reduce((sum, o) => sum + (parseFloat(o.shipping_cost) || 0), 0);
-
-      // Order discounts
-      const dailyOrderDiscounts = orders
-        .filter(o => new Date(o.created_at) >= oneDayAgo && activeOrderStatuses.includes(o.status))
-        .reduce((sum, o) => sum + (parseFloat(o.discount_amount) || 0), 0);
-      const monthlyOrderDiscounts = orders
-        .filter(o => new Date(o.created_at) >= oneMonthAgo && activeOrderStatuses.includes(o.status))
-        .reduce((sum, o) => sum + (parseFloat(o.discount_amount) || 0), 0);
-      const yearlyOrderDiscounts = orders
-        .filter(o => new Date(o.created_at) >= oneYearAgo && activeOrderStatuses.includes(o.status))
-        .reduce((sum, o) => sum + (parseFloat(o.discount_amount) || 0), 0);
-
-      // Payment method breakdown
-      const paymentMethodBreakdown = {};
-      orders.filter(o => activeOrderStatuses.includes(o.status)).forEach(o => {
-        const method = o.payment_method || 'unknown';
-        if (!paymentMethodBreakdown[method]) {
-          paymentMethodBreakdown[method] = { count: 0, total: 0 };
-        }
-        paymentMethodBreakdown[method].count += 1;
-        paymentMethodBreakdown[method].total += parseFloat(o.total_amount) || 0;
+      // Estimated order profit (per-product margin). Lines are fetched in pages
+      // for active orders only (single embedded query, no N+1).
+      const ITEMS_PAGE_SIZE = 1000;
+      const orderItems = [];
+      for (let from = 0; ; from += ITEMS_PAGE_SIZE) {
+        const { data: page, error: itemsError } = await supabase
+          .from('order_items')
+          .select('order_id, item_type, item_id, total_price, orders!inner(status)')
+          .in('orders.status', ACTIVE_ORDER_STATUSES)
+          .order('id', { ascending: true })
+          .range(from, from + ITEMS_PAGE_SIZE - 1);
+        if (itemsError) throw itemsError;
+        orderItems.push(...(page || []));
+        if (!page || page.length < ITEMS_PAGE_SIZE) break;
+      }
+      // Profit is computed at render time so it follows the default margin setting
+      setProfitSource({
+        orders,
+        itemsByOrder: groupItemsByOrder(orderItems),
+        marginLookup: buildMarginLookup(productMarginsRes.data || [], comboMarginsRes.data || [])
       });
 
       // Zelle transaction totals
@@ -394,6 +401,7 @@ const DashboardPage = ({ onNavigate }) => {
         totalCombos,
         totalUsers,
         pendingOrders,
+        proofToReview,
         completedOrders,
         paymentPending,
         paymentValidated,
@@ -478,9 +486,19 @@ const DashboardPage = ({ onNavigate }) => {
   }, [user, isAdmin, isSuperAdmin, fetchStats, fetchVisitStats]);
 
   // Calculate profits and apply exchange rate
-  const dailyProfit = stats.dailyRevenue * (financialSettings.productProfit / 100);
-  const monthlyProfit = stats.monthlyRevenue * (financialSettings.productProfit / 100);
-  const yearlyProfit = stats.yearlyRevenue * (financialSettings.productProfit / 100);
+  // Order profit is an ESTIMATE: per-product margin, discount deducted, shipping excluded
+  const orderProfit = useMemo(
+    () => profitSource
+      ? computeOrderProfitTotals(
+          profitSource.orders,
+          profitSource.itemsByOrder,
+          profitSource.marginLookup,
+          financialSettings.productProfit
+        )
+      : { dailyProfit: 0, monthlyProfit: 0, yearlyProfit: 0, fallbackLines: 0 },
+    [profitSource, financialSettings.productProfit]
+  );
+  const { dailyProfit, monthlyProfit, yearlyProfit } = orderProfit;
 
   // Commission = Profit for remittances (no additional cost layer)
   const dailyRemittanceProfit = Number(stats.dailyRemittanceIncome || 0);
@@ -494,9 +512,10 @@ const DashboardPage = ({ onNavigate }) => {
   const yearlyRemittancePayout = Math.max(0, yearlyRemittanceVolumeValue - yearlyRemittanceProfit);
 
   // Combined totals (Orders + Remittances)
-  const combinedDailyRevenue = Number(stats.dailyRevenue || 0) + dailyRemittanceVolumeValue;
-  const combinedMonthlyRevenue = Number(stats.monthlyRevenue || 0) + monthlyRemittanceVolumeValue;
-  const combinedYearlyRevenue = Number(stats.yearlyRevenue || 0) + yearlyRemittanceVolumeValue;
+  // Headline revenue = order revenue + remittance commission (volume sent is not income)
+  const combinedDailyRevenue = computeCombinedRevenue(stats.dailyRevenue, dailyRemittanceProfit);
+  const combinedMonthlyRevenue = computeCombinedRevenue(stats.monthlyRevenue, monthlyRemittanceProfit);
+  const combinedYearlyRevenue = computeCombinedRevenue(stats.yearlyRevenue, yearlyRemittanceProfit);
   const combinedDailyProfit = Number(dailyProfit || 0) + dailyRemittanceProfit;
   const combinedMonthlyProfit = Number(monthlyProfit || 0) + monthlyRemittanceProfit;
   const combinedYearlyProfit = Number(yearlyProfit || 0) + yearlyRemittanceProfit;
@@ -740,6 +759,7 @@ const DashboardPage = ({ onNavigate }) => {
                       <div className="space-y-2">
                         {[
                           { label: t('dashboard.orderStatus.paymentPending'), value: stats.paymentPending, color: 'border-yellow-400 bg-yellow-50', textColor: 'text-yellow-700' },
+                          { label: t('dashboard.orderStatus.proofToReview'), value: stats.proofToReview, color: 'border-orange-400 bg-orange-50', textColor: 'text-orange-700' },
                           { label: t('dashboard.orderStatus.paymentValidated'), value: stats.paymentValidated, color: 'border-green-400 bg-green-50', textColor: 'text-green-700' },
                           { label: t('dashboard.orderStatus.processing'), value: stats.processing, color: 'border-blue-400 bg-blue-50', textColor: 'text-blue-700' },
                           { label: t('dashboard.orderStatus.dispatched'), value: stats.dispatched, color: 'border-purple-400 bg-purple-50', textColor: 'text-purple-700' },
@@ -863,7 +883,11 @@ const DashboardPage = ({ onNavigate }) => {
                                 <td colSpan="4" className="pt-3 pb-1">
                                   <span className="text-xs font-bold text-blue-600 uppercase tracking-wider flex items-center gap-1.5">
                                     <Package className="w-3.5 h-3.5" /> {t('dashboard.ordersMetrics')}
-                                    <span className="text-[10px] font-normal text-gray-400 ml-1">({t('dashboard.profitMargin')}: {financialSettings.productProfit}%)</span>
+                                    {orderProfit.fallbackLines > 0 && (
+                                      <span className="text-[10px] font-normal text-gray-400 ml-1">
+                                        ({t('dashboard.profitFallbackNote', { count: orderProfit.fallbackLines, margin: financialSettings.productProfit })})
+                                      </span>
+                                    )}
                                   </span>
                                 </td>
                               </tr>
@@ -880,7 +904,7 @@ const DashboardPage = ({ onNavigate }) => {
                                 <td className="py-1.5 text-right font-medium text-red-600">-{currencySymbol}{formatCurrency(stats.yearlyRevenue - yearlyProfit)}</td>
                               </tr>
                               <tr className="border-b border-gray-200">
-                                <td className="py-1.5 pl-4 font-semibold text-gray-700">{t('dashboard.netProfit')}</td>
+                                <td className="py-1.5 pl-4 font-semibold text-gray-700">{t('dashboard.estimatedProfit')}</td>
                                 <td className="py-1.5 text-right font-bold text-emerald-600">{currencySymbol}{formatCurrency(dailyProfit)}</td>
                                 <td className="py-1.5 text-right font-bold text-emerald-600">{currencySymbol}{formatCurrency(monthlyProfit)}</td>
                                 <td className="py-1.5 text-right font-bold text-emerald-600">{currencySymbol}{formatCurrency(yearlyProfit)}</td>
@@ -926,7 +950,7 @@ const DashboardPage = ({ onNavigate }) => {
                                 <td className="py-1.5 text-right font-medium">{currencySymbol}{formatCurrency(combinedYearlyRevenue)}</td>
                               </tr>
                               <tr className="bg-gray-50">
-                                <td className="py-2 pl-4 font-bold text-gray-900">{t('dashboard.netProfit')}</td>
+                                <td className="py-2 pl-4 font-bold text-gray-900">{t('dashboard.estimatedNetProfit')}</td>
                                 <td className="py-2 text-right font-bold text-emerald-700 text-base">{currencySymbol}{formatCurrency(combinedDailyProfit)}</td>
                                 <td className="py-2 text-right font-bold text-emerald-700 text-base">{currencySymbol}{formatCurrency(combinedMonthlyProfit)}</td>
                                 <td className="py-2 text-right font-bold text-emerald-700 text-base">{currencySymbol}{formatCurrency(combinedYearlyProfit)}</td>

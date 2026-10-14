@@ -753,8 +753,8 @@
     "stats": {
       "dailyRevenue": "Daily Revenue",
       "monthlyRevenue": "Monthly Revenue",
-      "dailyProfit": "Daily Profit",
-      "monthlyProfit": "Monthly Profit",
+      "dailyProfit": "Estimated Daily Profit",
+      "monthlyProfit": "Estimated Monthly Profit",
       "totalProducts": "Total Products",
       "totalCombos": "Total Combos",
       "pendingOrders": "Pending Orders",
@@ -771,8 +771,8 @@
       "totalOrders": "Total Orders",
       "dailyOrderRevenue": "Orders Income (Today)",
       "monthlyOrderRevenue": "Orders Income (Month)",
-      "dailyOrderProfit": "Orders Profit (Today)",
-      "monthlyOrderProfit": "Orders Profit (Month)"
+      "dailyOrderProfit": "Orders Est. Profit (Today)",
+      "monthlyOrderProfit": "Orders Est. Profit (Month)"
     },
     "remittancesMetrics": "Remittance Metrics",
     "ordersMetrics": "Orders Metrics",
@@ -782,6 +782,9 @@
     "grossRevenue": "Gross Revenue",
     "costs": "Costs",
     "netProfit": "Net Profit",
+    "estimatedProfit": "Estimated profit",
+    "estimatedNetProfit": "Estimated net profit",
+    "profitFallbackNote": "{count} order line(s) without a known product use the default margin ({margin}%)",
     "profitMargin": "Profit Margin",
     "orderSummary": "Order Summary",
     "ordersBreakdown": "Orders Breakdown",
@@ -801,6 +804,7 @@
     "activityLogTab": "Activity Log",
     "orderStatus": {
       "paymentPending": "Payment Pending",
+      "proofToReview": "Proof to review",
       "paymentValidated": "Payment Validated",
       "processing": "Processing",
       "dispatched": "Dispatched",
@@ -817,7 +821,7 @@
     },
     "yearlyBreakdown": "Yearly Breakdown",
     "yearlyRevenue": "Yearly Revenue",
-    "yearlyProfit": "Yearly Profit",
+    "yearlyProfit": "Estimated Yearly Profit",
     "transportCosts": "Transportation Costs",
     "dailyShipping": "Daily Shipping",
     "monthlyShipping": "Monthly Shipping",

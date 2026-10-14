@@ -762,8 +762,8 @@
     "stats": {
       "dailyRevenue": "Ingresos Diarios",
       "monthlyRevenue": "Ingresos Mensuales",
-      "dailyProfit": "Ganancia Diaria",
-      "monthlyProfit": "Ganancia Mensual",
+      "dailyProfit": "Ganancia Estimada Diaria",
+      "monthlyProfit": "Ganancia Estimada Mensual",
       "totalProducts": "Total de Productos",
       "totalCombos": "Total de Combos",
       "pendingOrders": "Pedidos Pendientes",
@@ -780,8 +780,8 @@
       "totalOrders": "Total de Órdenes",
       "dailyOrderRevenue": "Ingresos Órdenes (Hoy)",
       "monthlyOrderRevenue": "Ingresos Órdenes (Mes)",
-      "dailyOrderProfit": "Ganancia Órdenes (Hoy)",
-      "monthlyOrderProfit": "Ganancia Órdenes (Mes)"
+      "dailyOrderProfit": "Ganancia Est. Órdenes (Hoy)",
+      "monthlyOrderProfit": "Ganancia Est. Órdenes (Mes)"
     },
     "remittancesMetrics": "Métricas de Remesas",
     "ordersMetrics": "Métricas de Órdenes",
@@ -791,6 +791,9 @@
     "grossRevenue": "Ingresos Brutos",
     "costs": "Costos",
     "netProfit": "Ganancia Neta",
+    "estimatedProfit": "Ganancia estimada",
+    "estimatedNetProfit": "Ganancia neta estimada",
+    "profitFallbackNote": "{count} línea(s) de pedido sin producto conocido usan el margen por defecto ({margin}%)",
     "profitMargin": "Margen de Ganancia",
     "orderSummary": "Resumen de Pedidos",
     "ordersBreakdown": "Desglose de Órdenes",
@@ -810,6 +813,7 @@
     "activityLogTab": "Registro de Actividad",
     "orderStatus": {
       "paymentPending": "Pago Pendiente",
+      "proofToReview": "Comprobante por validar",
       "paymentValidated": "Pago Validado",
       "processing": "En Procesamiento",
       "dispatched": "Despachado",
@@ -826,7 +830,7 @@
     },
     "yearlyBreakdown": "Desglose Anual",
     "yearlyRevenue": "Ingresos Anuales",
-    "yearlyProfit": "Ganancia Anual",
+    "yearlyProfit": "Ganancia Estimada Anual",
     "transportCosts": "Costos de Transporte",
     "dailyShipping": "Envio Diario",
     "monthlyShipping": "Envio Mensual",
