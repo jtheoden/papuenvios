@@ -21,7 +21,7 @@ vi.mock('@/hooks/useRealtimeSubscription', () => ({
   })
 }));
 vi.mock('@/contexts/LanguageContext', () => ({
-  useLanguage: () => ({ language: 'es', setLanguage: vi.fn(), t: (k) => k })
+  useLanguage: () => ({ language: 'es', setLanguage: vi.fn(), t: (k, params) => (params ? `${k}:${params.count}` : k) })
 }));
 vi.mock('@/contexts/BusinessContext', () => ({
   useBusiness: () => ({ cart: [], visualSettings: {} })
@@ -81,5 +81,24 @@ describe('Header pending badge', () => {
     render(<Header currentPage="home" onNavigate={() => {}} />);
     await waitFor(() => expect(screen.getByTestId('avatar')).toBeTruthy());
     expect(screen.queryByText('3')).toBeNull();
+  });
+
+  it('exposes an accessible count: sr-only text and an aria-hidden visible number', async () => {
+    render(<Header currentPage="home" onNavigate={() => {}} />);
+    const visible = await screen.findByText('3');
+    expect(visible.getAttribute('aria-hidden')).toBe('true');
+    expect(visible.className).toContain('bg-red-600');
+    expect(screen.getByText('adminInbox.badgeAria:3').className).toContain('sr-only');
+  });
+
+  it('caps the visible badge at 99+ while the sr-only text keeps the real count', async () => {
+    state.orders = 100;
+    state.remittances = 20;
+    render(<Header currentPage="home" onNavigate={() => {}} />);
+    const visible = await screen.findByText('99+');
+    expect(visible.className).toContain('min-w-[1.25rem]');
+    expect(visible.className).toContain('px-1');
+    expect(visible.className).toContain('text-[11px]');
+    expect(screen.getByText('adminInbox.badgeAria:120')).toBeTruthy();
   });
 });

@@ -1939,5 +1939,56 @@
     "bulkDeletePreviewInventoryMovements": "{count} inventory movement(s)",
     "bulkDeletePreviewProducts": "{count} associated product(s)",
     "bulkDeletePreviewNoImpact": "no related items"
+  },
+  "adminInbox": {
+    "tablistLabel": "Work pending for administrators",
+    "ordersTab": "Orders to process",
+    "remittancesTab": "Remittances to process",
+    "countSr": "{count} pending",
+    "ordersHeading": "Pending Orders",
+    "remittancesHeading": "Pending Remittances",
+    "filterLabel": "Filter remittances",
+    "filter": {
+      "toProcess": "To process",
+      "needsValidation": "Validate proof",
+      "needsDelivery": "Deliver",
+      "awaitingCustomer": "Awaiting customer payment",
+      "all": "All"
+    },
+    "col": {
+      "number": "Remittance",
+      "sender": "Sender",
+      "recipient": "Recipient",
+      "amount": "Amount",
+      "method": "Payment method",
+      "age": "Age",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "age": {
+      "overdue": "Overdue",
+      "minutes": "{count} min",
+      "hours": "{count} h",
+      "days": "{count} d"
+    },
+    "unknownSender": "Unknown sender",
+    "viewProof": "Proof",
+    "viewProofAria": "View payment proof for remittance {number}",
+    "noProof": "No proof",
+    "validate": "Validate",
+    "reject": "Reject",
+    "startProcessing": "Process",
+    "confirmDelivery": "Confirm delivery",
+    "loading": "Loading remittances",
+    "emptyToProcess": "All caught up. No remittances to process.",
+    "emptyFilter": "No remittances in this view.",
+    "viewAll": "View all remittances",
+    "error": "Could not load remittances.",
+    "retry": "Retry",
+    "staleWarning": "Showing the last loaded data. Refreshing failed; retrying automatically.",
+    "deliveryProofMissing": "Delivery proof required before confirming. Ask the customer to upload it from My Remittances.",
+    "openFullTab": "Open the full remittances tab",
+    "liveNew": "{count} new remittance(s) to process",
+    "badgeAria": "{count} items pending your attention"
   }
 }
