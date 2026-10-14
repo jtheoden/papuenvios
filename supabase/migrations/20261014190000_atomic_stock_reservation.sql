@@ -722,6 +722,8 @@ DECLARE
   v_count integer := 0;
   v_number text;
   v_actor uuid := auth.uid();
+  v_current integer;
+  v_delta integer;
   v_prev_rpc text;
 BEGIN
   PERFORM 1
@@ -744,9 +746,17 @@ BEGIN
      WHERE a.order_id = p_order_id AND a.state = 'reserved'
      ORDER BY a.inventory_id
   LOOP
+    -- The units WERE sold (payment validated), so a drifted counter must not block the sale:
+    -- quantity always drops by the allocation, reserved only by what is really there (never
+    -- below 0, same clamp as release) and the ledger records that real delta. Refusing with
+    -- an error or an 'inconsistent_reservation' result would leave a paid order unconsumed.
+    SELECT COALESCE(i.reserved_quantity, 0) INTO v_current
+      FROM public.inventory i WHERE i.id = v_alloc.inventory_id;
+    v_delta := LEAST(v_alloc.quantity, GREATEST(COALESCE(v_current, 0), 0));
+
     UPDATE public.inventory
        SET quantity = quantity - v_alloc.quantity,
-           reserved_quantity = COALESCE(reserved_quantity, 0) - v_alloc.quantity
+           reserved_quantity = COALESCE(reserved_quantity, 0) - v_delta
      WHERE id = v_alloc.inventory_id;
 
     UPDATE public.order_stock_allocations
@@ -756,7 +766,7 @@ BEGIN
     INSERT INTO public.inventory_movements
       (inventory_id, movement_type, quantity_change, reserved_change, reference_id, reference_type, notes, created_by)
     VALUES
-      (v_alloc.inventory_id, 'sold', -v_alloc.quantity, -v_alloc.quantity, p_order_id, 'order',
+      (v_alloc.inventory_id, 'sold', -v_alloc.quantity, -v_delta, p_order_id, 'order',
        'Sold - payment validated for order ' || COALESCE(v_number, p_order_id::text), v_actor);
 
     v_count := v_count + 1;
@@ -1083,6 +1093,10 @@ BEGIN
         FROM public.orders o
        WHERE o.stock_managed
          AND o.stock_reserved
+         -- A pending branch only applies while the order still holds a 'reserved' allocation: a
+         -- reopened order whose stock was already CONSUMED (cancelled without restock, then
+         -- reopened) keeps stock_reserved = true but has nothing to release, and must not be
+         -- cancelled as 'reservation_expired'.
          AND (
            -- orphan: cancelled but still holding a 'reserved' allocation
            (o.status = 'cancelled'
@@ -1090,6 +1104,8 @@ BEGIN
                          WHERE a.order_id = o.id AND a.state = 'reserved'))
            OR (
              o.status = 'pending'
+             AND EXISTS (SELECT 1 FROM public.order_stock_allocations a
+                          WHERE a.order_id = o.id AND a.state = 'reserved')
              AND o.payment_status IN ('pending', 'rejected')
              AND GREATEST(
                    COALESCE(o.stock_reserved_at, o.created_at),
@@ -1100,6 +1116,8 @@ BEGIN
            )
            OR (
              o.status = 'pending'
+             AND EXISTS (SELECT 1 FROM public.order_stock_allocations a
+                          WHERE a.order_id = o.id AND a.state = 'reserved')
              AND o.payment_status = 'proof_uploaded'
              AND COALESCE(o.stock_reserved_at, o.created_at)
                    < now() - make_interval(hours => p_proof_hours)

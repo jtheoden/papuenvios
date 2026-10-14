@@ -27,7 +27,7 @@ const describeDb = reachable ? describe : describe.skip;
 
 const reserveSql = 'public.reserve_order_inventory($1::uuid)';
 const migration = (name) => readFileSync(resolve(process.cwd(), 'supabase/migrations', name), 'utf8');
-const OPS = ['stock_expiry_skipped', 'stock_expiry_run', 'stock_release_failed', 'stock_policy_changed', 'product_ledger_snapshot', 'product_deleted_snapshot', 'inventory_batch_deleted'];
+const OPS = ['stock_expiry_skipped', 'stock_expiry_run', 'stock_release_failed', 'stock_policy_changed', 'product_ledger_snapshot', 'product_deleted_snapshot', 'inventory_batch_deleted', 'combo_deleted'];
 
 describeDb('third review hardening (local Postgres)', () => {
   let admin;
@@ -415,6 +415,126 @@ describeDb('third review hardening (local Postgres)', () => {
       const { rows } = await adminClient.query('SELECT public.expire_stale_order_reservations() AS n');
       expect(rows[0].n).toBeGreaterThanOrEqual(1);
       expect((await readInventory(admin, productId))[0].reserved).toBe(0);
+    });
+  });
+
+  describe('round 4: sweep ignores consumed reopened orders, consume tolerates drift, delete_combo', () => {
+    it('W1: a reopened order whose stock was already consumed is NOT cancelled by the sweep', async () => {
+      const { productId } = await seedProduct(admin, actors, tracker, { quantity: 5 });
+      const orderId = await seedOrder(admin, actors, tracker, [{ type: 'product', id: productId, quantity: 2 }]);
+      const customer = await asCustomer();
+      await customer.query(`SELECT ${reserveSql}`, [orderId]);
+      await admin.query(`UPDATE public.orders SET payment_status = 'validated', status = 'processing' WHERE id = $1`, [orderId]);
+      const adminClient = await asAdmin();
+      await adminClient.query('SELECT public.consume_order_inventory($1::uuid)', [orderId]);
+      await admin.query(`UPDATE public.orders SET status = 'cancelled' WHERE id = $1`, [orderId]);
+      // reopened without restock: consumed allocations stay, stock_reserved stays true
+      await admin.query(`UPDATE public.orders SET status = 'pending', payment_status = 'pending' WHERE id = $1`, [orderId]);
+      await admin.query(`UPDATE public.orders SET stock_reserved_at = now() - interval '900 hours' WHERE id = $1`, [orderId]);
+
+      const { rows } = await adminClient.query('SELECT public.expire_stale_order_reservations() AS n');
+
+      expect(rows[0].n).toBe(0);
+      expect(await readOrder(admin, orderId)).toMatchObject({ status: 'pending', stock_reserved: true });
+      expect(await readAllocations(admin, orderId)).toEqual([expect.objectContaining({ state: 'consumed' })]);
+    });
+
+    it('W1: the proof_uploaded branch has the same guard', async () => {
+      const { productId } = await seedProduct(admin, actors, tracker, { quantity: 5 });
+      const orderId = await seedOrder(admin, actors, tracker, [{ type: 'product', id: productId, quantity: 1 }]);
+      const customer = await asCustomer();
+      await customer.query(`SELECT ${reserveSql}`, [orderId]);
+      await admin.query(`UPDATE public.orders SET payment_status = 'validated', status = 'processing' WHERE id = $1`, [orderId]);
+      const adminClient = await asAdmin();
+      await adminClient.query('SELECT public.consume_order_inventory($1::uuid)', [orderId]);
+      await admin.query(`UPDATE public.orders SET status = 'pending', payment_status = 'proof_uploaded', stock_reserved_at = now() - interval '2000 hours' WHERE id = $1`, [orderId]);
+
+      const { rows } = await adminClient.query('SELECT public.expire_stale_order_reservations() AS n');
+
+      expect(rows[0].n).toBe(0);
+      expect((await readOrder(admin, orderId)).status).toBe('pending');
+    });
+
+    it('W2: consume tolerates reserved_quantity below the allocation (clamped like release) and ledgers the real delta', async () => {
+      const { productId, inventoryId } = await seedProduct(admin, actors, tracker, { quantity: 5 });
+      const orderId = await seedOrder(admin, actors, tracker, [{ type: 'product', id: productId, quantity: 3 }]);
+      const customer = await asCustomer();
+      await customer.query(`SELECT ${reserveSql}`, [orderId]);
+      await admin.query(`UPDATE public.inventory SET reserved_quantity = 1 WHERE id = $1`, [inventoryId]);
+      await admin.query(`UPDATE public.orders SET payment_status = 'validated', status = 'processing' WHERE id = $1`, [orderId]);
+      const adminClient = await asAdmin();
+
+      const { rows } = await adminClient.query('SELECT public.consume_order_inventory($1::uuid) AS r', [orderId]);
+
+      expect(rows[0].r).toMatchObject({ ok: true, consumed: true });
+      expect((await readInventory(admin, productId))[0]).toMatchObject({ quantity: 2, reserved: 0 });
+      const mv = await admin.query(
+        `SELECT quantity_change, reserved_change FROM public.inventory_movements WHERE reference_id = $1 AND movement_type = 'sold'`,
+        [orderId]
+      );
+      expect(mv.rows).toEqual([{ quantity_change: -3, reserved_change: -1 }]);
+      expect(await readAllocations(admin, orderId)).toEqual([expect.objectContaining({ state: 'consumed' })]);
+    });
+
+    const delCombo = async (client, comboId) =>
+      (await client.query('SELECT public.delete_combo($1::uuid) AS r', [comboId])).rows[0].r;
+
+    it('W3: delete_combo deletes items and combo in one call and writes an ops-log row', async () => {
+      const { productId } = await seedProduct(admin, actors, tracker, { quantity: 5 });
+      const comboId = await seedCombo(admin, tracker, [{ productId, quantity: 2 }]);
+      await seedOrder(admin, actors, tracker, [{ type: 'combo', id: comboId, quantity: 1 }], { status: 'completed' });
+      const adminClient = await asAdmin();
+
+      const r = await delCombo(adminClient, comboId);
+
+      expect(r).toMatchObject({ ok: true });
+      expect((await admin.query('SELECT 1 FROM public.combo_products WHERE id = $1', [comboId])).rowCount).toBe(0);
+      expect((await admin.query('SELECT 1 FROM public.combo_items WHERE combo_id = $1', [comboId])).rowCount).toBe(0);
+      const logs = await opsRows('combo_deleted');
+      expect(logs).toHaveLength(1);
+      expect(logs[0].performed_by).toBe(actors.adminId);
+      expect(logs[0].details).toMatchObject({ combo_id: comboId, items: [{ product_id: productId, quantity: 2 }] });
+    });
+
+    it('W3: delete_combo is fail-closed (open order), admin only, and reports unknown combos', async () => {
+      const { productId } = await seedProduct(admin, actors, tracker, { quantity: 5 });
+      const comboId = await seedCombo(admin, tracker, [{ productId, quantity: 1 }]);
+      const o = await seedOrder(admin, actors, tracker, [{ type: 'product', id: comboId, quantity: 1 }]); // mislabelled
+      const adminClient = await asAdmin();
+
+      const r = await delCombo(adminClient, comboId);
+
+      expect(r).toMatchObject({ ok: false, reason: 'blocking_orders' });
+      expect(r.blockers).toEqual([expect.objectContaining({ order_id: o })]);
+      expect((await admin.query('SELECT 1 FROM public.combo_products WHERE id = $1', [comboId])).rowCount).toBe(1);
+      expect(await delCombo(adminClient, '00000000-0000-0000-0000-000000000002')).toMatchObject({ ok: false, reason: 'not_found' });
+      const customer = await asCustomer();
+      await expect(delCombo(customer, comboId)).rejects.toMatchObject({ code: '42501' });
+    });
+
+    it('W3: delete_combo waits for a writer holding a component batch and then sees the order that appeared', async () => {
+      const { productId } = await seedProduct(admin, actors, tracker, { quantity: 5 });
+      const comboId = await seedCombo(admin, tracker, [{ productId, quantity: 1 }]);
+      const orderId = await seedOrder(admin, actors, tracker, []);
+      const deleter = await asAdmin();
+      await admin.query('BEGIN');
+      await admin.query('SELECT 1 FROM public.inventory WHERE product_id = $1 FOR UPDATE', [productId]);
+
+      let settled = false;
+      const deleting = deleter.query('SELECT public.delete_combo($1::uuid) AS r', [comboId]);
+      deleting.then(() => { settled = true; }, () => { settled = true; });
+      await new Promise((r) => setTimeout(r, 400));
+      const waited = settled === false;
+      await admin.query(
+        `INSERT INTO public.order_items (order_id, item_type, item_id, item_name_es, item_name_en, quantity, unit_price, total_price)
+         VALUES ($1, 'combo', $2, 'x', 'x', 1, 5, 5)`,
+        [orderId, comboId]
+      );
+      await admin.query('COMMIT');
+      const { rows } = await deleting;
+
+      expect(waited).toBe(true);
+      expect(rows[0].r).toMatchObject({ ok: false, reason: 'blocking_orders' });
     });
   });
 

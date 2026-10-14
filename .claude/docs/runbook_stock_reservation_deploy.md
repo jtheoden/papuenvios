@@ -18,7 +18,10 @@ desplegar) necesita su propio "dale" explicito del owner. Los pasos de verificac
 6. Aplicar `20261014200000_product_delete_safety_and_ledger.sql`.
 7. Verificacion posterior completa (seccion 2).
 8. Desplegar el front (Vercel) inmediatamente despues. No dejar el SQL nuevo con el front viejo mas de unos minutos.
-9. Avisar a admins y vendors: recargar todas las pestanas abiertas del panel (Ctrl+F5) y confirmar que lo hicieron.
+9. Pestanas abiertas con el build viejo: admins y vendors recargan el panel (Ctrl+F5) y confirman que lo hicieron; las pestanas de CLIENTES
+   (carrito, mis pedidos) no se pueden avisar una a una: se vencen con el despliegue (Vercel sirve el bundle nuevo en la siguiente navegacion)
+   y se espera un margen razonable antes del paso 10 (mismo criterio que la cabecera de `20261014210000`: front desplegado y TODAS las
+   pestanas admin/vendor/cliente recargadas).
 10. Aplicar `20261014210000_drop_movements_insert_policy.sql` SOLO despues del paso 9: el build viejo todavia inserta
     movimientos desde el navegador a traves de esa policy (version skew); quitarla antes rompe pestanas abiertas.
 11. Agendar pg_cron (seccion 3). Sin cron las reservas no expiran: es el release gate.
@@ -182,8 +185,8 @@ operaciones mezcladas.
 
 Mitigaciones (en orden de efectividad):
 
-1. Aplicar SQL y desplegar el front con minutos de diferencia (pasos 5 a 7), en horario de baja actividad.
-2. Pedir a admins/vendors recargar (paso 8) y, si hay forma, no tener pedidos en validacion en ese momento.
+1. Aplicar SQL y desplegar el front con minutos de diferencia (pasos 4 a 8 de la seccion 0), en horario de baja actividad.
+2. Pedir a admins/vendors recargar y esperar a que las pestanas de clientes se renueven (paso 9) y, si hay forma, no tener pedidos en validacion en ese momento.
 3. Lo que el SQL ya frena de forma ruidosa para build viejo: editar `reserved_quantity` o crear un lote con reserva desde el cliente (42501),
    agregar lineas a pedidos ya reservados/cancelados/validados (42501), baja de stock por debajo de lo reservado (CHECK 23514), y borrar
    movimientos del ledger desde el cliente (42501: el borrado de producto del build viejo falla, fail-closed; usar el build nuevo).

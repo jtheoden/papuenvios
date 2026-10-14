@@ -90,9 +90,11 @@ export const seedOrder = async (admin, actors, tracker, items, overrides = {}) =
   };
   await admin.query(
     `INSERT INTO public.orders (id, user_id, order_type, status, subtotal, total_amount, currency_id,
-                                payment_status, payment_method, stock_managed)
-     VALUES ($1, $2, 'product', $3, 10, 10, $4, $5, 'zelle', $6)`,
-    [orderId, o.userId, o.status, actors.currencyId, o.paymentStatus, o.stockManaged]
+                                payment_status, payment_method, stock_managed, order_number)
+     VALUES ($1, $2, 'product', $3, 10, 10, $4, $5, 'zelle', $6, $7)`,
+    // Explicit number: the DB generator pads to 4 digits (LPAD truncates), so after 9999 orders per
+    // day on a long-lived local DB it repeats and violates orders_order_number_key.
+    [orderId, o.userId, o.status, actors.currencyId, o.paymentStatus, o.stockManaged, `TST-${orderId.slice(0, 13)}`]
   );
   for (const it of items) {
     await admin.query(

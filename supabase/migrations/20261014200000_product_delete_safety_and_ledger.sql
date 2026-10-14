@@ -53,6 +53,10 @@
 --       the same blocker predicate as bulk_delete_products; admin). Before the movements go, a
 --       'product_ledger_snapshot' row with SUM(quantity_change) / SUM(reserved_change) per batch is
 --       written to admin_destructive_ops_log. The front no longer deletes anything table by table.
+--   delete_combo(combo)            combo delete as ONE fail-closed transaction (admin): advisory lock,
+--       lock of the component batches (ORDER BY id FOR UPDATE) and the combo row, then
+--       get_combo_blockers, then combo_items + combo_products, and a 'combo_deleted' row (with the
+--       items) in admin_destructive_ops_log. deleteCombo in the front is a single call to it.
 --   guard_inventory_movements_delete  BEFORE DELETE on inventory_movements: 42501 unless
 --       app.stock_rpc = 'on' or current_user is postgres / service_role / supabase_admin. The
 --       SECURITY DEFINER delete functions and execute_platform_reset run as postgres, so they pass;
@@ -83,6 +87,7 @@
 --
 -- ROLLBACK (exact inverse, in this order; the 20261014190000 rollback comes after it):
 -- DROP FUNCTION IF EXISTS public.orders_with_consumed_stock(uuid[]);
+-- DROP FUNCTION IF EXISTS public.delete_combo(uuid);
 -- DROP FUNCTION IF EXISTS public.delete_product(uuid);
 -- DROP FUNCTION IF EXISTS public._log_product_ledger_snapshot(uuid);
 -- DROP FUNCTION IF EXISTS public.get_combo_blockers(uuid);
@@ -351,6 +356,61 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.get_combo_blockers(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_combo_blockers(uuid) TO authenticated, service_role;
+
+-- Combo delete as one fail-closed transaction (same pattern as delete_product).
+CREATE OR REPLACE FUNCTION public.delete_combo(p_combo_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_name text;
+  v_blockers jsonb;
+  v_items jsonb;
+BEGIN
+  IF auth.uid() IS NOT NULL AND NOT public.is_admin_user() THEN
+    RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(hashtext('delete:combo'));
+
+  SELECT COALESCE(c.name_es, c.name_en, p_combo_id::text) INTO v_name
+    FROM public.combo_products c WHERE c.id = p_combo_id;
+  IF v_name IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'not_found');
+  END IF;
+
+  -- TOCTOU: component batches (a reserve of an order containing the combo needs them) and the
+  -- combo row are locked BEFORE the blocker check.
+  PERFORM 1 FROM public.inventory i
+   WHERE i.product_id IN (SELECT ci.product_id FROM public.combo_items ci WHERE ci.combo_id = p_combo_id)
+   ORDER BY i.id FOR UPDATE;
+  PERFORM 1 FROM public.combo_products c WHERE c.id = p_combo_id FOR UPDATE;
+
+  SELECT jsonb_agg(to_jsonb(b)) INTO v_blockers FROM public.get_combo_blockers(p_combo_id) b;
+  IF v_blockers IS NOT NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'blocking_orders', 'combo_name', v_name, 'blockers', v_blockers);
+  END IF;
+
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('product_id', ci.product_id, 'quantity', ci.quantity)
+                            ORDER BY ci.product_id), '[]'::jsonb)
+    INTO v_items
+    FROM public.combo_items ci WHERE ci.combo_id = p_combo_id;
+
+  DELETE FROM public.combo_items ci WHERE ci.combo_id = p_combo_id;
+  DELETE FROM public.combo_products c WHERE c.id = p_combo_id;
+
+  INSERT INTO public.admin_destructive_ops_log (op_type, performed_by, details)
+  VALUES ('combo_deleted', COALESCE(auth.uid()::text, 'system'),
+          jsonb_build_object('combo_id', p_combo_id, 'name', v_name, 'items', v_items));
+
+  RETURN jsonb_build_object('ok', true, 'combo_name', v_name);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.delete_combo(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.delete_combo(uuid) TO authenticated, service_role;
 
 -- Admin RPC: which of the given orders are cancelled AND own consumed allocations (restock
 -- candidates). Ids travel in the request body, not in a URL.

@@ -132,6 +132,13 @@ describe('atomic stock reservation migration (static guarantees; behaviour is co
     expect(code).toMatch(/'stock_policy_changed'/);
   });
 
+  it('the sweep only touches pending orders that still hold a reserved allocation; consume clamps like release', () => {
+    const sweep = code.slice(code.indexOf('1. Lock every candidate order') > -1 ? 0 : 0);
+    expect(sweep).toMatch(/o\.status = 'pending'\s+AND EXISTS \(SELECT 1 FROM public\.order_stock_allocations a\s+WHERE a\.order_id = o\.id AND a\.state = 'reserved'\)\s+AND o\.payment_status IN \('pending', 'rejected'\)/);
+    expect(sweep).toMatch(/o\.status = 'pending'\s+AND EXISTS \(SELECT 1 FROM public\.order_stock_allocations a\s+WHERE a\.order_id = o\.id AND a\.state = 'reserved'\)\s+AND o\.payment_status = 'proof_uploaded'/);
+    expect(sweep).toMatch(/'sold', -v_alloc\.quantity, -v_delta,/);
+  });
+
   it('converts the ledger columns to text only when they are enums', () => {
     expect(code).toMatch(/c\.data_type = 'USER-DEFINED'/);
     expect(code).toMatch(/ALTER COLUMN %I TYPE text USING %I::text/);
@@ -242,8 +249,9 @@ describe('product delete safety + ledger migration (static guarantees)', () => {
     const pinned = code2.match(/SECURITY DEFINER\s+SET search_path = public, pg_temp/g) || [];
     // product blockers, combo blockers, orders_with_consumed_stock, ledger snapshot helper,
     // delete_product, bulk delete, preview, ledger trigger, delete snapshot trigger
-    expect(total).toHaveLength(9);
-    expect(pinned).toHaveLength(9);
+    // + delete_combo
+    expect(total).toHaveLength(10);
+    expect(pinned).toHaveLength(10);
     expect(code2.match(/SECURITY INVOKER\s+SET search_path = public, pg_temp/g)).toHaveLength(2);
     expect(code2).toMatch(/SECURITY INVOKER\s+SET search_path = public, pg_temp/);
   });
@@ -276,6 +284,14 @@ describe('product delete safety + ledger migration (static guarantees)', () => {
     expect(code.match(/set_config\('app\.stock_rpc', COALESCE\(v_prev_rpc, 'off'\), true\)/g)).toHaveLength(4);
   });
 
+  it('delete_combo locks the component batches before the blocker check and logs the delete', () => {
+    const body = code2.slice(code2.indexOf('FUNCTION public.delete_combo'), code2.indexOf('GRANT EXECUTE ON FUNCTION public.delete_combo'));
+    expect(body.indexOf('FOR UPDATE')).toBeGreaterThan(-1);
+    expect(body.indexOf('FOR UPDATE')).toBeLessThan(body.indexOf('get_combo_blockers'));
+    expect(body).toMatch(/'combo_deleted'/);
+    expect(sql2).toMatch(/DROP FUNCTION IF EXISTS public\.delete_combo\(uuid\);/);
+  });
+
   it('documents a rollback', () => {
     expect(sql2).toMatch(/ROLLBACK/);
     expect(sql2).toMatch(/DROP FUNCTION IF EXISTS public\.get_product_blockers\(uuid\);/);
@@ -284,8 +300,8 @@ describe('product delete safety + ledger migration (static guarantees)', () => {
   it('guards the ledger and the reserved counter, locks before checking, and keeps new RPCs away from anon', () => {
     expect(code2).toMatch(/BEFORE DELETE ON public\.inventory_movements/);
     expect(code2).toMatch(/BEFORE INSERT ON public\.inventory\s+FOR EACH ROW EXECUTE FUNCTION public\.guard_inventory_reserved_edit/);
-    expect(code2.match(/ORDER BY i\.id FOR UPDATE;/g)).toHaveLength(2); // delete_product + bulk (the lock before the check)
-    for (const fn of ['get_combo_blockers(uuid)', 'orders_with_consumed_stock(uuid[])', 'delete_product(uuid)']) {
+    expect(code2.match(/ORDER BY i\.id FOR UPDATE;/g)).toHaveLength(3); // delete_product + bulk + delete_combo (the lock before the check)
+    for (const fn of ['get_combo_blockers(uuid)', 'orders_with_consumed_stock(uuid[])', 'delete_product(uuid)', 'delete_combo(uuid)']) {
       const escaped = fn.replace(/[()[\]]/g, '\\$&');
       expect(sql2).toMatch(new RegExp(`REVOKE ALL ON FUNCTION public\\.${escaped} FROM PUBLIC, anon;`));
     }

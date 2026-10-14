@@ -91,31 +91,35 @@ describe('deleteProduct is one transactional RPC (delete_product)', () => {
   });
 });
 
-describe('deleteCombo fails closed through get_combo_blockers', () => {
-  it('asks the RPC and, when there are no blockers, deletes items and combo only (no order_items update)', async () => {
-    state.rpc.get_combo_blockers = () => ({ data: [], error: null });
+describe('deleteCombo is one fail-closed RPC (delete_combo)', () => {
+  it('calls delete_combo and nothing else: no client-side deletes, no order_items access', async () => {
+    state.rpc.delete_combo = () => ({ data: { ok: true, combo_name: 'Combo' }, error: null });
 
     const result = await deleteCombo('c1');
 
-    expect(state.calls.find((c) => c.table === 'rpc')).toMatchObject({ op: 'get_combo_blockers', args: [{ p_combo_id: 'c1' }] });
-    expect(result.success).toBe(true);
-    expect(state.calls.filter((c) => c.table === 'order_items')).toEqual([]);
-    expect(writes().map((c) => c.table)).toEqual(['combo_items', 'combo_products']);
+    expect(rpcNames()).toEqual(['delete_combo']);
+    expect(state.calls.find((c) => c.table === 'rpc').args).toEqual([{ p_combo_id: 'c1' }]);
+    expect(state.calls.filter((c) => c.table !== 'rpc')).toEqual([]);
+    expect(result).toMatchObject({ success: true, deletedCombo: { id: 'c1', name: 'Combo' } });
   });
 
-  it('blocks (409) on open orders returned by the RPC and deletes nothing', async () => {
-    state.rpc.get_combo_blockers = () => ({ data: [blocker()], error: null });
+  it('maps blocking_orders to 409 CONFLICT with the blockers', async () => {
+    state.rpc.delete_combo = () => ({
+      data: { ok: false, reason: 'blocking_orders', combo_name: 'Combo', blockers: [blocker()] },
+      error: null
+    });
 
     const error = await deleteCombo('c1').catch((e) => e);
 
     expect(error).toMatchObject({ code: 'CONFLICT', httpStatus: 409 });
     expect(error.context.blockingOrders).toEqual([expect.objectContaining({ orderNumber: 'ORD-1' })]);
-    expect(writes()).toEqual([]);
   });
 
-  it('error path: an RPC failure blocks the delete (fail closed, the old code returned "no blockers")', async () => {
-    state.rpc.get_combo_blockers = () => ({ data: null, error: { code: '42501', message: 'denied' } });
+  it('error path and not_found: nothing is deleted client side, the error propagates', async () => {
+    state.rpc.delete_combo = () => ({ data: null, error: { code: '42501', message: 'denied' } });
+    await expect(deleteCombo('c1')).rejects.toBeTruthy();
 
+    state.rpc.delete_combo = () => ({ data: { ok: false, reason: 'not_found' }, error: null });
     await expect(deleteCombo('c1')).rejects.toBeTruthy();
     expect(writes()).toEqual([]);
   });
