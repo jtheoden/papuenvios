@@ -1362,14 +1362,15 @@ export const cancelRemittance = async (remittanceId, reason = '') => {
       throw createNotFoundError('Remittance', remittanceId);
     }
 
-    // Check cancellation eligibility - cannot cancel completed, delivered, or already cancelled
-    const nonCancellableStatuses = [
-      REMITTANCE_STATUS.DELIVERED,
-      REMITTANCE_STATUS.COMPLETED,
-      REMITTANCE_STATUS.CANCELLED
+    // Check cancellation eligibility - the owner may cancel until an admin validates the payment.
+    // Mirrors the database guard (guard_remittance_owner_update).
+    const cancellableStatuses = [
+      REMITTANCE_STATUS.PAYMENT_PENDING,
+      REMITTANCE_STATUS.PAYMENT_REJECTED,
+      REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED
     ];
 
-    if (nonCancellableStatuses.includes(remittance.status)) {
+    if (!cancellableStatuses.includes(remittance.status)) {
       throw createValidationError(
         { status: `Cannot cancel remittance in ${remittance.status} state` },
         'Remittance cannot be cancelled in its current state'
@@ -1634,7 +1635,7 @@ export const validatePayment = async (remittanceId, notes = '') => {
       throw appError;
     }
 
-    const activityResult = await logRemittancePaymentActivity({
+    await logRemittancePaymentActivity({
       action: 'payment_validated',
       remittance: updatedRemittance,
       performedBy: user?.email || user?.id,
@@ -1648,14 +1649,16 @@ export const validatePayment = async (remittanceId, notes = '') => {
       }
     });
 
-    // Sync Zelle transaction history (graceful fallback)
-    if (remittance.zelle_account_id && activityResult?.status === 'inserted') {
+    // Sync Zelle transaction history (graceful fallback).
+    // Independent of the activity log result: a failed audit insert must not
+    // leave the Zelle history out of sync with the remittance status.
+    if (remittance.zelle_account_id) {
       try {
         await upsertZelleTransactionStatus({
           referenceId: remittanceId,
           transactionType: ZELLE_TRANSACTION_TYPES.REMITTANCE,
           status: ZELLE_STATUS.VALIDATED,
-          amount: remittance.amount || remittance.amount_to_deliver || 0,
+          amount: remittance.amount_sent || 0,
           zelleAccountId: remittance.zelle_account_id,
           validatedBy: user.id
         });
@@ -1766,7 +1769,7 @@ export const rejectPayment = async (remittanceId, reason) => {
       // Don't fail rejection if notification fails
     }
 
-    const activityResult = await logRemittancePaymentActivity({
+    await logRemittancePaymentActivity({
       action: 'payment_rejected',
       remittance: updatedRemittance,
       performedBy: user?.email || user?.id,
@@ -1780,14 +1783,16 @@ export const rejectPayment = async (remittanceId, reason) => {
       }
     });
 
-    // Sync Zelle transaction history (graceful fallback)
-    if (remittance.zelle_account_id && activityResult?.status === 'inserted') {
+    // Sync Zelle transaction history (graceful fallback).
+    // Independent of the activity log result: a failed audit insert must not
+    // leave the Zelle history out of sync with the remittance status.
+    if (remittance.zelle_account_id) {
       try {
         await upsertZelleTransactionStatus({
           referenceId: remittanceId,
           transactionType: ZELLE_TRANSACTION_TYPES.REMITTANCE,
           status: ZELLE_STATUS.REJECTED,
-          amount: remittance.amount || remittance.amount_to_deliver || 0,
+          amount: remittance.amount_sent || 0,
           zelleAccountId: remittance.zelle_account_id,
           validatedBy: user.id
         });
