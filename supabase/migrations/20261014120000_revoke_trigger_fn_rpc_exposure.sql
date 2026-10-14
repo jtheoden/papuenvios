@@ -1,0 +1,39 @@
+-- ============================================================================
+-- Audit trigger functions must not be reachable as REST RPC endpoints
+-- ============================================================================
+-- Supabase advisor 0028/0029 (2026-10-14): SECURITY DEFINER trigger functions in
+-- schema public are listed as executable by anon and authenticated through the
+-- default EXECUTE grant to PUBLIC. This migration closes the two audit ones:
+--   audit_order_status_change(), audit_remittance_status_change()
+--
+-- They RETURN trigger, so PostgREST cannot run them usefully as RPC, but they are
+-- still exposed endpoints (/rest/v1/rpc/<name>). Removing EXECUTE is safe because
+-- Postgres does NOT check EXECUTE privileges when a trigger fires (only at CREATE
+-- TRIGGER). Verified 2026-10-14 in a rolled-back transaction: with EXECUTE revoked,
+-- an UPDATE of remittances.status by an authenticated admin still succeeds.
+--
+-- Deliberately NOT changed:
+--   * handle_new_user(), sync_user_email(): their triggers run on auth.users under
+--     supabase_auth_admin; that path could not be probed from a SQL session, and
+--     breaking it would block sign-ups. Revisit with a sign-up test in a branch DB.
+--   * is_admin_user, is_super_admin, get_my_role, current_user_role,
+--     current_user_is_enabled: evaluated inside RLS policies for anon/authenticated.
+--   * get_testimonial_author_profiles: intentionally public.
+--   * The admin RPCs executable by authenticated: each re-checks the role inside
+--     (is_admin_user() / is_super_admin()), reviewed 2026-10-14.
+--
+-- No data is read or changed. Idempotent.
+--
+-- Verification:
+--   SELECT proname, has_function_privilege('anon', oid, 'EXECUTE') AS anon,
+--          has_function_privilege('authenticated', oid, 'EXECUTE') AS auth
+--   FROM pg_proc WHERE pronamespace = 'public'::regnamespace
+--     AND proname IN ('audit_order_status_change','audit_remittance_status_change'); -- false/false
+--
+-- Rollback:
+--   GRANT EXECUTE ON FUNCTION public.audit_order_status_change() TO PUBLIC;
+--   GRANT EXECUTE ON FUNCTION public.audit_remittance_status_change() TO PUBLIC;
+-- ============================================================================
+
+REVOKE EXECUTE ON FUNCTION public.audit_order_status_change() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.audit_remittance_status_change() FROM PUBLIC, anon, authenticated;
