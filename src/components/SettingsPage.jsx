@@ -16,6 +16,7 @@ import SettingsPageShipping from '@/components/settings/SettingsPageShipping';
 import SettingsPageVisual from '@/components/settings/SettingsPageVisual';
 import SettingsPageContent from '@/components/settings/SettingsPageContent';
 import SettingsZelleTab from '@/components/settings/SettingsZelleTab';
+import PaymentMethodsStatusCard from '@/components/settings/PaymentMethodsStatusCard';
 import SettingsSystemTab from '@/components/settings/SettingsSystemTab';
 
 const SettingsPage = () => {
@@ -490,6 +491,7 @@ const SettingsPage = () => {
           {activeTab === 'zelle' && (
             <>
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-effect p-8 rounded-2xl">
+                <PaymentMethodsStatusCard />
                 <SettingsZelleTab />
               </motion.div>
             </>
