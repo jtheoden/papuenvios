@@ -1779,6 +1779,73 @@
       "hint": "Selecciona una nueva cuenta Zelle para continuar con tu pago"
     }
   },
+  "paymentMethods": {
+    "title": "Métodos de pago",
+    "description": "Controla qué métodos de pago pueden usar los clientes para crear pedidos y remesas nuevos. Las operaciones ya creadas se siguen validando con normalidad.",
+    "loading": "Cargando métodos de pago…",
+    "loadError": "No se pudo cargar el estado de los métodos de pago.",
+    "retry": "Reintentar",
+    "comingSoon": "Próximamente",
+    "enabled": "Habilitado",
+    "disabled": "Deshabilitado",
+    "flowLabel": "Flujo",
+    "methods": {
+      "zelle": "Zelle",
+      "bizum": "Bizum"
+    },
+    "flows": {
+      "orders": "Pedidos",
+      "remittances": "Remesas"
+    },
+    "flowsNoun": {
+      "orders": "pedidos",
+      "remittances": "remesas"
+    },
+    "switchLabel": "{method} para {flow}",
+    "switchUnavailable": "{method} aún no está disponible",
+    "disabledBy": "Deshabilitado por {name} el {date}",
+    "disabledOn": "Deshabilitado el {date}",
+    "reason": "Motivo: {reason}",
+    "liveEnabled": "{method} para {flow} habilitado",
+    "liveDisabled": "{method} para {flow} deshabilitado",
+    "confirm": {
+      "disableTitle": "¿Deshabilitar {method} para {flow}?",
+      "enableTitle": "¿Habilitar {method} para {flow}?",
+      "disableBody": "Los clientes dejarán de poder crear {flow} nuevos con {method}.",
+      "enableBody": "Los clientes volverán a poder crear {flow} nuevos con {method}.",
+      "pendingBody": "Operaciones pendientes que se seguirán validando con normalidad: {count}.",
+      "pendingUnknown": "Las operaciones ya creadas se seguirán validando con normalidad.",
+      "reasonLabel": "Motivo (opcional)",
+      "reasonPlaceholder": "Ej.: mantenimiento de la cuenta",
+      "lastTitle": "Es el último método habilitado",
+      "lastBody": "Si lo deshabilitas, los clientes no podrán pagar {flow} nuevos y el checkout mostrará \"pagos temporalmente no disponibles\". Úsalo solo para mantenimiento.",
+      "lastCheckbox": "Entiendo que no se podrán crear {flow} nuevos hasta habilitar un método",
+      "confirmDisable": "Deshabilitar",
+      "confirmEnable": "Habilitar",
+      "cancel": "Cancelar"
+    },
+    "toast": {
+      "disabled": "{method} deshabilitado para {flow}",
+      "enabled": "{method} habilitado para {flow}",
+      "errorTitle": "No se pudo cambiar el método de pago",
+      "errors": {
+        "forbidden": "No tienes permisos para cambiar los métodos de pago.",
+        "lastEnabled": "Es el último método habilitado. Confirma explícitamente para deshabilitarlo.",
+        "unavailable": "Este método aún no está disponible y no se puede habilitar.",
+        "notFound": "El método de pago no existe.",
+        "reasonTooLong": "El motivo es demasiado largo (máximo 200 caracteres).",
+        "generic": "Ocurrió un error inesperado. Inténtalo de nuevo."
+      }
+    },
+    "checkout": {
+      "unavailableTitle": "Pagos temporalmente no disponibles",
+      "unavailableOrders": "En este momento no estamos aceptando pedidos nuevos. Tus datos se conservan; inténtalo de nuevo en unos minutos.",
+      "unavailableRemittances": "En este momento no estamos aceptando remesas nuevas. Tus datos se conservan; inténtalo de nuevo en unos minutos.",
+      "midCheckout": "Este método de pago dejó de estar disponible mientras completabas tu compra. No perdiste tus datos; podrás continuar cuando vuelva a estar disponible.",
+      "submitBlocked": "Pagos temporalmente no disponibles",
+      "rejected": "Este método de pago ya no está disponible. Inténtalo de nuevo más tarde."
+    }
+  },
   "zelleHistory": {
     "title": "Historial de Pagos Zelle",
     "date": "Fecha",

@@ -38,11 +38,17 @@ import ZelleAccountDisplay from '@/components/shared/ZelleAccountDisplay';
 import { InfoTooltip } from '@/components/ui/InfoTooltip';
 import AmountDisplayCard from '@/components/shared/AmountDisplayCard';
 import PaymentProofForm from '@/components/shared/PaymentProofForm';
+import PaymentMethodsUnavailable from '@/components/PaymentMethodsUnavailable';
+import { usePaymentMethods } from '@/hooks/usePaymentMethods';
+import { isPaymentMethodEnabled, isPaymentMethodDisabledError, PAYMENT_FLOWS } from '@/lib/paymentMethodsService';
 
 const SendRemittancePage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { user, isAdmin, isSuperAdmin } = useAuth();
   const { showModal } = useModal();
+  const { methods: paymentMethods, refresh: refreshPaymentMethods, isMethodEnabled } = usePaymentMethods();
+  // Fails open: stays false until the status is known (the DB trigger is the real guard)
+  const zelleRemittancesBlocked = !isMethodEnabled('zelle', PAYMENT_FLOWS.REMITTANCES);
 
   const recipientSelectorRef = useRef();
 
@@ -530,9 +536,22 @@ const SendRemittancePage = ({ onNavigate }) => {
   };
 
   const handleConfirmRemittance = async () => {
+    // Lock the button BEFORE any await so a double tap cannot start a second run
     setSubmitting(true);
 
     try {
+      // Re-read the switch right before creating: it may have been flipped while the
+      // customer was filling the wizard. A failed read keeps the last known state.
+      const latestPaymentMethods = (await refreshPaymentMethods()) ?? paymentMethods;
+      if (!isPaymentMethodEnabled(latestPaymentMethods, 'zelle', PAYMENT_FLOWS.REMITTANCES)) {
+        toast({
+          title: t('common.error'),
+          description: t('paymentMethods.checkout.rejected'),
+          variant: 'destructive'
+        });
+        return;
+      }
+
       const remittanceData = {
         remittance_type_id: selectedType.id,
         amount: parseFloat(amount),
@@ -572,9 +591,15 @@ const SendRemittancePage = ({ onNavigate }) => {
       setStep(4);
     } catch (error) {
       console.error('Error creating remittance:', error);
+      if (isPaymentMethodDisabledError(error)) {
+        // Server-side guard rejected it: refresh so the inline state catches up
+        refreshPaymentMethods();
+      }
       toast({
         title: t('common.error'),
-        description: error?.message || t('remittances.wizard.errorCreatingRemittance'),
+        description: isPaymentMethodDisabledError(error)
+          ? t('paymentMethods.checkout.rejected')
+          : (error?.message || t('remittances.wizard.errorCreatingRemittance')),
         variant: 'destructive'
       });
     } finally {
@@ -665,6 +690,14 @@ const SendRemittancePage = ({ onNavigate }) => {
       <p className="text-gray-600 text-center mb-8">
         {t('remittances.wizard.pageSubtitle')}
       </p>
+
+      {zelleRemittancesBlocked && step < 4 && (
+        <PaymentMethodsUnavailable
+          flow={PAYMENT_FLOWS.REMITTANCES}
+          variant={step === 1 ? 'blocking' : 'midCheckout'}
+          className="mb-6"
+        />
+      )}
 
       {renderStepIndicator()}
 
@@ -1003,7 +1036,7 @@ const SendRemittancePage = ({ onNavigate }) => {
             <div className="flex justify-end mt-6">
               <button
                 onClick={handleCalculate}
-                disabled={!selectedType || !amount || calculating || !amountValidation.isValid}
+                disabled={!selectedType || !amount || calculating || !amountValidation.isValid || zelleRemittancesBlocked}
                 className={`${getPrimaryButtonStyle()} flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none ${!calculating && selectedType && amount && amountValidation.isValid ? 'animate-pulse ring-2 ring-blue-300 ring-offset-2' : ''}`}
               >
                 {calculating ? t('remittances.wizard.calculating') : t('remittances.wizard.continue')}
@@ -1294,7 +1327,7 @@ const SendRemittancePage = ({ onNavigate }) => {
               </button>
               <button
                 onClick={handleConfirmRemittance}
-                disabled={submitting}
+                disabled={submitting || zelleRemittancesBlocked}
                 className={`${getPrimaryButtonStyle()} flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:shadow-none`}
               >
                 {submitting ? t('remittances.wizard.creating') : t('remittances.wizard.confirmAndCreate')}

@@ -33,7 +33,10 @@ import FileUploadWithPreview from '@/components/FileUploadWithPreview';
 import CurrencySelector from '@/components/CurrencySelector';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import ZelleAccountDisplay from '@/components/shared/ZelleAccountDisplay';
+import PaymentMethodsUnavailable from '@/components/PaymentMethodsUnavailable';
 import { useUserDiscounts } from '@/hooks/useUserDiscounts';
+import { usePaymentMethods } from '@/hooks/usePaymentMethods';
+import { isPaymentMethodEnabled, isPaymentMethodDisabledError, PAYMENT_FLOWS } from '@/lib/paymentMethodsService';
 import { useModal } from '@/contexts/ModalContext';
 
 const CartPage = ({ onNavigate }) => {
@@ -42,6 +45,9 @@ const CartPage = ({ onNavigate }) => {
   const { isAuthenticated, user } = useAuth();
   const { selectedCurrency, setSelectedCurrency, currencies, currencyCode, currencySymbol, convertAmount } = useCurrency();
   const { showModal } = useModal();
+  const { methods: paymentMethods, refresh: refreshPaymentMethods, isMethodEnabled } = usePaymentMethods();
+  // Fails open: stays false until the status is known (the DB trigger is the real guard)
+  const zelleOrdersBlocked = !isMethodEnabled('zelle', PAYMENT_FLOWS.ORDERS);
 
   const recipientSelectorRef = useRef();
   // Ref to track if recipient details are being set from a selection (to avoid municipality reset race condition)
@@ -688,9 +694,22 @@ const CartPage = ({ onNavigate }) => {
       return;
     }
 
+    // Lock the button BEFORE any await so a double tap cannot start a second run
     setProcessingPayment(true);
 
     try {
+      // Re-read the switch right before creating the order: it may have been flipped
+      // while the customer was filling the form. A failed read keeps the last known state.
+      const latestPaymentMethods = (await refreshPaymentMethods()) ?? paymentMethods;
+      if (!isPaymentMethodEnabled(latestPaymentMethods, 'zelle', PAYMENT_FLOWS.ORDERS)) {
+        toast({
+          title: t('common.error'),
+          description: t('paymentMethods.checkout.rejected'),
+          variant: 'destructive'
+        });
+        return;
+      }
+
       // Get currency object (selectedCurrency is already the UUID)
       const currency = currencies.find(c => c.id === selectedCurrency);
       if (!currency) {
@@ -870,6 +889,16 @@ const CartPage = ({ onNavigate }) => {
 
     } catch (error) {
       console.error('Error confirming payment:', error);
+      if (isPaymentMethodDisabledError(error)) {
+        // Server-side guard rejected it: friendly message and refresh the inline state
+        refreshPaymentMethods();
+        toast({
+          title: t('common.error'),
+          description: t('paymentMethods.checkout.rejected'),
+          variant: 'destructive'
+        });
+        return;
+      }
       toast({
         title: language === 'es' ? 'Error al procesar' : 'Processing error',
         description: error.message || (language === 'es'
@@ -898,6 +927,10 @@ const CartPage = ({ onNavigate }) => {
                 : 'Choose an existing recipient or create a new one, and select your Zelle account for payment.'}
             </p>
           </div>
+
+          {zelleOrdersBlocked && (
+            <PaymentMethodsUnavailable flow={PAYMENT_FLOWS.ORDERS} variant="midCheckout" />
+          )}
 
           {/* Zelle Account Selector - First */}
           <div className="glass-effect p-6 rounded-xl border-2 border-blue-200 bg-blue-50">
@@ -1015,6 +1048,10 @@ const CartPage = ({ onNavigate }) => {
       <div className="container mx-auto max-w-2xl py-8 px-4">
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="glass-effect p-8 rounded-2xl">
           <h1 className="text-3xl font-bold mb-6" style={getHeadingStyle(visualSettings)}>{t('cart.payment.title')}</h1>
+
+          {zelleOrdersBlocked && (
+            <PaymentMethodsUnavailable flow={PAYMENT_FLOWS.ORDERS} variant="midCheckout" className="mb-6" />
+          )}
 
           <div
             className="p-4 rounded-lg mb-6"
@@ -1308,7 +1345,7 @@ const CartPage = ({ onNavigate }) => {
                 className="flex-1"
                 size="lg"
                 style={getPrimaryButtonStyle(visualSettings)}
-                disabled={paymentBlocker !== null || uploadingProof || processingPayment}
+                disabled={paymentBlocker !== null || uploadingProof || processingPayment || zelleOrdersBlocked}
               >
                 {processingPayment ? t('cart.payment.processing') : t('cart.payment.confirm')}
               </Button>
@@ -1558,7 +1595,9 @@ const CartPage = ({ onNavigate }) => {
                   </div>
                 </div>
 
-                <Button onClick={handleCheckout} className="w-full" size="lg" style={getPrimaryButtonStyle(visualSettings)}>
+                {zelleOrdersBlocked && <PaymentMethodsUnavailable flow={PAYMENT_FLOWS.ORDERS} />}
+
+                <Button onClick={handleCheckout} className="w-full" size="lg" style={getPrimaryButtonStyle(visualSettings)} disabled={zelleOrdersBlocked}>
                   {t('cart.checkout')}
                 </Button>
                 <Button onClick={handleClearCart} variant="outline" className="w-full">

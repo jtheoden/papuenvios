@@ -1770,6 +1770,73 @@
       "hint": "Select a new Zelle account to continue with your payment"
     }
   },
+  "paymentMethods": {
+    "title": "Payment methods",
+    "description": "Control which payment methods customers can use to create new orders and remittances. Operations that already exist keep being validated as usual.",
+    "loading": "Loading payment methods…",
+    "loadError": "Could not load the payment methods status.",
+    "retry": "Retry",
+    "comingSoon": "Coming soon",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "flowLabel": "Flow",
+    "methods": {
+      "zelle": "Zelle",
+      "bizum": "Bizum"
+    },
+    "flows": {
+      "orders": "Orders",
+      "remittances": "Remittances"
+    },
+    "flowsNoun": {
+      "orders": "orders",
+      "remittances": "remittances"
+    },
+    "switchLabel": "{method} for {flow}",
+    "switchUnavailable": "{method} is not available yet",
+    "disabledBy": "Disabled by {name} on {date}",
+    "disabledOn": "Disabled on {date}",
+    "reason": "Reason: {reason}",
+    "liveEnabled": "{method} for {flow} enabled",
+    "liveDisabled": "{method} for {flow} disabled",
+    "confirm": {
+      "disableTitle": "Disable {method} for {flow}?",
+      "enableTitle": "Enable {method} for {flow}?",
+      "disableBody": "Customers will no longer be able to create new {flow} with {method}.",
+      "enableBody": "Customers will be able to create new {flow} with {method} again.",
+      "pendingBody": "Pending operations that will keep being validated as usual: {count}.",
+      "pendingUnknown": "Operations that already exist will keep being validated as usual.",
+      "reasonLabel": "Reason (optional)",
+      "reasonPlaceholder": "E.g. account maintenance",
+      "lastTitle": "This is the last enabled method",
+      "lastBody": "If you disable it, customers will not be able to pay for new {flow} and the checkout will show \"payments temporarily unavailable\". Use this only for maintenance.",
+      "lastCheckbox": "I understand that new {flow} cannot be created until a method is enabled again",
+      "confirmDisable": "Disable",
+      "confirmEnable": "Enable",
+      "cancel": "Cancel"
+    },
+    "toast": {
+      "disabled": "{method} disabled for {flow}",
+      "enabled": "{method} enabled for {flow}",
+      "errorTitle": "Could not change the payment method",
+      "errors": {
+        "forbidden": "You do not have permission to change payment methods.",
+        "lastEnabled": "This is the last enabled method. Confirm explicitly to disable it.",
+        "unavailable": "This method is not available yet and cannot be enabled.",
+        "notFound": "The payment method does not exist.",
+        "reasonTooLong": "The reason is too long (200 characters maximum).",
+        "generic": "An unexpected error occurred. Please try again."
+      }
+    },
+    "checkout": {
+      "unavailableTitle": "Payments temporarily unavailable",
+      "unavailableOrders": "We are not accepting new orders right now. Your data is kept; please try again in a few minutes.",
+      "unavailableRemittances": "We are not accepting new remittances right now. Your data is kept; please try again in a few minutes.",
+      "midCheckout": "This payment method became unavailable while you were checking out. Your data was not lost; you can continue once it is available again.",
+      "submitBlocked": "Payments temporarily unavailable",
+      "rejected": "This payment method is no longer available. Please try again later."
+    }
+  },
   "zelleHistory": {
     "title": "Zelle Payment History",
     "date": "Date",
