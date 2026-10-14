@@ -1948,5 +1948,56 @@
     "bulkDeletePreviewInventoryMovements": "{count} movimiento(s) de inventario",
     "bulkDeletePreviewProducts": "{count} producto(s) asociado(s)",
     "bulkDeletePreviewNoImpact": "sin elementos relacionados"
+  },
+  "adminInbox": {
+    "tablistLabel": "Trabajo pendiente para administradores",
+    "ordersTab": "Pedidos por procesar",
+    "remittancesTab": "Remesas por procesar",
+    "countSr": "{count} pendientes",
+    "ordersHeading": "Pedidos Pendientes",
+    "remittancesHeading": "Remesas Pendientes",
+    "filterLabel": "Filtrar remesas",
+    "filter": {
+      "toProcess": "Por procesar",
+      "needsValidation": "Validar comprobante",
+      "needsDelivery": "Entregar",
+      "awaitingCustomer": "Esperando pago del cliente",
+      "all": "Todas"
+    },
+    "col": {
+      "number": "Remesa",
+      "sender": "Remitente",
+      "recipient": "Destinatario",
+      "amount": "Monto",
+      "method": "Método de pago",
+      "age": "Antigüedad",
+      "status": "Estado",
+      "actions": "Acciones"
+    },
+    "age": {
+      "overdue": "Vencida",
+      "minutes": "{count} min",
+      "hours": "{count} h",
+      "days": "{count} d"
+    },
+    "unknownSender": "Remitente desconocido",
+    "viewProof": "Comprobante",
+    "viewProofAria": "Ver comprobante de pago de la remesa {number}",
+    "noProof": "Sin comprobante",
+    "validate": "Validar",
+    "reject": "Rechazar",
+    "startProcessing": "Procesar",
+    "confirmDelivery": "Confirmar entrega",
+    "loading": "Cargando remesas",
+    "emptyToProcess": "Todo al día. No hay remesas por procesar.",
+    "emptyFilter": "No hay remesas en esta vista.",
+    "viewAll": "Ver todas las remesas",
+    "error": "No se pudieron cargar las remesas.",
+    "retry": "Reintentar",
+    "staleWarning": "Mostrando los últimos datos cargados. Falló la actualización; se reintentará automáticamente.",
+    "deliveryProofMissing": "Se requiere el comprobante de entrega antes de confirmar. Pide al cliente que lo suba desde Mis Remesas.",
+    "openFullTab": "Abrir la pestaña completa de remesas",
+    "liveNew": "{count} remesa(s) nueva(s) por procesar",
+    "badgeAria": "{count} elementos pendientes de tu atención"
   }
 }

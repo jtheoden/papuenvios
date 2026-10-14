@@ -7,7 +7,7 @@ import { useModal } from '@/contexts/ModalContext';
 import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users, Crown, TrendingDown, Gift, Truck, Upload, EyeOff, Filter, ChevronDown, BookOpen } from 'lucide-react';
 import { getPaymentConfirmationBlocker } from '@/lib/orderPayerPhone';
 import { isValidPayerPhone, normalizePayerPhone, PAYER_PHONE_MAX_LENGTH } from '@/lib/payerPhone';
-import { getUserOrders, getOrderById, getAllOrders, validatePayment, rejectPayment, cancelOrderByUser, uploadPaymentProof, markOrderAsDispatched, markOrderAsDelivered, completeOrder, reopenOrder, ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderService';
+import { getUserOrders, getOrderById, getAllOrders, getPendingOrdersCount, validatePayment, rejectPayment, cancelOrderByUser, uploadPaymentProof, markOrderAsDispatched, markOrderAsDelivered, completeOrder, reopenOrder, ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderService';
 import { getUserTestimonial, createTestimonial } from '@/lib/testimonialService';
 import { getMyRemittances, generateProofSignedUrl } from '@/lib/remittanceService';
 import { getPublications } from '@/lib/publicationService';
@@ -19,6 +19,7 @@ import CategoryBadge from '@/components/CategoryBadge';
 import { derivePercentFromAmount } from '@/lib/discountDisplayService';
 import { useUserDiscounts } from '@/hooks/useUserDiscounts';
 import { useRealtimeRemittances, useRealtimeOrders } from '@/hooks/useRealtimeSubscription';
+import AdminWorkTabs from '@/components/admin/AdminWorkTabs';
 
 // Constante de paginación fuera del componente para evitar recreación
 const ORDERS_PER_PAGE = 20;
@@ -32,6 +33,9 @@ const UserPanel = ({ onNavigate }) => {
   const { showModal } = useModal();
   const { categoryDiscountPercent } = useUserDiscounts();
   const isRegularUser = userRole === 'user';
+  const isAdminRole = userRole === 'admin' || userRole === 'super_admin';
+  // null = unknown yet (or failed to load); drives the admin "orders to process" tab count
+  const [pendingOrdersCount, setPendingOrdersCount] = useState(null);
   const [orders, setOrders] = useState([]);
   const [remittances, setRemittances] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -215,6 +219,7 @@ const UserPanel = ({ onNavigate }) => {
         // This includes: proof_uploaded (needs validation), pending (waiting for proof), rejected (needs retry)
         const orders = await getAllOrders();
         setOrders(orders || []);
+        getPendingOrdersCount().then(setPendingOrdersCount).catch(() => setPendingOrdersCount(null));
       } else {
         const userOrders = await getUserOrders(user.id);
         setOrders(userOrders || []);
@@ -810,6 +815,7 @@ const UserPanel = ({ onNavigate }) => {
           </motion.div>
         )}
 
+        <AdminWorkTabs enabled={isAdminRole} ordersCount={pendingOrdersCount} onNavigate={onNavigate}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -829,8 +835,8 @@ const UserPanel = ({ onNavigate }) => {
                 >
                   <ShoppingBag className="h-5 w-5 text-white" />
                 </div>
-                {(userRole === 'admin' || userRole === 'super_admin')
-                  ? (language === 'es' ? 'Pedidos Pendientes' : 'Pending Orders')
+                {isAdminRole
+                  ? t('adminInbox.ordersHeading')
                   : t('userPanel.myOrders')
                 }
               </h2>
@@ -1102,6 +1108,7 @@ const UserPanel = ({ onNavigate }) => {
             </div>
           )}
         </motion.div>
+        </AdminWorkTabs>
 
         {/* Testimonials Form (Regular users only) */}
         {userRole !== 'admin' && userRole !== 'super_admin' && (

@@ -133,6 +133,43 @@ export const REMITTANCE_STATUS = {
   CANCELLED: 'cancelled'
 };
 
+/**
+ * Single source of truth for "what does the admin have to do with this remittance".
+ * Terminal / rejected statuses are intentionally absent: they need no admin action.
+ */
+export const REMITTANCE_WORK_GROUPS = {
+  needs_validation: [REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED],
+  needs_delivery: [REMITTANCE_STATUS.PAYMENT_VALIDATED, REMITTANCE_STATUS.PROCESSING],
+  awaiting_customer: [REMITTANCE_STATUS.PAYMENT_PENDING]
+};
+
+/**
+ * Statuses the admin can ACT on (validate a proof or deliver). Counted by the admin avatar
+ * badge and by the "to process" tab/chip, so badge number === tab count. payment_pending is
+ * excluded on purpose: the customer has not paid yet, so there is nothing for the admin to do.
+ */
+export const TO_PROCESS_STATUSES = [
+  ...REMITTANCE_WORK_GROUPS.needs_validation,
+  ...REMITTANCE_WORK_GROUPS.needs_delivery
+];
+
+/**
+ * Split remittances by the work they need. Pure; ignores statuses outside the groups.
+ * @param {Array<{status: string}>} list
+ * @returns {{needs_validation: Array, needs_delivery: Array, awaiting_customer: Array}}
+ */
+export const groupRemittancesByWork = (list) => {
+  const grouped = Object.fromEntries(Object.keys(REMITTANCE_WORK_GROUPS).map((key) => [key, []]));
+  if (!Array.isArray(list)) return grouped;
+  list.forEach((remittance) => {
+    const group = Object.keys(REMITTANCE_WORK_GROUPS).find((key) =>
+      REMITTANCE_WORK_GROUPS[key].includes(remittance?.status)
+    );
+    if (group) grouped[group].push(remittance);
+  });
+  return grouped;
+};
+
 const logRemittancePaymentActivity = async ({ action, remittance, performedBy, description, metadata = {} }) => {
   try {
     const paymentMetadata = {
@@ -486,7 +523,7 @@ export const getPendingRemittancesCountByType = async (typeId) => {
 };
 
 /**
- * Get count of remittances that still need admin attention (awaiting payment or proof validation).
+ * Get count of remittances the admin can act on (proof to validate or delivery to complete).
  * Feeds the admin avatar badge in the top bar; never throws so the header keeps rendering.
  * @returns {Promise<number>} Count of pending remittances
  */
@@ -495,10 +532,7 @@ export const getPendingRemittancesCount = async () => {
     const { count, error } = await supabase
       .from('remittances')
       .select('id', { count: 'exact', head: true })
-      .in('status', [
-        REMITTANCE_STATUS.PAYMENT_PENDING,
-        REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED
-      ]);
+      .in('status', TO_PROCESS_STATUSES);
 
     if (error) {
       console.warn('[getPendingRemittancesCount] Error:', error);
@@ -1453,6 +1487,57 @@ export const getAllRemittances = async (filters = {}) => {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getAllRemittances' });
     throw appError;
+  }
+};
+
+/**
+ * Get the remittances that need admin attention (see REMITTANCE_WORK_GROUPS), oldest first,
+ * enriched with the sender's name/email from user_profiles (no schema change: second query).
+ * A failing profile lookup never hides the remittances themselves.
+ * @throws {AppError} If the remittances query fails
+ * @returns {Promise<Array>} Remittances with sender_name / sender_email (null when unknown)
+ */
+export const getAdminWorkRemittances = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('remittances')
+      .select('*, remittance_types(*)')
+      .in('status', Object.values(REMITTANCE_WORK_GROUPS).flat())
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'getAdminWorkRemittances' });
+      throw appError;
+    }
+
+    const remittances = data || [];
+    const userIds = [...new Set(remittances.map((r) => r.user_id).filter(Boolean))];
+    const profilesById = {};
+
+    if (userIds.length > 0) {
+      const { data: profiles, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('user_id, full_name, email')
+        .in('user_id', userIds);
+
+      if (profileError) {
+        console.warn('[getAdminWorkRemittances] Sender lookup failed:', profileError);
+      } else {
+        (profiles || []).forEach((profile) => {
+          profilesById[profile.user_id] = profile;
+        });
+      }
+    }
+
+    return remittances.map((remittance) => ({
+      ...remittance,
+      sender_name: profilesById[remittance.user_id]?.full_name || null,
+      sender_email: profilesById[remittance.user_id]?.email || null
+    }));
+  } catch (error) {
+    if (error.code) throw error;
+    throw handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getAdminWorkRemittances' });
   }
 };
 

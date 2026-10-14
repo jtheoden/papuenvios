@@ -408,9 +408,15 @@ const Header = ({ currentPage, onNavigate }) => {
                     {renderCategoryIndicator()}
                     <UserAvatar user={user} />
                     {isAdminRole && pendingCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center font-bold shadow-lg">
-                        {pendingCount}
-                      </span>
+                      <>
+                        <span
+                          aria-hidden="true"
+                          className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-[11px] leading-none rounded-full h-5 min-w-[1.25rem] px-1 flex items-center justify-center font-bold shadow-lg"
+                        >
+                          {pendingCount > 99 ? '99+' : pendingCount}
+                        </span>
+                        <span className="sr-only">{t('adminInbox.badgeAria', { count: pendingCount })}</span>
+                      </>
                     )}
                   </div>
                 </Button>
