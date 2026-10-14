@@ -18,7 +18,7 @@ import { getActiveWhatsappRecipient, getGuidedWhatsappPhone, getFreshNotificatio
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
 import { getPaymentConfirmationBlocker } from '@/lib/orderPayerPhone';
 import { isValidPayerPhone, normalizePayerPhone, PAYER_PHONE_MAX_LENGTH } from '@/lib/payerPhone';
-import { reserveZelleAccount, registerZelleTransaction, ZELLE_TRANSACTION_TYPES } from '@/lib/zelleService';
+import { pickAvailableZelleAccount, registerZelleTransaction, ZELLE_TRANSACTION_TYPES } from '@/lib/zelleService';
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
 import { calculateOrderTotal } from '@/lib/priceCalculationService';
@@ -705,9 +705,9 @@ const CartPage = ({ onNavigate }) => {
 
       if (!selectedZelleAccountId) {
         // User didn't select a Zelle account, assign one automatically
-        // (reserveZelleAccount atomically increments usage counters — SEC-09)
+        // (read-only pick; limits are advisory and usage is computed server-side)
         try {
-          const reservedAccount = await reserveZelleAccount(ZELLE_TRANSACTION_TYPES.PRODUCT, totalAmount);
+          const reservedAccount = await pickAvailableZelleAccount(ZELLE_TRANSACTION_TYPES.PRODUCT, totalAmount);
           selectedZelleAccountId = reservedAccount.id;
         } catch (zelleError) {
           console.error('[CartPage] No Zelle account available:', zelleError);
@@ -907,6 +907,7 @@ const CartPage = ({ onNavigate }) => {
             </h2>
             <ZelleAccountSelector
               usageType="products"
+              amount={totalAmount}
               onSelect={(account) => {
                 setSelectedZelle(account);
               }}

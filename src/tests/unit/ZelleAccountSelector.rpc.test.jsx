@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, act, waitFor } from '@testing-library/react';
+import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
 
 const getForCustomerMock = vi.fn();
 const toastMock = vi.fn();
@@ -57,7 +57,7 @@ describe('ZelleAccountSelector (RPC-based)', () => {
     render(<ZelleAccountSelector onSelect={vi.fn()} usageType="products" />);
 
     await waitFor(() => expect(screen.getAllByText('Main Account').length).toBeGreaterThan(0));
-    expect(getForCustomerMock).toHaveBeenCalledWith('products');
+    expect(getForCustomerMock).toHaveBeenCalledWith('products', undefined);
     expect(screen.getAllByText('main@zelle.com').length).toBeGreaterThan(0);
     expect(screen.getByText('Second')).toBeInTheDocument();
   });
@@ -71,7 +71,7 @@ describe('ZelleAccountSelector (RPC-based)', () => {
     render(<ZelleAccountSelector onSelect={vi.fn()} usageType="remittances" />);
 
     await waitFor(() => expect(screen.getAllByText('Main Account').length).toBeGreaterThan(0));
-    expect(getForCustomerMock).toHaveBeenCalledWith('remittances');
+    expect(getForCustomerMock).toHaveBeenCalledWith('remittances', undefined);
     expect(screen.getByText('+15550001')).toBeInTheDocument();
     expect(screen.queryByText('main@zelle.com')).not.toBeInTheDocument();
   });
@@ -93,6 +93,46 @@ describe('ZelleAccountSelector (RPC-based)', () => {
     render(<ZelleAccountSelector onSelect={onSelect} usageType="products" />);
 
     await waitFor(() => expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'a1' })));
+  });
+
+  describe('advisory availability (amount)', () => {
+    it('passes the amount to the customer list', async () => {
+      getForCustomerMock.mockResolvedValue([acc()]);
+
+      render(<ZelleAccountSelector onSelect={vi.fn()} usageType="products" amount={125.5} />);
+
+      await waitFor(() => expect(getForCustomerMock).toHaveBeenCalledWith('products', 125.5));
+    });
+
+    it('shows a non-blocking warning for accounts with available === false and keeps them selectable', async () => {
+      getForCustomerMock.mockResolvedValue([
+        acc({ id: 'a1', account_name: 'Busy Account', available: false }),
+        acc({ id: 'a2', account_name: 'Free Account', email: 'free@z.com', available: true })
+      ]);
+      const onSelect = vi.fn();
+
+      render(<ZelleAccountSelector onSelect={onSelect} usageType="products" amount={500} />);
+
+      await waitFor(() => expect(screen.getByText('Busy Account')).toBeInTheDocument());
+      // Exactly one warning: only the unavailable account carries it.
+      expect(screen.getAllByText('zelle.overLimitWarning')).toHaveLength(1);
+
+      fireEvent.click(screen.getByText('Busy Account'));
+
+      expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'a1' }));
+    });
+
+    it('does not warn when available is true or not provided', async () => {
+      getForCustomerMock.mockResolvedValue([
+        acc({ id: 'a1', available: true }),
+        acc({ id: 'a2', account_name: 'Second' })
+      ]);
+
+      render(<ZelleAccountSelector onSelect={vi.fn()} usageType="products" />);
+
+      await waitFor(() => expect(screen.getByText('Second')).toBeInTheDocument());
+      expect(screen.queryByText('zelle.overLimitWarning')).not.toBeInTheDocument();
+    });
   });
 
   describe('refresh', () => {

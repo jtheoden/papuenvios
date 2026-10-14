@@ -17,7 +17,7 @@ vi.mock('@/lib/activityLogger', () => ({
 }));
 
 vi.mock('@/lib/zelleService', () => ({
-  reserveZelleAccount: vi.fn(),
+  pickAvailableZelleAccount: vi.fn(),
   registerZelleTransaction: vi.fn(),
   upsertZelleTransactionStatus: (...args) => upsertZelleMock(...args),
   ZELLE_STATUS: { PENDING: 'pending', VALIDATED: 'validated', REJECTED: 'rejected' },

@@ -15,60 +15,100 @@ vi.mock('@/lib/userAlertService', () => ({
   createZelleDeactivationAlerts: vi.fn()
 }));
 
-import { reserveZelleAccount, registerZelleTransaction } from '@/lib/zelleService';
+import { pickAvailableZelleAccount, registerZelleTransaction, getZelleAccountUsageSummary } from '@/lib/zelleService';
 
-// ─── reserveZelleAccount (SEC-09 fix) ───────────────────────────────────────
+// ─── pickAvailableZelleAccount (read-only pick over computed usage) ─────────
 
-describe('reserveZelleAccount', () => {
+describe('pickAvailableZelleAccount', () => {
   beforeEach(() => {
     rpcMock.mockReset();
     fromMock.mockReset();
   });
 
-  it('reserves via a single atomic RPC call, not the old two-step select+update pair', async () => {
+  it('picks via select_available_zelle_account then get_zelle_account_public, never mutating', async () => {
     rpcMock.mockImplementation((name) => Promise.resolve(
-      name === 'reserve_zelle_account'
+      name === 'select_available_zelle_account'
         ? { data: 'acc-1', error: null }
         : { data: [{ id: 'acc-1', account_holder: 'Juan', email: 'a@b.com', phone: '+1555' }], error: null }
     ));
 
-    const account = await reserveZelleAccount('remittance', 250);
+    const account = await pickAvailableZelleAccount('remittance', 250);
 
-    expect(rpcMock).toHaveBeenCalledWith('reserve_zelle_account', {
+    expect(rpcMock).toHaveBeenNthCalledWith(1, 'select_available_zelle_account', {
       p_transaction_type: 'remittance',
       p_amount: 250
     });
-    // Must never call the old non-atomic pair.
-    expect(rpcMock).not.toHaveBeenCalledWith('select_available_zelle_account', expect.anything());
-    expect(rpcMock).not.toHaveBeenCalledWith('update_zelle_account_usage', expect.anything());
+    expect(rpcMock).toHaveBeenNthCalledWith(2, 'get_zelle_account_public', { p_id: 'acc-1' });
+    const names = rpcMock.mock.calls.map(([name]) => name);
+    expect(names).not.toContain('reserve_zelle_account');
+    expect(names).not.toContain('update_zelle_account_usage');
     expect(account).toEqual({ id: 'acc-1', account_holder: 'Juan', email: 'a@b.com', phone: '+1555' });
-    // Customer path must not read the table directly (would bypass the visibility flags).
+    // Customer path must not read or write the table directly.
     expect(fromMock).not.toHaveBeenCalled();
   });
 
-  it('returns the account through get_zelle_account_public with hidden contact fields as null', async () => {
+  it('returns hidden contact fields as null from get_zelle_account_public', async () => {
     rpcMock.mockImplementation((name) => Promise.resolve(
-      name === 'reserve_zelle_account'
+      name === 'select_available_zelle_account'
         ? { data: 'acc-2', error: null }
         : { data: [{ id: 'acc-2', account_holder: 'Ana', email: null, phone: '+1555' }], error: null }
     ));
 
-    const account = await reserveZelleAccount('product', 40);
+    const account = await pickAvailableZelleAccount('product', 40);
 
-    expect(rpcMock).toHaveBeenCalledWith('get_zelle_account_public', { p_id: 'acc-2' });
     expect(account.email).toBeNull();
     expect(account.phone).toBe('+1555');
   });
 
-  it('throws when no account is available (RPC returns null)', async () => {
+  it('throws "No Zelle accounts available" when the pick returns null', async () => {
     rpcMock.mockResolvedValue({ data: null, error: null });
 
-    await expect(reserveZelleAccount('product', 50)).rejects.toThrow();
+    await expect(pickAvailableZelleAccount('product', 50)).rejects.toThrow(/No Zelle accounts available/);
   });
 
-  it('rejects an invalid transaction type before calling the RPC', async () => {
-    await expect(reserveZelleAccount('order', 50)).rejects.toThrow();
+  it('rejects an invalid transaction type or amount before calling the RPC', async () => {
+    await expect(pickAvailableZelleAccount('order', 50)).rejects.toThrow();
+    await expect(pickAvailableZelleAccount('product', 0)).rejects.toThrow();
     expect(rpcMock).not.toHaveBeenCalled();
+  });
+});
+
+// ─── admin computed usage with fallback ─────────────────────────────────────
+
+describe('getZelleAccountUsageSummary (computed usage)', () => {
+  beforeEach(() => {
+    rpcMock.mockReset();
+    fromMock.mockReset();
+  });
+
+  it('maps get_zelle_accounts_usage rows to { dailyAmount, monthlyAmount } by account id', async () => {
+    rpcMock.mockResolvedValue({
+      data: [
+        { id: 'a1', daily_usage: '10.5', monthly_usage: '200' },
+        { id: 'a2', daily_usage: 0, monthly_usage: 5 }
+      ],
+      error: null
+    });
+
+    const summary = await getZelleAccountUsageSummary();
+
+    expect(rpcMock).toHaveBeenCalledWith('get_zelle_accounts_usage');
+    expect(summary).toEqual({
+      a1: { dailyAmount: 10.5, monthlyAmount: 200 },
+      a2: { dailyAmount: 0, monthlyAmount: 5 }
+    });
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the transaction history aggregation when the RPC errors', async () => {
+    rpcMock.mockResolvedValue({ data: null, error: { message: 'nope', code: '42501' } });
+    const gte = vi.fn().mockResolvedValue({ data: [], error: null });
+    fromMock.mockReturnValue({ select: () => ({ gte }) });
+
+    const summary = await getZelleAccountUsageSummary();
+
+    expect(fromMock).toHaveBeenCalledWith('zelle_transaction_history');
+    expect(summary).toEqual({});
   });
 });
 

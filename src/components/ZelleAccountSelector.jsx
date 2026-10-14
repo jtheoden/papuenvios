@@ -13,6 +13,8 @@
  * @param {function} onSelect - Callback cuando se selecciona una cuenta
  * @param {string} usageType - 'products' para productos/orders o 'remittances' para remesas
  * @param {string} selectedAccountId - ID de cuenta pre-seleccionada (opcional)
+ * @param {number} amount - Total in USD (optional). When given, accounts whose limits
+ *   would be exceeded get an ADVISORY warning (available === false); they stay selectable.
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -25,6 +27,9 @@ import { getZelleAccountPublicContact } from '@/lib/zelleVisibility';
 
 export const ZELLE_REFRESH_INTERVAL_MS = 30000;
 
+// Advisory only: the server flags accounts whose limits the amount would exceed.
+const isOverLimit = (account) => account.available === false;
+
 const getContactLine = (account) => {
   const { email, phone } = getZelleAccountPublicContact(account);
   return email || phone || null;
@@ -33,7 +38,8 @@ const getContactLine = (account) => {
 const ZelleAccountSelector = ({
   onSelect,
   usageType = 'remittances',
-  selectedAccountId = null
+  selectedAccountId = null,
+  amount
 }) => {
   const { t } = useLanguage();
   const [accounts, setAccounts] = useState([]);
@@ -47,7 +53,7 @@ const ZelleAccountSelector = ({
     if (showLoading) setLoading(true);
     try {
       // The RPC already returns only active accounts for this usage type
-      const filteredAccounts = (await getZelleAccountsForCustomer(usageType)) || [];
+      const filteredAccounts = (await getZelleAccountsForCustomer(usageType, amount)) || [];
 
       // Check if currently selected account is still valid
       if (selectedAccount) {
@@ -97,7 +103,7 @@ const ZelleAccountSelector = ({
       }
     }
     if (showLoading) setLoading(false);
-  }, [usageType, selectedAccount, selectedAccountId, onSelect, t]);
+  }, [usageType, amount, selectedAccount, selectedAccountId, onSelect, t]);
 
   // Always call the latest loader from timers/listeners (it closes over the selection)
   const loadAccountsRef = useRef(loadAccounts);
@@ -108,7 +114,7 @@ const ZelleAccountSelector = ({
   // Initial load
   useEffect(() => {
     loadAccounts();
-  }, [usageType]);
+  }, [usageType, amount]);
 
   // Refresh periodically and when the user returns to the tab/window, so a
   // deactivated account is detected without table realtime (customers get no events).
@@ -235,6 +241,12 @@ const ZelleAccountSelector = ({
                         <p className="font-semibold text-gray-900">{account.account_name}</p>
                       </div>
                       <p className="text-sm text-gray-600">{getContactLine(account)}</p>
+                      {isOverLimit(account) && (
+                        <p className="text-xs text-amber-700 mt-1 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                          {t('zelle.overLimitWarning')}
+                        </p>
+                      )}
                       {account.priority_order && (
                         <p className="text-xs text-gray-500 mt-1">
                           {t('zelle.priority')}: #{account.priority_order}
@@ -269,7 +281,7 @@ const ZelleAccountSelector = ({
               <option value="">{t('zelle.selectAccountPlaceholder') || 'Selecciona una cuenta Zelle'}</option>
               {accounts.map((account) => (
                 <option key={account.id} value={account.id}>
-                  {[account.account_name, getContactLine(account)].filter(Boolean).join(' - ')}
+                  {[account.account_name, getContactLine(account), isOverLimit(account) ? `(${t('zelle.overLimitWarning')})` : null].filter(Boolean).join(' - ')}
                 </option>
               ))}
             </select>
@@ -290,6 +302,9 @@ const ZelleAccountSelector = ({
                 </span>
               </div>
               <p className="text-sm text-gray-600">{getContactLine(selectedAccount)}</p>
+              {isOverLimit(selectedAccount) && (
+                <p className="text-xs text-amber-700 mt-1">{t('zelle.overLimitWarning')}</p>
+              )}
             </motion.div>
           )}
         </div>

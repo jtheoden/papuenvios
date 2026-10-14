@@ -14,7 +14,7 @@ vi.mock('@/lib/supabase', () => ({
 vi.mock('@/lib/activityLogger', () => ({ logActivity: vi.fn() }));
 
 vi.mock('@/lib/zelleService', () => ({
-  reserveZelleAccount: vi.fn(),
+  pickAvailableZelleAccount: vi.fn(),
   registerZelleTransaction: vi.fn(),
   upsertZelleTransactionStatus: vi.fn(),
   ZELLE_STATUS: { PENDING: 'pending', VALIDATED: 'validated', REJECTED: 'rejected' },

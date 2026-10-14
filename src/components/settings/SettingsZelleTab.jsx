@@ -535,6 +535,7 @@ const SettingsZelleTab = () => {
                     className="input-style w-full sm:w-1/2"
                   />
                 </div>
+                <p className="sm:col-span-2 text-xs text-gray-500">{t('zelle.limitsHelp')}</p>
               </div>
 
               <div>

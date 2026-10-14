@@ -23,7 +23,7 @@ import {
   notifyUserRemittanceDelivered
 } from '@/lib/whatsappService';
 import {
-  reserveZelleAccount,
+  pickAvailableZelleAccount,
   registerZelleTransaction,
   upsertZelleTransactionStatus,
   ZELLE_STATUS,
@@ -921,10 +921,10 @@ export const createRemittance = async (remittanceData) => {
     // Get or find available Zelle account
     let selectedZelleAccountId = zelle_account_id;
     if (!selectedZelleAccountId) {
-      // reserveZelleAccount atomically selects AND increments usage counters (SEC-09).
+      // Read-only pick: limits are advisory and usage is computed server-side from orders/remittances.
       let reservedAccount;
       try {
-        reservedAccount = await reserveZelleAccount(ZELLE_TRANSACTION_TYPES.REMITTANCE, totalToPay);
+        reservedAccount = await pickAvailableZelleAccount(ZELLE_TRANSACTION_TYPES.REMITTANCE, totalToPay);
       } catch (zelleError) {
         console.error('[createRemittance] ZELLE ERROR: No accounts available', zelleError);
         throw new Error('No Zelle accounts available. Please try again later.');

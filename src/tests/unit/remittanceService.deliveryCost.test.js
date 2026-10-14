@@ -55,7 +55,7 @@ vi.mock('@/lib/whatsappService', () => ({
 }));
 
 vi.mock('@/lib/zelleService', () => ({
-  reserveZelleAccount: vi.fn(async () => ({ id: 'zelle-1' })),
+  pickAvailableZelleAccount: vi.fn(async () => ({ id: 'zelle-1' })),
   registerZelleTransaction: vi.fn(async () => ({})),
   upsertZelleTransactionStatus: vi.fn(),
   ZELLE_STATUS: {},
@@ -68,7 +68,7 @@ vi.mock('@/lib/shippingService', () => ({
 }));
 
 import { createRemittance } from '@/lib/remittanceService';
-import { reserveZelleAccount, registerZelleTransaction } from '@/lib/zelleService';
+import { pickAvailableZelleAccount, registerZelleTransaction } from '@/lib/zelleService';
 import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingService';
 
 const ZONE = { id: 'zone-1', province_name: 'La Habana', municipality_name: null, shipping_cost: 7, free_shipping: false, is_active: true };
@@ -129,7 +129,7 @@ describe('createRemittance delivery cost', () => {
 
     await expect(createRemittance(BASE_INPUT)).rejects.toMatchObject({ code: expect.any(String) });
 
-    expect(reserveZelleAccount).not.toHaveBeenCalled();
+    expect(pickAvailableZelleAccount).not.toHaveBeenCalled();
     expect(registerZelleTransaction).not.toHaveBeenCalled();
     expect(state.insertPayload).toBeNull();
   });
@@ -144,7 +144,7 @@ describe('createRemittance delivery cost', () => {
   it('reserves and registers the Zelle amount as amount_sent + delivery_cost', async () => {
     await createRemittance(BASE_INPUT);
 
-    expect(reserveZelleAccount).toHaveBeenCalledWith('remittance', 107);
+    expect(pickAvailableZelleAccount).toHaveBeenCalledWith('remittance', 107);
     expect(registerZelleTransaction).toHaveBeenCalledWith(
       expect.objectContaining({ reference_id: 'rem-1', amount: 107 })
     );
@@ -154,7 +154,7 @@ describe('createRemittance delivery cost', () => {
     state.type = { ...TYPE, delivery_method: 'transfer' };
     await createRemittance(BASE_INPUT);
 
-    expect(reserveZelleAccount).toHaveBeenCalledWith('remittance', 100);
+    expect(pickAvailableZelleAccount).toHaveBeenCalledWith('remittance', 100);
     expect(registerZelleTransaction).toHaveBeenCalledWith(expect.objectContaining({ amount: 100 }));
   });
 });

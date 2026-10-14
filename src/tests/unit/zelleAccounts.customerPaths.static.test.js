@@ -63,4 +63,26 @@ describe('customer-facing code and the zelle_accounts table', () => {
 
     expect(offenders).toEqual([]);
   });
+
+  it('customer code never calls the deprecated counter RPCs (reserve_zelle_account / update_zelle_account_usage)', () => {
+    // Admin-only reversal in zelleService.rejectZelleTransaction may call update_zelle_account_usage.
+    const allowUpdateUsage = new Set(['lib/zelleService.js']);
+    const offenders = files
+      .filter(({ rel, content }) => /reserve_zelle_account/.test(content)
+        || (/update_zelle_account_usage/.test(content) && !allowUpdateUsage.has(rel)))
+      .map(({ rel }) => rel);
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('only rejectZelleTransaction in zelleService touches update_zelle_account_usage', () => {
+    const service = files.find(({ rel }) => rel === 'lib/zelleService.js');
+    const hits = service.content.match(/update_zelle_account_usage/g) || [];
+    // one rpc call + comments referencing it; the rpc call must sit inside rejectZelleTransaction
+    const rpcCall = service.content.indexOf("rpc('update_zelle_account_usage'");
+    const fnStart = service.content.indexOf('export const rejectZelleTransaction');
+    expect(hits.length).toBeGreaterThan(0);
+    expect(fnStart).toBeGreaterThan(-1);
+    expect(rpcCall).toBeGreaterThan(fnStart);
+  });
 });

@@ -1069,6 +1069,7 @@ const SendRemittancePage = ({ onNavigate }) => {
               </h2>
               <ZelleAccountSelector
                 usageType="remittances"
+                amount={previewTotalToPay}
                 onSelect={(account) => {
                   setSelectedZelle(account);
                 }}

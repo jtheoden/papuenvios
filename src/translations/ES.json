@@ -1762,6 +1762,8 @@
     "notesPlaceholder": "Notas adicionales sobre esta cuenta",
     "accountUnavailable": "Cuenta Zelle no disponible",
     "selectAnotherAccount": "La cuenta Zelle seleccionada ya no está disponible. Por favor selecciona otra.",
+    "limitsHelp": "Los límites son orientativos: la asignación automática los respeta y el selector avisa, pero nunca bloquean un pago ni un pedido. 0 o vacío = sin límite. El uso se calcula con los pedidos y remesas en USD, con día y mes en hora de Nueva York.",
+    "overLimitWarning": "Esta cuenta podría estar cerca de su límite; igual puedes usarla",
     "accountInvalidated": "Tu cuenta seleccionada ya no está disponible",
     "pleaseSelectNew": "La cuenta Zelle que seleccionaste fue desactivada. Por favor elige otra para continuar.",
     "loadError": "Error al cargar cuentas Zelle",
