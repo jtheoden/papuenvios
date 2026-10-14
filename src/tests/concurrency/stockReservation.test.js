@@ -799,23 +799,8 @@ describeDb('atomic stock reservation (local Postgres)', () => {
     });
   });
 
-  it('the old "insert own order" movements policy is gone: an owner cannot write inventory_movements (W4)', async () => {
-    const { inventoryId } = await seedProduct(admin, actors, tracker, { quantity: 5 });
-    const orderId = await seedOrder(admin, actors, tracker, []);
-    const owner = await asCustomer();
-
-    await expect(
-      owner.query(
-        `INSERT INTO public.inventory_movements (inventory_id, movement_type, quantity_change, reference_id, reference_type)
-         VALUES ($1, 'released', 5, $2, 'order')`,
-        [inventoryId, orderId]
-      )
-    ).rejects.toMatchObject({ code: '42501' });
-    const { rows } = await admin.query(
-      `SELECT count(*)::int AS n FROM pg_policies WHERE tablename = 'inventory_movements' AND policyname = 'inventory_movements_insert_own_order'`
-    );
-    expect(rows[0].n).toBe(0);
-  });
+  // The "owner cannot insert movements" check moved to reviewThreeHardening.test.js (W2): the policy is
+  // dropped by its own migration, 20261014210000, applied after the front end is deployed.
 
   describe('restock after consume (W7: explicit admin decision)', () => {
     /** Reserve + validate + consume an order for `quantity` units; returns its id. */

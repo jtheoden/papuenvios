@@ -575,14 +575,16 @@ const AdminOrdersTab = () => {
   // Handler: return consumed units to the inventory (explicit admin decision, also reachable
   // later from the persistent button on cancelled orders). It asks for its OWN reason: the
   // cancel reason explains why the order died, not why the goods came back.
-  const handleRestockClick = (order) => {
+  const handleRestockClick = (order, typed = '') => {
     showInput(
       t('adminOrders.modals.restockReasonTitle'),
       t('adminOrders.messages.restockReasonPrompt').replace('{orderNumber}', order.order_number),
-      '',
+      typed,
       (reason) => {
         if (!reason || reason.trim() === '') {
           showToast(t('adminOrders.messages.restockReasonRequired'), 'error');
+          // The dialog closes after its callback: reopen it on the next tick with what was typed.
+          setTimeout(() => handleRestockClick(order, reason || ''), 0);
           return;
         }
         handleRestockOrder(order, reason.trim());

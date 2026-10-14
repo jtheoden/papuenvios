@@ -130,8 +130,7 @@
 -- ALTER TABLE public.inventory DROP CONSTRAINT IF EXISTS inventory_reserved_lte_quantity;
 -- ALTER TABLE public.orders DROP COLUMN IF EXISTS stock_reserved_at,
 --   DROP COLUMN IF EXISTS stock_reserved, DROP COLUMN IF EXISTS stock_managed;
--- 3. Re-create the dropped policy inventory_movements_insert_own_order (definition at the
---    bottom of this file).
+-- 3. If 20261014210000 was applied, roll it back first (it carries the policy definition).
 -- What a rollback does NOT undo: inventory quantities already consumed are not restored,
 -- inventory_movements rows written by the RPCs stay, and activity_logs audit rows stay.
 -- ============================================================================
@@ -171,6 +170,28 @@ END $$;
 -- ----------------------------------------------------------------------------
 ALTER TABLE public.inventory_movements
   ADD COLUMN IF NOT EXISTS reserved_change integer NOT NULL DEFAULT 0;
+
+-- The local base migration declares movement_type / reference_type as enums, the remote
+-- project already has text (verified by SELECT). The RPCs write text values such as
+-- 'reserved', 'released', 'restocked' and 'adjustment', so convert ONLY if they are enums.
+-- (Columns with an enum DEFAULT are not expected; the conversion would fail loudly.)
+DO $$
+DECLARE
+  v_col record;
+BEGIN
+  FOR v_col IN
+    SELECT c.column_name
+      FROM information_schema.columns c
+     WHERE c.table_schema = 'public'
+       AND c.table_name = 'inventory_movements'
+       AND c.column_name IN ('movement_type', 'reference_type')
+       AND c.data_type = 'USER-DEFINED'
+  LOOP
+    EXECUTE format(
+      'ALTER TABLE public.inventory_movements ALTER COLUMN %I TYPE text USING %I::text',
+      v_col.column_name, v_col.column_name);
+  END LOOP;
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- 3. Allocations
@@ -326,9 +347,12 @@ END;
 $function$;
 
 -- Single writer for the three policy rows. Validation happens in the callers; this one
--- locks, writes and records the audit row (before/after + actor) in activity_logs INSIDE
--- the same transaction, so a change cannot exist without its audit trail (and a client
--- cannot skip or forge it). No EXECUTE for API roles.
+-- locks, writes and records the audit (before/after + actor) INSIDE the same transaction,
+-- so a change made through the app cannot exist without its audit trail. Two copies:
+-- activity_logs (readable by the admin UI, but subject to the 90-day TTL purge and writable
+-- by other service paths, so NOT tamper-evident) and admin_destructive_ops_log (super_admin
+-- read only, no purge job, written only by SECURITY DEFINER code: the durable copy).
+-- Someone with owner/SQL access can still edit either table. No EXECUTE for API roles.
 CREATE OR REPLACE FUNCTION public._apply_stock_policy(
   p_unpaid_hours integer, p_proof_hours integer, p_max_open integer, p_action text)
 RETURNS jsonb
@@ -368,6 +392,12 @@ BEGIN
       ELSE 'Stock reservation policy updated'
     END,
     jsonb_build_object('before', v_before, 'after', v_after));
+
+  INSERT INTO public.admin_destructive_ops_log (op_type, performed_by, details)
+  VALUES (
+    'stock_policy_changed',
+    COALESCE(auth.uid()::text, 'service_role'),
+    jsonb_build_object('action', p_action, 'before', v_before, 'after', v_after));
 
   RETURN public.get_stock_policy();
 END;
@@ -1033,6 +1063,7 @@ DECLARE
   v_row record;
   v_released integer;
   v_count integer := 0;
+  v_skipped integer := 0;
 BEGIN
   IF v_uid IS NOT NULL AND NOT public.is_admin_user() THEN
     RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
@@ -1116,9 +1147,22 @@ BEGIN
         END IF;
       END IF;
     EXCEPTION WHEN OTHERS THEN
+      v_skipped := v_skipped + 1;
       RAISE WARNING 'expire_stale_order_reservations: order % skipped (%: %)', v_row.id, SQLSTATE, SQLERRM;
+      -- The handler runs after the failed subtransaction was rolled back, so this row survives.
+      INSERT INTO public.admin_destructive_ops_log (op_type, performed_by, details)
+      VALUES ('stock_expiry_skipped', COALESCE(v_uid::text, 'system'),
+              jsonb_build_object('order_id', v_row.id, 'sqlstate', SQLSTATE, 'sqlerrm', SQLERRM));
     END;
   END LOOP;
+
+  -- One summary row per run that skipped something (clean runs write nothing). The integer
+  -- return value stays "orders released/cancelled" for compatibility with the cron call.
+  IF v_skipped > 0 THEN
+    INSERT INTO public.admin_destructive_ops_log (op_type, performed_by, details)
+    VALUES ('stock_expiry_run', COALESCE(v_uid::text, 'system'),
+            jsonb_build_object('released', v_count, 'skipped', v_skipped));
+  END IF;
 
   RETURN v_count;
 END;
@@ -1151,7 +1195,17 @@ SET search_path = public, pg_temp
 AS $function$
 BEGIN
   IF NEW.stock_managed THEN
-    PERFORM public._release_order_locked(NEW.id);
+    -- Own subtransaction: a failing release must never make the owner's cancel fail. The
+    -- failure is logged and the order stays cancelled with its reservation; the hourly
+    -- expire_stale_order_reservations sweep heals that orphan.
+    BEGIN
+      PERFORM public._release_order_locked(NEW.id);
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'release_stock_on_order_cancel: order % not released (%: %)', NEW.id, SQLSTATE, SQLERRM;
+      INSERT INTO public.admin_destructive_ops_log (op_type, performed_by, details)
+      VALUES ('stock_release_failed', COALESCE(auth.uid()::text, 'system'),
+              jsonb_build_object('order_id', NEW.id, 'sqlstate', SQLSTATE, 'sqlerrm', SQLERRM));
+    END;
   END IF;
   RETURN NULL;
 END;
@@ -1211,13 +1265,11 @@ CREATE TRIGGER guard_order_items_insert
   FOR EACH ROW EXECUTE FUNCTION public.guard_order_items_insert();
 
 -- ----------------------------------------------------------------------------
--- 6c. Movements are written by the RPCs only. No client code inserts
---     inventory_movements any more (checked with rg: only deletes remain, in
---     productService / bulk delete), so the legacy owner INSERT policy goes away.
---     ROLLBACK note: the old policy definition is not recreated (its WITH CHECK was
---     not captured); restore it from a schema dump if ever needed.
+-- 6c. (moved) The legacy owner INSERT policy inventory_movements_insert_own_order is NOT
+--     dropped here any more: the previous front end still inserts movements through it, so
+--     dropping it with this migration would break open tabs (version skew). It goes in
+--     20261014210000_drop_movements_insert_policy.sql, applied after the front is deployed.
 -- ----------------------------------------------------------------------------
-DROP POLICY IF EXISTS inventory_movements_insert_own_order ON public.inventory_movements;
 
 -- ----------------------------------------------------------------------------
 -- 7. Scheduling (NOT applied; owner approval required). pg_cron 1.6.4 is
@@ -1229,21 +1281,4 @@ DROP POLICY IF EXISTS inventory_movements_insert_own_order ON public.inventory_m
 --   $$SELECT public.expire_stale_order_reservations()$$  -- no arguments: uses the configured windows
 -- );
 -- -- To remove:  SELECT cron.unschedule('expire-stale-order-reservations');
--- ----------------------------------------------------------------------------
-
--- ----------------------------------------------------------------------------
--- Rollback note for the DROPPED policy inventory_movements_insert_own_order
--- (definition captured from production on 2026-10-14 before this migration):
---
--- CREATE POLICY inventory_movements_insert_own_order ON public.inventory_movements
---   FOR INSERT TO authenticated
---   WITH CHECK (
---     movement_type = ANY (ARRAY['reserved'::text, 'released'::text, 'sold'::text])
---     AND reference_type = 'order'::text
---     AND EXISTS (
---       SELECT 1 FROM public.orders o
---        WHERE o.id = inventory_movements.reference_id
---          AND (o.user_id = auth.uid() OR public.is_admin_user())
---     )
---   );
 -- ----------------------------------------------------------------------------

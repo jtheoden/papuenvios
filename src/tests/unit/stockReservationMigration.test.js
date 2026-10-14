@@ -41,7 +41,7 @@ describe('atomic stock reservation migration (static guarantees; behaviour is co
   });
 
   it('isolates each order of the expiry sweep in its own subtransaction (W1)', () => {
-    expect(code).toMatch(/EXCEPTION WHEN OTHERS THEN\s+RAISE WARNING 'expire_stale_order_reservations/);
+    expect(code).toMatch(/EXCEPTION WHEN OTHERS THEN\s+v_skipped := v_skipped \+ 1;\s+RAISE WARNING 'expire_stale_order_reservations/);
     expect(code).toMatch(/v_delta := LEAST\(v_alloc\.quantity, GREATEST\(COALESCE\(v_current, 0\), 0\)\)/);
   });
 
@@ -114,9 +114,27 @@ describe('atomic stock reservation migration (static guarantees; behaviour is co
     expect(code).toMatch(/_apply_stock_policy\(48, 168, 5, 'stock_policy_reset'\)/);
   });
 
-  it('drops the legacy owner insert policy on inventory_movements and guards order_items', () => {
-    expect(code).toMatch(/DROP POLICY IF EXISTS inventory_movements_insert_own_order ON public\.inventory_movements;/);
+  it('guards order_items and does NOT drop the legacy movements insert policy (version skew: it lives in 20261014210000)', () => {
+    expect(code).not.toMatch(/DROP POLICY[^;]*inventory_movements_insert_own_order/);
     expect(code).toMatch(/CREATE TRIGGER guard_order_items_insert\s+BEFORE INSERT ON public\.order_items/);
+    const drop = readFileSync(resolve(process.cwd(), 'supabase/migrations/20261014210000_drop_movements_insert_policy.sql'), 'utf8');
+    expect(drop).toMatch(/^DROP POLICY IF EXISTS inventory_movements_insert_own_order ON public\.inventory_movements;$/m);
+    expect(drop).toMatch(/ROLLBACK/);
+    expect(drop).toMatch(/CREATE POLICY inventory_movements_insert_own_order/);
+    expect(drop).toMatch(/AFTER the new front end is deployed/);
+  });
+
+  it('isolates the cancel-trigger release, logs skipped expiries and audits the policy durably (W6, W7, W10)', () => {
+    expect(code).toMatch(/PERFORM public\._release_order_locked\(NEW\.id\);\s+EXCEPTION WHEN OTHERS THEN/);
+    expect(code).toMatch(/'stock_release_failed'/);
+    expect(code).toMatch(/'stock_expiry_skipped'/);
+    expect(code).toMatch(/'stock_expiry_run'/);
+    expect(code).toMatch(/'stock_policy_changed'/);
+  });
+
+  it('converts the ledger columns to text only when they are enums', () => {
+    expect(code).toMatch(/c\.data_type = 'USER-DEFINED'/);
+    expect(code).toMatch(/ALTER COLUMN %I TYPE text USING %I::text/);
   });
 
   it('turns inventory_movements into a ledger and adds the restocked state', () => {
@@ -222,9 +240,11 @@ describe('product delete safety + ledger migration (static guarantees)', () => {
   it('pins search_path = public, pg_temp on every SECURITY DEFINER function', () => {
     const total = code2.match(/SECURITY DEFINER/g) || [];
     const pinned = code2.match(/SECURITY DEFINER\s+SET search_path = public, pg_temp/g) || [];
-    // blockers, bulk delete, preview, ledger trigger, delete snapshot
-    expect(total).toHaveLength(5);
-    expect(pinned).toHaveLength(5);
+    // product blockers, combo blockers, orders_with_consumed_stock, ledger snapshot helper,
+    // delete_product, bulk delete, preview, ledger trigger, delete snapshot trigger
+    expect(total).toHaveLength(9);
+    expect(pinned).toHaveLength(9);
+    expect(code2.match(/SECURITY INVOKER\s+SET search_path = public, pg_temp/g)).toHaveLength(2);
     expect(code2).toMatch(/SECURITY INVOKER\s+SET search_path = public, pg_temp/);
   });
 
@@ -259,5 +279,25 @@ describe('product delete safety + ledger migration (static guarantees)', () => {
   it('documents a rollback', () => {
     expect(sql2).toMatch(/ROLLBACK/);
     expect(sql2).toMatch(/DROP FUNCTION IF EXISTS public\.get_product_blockers\(uuid\);/);
+  });
+
+  it('guards the ledger and the reserved counter, locks before checking, and keeps new RPCs away from anon', () => {
+    expect(code2).toMatch(/BEFORE DELETE ON public\.inventory_movements/);
+    expect(code2).toMatch(/BEFORE INSERT ON public\.inventory\s+FOR EACH ROW EXECUTE FUNCTION public\.guard_inventory_reserved_edit/);
+    expect(code2.match(/ORDER BY i\.id FOR UPDATE;/g)).toHaveLength(2); // delete_product + bulk (the lock before the check)
+    for (const fn of ['get_combo_blockers(uuid)', 'orders_with_consumed_stock(uuid[])', 'delete_product(uuid)']) {
+      const escaped = fn.replace(/[()[\]]/g, '\\$&');
+      expect(sql2).toMatch(new RegExp(`REVOKE ALL ON FUNCTION public\\.${escaped} FROM PUBLIC, anon;`));
+    }
+    expect(sql2).toMatch(/REVOKE ALL ON FUNCTION public\._log_product_ledger_snapshot\(uuid\) FROM PUBLIC, anon, authenticated;/);
+  });
+
+  it('corrects the wrong "11 via combo" figure and ships the live bodies as a rollback file', () => {
+    expect(sql2).not.toMatch(/11 more through combo_items/);
+    expect(sql2).toMatch(/0 through combo_items/);
+    const live = readFileSync(resolve(process.cwd(), 'supabase/rollbacks/20261014_bulk_delete_live_bodies.sql'), 'utf8');
+    expect(live).toMatch(/CREATE OR REPLACE FUNCTION public\.bulk_delete_products/);
+    expect(live).toMatch(/CREATE OR REPLACE FUNCTION public\.preview_bulk_delete_products/);
+    expect(live).toMatch(/42702/);
   });
 });

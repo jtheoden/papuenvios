@@ -5,12 +5,15 @@
 -- inventory_movements.reserved_change and the app.stock_rpc flag set by the stock RPCs).
 -- Idempotent: every statement is CREATE OR REPLACE / DROP ... IF EXISTS.
 --
--- Problem 1 (evidence, REMOTE, read-only SELECTs, 2026-10-14)
+-- Problem 1 (evidence, REMOTE, read-only SELECTs, 2026-10-14: 25 orders, 126 order_items)
 --   order_items.inventory_id is non-NULL in 0 of 126 rows (126 are NULL). Both
 --   bulk_delete_products and preview_bulk_delete_products only block on
 --   oi.inventory_id IN (inventory of the product), so they blocked NOTHING: 15 products sat in
---   open (pending/processing) orders directly and 11 more through combo_items. The front
---   helper findBlockingOrdersForProduct had the same blind spot.
+--   open (pending/processing) orders directly and 0 through combo_items (re-checked on
+--   2026-10-14; an earlier "11 via combo" figure was wrong). The front helper
+--   findBlockingOrdersForProduct had the same blind spot. The LIVE preview is also broken today
+--   (SQLSTATE 42702, ambiguous "id"); the replacement here qualifies every column. The live bodies
+--   are saved in supabase/rollbacks/20261014_bulk_delete_live_bodies.sql.
 --
 -- Problem 2
 --   Direct edits of inventory.quantity / reserved_quantity bypass the ledger, an admin editing
@@ -41,6 +44,31 @@
 --   trg_inventory_delete_snapshot  BEFORE DELETE on inventory: writes a snapshot (batch,
 --       product, quantity, reserved, allocation states) to admin_destructive_ops_log. Nothing is
 --       written to inventory_movements on delete (FK).
+--   get_combo_blockers(combo)      same fail-closed style for combos: an order that references the
+--       combo (any item_type) blocks when it is open / NULL / unknown, or when it still holds a
+--       'reserved' allocation of a component. deleteCombo uses it and fails closed on RPC errors;
+--       it no longer rewrites order_items.item_id (NOT NULL, no FK), so combos that appear in
+--       closed orders can be deleted.
+--   delete_product(product)        single-product delete as ONE transaction (same 7 steps and
+--       the same blocker predicate as bulk_delete_products; admin). Before the movements go, a
+--       'product_ledger_snapshot' row with SUM(quantity_change) / SUM(reserved_change) per batch is
+--       written to admin_destructive_ops_log. The front no longer deletes anything table by table.
+--   guard_inventory_movements_delete  BEFORE DELETE on inventory_movements: 42501 unless
+--       app.stock_rpc = 'on' or current_user is postgres / service_role / supabase_admin. The
+--       SECURITY DEFINER delete functions and execute_platform_reset run as postgres, so they pass;
+--       app roles can no longer erase the ledger with the legacy RLS delete policy
+--       (admin_delete_inventory_movements_direct, left in place). NOTE: a build of the front end
+--       from before this branch deletes movements table by table, so its product delete fails with
+--       42501 after this migration (fail-closed; use the new build).
+--   Locking (TOCTOU): delete_product and bulk_delete_products lock the product's inventory rows
+--       (ORDER BY id FOR UPDATE) and the products row BEFORE running the blocker check, so a
+--       concurrent reserve (which needs those inventory locks) either finishes first (its
+--       allocation is then seen) or waits until the product is gone. preview_bulk_delete_products
+--       is STABLE (no row locks allowed) and advisory only; the real run re-checks under lock.
+--   guard_inventory_reserved_edit also covers INSERT (a batch cannot be created with reserved > 0
+--       by an app role).
+--   orders_with_consumed_stock(order_ids) admin RPC: the cancelled orders (among the given ids)
+--       that own 'consumed' allocations; it replaces a long .in(...) URL query from the browser.
 --
 -- Honest limits
 --   * The ledger is complete only from the moment this migration is applied. Batches that
@@ -54,6 +82,13 @@
 --     can run arbitrary SQL as an owner.
 --
 -- ROLLBACK (exact inverse, in this order; the 20261014190000 rollback comes after it):
+-- DROP FUNCTION IF EXISTS public.orders_with_consumed_stock(uuid[]);
+-- DROP FUNCTION IF EXISTS public.delete_product(uuid);
+-- DROP FUNCTION IF EXISTS public._log_product_ledger_snapshot(uuid);
+-- DROP FUNCTION IF EXISTS public.get_combo_blockers(uuid);
+-- DROP TRIGGER IF EXISTS guard_inventory_movements_delete ON public.inventory_movements;
+-- DROP FUNCTION IF EXISTS public.guard_inventory_movements_delete();
+-- DROP TRIGGER IF EXISTS guard_inventory_reserved_insert ON public.inventory;
 -- DROP TRIGGER IF EXISTS trg_inventory_delete_snapshot ON public.inventory;
 -- DROP FUNCTION IF EXISTS public.trg_inventory_delete_snapshot();
 -- DROP TRIGGER IF EXISTS guard_inventory_reserved_edit ON public.inventory;
@@ -61,9 +96,9 @@
 -- DROP TRIGGER IF EXISTS trg_inventory_ledger_ins ON public.inventory;
 -- DROP TRIGGER IF EXISTS trg_inventory_ledger_upd ON public.inventory;
 -- DROP FUNCTION IF EXISTS public.trg_inventory_ledger();
--- Restore the previous bodies of bulk_delete_products / preview_bulk_delete_products from
--- supabase/migrations/20260808000001_bulk_delete_products_categories.sql and
--- 20260909110000_preview_bulk_delete.sql (CREATE OR REPLACE them), then:
+-- Restore the previous bodies of bulk_delete_products / preview_bulk_delete_products by running
+-- supabase/rollbacks/20261014_bulk_delete_live_bodies.sql (the LIVE remote bodies, captured with a
+-- read-only SELECT on 2026-10-14), then:
 -- DROP FUNCTION IF EXISTS public.get_product_blockers(uuid);
 -- (inventory_movements 'adjustment' rows and admin_destructive_ops_log snapshots stay.)
 -- ============================================================================
@@ -131,6 +166,7 @@ DECLARE
   v_id uuid;
   v_product_name text;
   v_blocking_count int;
+  v_prev_rpc text;
 BEGIN
   IF NOT (SELECT is_super_admin()) THEN
     RAISE EXCEPTION 'Solo super_admin puede ejecutar borrado masivo' USING ERRCODE = '42501';
@@ -151,6 +187,11 @@ BEGIN
       RETURN NEXT;
       CONTINUE;
     END IF;
+
+    -- STEP 0 (TOCTOU): lock the batches and the product row BEFORE checking, so a concurrent
+    -- reserve either committed already (and is seen below) or waits until the product is gone.
+    PERFORM 1 FROM public.inventory i WHERE i.product_id = v_id ORDER BY i.id FOR UPDATE;
+    PERFORM 1 FROM public.products p WHERE p.id = v_id FOR UPDATE;
 
     -- STEP 1: blocking orders (shared predicate: direct, via combo, via inventory, or a
     -- still-reserved allocation; fail-closed on unknown statuses).
@@ -179,10 +220,15 @@ BEGIN
     -- STEP 4: delete combo_items references
     DELETE FROM combo_items WHERE product_id = v_id;
 
-    -- STEP 5-6: delete inventory_movements, then inventory (the BEFORE DELETE trigger
-    -- snapshots every batch, including consumed allocations, into admin_destructive_ops_log)
+    -- STEP 5-6: snapshot the ledger sums, delete inventory_movements, then inventory (the
+    -- BEFORE DELETE trigger snapshots every batch, including consumed allocations).
+    PERFORM public._log_product_ledger_snapshot(v_id);
+
+    v_prev_rpc := current_setting('app.stock_rpc', true);
+    PERFORM set_config('app.stock_rpc', 'on', true);
     DELETE FROM inventory_movements
     WHERE inventory_id IN (SELECT id FROM inventory WHERE product_id = v_id);
+    PERFORM set_config('app.stock_rpc', COALESCE(v_prev_rpc, 'off'), true);
 
     DELETE FROM inventory WHERE product_id = v_id;
 
@@ -263,6 +309,192 @@ BEGIN
 END;
 $function$;
 
+-- Combos: same fail-closed predicate (any item_type, open / NULL / unknown status, or a
+-- reserved allocation of a component on an order that references the combo).
+CREATE OR REPLACE FUNCTION public.get_combo_blockers(p_combo_id uuid)
+RETURNS TABLE (order_id uuid, order_number text, status text, payment_status text, via text)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  IF auth.uid() IS NOT NULL AND NOT public.is_admin_user() THEN
+    RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
+  END IF;
+
+  RETURN QUERY
+  SELECT DISTINCT ON (o.id)
+         o.id, o.order_number::text, o.status::text, o.payment_status::text,
+         CASE WHEN o.status IS NULL OR o.status NOT IN ('dispatched', 'delivered', 'completed', 'cancelled')
+              THEN 'direct' ELSE 'allocation' END
+    FROM public.order_items oi
+    JOIN public.orders o ON o.id = oi.order_id
+   WHERE oi.item_id = p_combo_id
+     AND (
+       o.status IS NULL
+       OR o.status NOT IN ('dispatched', 'delivered', 'completed', 'cancelled')
+       OR EXISTS (
+         SELECT 1
+           FROM public.order_stock_allocations a
+          WHERE a.order_id = o.id
+            AND a.state = 'reserved'
+            AND a.inventory_id IN (
+                  SELECT inv.id
+                    FROM public.combo_items ci
+                    JOIN public.inventory inv ON inv.product_id = ci.product_id
+                   WHERE ci.combo_id = p_combo_id))
+     )
+   ORDER BY o.id;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.get_combo_blockers(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_combo_blockers(uuid) TO authenticated, service_role;
+
+-- Admin RPC: which of the given orders are cancelled AND own consumed allocations (restock
+-- candidates). Ids travel in the request body, not in a URL.
+CREATE OR REPLACE FUNCTION public.orders_with_consumed_stock(p_order_ids uuid[])
+RETURNS TABLE (order_id uuid)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  IF auth.uid() IS NOT NULL AND NOT public.is_admin_user() THEN
+    RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
+  END IF;
+
+  RETURN QUERY
+  SELECT o.id
+    FROM public.orders o
+   WHERE o.id = ANY (p_order_ids)
+     AND o.status = 'cancelled'
+     AND EXISTS (SELECT 1 FROM public.order_stock_allocations a
+                  WHERE a.order_id = o.id AND a.state = 'consumed');
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.orders_with_consumed_stock(uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.orders_with_consumed_stock(uuid[]) TO authenticated, service_role;
+
+-- Per-batch ledger sums of a product, written BEFORE its movements are deleted (the
+-- BEFORE DELETE snapshot of each batch runs after the movements are gone).
+CREATE OR REPLACE FUNCTION public._log_product_ledger_snapshot(p_product_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.inventory i WHERE i.product_id = p_product_id) THEN
+    RETURN;
+  END IF;
+
+  INSERT INTO public.admin_destructive_ops_log (op_type, performed_by, details)
+  SELECT 'product_ledger_snapshot',
+         COALESCE(auth.uid()::text, 'system'),
+         jsonb_build_object(
+           'product_id', p_product_id,
+           'batches', COALESCE(jsonb_agg(jsonb_build_object(
+                'batch_id', i.id,
+                'sum_quantity_change', COALESCE(s.q, 0),
+                'sum_reserved_change', COALESCE(s.r, 0),
+                'movements', COALESCE(s.n, 0)) ORDER BY i.id), '[]'::jsonb))
+    FROM public.inventory i
+    LEFT JOIN (SELECT m.inventory_id, sum(m.quantity_change) AS q, sum(m.reserved_change) AS r, count(*) AS n
+                 FROM public.inventory_movements m GROUP BY m.inventory_id) s ON s.inventory_id = i.id
+   WHERE i.product_id = p_product_id;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public._log_product_ledger_snapshot(uuid) FROM PUBLIC, anon, authenticated;
+
+-- Single-product delete as one transaction (the old front deleted table by table, so a
+-- failure half way left a product without ledger or batches). Same steps as the bulk delete.
+CREATE OR REPLACE FUNCTION public.delete_product(p_product_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_name text;
+  v_blockers jsonb;
+  v_combos jsonb;
+  v_combo record;
+  v_prev_rpc text;
+BEGIN
+  IF auth.uid() IS NOT NULL AND NOT public.is_admin_user() THEN
+    RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
+  END IF;
+
+  -- Same domain lock as the bulk delete: the two never interleave.
+  PERFORM pg_advisory_xact_lock(hashtext('bulk_delete:products'));
+
+  SELECT COALESCE(p.name_es, p.name_en, p_product_id::text) INTO v_name
+    FROM public.products p WHERE p.id = p_product_id;
+  IF v_name IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'not_found');
+  END IF;
+
+  -- TOCTOU: lock batches and product BEFORE the blocker check.
+  PERFORM 1 FROM public.inventory i WHERE i.product_id = p_product_id ORDER BY i.id FOR UPDATE;
+  PERFORM 1 FROM public.products p WHERE p.id = p_product_id FOR UPDATE;
+
+  SELECT jsonb_agg(to_jsonb(b)) INTO v_blockers FROM public.get_product_blockers(p_product_id) b;
+  IF v_blockers IS NOT NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'blocking_orders', 'product_name', v_name, 'blockers', v_blockers);
+  END IF;
+
+  UPDATE public.order_items oi SET inventory_id = NULL
+   WHERE oi.inventory_id IN (SELECT i.id FROM public.inventory i WHERE i.product_id = p_product_id);
+
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('id', c.id, 'name', COALESCE(c.name_es, c.name_en, c.id::text))), '[]'::jsonb)
+    INTO v_combos
+    FROM public.combo_products c
+   WHERE c.is_active
+     AND c.id IN (SELECT ci.combo_id FROM public.combo_items ci WHERE ci.product_id = p_product_id);
+
+  UPDATE public.combo_products c
+     SET is_active = false, updated_at = now()
+   WHERE c.is_active
+     AND c.id IN (SELECT ci.combo_id FROM public.combo_items ci WHERE ci.product_id = p_product_id);
+
+  FOR v_combo IN SELECT (e ->> 'id')::uuid AS id, e ->> 'name' AS name FROM jsonb_array_elements(v_combos) e LOOP
+    INSERT INTO public.activity_logs (action, entity_type, entity_id, performed_by, description, metadata)
+    VALUES ('combo_deactivated', 'combo', v_combo.id, COALESCE(auth.uid()::text, 'system'),
+            'Combo desactivado - ' || v_combo.name || ' (producto eliminado: ' || v_name || ')',
+            jsonb_build_object('comboId', v_combo.id, 'comboName', v_combo.name, 'reason', 'product_deleted',
+                               'deletedProductId', p_product_id, 'deletedProductName', v_name));
+  END LOOP;
+
+  DELETE FROM public.combo_items ci WHERE ci.product_id = p_product_id;
+
+  PERFORM public._log_product_ledger_snapshot(p_product_id);
+
+  v_prev_rpc := current_setting('app.stock_rpc', true);
+  PERFORM set_config('app.stock_rpc', 'on', true);
+  DELETE FROM public.inventory_movements m
+   WHERE m.inventory_id IN (SELECT i.id FROM public.inventory i WHERE i.product_id = p_product_id);
+  PERFORM set_config('app.stock_rpc', COALESCE(v_prev_rpc, 'off'), true);
+
+  DELETE FROM public.inventory i WHERE i.product_id = p_product_id;
+  DELETE FROM public.products p WHERE p.id = p_product_id;
+
+  INSERT INTO public.activity_logs (action, entity_type, entity_id, performed_by, description, metadata)
+  VALUES ('product_deleted', 'product', p_product_id, COALESCE(auth.uid()::text, 'system'),
+          'Producto eliminado - ' || v_name,
+          jsonb_build_object('productId', p_product_id, 'productName', v_name, 'bulk', false));
+
+  RETURN jsonb_build_object('ok', true, 'product_name', v_name, 'deactivated_combos', v_combos);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.delete_product(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.delete_product(uuid) TO authenticated, service_role;
+
 -- ----------------------------------------------------------------------------
 -- 3. Ledger safety net
 -- ----------------------------------------------------------------------------
@@ -316,7 +548,8 @@ CREATE TRIGGER trg_inventory_ledger_upd
   AFTER UPDATE OF quantity, reserved_quantity ON public.inventory
   FOR EACH ROW EXECUTE FUNCTION public.trg_inventory_ledger();
 
--- An admin editing reserved_quantity by hand would desync the allocations.
+-- An admin editing reserved_quantity by hand would desync the allocations; creating a batch
+-- with reserved > 0 would do the same (no allocation backs it).
 CREATE OR REPLACE FUNCTION public.guard_inventory_reserved_edit()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -324,9 +557,13 @@ SECURITY INVOKER
 SET search_path = public, pg_temp
 AS $function$
 BEGIN
-  IF NEW.reserved_quantity IS DISTINCT FROM OLD.reserved_quantity
-     AND current_setting('app.stock_rpc', true) IS DISTINCT FROM 'on'
-     AND current_user NOT IN ('postgres', 'service_role', 'supabase_admin') THEN
+  IF current_setting('app.stock_rpc', true) IS NOT DISTINCT FROM 'on'
+     OR current_user IN ('postgres', 'service_role', 'supabase_admin') THEN
+    RETURN NEW;
+  END IF;
+
+  IF (TG_OP = 'INSERT' AND COALESCE(NEW.reserved_quantity, 0) <> 0)
+     OR (TG_OP = 'UPDATE' AND NEW.reserved_quantity IS DISTINCT FROM OLD.reserved_quantity) THEN
     RAISE EXCEPTION 'reserved_quantity is managed by the stock reservation functions'
       USING ERRCODE = '42501';
   END IF;
@@ -340,6 +577,36 @@ DROP TRIGGER IF EXISTS guard_inventory_reserved_edit ON public.inventory;
 CREATE TRIGGER guard_inventory_reserved_edit
   BEFORE UPDATE OF reserved_quantity ON public.inventory
   FOR EACH ROW EXECUTE FUNCTION public.guard_inventory_reserved_edit();
+
+DROP TRIGGER IF EXISTS guard_inventory_reserved_insert ON public.inventory;
+CREATE TRIGGER guard_inventory_reserved_insert
+  BEFORE INSERT ON public.inventory
+  FOR EACH ROW EXECUTE FUNCTION public.guard_inventory_reserved_edit();
+
+-- The ledger cannot be erased by app roles. The SECURITY DEFINER delete functions and
+-- execute_platform_reset run as the function owner (postgres) and pass; so does the flag.
+CREATE OR REPLACE FUNCTION public.guard_inventory_movements_delete()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  IF current_setting('app.stock_rpc', true) IS NOT DISTINCT FROM 'on'
+     OR current_user IN ('postgres', 'service_role', 'supabase_admin') THEN
+    RETURN OLD;
+  END IF;
+  RAISE EXCEPTION 'inventory_movements is a ledger: rows are deleted only by the delete functions'
+    USING ERRCODE = '42501';
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.guard_inventory_movements_delete() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS guard_inventory_movements_delete ON public.inventory_movements;
+CREATE TRIGGER guard_inventory_movements_delete
+  BEFORE DELETE ON public.inventory_movements
+  FOR EACH ROW EXECUTE FUNCTION public.guard_inventory_movements_delete();
 
 -- Snapshot of every deleted batch (BEFORE DELETE: the ON DELETE CASCADE that erases its
 -- allocations runs afterwards, so their states are still readable here).

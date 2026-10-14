@@ -446,11 +446,6 @@ const stockRefusalToError = (result, orderId) => {
 };
 
 /**
- * Reserve stock for an order that already has its items. The RPC cancels the
- * order itself (same transaction) when stock is insufficient.
- * @throws {AppError} INSUFFICIENT_STOCK / INVALID_OPERATION when refused, or a DB error
- */
-/**
  * Whether the order owns 'consumed' allocations (authoritative: read from
  * order_stock_allocations, not inferred from payment_status). A read failure is logged and
  * treated as "unknown = no"; restock stays available from the order list.
@@ -469,6 +464,11 @@ const hasConsumedAllocations = async (orderId) => {
   return Array.isArray(data) && data.length > 0;
 };
 
+/**
+ * Reserve stock for an order that already has its items. The RPC cancels the
+ * order itself (same transaction) when stock is insufficient.
+ * @throws {AppError} INSUFFICIENT_STOCK / INVALID_OPERATION when refused, or a DB error
+ */
 const reserveOrderStock = async (orderId) => {
   const result = await callStockRpc('reserve_order_inventory', orderId);
   if (!result.ok) throw stockRefusalToError(result, orderId);
@@ -776,8 +776,8 @@ export const getOrderById = async (orderId) => {
 
 /**
  * Mutates the given orders: has_consumed_stock = true when a CANCELLED order owns at least
- * one 'consumed' allocation (read from order_stock_allocations, not inferred from payment
- * status). Never throws: on error the flag stays false and the failure is logged.
+ * one 'consumed' allocation (asked to the database through orders_with_consumed_stock, not
+ * inferred from payment status). Never throws: on error the flag stays false and the failure is logged.
  */
 const flagConsumedStock = async (orders) => {
   if (!Array.isArray(orders)) return;
@@ -785,11 +785,9 @@ const flagConsumedStock = async (orders) => {
   const cancelledIds = orders.filter((o) => o.status === ORDER_STATUS.CANCELLED).map((o) => o.id);
   if (cancelledIds.length === 0) return;
 
-  const { data, error } = await supabase
-    .from('order_stock_allocations')
-    .select('order_id')
-    .eq('state', 'consumed')
-    .in('order_id', cancelledIds);
+  // RPC (ids in the request body) instead of .in('order_id', ids): hundreds of uuids in a
+  // GET URL exceed proxy limits and would silently hide the button.
+  const { data, error } = await supabase.rpc('orders_with_consumed_stock', { p_order_ids: cancelledIds });
   if (error) {
     logError(error, { operation: 'flagConsumedStock' });
     return;

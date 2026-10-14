@@ -58,11 +58,14 @@ vi.mock('@/components/admin/modals', () => ({
         <button type="button" onClick={onCancel}>confirm-no</button>
       </div>
     ) : null,
-  InputDialog: ({ show, onConfirm }) =>
+  InputDialog: ({ show, onConfirm, defaultValue }) =>
     show ? (
+      <div>
+        <span data-testid="input-default">{defaultValue}</span>
       <button type="button" onClick={() => onConfirm(state.inputs.length ? state.inputs.shift() : 'customer asked')}>
         input-submit
       </button>
+      </div>
     ) : null
 }));
 vi.mock('@/components/ToastNotification', () => ({
@@ -168,8 +171,8 @@ describe('AdminOrdersTab - persistent "return to inventory" action on cancelled 
     await waitFor(() => expect(getAllOrders.mock.calls.length).toBeGreaterThan(callsBefore));
   });
 
-  it('requires a reason: an empty one shows an error and never calls the service', async () => {
-    state.inputs = ['   '];
+  it('requires a reason: an empty one shows an error, never calls the service and keeps the dialog open with what was typed', async () => {
+    state.inputs = ['   ', 'finally a reason'];
     await openRestock();
 
     fireEvent.click(await screen.findByRole('button', { name: 'input-submit' }));
@@ -178,6 +181,12 @@ describe('AdminOrdersTab - persistent "return to inventory" action on cancelled 
       expect(screen.getByTestId('toast')).toHaveTextContent('adminOrders.messages.restockReasonRequired')
     );
     expect(restockOrder).not.toHaveBeenCalled();
+    // the dialog comes back with the typed text instead of an empty box
+    await waitFor(() => expect(screen.getByTestId('input-default').textContent).toBe('   '));
+
+    restockOrder.mockResolvedValue({ ok: true, restocked: true });
+    fireEvent.click(screen.getByRole('button', { name: 'input-submit' }));
+    await waitFor(() => expect(restockOrder).toHaveBeenCalledWith('o2', 'finally a reason'));
   });
 
   it('shows an error toast when the restock fails', async () => {
