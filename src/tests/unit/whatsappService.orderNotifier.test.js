@@ -4,7 +4,7 @@ vi.mock('@/lib/supabase', () => ({
   supabase: { storage: { from: vi.fn() } }
 }));
 
-import { notifyAdminNewPayment } from '@/lib/whatsappService';
+import { buildAdminNewPaymentMessage, buildAdminNewPaymentWhatsAppUrl } from '@/lib/whatsappService';
 
 const ADMIN_PHONE = '+1 555 123 4567';
 
@@ -73,7 +73,7 @@ const EXPECTED_EN = () =>
   `🔗 *View in system:*\n${link()}\n\n` +
   `_Message from PapuEnvíos_`;
 
-describe('notifyAdminNewPayment', () => {
+describe('admin order notification (guided, no auto-open)', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -82,56 +82,42 @@ describe('notifyAdminNewPayment', () => {
     it.each([
       ['es', EXPECTED_ES],
       ['en', EXPECTED_EN]
-    ])('opens WhatsApp with the exact %s message', (language, expected) => {
-      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
-      notifyAdminNewPayment(order, ADMIN_PHONE, language);
+    ])('builds the exact %s message', (language, expected) => {
+      expect(buildAdminNewPaymentMessage(order, language)).toBe(expected());
+    });
 
-      expect(openSpy).toHaveBeenCalledTimes(1);
-      const [rawUrl, target] = openSpy.mock.calls[0];
-      expect(target).toBe('_blank');
+    it.each([
+      ['es', EXPECTED_ES],
+      ['en', EXPECTED_EN]
+    ])('builds a wa.me URL carrying the exact %s message without opening a window', (language, expected) => {
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+      const rawUrl = buildAdminNewPaymentWhatsAppUrl(order, ADMIN_PHONE, language);
+
       expect(rawUrl.startsWith('https://wa.me/15551234567?text=')).toBe(true);
       expect(new URL(rawUrl).searchParams.get('text')).toBe(expected());
+      expect(openSpy).not.toHaveBeenCalled();
     });
   });
 
-  describe('result contract', () => {
-    it('returns { opened: true } and opens the chat on success', () => {
-      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
-      expect(notifyAdminNewPayment(order, ADMIN_PHONE, 'es')).toEqual({ opened: true });
-      expect(openSpy).toHaveBeenCalledTimes(1);
-    });
-
-    it.each([[undefined], [null], [''], [12345]])(
-      'returns no_recipient without opening or alerting when admin phone is %j',
+  describe('URL contract', () => {
+    it.each([[undefined], [null], [''], [12345], ['https://chat.whatsapp.com/abc']])(
+      'returns an empty URL without opening or alerting when admin phone is %j',
       (phone) => {
         const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
         const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
 
-        expect(notifyAdminNewPayment(order, phone, 'es')).toEqual({
-          opened: false,
-          reason: 'no_recipient'
-        });
+        expect(buildAdminNewPaymentWhatsAppUrl(order, phone, 'es')).toBe('');
         expect(openSpy).not.toHaveBeenCalled();
         expect(alertSpy).not.toHaveBeenCalled();
       }
     );
 
-    it('returns invalid_url without opening when the phone cannot be formatted', () => {
-      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
-      expect(notifyAdminNewPayment(order, '---', 'es')).toEqual({
-        opened: false,
-        reason: 'invalid_url'
-      });
-      expect(openSpy).not.toHaveBeenCalled();
+    it('returns an empty URL when the phone cannot be formatted', () => {
+      expect(buildAdminNewPaymentWhatsAppUrl(order, '---', 'es')).toBe('');
     });
 
-    it('returns invalid_order without opening when the order is not an object', () => {
-      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
-      expect(notifyAdminNewPayment(null, ADMIN_PHONE, 'es')).toEqual({
-        opened: false,
-        reason: 'invalid_order'
-      });
-      expect(openSpy).not.toHaveBeenCalled();
+    it('returns an empty URL when the order is not an object', () => {
+      expect(buildAdminNewPaymentWhatsAppUrl(null, ADMIN_PHONE, 'es')).toBe('');
     });
   });
 });

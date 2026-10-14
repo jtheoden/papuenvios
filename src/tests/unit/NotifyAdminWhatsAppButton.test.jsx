@@ -16,7 +16,7 @@ vi.mock('@/components/ui/use-toast', () => ({ toast: (...args) => toastMock(...a
 
 const recipientMock = vi.fn();
 vi.mock('@/lib/notificationSettingsService', () => ({
-  getFreshWhatsappRecipient: () => recipientMock()
+  getFreshGuidedWhatsappPhone: () => recipientMock()
 }));
 
 vi.mock('@/lib/supabase', () => ({ supabase: { storage: { from: vi.fn() } } }));

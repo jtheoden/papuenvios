@@ -13,6 +13,8 @@ import { useState } from 'react';
  * @param {Function} props.onClick - Click handler
  * @param {boolean} props.disabled - Button disabled state
  * @param {string} props.title - Native title attribute for accessibility
+ * @param {string} props.type - Native button type (default: 'button', so it never submits a form by accident)
+ * @param {string} props['aria-label'] - Accessible name, needed when the visible text is hidden on small screens
  */
 const TooltipButton = ({
   children,
@@ -22,7 +24,9 @@ const TooltipButton = ({
   variant = 'default',
   onClick,
   disabled = false,
-  title
+  title,
+  type = 'button',
+  'aria-label': ariaLabel
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
 
@@ -50,6 +54,8 @@ const TooltipButton = ({
   return (
     <div className="relative inline-block" onMouseEnter={() => setShowTooltip(true)} onMouseLeave={() => setShowTooltip(false)}>
       <button
+        type={type}
+        aria-label={ariaLabel}
         onClick={onClick}
         disabled={disabled}
         className={finalClassName}

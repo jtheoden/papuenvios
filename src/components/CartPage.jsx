@@ -13,8 +13,8 @@ import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingSer
 import { getSelectableProvinces, getShippingState, isShippingBlocked } from '@/lib/shippingZoneRules';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
 import { convertCurrency } from '@/lib/currencyService';
-import { generateWhatsAppURL, notifyAdminNewPayment, openWhatsAppChat } from '@/lib/whatsappService';
-import { getActiveWhatsappRecipient, getFreshWhatsappRecipient, getFreshNotificationSettings } from '@/lib/notificationSettingsService';
+import { generateWhatsAppURL, buildAdminNewPaymentWhatsAppUrl, openWhatsAppChat } from '@/lib/whatsappService';
+import { getActiveWhatsappRecipient, getGuidedWhatsappPhone, getFreshNotificationSettings } from '@/lib/notificationSettingsService';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
 import { getPaymentConfirmationBlocker } from '@/lib/orderPayerPhone';
 import { isValidPayerPhone, normalizePayerPhone, PAYER_PHONE_MAX_LENGTH } from '@/lib/payerPhone';
@@ -760,7 +760,8 @@ const CartPage = ({ onNavigate }) => {
         total: totalAmount,
         currency: currency.code || 'USD',
         recipientName: recipientDetails.fullName,
-        itemCount: cart.length
+        itemCount: cart.length,
+        whatsappLoading: true
       };
 
       // Run all post-creation tasks in parallel, non-blocking
@@ -805,44 +806,43 @@ const CartPage = ({ onNavigate }) => {
         }
 
         // Get fresh notification settings
-        let freshSettings = notificationSettings;
-        let notificationWhatsapp = getActiveWhatsappRecipient(notificationSettings);
+        // The guided step needs a phone (wa.me): group targets fall back to the admin phone.
+        let notificationWhatsapp = getGuidedWhatsappPhone(notificationSettings);
         try {
-          freshSettings = await getFreshNotificationSettings();
-          notificationWhatsapp = getActiveWhatsappRecipient(freshSettings);
+          const freshSettings = await getFreshNotificationSettings();
+          notificationWhatsapp = getGuidedWhatsappPhone(freshSettings) || notificationWhatsapp;
         } catch (e) {
           console.warn('Fresh settings fetch failed, using cached:', e);
         }
 
-        // Notify admin via WhatsApp
-        if (notificationWhatsapp) {
-          try {
-            const orderForNotification = {
-              ...createdOrder,
-              order_items: orderItems.map(item => ({
-                item_name_es: language === 'es' ? item.name : item.nameEn || item.name,
-                item_name_en: item.nameEn || item.name,
-                quantity: item.quantity
-              })),
-              user_name: user.full_name || user.user_metadata?.full_name || user.email?.split('@')[0],
-              user_email: user.email,
-              payment_reference: paymentReference.trim(),
-              payer_phone: normalizePayerPhone(payerPhone)
-            };
-            const notifyResult = notifyAdminNewPayment(orderForNotification, notificationWhatsapp, language);
-            if (!notifyResult?.opened) {
-              toast({
-                title: t('remittances.notifyAdmin.noRecipientTitle'),
-                description: t('remittances.notifyAdmin.noRecipient'),
-                variant: 'destructive'
-              });
-            }
-          } catch (e) {
-            console.warn('WhatsApp notification failed:', e);
-          }
-        }
+        const orderForNotification = {
+          ...createdOrder,
+          order_items: orderItems.map(item => ({
+            item_name_es: language === 'es' ? item.name : item.nameEn || item.name,
+            item_name_en: item.nameEn || item.name,
+            quantity: item.quantity
+          })),
+          user_name: user.full_name || user.user_metadata?.full_name || user.email?.split('@')[0],
+          user_email: user.email,
+          payment_reference: paymentReference.trim(),
+          payer_phone: normalizePayerPhone(payerPhone)
+        };
 
-        // Note: Edge function 'notify-order' removed - notifications handled by notifyAdminNewPayment above
+        // Guided WhatsApp step: expose the prepared URL in the confirmation modal.
+        // Always ends the loading state, even when no recipient is configured.
+        let whatsappUrl = '';
+        try {
+          whatsappUrl = notificationWhatsapp
+            ? buildAdminNewPaymentWhatsAppUrl(orderForNotification, notificationWhatsapp, language)
+            : '';
+        } catch (e) {
+          console.warn('WhatsApp URL build failed:', e);
+        }
+        setConfirmedOrderInfo(prev => prev
+          ? { ...prev, whatsappUrl, whatsappNumber: notificationWhatsapp, whatsappLoading: false }
+          : prev);
+
+        // Admin notification is the guided WhatsApp link in the confirmation modal (no auto-open).
 
         // Log activity
         logActivity({
@@ -1359,6 +1359,9 @@ const CartPage = ({ onNavigate }) => {
           recipientName={confirmedOrderInfo?.recipientName}
           itemCount={confirmedOrderInfo?.itemCount}
           estimatedDelivery={t('cart.payment.estimatedDelivery')}
+          whatsappUrl={confirmedOrderInfo?.whatsappUrl}
+          whatsappNumber={confirmedOrderInfo?.whatsappNumber}
+          whatsappLoading={confirmedOrderInfo?.whatsappLoading}
         />
       </div>
     );
@@ -1587,6 +1590,9 @@ const CartPage = ({ onNavigate }) => {
         recipientName={confirmedOrderInfo?.recipientName}
         itemCount={confirmedOrderInfo?.itemCount}
         estimatedDelivery={language === 'es' ? '24-72 horas' : '24-72 hours'}
+        whatsappUrl={confirmedOrderInfo?.whatsappUrl}
+        whatsappNumber={confirmedOrderInfo?.whatsappNumber}
+        whatsappLoading={confirmedOrderInfo?.whatsappLoading}
       />
     </div>
   );

@@ -11,8 +11,9 @@ import { MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { getFreshWhatsappRecipient } from '@/lib/notificationSettingsService';
+import { getFreshGuidedWhatsappPhone } from '@/lib/notificationSettingsService';
 import {
+  ADMIN_NOTIFICATION_LANGUAGE,
   buildRemittanceProofMessage,
   generateWhatsAppURL,
   resolveRemittanceProofLink
@@ -21,7 +22,7 @@ import {
 const STATUS = { LOADING: 'loading', READY: 'ready', UNAVAILABLE: 'unavailable' };
 
 const NotifyAdminWhatsAppButton = ({ remittance, user = null, className = '' }) => {
-  const { t, language } = useLanguage();
+  const { t } = useLanguage();
   const [target, setTarget] = useState({ status: STATUS.LOADING, url: '' });
 
   const remittanceId = remittance?.id;
@@ -38,7 +39,7 @@ const NotifyAdminWhatsAppButton = ({ remittance, user = null, className = '' }) 
 
     const resolveTarget = async () => {
       try {
-        const recipient = await getFreshWhatsappRecipient();
+        const recipient = await getFreshGuidedWhatsappPhone();
         if (!recipient) return { status: STATUS.UNAVAILABLE, url: '' };
 
         const proofLink = await resolveRemittanceProofLink(remittance);
@@ -51,7 +52,7 @@ const NotifyAdminWhatsAppButton = ({ remittance, user = null, className = '' }) 
             user?.user_metadata?.name ||
             user?.email?.split('@')[0]
         };
-        const message = buildRemittanceProofMessage(enriched, { language, proofLink });
+        const message = buildRemittanceProofMessage(enriched, { language: ADMIN_NOTIFICATION_LANGUAGE, proofLink });
         const url = generateWhatsAppURL(recipient, message);
         return url ? { status: STATUS.READY, url } : { status: STATUS.UNAVAILABLE, url: '' };
       } catch {
@@ -68,7 +69,7 @@ const NotifyAdminWhatsAppButton = ({ remittance, user = null, className = '' }) 
     };
     // remittance/user objects are intentionally tracked by the identifying fields below
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remittanceId, proofUrl, language, user?.email]);
+  }, [remittanceId, proofUrl, user?.email]);
 
   const handleClick = () => {
     if (target.status === STATUS.READY && target.url) {

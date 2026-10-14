@@ -84,12 +84,13 @@ vi.mock('@/lib/currencyService', () => ({ convertCurrency: vi.fn(async (amount) 
 vi.mock('@/lib/whatsappService', async (importOriginal) => ({
   ...(await importOriginal()),
   generateWhatsAppURL: vi.fn(),
-  notifyAdminNewPayment: vi.fn(),
+  buildAdminNewPaymentWhatsAppUrl: vi.fn(() => 'https://wa.me/5355550000?text=x'),
   openWhatsAppChat: vi.fn(),
 }));
 vi.mock('@/lib/notificationSettingsService', () => ({
   getActiveWhatsappRecipient: vi.fn(() => '+5355550000'),
   getFreshWhatsappRecipient: vi.fn(),
+  getGuidedWhatsappPhone: vi.fn(() => '+5355550000'),
   getFreshNotificationSettings: vi.fn(async () => ({})),
 }));
 vi.mock('@/lib/orderService', () => ({ createOrder: vi.fn(), uploadPaymentProof: vi.fn() }));
@@ -151,8 +152,7 @@ vi.mock('@/components/shared/ZelleAccountDisplay', () => ({ default: () => null 
 
 import CartPage from '@/components/CartPage';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
-import { notifyAdminNewPayment } from '@/lib/whatsappService';
-import { toast } from '@/components/ui/use-toast';
+import { buildAdminNewPaymentWhatsAppUrl } from '@/lib/whatsappService';
 
 const confirmButton = () => screen.getByRole('button', { name: 'cart.payment.confirm' });
 
@@ -198,7 +198,6 @@ describe('CartPage - payment step', () => {
     state.zones = liveZones();
     createOrder.mockResolvedValue({ id: 'o1', order_number: 'ORD-1', payment_status: 'pending' });
     uploadPaymentProof.mockResolvedValue('https://files/proof.png');
-    notifyAdminNewPayment.mockReturnValue({ opened: true });
   });
 
   describe('payer phone gate (PR-06b)', () => {
@@ -245,7 +244,7 @@ describe('CartPage - payment step', () => {
     });
   });
 
-  describe('admin notification toast after a successful order', () => {
+  describe('guided admin notification after a successful order', () => {
     const submitValidOrder = async () => {
       await reachPaymentStep();
       await attachProof();
@@ -253,26 +252,18 @@ describe('CartPage - payment step', () => {
       typePhone(VALID_PHONE);
       await waitFor(() => expect(confirmButton()).not.toBeDisabled());
       fireEvent.click(confirmButton());
-      await waitFor(() => expect(notifyAdminNewPayment).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(buildAdminNewPaymentWhatsAppUrl).toHaveBeenCalledTimes(1));
     };
 
-    it('shows a destructive toast when the notifier reports no recipient', async () => {
-      notifyAdminNewPayment.mockReturnValue({ opened: false, reason: 'no_recipient' });
+    it('builds the wa.me URL with the payer phone and never opens a window by itself', async () => {
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
       await submitValidOrder();
 
-      await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({
-        title: 'remittances.notifyAdmin.noRecipientTitle',
-        variant: 'destructive',
-      })));
-    });
-
-    it('shows no such toast when the notifier opened the chat', async () => {
-      notifyAdminNewPayment.mockReturnValue({ opened: true });
-      await submitValidOrder();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-
-      const titles = toast.mock.calls.map(([arg]) => arg?.title);
-      expect(titles).not.toContain('remittances.notifyAdmin.noRecipientTitle');
+      const [orderForNotification, recipient] = buildAdminNewPaymentWhatsAppUrl.mock.calls[0];
+      expect(recipient).toBe('+5355550000');
+      expect(orderForNotification).toMatchObject({ order_number: 'ORD-1', payer_phone: VALID_PHONE });
+      expect(openSpy).not.toHaveBeenCalled();
+      openSpy.mockRestore();
     });
   });
 

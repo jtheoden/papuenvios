@@ -385,6 +385,8 @@
       }
     },
     "user": {
+      "notifyAdminWhatsapp": "Notificar al administrador por WhatsApp",
+      "notifyAdminError": "No se pudo abrir WhatsApp. Inténtalo de nuevo.",
       "searchPlaceholder": "Buscar por nombre, referencia...",
       "trackYourRemittances": "Consulte el estado de sus envíos de dinero",
       "trackRemittances": "Consulte el estado de sus envíos de dinero",

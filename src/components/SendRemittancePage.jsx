@@ -20,7 +20,13 @@ import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
 import { getSelectableProvinces, isCashDeliveryBlocked, getShippingState } from '@/lib/shippingZoneRules';
 import { calcTotalToPay } from '@/lib/remittanceCalculations';
 import { pickRecipientAddress } from '@/lib/recipientInfo';
-import NotifyAdminWhatsAppButton from '@/components/NotifyAdminWhatsAppButton';
+import {
+  ADMIN_NOTIFICATION_LANGUAGE,
+  buildAdminNewPaymentProofWhatsAppUrl,
+  buildAdminNewRemittanceWhatsAppUrl,
+  buildRemittanceNotificationPayload
+} from '@/lib/whatsappService';
+import { getFreshGuidedWhatsappPhone } from '@/lib/notificationSettingsService';
 import { validateRemittanceOffer } from '@/lib/orderDiscountService';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
@@ -1379,23 +1385,39 @@ const SendRemittancePage = ({ onNavigate }) => {
               onSubmit={async () => {
                 setSubmitting(true);
                 try {
-                  // uploadPaymentProof is the single automatic admin-notification point
                   const uploadedRemittance = await uploadPaymentProof(
                     createdRemittance.id,
                     paymentData.file,
                     paymentData.reference,
                     paymentData.notes,
-                    { language, payerPhone: paymentData.payerPhone }
+                    { payerPhone: paymentData.payerPhone }
                   );
+
+                  // Guided WhatsApp step: build the URL here, the user opens it via a click in the modal
+                  // Recipient comes from fresh settings; group targets fall back to the admin phone
+                  const recipient = await getFreshGuidedWhatsappPhone(notificationSettings);
+                  let whatsappUrl = '';
+                  try {
+                    // The message is built from the row the service persisted (status, proof path,
+                    // reference and amounts), not from wizard state
+                    whatsappUrl = recipient
+                      ? await buildAdminNewPaymentProofWhatsAppUrl(
+                          buildRemittanceNotificationPayload(uploadedRemittance, user),
+                          recipient,
+                          ADMIN_NOTIFICATION_LANGUAGE
+                        )
+                      : '';
+                  } catch (e) { console.warn('WhatsApp URL build failed', e); }
 
                   toast({ title: t('common.success'), description: t('remittances.wizard.proofSubmittedSuccess') });
 
                   setConfirmedRemittanceInfo({
                     remittanceNumber: createdRemittance.remittance_number,
-                    total: calculation?.amountToDeliver || parseFloat(amount),
-                    currency: calculation?.deliveryCurrency || 'CUP',
+                    total: calculation?.amountToDeliver || createdRemittance.amount_to_deliver || parseFloat(amount) || 0,
+                    currency: calculation?.deliveryCurrency || createdRemittance.currency_delivered || 'CUP',
                     recipientName: recipientData.name,
-                    remittance: uploadedRemittance
+                    whatsappUrl,
+                    whatsappNumber: recipient
                   });
                   setShowConfirmationModal(true);
                 } catch (error) {
@@ -1408,7 +1430,38 @@ const SendRemittancePage = ({ onNavigate }) => {
               submitting={submitting}
               submitLabel={t('remittances.wizard.submitProofAndComplete')}
               showUploadLater={true}
-              onUploadLater={() => onNavigate('my-remittances')}
+              onUploadLater={async () => {
+                if (!createdRemittance) {
+                  onNavigate('my-remittances');
+                  return;
+                }
+
+                // Remittance exists but the proof is pending: guide the client to notify the admin.
+                // Awaiting here is fine: the user gesture that matters is the click on the modal link.
+                const recipient = await getFreshGuidedWhatsappPhone(notificationSettings);
+                let whatsappUrl = '';
+                try {
+                  const enrichedRemittance = buildRemittanceNotificationPayload({
+                    ...createdRemittance,
+                    remittance_types: selectedType,
+                    amount_to_deliver: calculation?.amountToDeliver ?? createdRemittance.amount_to_deliver
+                  }, user);
+                  whatsappUrl = recipient
+                    ? buildAdminNewRemittanceWhatsAppUrl(enrichedRemittance, recipient, ADMIN_NOTIFICATION_LANGUAGE)
+                    : '';
+                } catch (e) { console.warn('WhatsApp URL build failed', e); }
+
+                setConfirmedRemittanceInfo({
+                  remittanceNumber: createdRemittance.remittance_number,
+                  total: calculation?.amountToDeliver || createdRemittance.amount_to_deliver || parseFloat(amount) || 0,
+                  currency: calculation?.deliveryCurrency || createdRemittance.currency_delivered || 'CUP',
+                  recipientName: recipientData.name,
+                  whatsappUrl,
+                  whatsappNumber: recipient,
+                  proofPending: true
+                });
+                setShowConfirmationModal(true);
+              }}
             />
           </motion.div>
         )}
@@ -1431,11 +1484,9 @@ const SendRemittancePage = ({ onNavigate }) => {
         currency={confirmedRemittanceInfo?.currency}
         recipientName={confirmedRemittanceInfo?.recipientName}
         estimatedDelivery={t('remittances.wizard.estimatedDeliveryTime')}
-        extraActions={
-          confirmedRemittanceInfo?.remittance ? (
-            <NotifyAdminWhatsAppButton remittance={confirmedRemittanceInfo.remittance} user={user} />
-          ) : null
-        }
+        whatsappUrl={confirmedRemittanceInfo?.whatsappUrl}
+        whatsappNumber={confirmedRemittanceInfo?.whatsappNumber}
+        proofPending={confirmedRemittanceInfo?.proofPending}
       />
     </div>
   );

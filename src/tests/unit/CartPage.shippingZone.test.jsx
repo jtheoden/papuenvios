@@ -88,6 +88,7 @@ vi.mock('@/lib/whatsappService', () => ({
 vi.mock('@/lib/notificationSettingsService', () => ({
   getActiveWhatsappRecipient: vi.fn(),
   getFreshWhatsappRecipient: vi.fn(),
+  getGuidedWhatsappPhone: vi.fn(() => ''),
   getFreshNotificationSettings: vi.fn(),
 }));
 vi.mock('@/lib/orderService', () => ({ createOrder: vi.fn(), uploadPaymentProof: vi.fn() }));

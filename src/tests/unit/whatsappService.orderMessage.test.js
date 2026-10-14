@@ -4,7 +4,7 @@ vi.mock('@/lib/supabase', () => ({
   supabase: { storage: { from: vi.fn() } }
 }));
 
-import { notifyAdminNewPayment } from '@/lib/whatsappService';
+import { buildAdminNewPaymentWhatsAppUrl } from '@/lib/whatsappService';
 
 const baseOrder = {
   id: 'ord-1',
@@ -19,13 +19,11 @@ const baseOrder = {
 };
 
 const sentMessage = (order, language) => {
-  const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
-  notifyAdminNewPayment(order, '+15551234567', language);
-  const url = new URL(openSpy.mock.calls[0][0]);
+  const url = new URL(buildAdminNewPaymentWhatsAppUrl(order, '+15551234567', language));
   return url.searchParams.get('text');
 };
 
-describe('notifyAdminNewPayment payer phone line', () => {
+describe('buildAdminNewPaymentWhatsAppUrl payer phone line', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });

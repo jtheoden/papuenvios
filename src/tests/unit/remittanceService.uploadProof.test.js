@@ -46,15 +46,11 @@ vi.mock('@/lib/activityLogger', () => ({ logActivity: vi.fn(async () => ({ succe
 vi.mock('@/lib/orderDiscountService', () => ({ recordOfferUsage: vi.fn() }));
 vi.mock('@/lib/currencyService', () => ({ getExchangeRate: vi.fn() }));
 vi.mock('@/lib/notificationSettingsService', () => ({
-  getFreshWhatsappRecipient: vi.fn(async () => '+15551234567')
+  getFreshGuidedWhatsappPhone: vi.fn(async () => '+15551234567')
 }));
-vi.mock('@/lib/whatsappService', async (importOriginal) => {
-  const actual = await importOriginal();
-  return { ...actual, notifyAdminNewPaymentProof: vi.fn(async () => ({ opened: true })) };
-});
 
 import { uploadPaymentProof } from '@/lib/remittanceService';
-import { notifyAdminNewPaymentProof } from '@/lib/whatsappService';
+import { getFreshGuidedWhatsappPhone } from '@/lib/notificationSettingsService';
 import { logActivity } from '@/lib/activityLogger';
 
 const PHONE = '+1 305 555 0100';
@@ -69,23 +65,18 @@ const resetState = () => {
 describe('remittanceService.uploadPaymentProof notification', () => {
   beforeEach(resetState);
 
-  it('notifies the admin exactly once, in Spanish by default', async () => {
+  it('never opens WhatsApp by itself (the guided step belongs to the caller)', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
     await uploadPaymentProof('rem-1', file, 'John Doe', 'note', { payerPhone: PHONE });
-    expect(notifyAdminNewPaymentProof).toHaveBeenCalledTimes(1);
-    expect(notifyAdminNewPaymentProof.mock.calls[0][2]).toBe('es');
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(getFreshGuidedWhatsappPhone).not.toHaveBeenCalled();
+    openSpy.mockRestore();
   });
 
-  it('forwards the language option to the notifier', async () => {
-    await uploadPaymentProof('rem-1', file, 'John Doe', 'note', { language: 'en', payerPhone: PHONE });
-    expect(notifyAdminNewPaymentProof).toHaveBeenCalledTimes(1);
-    expect(notifyAdminNewPaymentProof.mock.calls[0][2]).toBe('en');
-  });
-
-  it('does not throw when the notifier rejects', async () => {
-    notifyAdminNewPaymentProof.mockRejectedValueOnce(new Error('boom'));
+  it('returns the persisted row so callers can build the admin message from it', async () => {
     await expect(
       uploadPaymentProof('rem-1', file, 'John Doe', '', { payerPhone: PHONE })
-    ).resolves.toMatchObject({ id: 'rem-1' });
+    ).resolves.toMatchObject({ id: 'rem-1', status: 'payment_proof_uploaded', payer_phone: PHONE });
   });
 });
 
