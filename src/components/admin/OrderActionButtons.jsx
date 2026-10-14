@@ -1,5 +1,5 @@
 import React from 'react';
-import { Eye, Play, Truck, Camera, Check, Ban, CheckCircle, XCircle } from 'lucide-react';
+import { Eye, Play, Truck, Camera, Check, Ban, CheckCircle, XCircle, Undo2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 /**
@@ -17,6 +17,7 @@ const OrderActionButtons = ({
   onUploadDeliveryProof,
   onCompleteOrder,
   onCancelOrder,
+  onRestockOrder,
   actionLoading
 }) => {
   const { t, language } = useLanguage();
@@ -143,6 +144,17 @@ const OrderActionButtons = ({
         disabled: isLoading,
         color: 'bg-red-500 hover:bg-red-600 text-white',
         tooltip: t('adminOrders.action.cancelOrder')
+      })}
+
+      {/* Return consumed units to the inventory: only cancelled orders that really consumed stock
+          (authoritative flag from order_stock_allocations, loaded by getAllOrders) */}
+      {order.status === 'cancelled' && order.has_consumed_stock === true && onRestockOrder && renderButton({
+        icon: <Undo2 className="h-4 w-4" />,
+        label: t('adminOrders.action.restock'),
+        onClick: () => onRestockOrder(order),
+        disabled: isLoading,
+        color: 'bg-amber-500 hover:bg-amber-600 text-white',
+        tooltip: t('adminOrders.action.restock')
       })}
     </div>
   );

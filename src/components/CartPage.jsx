@@ -16,6 +16,8 @@ import { convertCurrency } from '@/lib/currencyService';
 import { generateWhatsAppURL, buildAdminNewPaymentWhatsAppUrl, openWhatsAppChat } from '@/lib/whatsappService';
 import { getActiveWhatsappRecipient, getGuidedWhatsappPhone, getFreshNotificationSettings } from '@/lib/notificationSettingsService';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
+import { isStockReservationRefusal } from '@/lib/stockErrors';
+import { resolveCartItemType } from '@/lib/cartItemType';
 import { getPaymentConfirmationBlocker } from '@/lib/orderPayerPhone';
 import { isValidPayerPhone, normalizePayerPhone, PAYER_PHONE_MAX_LENGTH } from '@/lib/payerPhone';
 import { pickAvailableZelleAccount, registerZelleTransaction, ZELLE_TRANSACTION_TYPES } from '@/lib/zelleService';
@@ -38,6 +40,12 @@ import { useUserDiscounts } from '@/hooks/useUserDiscounts';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { isPaymentMethodEnabled, isPaymentMethodDisabledError, PAYMENT_FLOWS } from '@/lib/paymentMethodsService';
 import { useModal } from '@/contexts/ModalContext';
+
+const STOCK_REFUSAL_MESSAGE_KEYS = {
+  invalid_item: 'cart.stock.invalidItem',
+  too_many_open_reservations: 'cart.stock.tooManyOpen',
+  empty_order: 'cart.stock.emptyOrder'
+};
 
 const CartPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
@@ -737,7 +745,7 @@ const CartPage = ({ onNavigate }) => {
 
       // Prepare order items
       const orderItems = cart.map(item => ({
-        itemType: item.type || 'product',
+        itemType: resolveCartItemType(item),
         itemId: item.id,
         nameEs: item.name_es || item.name,
         nameEn: item.name_en || item.name,
@@ -895,6 +903,24 @@ const CartPage = ({ onNavigate }) => {
         toast({
           title: t('common.error'),
           description: t('paymentMethods.checkout.rejected'),
+          variant: 'destructive'
+        });
+        return;
+      }
+      if (isStockReservationRefusal(error)) {
+        // The server already cancelled the just-created order; the cart is kept so the customer can adjust it
+        const stockItem = cart.find(item => item.id === error.context?.productId);
+        const stockItemName = language === 'es'
+          ? (stockItem?.name_es || stockItem?.name)
+          : (stockItem?.name_en || stockItem?.name_es || stockItem?.name);
+        const description = stockItem && error.context?.reason === 'insufficient_stock'
+          ? t('cart.stock.insufficientItem')
+              .replace('{name}', stockItemName)
+              .replace('{available}', String(error.context?.available ?? 0))
+          : t(STOCK_REFUSAL_MESSAGE_KEYS[error.context?.reason] || 'cart.stock.insufficient');
+        toast({
+          title: t('common.error'),
+          description,
           variant: 'destructive'
         });
         return;

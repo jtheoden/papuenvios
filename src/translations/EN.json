@@ -667,7 +667,8 @@
       "expiryNone": "No date",
       "clearFilters": "Clear filters",
       "showingResults": "Showing {count} of {total} products",
-      "noProducts": "No products found"
+      "noProducts": "No products found",
+      "stockBelowReserved": "Stock cannot be lower than the units reserved by open orders. Cancel or validate those orders first."
     },
     "categories": {
       "manage": "Manage Categories",
@@ -1265,6 +1266,13 @@
     "restored": {
       "title": "Welcome back!",
       "description": "Continue with your purchase where you left off."
+    },
+    "stock": {
+      "insufficient": "One of the products in your order no longer has enough stock. Your cart is kept: review the quantities and try again.",
+      "insufficientItem": "\"{name}\" no longer has enough stock (available: {available}). Your cart is kept: adjust the quantity and try again.",
+      "invalidItem": "A product in your cart is no longer available. Remove it from the cart and try again.",
+      "tooManyOpen": "You already have too many unpaid orders holding reserved stock. Pay or cancel one before creating another.",
+      "emptyOrder": "Your order has no stocked products to reserve. Review your cart and try again."
     }
   },
   "auth": {
@@ -1312,7 +1320,8 @@
     "reopenOrderError": "Error reopening order",
     "orderCancelled": "Order Cancelled",
     "orderCancelledMessage": "This order was cancelled. You can reopen it to continue with the payment process.",
-    "reopenOrderButton": "Reopen Order"
+    "reopenOrderButton": "Reopen Order",
+    "reopenInsufficientStock": "This order cannot be reopened: one or more products no longer have enough stock."
   },
   "adminOrders": {
     "title": "Orders History",
@@ -1382,7 +1391,8 @@
       "markAsDispatched": "Mark as Dispatched",
       "uploadProof": "Upload Proof",
       "completeOrder": "Complete Order",
-      "cancelOrder": "Cancel Order"
+      "cancelOrder": "Cancel Order",
+      "restock": "Return to inventory"
     },
     "detail": {
       "title": "Order Details",
@@ -1437,7 +1447,14 @@
       "selectImage": "Select a proof image",
       "invalidImage": "Please select a valid image",
       "imageTooLarge": "File is too large. Max 5MB",
-      "onlyDispatchedOrders": "You can only upload proof for dispatched orders"
+      "onlyDispatchedOrders": "You can only upload proof for dispatched orders",
+      "validateStockError": "Payment could not be validated: there is not enough stock for this order. The status was restored; check the inventory and try again.",
+      "restockPrompt": "The cancelled order had already deducted its stock. Return the units only if you have confirmed the goods physically came back to the warehouse. Otherwise choose No: the stock stays deducted.",
+      "restockSuccess": "Units returned to inventory",
+      "restockNothing": "There were no units left to return",
+      "restockReasonPrompt": "Why are the units of order {orderNumber} going back to inventory? (for example: goods returned by the courier). This note is saved in the stock ledger.",
+      "restockReasonRequired": "A reason is required to return the units to inventory",
+      "restockError": "The units could not be returned to inventory. The order stays cancelled; please try again."
     },
     "modals": {
       "startTitle": "Start Processing",
@@ -1447,7 +1464,9 @@
       "completeTitle": "Complete Order",
       "cancelTitle": "Cancel Order",
       "submit": "Submit",
-      "confirm": "Confirm"
+      "confirm": "Confirm",
+      "restockTitle": "Return the units to inventory?",
+      "restockReasonTitle": "Reason for the return"
     },
     "deliveryModal": {
       "title": "Upload Delivery Evidence",
@@ -1994,5 +2013,41 @@
     "openFullTab": "Open the full remittances tab",
     "liveNew": "{count} new remittance(s) to process",
     "badgeAria": "{count} items pending your attention"
+  },
+  "stockPolicy": {
+    "title": "Stock reservation policy",
+    "intro": "Sets how long an order may hold reserved stock without progressing, and how many open pending orders each customer may have. Changes apply to new reservations and to the next run of the automatic cleanup.",
+    "unpaid": {
+      "label": "Orders without proof (hours)",
+      "help": "Orders with no payment proof or a rejected payment: after these hours they are cancelled automatically and the stock returns to inventory."
+    },
+    "proof": {
+      "label": "Orders with unreviewed proof (hours)",
+      "help": "Orders with an uploaded proof that nobody validated or rejected: after these hours they are cancelled automatically and the stock returns to inventory. It cannot be lower than the window for orders without proof."
+    },
+    "maxOpen": {
+      "label": "Maximum open reservations per customer",
+      "help": "When a customer already has this many pending orders holding stock, the next order is refused and cancelled automatically. This stops a single account from locking the inventory."
+    },
+    "range": "Allowed range:",
+    "default": "Default:",
+    "current": "Current value:",
+    "errors": {
+      "range": "Must be a whole number between {min} and {max}.",
+      "belowUnpaid": "It cannot be lower than the window for orders without proof."
+    },
+    "save": "Save changes",
+    "saving": "Saving...",
+    "saved": "Policy saved",
+    "savedDescription": "The new values are now in effect.",
+    "saveError": "The policy could not be saved. Please try again.",
+    "forbidden": "Only a super admin can change this policy.",
+    "loadError": "The stock reservation policy could not be loaded.",
+    "reset": "Reset to default values",
+    "resetConfirmTitle": "Reset to default values?",
+    "resetConfirmMessage": "The defaults will be applied: 48 hours without proof, 168 hours (7 days) with unreviewed proof and 5 open reservations per customer.",
+    "resetConfirm": "Reset",
+    "resetDone": "Default values restored",
+    "scheduleNote": "A scheduled task runs every hour and applies these values by cancelling expired orders and returning their stock. If the schedule is not active in the database, expiry does not run even if you save these values."
   }
 }

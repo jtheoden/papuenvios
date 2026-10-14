@@ -367,7 +367,7 @@ const findBlockingOrdersForCombo = async (comboId) => {
       order_id,
       orders!inner(id, order_number, status, payment_status)
     `)
-    .eq('item_type', 'combo')
+    // No item_type filter: combos added from the detail page were stored as item_type 'product'
     .eq('item_id', comboId);
 
   if (oiError) {
@@ -454,7 +454,6 @@ export const deleteCombo = async (comboId) => {
       const { error: clearError } = await supabase
         .from('order_items')
         .update({ item_id: null })
-        .eq('item_type', 'combo')
         .eq('item_id', comboId);
 
       if (clearError) {

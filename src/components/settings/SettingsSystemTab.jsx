@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
 import { getPlatformResetStatus, executePlatformReset } from '@/lib/platformResetService';
+import StockPolicyCard from '@/components/settings/StockPolicyCard';
 
 const CONFIRMATION_WORD = 'RESETEAR';
 
@@ -54,6 +55,8 @@ const SettingsSystemTab = () => {
   };
 
   return (
+    <div className="space-y-6">
+    <StockPolicyCard />
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-effect p-8 rounded-2xl space-y-6">
       <div className="flex items-center gap-2 text-red-700">
         <ShieldAlert className="h-6 w-6" />
@@ -157,6 +160,7 @@ const SettingsSystemTab = () => {
         </motion.div>
       )}
     </motion.div>
+    </div>
   );
 };
 

@@ -41,8 +41,10 @@ import {
   validatePayment,
   rejectPayment,
   getDaysInProcessing,
-  cancelOrder
+  cancelOrder,
+  restockOrder
 } from '@/lib/orderService';
+import { isInsufficientStockError } from '@/lib/stockErrors';
 import { ORDER_STATUS, PAYMENT_STATUS, ITEM_TYPES } from '@/lib/constants';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -345,7 +347,7 @@ const AdminOrdersTab = () => {
           }
         } catch (err) {
           console.error('Error validating payment:', err);
-          showToast(t('common.error'), 'error');
+          showToast(isInsufficientStockError(err) ? t('adminOrders.messages.validateStockError') : t('common.error'), 'error');
         } finally {
           setActionLoading(null);
         }
@@ -546,6 +548,15 @@ const AdminOrdersTab = () => {
               if (operationSucceeded(result)) {
                 showToast(t('adminOrders.messages.cancelSuccess'), 'success');
                 loadOrders(); // Refresh orders
+                if (result.stockConsumed) {
+                  // Stock was already consumed by the validated payment. Returning it is an explicit
+                  // decision: goods may have left, so the admin must confirm the physical return.
+                  showConfirm(
+                    t('adminOrders.modals.restockTitle'),
+                    t('adminOrders.messages.restockPrompt'),
+                    () => handleRestockClick(order)
+                  );
+                }
               } else {
                 showToast(`${t('common.error')}: ${result.error}`, 'error');
               }
@@ -559,6 +570,41 @@ const AdminOrdersTab = () => {
         );
       }
     );
+  };
+
+  // Handler: return consumed units to the inventory (explicit admin decision, also reachable
+  // later from the persistent button on cancelled orders). It asks for its OWN reason: the
+  // cancel reason explains why the order died, not why the goods came back.
+  const handleRestockClick = (order) => {
+    showInput(
+      t('adminOrders.modals.restockReasonTitle'),
+      t('adminOrders.messages.restockReasonPrompt').replace('{orderNumber}', order.order_number),
+      '',
+      (reason) => {
+        if (!reason || reason.trim() === '') {
+          showToast(t('adminOrders.messages.restockReasonRequired'), 'error');
+          return;
+        }
+        handleRestockOrder(order, reason.trim());
+      }
+    );
+  };
+
+  const handleRestockOrder = async (order, reason) => {
+    setActionLoading(order.id);
+    try {
+      const result = await restockOrder(order.id, reason);
+      showToast(
+        result?.restocked ? t('adminOrders.messages.restockSuccess') : t('adminOrders.messages.restockNothing'),
+        result?.restocked ? 'success' : 'info'
+      );
+      loadOrders(); // the consumed flag changed: refresh the list
+    } catch (err) {
+      console.error('Error restocking order:', err);
+      showToast(t('adminOrders.messages.restockError'), 'error');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   // Helper functions for custom modals
@@ -638,6 +684,7 @@ const AdminOrdersTab = () => {
             onUploadDeliveryProof={() => handleUploadDeliveryProof(order)}
             onCompleteOrder={() => handleCompleteOrder(order)}
             onCancelOrder={() => handleCancelOrder(order)}
+            onRestockOrder={() => handleRestockClick(order)}
             actionLoading={actionLoading === order.id}
           />
         )
@@ -654,6 +701,7 @@ const AdminOrdersTab = () => {
     handleUploadDeliveryProof,
     handleCompleteOrder,
     handleCancelOrder,
+    handleRestockClick,
     formatDate,
     formatCurrency,
     renderTypeIcon

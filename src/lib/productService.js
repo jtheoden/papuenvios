@@ -19,21 +19,7 @@ import {
 } from './errorHandler';
 import { ORDER_STATUS } from './orderService';
 import { logActivity } from './activityLogger';
-
-// Estados que BLOQUEAN eliminación de productos/combos
-// (órdenes activas que aún no han sido despachadas)
-const BLOCKING_ORDER_STATUSES = [
-  ORDER_STATUS.PENDING,
-  ORDER_STATUS.PROCESSING
-];
-
-// Estados que PERMITEN eliminación (órdenes ya procesadas o canceladas)
-const SAFE_DELETE_ORDER_STATUSES = [
-  ORDER_STATUS.DISPATCHED,
-  ORDER_STATUS.DELIVERED,
-  ORDER_STATUS.COMPLETED,
-  ORDER_STATUS.CANCELLED
-];
+import { isStockBelowReservedError } from './stockErrors';
 
 // Legacy: Para toggle de estado activo
 const IN_PROGRESS_ORDER_STATUSES = [
@@ -410,6 +396,15 @@ export const updateProduct = async (productId, productData) => {
             .eq('id', existingInventory.id);
 
           if (invError) {
+            if (invError.code === '23514' && String(invError.message).includes('inventory_reserved_lte_quantity')) {
+              // New stock is below the units reserved by open orders: the admin must know, not guess
+              throw new AppError(
+                'Stock cannot be lower than the units reserved by open orders',
+                ERROR_CODES.INVALID_OPERATION,
+                409,
+                { reason: 'stock_below_reserved', productId }
+              );
+            }
             const appError = parseSupabaseError(invError);
             logError(appError, { operation: 'updateProduct - inventory update', productId });
           }
@@ -435,6 +430,7 @@ export const updateProduct = async (productId, productData) => {
           }
         }
       } catch (invError) {
+        if (isStockBelowReservedError(invError)) throw invError;
         // Don't fail product update if inventory operation fails
         logError(invError, { operation: 'updateProduct - inventory operation', productId });
       }
@@ -449,69 +445,33 @@ export const updateProduct = async (productId, productData) => {
 };
 
 /**
- * Find blocking orders for a product (via inventory or combo)
- * Returns orders in BLOCKING states (pending/processing with validated payment)
+ * Find the orders that block deleting a product. The predicate lives in the database
+ * (get_product_blockers) so the preview, the bulk delete and this helper cannot disagree:
+ * open orders referencing the product directly, through a combo (even a combo stored with
+ * item_type 'product') or through inventory_id, plus any order still holding a reserved
+ * allocation. Fails CLOSED: if the check cannot run, the delete does not proceed.
  * @param {string} productId - Product ID
- * @returns {Promise<{blockingOrders: Array, safeOrders: Array, inventoryIds: Array}>}
+ * @throws {AppError} DB_ERROR when the blockers cannot be determined
+ * @returns {Promise<{blockingOrders: Array}>}
  */
 const findBlockingOrdersForProduct = async (productId) => {
-  // Get inventory IDs for this product
-  const { data: inventoryRecords, error: invError } = await supabase
-    .from('inventory')
-    .select('id')
-    .eq('product_id', productId);
+  const { data, error } = await supabase.rpc('get_product_blockers', { p_product_id: productId });
 
-  if (invError) {
-    console.warn('[findBlockingOrdersForProduct] Error fetching inventory:', invError);
+  if (error) {
+    const appError = parseSupabaseError(error);
+    logError(appError, { operation: 'findBlockingOrdersForProduct', productId });
+    throw appError;
   }
 
-  const inventoryIds = (inventoryRecords || []).map(inv => inv.id);
+  const blockingOrders = (data || []).map((row) => ({
+    orderId: row.order_id,
+    orderNumber: row.order_number,
+    status: row.status,
+    paymentStatus: row.payment_status,
+    via: row.via
+  }));
 
-  if (inventoryIds.length === 0) {
-    return { blockingOrders: [], safeOrders: [], inventoryIds: [] };
-  }
-
-  // Find order_items that reference these inventory records
-  const { data: orderItems, error: oiError } = await supabase
-    .from('order_items')
-    .select(`
-      id,
-      inventory_id,
-      order_id,
-      orders!inner(id, order_number, status, payment_status, created_at)
-    `)
-    .in('inventory_id', inventoryIds);
-
-  if (oiError) {
-    console.warn('[findBlockingOrdersForProduct] Error fetching order_items:', oiError);
-    return { blockingOrders: [], safeOrders: [], inventoryIds };
-  }
-
-  const blockingOrders = [];
-  const safeOrders = [];
-
-  (orderItems || []).forEach(item => {
-    const order = item.orders;
-    if (!order) return;
-
-    const orderInfo = {
-      orderId: order.id,
-      orderNumber: order.order_number,
-      status: order.status,
-      paymentStatus: order.payment_status,
-      orderItemId: item.id,
-      inventoryId: item.inventory_id
-    };
-
-    // Check if order is in blocking state
-    if (BLOCKING_ORDER_STATUSES.includes(order.status)) {
-      blockingOrders.push(orderInfo);
-    } else if (SAFE_DELETE_ORDER_STATUSES.includes(order.status)) {
-      safeOrders.push(orderInfo);
-    }
-  });
-
-  return { blockingOrders, safeOrders, inventoryIds };
+  return { blockingOrders };
 };
 
 /**
@@ -519,6 +479,7 @@ const findBlockingOrdersForProduct = async (productId) => {
  * Validates no blocking orders exist before deletion
  * Deactivates combos that contain this product
  * Clears inventory references from completed/cancelled orders
+ * (consumed allocations never block; a snapshot of each deleted batch is logged by the database)
  * @param {string} productId - Product ID to delete
  * @param {string} performedBy - Email or ID of user performing the action (optional)
  * @throws {AppError} If deletion fails or blocking orders exist
@@ -546,7 +507,7 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
     // ============================================
     // STEP 1: Check for blocking orders
     // ============================================
-    const { blockingOrders, safeOrders, inventoryIds } = await findBlockingOrdersForProduct(productId);
+    const { blockingOrders } = await findBlockingOrdersForProduct(productId);
 
     if (blockingOrders.length > 0) {
       const orderNumbers = blockingOrders.map(o => o.orderNumber).join(', ');
@@ -565,15 +526,26 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
     }
 
     // ============================================
-    // STEP 2: Clear inventory_id from safe orders (dispatched/delivered/completed/cancelled)
+    // STEP 2: Clear inventory_id from the remaining (non-blocking) order lines
     // ============================================
-    if (safeOrders.length > 0) {
-      const safeOrderItemIds = safeOrders.map(o => o.orderItemId);
+    const { data: inventoryRecords, error: invFetchError } = await supabase
+      .from('inventory')
+      .select('id')
+      .eq('product_id', productId);
 
+    if (invFetchError) {
+      console.warn('[deleteProduct] Error fetching inventory IDs:', invFetchError);
+    }
+
+    const productInventoryIds = (inventoryRecords || []).map(inv => inv.id);
+
+    if (productInventoryIds.length > 0) {
+      // Every order that could still reference these batches was cleared by the blockers
+      // check above, so what is left belongs to dispatched/delivered/completed/cancelled orders.
       const { error: clearError } = await supabase
         .from('order_items')
         .update({ inventory_id: null })
-        .in('id', safeOrderItemIds);
+        .in('inventory_id', productInventoryIds);
 
       if (clearError) {
         console.error('[deleteProduct] Error clearing inventory_id from order_items:', clearError);
@@ -676,17 +648,6 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
     // ============================================
     // STEP 5: Get inventory IDs and delete inventory_movements first
     // ============================================
-    const { data: inventoryRecords, error: invFetchError } = await supabase
-      .from('inventory')
-      .select('id')
-      .eq('product_id', productId);
-
-    if (invFetchError) {
-      console.warn('[deleteProduct] Error fetching inventory IDs:', invFetchError);
-    }
-
-    const productInventoryIds = (inventoryRecords || []).map(inv => inv.id);
-
     if (productInventoryIds.length > 0) {
       // Delete inventory_movements that reference these inventory records
       const { error: movementsError } = await supabase
@@ -749,7 +710,6 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
           productId,
           productName,
           productSku: product?.sku,
-          clearedOrderItems: safeOrders.length,
           deactivatedCombos: deactivatedCombos.map(c => c.name),
           deactivatedCombosCount: deactivatedCombos.length
         }
@@ -764,8 +724,7 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
         id: productId,
         name: productName
       },
-      deactivatedCombos,
-      clearedOrderItems: safeOrders.length
+      deactivatedCombos
     };
   } catch (error) {
     if (error.code) throw error; // Already an AppError

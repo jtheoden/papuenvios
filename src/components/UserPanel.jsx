@@ -7,6 +7,7 @@ import { useModal } from '@/contexts/ModalContext';
 import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users, Crown, TrendingDown, Gift, Truck, Upload, EyeOff, Filter, ChevronDown, BookOpen } from 'lucide-react';
 import { getPaymentConfirmationBlocker } from '@/lib/orderPayerPhone';
 import { isValidPayerPhone, normalizePayerPhone, PAYER_PHONE_MAX_LENGTH } from '@/lib/payerPhone';
+import { isInsufficientStockError } from '@/lib/stockErrors';
 import { getUserOrders, getOrderById, getAllOrders, getPendingOrdersCount, validatePayment, rejectPayment, cancelOrderByUser, uploadPaymentProof, markOrderAsDispatched, markOrderAsDelivered, completeOrder, reopenOrder, ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderService';
 import { getUserTestimonial, createTestimonial } from '@/lib/testimonialService';
 import { getMyRemittances, generateProofSignedUrl } from '@/lib/remittanceService';
@@ -371,7 +372,9 @@ const UserPanel = ({ onNavigate }) => {
       console.error('Error reopening order:', error);
       await showModal({
         title: t('common.error'),
-        message: error.message || t('userPanel.reopenOrderError'),
+        message: isInsufficientStockError(error)
+          ? t('userPanel.reopenInsufficientStock')
+          : (error.message || t('userPanel.reopenOrderError')),
         type: 'danger',
         confirmText: t('common.ok'),
         cancelText: null
