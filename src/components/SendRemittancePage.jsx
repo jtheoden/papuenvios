@@ -7,6 +7,7 @@ import {
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useModal } from '@/contexts/ModalContext';
+import { useBusiness } from '@/contexts/BusinessContext';
 import {
   getActiveRemittanceTypes,
   getRemittanceExchangeRate,
@@ -46,6 +47,7 @@ const SendRemittancePage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { user, isAdmin, isSuperAdmin } = useAuth();
   const { showModal } = useModal();
+  const { notificationSettings } = useBusiness();
   const { methods: paymentMethods, refresh: refreshPaymentMethods, isMethodEnabled } = usePaymentMethods();
   // Fails open: stays false until the status is known (the DB trigger is the real guard)
   const zelleRemittancesBlocked = !isMethodEnabled('zelle', PAYMENT_FLOWS.REMITTANCES);
@@ -1428,10 +1430,12 @@ const SendRemittancePage = ({ onNavigate }) => {
                   );
 
                   // Guided WhatsApp step: build the URL here, the user opens it via a click in the modal
-                  // Recipient comes from fresh settings; group targets fall back to the admin phone
-                  const recipient = await getFreshGuidedWhatsappPhone(notificationSettings);
+                  // Recipient comes from fresh settings; group targets fall back to the admin phone.
+                  // The proof is already uploaded: a failure here must never surface as an upload error.
+                  let recipient = null;
                   let whatsappUrl = '';
                   try {
+                    recipient = await getFreshGuidedWhatsappPhone(notificationSettings);
                     // The message is built from the row the service persisted (status, proof path,
                     // reference and amounts), not from wizard state
                     whatsappUrl = recipient
@@ -1472,9 +1476,10 @@ const SendRemittancePage = ({ onNavigate }) => {
 
                 // Remittance exists but the proof is pending: guide the client to notify the admin.
                 // Awaiting here is fine: the user gesture that matters is the click on the modal link.
-                const recipient = await getFreshGuidedWhatsappPhone(notificationSettings);
+                let recipient = null;
                 let whatsappUrl = '';
                 try {
+                  recipient = await getFreshGuidedWhatsappPhone(notificationSettings);
                   const enrichedRemittance = buildRemittanceNotificationPayload({
                     ...createdRemittance,
                     remittance_types: selectedType,

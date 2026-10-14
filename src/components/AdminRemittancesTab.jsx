@@ -324,7 +324,7 @@ const AdminRemittancesTab = () => {
         [REMITTANCE_STATUS.PAYMENT_VALIDATED, REMITTANCE_STATUS.PROCESSING].includes(r.status)
       ).length,
       completed: completedRemittances.length,
-      rejected: filteredRemittances.filter(r => r.status === REMITTANCE_STATUS.REJECTED).length,
+      rejected: filteredRemittances.filter(r => r.status === REMITTANCE_STATUS.PAYMENT_REJECTED).length,
       totalRevenue: completedRemittances.reduce((sum, r) => sum + (r.amount_sent || 0), 0)
     };
   }, [filteredRemittances]);
@@ -777,6 +777,7 @@ const AdminRemittancesTab = () => {
               style={{ '--tw-ring-color': visualSettings?.primaryColor || '#2563eb' }}
             >
               <option value="all">{t('remittances.admin.allStatuses')}</option>
+              <option value={REMITTANCE_STATUS.PAYMENT_PENDING}>{t('remittances.status.paymentPending')}</option>
               <option value="pending_validation">{t('remittances.admin.pendingValidation')}</option>
               <option value="in_progress">{t('remittances.admin.inProgress')}</option>
               <option value="urgent">{t('remittances.admin.urgent')}</option>
