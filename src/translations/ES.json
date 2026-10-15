@@ -810,7 +810,7 @@
     "remittancesTab": "Remesas",
     "offersTab": "Ofertas y Cupones",
     "remittancesKindTab": "Tipos de Remesas",
-    "zelleHistoryTab": "Historial de Pagos Zelle",
+    "zelleHistoryTab": "Historial de Pagos",
     "activityLogTab": "Registro de Actividad",
     "orderStatus": {
       "paymentPending": "Pago Pendiente",
@@ -1871,7 +1871,7 @@
     }
   },
   "zelleHistory": {
-    "title": "Historial de Pagos Zelle",
+    "title": "Historial de Pagos",
     "date": "Fecha",
     "userName": "Nombre de Usuario",
     "email": "Correo Electrónico",

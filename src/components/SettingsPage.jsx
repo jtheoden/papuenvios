@@ -379,7 +379,7 @@ const SettingsPage = () => {
     },
     {
       id: 'zelle',
-      label: 'Zelle',
+      label: language === 'es' ? 'Pagos' : 'Payments',
       icon: CreditCard,
       color: '#3b82f6'
     },
