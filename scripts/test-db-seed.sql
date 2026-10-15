@@ -51,4 +51,9 @@ INSERT INTO public.payment_methods (code, available, enabled_for_orders, enabled
 VALUES ('zelle', true, true, true), ('bizum', false, false, false)
 ON CONFLICT (code) DO NOTHING;
 
+-- Migration 20261015120000 (payment_methods.currency) ran during the replay, before this INSERT, so a
+-- freshly inserted bizum row got the column default. Production already has the row, so the
+-- migration's own UPDATE fixes it there; restate it here for the structure-only clone.
+UPDATE public.payment_methods SET currency = 'EUR' WHERE code = 'bizum' AND currency <> 'EUR';
+
 COMMIT;
