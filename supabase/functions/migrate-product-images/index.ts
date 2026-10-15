@@ -21,6 +21,7 @@ import {
   buildPublicUrl,
   decideAction,
   isImageDataUri,
+  isObjectMissingError,
   newCounters,
   parseDataUri,
   sha256Hex,
@@ -35,13 +36,6 @@ const MAX_LIMIT = 20;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-
-const isNotFound = (error: { message?: string; status?: number; statusCode?: string | number } | null) => {
-  if (!error) return false;
-  const message = String(error.message || "").toLowerCase();
-  const status = Number(error.status ?? error.statusCode);
-  return message.includes("not found") || status === 404 || status === 400;
-};
 
 serve(async (req: Request) => {
   if (req.method !== "POST") return json({ message: "Method not allowed" }, 405);
@@ -128,7 +122,7 @@ serve(async (req: Request) => {
 
         // Does the object already exist (a previous run)?
         const download = await supabase.storage.from(BUCKET).download(path);
-        if (download.error && !isNotFound(download.error)) throw download.error;
+        if (download.error && !isObjectMissingError(download.error)) throw download.error;
         const existing = download.data
           ? { sha256: await sha256Hex(new Uint8Array(await download.data.arrayBuffer())) }
           : null;
