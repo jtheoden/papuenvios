@@ -3,6 +3,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import LegalLink from '@/components/LegalLink';
 import RegulatoryNotice from '@/components/RegulatoryNotice';
+import { openConsentPreferences } from '@/lib/consent';
 
 const Footer = ({ onNavigate, showNotice = true }) => {
   const { t, language } = useLanguage();
@@ -71,6 +72,9 @@ const Footer = ({ onNavigate, showNotice = true }) => {
           <LegalLink page="terms" onNavigate={onNavigate}>{t('legal.links.terms')}</LegalLink>
           <LegalLink page="privacy" onNavigate={onNavigate}>{t('legal.links.privacy')}</LegalLink>
           <LegalLink page="terms" hash="refunds" onNavigate={onNavigate}>{t('legal.links.refunds')}</LegalLink>
+          <button type="button" className="underline" onClick={openConsentPreferences}>
+            {t('cookieConsent.preferencesLink')}
+          </button>
         </nav>
         {showNotice && (
           <RegulatoryNotice onNavigate={onNavigate} className="mt-3 mx-auto max-w-2xl" />

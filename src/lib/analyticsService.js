@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
+import { isAnalyticsAllowed, ANALYTICS_STORAGE_KEYS } from '@/lib/consent';
 
-const SESSION_STORAGE_KEY = 'site_visit_session_id';
-const LAST_PAGE_VIEW_KEY = 'site_visit_last_page';
+const [SESSION_STORAGE_KEY, LAST_PAGE_VIEW_KEY] = ANALYTICS_STORAGE_KEYS;
 const MIN_TIME_BETWEEN_LOGS_MS = 60_000; // 1 minute between logs of the same page
 
 const getOrCreateSessionId = () => {
@@ -46,6 +46,8 @@ const shouldThrottleForPage = (pagePath) => {
 
 export const trackPageVisit = async ({ pageUrl, userId }) => {
   if (typeof window === 'undefined') return;
+  // Opt-in: no insert and no localStorage write unless the visitor accepted analytics.
+  if (!isAnalyticsAllowed()) return;
 
   const page_path = pageUrl || window.location.pathname;
   if (shouldThrottleForPage(page_path)) return;
