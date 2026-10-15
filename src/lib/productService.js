@@ -5,6 +5,7 @@
  */
 
 import { supabase } from './supabase';
+import { withCatalogInvalidation } from './catalogCache';
 import { generateSlug, getCurrentTimestamp } from './queryHelpers';
 import { DEFAULTS } from './constants';
 import { validateMarginPercent, MARGIN_MIN, MARGIN_MAX } from './marginResolver';
@@ -34,70 +35,98 @@ const IN_PROGRESS_ORDER_STATUSES = [
  * @throws {AppError} If database query fails
  * @returns {Promise<Array>} Array of products with inventory data
  */
+// Explicit projection: `select('*')` also pulled `image_file`, a byte-identical
+// copy of the base64 `image_url` (doubling the payload). Consumers fall back
+// `image_url || image_file`, so omitting it is safe.
+const PRODUCT_COLUMNS = [
+  'id', 'sku', 'name_es', 'name_en', 'description_es', 'description_en',
+  'category_id', 'base_price', 'base_currency_id', 'cost_price', 'profit_margin',
+  'final_price', 'weight', 'dimensions', 'image_url', 'requires_expiry',
+  'min_stock_alert', 'is_active', 'is_featured', 'tags', 'created_at', 'updated_at'
+].join(', ');
+
+/**
+ * Heavy part of the catalog: product rows (with category), without inventory.
+ * Safe to cache; stock must be fetched separately via getProductStock.
+ */
+export const getProductRows = async (includeInactive = false) => {
+  let query = supabase
+    .from('products')
+    .select(`
+      ${PRODUCT_COLUMNS},
+      category:product_categories(id, name_es, name_en, slug)
+    `)
+    .order('created_at', { ascending: false });
+
+  if (!includeInactive) {
+    query = query.eq('is_active', true);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    const appError = parseSupabaseError(error);
+    logError(appError, { operation: 'getProducts' });
+    throw appError;
+  }
+
+  return data || [];
+};
+
+/**
+ * Light, always-fresh part: summed available stock and latest expiry per product.
+ * @throws {AppError} so callers can keep their previous values on failure
+ * @returns {Promise<{stock: Object, expiry: Object}>}
+ */
+export const getProductStock = async () => {
+  const { data, error } = await supabase
+    .from('inventory')
+    .select('product_id, quantity, available_quantity, expiry_date')
+    .eq('is_active', true)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    const appError = parseSupabaseError(error);
+    logError(appError, { operation: 'getProductStock' });
+    throw appError;
+  }
+
+  const stock = {};
+  const expiry = {};
+  (data || []).forEach(inv => {
+    stock[inv.product_id] = (stock[inv.product_id] || 0) + (inv.available_quantity || 0);
+
+    // Keep the most recent expiry_date (first one due to order by created_at desc)
+    if (!expiry[inv.product_id] && inv.expiry_date) {
+      expiry[inv.product_id] = inv.expiry_date;
+    }
+  });
+
+  return { stock, expiry };
+};
+
+/** Attach stock/expiry (from getProductStock) to product rows. */
+export const mergeProductStock = (rows, { stock, expiry }) =>
+  rows.map(product => ({
+    ...product,
+    stock: stock[product.id] || 0,
+    expiry_date: expiry[product.id] || null
+  }));
+
 export const getProducts = async (includeInactive = false) => {
   try {
-    let query = supabase
-      .from('products')
-      .select(`
-        *,
-        category:product_categories(id, name_es, name_en, slug)
-      `)
-      .order('created_at', { ascending: false });
+    // Inventory runs in parallel with products; an inventory failure never
+    // fails the catalog (products simply show stock 0).
+    const [rows, stockData] = await Promise.all([
+      getProductRows(includeInactive),
+      getProductStock().catch(() => ({ stock: {}, expiry: {} }))
+    ]);
 
-    if (!includeInactive) {
-      query = query.eq('is_active', true);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      const appError = parseSupabaseError(error);
-      logError(appError, { operation: 'getProducts' });
-      throw appError;
-    }
-
-    // Get inventory data for all products
-    const productIds = (data || []).map(p => p.id);
-    if (productIds.length === 0) {
+    if (rows.length === 0) {
       return [];
     }
 
-    const { data: inventoryData, error: invError } = await supabase
-      .from('inventory')
-      .select('product_id, quantity, available_quantity, expiry_date')
-      .in('product_id', productIds)
-      .eq('is_active', true)
-      .order('created_at', { ascending: false });
-
-    if (invError) {
-      const appError = parseSupabaseError(invError);
-      logError(appError, { operation: 'getProducts - inventory fetch', productCount: productIds.length });
-      // Don't fail, just continue without inventory data
-    }
-
-    // Create inventory map with stock and expiry_date
-    const inventoryMap = {};
-    const expiryDateMap = {};
-    (inventoryData || []).forEach(inv => {
-      if (!inventoryMap[inv.product_id]) {
-        inventoryMap[inv.product_id] = 0;
-      }
-      inventoryMap[inv.product_id] += inv.available_quantity || 0;
-
-      // Keep the most recent expiry_date (first one due to order by created_at desc)
-      if (!expiryDateMap[inv.product_id] && inv.expiry_date) {
-        expiryDateMap[inv.product_id] = inv.expiry_date;
-      }
-    });
-
-    // Add stock and expiry_date from inventory
-    const transformedData = (data || []).map(product => ({
-      ...product,
-      stock: inventoryMap[product.id] || 0,
-      expiry_date: expiryDateMap[product.id] || null
-    }));
-
-    return transformedData;
+    return mergeProductStock(rows, stockData);
   } catch (error) {
     if (error.code) throw error; // Already an AppError
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getProducts' });
@@ -169,7 +198,24 @@ const findInProgressOrdersForProduct = async (productId) => {
  * @param {boolean} isActive - Desired active state
  * @returns {Promise<Object>} Updated product
  */
-export const setProductActiveState = async (productId, isActive) => {
+/**
+ * Set (or clear with null) a product's image URL
+ * @throws {AppError} If the update fails
+ */
+export const setProductImageUrl = withCatalogInvalidation(async (productId, imageUrl) => {
+  const { error } = await supabase
+    .from('products')
+    .update({ image_url: imageUrl })
+    .eq('id', productId);
+
+  if (error) {
+    const appError = parseSupabaseError(error);
+    logError(appError, { operation: 'setProductImageUrl', productId });
+    throw appError;
+  }
+});
+
+export const setProductActiveState = withCatalogInvalidation(async (productId, isActive) => {
   try {
     if (!productId) {
       throw createValidationError({ productId: 'Product ID is required' });
@@ -220,7 +266,7 @@ export const setProductActiveState = async (productId, isActive) => {
     logError(appError, appError.context);
     throw appError;
   }
-};
+});
 
 /**
  * Create a new product with optional initial inventory
@@ -228,7 +274,7 @@ export const setProductActiveState = async (productId, isActive) => {
  * @throws {AppError} If validation fails or database operation fails
  * @returns {Promise<Object>} Created product with inventory
  */
-export const createProduct = async (productData) => {
+export const createProduct = withCatalogInvalidation(async (productData) => {
   try {
     // Validate required fields
     if (!productData.name_es) {
@@ -317,7 +363,7 @@ export const createProduct = async (productData) => {
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'createProduct' });
     throw appError;
   }
-};
+});
 
 /**
  * Update an existing product and optionally its inventory
@@ -326,7 +372,7 @@ export const createProduct = async (productData) => {
  * @throws {AppError} If product not found or update fails
  * @returns {Promise<Object>} Updated product
  */
-export const updateProduct = async (productId, productData) => {
+export const updateProduct = withCatalogInvalidation(async (productId, productData) => {
   try {
     if (!productId) {
       throw createValidationError({ productId: 'Product ID is required' });
@@ -442,7 +488,7 @@ export const updateProduct = async (productId, productData) => {
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'updateProduct', productId });
     throw appError;
   }
-};
+});
 
 /**
  * Maps the blockers returned by the database predicate (get_product_blockers /
@@ -468,7 +514,7 @@ const mapBlockers = (rows) =>
  * @throws {AppError} CONFLICT (409) with context.blockingOrders when blocked, NOT_FOUND, or a DB error
  * @returns {Promise<Object>} { success, deletedProduct: {id, name}, deactivatedCombos: [{id, name}] }
  */
-export const deleteProduct = async (productId) => {
+export const deleteProduct = withCatalogInvalidation(async (productId) => {
   try {
     if (!productId) {
       throw createValidationError({ productId: 'Product ID is required' });
@@ -525,7 +571,7 @@ export const deleteProduct = async (productId) => {
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'deleteProduct', productId });
     throw appError;
   }
-};
+});
 
 /**
  * Get all active product categories
@@ -581,7 +627,7 @@ const normalizeCategoryMargin = (raw) => {
  * @throws {AppError} If validation fails or creation fails
  * @returns {Promise<Object>} Created category
  */
-export const createCategory = async (categoryData, performedBy = 'system') => {
+export const createCategory = withCatalogInvalidation(async (categoryData, performedBy = 'system') => {
   try {
     if (!categoryData.es || !categoryData.en) {
       throw createValidationError(
@@ -638,7 +684,7 @@ export const createCategory = async (categoryData, performedBy = 'system') => {
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'createCategory' });
     throw appError;
   }
-};
+});
 
 /**
  * Update a product category
@@ -647,7 +693,7 @@ export const createCategory = async (categoryData, performedBy = 'system') => {
  * @throws {AppError} If category not found or update fails
  * @returns {Promise<Object>} Updated category
  */
-export const updateCategory = async (categoryId, categoryData, performedBy = 'system') => {
+export const updateCategory = withCatalogInvalidation(async (categoryId, categoryData, performedBy = 'system') => {
   try {
     if (!categoryId) {
       throw createValidationError({ categoryId: 'Category ID is required' });
@@ -714,7 +760,7 @@ export const updateCategory = async (categoryId, categoryData, performedBy = 'sy
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'updateCategory', categoryId });
     throw appError;
   }
-};
+});
 
 /**
  * Delete a product category (hard delete - removes from database)
@@ -724,7 +770,7 @@ export const updateCategory = async (categoryId, categoryData, performedBy = 'sy
  * @throws {AppError} If deletion fails or products exist with this category
  * @returns {Promise<Object>} Result with deleted category info
  */
-export const deleteCategory = async (categoryId, performedBy = 'system') => {
+export const deleteCategory = withCatalogInvalidation(async (categoryId, performedBy = 'system') => {
   try {
     if (!categoryId) {
       throw createValidationError({ categoryId: 'Category ID is required' });
@@ -821,7 +867,7 @@ export const deleteCategory = async (categoryId, performedBy = 'system') => {
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'deleteCategory', categoryId });
     throw appError;
   }
-};
+});
 
 /**
  * Import path:

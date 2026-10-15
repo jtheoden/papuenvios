@@ -7,6 +7,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { withCatalogInvalidation } from '@/lib/catalogCache';
 import { AppError, ERROR_CODES, logError, createValidationError, parseSupabaseError } from '@/lib/errorHandler';
 
 const shapeResult = (rows) => {
@@ -54,14 +55,14 @@ const runBulkDelete = async (rpcName, ids, operation) => {
  * @param {string[]} ids
  * @returns {Promise<{deleted: string[], blocked: Array<{id: string, reason: string}>}>}
  */
-export const bulkDeleteProducts = (ids) => runBulkDelete('bulk_delete_products', ids, 'bulkDeleteProducts');
+export const bulkDeleteProducts = withCatalogInvalidation((ids) => runBulkDelete('bulk_delete_products', ids, 'bulkDeleteProducts'));
 
 /**
  * Borrado masivo de categorías (super_admin únicamente — el RPC re-verifica el rol).
  * @param {string[]} ids
  * @returns {Promise<{deleted: string[], blocked: Array<{id: string, reason: string}>}>}
  */
-export const bulkDeleteCategories = (ids) => runBulkDelete('bulk_delete_categories', ids, 'bulkDeleteCategories');
+export const bulkDeleteCategories = withCatalogInvalidation((ids) => runBulkDelete('bulk_delete_categories', ids, 'bulkDeleteCategories'));
 
 const runPreview = async (rpcName, ids, operation, shapeRow) => {
   try {

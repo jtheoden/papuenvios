@@ -49,7 +49,7 @@ const STOCK_REFUSAL_MESSAGE_KEYS = {
 
 const CartPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
-  const { cart, updateCartQuantity, removeFromCart, clearCart, financialSettings, zelleAccounts, visualSettings, businessInfo, notificationSettings } = useBusiness();
+  const { cart, updateCartQuantity, removeFromCart, clearCart, financialSettings, zelleAccounts, visualSettings, businessInfo, notificationSettings, refreshStock } = useBusiness();
   const { isAuthenticated, user } = useAuth();
   const { selectedCurrency, setSelectedCurrency, currencies, currencyCode, currencySymbol, convertAmount } = useCurrency();
   const { showModal } = useModal();
@@ -776,6 +776,9 @@ const CartPage = ({ onNavigate }) => {
       // Create order (returns order object directly, throws on error)
       const createdOrder = await createOrder(orderData, orderItems);
 
+      // Stock was just reserved: refresh the displayed stock (display only, server stays authoritative)
+      refreshStock?.();
+
       // ============================================================
       // ORDER CREATED SUCCESSFULLY - From here, NOTHING should block
       // All operations below are wrapped to ensure modal always shows
@@ -908,6 +911,8 @@ const CartPage = ({ onNavigate }) => {
         return;
       }
       if (isStockReservationRefusal(error)) {
+        // Our displayed stock was out of date: re-read it so the customer sees the real numbers
+        refreshStock?.();
         // The server already cancelled the just-created order; the cart is kept so the customer can adjust it
         const stockItem = cart.find(item => item.id === error.context?.productId);
         const stockItemName = language === 'es'

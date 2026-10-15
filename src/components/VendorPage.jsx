@@ -12,6 +12,7 @@ import VendorCategoriesTab from './vendor/VendorCategoriesTab';
 import VendorCombosTab from './vendor/VendorCombosTab';
 import VendorManagementTab from './vendor/VendorManagementTab';
 import VendorInventoryTab from './vendor/VendorInventoryTab';
+import { loadAdminCatalog } from '@/lib/adminCatalogLoader';
 
 const VendorPage = () => {
   const { t, language } = useLanguage();
@@ -83,13 +84,8 @@ const VendorPage = () => {
 
     const fetchAdminData = async () => {
       try {
-        await refreshProducts(true);
-
-        // Load testimonials with admin view
-        await refreshTestimonials(true);
-
-        // Load all combos including inactive ones for admin view
-        await refreshCombos(true);
+        // Products, testimonials (admin view) and all combos (including inactive) in parallel
+        await loadAdminCatalog({ refreshProducts, refreshTestimonials, refreshCombos });
 
         // Load all carousel slides
         // await refreshCarouselSlides(false); // Will implement when updating HomePage

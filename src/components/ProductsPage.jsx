@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { toast } from '@/components/ui/use-toast';
 import { uploadProductImage, deleteProductImage } from '@/lib/storage';
-import { supabase } from '@/lib/supabase';
+import { setProductImageUrl } from '@/lib/productService';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { getHeadingStyle } from '@/lib/styleUtils';
 import CurrencySelector from '@/components/CurrencySelector';
@@ -16,7 +16,6 @@ import PriceDisplay from '@/components/PriceDisplay';
 import { useUserDiscounts } from '@/hooks/useUserDiscounts';
 import { buildDiscountBreakdown } from '@/lib/discountDisplayService';
 import { computeComboPricing } from '@/lib/comboUtils';
-import { useRealtimeProducts, useRealtimeCombos } from '@/hooks/useRealtimeSubscription';
 
 const ProductsPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
@@ -48,22 +47,6 @@ const ProductsPage = ({ onNavigate }) => {
     });
     return baseId || selectedCurrency;
   }, [currencyMap, selectedCurrency]);
-
-  // Suscripción real-time para productos - actualiza automáticamente cuando cambian
-  useRealtimeProducts({
-    enabled: true,
-    onUpdate: () => {
-      refreshProducts();
-    }
-  });
-
-  // Suscripción real-time para combos - actualiza automáticamente cuando cambian
-  useRealtimeCombos({
-    enabled: true,
-    onUpdate: () => {
-      refreshProducts();
-    }
-  });
 
   const handleImageUpload = useCallback(async (event, productId) => {
     const file = event.target.files[0];
@@ -97,12 +80,7 @@ const ProductsPage = ({ onNavigate }) => {
       const { publicUrl } = await uploadProductImage(result.blob, fileName);
 
       // Update product in database
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({ image_url: publicUrl })
-        .eq('id', productId);
-
-      if (updateError) throw updateError;
+      await setProductImageUrl(productId, publicUrl);
 
       // Refresh products list
       await refreshProducts();
@@ -132,12 +110,7 @@ const ProductsPage = ({ onNavigate }) => {
       await deleteProductImage(imageUrl);
 
       // Update product in database
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({ image_url: null })
-        .eq('id', productId);
-
-      if (updateError) throw updateError;
+      await setProductImageUrl(productId, null);
 
       // Refresh products list
       await refreshProducts();

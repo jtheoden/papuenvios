@@ -27,7 +27,6 @@ vi.mock('@/lib/bulkDeleteService', () => ({
   previewBulkDeleteProducts: vi.fn()
 }));
 vi.mock('@/lib/activityLogger', () => ({ logActivity: vi.fn() }));
-vi.mock('@/hooks/useRealtimeSubscription', () => ({ useRealtimeProducts: vi.fn() }));
 vi.mock('@/components/tables/BulkDeleteBar', () => ({ default: () => null }));
 vi.mock('@/components/vendor/ProductTableConfig', () => ({
   getTableColumns: () => [],
