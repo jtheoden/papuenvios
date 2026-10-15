@@ -602,13 +602,12 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
       }
     });
 
-    it('zelle_accounts policies today: admin manage + any authenticated reads ACTIVE rows (changes with 20261014140000)', async () => {
+    it('zelle_accounts policies: only admin manage remains (customers read via RPC since 20261014140000)', async () => {
       const { rows } = await admin.query(
         `SELECT policyname, cmd FROM pg_policies WHERE schemaname='public' AND tablename='zelle_accounts' ORDER BY policyname`
       );
       expect(rows).toEqual([
-        { policyname: 'zelle_accounts_manage', cmd: 'ALL' },
-        { policyname: 'zelle_accounts_select_active', cmd: 'SELECT' }
+        { policyname: 'zelle_accounts_manage', cmd: 'ALL' }
       ]);
     });
   });

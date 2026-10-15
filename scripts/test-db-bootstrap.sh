@@ -38,6 +38,9 @@ SOURCE_CONTAINER="${TEST_DB_SOURCE_CONTAINER:-supabase_db_e2e-supabase}"
 
 # First migration the local e2e clone does NOT contain (see README of src/tests/concurrency).
 REPLAY_FROM="${TEST_DB_REPLAY_FROM:-20261014180000}"
+# Pre-window migrations that are idempotent (guarded DROP POLICY IF EXISTS) and ARE applied in production
+# but not in the e2e clone: replayed even though they sit below REPLAY_FROM.
+ALWAYS_REPLAY=(20261014140000_zelle_accounts_select_admin_only.sql)
 
 RECREATE=0
 PROBE=0
@@ -226,7 +229,7 @@ for file in "$MIGRATIONS_DIR"/*.sql; do
   name="$(basename "$file")"
   ts="${name%%_*}"
   # Below the replay window the clone is assumed to contain the migration already, unless probing.
-  if [ "$PROBE" = "0" ] && [[ "$ts" < "$REPLAY_FROM" ]]; then skipped=$((skipped + 1)); continue; fi
+  if [ "$PROBE" = "0" ] && [[ "$ts" < "$REPLAY_FROM" ]] && [[ " ${ALWAYS_REPLAY[*]} " != *" $name "* ]]; then skipped=$((skipped + 1)); continue; fi
   sum="$(sha "$file")"
   recorded="$(psql_val "$DB_NAME" -c "SELECT COALESCE(checksum, '') FROM test_bootstrap.replayed_migrations WHERE filename = '$name'")"
   if [ -n "$recorded" ] || [ "$(psql_val "$DB_NAME" -c "SELECT 1 FROM test_bootstrap.replayed_migrations WHERE filename = '$name'")" = "1" ]; then
