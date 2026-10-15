@@ -68,12 +68,13 @@ Evidence gathered by replaying all 72 migrations on a fresh clone (`--probe`) an
 - **Missing from the clone and replayed cleanly:** `20261014180000` (user_profiles role guard),
   `20261014210000` (drop movements insert policy), `20261015100000` (image migration backup).
   `20261014190000` and `20261014200000` are already present; replaying them is a harmless idempotent no-op.
+- **Replayed below the window on purpose:** `20261014140000` (drops `zelle_accounts_select_active`; applied in
+  production on 2026-10-15). It is listed in `ALWAYS_REPLAY` in `scripts/test-db-bootstrap.sh`.
 - Gaps, stated honestly: (0) the `supabase_admin` bypass of the creation guard cannot be exercised (the `postgres` login
   cannot `SET ROLE supabase_admin`), and `service_role` has no table privileges on `orders`/`remittances` at all, so its
   bypass is unreachable by direct DML; both are noted in the tests; (a) data that old migrations INSERT is not in the structure-only clone, so the seed
-  restates what the tests need (`payment_methods`); (b) the clone's `zelle_accounts` policies are the pre-
-  `20261014140000` ones (any authenticated user reads active rows), which matches the remote project today but
-  will change when that migration is applied; (c) the clone is Postgres 17.x, not 15.
+  restates what the tests need (`payment_methods`); (b) the clone's `zelle_accounts` policies match production, because
+  `20261014140000` is replayed (only `zelle_accounts_manage` remains); (c) the clone is Postgres 17.x, not 15.
 
 ## How it works
 
