@@ -2054,5 +2054,11 @@
     "uploadFailed": "The image could not be uploaded. Nothing was saved; please try again.",
     "invalidImage": "The image is not valid. Use JPG or PNG.",
     "tooLarge": "The image is too large (max 5 MB)."
+  },
+  "orderCombo": {
+    "contains": "Combo contents",
+    "modifiedNote": "Current combo composition; the combo was modified after this order.",
+    "unavailable": "Combo composition unavailable.",
+    "unknownProduct": "Product unavailable"
   }
 }
