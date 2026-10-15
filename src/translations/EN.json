@@ -2049,5 +2049,10 @@
     "resetConfirm": "Reset",
     "resetDone": "Default values restored",
     "scheduleNote": "A scheduled task runs every hour and applies these values by cancelling expired orders and returning their stock. If the schedule is not active in the database, expiry does not run even if you save these values."
+  },
+  "images": {
+    "uploadFailed": "The image could not be uploaded. Nothing was saved; please try again.",
+    "invalidImage": "The image is not valid. Use JPG or PNG.",
+    "tooLarge": "The image is too large (max 5 MB)."
   }
 }

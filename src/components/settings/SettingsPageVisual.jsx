@@ -7,6 +7,7 @@ import { useBusiness } from '@/contexts/BusinessContext';
 import { getPrimaryButtonStyle, getHeadingStyle } from '@/lib/styleUtils';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
+import { isImageUploadError, getImageUploadMessageKey } from '@/lib/imageStorage';
 import { DEFAULT_VISUAL_SETTINGS, clearVisualSettingsCache, saveVisualSettings, applyVisualSettingsToDOM } from '@/lib/businessVisualSettingsService';
 import {
   getCarouselSlides, createCarouselSlide, updateCarouselSlide,
@@ -416,24 +417,31 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       setSavingSlide(id);
       setSavedSlide(null);
 
-      const { error } = await updateCarouselSlide(id, updates);
-      if (error) throw error;
+      const saved = await updateCarouselSlide(id, updates);
+      if (saved?.error) throw saved.error;
+
+      // A new image is stored as a Storage URL: keep that, not the base64 that was sent
+      const applied = updates.image_url && saved?.image_url
+        ? { ...updates, image_url: saved.image_url }
+        : updates;
 
       setCarouselSlides(prev =>
-        prev.map(slide => (slide.id === id ? { ...slide, ...updates } : slide))
+        prev.map(slide => (slide.id === id ? { ...slide, ...applied } : slide))
       );
 
       setSavingSlide(null);
       setSavedSlide(id);
       setTimeout(() => setSavedSlide(null), 1500);
+      return applied;
     } catch (error) {
       console.error('Error updating slide:', error);
       setSavingSlide(null);
       toast({
         title: t('settings.visual.errorUpdating'),
-        description: error.message,
+        description: isImageUploadError(error) ? t(getImageUploadMessageKey(error)) : error.message,
         variant: 'destructive'
       });
+      return null;
     }
   };
 
@@ -524,8 +532,9 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
         return;
       }
 
-      await handleSlideChange(slideId, { image_url: result.base64 });
-      setSlidePreviews(prev => ({ ...prev, [slideId]: result.base64 }));
+      const applied = await handleSlideChange(slideId, { image_url: result.base64 });
+      if (!applied) return; // upload/save failed: nothing was stored, keep the previous image
+      setSlidePreviews(prev => ({ ...prev, [slideId]: applied.image_url }));
 
       toast({
         title: t('settings.visual.imageOptimized'),

@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
+import { isImageUploadError, getImageUploadMessageKey } from '@/lib/imageStorage';
 import { isStockBelowReservedError } from '@/lib/stockErrors';
 import { createProduct, deleteProduct, setProductActiveState, updateProduct as updateProductDB } from '@/lib/productService';
 import { bulkDeleteProducts, previewBulkDeleteProducts } from '@/lib/bulkDeleteService';
@@ -411,7 +412,9 @@ const VendorInventoryTab = ({
       console.error('[handleSubmitProduct] Error details:', { message: error?.message, code: error?.code, stack: error?.stack });
       toast({
         title: 'Error',
-        description: isStockBelowReservedError(error) ? t('vendor.inventory.stockBelowReserved') : error.message,
+        description: isStockBelowReservedError(error)
+          ? t('vendor.inventory.stockBelowReserved')
+          : (isImageUploadError(error) ? t(getImageUploadMessageKey(error)) : error.message),
         variant: 'destructive'
       });
     }

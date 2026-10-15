@@ -6,6 +6,7 @@
 
 import { supabase } from './supabase';
 import { withCatalogInvalidation } from './catalogCache';
+import { resolveImageUrl } from './imageStorage';
 import { generateSlug, getCurrentTimestamp } from './queryHelpers';
 import { DEFAULTS } from './constants';
 import { validateMarginPercent, MARGIN_MIN, MARGIN_MAX } from './marginResolver';
@@ -303,6 +304,12 @@ export const createProduct = withCatalogInvalidation(async (productData) => {
       { operation: 'createProduct', productName: productData.name_es }
     );
 
+    // Upload first: if it fails nothing is saved (no base64 fallback)
+    const imageUrl = await resolveImageUrl(productData.image, {
+      folder: 'products',
+      id: crypto.randomUUID()
+    });
+
     const { data, error } = await supabase
       .from('products')
       .insert([{
@@ -316,8 +323,7 @@ export const createProduct = withCatalogInvalidation(async (productData) => {
         base_currency_id: productData.base_currency_id,
         profit_margin: parseFloat(productData.profitMargin || DEFAULTS.PRODUCT_PROFIT_MARGIN),
         min_stock_alert: productData.min_stock_alert ? parseInt(productData.min_stock_alert) : DEFAULTS.MIN_STOCK_ALERT,
-        image_url: productData.image || null,
-        image_file: productData.image || null,
+        image_url: imageUrl || null,
         is_active: true
       }])
       .select()
@@ -392,8 +398,10 @@ export const updateProduct = withCatalogInvalidation(async (productId, productDa
     };
 
     if (productData.image) {
-      updateData.image_url = productData.image;
-      updateData.image_file = productData.image;
+      updateData.image_url = await resolveImageUrl(productData.image, {
+        folder: 'products',
+        id: productId
+      });
     }
 
     const { data, error } = await supabase

@@ -16,6 +16,10 @@ vi.mock('@/contexts/CurrencyContext', () => ({
 }));
 vi.mock('@/components/ui/use-toast', () => ({ toast: vi.fn() }));
 vi.mock('@/lib/imageUtils', () => ({ validateAndProcessImage: vi.fn() }));
+vi.mock('@/lib/imageStorage', () => ({
+  isImageUploadError: () => false,
+  getImageUploadMessageKey: () => 'images.uploadFailed'
+}));
 vi.mock('@/lib/productService', () => ({
   createProduct: vi.fn(),
   deleteProduct: vi.fn(),
