@@ -40,6 +40,8 @@ import { useUserDiscounts } from '@/hooks/useUserDiscounts';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { isPaymentMethodEnabled, isPaymentMethodDisabledError, PAYMENT_FLOWS } from '@/lib/paymentMethodsService';
 import { useModal } from '@/contexts/ModalContext';
+import RegulatoryNotice from '@/components/RegulatoryNotice';
+import LegalConsentLine from '@/components/LegalConsentLine';
 
 const STOCK_REFUSAL_MESSAGE_KEYS = {
   invalid_item: 'cart.stock.invalidItem',
@@ -1361,7 +1363,10 @@ const CartPage = ({ onNavigate }) => {
             </div>
           </motion.div>
 
+          <RegulatoryNotice onNavigate={onNavigate} className="mb-4" />
+
           <div className="space-y-3">
+            <LegalConsentLine variant="confirm" onNavigate={onNavigate} />
             <div className="flex gap-3">
               <Button
                 variant="outline"

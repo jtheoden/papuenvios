@@ -2,20 +2,31 @@ import { motion } from 'framer-motion';
 import { FileText } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getHeadingStyle } from '@/lib/styleUtils';
+import {
+  LEGAL_LAST_UPDATED,
+  CLAIM_WINDOW_HOURS,
+  REFUND_BUSINESS_DAYS,
+  PAYMENT_VERIFICATION_BUSINESS_HOURS,
+  TERMS_CHANGE_NOTICE_DAYS,
+} from '@/lib/legalConfig';
+import LegalContact from '@/components/LegalContact';
+import { useAnchorScroll } from '@/hooks/useAnchorScroll';
 
-const LAST_UPDATED = '2026-04-20';
-const CONTACT_EMAIL = 'soporte@papuenvios.com';
-
-const Section = ({ title, children }) => (
-  <div className="mb-8">
-    <h2 className="text-xl font-semibold text-gray-800 mb-3">{title}</h2>
+const Section = ({ id, title, children }) => (
+  <section id={id} className="mb-8 scroll-mt-24" aria-labelledby={id ? `${id}-title` : undefined}>
+    <h2 id={id ? `${id}-title` : undefined} className="text-xl font-semibold text-gray-800 mb-3">
+      {title}
+    </h2>
     <div className="text-gray-600 space-y-2 leading-relaxed">{children}</div>
-  </div>
+  </section>
 );
 
 const TermsPage = ({ onNavigate }) => {
   const { language } = useLanguage();
   const es = language === 'es';
+
+  // Deep links such as /terms#refunds scroll to the section; otherwise start at the top.
+  useAnchorScroll();
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
@@ -30,7 +41,7 @@ const TermsPage = ({ onNavigate }) => {
               {es ? 'Términos de Servicio' : 'Terms of Service'}
             </h1>
             <p className="text-sm text-gray-500">
-              {es ? `Última actualización: ${LAST_UPDATED}` : `Last updated: ${LAST_UPDATED}`}
+              {es ? `Última actualización: ${LEGAL_LAST_UPDATED}` : `Last updated: ${LEGAL_LAST_UPDATED}`}
             </p>
           </div>
 
@@ -45,11 +56,16 @@ const TermsPage = ({ onNavigate }) => {
                   </p>
                 </Section>
 
-                <Section title="2. Descripción del servicio">
+                <Section title="2. Descripción del servicio y límites">
                   <p>
                     PapuEnvios es una plataforma que permite a personas en el exterior —
-                    principalmente en Estados Unidos — enviar remesas en efectivo y realizar compras
-                    de productos para entrega a destinatarios en Cuba.
+                    principalmente en Estados Unidos — enviar remesas y realizar compras de
+                    productos para entrega a destinatarios en Cuba.
+                  </p>
+                  <p>
+                    PapuEnvios no es un banco ni una institución financiera: no ofrece cuentas,
+                    depósitos ni créditos. Los pagos se realizan por Zelle y se
+                    verifican manualmente.
                   </p>
                 </Section>
 
@@ -65,9 +81,10 @@ const TermsPage = ({ onNavigate }) => {
                 <Section title="4. Proceso de pago y verificación">
                   <p>
                     Los pagos se realizan a través de Zelle. Una vez que cargue su comprobante de
-                    pago, nuestro equipo lo verificará manualmente. La validación puede tardar hasta
-                    24 horas hábiles. PapuEnvios se reserva el derecho de rechazar pagos si el
-                    comprobante no es verificable o si existe sospecha de fraude.
+                    pago, nuestro equipo lo verificará manualmente. La validación puede tardar hasta{' '}
+                    {PAYMENT_VERIFICATION_BUSINESS_HOURS} horas hábiles. PapuEnvios se reserva el
+                    derecho de rechazar pagos si el comprobante no es verificable o si existe
+                    sospecha de fraude.
                   </p>
                   <p className="mt-2 font-medium text-amber-700">
                     ⚠ Los pagos Zelle son irreversibles. Asegúrese de revisar todos los datos antes
@@ -77,14 +94,26 @@ const TermsPage = ({ onNavigate }) => {
 
                 <Section title="5. Tasas de cambio y comisiones">
                   <p>
-                    Las tasas de cambio y comisiones se muestran claramente antes de confirmar cada
+                    Las tasas de cambio y comisiones se muestran antes de confirmar cada
                     transacción. PapuEnvios se reserva el derecho de actualizar las tasas en
                     cualquier momento. La tasa aplicada será la vigente en el momento en que su pago
                     sea validado.
                   </p>
                 </Section>
 
-                <Section title="6. Restricciones de uso">
+                <Section id="delivery" title="6. Entrega">
+                  <p>
+                    La entrega en Cuba es realizada por un agente de entrega local independiente.
+                    PapuEnvios no publica los datos personales de dicho agente.
+                  </p>
+                  <p>
+                    Los tiempos de entrega son estimados y no constituyen una garantía. Pueden
+                    variar por disponibilidad, logística local u otras circunstancias fuera de
+                    nuestro control.
+                  </p>
+                </Section>
+
+                <Section title="7. Restricciones de uso">
                   <p>Queda prohibido utilizar PapuEnvios para:</p>
                   <ul className="list-disc pl-5 space-y-1 mt-2">
                     <li>Actividades ilegales o que violen regulaciones de sanciones internacionales.</li>
@@ -95,17 +124,60 @@ const TermsPage = ({ onNavigate }) => {
                   </ul>
                 </Section>
 
-                <Section title="7. Regulación OFAC y cumplimiento">
+                <Section title="8. Regulación OFAC y cumplimiento">
                   <p>
-                    Las remesas a Cuba están sujetas a las regulaciones de la Oficina de Control de
-                    Activos Extranjeros (OFAC) de EE.UU., incluyendo las Cuban Assets Control
-                    Regulations (31 CFR Part 515). El usuario es responsable de asegurarse de que
-                    sus transacciones cumplan con todas las leyes aplicables, incluyendo los límites
-                    vigentes de envío autorizados por OFAC.
+                    Los envíos a Cuba están sujetos a las regulaciones de EE.UU. administradas por
+                    la Oficina de Control de Activos Extranjeros (OFAC), incluyendo las Cuban Assets
+                    Control Regulations (31 CFR Part 515). El usuario es responsable de asegurarse
+                    de que sus transacciones cumplan con todas las leyes aplicables, incluyendo los
+                    límites de envío vigentes. PapuEnvios no ofrece asesoría legal.
                   </p>
                 </Section>
 
-                <Section title="8. Limitación de responsabilidad">
+                <Section id="refunds" title="9. Cancelaciones y reembolsos">
+                  <ul className="list-disc pl-5 space-y-2">
+                    <li>
+                      <strong>Antes del despacho:</strong> mientras un pedido o remesa aún no haya
+                      sido despachado, puede solicitar su cancelación. Las remesas se cancelan
+                      directamente desde Mis Remesas hasta que nuestro equipo valide el pago; en los
+                      demás casos, incluidos los pedidos de productos, la cancelación se solicita
+                      por soporte. Si hubo un pago, se reembolsa el monto total pagado, de forma
+                      manual y al mismo método Zelle utilizado, dentro de {REFUND_BUSINESS_DAYS} días
+                      hábiles.
+                    </li>
+                    <li>
+                      <strong>Pedidos sin pago verificado:</strong> los pedidos cuyo pago no se
+                      verifica vencen automáticamente y el inventario reservado se libera. PapuEnvios
+                      no cobra nada por ellos.
+                    </li>
+                    <li>
+                      <strong>Pago rechazado o producto no disponible:</strong> se reembolsa el monto
+                      total pagado dentro de {REFUND_BUSINESS_DAYS} días hábiles.
+                    </li>
+                    <li>
+                      <strong>Después del despacho:</strong> el pedido o la remesa ya no puede
+                      cancelarse. Solo procede un reembolso o reenvío por falta de entrega o por
+                      productos materialmente distintos a lo ordenado o dañados, siempre que el
+                      reclamo se presente dentro de las {CLAIM_WINDOW_HOURS} horas siguientes a la
+                      entrega (o a la fecha estimada de entrega, si esta no se produjo).
+                    </li>
+                    <li>
+                      <strong>Errores del pagador en Zelle:</strong> PapuEnvios no puede revertir un
+                      pago Zelle realizado con un monto o destinatario incorrecto por parte del
+                      pagador; estos casos deben gestionarse con su banco.
+                    </li>
+                    <li>
+                      <strong>Remesas:</strong> se aplica la tasa vigente cuando su pago es
+                      validado (sección 5). Los reembolsos se realizan en USD por el monto pagado.
+                    </li>
+                  </ul>
+                  <p>
+                    Para solicitar una cancelación o presentar un reclamo, contáctenos a través de{' '}
+                    <LegalContact es />.
+                  </p>
+                </Section>
+
+                <Section title="10. Limitación de responsabilidad">
                   <p>
                     PapuEnvios no será responsable por retrasos causados por circunstancias fuera
                     de nuestro control (interrupciones bancarias, situaciones en Cuba, eventos de
@@ -114,41 +186,19 @@ const TermsPage = ({ onNavigate }) => {
                   </p>
                 </Section>
 
-                <Section title="9. Cancelaciones y reembolsos">
+                <Section title="11. Modificaciones">
                   <p>
-                    Una vez validado el pago, la transacción no puede cancelarse si ya fue procesada.
-                    En caso de error por parte de PapuEnvios, gestionaremos el reembolso o reenvío
-                    correspondiente. Contáctenos a{' '}
-                    <a href={`mailto:${CONTACT_EMAIL}`} className="text-blue-600 underline">
-                      {CONTACT_EMAIL}
-                    </a>{' '}
-                    dentro de las 48 horas siguientes a la transacción.
-                  </p>
-                </Section>
-
-                <Section title="10. Modificaciones">
-                  <p>
-                    Nos reservamos el derecho de modificar estos términos en cualquier momento.
-                    Los cambios serán notificados por correo electrónico con al menos 7 días de
-                    anticipación. El uso continuado del servicio después de los cambios constituye
-                    aceptación de los nuevos términos.
-                  </p>
-                </Section>
-
-                <Section title="11. Ley aplicable">
-                  <p>
-                    Estos términos se rigen por las leyes aplicables en el estado de Florida,
-                    EE.UU., sin perjuicio de las regulaciones federales de OFAC y FinCEN que
-                    también aplican a las transacciones.
+                    Nos reservamos el derecho de modificar estos términos. Los cambios se publicarán
+                    en esta página junto con su fecha de actualización y, para cambios sustanciales,
+                    con al menos {TERMS_CHANGE_NOTICE_DAYS} días de anticipación. El uso continuado
+                    del servicio después de los cambios constituye aceptación de los nuevos
+                    términos.
                   </p>
                 </Section>
 
                 <Section title="12. Contacto">
                   <p>
-                    Para consultas sobre estos términos:{' '}
-                    <a href={`mailto:${CONTACT_EMAIL}`} className="text-blue-600 underline">
-                      {CONTACT_EMAIL}
-                    </a>
+                    Para consultas sobre estos términos, utilice <LegalContact es />.
                   </p>
                 </Section>
               </>
@@ -162,11 +212,16 @@ const TermsPage = ({ onNavigate }) => {
                   </p>
                 </Section>
 
-                <Section title="2. Service Description">
+                <Section title="2. Service Description and Limits">
                   <p>
                     PapuEnvios is a platform that enables people abroad — primarily in the United
-                    States — to send cash remittances and purchase products for delivery to
-                    recipients in Cuba.
+                    States — to send remittances and purchase products for delivery to recipients
+                    in Cuba.
+                  </p>
+                  <p>
+                    PapuEnvios is not a bank and is not a financial institution: it does not offer
+                    accounts, deposits or credit. Payments are made via Zelle and
+                    are verified manually.
                   </p>
                 </Section>
 
@@ -182,9 +237,10 @@ const TermsPage = ({ onNavigate }) => {
                 <Section title="4. Payment and Verification Process">
                   <p>
                     Payments are made via Zelle. Once you upload your payment proof, our team
-                    will manually verify it. Verification may take up to 24 business hours.
-                    PapuEnvios reserves the right to reject payments if the proof cannot be
-                    verified or if fraud is suspected.
+                    will manually verify it. Verification may take up to{' '}
+                    {PAYMENT_VERIFICATION_BUSINESS_HOURS} business hours. PapuEnvios reserves the
+                    right to reject payments if the proof cannot be verified or if fraud is
+                    suspected.
                   </p>
                   <p className="mt-2 font-medium text-amber-700">
                     ⚠ Zelle payments are irreversible. Review all details before confirming your
@@ -194,13 +250,24 @@ const TermsPage = ({ onNavigate }) => {
 
                 <Section title="5. Exchange Rates and Fees">
                   <p>
-                    Exchange rates and fees are clearly displayed before confirming each
-                    transaction. PapuEnvios reserves the right to update rates at any time. The
-                    rate applied will be the one in effect when your payment is validated.
+                    Exchange rates and fees are displayed before confirming each transaction.
+                    PapuEnvios reserves the right to update rates at any time. The rate applied
+                    will be the one in effect when your payment is validated.
                   </p>
                 </Section>
 
-                <Section title="6. Prohibited Uses">
+                <Section id="delivery" title="6. Delivery">
+                  <p>
+                    Delivery in Cuba is carried out by an independent local delivery agent.
+                    PapuEnvios does not publish the personal data of that agent.
+                  </p>
+                  <p>
+                    Delivery times are estimates and are not guaranteed. They may vary due to
+                    availability, local logistics or other circumstances beyond our control.
+                  </p>
+                </Section>
+
+                <Section title="7. Prohibited Uses">
                   <p>You may not use PapuEnvios for:</p>
                   <ul className="list-disc pl-5 space-y-1 mt-2">
                     <li>Illegal activities or violations of international sanctions regulations.</li>
@@ -211,16 +278,59 @@ const TermsPage = ({ onNavigate }) => {
                   </ul>
                 </Section>
 
-                <Section title="7. OFAC Compliance">
+                <Section title="8. OFAC Compliance">
                   <p>
-                    Remittances to Cuba are subject to U.S. OFAC regulations, including the Cuban
-                    Assets Control Regulations (31 CFR Part 515). Users are responsible for
-                    ensuring their transactions comply with all applicable laws, including current
-                    OFAC-authorized sending limits.
+                    Shipments to Cuba are subject to U.S. regulations administered by the Office of
+                    Foreign Assets Control (OFAC), including the Cuban Assets Control Regulations
+                    (31 CFR Part 515). Users are responsible for ensuring their transactions comply
+                    with all applicable laws, including current sending limits. PapuEnvios does not
+                    provide legal advice.
                   </p>
                 </Section>
 
-                <Section title="8. Limitation of Liability">
+                <Section id="refunds" title="9. Cancellations and Refunds">
+                  <ul className="list-disc pl-5 space-y-2">
+                    <li>
+                      <strong>Before dispatch:</strong> while an order or remittance has not been
+                      dispatched, you may request its cancellation. Remittances can be cancelled
+                      directly from My Remittances until our team validates the payment; in all
+                      other cases, including product orders, cancellation is requested through
+                      support. If a payment was made, the full amount paid is refunded manually to
+                      the same Zelle method used, within {REFUND_BUSINESS_DAYS} business days.
+                    </li>
+                    <li>
+                      <strong>Orders without verified payment:</strong> orders whose payment is not
+                      verified expire automatically and the reserved stock is released. PapuEnvios
+                      charges nothing for them.
+                    </li>
+                    <li>
+                      <strong>Rejected payment or unavailable item:</strong> the full amount paid is
+                      refunded within {REFUND_BUSINESS_DAYS} business days.
+                    </li>
+                    <li>
+                      <strong>After dispatch:</strong> the order or remittance can no longer be
+                      cancelled. A refund or redelivery applies only for non-delivery or for items
+                      that are materially different from what was ordered or damaged, provided the
+                      claim is made within {CLAIM_WINDOW_HOURS} hours after delivery (or after the
+                      estimated delivery date, if delivery did not occur).
+                    </li>
+                    <li>
+                      <strong>Payer errors on Zelle:</strong> PapuEnvios cannot reverse a Zelle
+                      payment sent with a wrong amount or to a wrong recipient on the payer's side;
+                      such cases must be handled with your bank.
+                    </li>
+                    <li>
+                      <strong>Remittances:</strong> the rate in effect when your payment is
+                      validated applies (section 5). Refunds are made in USD for the amount paid.
+                    </li>
+                  </ul>
+                  <p>
+                    To request a cancellation or submit a claim, contact us through{' '}
+                    <LegalContact es={false} />.
+                  </p>
+                </Section>
+
+                <Section title="10. Limitation of Liability">
                   <p>
                     PapuEnvios is not liable for delays caused by circumstances beyond our control
                     (banking outages, situations in Cuba, force majeure). Our maximum liability is
@@ -228,39 +338,18 @@ const TermsPage = ({ onNavigate }) => {
                   </p>
                 </Section>
 
-                <Section title="9. Cancellations and Refunds">
+                <Section title="11. Modifications">
                   <p>
-                    Once a payment is validated, the transaction cannot be cancelled if already
-                    processed. In case of error on PapuEnvios's part, we will arrange a refund or
-                    resend. Contact us at{' '}
-                    <a href={`mailto:${CONTACT_EMAIL}`} className="text-blue-600 underline">
-                      {CONTACT_EMAIL}
-                    </a>{' '}
-                    within 48 hours of the transaction.
-                  </p>
-                </Section>
-
-                <Section title="10. Modifications">
-                  <p>
-                    We reserve the right to modify these terms at any time. Changes will be
-                    notified by email with at least 7 days' notice. Continued use of the service
+                    We reserve the right to modify these terms. Changes will be published on this
+                    page together with their update date and, for substantial changes, with at
+                    least {TERMS_CHANGE_NOTICE_DAYS} days' notice. Continued use of the service
                     after changes constitutes acceptance of the new terms.
-                  </p>
-                </Section>
-
-                <Section title="11. Governing Law">
-                  <p>
-                    These terms are governed by the laws of the State of Florida, U.S.A., without
-                    prejudice to applicable federal OFAC and FinCEN regulations.
                   </p>
                 </Section>
 
                 <Section title="12. Contact">
                   <p>
-                    For questions about these terms:{' '}
-                    <a href={`mailto:${CONTACT_EMAIL}`} className="text-blue-600 underline">
-                      {CONTACT_EMAIL}
-                    </a>
+                    For questions about these terms, use <LegalContact es={false} />.
                   </p>
                 </Section>
               </>

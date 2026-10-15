@@ -200,6 +200,17 @@ describe('CartPage - payment step', () => {
     uploadPaymentProof.mockResolvedValue('https://files/proof.png');
   });
 
+  describe('legal notices at the payment step', () => {
+    it('shows the regulatory notice and the Terms/Privacy consent line with real links', async () => {
+      await reachPaymentStep();
+
+      expect(screen.getByRole('note')).toBeInTheDocument();
+      const terms = screen.getAllByRole('link', { name: 'legal.links.terms' });
+      expect(terms.some((a) => a.getAttribute('href') === '/terms')).toBe(true);
+      expect(screen.getByRole('link', { name: 'legal.links.privacy' })).toHaveAttribute('href', '/privacy');
+    });
+  });
+
   describe('payer phone gate (PR-06b)', () => {
     it('keeps confirm disabled and never creates the order without a valid payer phone', async () => {
       await reachPaymentStep();
