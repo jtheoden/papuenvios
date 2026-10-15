@@ -2058,5 +2058,10 @@
     "resetConfirm": "Restablecer",
     "resetDone": "Valores por defecto restablecidos",
     "scheduleNote": "Una tarea programada cada hora aplica estos valores cancelando los pedidos vencidos y devolviendo su stock. Si la programación no está activa en la base de datos, la expiración no se ejecuta aunque guardes estos valores."
+  },
+  "images": {
+    "uploadFailed": "No se pudo subir la imagen. No se guardó nada; intenta de nuevo.",
+    "invalidImage": "La imagen no es válida. Usa JPG o PNG.",
+    "tooLarge": "La imagen es demasiado grande (máximo 5 MB)."
   }
 }

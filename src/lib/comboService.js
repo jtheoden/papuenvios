@@ -6,6 +6,7 @@
 
 import { supabase } from './supabase';
 import { withCatalogInvalidation } from './catalogCache';
+import { resolveImageUrl } from './imageStorage';
 import { getCurrentTimestamp } from './queryHelpers';
 import { DEFAULTS } from './constants';
 import {
@@ -141,6 +142,12 @@ export const createCombo = withCatalogInvalidation(async (comboData) => {
       }, 0);
     }
 
+    // Upload first: if it fails nothing is saved (no base64 fallback)
+    const imageUrl = await resolveImageUrl(comboData.image, {
+      folder: 'combos',
+      id: crypto.randomUUID()
+    });
+
     // Create combo
     const { data: combo, error: comboError } = await supabase
       .from('combo_products')
@@ -149,7 +156,7 @@ export const createCombo = withCatalogInvalidation(async (comboData) => {
         name_en: comboData.name,
         description_es: comboData.description || '',
         description_en: comboData.description || '',
-        image_url: comboData.image || null,
+        image_url: imageUrl || null,
         base_total_price: baseTotalPrice,
         profit_margin: parseFloat(comboData.profitMargin || DEFAULTS.COMBO_PROFIT_MARGIN),
         is_active: true
@@ -236,7 +243,10 @@ export const updateCombo = withCatalogInvalidation(async (comboId, comboData) =>
     };
 
     if (comboData.image) {
-      updateData.image_url = comboData.image;
+      updateData.image_url = await resolveImageUrl(comboData.image, {
+        folder: 'combos',
+        id: comboId
+      });
     }
 
     if (baseTotalPrice !== undefined) {

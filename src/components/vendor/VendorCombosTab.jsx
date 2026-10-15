@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
+import { isImageUploadError, getImageUploadMessageKey } from '@/lib/imageStorage';
 import { createCombo, updateCombo as updateComboDB, deleteCombo, setComboActiveState } from '@/lib/comboService';
 import { checkComboStockIssues, computeComboPricing } from '@/lib/comboUtils';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
@@ -410,7 +411,7 @@ const VendorCombosTab = ({
       console.error('[handleComboSubmit] Error details:', { message: error?.message, code: error?.code, stack: error?.stack });
       toast({
         title: 'Error',
-        description: error.message,
+        description: isImageUploadError(error) ? t(getImageUploadMessageKey(error)) : error.message,
         variant: 'destructive'
       });
     } finally {

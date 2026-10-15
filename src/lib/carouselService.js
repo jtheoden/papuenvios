@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { withCatalogInvalidation } from './catalogCache';
+import { resolveImageUrl } from './imageStorage';
 import {
   handleError, logError, createValidationError,
   createNotFoundError, parseSupabaseError, ERROR_CODES
@@ -85,7 +86,6 @@ export const getCarouselSlideById = async (id) => {
  * @param {string} [slideData.subtitle_es] - Spanish subtitle
  * @param {string} [slideData.subtitle_en] - English subtitle
  * @param {string} [slideData.image_url] - Image URL
- * @param {string} [slideData.image_file] - Image file reference
  * @param {string} [slideData.link_url] - Link URL
  * @param {number} [slideData.display_order] - Display order (auto-assigned if omitted)
  * @param {boolean} [slideData.is_active] - Active status (default: true)
@@ -112,6 +112,12 @@ export const createCarouselSlide = withCatalogInvalidation(async (slideData) => 
 
     const nextOrder = slides && slides.length > 0 ? slides[0].display_order + 1 : 0;
 
+    // Upload first: if it fails nothing is saved (no base64 fallback)
+    const imageUrl = await resolveImageUrl(slideData.image_url, {
+      folder: 'carousel',
+      id: crypto.randomUUID()
+    });
+
     const { data, error } = await supabase
       .from('carousel_slides')
       .insert([{
@@ -119,8 +125,7 @@ export const createCarouselSlide = withCatalogInvalidation(async (slideData) => 
         title_en: slideData.title_en || '',
         subtitle_es: slideData.subtitle_es || null,
         subtitle_en: slideData.subtitle_en || null,
-        image_url: slideData.image_url || null,
-        image_file: slideData.image_file || null,
+        image_url: imageUrl || null,
         link_url: slideData.link_url || null,
         display_order: slideData.display_order ?? nextOrder,
         is_active: slideData.is_active ?? true
@@ -154,10 +159,16 @@ export const updateCarouselSlide = withCatalogInvalidation(async (id, updates) =
       throw createValidationError({ id: 'Slide ID is required' }, 'Missing slide ID');
     }
 
+    const payload = { ...updates };
+    if (payload.image_url) {
+      payload.image_url = await resolveImageUrl(payload.image_url, { folder: 'carousel', id });
+    }
+    delete payload.image_file; // legacy duplicate column is no longer written
+
     const { data, error } = await supabase
       .from('carousel_slides')
       .update({
-        ...updates,
+        ...payload,
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
