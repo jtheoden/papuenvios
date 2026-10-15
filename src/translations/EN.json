@@ -656,6 +656,8 @@
       "deleteConfirmTitle": "Confirm deletion",
       "deleteConfirmMessage": "Are you sure you want to delete the product \"{name}\"? This will deactivate it for users.",
       "productDeleted": "Product deleted",
+      "productAlreadyDeleted": "The product no longer exists (probably deleted by another user). List refreshed.",
+      "refreshFailed": "Could not refresh the list. Reload the page.",
       "searchPlaceholder": "Search by name...",
       "filters": "Filters",
       "filterByCategory": "Category",
@@ -1175,7 +1177,220 @@
       "pubSaved": "Publications saved",
       "pubRemoved": "Publication removed"
     },
-    "saveSuccess": "Settings saved successfully"
+    "saveSuccess": "Settings saved successfully",
+    "bizum": {
+      "title": "Bizum",
+      "intro": "Configure the Bizum parameters, the EUR rate and the receiving accounts. Turning Bizum on or off is done with the payment method switches.",
+      "retry": "Retry",
+      "loadError": "The Bizum section could not be loaded. Zelle management is not affected.",
+      "range": "Range: {min} – {max}",
+      "defaultValue": "Recommended: {default}",
+      "restore": "Restore recommended value",
+      "units": {
+        "percent": "%",
+        "minutes": "minutes",
+        "hours": "hours",
+        "count": "units",
+        "years": "years",
+        "eur": "EUR"
+      },
+      "fields": {
+        "default_spread_pct": {
+          "label": "Default spread",
+          "help": "Spread added to the mid rate when none is given while loading a rate."
+        },
+        "quote_validity_minutes": {
+          "label": "Quote validity",
+          "help": "How long the customer can pay with the quoted rate."
+        },
+        "quote_grace_hours": {
+          "label": "Grace after quote expiry",
+          "help": "Hours after expiry during which the payment is flagged as late instead of rejected."
+        },
+        "fx_warn_hours": {
+          "label": "Stale rate warning",
+          "help": "Rate age from which the amber warning is shown. Must be lower than the block threshold."
+        },
+        "fx_block_hours": {
+          "label": "Stale rate block",
+          "help": "Rate age from which Bizum stops being offered. Must be higher than the warning threshold."
+        },
+        "fx_max_change_pct": {
+          "label": "Largest change without confirmation",
+          "help": "Largest change of the effective rate versus the previous one accepted without asking for confirmation."
+        },
+        "default_per_operation_limit": {
+          "label": "Suggested per-operation limit",
+          "help": "Value suggested when creating an account; the real limit is set on each account."
+        },
+        "remittance_warn_hours": {
+          "label": "Remittance without proof: warning",
+          "help": "Hours without proof after which a warning is raised. Must be lower than the expiry."
+        },
+        "remittance_expire_hours": {
+          "label": "Remittance without proof: expiry",
+          "help": "Hours without proof after which the Bizum remittance expires. Must be higher than the warning."
+        },
+        "max_unpaid_ops_per_user": {
+          "label": "Unpaid operations per user",
+          "help": "Maximum Bizum operations awaiting payment per user."
+        },
+        "max_open_quotes_per_user": {
+          "label": "Open quotes per user",
+          "help": "Maximum active quotes per user."
+        },
+        "max_quotes_per_hour": {
+          "label": "Quotes per hour",
+          "help": "Maximum quotes a user can generate per hour."
+        },
+        "proof_retention_years": {
+          "label": "Proof retention",
+          "help": "Informative only: nothing deletes proofs automatically."
+        }
+      },
+      "validation": {
+        "required": "This field is required.",
+        "range": "Must be between {min} and {max}.",
+        "integer": "Must be a whole number.",
+        "decimals": "At most {decimals} decimals are allowed.",
+        "windowOrder": "Must be greater than the warning value."
+      },
+      "settings": {
+        "title": "Bizum parameters",
+        "intro": "Every value is validated on the server. Only the parameters you change are sent.",
+        "save": "Save parameters",
+        "saving": "Saving...",
+        "saved": "Parameters saved",
+        "savedDescription": "The new values are now in effect."
+      },
+      "accounts": {
+        "title": "Bizum accounts",
+        "intro": "Receiving accounts for payments. They cannot be deleted: deactivate them to keep the history.",
+        "create": "New account",
+        "edit": "Edit",
+        "empty": "No Bizum accounts configured. Create one to start.",
+        "activate": "Activate",
+        "deactivate": "Deactivate",
+        "active": "Active",
+        "inactive": "Inactive",
+        "createTitle": "New Bizum account",
+        "editTitle": "Edit Bizum account",
+        "formDescription": "The phone must use the international format, for example +34612345678.",
+        "limitHelp": "0 means no cap. Maximum amount per operation in EUR.",
+        "phoneHelp": "E.164 format: a + sign and 8 to 15 digits.",
+        "forProducts": "Available for products",
+        "forRemittances": "Available for remittances",
+        "saving": "Saving...",
+        "saved": "Account saved",
+        "statusChanged": "Account status updated",
+        "fields": {
+          "account_name": "Account name",
+          "holder_name": "Holder",
+          "phone": "Phone",
+          "bank_name": "Bank",
+          "is_active": "Account active",
+          "for_products": "For products",
+          "for_remittances": "For remittances",
+          "priority_order": "Priority (lower first)",
+          "per_operation_limit": "Per-operation limit (EUR)",
+          "notes": "Notes",
+          "noCap": "No cap"
+        },
+        "validation": {
+          "required": "This field is required.",
+          "tooLong": "The text is too long.",
+          "invalid": "Enter a phone in international format, for example +34612345678.",
+          "integer": "Must be a whole number.",
+          "range": "Must be an amount between 0 and 99999999.99.",
+          "decimals": "At most 2 decimals are allowed."
+        },
+        "deactivateConfirm": {
+          "title": "Deactivate account",
+          "message": "The account will no longer be assigned to new payments. Existing operations keep their history. You can activate it again.",
+          "confirm": "Deactivate"
+        },
+        "activateConfirm": {
+          "title": "Activate account",
+          "message": "The account can be assigned to new payments again.",
+          "confirm": "Activate"
+        },
+        "discardDraftWarning": "You have unsaved changes on this account; they will be discarded when it is deactivated."
+      },
+      "errors": {
+        "forbidden": "You do not have permission for this action.",
+        "invalidPatch": "There are no valid changes to save.",
+        "unknownKey": "An unknown parameter was sent.",
+        "outOfRange": "The value is outside the allowed range.",
+        "settingsMissing": "The Bizum parameters are missing in the database. Contact support.",
+        "accountNoDelete": "Bizum accounts cannot be deleted; deactivate it instead.",
+        "accountImmutable": "That account field cannot be changed.",
+        "phoneDuplicate": "An account with that phone already exists.",
+        "phoneInvalid": "The phone is not in a valid international format.",
+        "limitInvalid": "The per-operation limit cannot be negative.",
+        "accountNameLength": "The account name must be 1 to 120 characters.",
+        "holderNameLength": "The holder must be 1 to 120 characters.",
+        "bankNameLength": "The bank allows at most 120 characters.",
+        "notesLength": "Notes allow at most 500 characters.",
+        "unknown": "The operation could not be completed. Please try again."
+      },
+      "renderError": "The Bizum section could not be displayed. The rest of the settings remain available."
+    },
+    "fxRate": {
+      "title": "EUR rate",
+      "intro": "USD → EUR rate used to quote Bizum. Every load is recorded and cannot be modified.",
+      "state": {
+        "none": "No rate",
+        "ok": "Current",
+        "warn": "Getting old: update soon",
+        "blocked": "Blocked: Bizum unavailable"
+      },
+      "noneHelp": "There is no rate yet. Load the first one to be able to offer Bizum.",
+      "warnHelp": "The rate is getting old. Update it soon.",
+      "blockedHelp": "The rate is too old and Bizum is blocked until you load a new one.",
+      "labels": {
+        "mid": "Mid rate",
+        "spread": "Spread",
+        "effective": "Effective rate",
+        "author": "Loaded by",
+        "age": "Age",
+        "thresholds": "Thresholds"
+      },
+      "age": "{hours} h",
+      "thresholds": "Warning from {warn} h · block from {block} h",
+      "authorUnknown": "Unknown",
+      "form": {
+        "title": "Load a new rate",
+        "mid": "Mid rate (EUR per 1 USD)",
+        "midHelp": "Between 0.5 and 1.5, up to 6 decimals.",
+        "spread": "Spread (%)",
+        "spreadHelp": "Between 0 and 10, up to 2 decimals. The default spread from the parameters is suggested.",
+        "note": "Note (optional)",
+        "submit": "Load rate",
+        "submitting": "Saving..."
+      },
+      "validation": {
+        "required": "This field is required.",
+        "range": "Must be between {min} and {max}.",
+        "decimals": "At most {decimals} decimals are allowed.",
+        "tooLong": "The note allows at most 500 characters."
+      },
+      "largeChange": {
+        "title": "Large rate change",
+        "message": "The effective rate changes more than usual compared with the previous one. Confirm the value is correct before saving it.",
+        "confirm": "Confirm and save",
+        "detail": "Previous effective rate: {previous}. New: {next} ({change} %)."
+      },
+      "saved": "Rate saved",
+      "errors": {
+        "forbidden": "You do not have permission to load the rate.",
+        "invalidRate": "The mid rate must be between 0.5 and 1.5 with up to 6 decimals.",
+        "invalidSpread": "The spread must be between 0 and 10 with up to 2 decimals.",
+        "invalidSource": "The rate source is not valid.",
+        "noteTooLong": "The note allows at most 500 characters.",
+        "largeChange": "The rate change requires confirmation.",
+        "appendOnly": "Recorded rates cannot be modified."
+      }
+    }
   },
   "cart": {
     "clearAll": {

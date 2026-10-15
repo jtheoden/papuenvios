@@ -1,27 +1,79 @@
-# Stock reservation concurrency tests
+# Real-Postgres tests (concurrency + characterization)
 
 Real concurrency tests for `reserve_order_inventory`, `release_order_inventory`,
 `consume_order_inventory` and `expire_stale_order_reservations`
-(`supabase/migrations/20261014190000_atomic_stock_reservation.sql`).
+(`supabase/migrations/20261014190000_atomic_stock_reservation.sql`), plus
+`zelleCharacterization.test.js`, which pins the CURRENT behavior of the live Zelle /
+payment-method SQL (toggle + guards, `list_zelle_accounts_public`, computed usage and capacity,
+orders owner guards, grants, trigger firing order) so later payment-method work cannot change it silently.
 
-They run against the **local** Supabase Postgres only (the harness refuses any non-local host).
-When the database is unreachable the whole suite is skipped with a warning.
+They run against a **local** scratch database only (the harness refuses any non-local host).
+When the database is unreachable, is not a `papuenvios_test*` database, or lacks the objects a suite uses, that suite is
+skipped and the reason is printed on stderr. **Set `DB_TESTS_REQUIRED=1` (CI) to make a skip a hard failure.**
+
+## Prerequisites
+
+- Docker with the local e2e Supabase Postgres container **running** (`supabase_db_e2e-supabase`, host port 55322).
+  The bootstrap checks that the container really publishes that port.
+- `psql` and `pg_dump` on the PATH (or Docker, used as a fallback for `pg_dump`).
+- `npm install` (the harness uses `pg`; the connection-string guard uses `pg-connection-string`, a dependency of `pg`).
 
 ## Run
 
 ```bash
-# 1. local stack (docker container supabase_db_e2e-supabase, host port 55322)
-src/tests/e2e/stack/e2e-stack.sh start      # schema snapshot + e2e users/currency/product seed
+# 1. build the scratch DB `papuenvios_test` on the local Supabase Postgres container
+#    (supabase_db_e2e-supabase, host port 55322). Idempotent, ~3 s. Never touches the hosted project.
+npm run test:db:bootstrap              # add `-- --recreate` to drop and rebuild it
 
-# 2. apply the migration to the LOCAL db (idempotent; never the hosted project)
-PGPASSWORD=postgres psql -h 127.0.0.1 -p 55322 -U postgres -d postgres -v ON_ERROR_STOP=1 \
-  -f supabase/migrations/20261014190000_atomic_stock_reservation.sql
-
-# 3. tests
+# 2. tests
 npm run test:concurrency
 ```
 
-`STOCK_TEST_DB_URL` overrides the connection string (must still point at localhost).
+`STOCK_TEST_DB_URL` overrides the connection string (must still point at localhost). The default
+target is the local scratch database `papuenvios_test` on `127.0.0.1:55322` (credentials from
+`TEST_DB_USER` / `TEST_DB_PASSWORD`, defaulting to the e2e container's); the shared `postgres`
+database of the e2e container is no longer written to by these tests.
+
+### What the bootstrap does (`scripts/test-db-bootstrap.sh`)
+
+1. Creates the dedicated database (`papuenvios_test*` only; drops it only with `--recreate`).
+2. Clones the schema (`public`, `auth`, `extensions`, `storage`, WITH privileges) from a schema source:
+   `pg_dump --schema-only` of the `postgres` database of the local container (default), or a committed
+   plain-SQL dump via `--schema-dump FILE`.
+3. Replays `supabase/migrations/*.sql` in filename order **from `20261014180000` on** (`--replay-from`
+   to change), stopping on the first error and naming the file. Replayed files are recorded in
+   `test_bootstrap.replayed_migrations`.
+4. Loads `scripts/test-db-seed.sql` (two e2e users, currencies, one category/product, `payment_methods` rows).
+
+Safety: refuses any host other than 127.0.0.1 / localhost / ::1, a port other than 55322 unless
+`--allow-nondefault-port`, and a `--source-db` that is not a bare identifier (libpq would treat `host=...` or a URI as a
+full connection string and override the local host). A failed clone drops the partial database; a database without the
+`test_bootstrap.clone_done` marker is refused (use `--recreate`). Replayed migrations are stored with a sha256 and a
+changed file is refused (use `--recreate`). `--probe` replays EVERY migration into a throwaway `papuenvios_test_probe`
+database, lists all failures and drops it.
+
+The test side is guarded too: `localGuard.js` parses `STOCK_TEST_DB_URL` with the same parser as the driver and rejects
+`?host=` / `?hostaddr=` overrides, any query string or fragment and non-local hosts (unit-tested without a database in
+`src/tests/unit/dbHarnessLocalGuard.test.js`), and every connection must report a `papuenvios_test*` `current_database()`
+because the tests delete rows.
+
+### Replay window: what the clone has and what is replayed
+
+Evidence gathered by replaying all 72 migrations on a fresh clone (`--probe`) and by catalog checks:
+
+- Everything up to and including `20261014170000` is **already in the e2e clone** (verified: payment
+  methods, computed Zelle usage, owner guards, atomic stock reservation functions, ledger safety net).
+  Early migrations are NOT replayable (non-idempotent policies, `pg_cron` extension, `storage` seeds, etc.),
+  and replaying older ones over a newer clone can DOWNGRADE a function (e.g. `20261014130000` over `20261014150000`).
+- **Missing from the clone and replayed cleanly:** `20261014180000` (user_profiles role guard),
+  `20261014210000` (drop movements insert policy), `20261015100000` (image migration backup).
+  `20261014190000` and `20261014200000` are already present; replaying them is a harmless idempotent no-op.
+- Gaps, stated honestly: (0) the `supabase_admin` bypass of the creation guard cannot be exercised (the `postgres` login
+  cannot `SET ROLE supabase_admin`), and `service_role` has no table privileges on `orders`/`remittances` at all, so its
+  bypass is unreachable by direct DML; both are noted in the tests; (a) data that old migrations INSERT is not in the structure-only clone, so the seed
+  restates what the tests need (`payment_methods`); (b) the clone's `zelle_accounts` policies are the pre-
+  `20261014140000` ones (any authenticated user reads active rows), which matches the remote project today but
+  will change when that migration is applied; (c) the clone is Postgres 17.x, not 15.
 
 ## How it works
 
@@ -63,4 +115,4 @@ Since `20261014200000_product_delete_safety_and_ledger.sql` there is a safety ne
 
 Files: `stockReservation.test.js` (core), `stockReservationHardening.test.js` (cancel trigger, sweep isolation, clamped release, audit, bounds), `stockPolicy.test.js`, `productDeleteAndLedger.test.js` (delete predicate, ledger net, platform reset still works inside a rolled-back transaction).
 
-Apply BOTH migrations to the local DB, in order (`20261014190000` then `20261014200000`), before running the suite.
+Both migrations (`20261014190000`, `20261014200000`) are provided by the bootstrap; no manual apply step.

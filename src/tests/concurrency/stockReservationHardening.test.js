@@ -8,7 +8,7 @@
  *  S5  consume answers 'no_allocations' instead of a fake 'already_consumed'
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { isDbReachable, connectAdmin, connectAs, fireTogether, endAll } from './db';
+import { dbSuiteSkipReason, connectAdmin, connectAs, fireTogether, endAll } from './db';
 import {
   loadActors,
   createTracker,
@@ -22,8 +22,8 @@ import {
   restoreStockPolicyRows
 } from './fixtures';
 
-const reachable = await isDbReachable();
-const describeDb = reachable ? describe : describe.skip;
+const skipReason = await dbSuiteSkipReason({ functions: ['reserve_order_inventory', 'release_order_inventory', 'consume_order_inventory', 'expire_stale_order_reservations'], tables: ['orders', 'order_items', 'inventory', 'inventory_movements', 'order_stock_allocations', 'system_config'] });
+const describeDb = skipReason ? describe.skip : describe;
 
 const reserveSql = 'public.reserve_order_inventory($1::uuid)';
 const releaseSql = 'public.release_order_inventory($1::uuid)';
