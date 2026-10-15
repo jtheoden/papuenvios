@@ -5,6 +5,7 @@
  */
 
 import { supabase } from './supabase';
+import { withCatalogInvalidation } from './catalogCache';
 import { getCurrentTimestamp } from './queryHelpers';
 import { DEFAULTS } from './constants';
 import {
@@ -18,6 +19,14 @@ import {
 } from './errorHandler';
 import { ORDER_STATUS } from './orderService';
 
+// Explicit projection (same columns `*` returned) so new heavy columns are never pulled by accident.
+const COMBO_COLUMNS = [
+  'id', 'name_es', 'name_en', 'description_es', 'description_en', 'image_url',
+  'base_total_price', 'profit_margin', 'final_price', 'shipping_free',
+  'shipping_discount_percent', 'out_of_province_shipping', 'out_of_province_price',
+  'is_active', 'is_featured', 'created_at', 'updated_at'
+].join(', ');
+
 /**
  * Get all combos with their products
  * @param {boolean} includeInactive - If true, returns all combos (active and inactive). Default: false
@@ -29,13 +38,20 @@ export const getCombos = async (includeInactive = false) => {
     // Get combos
     let comboQuery = supabase
       .from('combo_products')
-      .select('*');
+      .select(COMBO_COLUMNS);
 
     if (!includeInactive) {
       comboQuery = comboQuery.eq('is_active', true);
     }
 
-    const combosResult = await comboQuery.order('created_at', { ascending: false });
+    // Items are small; fetch them in parallel instead of after the combos
+    // (rows of combos that were filtered out are ignored below).
+    const [combosResult, itemsResult] = await Promise.all([
+      comboQuery.order('created_at', { ascending: false }),
+      supabase
+        .from('combo_items')
+        .select('combo_id, quantity, products(id, name_es, name_en, base_price)')
+    ]);
 
     if (combosResult.error) {
       const appError = parseSupabaseError(combosResult.error);
@@ -47,14 +63,8 @@ export const getCombos = async (includeInactive = false) => {
       return [];
     }
 
-    // Get combo IDs to fetch their items
     const comboIds = combosResult.data.map(c => c.id);
-
-    // Get combo items with product details
-    const { data: itemsData, error: itemsError } = await supabase
-      .from('combo_items')
-      .select('combo_id, quantity, products(id, name_es, name_en, base_price)')
-      .in('combo_id', comboIds);
+    const { data: itemsData, error: itemsError } = itemsResult;
 
     if (itemsError) {
       const appError = parseSupabaseError(itemsError);
@@ -100,7 +110,7 @@ export const getCombos = async (includeInactive = false) => {
  * @throws {AppError} If validation fails or creation fails
  * @returns {Promise<Object>} Created combo
  */
-export const createCombo = async (comboData) => {
+export const createCombo = withCatalogInvalidation(async (comboData) => {
   try {
     if (!comboData.name) {
       throw createValidationError({ name: 'Combo name is required' });
@@ -180,7 +190,7 @@ export const createCombo = async (comboData) => {
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'createCombo' });
     throw appError;
   }
-};
+});
 
 /**
  * Update an existing combo and its items
@@ -189,7 +199,7 @@ export const createCombo = async (comboData) => {
  * @throws {AppError} If combo not found or update fails
  * @returns {Promise<Object>} Updated combo
  */
-export const updateCombo = async (comboId, comboData) => {
+export const updateCombo = withCatalogInvalidation(async (comboId, comboData) => {
   try {
     if (!comboId) {
       throw createValidationError({ comboId: 'Combo ID is required' });
@@ -295,7 +305,7 @@ export const updateCombo = async (comboId, comboData) => {
     });
     throw appError;
   }
-};
+});
 
 /**
  * Toggle combo active state
@@ -303,7 +313,7 @@ export const updateCombo = async (comboId, comboData) => {
  * @param {boolean} isActive - Target active state
  * @returns {Promise<Object>} Updated combo row
  */
-export const setComboActiveState = async (comboId, isActive = true) => {
+export const setComboActiveState = withCatalogInvalidation(async (comboId, isActive = true) => {
   try {
     if (!comboId) {
       throw createValidationError({ comboId: 'Combo ID is required' });
@@ -335,7 +345,7 @@ export const setComboActiveState = async (comboId, isActive = true) => {
     });
     throw appError;
   }
-};
+});
 
 /**
  * Delete a combo (hard delete) through ONE fail-closed database transaction (delete_combo):
@@ -347,7 +357,7 @@ export const setComboActiveState = async (comboId, isActive = true) => {
  * @throws {AppError} CONFLICT (409) with context.blockingOrders when blocked, NOT_FOUND, or a DB error
  * @returns {Promise<Object>} { success, deletedCombo: {id, name} }
  */
-export const deleteCombo = async (comboId) => {
+export const deleteCombo = withCatalogInvalidation(async (comboId) => {
   try {
     if (!comboId) {
       throw createValidationError({ comboId: 'Combo ID is required' });
@@ -404,7 +414,7 @@ export const deleteCombo = async (comboId) => {
     });
     throw appError;
   }
-};
+});
 
 /**
  * Import path:

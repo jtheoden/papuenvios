@@ -11,7 +11,6 @@ import { createCombo, updateCombo as updateComboDB, deleteCombo, setComboActiveS
 import { checkComboStockIssues, computeComboPricing } from '@/lib/comboUtils';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { logActivity } from '@/lib/activityLogger';
-import { useRealtimeCombos } from '@/hooks/useRealtimeSubscription';
 
 /**
  * Vendor Combos Tab Component
@@ -62,17 +61,6 @@ const VendorCombosTab = ({
     });
   }, []);
 
-  // Real-time subscription for combo updates
-  useRealtimeCombos({
-    enabled: true,
-    onUpdate: () => {
-      if (refreshCombos) {
-        refreshCombos(true);
-      } else if (onCombosRefresh) {
-        onCombosRefresh(true);
-      }
-    }
-  });
 
   const currencyCodeById = useMemo(() => {
     return (currencies || []).reduce((acc, currency) => {

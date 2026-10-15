@@ -4,6 +4,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 // ─── Mutable test state read by the mocks ───────────────────────────────────
 const state = {
   clearCart: vi.fn(),
+  refreshStock: vi.fn(),
   cart: [],
   zones: [],
   pick: { province: '', municipality: '' },
@@ -39,6 +40,7 @@ vi.mock('@/contexts/BusinessContext', () => ({
     updateCartQuantity: vi.fn(),
     removeFromCart: vi.fn(),
     clearCart: state.clearCart,
+    refreshStock: state.refreshStock,
     financialSettings: { productProfit: 40, comboProfit: 35 },
     zelleAccounts: [],
     visualSettings: {},
@@ -204,6 +206,7 @@ describe('CartPage - stock reservation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     state.clearCart = vi.fn();
+    state.refreshStock = vi.fn();
     state.zones = liveZones();
     state.cart = [{
       id: 'p1', name: 'Producto', name_es: 'Producto', base_price: 1, profit_margin: 45,
@@ -226,6 +229,26 @@ describe('CartPage - stock reservation', () => {
     await waitFor(() => expect(createOrder).toHaveBeenCalledTimes(1));
     const orderItems = createOrder.mock.calls[0][1];
     expect(orderItems.map((i) => [i.itemId, i.itemType])).toEqual([['c1', 'combo'], ['p1', 'product']]);
+  });
+
+  it('refreshes the displayed stock once the order has been created', async () => {
+    await submitOrder();
+
+    await waitFor(() => expect(createOrder).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(state.refreshStock).toHaveBeenCalledTimes(1));
+  });
+
+  it('refreshes the displayed stock when the reservation is refused for lack of stock', async () => {
+    createOrder.mockRejectedValue(
+      new AppError('Stock reservation refused', ERROR_CODES.INSUFFICIENT_STOCK, 409, {
+        reason: 'insufficient_stock', productId: 'p1', available: 0,
+      })
+    );
+
+    await submitOrder();
+
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    expect(state.refreshStock).toHaveBeenCalledTimes(1);
   });
 
   it('shows the out-of-stock message naming the product, keeps the cart and shows no confirmation', async () => {

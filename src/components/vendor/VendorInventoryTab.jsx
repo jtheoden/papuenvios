@@ -15,7 +15,6 @@ import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import BulkDeleteBar from '@/components/tables/BulkDeleteBar';
 import { getTableColumns, getModalColumns } from './ProductTableConfig';
 import { logActivity } from '@/lib/activityLogger';
-import { useRealtimeProducts } from '@/hooks/useRealtimeSubscription';
 import { DEFAULTS } from '@/lib/constants';
 import { resolveMargin } from '@/lib/marginResolver';
 
@@ -103,16 +102,6 @@ const VendorInventoryTab = ({
       setConvertedPreview(null);
     }
   }, [productForm?.basePrice, productForm?.base_currency_id, updateConvertedPreview]);
-
-  // Real-time subscription for product updates
-  useRealtimeProducts({
-    enabled: true,
-    onUpdate: () => {
-      if (onProductsRefresh) {
-        onProductsRefresh(true);
-      }
-    }
-  });
 
   const logProductActivity = async (action, productId, description, metadata = {}) => {
     try {
