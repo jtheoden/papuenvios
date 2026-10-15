@@ -1203,6 +1203,7 @@
     "total": "Total",
     "checkout": "Proceder al Pago",
     "shippingUnavailable": "No realizamos envíos a este destino por ahora. Elige otro municipio o provincia, o contacta a soporte.",
+    "invalidItems": "Algunos artículos de tu carrito tienen un precio o cantidad inválidos. Quítalos o recarga la página para continuar.",
     "shippingUnavailableShort": "No disponible",
     "validation": {
       "selectRecipient": "Selecciona un destinatario",

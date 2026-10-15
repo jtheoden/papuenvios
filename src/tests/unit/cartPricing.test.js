@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { getCartItemUnitPrice } from '@/lib/cartPricing';
+import { getCartItemUnitPrice, buildCartLines } from '@/lib/cartPricing';
 
 const USD = 'usd-id';
 const CUP = 'cup-id';
@@ -107,5 +107,103 @@ describe('getCartItemUnitPrice - product added from the catalog list (no price s
   it('never applies final_price to a combo', () => {
     const item = { products: ['a'], baseTotalPrice: 100, final_price: 1 };
     expect(getCartItemUnitPrice(item, ctx())).toBeCloseTo(135, 10);
+  });
+});
+
+describe('getCartItemUnitPrice - cent rounding at source', () => {
+  it('rounds the legacy combo branch half-up (30.9 * 1.45 = 44.805 -> 44.81)', () => {
+    const item = { products: [{}], baseTotalPrice: 30.9, profitMargin: 45 };
+    expect(getCartItemUnitPrice(item, ctx())).toBe(44.81);
+  });
+
+  it('rounds the legacy product branch (no final_price)', () => {
+    // 0.3913 * 1.4 = 0.54782 -> 0.55
+    const item = { id: 'p', base_price: 0.3913 };
+    expect(getCartItemUnitPrice(item, ctx())).toBe(0.55);
+  });
+
+  it('rounds the calculated_price_usd branch', () => {
+    expect(getCartItemUnitPrice({ calculated_price_usd: '10.005' }, ctx())).toBe(10.01);
+  });
+
+  it('rounds the displayed_price branch in the selected currency', () => {
+    const item = { displayed_price: '12.345', displayed_currency_id: USD };
+    expect(getCartItemUnitPrice(item, ctx())).toBe(12.35);
+  });
+
+  it('does not turn a non-numeric price into 0 (returns NaN so the cart can fail closed)', () => {
+    expect(getCartItemUnitPrice({ displayed_price: 'x', displayed_currency_id: USD }, ctx())).toBeNaN();
+    expect(getCartItemUnitPrice({ calculated_price_usd: 'x' }, ctx())).toBeNaN();
+    const c = ctx({ selectedCurrency: CUP, convertAmount: () => NaN });
+    expect(getCartItemUnitPrice({ displayed_price: 2, displayed_currency_id: USD }, c)).toBeNaN();
+  });
+
+  it('rounds the displayed_price branch AFTER currency conversion', () => {
+    // 1000 CUP / 770 = 1.2987... -> 1.30
+    const item = { displayed_price: 1000, displayed_currency_id: CUP };
+    expect(getCartItemUnitPrice(item, ctx())).toBe(1.3);
+  });
+});
+
+describe('buildCartLines - rounded lines and subtotal', () => {
+  const unit = (item) => item.unit;
+
+  it('rounds each line total and sums the rounded lines', () => {
+    const cart = [
+      { id: 'a', quantity: 27, unit: 0.55 },
+      { id: 'b', quantity: 1, unit: 44.81 },
+      { id: 'c', quantity: 3, unit: 10.335 },
+    ];
+    const { lines, subtotal } = buildCartLines(cart, unit);
+    // 10.335 -> unit 10.34 first, then 10.34 * 3
+    expect(lines.map((l) => l.totalPrice)).toEqual([14.85, 44.81, 31.02]);
+    expect(subtotal).toBe(90.68);
+  });
+
+  it('keeps unitPrice cent-rounded and totalPrice == round2(unitPrice * quantity)', () => {
+    const { lines } = buildCartLines([{ id: 'a', quantity: 27, unit: 0.5459 }], unit);
+    expect(lines[0].unitPrice).toBe(0.55);
+    expect(lines[0].totalPrice).toBe(14.85);
+  });
+
+  it('flags a missing or invalid quantity instead of silently charging 0', () => {
+    const { lines, hasInvalidLines } = buildCartLines([{ id: 'a', unit: 5 }, { id: 'b', quantity: 'x', unit: 5 }, { id: 'c', quantity: 0, unit: 5 }], unit);
+    expect(lines.map((l) => l.invalid)).toEqual([true, true, true]);
+    expect(hasInvalidLines).toBe(true);
+  });
+
+  it('flags a line whose unit price is not a finite number (fail closed)', () => {
+    const cart = [{ id: 'a', quantity: 1, unit: 10 }, { id: 'b', quantity: 1, unit: NaN }];
+    const { lines, hasInvalidLines } = buildCartLines(cart, unit);
+    expect(lines.map((l) => l.invalid)).toEqual([false, true]);
+    expect(hasInvalidLines).toBe(true);
+  });
+
+  it('does not flag a legitimately free (0) unit price', () => {
+    const { hasInvalidLines } = buildCartLines([{ id: 'a', quantity: 1, unit: 0 }], unit);
+    expect(hasInvalidLines).toBe(false);
+  });
+
+  it('returns zero subtotal for an empty or invalid cart', () => {
+    expect(buildCartLines([], unit)).toEqual({ lines: [], subtotal: 0, hasInvalidLines: false });
+    expect(buildCartLines(undefined, unit)).toEqual({ lines: [], subtotal: 0, hasInvalidLines: false });
+  });
+
+  it('works end to end with getCartItemUnitPrice on a mixed cart', () => {
+    const cart = [
+      { id: 'combo', quantity: 2, products: [{}], baseTotalPrice: 30.9, profitMargin: 45 },
+      { id: 'prod', quantity: 27, base_price: 0.3899 },
+      { id: 'cat', quantity: 3, final_price: 1.45, base_currency_id: USD },
+    ];
+    const c = ctx();
+    const { lines, subtotal } = buildCartLines(cart, (item) => getCartItemUnitPrice(item, c));
+    const sumOfLines = Math.round(lines.reduce((a, l) => a + l.totalPrice, 0) * 100) / 100;
+    expect(subtotal).toBe(sumOfLines);
+    lines.forEach((l) => {
+      expect(Math.round(l.unitPrice * 100)).toBeCloseTo(l.unitPrice * 100, 6);
+      expect(Math.round(l.totalPrice * 100)).toBeCloseTo(l.totalPrice * 100, 6);
+    });
+    expect(lines[0].unitPrice).toBe(44.81);
+    expect(lines[0].totalPrice).toBe(89.62);
   });
 });

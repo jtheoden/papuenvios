@@ -24,7 +24,8 @@ import { pickAvailableZelleAccount, registerZelleTransaction, ZELLE_TRANSACTION_
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
 import { calculateOrderTotal } from '@/lib/priceCalculationService';
-import { getCartItemUnitPrice } from '@/lib/cartPricing';
+import { getCartItemUnitPrice, buildCartLines } from '@/lib/cartPricing';
+import { roundMoney } from '@/lib/moneyPure';
 import { validateAndGetOffer, recordOfferUsage } from '@/lib/orderDiscountService';
 import { buildDiscountBreakdown } from '@/lib/discountDisplayService';
 import { logActivity } from '@/lib/activityLogger';
@@ -118,12 +119,10 @@ const CartPage = ({ onNavigate }) => {
     [financialSettings, selectedCurrency, baseCurrencyId, convertAmount]
   );
 
-  // Calculate subtotal - memoized to avoid recalculation on every render
-  const subtotal = useMemo(() => {
-    return cart.reduce((acc, item) => {
-      return acc + getItemPrice(item) * item.quantity;
-    }, 0);
-  }, [cart, getItemPrice]);
+  // Cent-exact lines and subtotal (sum of the already-rounded line totals). The same
+  // lines feed the cart UI, the confirmation modal and the order payload.
+  const cartLines = useMemo(() => buildCartLines(cart, getItemPrice), [cart, getItemPrice]);
+  const subtotal = cartLines.subtotal;
 
   // Calculate discount amount and final total (category + offers)
   const orderTotals = useMemo(() => calculateOrderTotal({
@@ -136,8 +135,8 @@ const CartPage = ({ onNavigate }) => {
   const categoryDiscountAmount = orderTotals?.categoryDiscountAmount || 0;
   const offerDiscountAmount = orderTotals?.offerDiscountAmount || 0;
   const totalDiscountAmount = orderTotals?.totalDiscount || 0;
-  const discountedSubtotal = orderTotals?.afterAllDiscounts ?? (subtotal - totalDiscountAmount);
-  const totalAmount = orderTotals?.total ?? (discountedSubtotal + shippingCost);
+  const discountedSubtotal = orderTotals?.afterAllDiscounts ?? roundMoney(subtotal - totalDiscountAmount);
+  const totalAmount = orderTotals?.total ?? roundMoney(discountedSubtotal + shippingCost);
   const totalDisplay = totalAmount.toFixed(2);
   const effectiveDiscountPercent = subtotal > 0 ? ((totalDiscountAmount / subtotal) * 100).toFixed(2) : '0.00';
   const discountBreakdown = buildDiscountBreakdown({ amount: subtotal, categoryPercent: userCategoryDiscount, offer: appliedOffer });
@@ -334,7 +333,20 @@ const CartPage = ({ onNavigate }) => {
     }
   };
 
+  // Fail closed: a line with a non-numeric price or quantity must never reach an order
+  const notifyInvalidCart = () => {
+    if (!cartLines.hasInvalidLines) return false;
+    toast({
+      title: t('common.error'),
+      description: t('cart.invalidItems'),
+      variant: 'destructive'
+    });
+    return true;
+  };
+
   const handleCheckout = async () => {
+    if (notifyInvalidCart()) return;
+
     if (!isAuthenticated) {
       // Guardar estado para restaurar después del login
       localStorage.setItem('pendingCheckout', JSON.stringify({
@@ -663,6 +675,7 @@ const CartPage = ({ onNavigate }) => {
 
   // Pre-payment confirmation modal
   const handlePrePaymentConfirmation = async () => {
+    if (notifyInvalidCart()) return;
     if (notifyPaymentBlocker()) return;
 
     const summaryText = `${t('cart.payment.recipientLabel')}: ${recipientDetails.fullName}\nTotal: ${currencySymbol}${convertedTotal?.toFixed(2) || totalAmount.toFixed(2)} ${currencyCode}\n${t('cart.payment.productsLabel')}: ${t('cart.payment.itemCount', { count: cart.length })}`;
@@ -681,6 +694,8 @@ const CartPage = ({ onNavigate }) => {
   };
 
   const handleConfirmPayment = async () => {
+    if (notifyInvalidCart()) return;
+
     // Validate proof, payer and payer phone BEFORE createOrder and any proof upload
     if (notifyPaymentBlocker()) return;
 
@@ -744,14 +759,16 @@ const CartPage = ({ onNavigate }) => {
       // Debug logs
 
       // Prepare order items
-      const orderItems = cart.map(item => ({
+      // Amounts are cent-rounded at source (cartLines) so they match the cart UI and what
+      // Postgres numeric(10,2) stores: sum(totalPrice) === subtotal.
+      const orderItems = cart.map((item, index) => ({
         itemType: resolveCartItemType(item),
         itemId: item.id,
         nameEs: item.name_es || item.name,
         nameEn: item.name_en || item.name,
-        quantity: item.quantity,
-        unitPrice: getItemPrice(item),
-        totalPrice: getItemPrice(item) * item.quantity,
+        quantity: cartLines.lines[index].quantity,
+        unitPrice: cartLines.lines[index].unitPrice,
+        totalPrice: cartLines.lines[index].totalPrice,
         inventoryId: item.inventory_id || null
       }));
 
@@ -759,10 +776,10 @@ const CartPage = ({ onNavigate }) => {
       const orderData = {
         userId: user.id,
         orderType: 'product',
-        subtotal: parseFloat(subtotal.toFixed(2)),
-        discountAmount: parseFloat(totalDiscountAmount.toFixed(2)),
-        shippingCost: parseFloat(shippingCost.toFixed(2)),
-        totalAmount: parseFloat(totalAmount.toFixed(2)),
+        subtotal: roundMoney(subtotal),
+        discountAmount: roundMoney(totalDiscountAmount),
+        shippingCost: roundMoney(shippingCost),
+        totalAmount: roundMoney(totalAmount),
         currencyId: currency.id,
         recipientInfo: JSON.stringify(recipientDetails),
         paymentMethod: 'zelle',
@@ -1457,9 +1474,9 @@ const CartPage = ({ onNavigate }) => {
         ) : (
           <div className="grid lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 space-y-4">
-              {cart.map(item => {
-                const itemPrice = getItemPrice(item);
-                const itemTotal = itemPrice * item.quantity;
+              {cart.map((item, index) => {
+                const itemPrice = cartLines.lines[index].unitPrice;
+                const itemTotal = cartLines.lines[index].totalPrice;
                 const displayName = language === 'es'
                   ? (item.name_es || item.name || 'Producto')
                   : (item.name_en || item.name || 'Product');
@@ -1628,7 +1645,11 @@ const CartPage = ({ onNavigate }) => {
 
                 {zelleOrdersBlocked && <PaymentMethodsUnavailable flow={PAYMENT_FLOWS.ORDERS} />}
 
-                <Button onClick={handleCheckout} className="w-full" size="lg" style={getPrimaryButtonStyle(visualSettings)} disabled={zelleOrdersBlocked}>
+                {cartLines.hasInvalidLines && (
+                  <p role="alert" className="text-sm text-red-600 font-medium">{t('cart.invalidItems')}</p>
+                )}
+
+                <Button onClick={handleCheckout} className="w-full" size="lg" style={getPrimaryButtonStyle(visualSettings)} disabled={zelleOrdersBlocked || cartLines.hasInvalidLines}>
                   {t('cart.checkout')}
                 </Button>
                 <Button onClick={handleClearCart} variant="outline" className="w-full">
