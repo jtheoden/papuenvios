@@ -18,6 +18,7 @@ import { getTableColumns, getModalColumns } from './ProductTableConfig';
 import { logActivity } from '@/lib/activityLogger';
 import { DEFAULTS } from '@/lib/constants';
 import { resolveMargin } from '@/lib/marginResolver';
+import { getUnitOptions, isKnownUnit, normalizeUnitCode } from '@/lib/productUnits';
 
 /**
  * Vendor Inventory Tab Component
@@ -61,6 +62,13 @@ const VendorInventoryTab = ({
   const formCurrency = getCurrencyById(productForm?.base_currency_id) || systemBaseCurrency;
   const formCurrencySymbol = formCurrency?.symbol || '$';
   const formCurrencyCode = formCurrency?.code || 'USD';
+
+  // Catalog units; a stored code outside the catalog stays selectable so saving never wipes it
+  const unitOptions = useMemo(() => {
+    const options = getUnitOptions(language);
+    const current = normalizeUnitCode(productForm?.unit);
+    return current && !isKnownUnit(current) ? [...options, { value: current, label: current }] : options;
+  }, [language, productForm?.unit]);
 
   // Calculate converted price preview when price or currency changes
   const updateConvertedPreview = useCallback(async (price, fromCurrencyId) => {
@@ -219,6 +227,7 @@ const VendorInventoryTab = ({
       category: '',
       stock: '',
       min_stock_alert: '',
+      unit: '',
       expiryDate: '',
       image: '',
       profitMargin: defaultProfitMargin,
@@ -255,6 +264,7 @@ const VendorInventoryTab = ({
       category: product.category?.id || product.category_id || '',
       stock: product.stock || '',
       min_stock_alert: product.min_stock_alert || '',
+      unit: product.unit || '',
       expiryDate: product.expiry_date || product.expiryDate || '',
       image: product.image_url || product.image_file || product.image || '',
       sku: product.sku || ''
@@ -361,6 +371,7 @@ const VendorInventoryTab = ({
         basePrice: normalizedPrice,
         stock: parseInt(productForm.stock || 0, 10),
         min_stock_alert: parseInt(productForm.min_stock_alert || 10, 10),
+        unit: normalizeUnitCode(productForm.unit),
         profitMargin: parseFloat(productForm.profitMargin || 40),
         category_id: productForm.category,
         base_currency_id: finalCurrencyId,
@@ -937,6 +948,25 @@ const VendorInventoryTab = ({
                 placeholder="10"
                 className="w-full input-style"
               />
+            </div>
+
+            {/* Unit of measure (optional) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {t('vendor.addProduct.unit')}
+              </label>
+              <select
+                data-testid="product-unit-select"
+                value={productForm.unit || ''}
+                onChange={e => handleInputChange('unit', e.target.value)}
+                className="w-full input-style"
+              >
+                <option value="">{t('vendor.addProduct.unitNone')}</option>
+                {unitOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">{t('vendor.addProduct.unitHelp')}</p>
             </div>
 
             {/* Expiry Date */}

@@ -22,6 +22,7 @@ import { useUserDiscounts } from '@/hooks/useUserDiscounts';
 import { useRealtimeRemittances, useRealtimeOrders } from '@/hooks/useRealtimeSubscription';
 import AdminWorkTabs from '@/components/admin/AdminWorkTabs';
 import OrderComboComponents from '@/components/OrderComboComponents';
+import { formatQuantityWithUnit } from '@/lib/productUnits';
 import { useOrderItemLines } from '@/hooks/useOrderItemLines';
 
 // Constante de paginación fuera del componente para evitar recreación
@@ -1463,13 +1464,13 @@ const UserPanel = ({ onNavigate }) => {
                                     {getItemTypeName(item.item_type)}
                                   </span>
                                   <span>
-                                    {language === 'es' ? 'Cantidad' : 'Qty'}: {item.quantity}
+                                    {language === 'es' ? 'Cantidad' : 'Qty'}: {formatQuantityWithUnit(item.quantity, selectedOrderLines[index]?.unit, language)}
                                   </span>
                                 </div>
                                 <p className="text-xs" style={getTextStyle(visualSettings, 'muted')}>
                                   ${parseFloat(item.unit_price).toFixed(2)} × {item.quantity}
                                 </p>
-                                <OrderComboComponents line={selectedOrderLines[index]} lookupDone={selectedOrderComboLookupDone} t={t} />
+                                <OrderComboComponents line={selectedOrderLines[index]} lookupDone={selectedOrderComboLookupDone} t={t} language={language} />
                               </div>
 
                               {/* Item Total */}

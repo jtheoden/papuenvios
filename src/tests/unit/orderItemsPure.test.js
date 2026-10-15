@@ -75,8 +75,8 @@ describe('buildOrderItemLines', () => {
       orderCreatedAt: ORDER_CREATED
     });
     expect(line.components).toEqual([
-      { productId: 'p-rice', name: 'Arroz', quantity: 6 },
-      { productId: 'p-sugar', name: 'Azúcar', quantity: 3 }
+      { productId: 'p-rice', name: 'Arroz', quantity: 6, unit: null },
+      { productId: 'p-sugar', name: 'Azúcar', quantity: 3, unit: null }
     ]);
   });
 
@@ -102,7 +102,7 @@ describe('buildOrderItemLines', () => {
   it('uses a null name when the component product is not readable', () => {
     const row = comboRow({ combo_items: [{ product_id: 'x', quantity: 2, products: null }] });
     const [line] = buildOrderItemLines([comboItem()], defs(row), { language: 'es', orderCreatedAt: ORDER_CREATED });
-    expect(line.components).toEqual([{ productId: 'x', name: null, quantity: 2 }]);
+    expect(line.components).toEqual([{ productId: 'x', name: null, quantity: 2, unit: null }]);
   });
 
   it('returns components null when the combo definition is missing', () => {

@@ -8,7 +8,10 @@
 
 const COMBO_TYPE = 'combo';
 
+const PRODUCT_TYPE = 'product';
+
 const isComboItem = (item) => item?.item_type === COMBO_TYPE;
+const isProductItem = (item) => item?.item_type === PRODUCT_TYPE;
 
 const toTime = (value) => {
   if (!value) return null;
@@ -38,6 +41,30 @@ export const collectComboIds = (orders) => {
  */
 export const toComboDefinitionMap = (rows) =>
   new Map((rows || []).filter((row) => row?.id).map((row) => [row.id, row]));
+
+/**
+ * Unique product ids of the plain product lines of the given orders (combos excluded: their
+ * components get the unit from the combo definition query).
+ * @param {Array<{order_items?: Array}>} orders
+ * @returns {string[]}
+ */
+export const collectProductIds = (orders) => {
+  const ids = new Set();
+  (orders || []).forEach((order) => {
+    (order?.order_items || []).forEach((item) => {
+      if (isProductItem(item) && item.item_id) ids.add(item.item_id);
+    });
+  });
+  return [...ids];
+};
+
+/**
+ * Index `{id, unit}` product rows by id.
+ * @param {Array|null} rows
+ * @returns {Map<string, string|null>}
+ */
+export const toProductUnitMap = (rows) =>
+  new Map((rows || []).filter((row) => row?.id).map((row) => [row.id, row.unit ?? null]));
 
 const pickName = (product, language) => {
   if (!product) return null;
@@ -71,24 +98,35 @@ const wasCompositionChanged = (comboItems, orderCreatedAt) => {
  *
  * @param {Array} items - order_items rows
  * @param {Map<string, object>} [comboDefinitions]
- * @param {{language?: 'es'|'en', orderCreatedAt?: string}} [options]
- * @returns {Array<{item: object, components: Array|null, compositionChanged: boolean}>}
+ * @param {{language?: 'es'|'en', orderCreatedAt?: string, productUnits?: Map<string, string|null>}} [options]
+ * @returns {Array<{item: object, unit: string|null, components: Array|null, compositionChanged: boolean}>}
+ *   `unit` is the CURRENT unit of a plain product line (null for any other line or when unknown);
+ *   components carry their own `unit`.
  */
-export const buildOrderItemLines = (items, comboDefinitions, { language = 'es', orderCreatedAt } = {}) =>
+export const buildOrderItemLines = (
+  items,
+  comboDefinitions,
+  { language = 'es', orderCreatedAt, productUnits } = {}
+) =>
   (items || [])
     .filter(Boolean)
     .map((item) => {
       const definition = isComboItem(item) && item.item_id ? comboDefinitions?.get(item.item_id) : null;
-      if (!definition) return { item, components: null, compositionChanged: false };
+      if (!definition) {
+        const unit = isProductItem(item) ? (productUnits?.get(item.item_id) ?? null) : null;
+        return { item, unit, components: null, compositionChanged: false };
+      }
 
       const lineQuantity = toQuantity(item.quantity);
       const comboItems = definition.combo_items || [];
       return {
         item,
+        unit: null,
         components: comboItems.map((ci) => ({
           productId: ci.product_id,
           name: pickName(ci.products, language),
-          quantity: toQuantity(ci.quantity) * lineQuantity
+          quantity: toQuantity(ci.quantity) * lineQuantity,
+          unit: ci.products?.unit ?? null
         })),
         compositionChanged: wasCompositionChanged(comboItems, orderCreatedAt)
       };

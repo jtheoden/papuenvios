@@ -13,7 +13,9 @@ vi.mock('@/lib/remittanceService', () => ({
 
 const fetchComboDefinitionsMock = vi.fn();
 vi.mock('@/lib/orderComboService', () => ({
-  fetchComboDefinitions: (...args) => fetchComboDefinitionsMock(...args)
+  fetchComboDefinitions: (...args) => fetchComboDefinitionsMock(...args),
+  // The hook now also looks up units for plain product lines; no units here
+  fetchProductUnits: vi.fn().mockResolvedValue(new Map())
 }));
 
 import OrderDetailsModal from '@/components/admin/modals/OrderDetailsModal';
