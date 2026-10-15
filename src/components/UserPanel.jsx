@@ -21,6 +21,8 @@ import { derivePercentFromAmount } from '@/lib/discountDisplayService';
 import { useUserDiscounts } from '@/hooks/useUserDiscounts';
 import { useRealtimeRemittances, useRealtimeOrders } from '@/hooks/useRealtimeSubscription';
 import AdminWorkTabs from '@/components/admin/AdminWorkTabs';
+import OrderComboComponents from '@/components/OrderComboComponents';
+import { useOrderItemLines } from '@/hooks/useOrderItemLines';
 
 // Constante de paginación fuera del componente para evitar recreación
 const ORDERS_PER_PAGE = 20;
@@ -66,6 +68,7 @@ const UserPanel = ({ onNavigate }) => {
   const [visibleOrdersCount, setVisibleOrdersCount] = useState(ORDERS_PER_PAGE);
   const [loadingMore, setLoadingMore] = useState(false);
   const ordersContainerRef = useRef(null);
+  const { lines: selectedOrderLines, comboLookupDone: selectedOrderComboLookupDone } = useOrderItemLines(selectedOrder, language);
   const selectedOrderSubtotal = selectedOrder ? (parseFloat(selectedOrder.subtotal) || 0) : 0;
   const selectedOrderTotal = selectedOrder ? (parseFloat(selectedOrder.total_amount) || 0) : 0;
   const selectedOrderDiscountTotal = selectedOrder ? (parseFloat(selectedOrder.discount_amount) || 0) : 0;
@@ -1433,7 +1436,7 @@ const UserPanel = ({ onNavigate }) => {
                         {language === 'es' ? 'Artículos' : 'Items'}
                       </h4>
                       <div className="space-y-3">
-                        {selectedOrder.order_items?.map((item, index) => (
+                        {selectedOrderLines.map(({ item }, index) => (
                           <div
                             key={index}
                             className="p-3 rounded-lg border"
@@ -1466,6 +1469,7 @@ const UserPanel = ({ onNavigate }) => {
                                 <p className="text-xs" style={getTextStyle(visualSettings, 'muted')}>
                                   ${parseFloat(item.unit_price).toFixed(2)} × {item.quantity}
                                 </p>
+                                <OrderComboComponents line={selectedOrderLines[index]} lookupDone={selectedOrderComboLookupDone} t={t} />
                               </div>
 
                               {/* Item Total */}

@@ -5,6 +5,8 @@ vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({ t: (key) => key, language: 'es' })
 }));
 
+vi.mock('@/lib/orderComboService', () => ({ fetchComboDefinitions: vi.fn().mockResolvedValue(new Map()) }));
+
 vi.mock('@/lib/remittanceService', () => ({
   generateProofSignedUrl: vi.fn().mockResolvedValue({ success: false })
 }));

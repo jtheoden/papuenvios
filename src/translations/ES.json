@@ -2063,5 +2063,11 @@
     "uploadFailed": "No se pudo subir la imagen. No se guardó nada; intenta de nuevo.",
     "invalidImage": "La imagen no es válida. Usa JPG o PNG.",
     "tooLarge": "La imagen es demasiado grande (máximo 5 MB)."
+  },
+  "orderCombo": {
+    "contains": "Contenido del combo",
+    "modifiedNote": "Composición actual del combo; el combo fue modificado después de este pedido.",
+    "unavailable": "Composición del combo no disponible.",
+    "unknownProduct": "Producto no disponible"
   }
 }

@@ -4,6 +4,8 @@ import { X, TrendingDown, User, Truck, Loader2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { generateProofSignedUrl } from '@/lib/remittanceService';
 import { parseRecipientInfo } from '@/lib/recipientInfo';
+import { useOrderItemLines } from '@/hooks/useOrderItemLines';
+import OrderComboComponents from '@/components/OrderComboComponents';
 
 /**
  * Order Details Modal Component
@@ -39,6 +41,9 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
       recipient_info: recipientInfo
     };
   }, [order]);
+
+  // Combo lines expanded into their current components (one query, only when the order has combos)
+  const { lines: itemLines, comboLookupDone } = useOrderItemLines(normalizedOrder, language);
 
   // Generate signed URL for delivery proof (private bucket requires signed URLs)
   useEffect(() => {
@@ -245,10 +250,13 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200" role="rowgroup">
-                    {normalizedOrder.order_items?.map((item, index) => (
+                    {itemLines.map((line, index) => {
+                      const item = line.item;
+                      return (
                       <tr key={index} role="row">
                         <td className="px-4 py-3 text-sm text-gray-900" role="cell">
                           {language === 'es' ? (item.item_name_es || item.item_name_en) : (item.item_name_en || item.item_name_es)}
+                          <OrderComboComponents line={line} lookupDone={comboLookupDone} t={t} />
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900" role="cell">
                           {item.quantity}
@@ -260,7 +268,8 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
                           {formatCurrency(item.total_price, normalizedOrder.currencies?.code)}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
