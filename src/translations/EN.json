@@ -1194,6 +1194,7 @@
     "total": "Total",
     "checkout": "Proceed to Checkout",
     "shippingUnavailable": "We do not ship to this destination right now. Choose another municipality or province, or contact support.",
+    "invalidItems": "Some items in your cart have an invalid price or quantity. Remove them or refresh the page to continue.",
     "shippingUnavailableShort": "Unavailable",
     "validation": {
       "selectRecipient": "Select a recipient",

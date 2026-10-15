@@ -20,6 +20,7 @@ import { isValidPayerPhone, normalizePayerPhone } from './payerPhone';
 import { getUserCategoryWithDiscount } from './orderDiscountService';
 import { ZELLE_STATUS, ZELLE_TRANSACTION_TYPES, upsertZelleTransactionStatus } from './zelleService';
 import { isInsufficientStockError } from './stockErrors';
+import { roundMoney } from './moneyPure';
 
 export { isInsufficientStockError };
 
@@ -309,11 +310,13 @@ export const createOrder = async (orderData, items) => {
       user_id: orderData.userId,
       order_type: orderData.orderType || 'product',
       status: ORDER_STATUS.PENDING,
-      subtotal: orderData.subtotal || 0,
-      discount_amount: orderData.discountAmount || 0,
-      shipping_cost: orderData.shippingCost || 0,
-      tax_amount: orderData.taxAmount || 0,
-      total_amount: orderData.totalAmount,
+      // Defensive cent rounding: callers already round, but Postgres numeric(10,2) must
+      // never be the one deciding how an unrounded value is rounded.
+      subtotal: roundMoney(orderData.subtotal),
+      discount_amount: roundMoney(orderData.discountAmount),
+      shipping_cost: roundMoney(orderData.shippingCost),
+      tax_amount: roundMoney(orderData.taxAmount),
+      total_amount: roundMoney(orderData.totalAmount),
       currency_id: orderData.currencyId,
       shipping_address: orderData.shippingAddress || null,
       recipient_info: orderData.recipientInfo || null,
@@ -350,8 +353,8 @@ export const createOrder = async (orderData, items) => {
       item_name_es: item.nameEs,
       item_name_en: item.nameEn,
       quantity: item.quantity,
-      unit_price: item.unitPrice,
-      total_price: item.totalPrice,
+      unit_price: roundMoney(item.unitPrice),
+      total_price: roundMoney(item.totalPrice),
       inventory_id: item.inventoryId || null,
       remittance_amount: item.remittanceAmount || null,
       exchange_rate: item.exchangeRate || null,
