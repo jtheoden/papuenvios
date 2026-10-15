@@ -665,6 +665,8 @@
       "deleteConfirmTitle": "Confirmar eliminación",
       "deleteConfirmMessage": "¿Seguro que deseas eliminar el producto \"{name}\"? Esta acción lo desactivará para los usuarios.",
       "productDeleted": "Producto eliminado",
+      "productAlreadyDeleted": "El producto ya no existe (probablemente lo eliminó otro usuario). Lista actualizada.",
+      "refreshFailed": "No se pudo actualizar la lista. Recarga la página.",
       "searchPlaceholder": "Buscar por nombre...",
       "filters": "Filtros",
       "filterByCategory": "Categoría",
