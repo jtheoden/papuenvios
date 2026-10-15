@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import {
-  isDbReachable,
+  dbSuiteSkipReason,
   connectAdmin,
   connectAs,
   connectAnon,
@@ -28,13 +28,8 @@ import {
   restoreStockPolicyRows
 } from './fixtures';
 
-const reachable = await isDbReachable();
-const describeDb = reachable ? describe : describe.skip;
-
-if (!reachable) {
-  // eslint-disable-next-line no-console
-  console.warn('[concurrency] Local Supabase DB unreachable (127.0.0.1:55322) - suite skipped.');
-}
+const skipReason = await dbSuiteSkipReason({ functions: ['reserve_order_inventory', 'release_order_inventory', 'consume_order_inventory', 'expire_stale_order_reservations', 'is_admin_user'], tables: ['orders', 'order_items', 'inventory', 'inventory_movements', 'order_stock_allocations', 'combo_products', 'combo_items', 'system_config', 'user_profiles'] });
+const describeDb = skipReason ? describe.skip : describe;
 
 const reserveSql = 'public.reserve_order_inventory($1::uuid)';
 const releaseSql = 'public.release_order_inventory($1::uuid)';

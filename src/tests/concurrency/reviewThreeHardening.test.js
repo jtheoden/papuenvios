@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { isDbReachable, connectAdmin, connectAs, endAll } from './db';
+import { dbSuiteSkipReason, connectAdmin, connectAs, endAll } from './db';
 import {
   loadActors,
   createTracker,
@@ -22,8 +22,8 @@ import {
   restoreStockPolicyRows
 } from './fixtures';
 
-const reachable = await isDbReachable();
-const describeDb = reachable ? describe : describe.skip;
+const skipReason = await dbSuiteSkipReason({ functions: ['reserve_order_inventory', 'release_order_inventory', 'consume_order_inventory', 'expire_stale_order_reservations', 'get_product_blockers'], tables: ['orders', 'inventory', 'inventory_movements', 'order_stock_allocations', 'system_config'] });
+const describeDb = skipReason ? describe.skip : describe;
 
 const reserveSql = 'public.reserve_order_inventory($1::uuid)';
 const migration = (name) => readFileSync(resolve(process.cwd(), 'supabase/migrations', name), 'utf8');
