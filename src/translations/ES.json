@@ -676,7 +676,8 @@
       "expiryNone": "Sin fecha",
       "clearFilters": "Limpiar filtros",
       "showingResults": "Mostrando {count} de {total} productos",
-      "noProducts": "No se encontraron productos"
+      "noProducts": "No se encontraron productos",
+      "stockBelowReserved": "El stock no puede ser menor que las unidades reservadas por pedidos abiertos. Cancela o valida esos pedidos primero."
     },
     "categories": {
       "manage": "Gestionar Categorías",
@@ -1274,6 +1275,13 @@
     "restored": {
       "title": "¡Bienvenido de vuelta!",
       "description": "Continúa con tu compra donde la dejaste."
+    },
+    "stock": {
+      "insufficient": "Uno de los productos de tu pedido ya no tiene stock suficiente. Tu carrito se conserva: revisa las cantidades e inténtalo de nuevo.",
+      "insufficientItem": "\"{name}\" ya no tiene stock suficiente (disponibles: {available}). Tu carrito se conserva: ajusta la cantidad e inténtalo de nuevo.",
+      "invalidItem": "Un producto de tu carrito ya no está disponible. Quítalo del carrito e inténtalo de nuevo.",
+      "tooManyOpen": "Ya tienes demasiados pedidos pendientes de pago con stock reservado. Paga o cancela alguno antes de crear otro.",
+      "emptyOrder": "Tu pedido no tiene productos con inventario que reservar. Revisa tu carrito e inténtalo de nuevo."
     }
   },
   "auth": {
@@ -1321,7 +1329,8 @@
     "reopenOrderError": "Error al reabrir la orden",
     "orderCancelled": "Orden Cancelada",
     "orderCancelledMessage": "Esta orden fue cancelada. Puedes reabrirla para continuar con el proceso de pago.",
-    "reopenOrderButton": "Reabrir Orden"
+    "reopenOrderButton": "Reabrir Orden",
+    "reopenInsufficientStock": "No se puede reabrir la orden: ya no hay stock suficiente de uno o más productos."
   },
   "adminOrders": {
     "title": "Historial de Órdenes",
@@ -1391,7 +1400,8 @@
       "markAsDispatched": "Marcar como Despachado",
       "uploadProof": "Subir Evidencia",
       "completeOrder": "Completar Orden",
-      "cancelOrder": "Cancelar Orden"
+      "cancelOrder": "Cancelar Orden",
+      "restock": "Devolver al inventario"
     },
     "detail": {
       "title": "Detalles de la Orden",
@@ -1446,7 +1456,14 @@
       "selectImage": "Seleccione una imagen de evidencia",
       "invalidImage": "Por favor seleccione una imagen válida",
       "imageTooLarge": "El archivo es muy grande. Máximo 5MB",
-      "onlyDispatchedOrders": "Solo puedes subir evidencia para órdenes despachadas"
+      "onlyDispatchedOrders": "Solo puedes subir evidencia para órdenes despachadas",
+      "validateStockError": "No se pudo validar el pago: no hay stock suficiente para esta orden. El estado se restauró; revisa el inventario e inténtalo de nuevo.",
+      "restockPrompt": "La orden cancelada ya había descontado su stock. Devuelve las unidades solo si confirmaste que los productos regresaron físicamente al almacén. Si no, elige No: el stock permanece descontado.",
+      "restockSuccess": "Unidades devueltas al inventario",
+      "restockNothing": "No había unidades pendientes de devolver",
+      "restockReasonPrompt": "¿Por qué las unidades de la orden {orderNumber} vuelven al inventario? (por ejemplo: mercancía devuelta por el mensajero). Esta nota queda guardada en el registro de movimientos de stock.",
+      "restockReasonRequired": "Se requiere un motivo para devolver las unidades al inventario",
+      "restockError": "No se pudieron devolver las unidades al inventario. La orden sigue cancelada; inténtalo de nuevo."
     },
     "modals": {
       "startTitle": "Comenzar Procesamiento",
@@ -1456,7 +1473,9 @@
       "completeTitle": "Completar Orden",
       "cancelTitle": "Cancelar Orden",
       "submit": "Enviar",
-      "confirm": "Confirmar"
+      "confirm": "Confirmar",
+      "restockTitle": "¿Devolver las unidades al inventario?",
+      "restockReasonTitle": "Motivo de la devolución"
     },
     "deliveryModal": {
       "title": "Subir Evidencia de Entrega",
@@ -2003,5 +2022,41 @@
     "openFullTab": "Abrir la pestaña completa de remesas",
     "liveNew": "{count} remesa(s) nueva(s) por procesar",
     "badgeAria": "{count} elementos pendientes de tu atención"
+  },
+  "stockPolicy": {
+    "title": "Política de reservas de stock",
+    "intro": "Define cuánto tiempo un pedido puede retener stock reservado sin avanzar y cuántos pedidos pendientes puede tener abiertos cada cliente. Los cambios aplican a las reservas nuevas y a la próxima ejecución de la limpieza automática.",
+    "unpaid": {
+      "label": "Pedidos sin comprobante (horas)",
+      "help": "Pedidos sin comprobante de pago o con pago rechazado: tras estas horas se cancelan solos y el stock vuelve al inventario."
+    },
+    "proof": {
+      "label": "Pedidos con comprobante sin revisar (horas)",
+      "help": "Pedidos con comprobante subido que nadie validó ni rechazó: tras estas horas se cancelan solos y el stock vuelve al inventario. No puede ser menor que el plazo de pedidos sin comprobante."
+    },
+    "maxOpen": {
+      "label": "Máximo de reservas abiertas por cliente",
+      "help": "Cuando un cliente ya tiene este número de pedidos pendientes reservando stock, el siguiente pedido se rechaza y se cancela automáticamente. Evita que una sola cuenta bloquee el inventario."
+    },
+    "range": "Rango permitido:",
+    "default": "Por defecto:",
+    "current": "Valor vigente:",
+    "errors": {
+      "range": "Debe ser un número entero entre {min} y {max}.",
+      "belowUnpaid": "No puede ser menor que el plazo de pedidos sin comprobante."
+    },
+    "save": "Guardar cambios",
+    "saving": "Guardando...",
+    "saved": "Política guardada",
+    "savedDescription": "Los nuevos valores ya están vigentes.",
+    "saveError": "No se pudo guardar la política. Inténtalo de nuevo.",
+    "forbidden": "Solo un super administrador puede cambiar esta política.",
+    "loadError": "No se pudo cargar la política de reservas de stock.",
+    "reset": "Restablecer valores por defecto",
+    "resetConfirmTitle": "¿Restablecer valores por defecto?",
+    "resetConfirmMessage": "Se aplicarán los valores por defecto: 48 horas sin comprobante, 168 horas (7 días) con comprobante sin revisar y 5 reservas abiertas por cliente.",
+    "resetConfirm": "Restablecer",
+    "resetDone": "Valores por defecto restablecidos",
+    "scheduleNote": "Una tarea programada cada hora aplica estos valores cancelando los pedidos vencidos y devolviendo su stock. Si la programación no está activa en la base de datos, la expiración no se ejecuta aunque guardes estos valores."
   }
 }

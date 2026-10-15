@@ -243,6 +243,8 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
     // Add to cart with price and currency info
     const itemWithPrice = {
       ...currentItem,
+      // Explicit type so a combo is never stored as a product order item (stock handling depends on it)
+      type: isProduct ? 'product' : 'combo',
       displayed_price: displayedPrice,
       displayed_currency_code: currencyCode,
       displayed_currency_id: selectedCurrency

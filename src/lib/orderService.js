@@ -6,6 +6,7 @@
 
 import { supabase } from './supabase';
 import {
+  AppError,
   handleError,
   logError,
   createValidationError,
@@ -18,6 +19,9 @@ import { logActivity } from './activityLogger';
 import { isValidPayerPhone, normalizePayerPhone } from './payerPhone';
 import { getUserCategoryWithDiscount } from './orderDiscountService';
 import { ZELLE_STATUS, ZELLE_TRANSACTION_TYPES, upsertZelleTransactionStatus } from './zelleService';
+import { isInsufficientStockError } from './stockErrors';
+
+export { isInsufficientStockError };
 
 const isValidUUID = (value) => {
   if (!value || typeof value !== 'string') return false;
@@ -261,21 +265,19 @@ const getUserEmail = async (userId) => {
  * Create new order with items and inventory reservation
  * Validates initial state, reserves inventory, creates order and order items atomically
  *
- * TRANSACTION BOUNDARY (for future DB transaction wrapper support):
- * BEGIN TRANSACTION
+ * Flow:
  *   1. Insert order record
  *   2. Insert order_items records (all at once)
- *   3. Update inventory reserved_quantity for all products (batch)
- *   4. Insert inventory_movements records (batch logging)
- * COMMIT TRANSACTION
+ *   3. reserve_order_inventory RPC (atomic, server-side; expands combos, FEFO,
+ *      cancels the order itself when stock is insufficient)
  *
- * If any step fails, rollback all changes.
- * Current implementation: Supabase doesn't support explicit transactions,
- * so we batch operations where possible and fail loudly on errors.
+ * Supabase has no client-side transactions: steps 1-2 are separate requests, but
+ * the stock decision (step 3) is a single transaction, so concurrent orders can
+ * never oversell. A failed reservation leaves the order cancelled, never pending.
  *
  * @param {Object} orderData - Order information
  * @param {Array} items - Order items (products, combos, remittances)
- * @throws {AppError} If validation fails, creation fails, or inventory reservation fails
+ * @throws {AppError} If validation fails, creation fails, or stock is insufficient (code INSUFFICIENT_STOCK)
  * @returns {Promise<Object>} Created order with items
  */
 export const createOrder = async (orderData, items) => {
@@ -367,68 +369,9 @@ export const createOrder = async (orderData, items) => {
       throw appError;
     }
 
-    // ATOMIC: Reserve inventory for all products in parallel (not sequential)
-    // This reduces N queries from O(n) sequential to single batch operation
-    const inventoryReservations = items
-      .filter(item => item.itemType === 'product' && item.inventoryId)
-      .map(item => ({ id: item.inventoryId, quantity: item.quantity }));
-
-    if (inventoryReservations.length > 0) {
-      // Batch fetch all inventory records
-      const inventoryIds = inventoryReservations.map(r => r.id);
-      const { data: inventoryRecords, error: fetchError } = await supabase
-        .from('inventory')
-        .select('id, reserved_quantity')
-        .in('id', inventoryIds);
-
-      if (fetchError) {
-        const appError = parseSupabaseError(fetchError);
-        logError(appError, { operation: 'createOrder - fetch inventory', orderId: createdOrder.id });
-        throw appError;
-      }
-
-      // Build update operations for all inventory records
-      const inventoryMap = new Map(inventoryRecords.map(inv => [inv.id, inv]));
-      const updatePromises = inventoryReservations.map(async (res) => {
-        const current = inventoryMap.get(res.id);
-        if (current) {
-          const newReserved = (current.reserved_quantity || 0) + res.quantity;
-          return supabase
-            .from('inventory')
-            .update({ reserved_quantity: newReserved })
-            .eq('id', res.id);
-        }
-      });
-
-      const updateResults = await Promise.all(updatePromises);
-      const hasError = updateResults.some(result => result.error);
-      if (hasError) {
-        const errorResult = updateResults.find(result => result.error);
-        const appError = parseSupabaseError(errorResult.error);
-        logError(appError, { operation: 'createOrder - update inventory', orderId: createdOrder.id });
-        throw appError;
-      }
-
-      // Log all inventory movements in single insert
-      const movements = inventoryReservations.map(res => ({
-        inventory_id: res.id,
-        movement_type: 'reserved',
-        quantity_change: -res.quantity,
-        reference_type: 'order',
-        reference_id: createdOrder.id,
-        notes: `Reserved for order ${orderNumber}`
-      }));
-
-      const { error: movementError } = await supabase
-        .from('inventory_movements')
-        .insert(movements);
-
-      if (movementError) {
-        const appError = parseSupabaseError(movementError);
-        logError(appError, { operation: 'createOrder - log inventory movements', orderId: createdOrder.id });
-        // Don't fail order creation if logging fails
-      }
-    }
+    // ATOMIC (server-side): reserve stock for products and combo components in one RPC.
+    // Insufficient stock cancels the order inside that transaction and throws a typed error.
+    await reserveOrCancel(createdOrder.id);
 
     // Activity log (best effort) - get email for proper logging
     const userEmail = await getUserEmail(orderData.userId);
@@ -463,233 +406,135 @@ export const createOrder = async (orderData, items) => {
 };
 
 // ============================================================================
-// INVENTORY MANAGEMENT (PRIVATE HELPERS)
+// STOCK RESERVATION (server-side, atomic)
 // ============================================================================
+// All stock movements happen inside Postgres (SECURITY DEFINER RPCs, see
+// supabase/migrations/20261014190000_atomic_stock_reservation.sql). The client
+// only orders the calls; it never reads-modifies-writes inventory.
 
-/**
- * Reserve inventory for order
- * @param {string} inventoryId - Inventory record ID
- * @param {number} quantity - Quantity to reserve
- * @throws {AppError} If fetch or update fails
- */
-const reserveInventory = async (inventoryId, quantity) => {
-  try {
-    if (!inventoryId || quantity <= 0) {
-      throw createValidationError({
-        inventoryId: !inventoryId ? 'Inventory ID is required' : undefined,
-        quantity: quantity <= 0 ? 'Quantity must be greater than 0' : undefined
-      });
-    }
-
-    // Get current inventory
-    const { data: inventory, error: fetchError } = await supabase
-      .from('inventory')
-      .select('reserved_quantity')
-      .eq('id', inventoryId)
-      .single();
-
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'reserveInventory - fetch', inventoryId });
-      throw appError;
-    }
-
-    if (!inventory) {
-      throw createNotFoundError('Inventory', inventoryId);
-    }
-
-    // Update reserved quantity
-    const newReserved = (inventory.reserved_quantity || 0) + quantity;
-
-    const { error: updateError } = await supabase
-      .from('inventory')
-      .update({ reserved_quantity: newReserved })
-      .eq('id', inventoryId);
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'reserveInventory - update', inventoryId });
-      throw appError;
-    }
-
-    // Log inventory movement (graceful fallback if fails)
-    try {
-      await supabase
-        .from('inventory_movements')
-        .insert({
-          inventory_id: inventoryId,
-          movement_type: 'reserved',
-          quantity_change: -quantity,
-          reference_type: 'order',
-          notes: 'Reserved for order'
-        });
-    } catch (logError) {
-      logError(logError, { operation: 'reserveInventory - log movement', inventoryId });
-    }
-  } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'reserveInventory',
-      inventoryId
-    });
+const callStockRpc = async (rpcName, orderId, extraArgs = {}) => {
+  const { data, error } = await supabase.rpc(rpcName, { p_order_id: orderId, ...extraArgs });
+  if (error) {
+    const appError = parseSupabaseError(error);
+    logError(appError, { operation: rpcName, orderId });
     throw appError;
   }
+  return data || {};
+};
+
+const stockRefusalToError = (result, orderId) => {
+  const reason = result.reason || 'unknown';
+  if (reason === 'insufficient_stock' || reason === 'invalid_item') {
+    return new AppError(
+      `Stock reservation refused: ${reason}`,
+      ERROR_CODES.INSUFFICIENT_STOCK,
+      409,
+      {
+        reason,
+        orderId,
+        productId: result.product_id ?? null,
+        available: result.available ?? null
+      }
+    );
+  }
+  return new AppError(
+    `Stock operation refused: ${reason}`,
+    ERROR_CODES.INVALID_OPERATION,
+    409,
+    { reason, orderId }
+  );
 };
 
 /**
- * Release reserved inventory (when order is rejected/cancelled)
- * @param {string} inventoryId - Inventory record ID
- * @param {number} quantity - Quantity to release
- * @throws {AppError} If fetch or update fails
+ * Whether the order owns 'consumed' allocations (authoritative: read from
+ * order_stock_allocations, not inferred from payment_status). A read failure is logged and
+ * treated as "unknown = no"; restock stays available from the order list.
  */
-const releaseInventory = async (inventoryId, quantity) => {
-  try {
-    if (!inventoryId || quantity <= 0) {
-      throw createValidationError({
-        inventoryId: !inventoryId ? 'Inventory ID is required' : undefined,
-        quantity: quantity <= 0 ? 'Quantity must be greater than 0' : undefined
-      });
-    }
-
-    // Get current inventory
-    const { data: inventory, error: fetchError } = await supabase
-      .from('inventory')
-      .select('reserved_quantity')
-      .eq('id', inventoryId)
-      .single();
-
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'releaseInventory - fetch', inventoryId });
-      throw appError;
-    }
-
-    if (!inventory) {
-      throw createNotFoundError('Inventory', inventoryId);
-    }
-
-    // Update reserved quantity (ensure non-negative)
-    const newReserved = Math.max(0, (inventory.reserved_quantity || 0) - quantity);
-
-    const { error: updateError } = await supabase
-      .from('inventory')
-      .update({ reserved_quantity: newReserved })
-      .eq('id', inventoryId);
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'releaseInventory - update', inventoryId });
-      throw appError;
-    }
-
-    // Log inventory movement (graceful fallback if fails)
-    try {
-      await supabase
-        .from('inventory_movements')
-        .insert({
-          inventory_id: inventoryId,
-          movement_type: 'released',
-          quantity_change: quantity,
-          reference_type: 'order',
-          notes: 'Released from rejected/cancelled order'
-        });
-    } catch (movementError) {
-      logError(movementError, { operation: 'releaseInventory - log movement', inventoryId });
-    }
-  } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'releaseInventory',
-      inventoryId
-    });
-    throw appError;
+const hasConsumedAllocations = async (orderId) => {
+  const { data, error } = await supabase
+    .from('order_stock_allocations')
+    .select('id')
+    .eq('order_id', orderId)
+    .eq('state', 'consumed')
+    .limit(1);
+  if (error) {
+    logError(error, { operation: 'hasConsumedAllocations', orderId });
+    return false;
   }
+  return Array.isArray(data) && data.length > 0;
 };
 
 /**
- * Reduce inventory quantity (when payment is validated)
- * @param {string} inventoryId - Inventory record ID
- * @param {number} quantity - Quantity to reduce
- * @throws {AppError} If fetch, validation, or update fails
+ * Reserve stock for an order that already has its items. The RPC cancels the
+ * order itself (same transaction) when stock is insufficient.
+ * @throws {AppError} INSUFFICIENT_STOCK / INVALID_OPERATION when refused, or a DB error
  */
-const reduceInventory = async (inventoryId, quantity) => {
+const reserveOrderStock = async (orderId) => {
+  const result = await callStockRpc('reserve_order_inventory', orderId);
+  if (!result.ok) throw stockRefusalToError(result, orderId);
+  return result;
+};
+
+/**
+ * Return the units consumed by a CANCELLED order to the inventory (admin only).
+ * Never automatic: goods may already have left, so the admin must confirm the physical return.
+ * @param {string} orderId
+ * @param {string} reason - why the units are being returned (stored in the movement notes)
+ * @throws {AppError} when the reason is empty, the RPC fails, or it refuses (e.g. order not cancelled)
+ * @returns {Promise<{ok: boolean, restocked: boolean, reason: string|null}>}
+ */
+export const restockOrder = async (orderId, reason) => {
+  if (!orderId || !reason || !String(reason).trim()) {
+    throw createValidationError({
+      orderId: !orderId ? 'Order ID is required' : undefined,
+      reason: !reason || !String(reason).trim() ? 'A restock reason is required' : undefined
+    }, 'Missing required fields for restock');
+  }
+  const result = await callStockRpc('restock_order_inventory', orderId, { p_reason: String(reason).trim() });
+  if (!result.ok) throw stockRefusalToError(result, orderId);
+  return result;
+};
+
+/**
+ * Release the reservation of an already-cancelled order. Never throws: the
+ * cancellation is the user-visible outcome, and expire_stale_order_reservations
+ * sweeps cancelled orders that still hold stock.
+ */
+const releaseOrderStock = async (orderId) => {
   try {
-    if (!inventoryId || quantity <= 0) {
-      throw createValidationError({
-        inventoryId: !inventoryId ? 'Inventory ID is required' : undefined,
-        quantity: quantity <= 0 ? 'Quantity must be greater than 0' : undefined
-      });
-    }
+    await callStockRpc('release_order_inventory', orderId);
+  } catch (releaseError) {
+    logError(releaseError, { operation: 'releaseOrderStock', orderId });
+  }
+};
 
-    // Get current inventory
-    const { data: inventory, error: fetchError } = await supabase
-      .from('inventory')
-      .select('quantity, reserved_quantity, available_quantity')
-      .eq('id', inventoryId)
-      .single();
-
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'reduceInventory - fetch', inventoryId });
-      throw appError;
-    }
-
-    if (!inventory) {
-      throw createNotFoundError('Inventory', inventoryId);
-    }
-
-    const availableStock =
-      inventory.available_quantity ??
-      (inventory.quantity ?? 0) - (inventory.reserved_quantity ?? 0);
-
-    // Validate sufficient stock
-    if (availableStock < quantity) {
-      throw createValidationError(
-        { quantity: `Insufficient stock. Available: ${availableStock}, Requested: ${quantity}` },
-        ERROR_CODES.INSUFFICIENT_STOCK
-      );
-    }
-
-    // Reduce both actual and reserved quantities
-    const newQuantity = (inventory.quantity ?? availableStock) - quantity;
-    const newReserved = Math.max(0, (inventory.reserved_quantity || 0) - quantity);
-
-    const { error: updateError } = await supabase
-      .from('inventory')
+/** Best-effort compensation when a reserve call failed for transport reasons. */
+const revertOrderToCancelled = async (orderId, reason) => {
+  try {
+    await supabase
+      .from('orders')
       .update({
-        quantity: newQuantity,
-        reserved_quantity: newReserved,
+        status: ORDER_STATUS.CANCELLED,
+        payment_status: PAYMENT_STATUS.REJECTED,
+        rejection_reason: reason,
         updated_at: new Date().toISOString()
       })
-      .eq('id', inventoryId);
+      .eq('id', orderId);
+  } catch (revertError) {
+    logError(revertError, { operation: 'revertOrderToCancelled', orderId });
+  }
+};
 
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'reduceInventory - update', inventoryId });
-      throw appError;
+/** Reserve, and when the call fails WITHOUT a business answer, cancel the order again. */
+const reserveOrCancel = async (orderId) => {
+  try {
+    return await reserveOrderStock(orderId);
+  } catch (reserveError) {
+    // A business refusal was already cancelled server-side; anything else may not have been.
+    if (reserveError?.context?.reason === undefined) {
+      await revertOrderToCancelled(orderId, 'reservation_failed');
     }
-
-    // Log inventory movement (graceful fallback if fails)
-    try {
-      await supabase
-        .from('inventory_movements')
-        .insert({
-          inventory_id: inventoryId,
-          movement_type: 'sold',
-          quantity_change: -quantity,
-          reference_type: 'order',
-          notes: 'Sold - payment validated'
-        });
-    } catch (movementError) {
-      logError(movementError, { operation: 'reduceInventory - log movement', inventoryId });
-    }
-  } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'reduceInventory',
-      inventoryId
-    });
-    throw appError;
+    throw reserveError;
   }
 };
 
@@ -930,6 +775,28 @@ export const getOrderById = async (orderId) => {
 };
 
 /**
+ * Mutates the given orders: has_consumed_stock = true when a CANCELLED order owns at least
+ * one 'consumed' allocation (asked to the database through orders_with_consumed_stock, not
+ * inferred from payment status). Never throws: on error the flag stays false and the failure is logged.
+ */
+const flagConsumedStock = async (orders) => {
+  if (!Array.isArray(orders)) return;
+  orders.forEach((o) => { o.has_consumed_stock = false; });
+  const cancelledIds = orders.filter((o) => o.status === ORDER_STATUS.CANCELLED).map((o) => o.id);
+  if (cancelledIds.length === 0) return;
+
+  // RPC (ids in the request body) instead of .in('order_id', ids): hundreds of uuids in a
+  // GET URL exceed proxy limits and would silently hide the button.
+  const { data, error } = await supabase.rpc('orders_with_consumed_stock', { p_order_ids: cancelledIds });
+  if (error) {
+    logError(error, { operation: 'flagConsumedStock' });
+    return;
+  }
+  const consumed = new Set((data || []).map((row) => row.order_id));
+  orders.forEach((o) => { o.has_consumed_stock = consumed.has(o.id); });
+};
+
+/**
  * Get all orders with filters (admin only)
  * Batches user profile fetch to avoid N+1 queries
  * @param {Object} filters - Optional filters (status, payment_status, order_type)
@@ -968,6 +835,10 @@ export const getAllOrders = async (filters = {}) => {
       logError(appError, { operation: 'getAllOrders', filters });
       throw appError;
     }
+
+    // Authoritative restock flag: cancelled orders that own 'consumed' allocations may still
+    // need their units returned (admin decision). A failed read only hides the button.
+    await flagConsumedStock(orders);
 
     // Enrich orders with user profile data if orders exist
     if (orders && orders.length > 0) {
@@ -1036,28 +907,23 @@ export const getPendingOrdersCount = async () => {
 // ============================================================================
 
 /**
- * Validate payment and update order with inventory reduction
- * CRITICAL: Requires payment_status === 'proof_uploaded' and order.status === 'pending'
- * Handles both direct products and combo items by batching product lookups
+ * Validate payment and consume the stock reserved for the order
+ * CRITICAL: Requires payment_status === 'proof_uploaded' (or pending for super admins) and a valid transition to processing
  *
- * TRANSACTION BOUNDARY (for future DB transaction wrapper support):
- * BEGIN TRANSACTION
- *   1. Fetch order and validate state (status === pending, payment_status === proof_uploaded)
- *   2. Batch fetch all combo_items for combo order items (N+1 optimization)
- *   3. Batch fetch all products for combo items (N+1 optimization)
- *   4. Calculate all inventory reductions (direct products + combo product quantities)
- *   5. Execute all inventory reductions in parallel (Promise.all)
- *   6. Update order status to PROCESSING and payment_status to VALIDATED
- *   7. Log order status history (graceful fallback if fails)
- * COMMIT TRANSACTION
- *
- * If any critical step (1-6) fails, rollback all inventory changes.
- * Logging failure (step 7) doesn't rollback - logging is non-critical.
+ * Flow:
+ *   1. Fetch order and validate the state machine
+ *   2. Update order status to PROCESSING and payment_status to VALIDATED
+ *   3. consume_order_inventory RPC (atomic, idempotent): quantity -= q and
+ *      reserved -= q for every allocation. No-op for legacy orders created before
+ *      the stock cutover. A managed order that was never reserved is reserved and
+ *      consumed in the same transaction.
+ *      If this fails the order update is reverted, so the admin can simply retry.
+ *   4. Log activity / status history / Zelle sync (graceful fallback if they fail)
  *
  * @param {string} orderId - Order ID
  * @param {string} adminId - Admin user ID
- * @throws {AppError} If validation fails, state invalid, or inventory operations fail
- * @returns {Promise<Object>} Updated order with reduced inventory
+ * @throws {AppError} If validation fails, state invalid, or stock cannot be consumed
+ * @returns {Promise<Object>} Updated order
  */
 export const validatePayment = async (orderId, adminId) => {
   try {
@@ -1113,6 +979,28 @@ export const validatePayment = async (orderId, adminId) => {
       throw appError;
     }
 
+    // ATOMIC (server-side): consume the reservation. On any failure undo the status
+    // change so the order is not left validated with its stock untouched.
+    try {
+      const consumed = await callStockRpc('consume_order_inventory', orderId);
+      if (!consumed.ok) throw stockRefusalToError(consumed, orderId);
+    } catch (consumeError) {
+      const { error: revertError } = await supabase
+        .from('orders')
+        .update({
+          payment_status: order.payment_status,
+          status: order.status,
+          validated_by: order.validated_by ?? null,
+          validated_at: order.validated_at ?? null
+        })
+        .eq('id', orderId);
+      if (revertError) {
+        // The order is now validated but its stock was not consumed: surface it for manual follow-up
+        logError(parseSupabaseError(revertError), { operation: 'validatePayment - revert', orderId });
+      }
+      throw consumeError;
+    }
+
     // Get admin email for logging
     const adminEmail = await getUserEmail(adminId);
     await logOrderActivity({
@@ -1127,93 +1015,6 @@ export const validatePayment = async (orderId, adminId) => {
         validatedAt: updatedOrder?.validated_at
       })
     });
-
-    // OPTIMIZE: Fix N³ problem - batch fetch all combo items and products at once
-    // instead of nested loops within order items
-    const comboItemIds = order.order_items
-      .filter(item => item.item_type === 'combo')
-      .map(item => item.item_id);
-
-    let comboItemsMap = new Map();
-    let productsMap = new Map();
-
-    if (comboItemIds.length > 0) {
-      // Batch fetch all combo items
-      const { data: comboItems, error: comboError } = await supabase
-        .from('combo_items')
-        .select('combo_id, product_id, quantity')
-        .in('combo_id', comboItemIds);
-
-      if (comboError) {
-        const appError = parseSupabaseError(comboError);
-        logError(appError, { operation: 'validatePayment - fetch combos', orderId });
-        throw appError;
-      }
-
-      // Build map of combo_id => combo_items for efficient lookup
-      if (comboItems) {
-        comboItems.forEach(item => {
-          if (!comboItemsMap.has(item.combo_id)) {
-            comboItemsMap.set(item.combo_id, []);
-          }
-          comboItemsMap.get(item.combo_id).push(item);
-        });
-
-        // Batch fetch inventory records for all products referenced by combo items
-        const productIds = [...new Set(comboItems.map(item => item.product_id))];
-        if (productIds.length > 0) {
-          const { data: inventories, error: inventoriesError } = await supabase
-            .from('inventory')
-            .select('id, product_id')
-            .in('product_id', productIds);
-
-          if (inventoriesError) {
-            const appError = parseSupabaseError(inventoriesError);
-            logError(appError, { operation: 'validatePayment - fetch inventory', orderId });
-            throw appError;
-          }
-
-          // Build map of product_id => inventory for efficient lookup
-          if (inventories) {
-            inventories.forEach(inventory => {
-              productsMap.set(inventory.product_id, { inventory_id: inventory.id });
-            });
-          }
-        }
-      }
-    }
-
-    // ATOMIC: Reduce inventory for all items
-    // Collect all inventory reduction operations
-    const inventoryReductions = [];
-
-    for (const item of order.order_items) {
-      if (item.item_type === 'product' && item.inventory_id) {
-        // Direct product
-        inventoryReductions.push({ inventoryId: item.inventory_id, quantity: item.quantity });
-      } else if (item.item_type === 'combo' && item.item_id) {
-        // Combo - get items from batched data
-        const comboItems = comboItemsMap.get(item.item_id) || [];
-        for (const comboItem of comboItems) {
-          const product = productsMap.get(comboItem.product_id);
-          if (product?.inventory_id) {
-            // Reduce inventory: combo quantity * item quantity in combo
-            inventoryReductions.push({
-              inventoryId: product.inventory_id,
-              quantity: item.quantity * comboItem.quantity
-            });
-          }
-        }
-      }
-    }
-
-    // Execute all inventory reductions in parallel
-    if (inventoryReductions.length > 0) {
-      const reductionPromises = inventoryReductions.map(reduction =>
-        reduceInventory(reduction.inventoryId, reduction.quantity)
-      );
-      await Promise.all(reductionPromises);
-    }
 
     // Log status change (graceful fallback if fails)
     try {
@@ -1264,20 +1065,14 @@ export const validatePayment = async (orderId, adminId) => {
 };
 
 /**
- * Reject payment and cancel order
- * CRITICAL: Requires payment_status === 'proof_uploaded'
- * Releases all reserved inventory and logs rejection
+ * Reject a payment (the order stays PENDING so the customer can retry with a new proof)
+ * Requires status === pending and payment_status pending | proof_uploaded.
  *
- * TRANSACTION BOUNDARY (for future DB transaction wrapper support):
- * BEGIN TRANSACTION
- *   1. Fetch order and validate state (status === pending, payment_status === proof_uploaded)
- *   2. Update order status to CANCELLED and payment_status to REJECTED
- *   3. Release reserved inventory for all product items (parallel Promise.all)
- *   4. Log order status history (graceful fallback if fails)
- * COMMIT TRANSACTION
- *
- * If any critical step (1-3) fails, rollback all inventory changes.
- * Logging failure (step 4) doesn't rollback - logging is non-critical.
+ * Stock: a rejection does NOT release the reservation. The order is still alive
+ * (uploadPaymentProof accepts rejected -> proof_uploaded and never re-reserves), so
+ * releasing here would let the customer retry against stock somebody else took.
+ * A rejected order that is abandoned is cancelled and released by
+ * expire_stale_order_reservations, which times rejections from validated_at.
  *
  * @param {string} orderId - Order ID
  * @param {string} adminId - Admin user ID
@@ -1996,18 +1791,11 @@ export const completeOrder = async (orderId, notes = '') => {
 /**
  * Cancel an order with full state validation
  * CRITICAL: Can only cancel pending or processing orders
- * Releases all reserved inventory
  *
- * TRANSACTION BOUNDARY (for future DB transaction wrapper support):
- * BEGIN TRANSACTION
- *   1. Fetch order with items and validate state (pending or processing)
- *   2. Release reserved inventory for all items (parallel Promise.all)
- *   3. Update order status to CANCELLED
- *   4. Log order status history (graceful fallback if fails)
- * COMMIT TRANSACTION
- *
- * If any critical step (1-3) fails, rollback all inventory changes.
- * Logging failure (step 4) doesn't rollback - logging is non-critical.
+ * Flow: validate state -> set status CANCELLED -> release_order_inventory RPC
+ * (idempotent; only releases 'reserved' allocations, so stock already consumed by a
+ * validated payment is NOT restocked - that is an explicit inventory decision).
+ * A lost release call is healed by expire_stale_order_reservations (orphan sweep).
  *
  * @param {string} orderId - Order ID
  * @param {string} adminId - Admin user ID
@@ -2051,15 +1839,6 @@ export const cancelOrder = async (orderId, adminId, reason) => {
       );
     }
 
-    // ATOMIC: Release reserved inventory for all items in parallel
-    const releasePromises = order.order_items
-      .filter(item => item.inventory_id)
-      .map(item => releaseInventory(item.inventory_id, item.quantity));
-
-    if (releasePromises.length > 0) {
-      await Promise.all(releasePromises);
-    }
-
     // ATOMIC: Update order status
     const { data: updatedOrder, error: updateError } = await supabase
       .from('orders')
@@ -2077,6 +1856,9 @@ export const cancelOrder = async (orderId, adminId, reason) => {
       logError(appError, { operation: 'cancelOrder - update', orderId });
       throw appError;
     }
+
+    // The release RPC only acts on cancelled orders and is idempotent (consumed stock is not restocked).
+    await releaseOrderStock(orderId);
 
     // Log status change (graceful fallback if fails)
     try {
@@ -2103,7 +1885,8 @@ export const cancelOrder = async (orderId, adminId, reason) => {
       metadata: { orderId, orderNumber: updatedOrder?.order_number, reason }
     });
 
-    return updatedOrder;
+    // The caller may offer restockOrder() only when the database really consumed units.
+    return { ...updatedOrder, stockConsumed: await hasConsumedAllocations(orderId) };
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
@@ -2147,14 +1930,6 @@ export const cancelOrderByUser = async (orderId, userId, reason = 'cancelled_by_
       throw createValidationError({ status: `Order is in ${order.status} state` }, 'Only pending orders can be cancelled by the user');
     }
 
-    const releasePromises = order.order_items
-      .filter(item => item.inventory_id)
-      .map(item => releaseInventory(item.inventory_id, item.quantity));
-
-    if (releasePromises.length > 0) {
-      await Promise.all(releasePromises);
-    }
-
     const { data: updatedOrder, error: updateError } = await supabase
       .from('orders')
       .update({
@@ -2172,6 +1947,8 @@ export const cancelOrderByUser = async (orderId, userId, reason = 'cancelled_by_
       logError(appError, { operation: 'cancelOrderByUser - update', orderId });
       throw appError;
     }
+
+    await releaseOrderStock(orderId);
 
     // Get user email for logging
     const userEmail = await getUserEmail(userId);
@@ -2273,15 +2050,14 @@ export const reopenOrder = async (orderId, userId) => {
     // Validate state transition
     validateOrderTransition(order.status, ORDER_STATUS.PENDING);
 
-    // Reopen order - reset to pending status
+    // Reopen order - reset to pending status.
+    // (orders has no cancelled_by / cancelled_at / cancellation_reason columns: sending
+    // them made PostgREST reject the whole update.)
     const { data: updatedOrder, error: updateError } = await supabase
       .from('orders')
       .update({
         status: ORDER_STATUS.PENDING,
         payment_status: PAYMENT_STATUS.PENDING,
-        cancelled_by: null,
-        cancelled_at: null,
-        cancellation_reason: null,
         updated_at: new Date().toISOString()
       })
       .eq('id', orderId)
@@ -2293,6 +2069,10 @@ export const reopenOrder = async (orderId, userId) => {
       logError(appError, { operation: 'reopenOrder - update', orderId });
       throw appError;
     }
+
+    // Re-reserve the stock that was released on cancel. When it is no longer available the
+    // RPC cancels the order again and this throws INSUFFICIENT_STOCK (the reopen is refused).
+    await reserveOrCancel(orderId);
 
     // Log activity
     const userEmail = await getUserEmail(userId);
@@ -2362,15 +2142,14 @@ export const reopenOrderByAdmin = async (orderId, adminId, reason = 'Reapertura 
     // Validate state transition
     validateOrderTransition(order.status, ORDER_STATUS.PENDING);
 
-    // Reopen order - reset to pending status
+    // Reopen order - reset to pending status.
+    // (orders has no cancelled_by / cancelled_at / cancellation_reason columns: sending
+    // them made PostgREST reject the whole update.)
     const { data: updatedOrder, error: updateError } = await supabase
       .from('orders')
       .update({
         status: ORDER_STATUS.PENDING,
         payment_status: PAYMENT_STATUS.PENDING,
-        cancelled_by: null,
-        cancelled_at: null,
-        cancellation_reason: null,
         updated_at: new Date().toISOString()
       })
       .eq('id', orderId)
@@ -2382,6 +2161,9 @@ export const reopenOrderByAdmin = async (orderId, adminId, reason = 'Reapertura 
       logError(appError, { operation: 'reopenOrderByAdmin - update', orderId });
       throw appError;
     }
+
+    // Same contract as reopenOrder: re-reserve or refuse with INSUFFICIENT_STOCK.
+    await reserveOrCancel(orderId);
 
     // Log activity
     const adminEmail = await getUserEmail(adminId);

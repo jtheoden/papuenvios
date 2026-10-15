@@ -19,21 +19,7 @@ import {
 } from './errorHandler';
 import { ORDER_STATUS } from './orderService';
 import { logActivity } from './activityLogger';
-
-// Estados que BLOQUEAN eliminación de productos/combos
-// (órdenes activas que aún no han sido despachadas)
-const BLOCKING_ORDER_STATUSES = [
-  ORDER_STATUS.PENDING,
-  ORDER_STATUS.PROCESSING
-];
-
-// Estados que PERMITEN eliminación (órdenes ya procesadas o canceladas)
-const SAFE_DELETE_ORDER_STATUSES = [
-  ORDER_STATUS.DISPATCHED,
-  ORDER_STATUS.DELIVERED,
-  ORDER_STATUS.COMPLETED,
-  ORDER_STATUS.CANCELLED
-];
+import { isStockBelowReservedError } from './stockErrors';
 
 // Legacy: Para toggle de estado activo
 const IN_PROGRESS_ORDER_STATUSES = [
@@ -410,6 +396,15 @@ export const updateProduct = async (productId, productData) => {
             .eq('id', existingInventory.id);
 
           if (invError) {
+            if (invError.code === '23514' && String(invError.message).includes('inventory_reserved_lte_quantity')) {
+              // New stock is below the units reserved by open orders: the admin must know, not guess
+              throw new AppError(
+                'Stock cannot be lower than the units reserved by open orders',
+                ERROR_CODES.INVALID_OPERATION,
+                409,
+                { reason: 'stock_below_reserved', productId }
+              );
+            }
             const appError = parseSupabaseError(invError);
             logError(appError, { operation: 'updateProduct - inventory update', productId });
           }
@@ -435,6 +430,7 @@ export const updateProduct = async (productId, productData) => {
           }
         }
       } catch (invError) {
+        if (isStockBelowReservedError(invError)) throw invError;
         // Don't fail product update if inventory operation fails
         logError(invError, { operation: 'updateProduct - inventory operation', productId });
       }
@@ -449,287 +445,36 @@ export const updateProduct = async (productId, productData) => {
 };
 
 /**
- * Find blocking orders for a product (via inventory or combo)
- * Returns orders in BLOCKING states (pending/processing with validated payment)
- * @param {string} productId - Product ID
- * @returns {Promise<{blockingOrders: Array, safeOrders: Array, inventoryIds: Array}>}
+ * Maps the blockers returned by the database predicate (get_product_blockers /
+ * get_combo_blockers) to the shape the UI already consumes.
  */
-const findBlockingOrdersForProduct = async (productId) => {
-  // Get inventory IDs for this product
-  const { data: inventoryRecords, error: invError } = await supabase
-    .from('inventory')
-    .select('id')
-    .eq('product_id', productId);
-
-  if (invError) {
-    console.warn('[findBlockingOrdersForProduct] Error fetching inventory:', invError);
-  }
-
-  const inventoryIds = (inventoryRecords || []).map(inv => inv.id);
-
-  if (inventoryIds.length === 0) {
-    return { blockingOrders: [], safeOrders: [], inventoryIds: [] };
-  }
-
-  // Find order_items that reference these inventory records
-  const { data: orderItems, error: oiError } = await supabase
-    .from('order_items')
-    .select(`
-      id,
-      inventory_id,
-      order_id,
-      orders!inner(id, order_number, status, payment_status, created_at)
-    `)
-    .in('inventory_id', inventoryIds);
-
-  if (oiError) {
-    console.warn('[findBlockingOrdersForProduct] Error fetching order_items:', oiError);
-    return { blockingOrders: [], safeOrders: [], inventoryIds };
-  }
-
-  const blockingOrders = [];
-  const safeOrders = [];
-
-  (orderItems || []).forEach(item => {
-    const order = item.orders;
-    if (!order) return;
-
-    const orderInfo = {
-      orderId: order.id,
-      orderNumber: order.order_number,
-      status: order.status,
-      paymentStatus: order.payment_status,
-      orderItemId: item.id,
-      inventoryId: item.inventory_id
-    };
-
-    // Check if order is in blocking state
-    if (BLOCKING_ORDER_STATUSES.includes(order.status)) {
-      blockingOrders.push(orderInfo);
-    } else if (SAFE_DELETE_ORDER_STATUSES.includes(order.status)) {
-      safeOrders.push(orderInfo);
-    }
-  });
-
-  return { blockingOrders, safeOrders, inventoryIds };
-};
+const mapBlockers = (rows) =>
+  (rows || []).map((row) => ({
+    orderId: row.order_id,
+    orderNumber: row.order_number,
+    status: row.status,
+    paymentStatus: row.payment_status,
+    via: row.via
+  }));
 
 /**
- * Delete a product (hard delete - removes from database)
- * Validates no blocking orders exist before deletion
- * Deactivates combos that contain this product
- * Clears inventory references from completed/cancelled orders
+ * Delete a product (hard delete) through ONE database transaction (delete_product).
+ * The database decides (same predicate as the preview and the bulk delete, taken under row
+ * locks): open orders referencing the product - directly, via a combo or via inventory - and
+ * orders still holding a reserved allocation block it. Consumed allocations never block.
+ * It also deactivates combos that contain the product, removes the combo links, snapshots the
+ * ledger sums and deletes movements, batches and the product atomically. Fails CLOSED.
  * @param {string} productId - Product ID to delete
- * @param {string} performedBy - Email or ID of user performing the action (optional)
- * @throws {AppError} If deletion fails or blocking orders exist
- * @returns {Promise<Object>} Result with deleted product info and deactivated combos
+ * @throws {AppError} CONFLICT (409) with context.blockingOrders when blocked, NOT_FOUND, or a DB error
+ * @returns {Promise<Object>} { success, deletedProduct: {id, name}, deactivatedCombos: [{id, name}] }
  */
-export const deleteProduct = async (productId, performedBy = 'system') => {
+export const deleteProduct = async (productId) => {
   try {
     if (!productId) {
       throw createValidationError({ productId: 'Product ID is required' });
     }
 
-    // Fetch product info before deletion for logging
-    const { data: product, error: fetchProductError } = await supabase
-      .from('products')
-      .select('id, name_es, name_en, sku')
-      .eq('id', productId)
-      .single();
-
-    if (fetchProductError) {
-      console.warn('[deleteProduct] Error fetching product info:', fetchProductError);
-    }
-
-    const productName = product?.name_es || product?.name_en || productId;
-
-    // ============================================
-    // STEP 1: Check for blocking orders
-    // ============================================
-    const { blockingOrders, safeOrders, inventoryIds } = await findBlockingOrdersForProduct(productId);
-
-    if (blockingOrders.length > 0) {
-      const orderNumbers = blockingOrders.map(o => o.orderNumber).join(', ');
-
-      throw new AppError(
-        `No se puede eliminar el producto "${productName}" porque tiene órdenes activas en proceso: ${orderNumbers}. Espere a que las órdenes sean despachadas o canceladas.`,
-        ERROR_CODES.CONFLICT,
-        409,
-        {
-          productId,
-          productName,
-          blockingOrders,
-          blockingOrderCount: blockingOrders.length
-        }
-      );
-    }
-
-    // ============================================
-    // STEP 2: Clear inventory_id from safe orders (dispatched/delivered/completed/cancelled)
-    // ============================================
-    if (safeOrders.length > 0) {
-      const safeOrderItemIds = safeOrders.map(o => o.orderItemId);
-
-      const { error: clearError } = await supabase
-        .from('order_items')
-        .update({ inventory_id: null })
-        .in('id', safeOrderItemIds);
-
-      if (clearError) {
-        console.error('[deleteProduct] Error clearing inventory_id from order_items:', clearError);
-        throw new AppError(
-          'Error al limpiar referencias de inventario en órdenes completadas',
-          ERROR_CODES.DB_ERROR,
-          500,
-          { operation: 'clearOrderItemsInventory', error: clearError.message }
-        );
-      }
-    }
-
-    // ============================================
-    // STEP 3: Find and deactivate combos containing this product
-    // ============================================
-    const { data: comboItems, error: findCombosError } = await supabase
-      .from('combo_items')
-      .select('combo_id')
-      .eq('product_id', productId);
-
-    if (findCombosError) {
-      console.warn('[deleteProduct] Error finding combos containing product:', findCombosError);
-    }
-
-    const deactivatedCombos = [];
-
-    if (comboItems && comboItems.length > 0) {
-      const comboIds = [...new Set(comboItems.map(item => item.combo_id))];
-
-      // Fetch combo info before deactivating for logging
-      const { data: combos, error: fetchCombosError } = await supabase
-        .from('combo_products')
-        .select('id, name_es, name_en, is_active')
-        .in('id', comboIds);
-
-      if (fetchCombosError) {
-        console.warn('[deleteProduct] Error fetching combo info:', fetchCombosError);
-      }
-
-      // Only deactivate active combos
-      const activeCombos = (combos || []).filter(c => c.is_active);
-
-      if (activeCombos.length > 0) {
-        const activeComboIds = activeCombos.map(c => c.id);
-
-        const { error: deactivateCombosError } = await supabase
-          .from('combo_products')
-          .update({ is_active: false, updated_at: getCurrentTimestamp() })
-          .in('id', activeComboIds);
-
-        if (deactivateCombosError) {
-          console.warn('[deleteProduct] Error deactivating combos:', deactivateCombosError);
-        } else {
-          // Log each combo deactivation
-          for (const combo of activeCombos) {
-            const comboName = combo.name_es || combo.name_en || combo.id;
-            deactivatedCombos.push({ id: combo.id, name: comboName });
-
-            try {
-              await logActivity({
-                action: 'combo_deactivated',
-                entityType: 'combo',
-                entityId: combo.id,
-                performedBy,
-                description: `Combo desactivado - ${comboName} (producto eliminado: ${productName})`,
-                metadata: {
-                  comboId: combo.id,
-                  comboName,
-                  reason: 'product_deleted',
-                  deletedProductId: productId,
-                  deletedProductName: productName
-                }
-              });
-            } catch (logErr) {
-              console.warn('[deleteProduct] Failed to log combo deactivation:', logErr);
-            }
-          }
-        }
-      }
-    }
-
-    // ============================================
-    // STEP 4: Delete combo_items references (FK constraint)
-    // ============================================
-    const { error: comboItemsError } = await supabase
-      .from('combo_items')
-      .delete()
-      .eq('product_id', productId);
-
-    if (comboItemsError) {
-      console.error('[deleteProduct] Error deleting combo_items:', comboItemsError);
-      throw new AppError(
-        'Error al eliminar referencias en combos',
-        ERROR_CODES.DB_ERROR,
-        500,
-        { operation: 'deleteComboItems', error: comboItemsError.message }
-      );
-    }
-
-    // ============================================
-    // STEP 5: Get inventory IDs and delete inventory_movements first
-    // ============================================
-    const { data: inventoryRecords, error: invFetchError } = await supabase
-      .from('inventory')
-      .select('id')
-      .eq('product_id', productId);
-
-    if (invFetchError) {
-      console.warn('[deleteProduct] Error fetching inventory IDs:', invFetchError);
-    }
-
-    const productInventoryIds = (inventoryRecords || []).map(inv => inv.id);
-
-    if (productInventoryIds.length > 0) {
-      // Delete inventory_movements that reference these inventory records
-      const { error: movementsError } = await supabase
-        .from('inventory_movements')
-        .delete()
-        .in('inventory_id', productInventoryIds);
-
-      if (movementsError) {
-        console.error('[deleteProduct] Error deleting inventory_movements:', movementsError);
-        throw new AppError(
-          'Error al eliminar movimientos de inventario',
-          ERROR_CODES.DB_ERROR,
-          500,
-          { operation: 'deleteInventoryMovements', error: movementsError.message }
-        );
-      }
-    }
-
-    // ============================================
-    // STEP 6: Delete inventory records (now safe - no FK references)
-    // ============================================
-    const { error: inventoryError } = await supabase
-      .from('inventory')
-      .delete()
-      .eq('product_id', productId);
-
-    if (inventoryError) {
-      console.error('[deleteProduct] Error deleting inventory:', inventoryError);
-      throw new AppError(
-        'Error al eliminar registros de inventario',
-        ERROR_CODES.DB_ERROR,
-        500,
-        { operation: 'deleteInventory', error: inventoryError.message }
-      );
-    }
-
-    // ============================================
-    // STEP 7: Delete the product
-    // ============================================
-    const { error } = await supabase
-      .from('products')
-      .delete()
-      .eq('id', productId);
+    const { data, error } = await supabase.rpc('delete_product', { p_product_id: productId });
 
     if (error) {
       const appError = parseSupabaseError(error);
@@ -737,35 +482,43 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
       throw appError;
     }
 
-    // Log the product deletion
-    try {
-      await logActivity({
-        action: 'product_deleted',
-        entityType: 'product',
-        entityId: productId,
-        performedBy,
-        description: `Producto eliminado - ${productName}`,
-        metadata: {
-          productId,
-          productName,
-          productSku: product?.sku,
-          clearedOrderItems: safeOrders.length,
-          deactivatedCombos: deactivatedCombos.map(c => c.name),
-          deactivatedCombosCount: deactivatedCombos.length
-        }
-      });
-    } catch (logErr) {
-      console.warn('[deleteProduct] Failed to log product deletion:', logErr);
+    const result = data || {};
+
+    if (!result.ok) {
+      if (result.reason === 'blocking_orders') {
+        const blockingOrders = mapBlockers(result.blockers);
+        const productName = result.product_name || productId;
+        const orderNumbers = blockingOrders.map(o => o.orderNumber).join(', ');
+        throw new AppError(
+          `No se puede eliminar el producto "${productName}" porque tiene órdenes activas en proceso: ${orderNumbers}. Espere a que las órdenes sean despachadas o canceladas.`,
+          ERROR_CODES.CONFLICT,
+          409,
+          {
+            productId,
+            productName,
+            blockingOrders,
+            blockingOrderCount: blockingOrders.length
+          }
+        );
+      }
+      if (result.reason === 'not_found') {
+        throw createNotFoundError('Product', productId);
+      }
+      throw new AppError(
+        `Product delete refused: ${result.reason || 'unknown'}`,
+        ERROR_CODES.INVALID_OPERATION,
+        409,
+        { productId, reason: result.reason || 'unknown' }
+      );
     }
 
     return {
       success: true,
       deletedProduct: {
         id: productId,
-        name: productName
+        name: result.product_name || productId
       },
-      deactivatedCombos,
-      clearedOrderItems: safeOrders.length
+      deactivatedCombos: result.deactivated_combos || []
     };
   } catch (error) {
     if (error.code) throw error; // Already an AppError

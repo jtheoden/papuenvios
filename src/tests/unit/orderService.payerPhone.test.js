@@ -41,6 +41,8 @@ vi.mock('@/lib/supabase', () => ({
       state.fromCalls += 1;
       return makeQuery(table);
     }),
+    // createOrder reserves stock through the atomic RPC
+    rpc: vi.fn(async () => ({ data: { ok: true, reason: null }, error: null })),
     storage: {
       from: vi.fn(() => ({
         upload: (...args) => uploadMock(...args),

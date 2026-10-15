@@ -18,20 +18,6 @@ import {
 } from './errorHandler';
 import { ORDER_STATUS } from './orderService';
 
-// Estados que BLOQUEAN eliminación de combos
-const BLOCKING_ORDER_STATUSES = [
-  ORDER_STATUS.PENDING,
-  ORDER_STATUS.PROCESSING
-];
-
-// Estados que PERMITEN eliminación (órdenes ya procesadas o canceladas)
-const SAFE_DELETE_ORDER_STATUSES = [
-  ORDER_STATUS.DISPATCHED,
-  ORDER_STATUS.DELIVERED,
-  ORDER_STATUS.COMPLETED,
-  ORDER_STATUS.CANCELLED
-];
-
 /**
  * Get all combos with their products
  * @param {boolean} includeInactive - If true, returns all combos (active and inactive). Default: false
@@ -352,60 +338,14 @@ export const setComboActiveState = async (comboId, isActive = true) => {
 };
 
 /**
- * Find blocking orders for a combo
- * Returns orders in BLOCKING states (pending/processing)
- * @param {string} comboId - Combo ID
- * @returns {Promise<{blockingOrders: Array, safeOrders: Array}>}
- */
-const findBlockingOrdersForCombo = async (comboId) => {
-  // Find order_items that reference this combo
-  const { data: orderItems, error: oiError } = await supabase
-    .from('order_items')
-    .select(`
-      id,
-      item_id,
-      order_id,
-      orders!inner(id, order_number, status, payment_status)
-    `)
-    .eq('item_type', 'combo')
-    .eq('item_id', comboId);
-
-  if (oiError) {
-    console.warn('[findBlockingOrdersForCombo] Error fetching order_items:', oiError);
-    return { blockingOrders: [], safeOrders: [] };
-  }
-
-  const blockingOrders = [];
-  const safeOrders = [];
-
-  (orderItems || []).forEach(item => {
-    const order = item.orders;
-    if (!order) return;
-
-    const orderInfo = {
-      orderId: order.id,
-      orderNumber: order.order_number,
-      status: order.status,
-      paymentStatus: order.payment_status
-    };
-
-    if (BLOCKING_ORDER_STATUSES.includes(order.status)) {
-      blockingOrders.push(orderInfo);
-    } else if (SAFE_DELETE_ORDER_STATUSES.includes(order.status)) {
-      safeOrders.push(orderInfo);
-    }
-  });
-
-  return { blockingOrders, safeOrders };
-};
-
-/**
- * Delete a combo (hard delete - removes from database)
- * Validates no blocking orders exist before deletion
- * Clears combo references from completed/cancelled orders
+ * Delete a combo (hard delete) through ONE fail-closed database transaction (delete_combo):
+ * the database locks the component batches, applies the blocker predicate (any order that
+ * references the combo with ANY item_type and is open / unknown, or still holds a reserved
+ * component allocation, blocks it) and deletes items and combo together. Closed orders never
+ * block; order_items.item_id is NOT NULL with no FK, so nothing is rewritten there.
  * @param {string} comboId - Combo ID to delete
- * @throws {AppError} If deletion fails or blocking orders exist
- * @returns {Promise<Object>} Result with deleted combo info
+ * @throws {AppError} CONFLICT (409) with context.blockingOrders when blocked, NOT_FOUND, or a DB error
+ * @returns {Promise<Object>} { success, deletedCombo: {id, name} }
  */
 export const deleteCombo = async (comboId) => {
   try {
@@ -413,86 +353,7 @@ export const deleteCombo = async (comboId) => {
       throw createValidationError({ comboId: 'Combo ID is required' });
     }
 
-    // Fetch combo info for error messages
-    const { data: combo, error: fetchError } = await supabase
-      .from('combo_products')
-      .select('id, name_es, name_en')
-      .eq('id', comboId)
-      .single();
-
-    if (fetchError) {
-      console.warn('[deleteCombo] Error fetching combo info:', fetchError);
-    }
-
-    const comboName = combo?.name_es || combo?.name_en || comboId;
-
-    // ============================================
-    // STEP 1: Check for blocking orders
-    // ============================================
-    const { blockingOrders, safeOrders } = await findBlockingOrdersForCombo(comboId);
-
-    if (blockingOrders.length > 0) {
-      const orderNumbers = blockingOrders.map(o => o.orderNumber).join(', ');
-
-      throw new AppError(
-        `No se puede eliminar el combo "${comboName}" porque tiene órdenes activas en proceso: ${orderNumbers}. Espere a que las órdenes sean despachadas o canceladas.`,
-        ERROR_CODES.CONFLICT,
-        409,
-        {
-          comboId,
-          comboName,
-          blockingOrders,
-          blockingOrderCount: blockingOrders.length
-        }
-      );
-    }
-
-    // ============================================
-    // STEP 2: Clear item_id from safe order_items (dispatched/delivered/completed/cancelled)
-    // ============================================
-    if (safeOrders.length > 0) {
-      const { error: clearError } = await supabase
-        .from('order_items')
-        .update({ item_id: null })
-        .eq('item_type', 'combo')
-        .eq('item_id', comboId);
-
-      if (clearError) {
-        console.error('[deleteCombo] Error clearing item_id from order_items:', clearError);
-        throw new AppError(
-          'Error al limpiar referencias del combo en órdenes completadas',
-          ERROR_CODES.DB_ERROR,
-          500,
-          { operation: 'clearOrderItemsCombo', error: clearError.message }
-        );
-      }
-    }
-
-    // ============================================
-    // STEP 3: Delete combo_items references (FK constraint)
-    // ============================================
-    const { error: comboItemsError } = await supabase
-      .from('combo_items')
-      .delete()
-      .eq('combo_id', comboId);
-
-    if (comboItemsError) {
-      console.error('[deleteCombo] Error deleting combo_items:', comboItemsError);
-      throw new AppError(
-        'Error al eliminar items del combo',
-        ERROR_CODES.DB_ERROR,
-        500,
-        { operation: 'deleteComboItems', error: comboItemsError.message }
-      );
-    }
-
-    // ============================================
-    // STEP 4: Delete the combo
-    // ============================================
-    const { error } = await supabase
-      .from('combo_products')
-      .delete()
-      .eq('id', comboId);
+    const { data, error } = await supabase.rpc('delete_combo', { p_combo_id: comboId });
 
     if (error) {
       const appError = parseSupabaseError(error);
@@ -500,13 +361,40 @@ export const deleteCombo = async (comboId) => {
       throw appError;
     }
 
+    const result = data || {};
+
+    if (!result.ok) {
+      if (result.reason === 'blocking_orders') {
+        const blockingOrders = (result.blockers || []).map((row) => ({
+          orderId: row.order_id,
+          orderNumber: row.order_number,
+          status: row.status,
+          paymentStatus: row.payment_status,
+          via: row.via
+        }));
+        const comboName = result.combo_name || comboId;
+        const orderNumbers = blockingOrders.map(o => o.orderNumber).join(', ');
+        throw new AppError(
+          `No se puede eliminar el combo "${comboName}" porque tiene órdenes activas en proceso: ${orderNumbers}. Espere a que las órdenes sean despachadas o canceladas.`,
+          ERROR_CODES.CONFLICT,
+          409,
+          { comboId, comboName, blockingOrders, blockingOrderCount: blockingOrders.length }
+        );
+      }
+      if (result.reason === 'not_found') {
+        throw createNotFoundError('Combo', comboId);
+      }
+      throw new AppError(
+        `Combo delete refused: ${result.reason || 'unknown'}`,
+        ERROR_CODES.INVALID_OPERATION,
+        409,
+        { comboId, reason: result.reason || 'unknown' }
+      );
+    }
+
     return {
       success: true,
-      deletedCombo: {
-        id: comboId,
-        name: comboName
-      },
-      clearedOrderItems: safeOrders.length
+      deletedCombo: { id: comboId, name: result.combo_name || comboId }
     };
   } catch (error) {
     if (error.code) throw error; // Already an AppError
