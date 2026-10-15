@@ -42,6 +42,8 @@ import PaymentProofForm from '@/components/shared/PaymentProofForm';
 import PaymentMethodsUnavailable from '@/components/PaymentMethodsUnavailable';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { isPaymentMethodEnabled, isPaymentMethodDisabledError, PAYMENT_FLOWS } from '@/lib/paymentMethodsService';
+import RegulatoryNotice from '@/components/RegulatoryNotice';
+import LegalConsentLine from '@/components/LegalConsentLine';
 
 const SendRemittancePage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
@@ -1318,6 +1320,9 @@ const SendRemittancePage = ({ onNavigate }) => {
                 )}
               </div>
             </div>
+
+            <RegulatoryNotice onNavigate={onNavigate} />
+            <LegalConsentLine variant="confirm" onNavigate={onNavigate} />
 
             <div className="flex justify-between">
               <button

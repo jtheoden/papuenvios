@@ -2070,5 +2070,28 @@
     "modifiedNote": "Composición actual del combo; el combo fue modificado después de este pedido.",
     "unavailable": "Composición del combo no disponible.",
     "unknownProduct": "Producto no disponible"
+  },
+  "legal": {
+    "nav": {
+      "label": "Información legal"
+    },
+    "links": {
+      "terms": "Términos de Servicio",
+      "privacy": "Política de Privacidad",
+      "refunds": "Reembolsos"
+    },
+    "consent": {
+      "continue": "Al continuar, aceptas nuestros",
+      "confirm": "Al confirmar, aceptas los",
+      "and": "y"
+    },
+    "notice": {
+      "title": "Aviso importante",
+      "notBank": "PapuEnvios no es un banco ni una institución financiera.",
+      "zelleIrreversible": "Los pagos por Zelle son irreversibles.",
+      "deliveryEstimates": "Los tiempos de entrega son estimados.",
+      "ofac": "Los envíos a Cuba están sujetos a regulaciones de EE. UU. (OFAC); el remitente es responsable de cumplir los límites aplicables.",
+      "seeTerms": "Ver Términos de Servicio"
+    }
   }
 }

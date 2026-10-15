@@ -1,8 +1,10 @@
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
+import LegalLink from '@/components/LegalLink';
+import RegulatoryNotice from '@/components/RegulatoryNotice';
 
-const Footer = () => {
+const Footer = ({ onNavigate, showNotice = true }) => {
   const { t, language } = useLanguage();
   const { visualSettings } = useBusiness();
   const currentDate = new Date().toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US');
@@ -59,6 +61,20 @@ const Footer = () => {
             <span style={companyNameStyle}>{visualSettings?.companyName || 'PapuEnvíos'}</span>
           </span>
         </div>
+
+        {/* Legal links and regulatory notice */}
+        <nav
+          aria-label={t('legal.nav.label')}
+          className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs md:text-sm"
+          style={linkStyle}
+        >
+          <LegalLink page="terms" onNavigate={onNavigate}>{t('legal.links.terms')}</LegalLink>
+          <LegalLink page="privacy" onNavigate={onNavigate}>{t('legal.links.privacy')}</LegalLink>
+          <LegalLink page="terms" hash="refunds" onNavigate={onNavigate}>{t('legal.links.refunds')}</LegalLink>
+        </nav>
+        {showNotice && (
+          <RegulatoryNotice onNavigate={onNavigate} className="mt-3 mx-auto max-w-2xl" />
+        )}
 
         {/* Copyright */}
         <div className="text-center mt-3 pt-3 md:mt-4 md:pt-4" style={{ borderTop: `1px solid ${visualSettings?.primaryColor || '#e5e7eb'}10` }}>

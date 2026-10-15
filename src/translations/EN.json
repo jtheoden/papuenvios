@@ -2061,5 +2061,28 @@
     "modifiedNote": "Current combo composition; the combo was modified after this order.",
     "unavailable": "Combo composition unavailable.",
     "unknownProduct": "Product unavailable"
+  },
+  "legal": {
+    "nav": {
+      "label": "Legal information"
+    },
+    "links": {
+      "terms": "Terms of Service",
+      "privacy": "Privacy Policy",
+      "refunds": "Refunds"
+    },
+    "consent": {
+      "continue": "By continuing, you agree to our",
+      "confirm": "By confirming, you agree to the",
+      "and": "and"
+    },
+    "notice": {
+      "title": "Important notice",
+      "notBank": "PapuEnvios is not a bank or a financial institution.",
+      "zelleIrreversible": "Zelle payments are irreversible.",
+      "deliveryEstimates": "Delivery times are estimates.",
+      "ofac": "Shipments to Cuba are subject to U.S. regulations (OFAC); the sender is responsible for complying with applicable limits.",
+      "seeTerms": "See Terms of Service"
+    }
   }
 }
