@@ -44,7 +44,8 @@ vi.mock('@/lib/paymentFxService', async (importOriginal) => ({
 import SettingsPage from '@/components/SettingsPage';
 import { toBizumError } from '@/lib/bizumErrors';
 
-const openPaymentsTab = () => fireEvent.click(screen.getByText('Zelle'));
+// The tab is labelled Zelle, Pagos or Payments depending on the build/language: match any.
+const openPaymentsTab = () => fireEvent.click(screen.getByText(/^(Zelle|Pagos|Payments)$/));
 
 beforeEach(() => {
   svc.settings.mockReset().mockResolvedValue({ default_spread_pct: 1.5, default_per_operation_limit: 1000, fx_warn_hours: 24, fx_block_hours: 96 });

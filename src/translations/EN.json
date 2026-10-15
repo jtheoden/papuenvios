@@ -803,7 +803,7 @@
     "remittancesTab": "Remittances",
     "offersTab": "Offers & Coupons",
     "remittancesKindTab": "Kind of Remittances",
-    "zelleHistoryTab": "Zelle Payment History",
+    "zelleHistoryTab": "Payment History",
     "activityLogTab": "Activity Log",
     "orderStatus": {
       "paymentPending": "Payment Pending",
@@ -2077,7 +2077,7 @@
     }
   },
   "zelleHistory": {
-    "title": "Zelle Payment History",
+    "title": "Payment History",
     "date": "Date",
     "userName": "User Name",
     "email": "Email",
