@@ -11,6 +11,7 @@ import { isImageUploadError, getImageUploadMessageKey } from '@/lib/imageStorage
 import { isStockBelowReservedError } from '@/lib/stockErrors';
 import { createProduct, deleteProduct, setProductActiveState, updateProduct as updateProductDB } from '@/lib/productService';
 import { bulkDeleteProducts, previewBulkDeleteProducts } from '@/lib/bulkDeleteService';
+import { isAlreadyDeletedError, shouldRefreshAfterBulkDelete } from '@/lib/deleteOutcomePure';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import BulkDeleteBar from '@/components/tables/BulkDeleteBar';
@@ -46,6 +47,15 @@ const VendorInventoryTab = ({
   const [deletingProductId, setDeletingProductId] = useState(null);
   const [productToDelete, setProductToDelete] = useState(null);
   const [selectedProductIds, setSelectedProductIds] = useState([]);
+
+  // Drop selected ids that no longer exist (deleted here or by another user)
+  useEffect(() => {
+    const present = new Set(products.map((p) => p.id));
+    setSelectedProductIds((prev) => {
+      const next = prev.filter((id) => present.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [products]);
   const [convertedPreview, setConvertedPreview] = useState(null);
   const [isConverting, setIsConverting] = useState(false);
   const [filterName, setFilterName] = useState('');
@@ -467,42 +477,64 @@ const VendorInventoryTab = ({
     }
   };
 
+  // Refreshes the product list; a failure is reported but never thrown, so it
+  // cannot be mistaken for a failed delete or become an unhandled rejection.
+  const refreshProductsSafely = async () => {
+    try {
+      await onProductsRefresh(true);
+    } catch (refreshError) {
+      console.error('[refreshProductsSafely] ERROR:', refreshError);
+      toast({
+        title: t('vendor.inventory.refreshFailed'),
+        variant: 'destructive'
+      });
+    }
+  };
+
   const handleDeleteProduct = async () => {
     if (!productToDelete) return;
     setDeletingProductId(productToDelete.id);
+    let deleteResult;
     try {
       // Pass user info for activity logging
-      const result = await deleteProduct(productToDelete.id, user?.email || user?.id || 'anonymous');
-
-      // Build toast description with deactivated combos info
-      const productName = productToDelete.name_es || productToDelete.name_en || productToDelete.id;
-      let toastDescription = language === 'es'
-        ? `${productName} eliminado`
-        : `${productName} deleted`;
-
-      if (result?.deactivatedCombos?.length > 0) {
-        const comboNames = result.deactivatedCombos.map(c => c.name).join(', ');
-        toastDescription += language === 'es'
-          ? `. Combos desactivados: ${comboNames}`
-          : `. Deactivated combos: ${comboNames}`;
-      }
-
-      toast({
-        title: t('vendor.inventory.productDeleted'),
-        description: toastDescription
-      });
-      await onProductsRefresh(true);
-      setProductToDelete(null);
+      deleteResult = await deleteProduct(productToDelete.id, user?.email || user?.id || 'anonymous');
     } catch (error) {
-      console.error('[handleDeleteProduct] ERROR:', error);
-      toast({
-        title: t('common.error'),
-        description: error?.message || (language === 'es' ? 'No se pudo eliminar el producto.' : 'Could not delete the product.'),
-        variant: 'destructive'
-      });
-    } finally {
+      if (isAlreadyDeletedError(error)) {
+        toast({ title: t('vendor.inventory.productAlreadyDeleted') });
+        setProductToDelete(null);
+        await refreshProductsSafely();
+      } else {
+        console.error('[handleDeleteProduct] ERROR:', error);
+        toast({
+          title: t('common.error'),
+          description: error?.message || (language === 'es' ? 'No se pudo eliminar el producto.' : 'Could not delete the product.'),
+          variant: 'destructive'
+        });
+      }
       setDeletingProductId(null);
+      return;
     }
+
+    // Build toast description with deactivated combos info
+    const productName = productToDelete.name_es || productToDelete.name_en || productToDelete.id;
+    let toastDescription = language === 'es'
+      ? `${productName} eliminado`
+      : `${productName} deleted`;
+
+    if (deleteResult?.deactivatedCombos?.length > 0) {
+      const comboNames = deleteResult.deactivatedCombos.map(c => c.name).join(', ');
+      toastDescription += language === 'es'
+        ? `. Combos desactivados: ${comboNames}`
+        : `. Deactivated combos: ${comboNames}`;
+    }
+
+    toast({
+      title: t('vendor.inventory.productDeleted'),
+      description: toastDescription
+    });
+    setProductToDelete(null);
+    await refreshProductsSafely();
+    setDeletingProductId(null);
   };
 
   const handleBulkDeleteProducts = async (ids) => {
@@ -512,7 +544,9 @@ const VendorInventoryTab = ({
         title: t('vendor.inventory.productDeleted'),
         description: (t('tables.bulkDeleteSuccess') || '{count} item(s) deleted').replace('{count}', outcome.deleted.length)
       });
-      await onProductsRefresh(true);
+    }
+    if (shouldRefreshAfterBulkDelete(outcome)) {
+      await refreshProductsSafely();
     }
     return outcome;
   };

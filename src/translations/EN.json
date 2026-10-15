@@ -656,6 +656,8 @@
       "deleteConfirmTitle": "Confirm deletion",
       "deleteConfirmMessage": "Are you sure you want to delete the product \"{name}\"? This will deactivate it for users.",
       "productDeleted": "Product deleted",
+      "productAlreadyDeleted": "The product no longer exists (probably deleted by another user). List refreshed.",
+      "refreshFailed": "Could not refresh the list. Reload the page.",
       "searchPlaceholder": "Search by name...",
       "filters": "Filters",
       "filterByCategory": "Category",
