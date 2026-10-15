@@ -118,7 +118,6 @@ describe.each(LANGS)('Privacy content (%s)', (language) => {
     const { text } = textOf(PrivacyPage, language);
     for (const needle of [
       'Google',
-      'fonts.googleapis.com',
       'api.exchangerate-api.com',
       'wa.me',
       'Resend',
@@ -128,6 +127,29 @@ describe.each(LANGS)('Privacy content (%s)', (language) => {
       expect(text).toContain(needle);
     }
     expect(text).toMatch(/WhatsApp Business/i);
+  });
+
+  it('no longer lists Google Fonts: the typography is served by the site itself', () => {
+    const { text } = textOf(PrivacyPage, language);
+    expect(text).not.toMatch(/fonts\.googleapis\.com|Google Fonts/i);
+    expect(text).toMatch(language === 'es' ? /tipograf[ií]a[^.]*servid[ao]s? (desde|por) (nuestro|el) sitio/i : /typography[^.]*served (from|by) (our|the) (own )?(site|servers?)/i);
+  });
+
+  it('describes analytics as opt-in, honors GPC and says how to change the choice', () => {
+    const { text } = textOf(PrivacyPage, language);
+    expect(text).toMatch(language === 'es' ? /solo si (usted )?acepta/i : /only if you accept/i);
+    expect(text).toContain('Global Privacy Control');
+    expect(text).toContain(language === 'es' ? 'Preferencias de cookies' : 'Cookie preferences');
+    expect(text).not.toMatch(language === 'es' ? /por cada página que visita, incluso sin/i : /for each page you visit, even if you are not signed/i);
+  });
+
+  it('scopes the preferences link, GPC override, browser storage key and withdrawal effect', () => {
+    const { text } = textOf(PrivacyPage, language);
+    expect(text).toMatch(language === 'es' ? /en las páginas con pie de página/i : /on pages with a footer/i);
+    expect(text).not.toMatch(language === 'es' ? /al pie de cada página/i : /bottom of every page/i);
+    expect(text).toMatch(language === 'es' ? /salvo que (usted )?acepte expresamente/i : /unless you expressly accept/i);
+    expect(text).toContain('papuenvios_consent');
+    expect(text).toMatch(language === 'es' ? /no borra las visitas ya almacenadas/i : /does not delete visits already stored/i);
   });
 
   it('describes page-visit analytics accurately, not as aggregate', () => {

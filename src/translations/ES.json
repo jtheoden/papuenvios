@@ -2308,5 +2308,16 @@
       "ofac": "Los envíos a Cuba están sujetos a regulaciones de EE. UU. (OFAC); el remitente es responsable de cumplir los límites aplicables.",
       "seeTerms": "Ver Términos de Servicio"
     }
+  },
+  "cookieConsent": {
+    "title": "Privacidad y analítica",
+    "description": "Usamos almacenamiento local estrictamente necesario para que el sitio funcione (por ejemplo, tu sesión). Solo si lo aceptas, registraremos las páginas que visitas con fines estadísticos: página, origen, navegador, un identificador de sesión y, si iniciaste sesión, tu identificador de usuario.",
+    "accept": "Aceptar analítica",
+    "reject": "Rechazar",
+    "privacyLink": "Política de Privacidad",
+    "statusOn": "Estado actual: analítica activada.",
+    "statusOff": "Estado actual: analítica desactivada.",
+    "gpcNote": "Detectamos la señal Global Privacy Control de tu navegador y la respetamos: la analítica permanece desactivada. Puedes activarla aquí de forma expresa.",
+    "preferencesLink": "Preferencias de cookies"
   }
 }

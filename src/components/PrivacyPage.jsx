@@ -55,11 +55,19 @@ const PrivacyPage = ({ onNavigate }) => {
                     <li><strong>Datos de transacción:</strong> montos, fechas, estado de las remesas y órdenes, y los productos adquiridos.</li>
                     <li><strong>Comprobantes:</strong> imágenes de comprobantes de pago Zelle y de evidencia de entrega, almacenadas en Supabase Storage.</li>
                     <li>
-                      <strong>Registro de visitas:</strong> por cada página que visita, incluso sin
-                      haber iniciado sesión, guardamos la ruta de la página (page_url), la página de
-                      origen (referrer), el navegador (user_agent), un identificador de sesión
-                      (session_id) y, si inició sesión, su identificador de usuario (user_id). El
-                      identificador de sesión se conserva en el almacenamiento local de su navegador.
+                      <strong>Registro de visitas (solo si usted acepta la analítica):</strong> solo si
+                      usted acepta la analítica en el aviso de cookies, por cada página que visita
+                      guardamos la ruta de la página (page_url), la página de origen (referrer), el
+                      navegador (user_agent), un identificador de sesión (session_id) y, si inició
+                      sesión, su identificador de usuario (user_id). El identificador de sesión se
+                      conserva en el almacenamiento local de su navegador. Si no acepta, o si
+                      retira su consentimiento, no se registra ninguna visita ni se crea ese
+                      identificador. Su navegador puede enviar la señal Global Privacy Control; la
+                      tratamos como un rechazo de la analítica, salvo que usted acepte
+                      expresamente desde «Preferencias de cookies». Su decisión se guarda en su
+                      navegador (clave papuenvios_consent). Puede cambiarla en cualquier momento
+                      con el enlace «Preferencias de cookies» en las páginas con pie de página.
+                      Retirar el consentimiento no borra las visitas ya almacenadas.
                     </li>
                   </ul>
                 </Section>
@@ -78,7 +86,8 @@ const PrivacyPage = ({ onNavigate }) => {
                   <p>
                     El tratamiento de sus datos se basa en (a) la ejecución del servicio que usted
                     solicita, (b) el cumplimiento de obligaciones legales y (c) nuestro interés
-                    legítimo en prevenir fraudes y mejorar el servicio.
+                    legítimo en prevenir fraudes y mejorar el servicio. El registro de visitas
+                    (analítica) se realiza únicamente con su consentimiento previo.
                   </p>
                 </Section>
 
@@ -86,7 +95,7 @@ const PrivacyPage = ({ onNavigate }) => {
                   <p>No vendemos sus datos personales. Utilizamos los siguientes proveedores y servicios:</p>
                   <ul className="list-disc pl-5 space-y-1 mt-2">
                     <li><strong>Google:</strong> el inicio de sesión se realiza con Google (OAuth, a través de Supabase Auth); Google nos facilita su nombre, correo y foto de perfil.</li>
-                    <li><strong>Google Fonts:</strong> actualmente la tipografía del sitio se carga desde fonts.googleapis.com, por lo que su navegador realiza solicitudes a Google al cargar la página.</li>
+                    <li><strong>Tipografía:</strong> la tipografía del sitio es servida desde nuestro sitio, por lo que su navegador no realiza solicitudes a terceros para cargarla.</li>
                     <li><strong>api.exchangerate-api.com:</strong> su navegador consulta este servicio para obtener tasas de cambio oficiales de referencia.</li>
                     <li><strong>Supabase:</strong> infraestructura, autenticación, base de datos y almacenamiento de archivos (región São Paulo, Brasil).</li>
                     <li><strong>Resend:</strong> envío de correos electrónicos transaccionales.</li>
@@ -169,11 +178,18 @@ const PrivacyPage = ({ onNavigate }) => {
                     <li><strong>Transaction data:</strong> amounts, dates, remittance and order status, and purchased products.</li>
                     <li><strong>Proofs:</strong> images of Zelle payment proofs and delivery evidence, stored in Supabase Storage.</li>
                     <li>
-                      <strong>Visit log:</strong> for each page you visit, even if you are not signed
-                      in, we store the page path (page_url), the referring page (referrer), your
-                      browser (user_agent), a session identifier (session_id) and, if you are
-                      signed in, your user identifier (user_id). The session identifier is kept in
-                      your browser's local storage.
+                      <strong>Visit log (only if you accept analytics):</strong> only if you accept
+                      analytics in the cookie notice, for each page you visit we store the page
+                      path (page_url), the referring page (referrer), your browser (user_agent), a
+                      session identifier (session_id) and, if you are signed in, your user
+                      identifier (user_id). The session identifier is kept in your browser's local
+                      storage. If you do not accept, or if you withdraw your consent, no visit is
+                      logged and that identifier is not created. Your browser may send the Global
+                      Privacy Control signal; we treat it as a rejection of analytics, unless you
+                      expressly accept from "Cookie preferences". Your decision is stored in your
+                      browser (key papuenvios_consent). You can change it at any time with the
+                      "Cookie preferences" link on pages with a footer. Withdrawing consent
+                      does not delete visits already stored.
                     </li>
                   </ul>
                 </Section>
@@ -192,7 +208,8 @@ const PrivacyPage = ({ onNavigate }) => {
                   <p>
                     Processing is based on (a) performance of the service you request, (b)
                     compliance with legal obligations, and (c) our legitimate interest in fraud
-                    prevention and service improvement.
+                    prevention and service improvement. The visit log (analytics) is only
+                    performed with your prior consent.
                   </p>
                 </Section>
 
@@ -200,7 +217,7 @@ const PrivacyPage = ({ onNavigate }) => {
                   <p>We do not sell your personal data. We use the following providers and services:</p>
                   <ul className="list-disc pl-5 space-y-1 mt-2">
                     <li><strong>Google:</strong> sign-in is done with Google (OAuth, through Supabase Auth); Google provides us with your name, email and profile picture.</li>
-                    <li><strong>Google Fonts:</strong> the site's typography is currently loaded from fonts.googleapis.com, so your browser makes requests to Google when the page loads.</li>
+                    <li><strong>Typography:</strong> the site's typography is served from our own site, so your browser makes no third-party requests to load it.</li>
                     <li><strong>api.exchangerate-api.com:</strong> your browser queries this service to obtain official reference exchange rates.</li>
                     <li><strong>Supabase:</strong> infrastructure, authentication, database and file storage (São Paulo, Brazil region).</li>
                     <li><strong>Resend:</strong> transactional email delivery.</li>

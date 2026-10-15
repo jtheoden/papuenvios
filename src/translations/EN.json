@@ -2299,5 +2299,16 @@
       "ofac": "Shipments to Cuba are subject to U.S. regulations (OFAC); the sender is responsible for complying with applicable limits.",
       "seeTerms": "See Terms of Service"
     }
+  },
+  "cookieConsent": {
+    "title": "Privacy and analytics",
+    "description": "We use strictly necessary local storage to make the site work (for example, your session). Only if you accept will we record the pages you visit for statistics: page, referrer, browser, a session identifier and, if you are signed in, your user identifier.",
+    "accept": "Accept analytics",
+    "reject": "Reject",
+    "privacyLink": "Privacy Policy",
+    "statusOn": "Current status: analytics enabled.",
+    "statusOff": "Current status: analytics disabled.",
+    "gpcNote": "We detected the Global Privacy Control signal from your browser and we honor it: analytics stay off. You can turn them on here explicitly.",
+    "preferencesLink": "Cookie preferences"
   }
 }
