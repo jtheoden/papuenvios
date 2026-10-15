@@ -9,7 +9,8 @@ import {
   hashesMatch,
   tokenMatches,
   decideAction,
-  newCounters
+  newCounters,
+  isObjectMissingError
 } from '../../../supabase/functions/migrate-product-images/logic.js';
 
 // 1x1 JPEG
@@ -95,5 +96,28 @@ describe('migrate-product-images logic', () => {
 
   it('starts counters at zero', () => {
     expect(newCounters()).toEqual({ found: 0, migrated: 0, skipped: 0, failed: 0, bytes_before: 0, bytes_after: 0 });
+  });
+
+  describe('isObjectMissingError', () => {
+    it('is false when there is no error', () => {
+      expect(isObjectMissingError(null)).toBe(false);
+    });
+
+    it('recognises the storage-js download error (message "{}", status in originalError)', () => {
+      expect(isObjectMissingError({ message: '{}', originalError: { status: 400 } })).toBe(true);
+      expect(isObjectMissingError({ message: '{}', originalError: { status: 404 } })).toBe(true);
+    });
+
+    it('recognises parsed API errors', () => {
+      expect(isObjectMissingError({ message: 'Object not found', status: 400 })).toBe(true);
+      expect(isObjectMissingError({ message: 'x', statusCode: '404' })).toBe(true);
+    });
+
+    it('does not hide real failures (auth, server, network)', () => {
+      expect(isObjectMissingError({ message: '{}', originalError: { status: 401 } })).toBe(false);
+      expect(isObjectMissingError({ message: '{}', originalError: { status: 403 } })).toBe(false);
+      expect(isObjectMissingError({ message: '{}', originalError: { status: 500 } })).toBe(false);
+      expect(isObjectMissingError({ message: 'fetch failed' })).toBe(false);
+    });
   });
 });

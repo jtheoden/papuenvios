@@ -61,6 +61,19 @@ export const tokenMatches = async (token, storedHashHex) => {
 };
 
 /**
+ * True when a storage error means "the object does not exist".
+ * storage-js download() does not parse the error body: the message is "{}" and the
+ * HTTP status lives in error.originalError.status. Auth/server/network errors are NOT
+ * treated as missing, so they surface instead of looking like a fresh upload.
+ */
+export const isObjectMissingError = (error) => {
+  if (!error) return false;
+  const message = String(error.message || '').toLowerCase();
+  const status = Number(error.status ?? error.statusCode ?? error.originalError?.status);
+  return message.includes('not found') || status === 400 || status === 404;
+};
+
+/**
  * What to do with one row.
  * - dry_run : report only, never write
  * - upload  : object absent -> upload (upsert false)
