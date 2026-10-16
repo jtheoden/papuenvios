@@ -531,7 +531,8 @@ describeDb('Bizum S5a: payment quotes and order sealing', () => {
       await expectToken(quote(customer), 'payment_fx_unavailable');
       await ownerBypass(`UPDATE public.exchange_rates SET updated_at = now() WHERE id = $1`, [row.id]);
       await expectToken(quote(customer), 'payment_fx_unavailable'); // touching the row does not make it fresh
-      await setRate(0.92); // an admin saves it again today: effective_date = today
+      // An admin saves it again today: updateExchangeRatePair edits the active row in place (one active row per pair).
+      await admin.query(`UPDATE public.exchange_rates SET rate = 0.92, effective_date = CURRENT_DATE WHERE id = $1`, [row.id]);
       expect(Number((await quote(customer)).rate)).toBe(0.9338);
     });
 
@@ -1226,7 +1227,7 @@ describeDb('Bizum S5a: payment quotes and order sealing', () => {
     it('ships the main migration with the deployment header', () => {
       expect(MIGRATION_FILES.length).toBeGreaterThanOrEqual(1);
       const main = readFileSync(path.join(MIGRATIONS_DIR, MIGRATION_FILES[0]), 'utf8');
-      expect(main).toMatch(/PREPARED, NOT APPLIED/);
+      expect(main).toMatch(/APPLIED to the hosted project/);
       expect(main).toMatch(/ROLLBACK/);
       expect(main).not.toMatch(/console\.log|TODO|FIXME/);
     });

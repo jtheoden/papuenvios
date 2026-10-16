@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Bizum central FX: the USD->EUR rate comes from exchange_rates (option B)
 -- ============================================================================
--- PREPARED, NOT APPLIED to the hosted project. Bizum stays available = false, so nothing here is reachable
+-- APPLIED to the hosted project (version 20261016183542, 2026-10-16). Bizum stays available = false, so nothing here is reachable
 -- by a customer until the Bizum availability flag is flipped.
 --
 -- Decision (approved strategy, option B): the rate Bizum quotes with is the CENTRAL rate that admins already

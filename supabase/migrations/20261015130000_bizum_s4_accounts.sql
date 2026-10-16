@@ -1,8 +1,8 @@
 -- ============================================================================
 -- Bizum S4: bizum_accounts (receiving accounts) + internal account picker
 -- ============================================================================
--- Context: design_bizum_p2p_v2 sections 2.1 (R-02), 3.1 (M3). PREPARED, NOT APPLIED to the hosted
--- project. Nothing reads this table yet: it is configuration for the later Bizum slices.
+-- Context: design_bizum_p2p_v2 sections 2.1 (R-02), 3.1 (M3). APPLIED to the hosted project
+-- (version 20261015210723, 2026-10-15). Nothing reads this table yet: it is configuration for the later Bizum slices.
 --
 -- Access model
 --   * The table is admin-only through RLS: ONE policy FOR ALL TO authenticated whose USING and
