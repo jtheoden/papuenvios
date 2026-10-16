@@ -100,6 +100,7 @@ const failure = async (promise) => {
 describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
   let admin;
   let actors;
+  let ids;
   const clients = [];
   const accountIds = [];
 
@@ -141,17 +142,35 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
 
   const patch = (client, obj) =>
     client.query(`SELECT public.set_bizum_settings($1::jsonb) AS r`, [JSON.stringify(obj)]);
-  const setRate = async (client, mid, { spread = null, source = 'manual', note = null, confirm = false } = {}) =>
+  /** The deprecated ledger RPC; kept to prove it no longer writes anything. */
+  const setRate = async (client, mid) =>
     (await client.query(
-      `SELECT public.set_payment_fx_rate($1::numeric, $2::numeric, $3::text, $4::text, $5::boolean) AS r`,
-      [mid, spread, source, note, confirm]
+      `SELECT public.set_payment_fx_rate($1::numeric, NULL::numeric, 'manual'::text, NULL::text, false::boolean) AS r`,
+      [mid]
     )).rows[0].r;
   const fxStatus = async (client) => (await client.query(`SELECT public.get_payment_fx_status() AS r`)).rows[0].r;
-  const backdateLatestRate = (hours) =>
+  /** Writes the central USD->EUR pair the way Financial Settings does (an admin through RLS); upserts per day. */
+  const setCentralRate = async (client, mid, { daysAgo = 0, active = true } = {}) =>
+    (await client.query(
+      `INSERT INTO public.exchange_rates (from_currency_id, to_currency_id, rate, is_active, effective_date)
+       VALUES ($1, $2, $3, $4, CURRENT_DATE - $5::int)
+       ON CONFLICT (from_currency_id, to_currency_id, effective_date)
+       DO UPDATE SET rate = EXCLUDED.rate, is_active = EXCLUDED.is_active
+       RETURNING *`,
+      [ids.usd, ids.eur, mid, active, daysAgo]
+    )).rows[0];
+  const centralRows = async () =>
+    (await admin.query(
+      `SELECT * FROM public.exchange_rates WHERE from_currency_id = $1 AND to_currency_id = $2`,
+      [ids.usd, ids.eur]
+    )).rows;
+  /** Moves updated_at of the newest USD->EUR row back in time (the trigger is skipped on purpose). */
+  const backdateCentral = (hours) =>
     ownerBypass(
-      `UPDATE public.payment_fx_rates SET created_at = now() - make_interval(secs => $1::numeric * 3600)
-        WHERE id = (SELECT id FROM public.payment_fx_rates ORDER BY created_at DESC, id DESC LIMIT 1)`,
-      [hours]
+      `UPDATE public.exchange_rates SET updated_at = now() - make_interval(secs => $1::numeric * 3600)
+        WHERE id = (SELECT id FROM public.exchange_rates WHERE from_currency_id = $2 AND to_currency_id = $3
+                     ORDER BY effective_date DESC, id DESC LIMIT 1)`,
+      [hours, ids.usd, ids.eur]
     );
   const currentFxRows = async () =>
     (await admin.query(`SELECT * FROM public._current_payment_fx()`)).rows;
@@ -188,6 +207,9 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
   beforeAll(async () => {
     admin = await connectAdmin();
     actors = await loadActors(admin);
+    const { rows } = await admin.query(`SELECT code, id FROM public.currencies WHERE code IN ('USD', 'EUR', 'CUP')`);
+    const byCode = Object.fromEntries(rows.map((r) => [r.code, r.id]));
+    ids = { usd: byCode.USD, eur: byCode.EUR, cup: byCode.CUP };
   });
 
   afterEach(async () => {
@@ -198,6 +220,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     // failing assertion let through can never leak into the next test.
     await ownerBypass(`DELETE FROM public.bizum_accounts`);
     await ownerBypass(`DELETE FROM public.payment_fx_rates`);
+    await admin.query(`DELETE FROM public.exchange_rates WHERE from_currency_id = ANY($1::uuid[]) OR to_currency_id = ANY($1::uuid[])`, [[ids.usd, ids.eur]]);
     await admin.query(`INSERT INTO public.bizum_settings (id) VALUES (true) ON CONFLICT DO NOTHING`);
     await resetSettings();
     await admin.query(
@@ -538,7 +561,6 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
       const viaAdmin = [
         `SELECT public.get_bizum_settings()`,
         `SELECT public.set_bizum_settings('{"fx_warn_hours":12}'::jsonb)`,
-        `SELECT public.set_payment_fx_rate(0.92, NULL, 'manual', NULL, false)`,
         `SELECT public.get_payment_fx_status()`
       ];
       for (const sql of viaAdmin) {
@@ -549,7 +571,6 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
       for (const sql of [`SELECT public._bizum_setting('fx_warn_hours')`, `SELECT * FROM public._payment_fx_latest()`, `SELECT * FROM public._current_payment_fx()`]) {
         expect((await failure(admin.query(sql))).message, sql).toBe('bizum_settings_missing');
       }
-      expect(await fxRowCount()).toBe(0);
     });
 
     it('rejects a non-object patch', async () => {
@@ -667,14 +688,15 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
         expect(del.message).toBe('payment_fx_rates_append_only');
       }
       const trunc = await failure(admin.query(`TRUNCATE public.payment_fx_rates`));
-      expect(trunc.message).toBe('payment_fx_rates_append_only');
+      // Either the append-only trigger or (if a foreign key still points at the table) Postgres itself refuses it.
+      expect(trunc.message).toMatch(/^(payment_fx_rates_append_only|cannot truncate a table referenced in a foreign key constraint)$/);
       expect(await fxRowCount()).toBe(1);
     });
   });
 
   // --------------------------------------------------------------------------------------------
-  describe('set_payment_fx_rate', () => {
-    it('rejects customer, disabled admin and anon', async () => {
+  describe('set_payment_fx_rate (deprecated: the USD->EUR rate is managed in exchange_rates)', () => {
+    it('keeps its admin gate: customer, disabled admin and anon are rejected as before', async () => {
       const customer = await asCustomer();
       const err = await failure(setRate(customer, 0.92));
       expect(err.message).toBe('payment_fx_forbidden');
@@ -684,177 +706,31 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
       expect((await failure(setRate(disabled, 0.92))).message).toBe('payment_fx_forbidden');
       const anon = await asAnon();
       expect((await failure(setRate(anon, 0.92))).code).toBe('42501');
+    });
+
+    it('an admin gets payment_fx_managed_centrally and nothing is written anywhere', async () => {
+      const a = await asAdmin();
+      const err = await failure(setRate(a, 0.92));
+      expect(err.message).toBe('payment_fx_managed_centrally');
+      expect(err.code).toBe('P0001');
       expect(await fxRowCount()).toBe(0);
-    });
-
-    it('inserts a row; spread NULL takes bizum_settings.default_spread_pct', async () => {
-      const a = await asAdmin();
-      const r = await setRate(a, 0.92);
-      expect(Number(r.mid_rate)).toBe(0.92);
-      expect(Number(r.spread_pct)).toBe(1.5);
-      expect(Number(r.effective_rate)).toBe(0.9338);
-      expect(r.source).toBe('manual');
-      expect(r.created_by).toBe(actors.adminId);
-      const stored = (await admin.query(`SELECT mid_rate, spread_pct, effective_rate, created_by FROM public.payment_fx_rates`)).rows;
-      expect(stored).toEqual([{ mid_rate: '0.920000', spread_pct: '1.50', effective_rate: '0.933800', created_by: actors.adminId }]);
-    });
-
-    it('follows a modified default_spread_pct and honours an explicit spread (including 0)', async () => {
-      const a = await asAdmin();
-      await patch(a, { default_spread_pct: 2 });
-      expect(Number((await setRate(a, 0.92)).spread_pct)).toBe(2);
-      expect(Number((await setRate(a, 0.92, { spread: 0 })).spread_pct)).toBe(0);
-      expect(Number((await setRate(a, 0.92, { spread: 3.25 })).effective_rate)).toBe(0.9499);
-    });
-
-    it('enforces the absolute 0.5..1.5 band and 6-decimal precision', async () => {
-      const a = await asAdmin();
-      for (const mid of [0.4999, 1.5001, 0, -1, null, 0.9200005]) {
-        const err = await failure(setRate(a, mid));
-        expect(err.message, String(mid)).toBe('payment_fx_invalid_rate');
-      }
-      await setRate(a, 0.5);
-      expect(await fxRowCount()).toBe(1);
-    });
-
-    it('validates spread, source and note', async () => {
-      const a = await asAdmin();
-      expect((await failure(setRate(a, 0.92, { spread: -0.01 }))).message).toBe('payment_fx_invalid_spread');
-      expect((await failure(setRate(a, 0.92, { spread: 10.01 }))).message).toBe('payment_fx_invalid_spread');
-      expect((await failure(setRate(a, 0.92, { spread: 1.555 }))).message).toBe('payment_fx_invalid_spread');
-      expect((await failure(setRate(a, 0.92, { source: 'scraped' }))).message).toBe('payment_fx_invalid_source');
-      expect((await failure(setRate(a, 0.92, { source: null }))).message).toBe('payment_fx_invalid_source');
-      expect((await failure(setRate(a, 0.92, { note: 'x'.repeat(501) }))).message).toBe('payment_fx_note_too_long');
-      expect(await fxRowCount()).toBe(0);
-      await setRate(a, 0.92, { source: 'ecb_prefill', note: 'x'.repeat(500) });
-      expect(await fxRowCount()).toBe(1);
-    });
-
-    it('the first rate needs no confirmation; a jump above fx_max_change_pct does', async () => {
-      const a = await asAdmin();
-      await setRate(a, 1.4);
-      const up = await failure(setRate(a, 1.5));
-      expect(up.message).toBe('payment_fx_large_change');
-      expect(up.code).toBe('P0001');
-      await setRate(a, 1.5, { confirm: true });
-      expect(await fxRowCount()).toBe(2);
-    });
-
-    it('compares against the PREVIOUS rate, both directions, with an inclusive 5 % limit', async () => {
-      const a = await asAdmin();
-      await setRate(a, 0.92);
-      expect((await failure(setRate(a, 0.97))).message).toBe('payment_fx_large_change'); // +5.43 %
-      expect((await failure(setRate(a, 0.87))).message).toBe('payment_fx_large_change'); // -5.43 %
-      await setRate(a, 0.966); // exactly +5.00 %: allowed
-      await setRate(a, 0.9177); // -5.00 % of 0.966 is 0.9177: allowed
-      expect(await fxRowCount()).toBe(3);
-      await setRate(a, 0.87, { confirm: true });
-      expect(await fxRowCount()).toBe(4);
-    });
-
-    it('honours a modified fx_max_change_pct', async () => {
-      const a = await asAdmin();
-      await patch(a, { fx_max_change_pct: 1 });
-      await setRate(a, 0.92);
-      expect((await failure(setRate(a, 0.93))).message).toBe('payment_fx_large_change'); // +1.087 %
-      await setRate(a, 0.929); // +0.978 %
-      await patch(a, { fx_max_change_pct: 20 });
-      await setRate(a, 1.1); // +18.4 %: fine now
-      expect(await fxRowCount()).toBe(3);
-    });
-
-    it('the last WRITTEN rate is the current one even if its transaction started earlier (clock_timestamp)', async () => {
-      const slow = await asAdmin();
-      const fast = await asAdmin();
-      await slow.query('BEGIN');
-      try {
-        await slow.query('SELECT 1'); // now() of this transaction is frozen here
-        await new Promise((resolve) => setTimeout(resolve, 60));
-        await setRate(fast, 0.95); // autocommit, written LATER than slow's now()
-        await slow.query(`SELECT public.set_payment_fx_rate(0.96, NULL, 'manual', NULL, false)`);
-        await slow.query('COMMIT');
-      } catch (error) {
-        await slow.query('ROLLBACK').catch(() => {});
-        throw error;
-      }
-      const s = await fxStatus(fast);
-      expect(Number(s.mid_rate)).toBe(0.96);
-      const rows = (await admin.query(`SELECT mid_rate FROM public.payment_fx_rates ORDER BY created_at`)).rows;
-      expect(rows.map((r) => Number(r.mid_rate))).toEqual([0.95, 0.96]);
-    });
-
-    it('the large-change guard compares the EFFECTIVE rate: a spread-only jump needs confirmation', async () => {
-      const a = await asAdmin();
-      await setRate(a, 0.92, { spread: 0 });
-      const err = await failure(setRate(a, 0.92, { spread: 10 }));
-      expect(err.message).toBe('payment_fx_large_change');
-      await setRate(a, 0.92, { spread: 4.5 }); // +4.5 %: fine
-      await setRate(a, 0.92, { spread: 10, confirm: true });
-      expect(await fxRowCount()).toBe(3);
-    });
-
-    it('a mid-only jump with a constant spread still needs confirmation', async () => {
-      const a = await asAdmin();
-      await setRate(a, 0.92, { spread: 0 });
-      expect((await failure(setRate(a, 0.97, { spread: 0 }))).message).toBe('payment_fx_large_change');
-    });
-
-    it('the effective-rate limit is inclusive: exactly +5 % passes, +5.01 % does not', async () => {
-      const a = await asAdmin();
-      await setRate(a, 1.0, { spread: 0 });
-      await setRate(a, 1.0, { spread: 5 }); // effective 1.05 vs 1.00: exactly 5 %
-      await ownerBypass(`DELETE FROM public.payment_fx_rates`);
-      await setRate(a, 1.0, { spread: 0 });
-      expect((await failure(setRate(a, 1.0, { spread: 5.01 }))).message).toBe('payment_fx_large_change');
-    });
-
-    it('writes an audit row inside the RPC without PII', async () => {
-      const a = await asAdmin();
-      const r = await setRate(a, 0.92, { note: 'daily rate from bank@example.com' });
-      const logs = await logsFor('payment_fx_rate_set');
-      expect(logs).toHaveLength(1);
-      expect(logs[0].entity_type).toBe('payment_fx_rate');
-      expect(logs[0].entity_id).toBe(r.id);
-      expect(logs[0].performed_by).toBe(actors.adminId);
-      expect(logs[0].metadata).toMatchObject({ source: 'manual', previous_mid: null, confirmed_large_change: false });
-      expect(Number(logs[0].metadata.mid_rate)).toBe(0.92);
-      expect(Number(logs[0].metadata.effective_rate)).toBe(0.9338);
-      expect(JSON.stringify(logs[0])).not.toMatch(/@|bank/);
-      await setRate(a, 0.99, { confirm: true });
-      const second = (await logsFor('payment_fx_rate_set'))[1];
-      expect(Number(second.metadata.previous_mid)).toBe(0.92);
-      expect(second.metadata.confirmed_large_change).toBe(true);
-    });
-
-    it('a rejected call leaves neither a rate nor an audit entry', async () => {
-      const a = await asAdmin();
-      expect((await failure(setRate(a, 2))).message).toBe('payment_fx_invalid_rate');
-      expect(await fxRowCount()).toBe(0);
+      expect(await centralRows()).toHaveLength(0);
       expect(await logsFor('payment_fx_rate_set')).toHaveLength(0);
+      expect(await currentFxRows()).toHaveLength(0);
     });
 
-    it('two simultaneous calls serialize: the second one sees the first as its previous rate', async () => {
-      const a1 = await asAdmin();
-      const a2 = await asAdmin();
-      const seed = await asAdmin();
-      await setRate(seed, 0.92);
-      // 0.95 and 0.90 are each within 5 % of 0.92 but more than 5 % apart: without the lock both succeed.
-      const results = await fireTogether([
-        { client: a1, sql: `to_jsonb(public.set_payment_fx_rate($1::numeric, NULL, 'manual', NULL, false))`, params: [0.95] },
-        { client: a2, sql: `to_jsonb(public.set_payment_fx_rate($1::numeric, NULL, 'manual', NULL, false))`, params: [0.9] }
-      ]);
-      const ok = results.filter((r) => !r.error);
-      const failed = results.filter((r) => r.error);
-      expect(ok).toHaveLength(1);
-      expect(failed).toHaveLength(1);
-      expect(failed[0].error.message).toBe('payment_fx_large_change');
-      expect(await fxRowCount()).toBe(2);
+    it('the legacy ledger can no longer feed the quoted rate: a ledger row is ignored', async () => {
+      await admin.query(
+        `INSERT INTO public.payment_fx_rates (to_currency, mid_rate, spread_pct, source) VALUES ('EUR', 0.92, 1.5, 'manual')`
+      );
+      expect(await currentFxRows()).toHaveLength(0);
+      expect((await admin.query(`SELECT state FROM public._payment_fx_latest()`)).rows[0].state).toBe('none');
     });
   });
 
   // --------------------------------------------------------------------------------------------
   describe('audit rows never carry a phone number', () => {
-    it('a phone typed in the rate note, the settings flow or an account never reaches activity_logs', async () => {
+    it('a phone typed in the settings flow or an account never reaches activity_logs', async () => {
       const phone = '+34600123456';
       const started = (await admin.query(`SELECT clock_timestamp() AS t`)).rows[0].t;
       const a = await asAdmin();
@@ -862,20 +738,17 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
         `INSERT INTO public.bizum_accounts (account_name, holder_name, phone, per_operation_limit) VALUES ('pii', 'h', $1, 0)`,
         [phone]
       );
-      await setRate(a, 0.92, { note: `call me at ${phone} or 600123456` });
       await patch(a, { fx_warn_hours: 12 });
       const { rows } = await admin.query(`SELECT * FROM public.activity_logs WHERE created_at >= $1`, [started]);
-      expect(rows.length).toBeGreaterThanOrEqual(2);
+      expect(rows.length).toBeGreaterThanOrEqual(1);
       const blob = JSON.stringify(rows);
       expect(blob).not.toContain('600123456');
       expect(blob).not.toContain('34600');
-      const flagged = rows.find((r) => r.action === 'payment_fx_rate_set');
-      expect(flagged.metadata.note_present).toBe(true);
     });
   });
 
   // --------------------------------------------------------------------------------------------
-  describe('get_payment_fx_status / _current_payment_fx', () => {
+  describe('get_payment_fx_status / _current_payment_fx (central rate from exchange_rates)', () => {
     it('rejects customer, disabled admin and anon', async () => {
       const customer = await asCustomer();
       const err = await failure(fxStatus(customer));
@@ -888,7 +761,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
       expect((await failure(fxStatus(anon))).code).toBe('42501');
     });
 
-    it("state 'none' without any rate, with the thresholds from the settings", async () => {
+    it("state 'none' without a USD->EUR pair, with the thresholds from the settings", async () => {
       const a = await asAdmin();
       const s = await fxStatus(a);
       expect(s).toMatchObject({ state: 'none', fx_warn_hours: 24, fx_block_hours: 96 });
@@ -896,27 +769,47 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
       expect(await currentFxRows()).toHaveLength(0);
     });
 
-    it('reports the latest rate with its author, source and age', async () => {
+    it('reports the central rate: mid = exchange_rates.rate, spread = bizum_settings.default_spread_pct', async () => {
       const a = await asAdmin();
-      await setRate(a, 0.92, { spread: 2 });
-      await backdateLatestRate(30);
-      await setRate(a, 0.93, { spread: 1.5, source: 'ecb_prefill' });
+      const row = await setCentralRate(a, 0.93);
       const s = await fxStatus(a);
+      expect(s.id).toBe(row.id);
       expect(Number(s.mid_rate)).toBe(0.93);
       expect(Number(s.spread_pct)).toBe(1.5);
       expect(Number(s.effective_rate)).toBe(0.94395);
-      expect(s.source).toBe('ecb_prefill');
-      expect(s.created_by).toBe(actors.adminId);
+      expect(s.source).toBe('exchange_rates');
+      expect(s.created_by ?? null).toBeNull();
       expect(s.age_hours).toBeLessThan(0.1);
       expect(s.state).toBe('ok');
     });
 
+    it('a modified default_spread_pct moves the live effective rate at once (0 and 10 are the extremes)', async () => {
+      const a = await asAdmin();
+      await setCentralRate(a, 0.92);
+      for (const [spread, effective] of [[0, 0.92], [2, 0.9384], [10, 1.012]]) {
+        await patch(a, { default_spread_pct: spread });
+        const [row] = await currentFxRows();
+        expect(Number(row.spread_pct)).toBe(spread);
+        expect(Number(row.effective_rate)).toBe(effective);
+      }
+    });
+
+    it('editing the central row in place (what Financial Settings does) changes the live rate at once', async () => {
+      const a = await asAdmin();
+      const row = await setCentralRate(a, 0.92);
+      await a.query(`UPDATE public.exchange_rates SET rate = 0.95 WHERE id = $1`, [row.id]);
+      const [now] = await currentFxRows();
+      expect(now.id).toBe(row.id);
+      expect(Number(now.mid_rate)).toBe(0.95);
+      expect(Number(now.effective_rate)).toBe(0.96425);
+    });
+
     it.each([
       [0, 'ok'], [23.9, 'ok'], [24.1, 'warn'], [95.9, 'warn'], [96.1, 'blocked'], [500, 'blocked']
-    ])('default thresholds: age %s h => %s', async (age, state) => {
+    ])('default thresholds, measured on exchange_rates.updated_at: age %s h => %s', async (age, state) => {
       const a = await asAdmin();
-      await setRate(a, 0.92);
-      await backdateLatestRate(age);
+      await setCentralRate(a, 0.92);
+      await backdateCentral(age);
       const s = await fxStatus(a);
       expect(s.state).toBe(state);
       expect(s.age_hours).toBeGreaterThanOrEqual(age);
@@ -930,20 +823,52 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     ])('modified thresholds (warn 2 h, block 5 h): age %s h => %s', async (age, state) => {
       const a = await asAdmin();
       await patch(a, { fx_warn_hours: 2, fx_block_hours: 5 });
-      await setRate(a, 0.92);
-      await backdateLatestRate(age);
+      await setCentralRate(a, 0.92);
+      await backdateCentral(age);
       const s = await fxStatus(a);
       expect(s).toMatchObject({ state, fx_warn_hours: 2, fx_block_hours: 5 });
       expect(await currentFxRows()).toHaveLength(state === 'blocked' ? 0 : 1);
     });
 
-    it('a rate dated in the future (negative age) is blocked, not trusted', async () => {
+    it('an edit refreshes the age: the update trigger stamps updated_at', async () => {
       const a = await asAdmin();
-      await setRate(a, 0.92);
-      await backdateLatestRate(-5);
+      const row = await setCentralRate(a, 0.92);
+      await backdateCentral(200);
+      expect((await fxStatus(a)).state).toBe('blocked');
+      await a.query(`UPDATE public.exchange_rates SET rate = 0.921 WHERE id = $1`, [row.id]);
+      expect((await fxStatus(a)).state).toBe('ok');
+    });
+
+    it('a row stamped in the future (negative age) is blocked, not trusted', async () => {
+      const a = await asAdmin();
+      await setCentralRate(a, 0.92);
+      await backdateCentral(-5);
       const s = await fxStatus(a);
       expect(s.state).toBe('blocked');
       expect(s.age_hours).toBeLessThan(0);
+      expect(await currentFxRows()).toHaveLength(0);
+    });
+
+    it('a row dated more than one day ahead is ignored (and never masks a valid older one)', async () => {
+      const a = await asAdmin();
+      await setCentralRate(a, 0.8, { daysAgo: -3 });
+      expect((await fxStatus(a)).state).toBe('none');
+      const valid = await setCentralRate(a, 0.92, { daysAgo: 1 });
+      const [row] = await currentFxRows();
+      expect(row.id).toBe(valid.id);
+    });
+
+    it("tomorrow's date is accepted: a client in a timezone ahead of the server may stamp it", async () => {
+      const a = await asAdmin();
+      const row = await setCentralRate(a, 0.92, { daysAgo: -1 });
+      expect((await currentFxRows())[0].id).toBe(row.id);
+    });
+
+    it('a row without any timestamp is blocked (no age, no trust)', async () => {
+      const a = await asAdmin();
+      const row = await setCentralRate(a, 0.92);
+      await ownerBypass(`UPDATE public.exchange_rates SET updated_at = NULL, created_at = NULL WHERE id = $1`, [row.id]);
+      expect((await fxStatus(a)).state).toBe('blocked');
       expect(await currentFxRows()).toHaveLength(0);
     });
 
@@ -952,9 +877,9 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
         await admin.query('BEGIN');
         try {
           await admin.query(
-            `INSERT INTO public.payment_fx_rates (to_currency, mid_rate, spread_pct, source, created_at)
-             VALUES ('EUR', 0.92, 1.5, 'manual', now() - $1::interval)`,
-            [interval]
+            `INSERT INTO public.exchange_rates (from_currency_id, to_currency_id, rate, is_active, effective_date, updated_at)
+             VALUES ($1, $2, 0.92, true, CURRENT_DATE, now() - $3::interval)`,
+            [ids.usd, ids.eur, interval]
           );
           return (await admin.query(`SELECT state FROM public._payment_fx_latest()`)).rows[0].state;
         } finally {
@@ -967,9 +892,82 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
       expect(await stateAt('95 hours 59 minutes 59.999999 seconds')).toBe('warn');
     });
 
-    it('_current_payment_fx exposes id, mid, spread and the effective rate of the latest usable rate', async () => {
+    it('an inactive pair is ignored: no usable rate', async () => {
       const a = await asAdmin();
-      const r = await setRate(a, 0.92);
+      await setCentralRate(a, 0.92, { active: false });
+      expect((await fxStatus(a)).state).toBe('none');
+      expect(await currentFxRows()).toHaveLength(0);
+    });
+
+    it('an inactive NEWER row does not mask the older active one', async () => {
+      const a = await asAdmin();
+      const older = await setCentralRate(a, 0.92, { daysAgo: 1 });
+      await setCentralRate(a, 0.8, { daysAgo: 0, active: false });
+      const [row] = await currentFxRows();
+      expect(row.id).toBe(older.id);
+      expect(Number(row.mid_rate)).toBe(0.92);
+    });
+
+    it('a rate <= 0 is never used (rejected by a CHECK when the table has one, otherwise ignored)', async () => {
+      const a = await asAdmin();
+      const valid = await setCentralRate(a, 0.92, { daysAgo: 1 });
+      const checks = (await admin.query(
+        `SELECT 1 FROM pg_constraint WHERE conrelid = 'public.exchange_rates'::regclass AND contype = 'c'
+            AND pg_get_constraintdef(oid) ILIKE '%rate > 0%'`
+      )).rows;
+      for (const bad of [0, -0.92]) {
+        let accepted = true;
+        try {
+          await setCentralRate(a, bad, { daysAgo: 0 });
+        } catch (error) {
+          accepted = false;
+          expect(error.code).toBe('23514');
+        }
+        expect(accepted).toBe(checks.length === 0);
+        const [row] = await currentFxRows();
+        expect(row.id, String(bad)).toBe(valid.id);
+        await admin.query(`DELETE FROM public.exchange_rates WHERE effective_date = CURRENT_DATE AND from_currency_id = $1 AND to_currency_id = $2`, [ids.usd, ids.eur]);
+      }
+    });
+
+    it('picks the most recent effective_date among active rows, then the latest updated_at, then the id', async () => {
+      const a = await asAdmin();
+      const older = await setCentralRate(a, 0.9, { daysAgo: 2 });
+      const newer = await setCentralRate(a, 0.95, { daysAgo: 0 });
+      await a.query(`UPDATE public.exchange_rates SET rate = 0.901 WHERE id = $1`, [older.id]); // touched later, still older by date
+      const [row] = await currentFxRows();
+      expect(row.id).toBe(newer.id);
+      expect(Number(row.mid_rate)).toBe(0.95);
+      // repeated reads are stable (deterministic choice)
+      for (let i = 0; i < 3; i++) expect((await currentFxRows())[0].id).toBe(newer.id);
+    });
+
+    it('only the DIRECT USD->EUR pair counts: the inverse EUR->USD and other pairs give no rate', async () => {
+      const a = await asAdmin();
+      const insertPair = (from, to, rate) =>
+        a.query(`INSERT INTO public.exchange_rates (from_currency_id, to_currency_id, rate) VALUES ($1, $2, $3)`, [from, to, rate]);
+      await insertPair(ids.eur, ids.usd, 1.087); // the inverse
+      await insertPair(ids.usd, ids.cup, 120); // another destination
+      expect((await fxStatus(a)).state).toBe('none');
+      expect(await currentFxRows()).toHaveLength(0);
+    });
+
+    it.each([0.4999, 1.5001, 92, 920])('a mid outside the 0.5..1.5 sanity band (%s) is blocked, so a typo cannot be quoted', async (mid) => {
+      const a = await asAdmin();
+      await setCentralRate(a, mid);
+      expect((await fxStatus(a)).state).toBe('blocked');
+      expect(await currentFxRows()).toHaveLength(0);
+    });
+
+    it.each([0.5, 1.5])('the sanity band is inclusive: %s is usable', async (mid) => {
+      const a = await asAdmin();
+      await setCentralRate(a, mid);
+      expect(await currentFxRows()).toHaveLength(1);
+    });
+
+    it('_current_payment_fx exposes id, mid, spread and the effective rate of the central row', async () => {
+      const a = await asAdmin();
+      const r = await setCentralRate(a, 0.92);
       const [row] = await currentFxRows();
       expect(row.id).toBe(r.id);
       expect([row.mid_rate, row.spread_pct, row.effective_rate]).toEqual(['0.920000', '1.50', '0.933800']);
@@ -977,11 +975,40 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
 
     it('end to end with the design example: 100.00 USD at mid 0.92 and spread 1.5 % is 93.38 EUR', async () => {
       const a = await asAdmin();
-      await setRate(a, 0.92);
+      await setCentralRate(a, 0.92);
       const { rows } = await admin.query(
         `SELECT public._bizum_amount(100.00, (SELECT effective_rate FROM public._current_payment_fx())) AS eur`
       );
       expect(rows[0].eur).toBe('93.38');
+    });
+
+    it('access: a customer and anon cannot write exchange_rates, so they cannot move the Bizum rate', async () => {
+      const a = await asAdmin();
+      const row = await setCentralRate(a, 0.92);
+      const customer = await asCustomer();
+      const anon = await asAnon();
+      const insert = `INSERT INTO public.exchange_rates (from_currency_id, to_currency_id, rate, effective_date)
+                      VALUES ($1, $2, 1.4, CURRENT_DATE - 30)`;
+      expect((await failure(customer.query(insert, [ids.usd, ids.eur]))).code).toBe('42501'); // RLS WITH CHECK
+      expect((await failure(anon.query(insert, [ids.usd, ids.eur]))).code).toBe('42501'); // no privilege
+      // RLS hides the row from UPDATE / DELETE: no error, zero rows touched
+      expect((await customer.query(`UPDATE public.exchange_rates SET rate = 1.4 WHERE id = $1`, [row.id])).rowCount).toBe(0);
+      expect((await customer.query(`DELETE FROM public.exchange_rates WHERE id = $1`, [row.id])).rowCount).toBe(0);
+      expect((await failure(anon.query(`UPDATE public.exchange_rates SET rate = 1.4 WHERE id = $1`, [row.id]))).code).toBe('42501');
+      expect(Number((await currentFxRows())[0].mid_rate)).toBe(0.92);
+      // positive control: an admin can, through the existing policy
+      await a.query(`UPDATE public.exchange_rates SET rate = 0.93 WHERE id = $1`, [row.id]);
+      expect(Number((await currentFxRows())[0].mid_rate)).toBe(0.93);
+    });
+
+    it('access: the internal readers are not callable by clients', async () => {
+      const customer = await asCustomer();
+      const anon = await asAnon();
+      for (const client of [customer, anon]) {
+        for (const sql of [`SELECT * FROM public._current_payment_fx()`, `SELECT * FROM public._payment_fx_latest()`]) {
+          expect((await failure(client.query(sql))).code, sql).toBe('42501');
+        }
+      }
     });
   });
 
@@ -1035,7 +1062,11 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
   describe('re-applying the migrations (production path: rows already exist)', () => {
     it('is idempotent, sets bizum to EUR on an existing row and keeps admin-changed settings', async () => {
       const root = new URL('../../../supabase/migrations/', import.meta.url);
-      const files = ['20261015120000_bizum_s3_currency_settings_fx_rates.sql', '20261015130000_bizum_s4_accounts.sql'];
+      const files = [
+        '20261015120000_bizum_s3_currency_settings_fx_rates.sql',
+        '20261015130000_bizum_s4_accounts.sql',
+        '20261016120000_bizum_central_fx_rate.sql'
+      ];
       const sources = files.map((f) => readFileSync(new URL(f, root), 'utf8'));
       await admin.query('BEGIN');
       try {
@@ -1156,7 +1187,10 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
       expect((await failure(service.query(`DELETE FROM public.bizum_accounts WHERE id = $1`, [a.id]))).message).toBe('bizum_accounts_no_delete');
       const adminClient = await asAdmin();
       expect((await failure(adminClient.query(`DELETE FROM public.bizum_accounts WHERE id = $1`, [a.id]))).code).toBe('42501');
-      expect((await failure(admin.query(`TRUNCATE public.bizum_accounts`))).message).toBe('bizum_accounts_no_delete');
+      // Since S5a orders / payment_quotes reference bizum_accounts: the FK check refuses TRUNCATE before the trigger.
+      expect((await failure(admin.query(`TRUNCATE public.bizum_accounts`))).message).toMatch(
+        /^(bizum_accounts_no_delete|cannot truncate a table referenced in a foreign key constraint)$/
+      );
       expect((await admin.query(`SELECT count(*)::int AS n FROM public.bizum_accounts WHERE id = $1`, [a.id])).rows[0].n).toBe(1);
     });
 

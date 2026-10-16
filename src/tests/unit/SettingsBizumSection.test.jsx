@@ -7,7 +7,7 @@ const { servicesMock, catalogMock, zelleMock } = vi.hoisted(() => ({
     getBizumSettings: vi.fn(),
     listBizumAccounts: vi.fn(),
     getPaymentFxStatus: vi.fn(),
-    setPaymentFxRate: vi.fn()
+    setBizumSettings: vi.fn()
   },
   catalogMock: { state: {} },
   zelleMock: {
@@ -28,12 +28,12 @@ vi.mock('@/hooks/usePaymentMethods', () => ({ usePaymentMethods: () => catalogMo
 vi.mock('@/lib/bizumService', async (importOriginal) => ({
   ...(await importOriginal()),
   getBizumSettings: (...a) => servicesMock.getBizumSettings(...a),
-  listBizumAccounts: (...a) => servicesMock.listBizumAccounts(...a)
+  listBizumAccounts: (...a) => servicesMock.listBizumAccounts(...a),
+  setBizumSettings: (...a) => servicesMock.setBizumSettings(...a)
 }));
 vi.mock('@/lib/paymentFxService', async (importOriginal) => ({
   ...(await importOriginal()),
-  getPaymentFxStatus: (...a) => servicesMock.getPaymentFxStatus(...a),
-  setPaymentFxRate: (...a) => servicesMock.setPaymentFxRate(...a)
+  getPaymentFxStatus: (...a) => servicesMock.getPaymentFxStatus(...a)
 }));
 vi.mock('@/lib/zelleService', () => ({ zelleService: zelleMock }));
 vi.mock('@/components/settings/ZelleAccountTableConfig', () => ({ getZelleTableColumns: () => [], getZelleModalColumns: () => [] }));
@@ -42,6 +42,7 @@ vi.mock('@/components/modals/TableDetailModal', () => ({ default: () => null }))
 import SettingsBizumSection from '@/components/settings/SettingsBizumSection';
 import SettingsZelleTab from '@/components/settings/SettingsZelleTab';
 import { toBizumError } from '@/lib/bizumErrors';
+import { BIZUM_SETTING_FIELDS } from '@/lib/bizumService';
 import { PG_ERRORS } from './helpers/bizumTestUtils';
 
 const SETTINGS = { default_spread_pct: 1.5, default_per_operation_limit: 1000, fx_warn_hours: 24, fx_block_hours: 96 };
@@ -182,12 +183,14 @@ describe('partial schema and reload behaviour', () => {
 
   it('a schema-missing error on a RELOAD never unmounts the section', async () => {
     servicesMock.getPaymentFxStatus.mockResolvedValueOnce({ ...NONE_STATUS, state: 'ok', id: 'r1', mid_rate: 0.9, spread_pct: 1, effective_rate: 0.909, age_hours: 1, created_at: '2026-10-15T10:00:00Z' });
-    servicesMock.setPaymentFxRate.mockResolvedValue({ id: 'r2' });
     servicesMock.getPaymentFxStatus.mockRejectedValueOnce(toBizumError(PG_ERRORS.missingFunction));
+    const full = Object.fromEntries(BIZUM_SETTING_FIELDS.map((field) => [field.key, field.default]));
+    servicesMock.getBizumSettings.mockResolvedValue(full);
+    servicesMock.setBizumSettings.mockResolvedValue({ ...full, fx_warn_hours: 12 });
     render(<SettingsBizumSection />);
-    const mid = await screen.findByLabelText('settings.fxRate.form.mid');
-    fireEvent.change(mid, { target: { value: '0.95' } });
-    fireEvent.click(screen.getByRole('button', { name: 'settings.fxRate.form.submit' }));
+    // Saving the settings re-reads the FX state (the thresholds the server derives it from may have changed).
+    fireEvent.change(await screen.findByLabelText('settings.bizum.fields.fx_warn_hours.label'), { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('button', { name: 'settings.bizum.settings.save' }));
     await waitFor(() => expect(servicesMock.getPaymentFxStatus).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getAllByRole('alert').length).toBeGreaterThan(0));
     expect(screen.getByRole('heading', { level: 2, name: 'settings.bizum.title' })).toBeInTheDocument();

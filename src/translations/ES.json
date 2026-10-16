@@ -1219,7 +1219,7 @@
       "fields": {
         "default_spread_pct": {
           "label": "Margen por defecto",
-          "help": "Margen que se suma a la tasa media cuando no se indica otro al cargar una tasa."
+          "help": "Margen Bizum que se suma a la tasa central USD → EUR de Ajustes Financieros. Es el único margen: al cambiarlo se mueven de inmediato las cotizaciones nuevas."
         },
         "quote_validity_minutes": {
           "label": "Validez de la cotización",
@@ -1239,7 +1239,7 @@
         },
         "fx_max_change_pct": {
           "label": "Variación máxima sin confirmar",
-          "help": "Cambio máximo de la tasa efectiva respecto a la anterior que se acepta sin pedir confirmación."
+          "help": "Ya no se aplica: la tasa se carga en Ajustes Financieros y esa carga no tiene confirmación por variación. Se conserva por compatibilidad."
         },
         "default_per_operation_limit": {
           "label": "Límite por operación sugerido",
@@ -1359,50 +1359,25 @@
     },
     "fxRate": {
       "title": "Tipo EUR",
-      "intro": "Tasa USD → EUR con la que se cotiza Bizum. Cada carga queda registrada y no se puede modificar.",
+      "intro": "Tasa USD → EUR con la que se cotiza Bizum. Es la tasa central de Ajustes Financieros más el margen Bizum de los parámetros; aquí solo se consulta.",
       "state": {
         "none": "Sin tasa",
         "ok": "Vigente",
         "warn": "Antigua: actualizar pronto",
         "blocked": "Bloqueada: Bizum no disponible"
       },
-      "noneHelp": "Todavía no hay ninguna tasa. Carga la primera para poder ofrecer Bizum.",
+      "noneHelp": "No hay una tasa USD → EUR activa. Cárgala y actívala en Ajustes Financieros (tasas de cambio) para poder ofrecer Bizum.",
       "warnHelp": "La tasa tiene cierta antigüedad. Actualízala pronto.",
-      "blockedHelp": "La tasa es demasiado antigua y Bizum está bloqueado hasta que cargues una nueva.",
+      "blockedHelp": "La tasa no es utilizable (demasiado antigua o fuera del rango admitido) y Bizum está bloqueado hasta que se corrija en Ajustes Financieros.",
       "labels": {
         "mid": "Tasa media",
         "spread": "Margen",
         "effective": "Tasa efectiva",
-        "author": "Cargada por",
         "age": "Antigüedad",
         "thresholds": "Umbrales"
       },
       "age": "{hours} h",
       "thresholds": "Aviso desde {warn} h · bloqueo desde {block} h",
-      "authorUnknown": "Desconocido",
-      "form": {
-        "title": "Cargar nueva tasa",
-        "mid": "Tasa media (EUR por 1 USD)",
-        "midHelp": "Entre 0.5 y 1.5, hasta 6 decimales.",
-        "spread": "Margen (%)",
-        "spreadHelp": "Entre 0 y 10, hasta 2 decimales. Se propone el margen por defecto de los parámetros.",
-        "note": "Nota (opcional)",
-        "submit": "Cargar tasa",
-        "submitting": "Guardando..."
-      },
-      "validation": {
-        "required": "Este campo es obligatorio.",
-        "range": "Debe estar entre {min} y {max}.",
-        "decimals": "Admite como máximo {decimals} decimales.",
-        "tooLong": "La nota admite como máximo 500 caracteres."
-      },
-      "largeChange": {
-        "title": "Cambio de tasa grande",
-        "message": "La tasa efectiva cambia más de lo habitual respecto a la anterior. Confirma que el valor es correcto antes de guardarlo.",
-        "confirm": "Confirmar y guardar",
-        "detail": "Tasa efectiva anterior: {previous}. Nueva: {next} ({change} %)."
-      },
-      "saved": "Tasa guardada",
       "errors": {
         "forbidden": "No tienes permiso para cargar la tasa.",
         "invalidRate": "La tasa media debe estar entre 0.5 y 1.5 con hasta 6 decimales.",
@@ -1411,7 +1386,8 @@
         "noteTooLong": "La nota admite como máximo 500 caracteres.",
         "largeChange": "El cambio de tasa requiere confirmación.",
         "appendOnly": "Las tasas registradas no se pueden modificar."
-      }
+      },
+      "managedCentrally": "La tasa USD → EUR se gestiona solo en Ajustes Financieros (tasas de cambio). El margen y los umbrales de antigüedad se ajustan en los parámetros de Bizum."
     }
   },
   "cart": {

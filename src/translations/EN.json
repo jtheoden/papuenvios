@@ -1210,7 +1210,7 @@
       "fields": {
         "default_spread_pct": {
           "label": "Default spread",
-          "help": "Spread added to the mid rate when none is given while loading a rate."
+          "help": "Bizum spread added to the central USD → EUR rate from Financial Settings. It is the only spread: changing it moves new quotes immediately."
         },
         "quote_validity_minutes": {
           "label": "Quote validity",
@@ -1230,7 +1230,7 @@
         },
         "fx_max_change_pct": {
           "label": "Largest change without confirmation",
-          "help": "Largest change of the effective rate versus the previous one accepted without asking for confirmation."
+          "help": "No longer applied: the rate is loaded in Financial Settings and that load has no large-change confirmation. Kept for compatibility."
         },
         "default_per_operation_limit": {
           "label": "Suggested per-operation limit",
@@ -1350,50 +1350,25 @@
     },
     "fxRate": {
       "title": "EUR rate",
-      "intro": "USD → EUR rate used to quote Bizum. Every load is recorded and cannot be modified.",
+      "intro": "USD → EUR rate Bizum is quoted with. It is the central rate from Financial Settings plus the Bizum spread from the parameters; it is view-only here.",
       "state": {
         "none": "No rate",
         "ok": "Current",
         "warn": "Getting old: update soon",
         "blocked": "Blocked: Bizum unavailable"
       },
-      "noneHelp": "There is no rate yet. Load the first one to be able to offer Bizum.",
+      "noneHelp": "There is no active USD → EUR rate. Load and activate it in Financial Settings (exchange rates) to be able to offer Bizum.",
       "warnHelp": "The rate is getting old. Update it soon.",
-      "blockedHelp": "The rate is too old and Bizum is blocked until you load a new one.",
+      "blockedHelp": "The rate is not usable (too old or outside the accepted range) and Bizum is blocked until it is fixed in Financial Settings.",
       "labels": {
         "mid": "Mid rate",
         "spread": "Spread",
         "effective": "Effective rate",
-        "author": "Loaded by",
         "age": "Age",
         "thresholds": "Thresholds"
       },
       "age": "{hours} h",
       "thresholds": "Warning from {warn} h · block from {block} h",
-      "authorUnknown": "Unknown",
-      "form": {
-        "title": "Load a new rate",
-        "mid": "Mid rate (EUR per 1 USD)",
-        "midHelp": "Between 0.5 and 1.5, up to 6 decimals.",
-        "spread": "Spread (%)",
-        "spreadHelp": "Between 0 and 10, up to 2 decimals. The default spread from the parameters is suggested.",
-        "note": "Note (optional)",
-        "submit": "Load rate",
-        "submitting": "Saving..."
-      },
-      "validation": {
-        "required": "This field is required.",
-        "range": "Must be between {min} and {max}.",
-        "decimals": "At most {decimals} decimals are allowed.",
-        "tooLong": "The note allows at most 500 characters."
-      },
-      "largeChange": {
-        "title": "Large rate change",
-        "message": "The effective rate changes more than usual compared with the previous one. Confirm the value is correct before saving it.",
-        "confirm": "Confirm and save",
-        "detail": "Previous effective rate: {previous}. New: {next} ({change} %)."
-      },
-      "saved": "Rate saved",
       "errors": {
         "forbidden": "You do not have permission to load the rate.",
         "invalidRate": "The mid rate must be between 0.5 and 1.5 with up to 6 decimals.",
@@ -1402,7 +1377,8 @@
         "noteTooLong": "The note allows at most 500 characters.",
         "largeChange": "The rate change requires confirmation.",
         "appendOnly": "Recorded rates cannot be modified."
-      }
+      },
+      "managedCentrally": "The USD → EUR rate is managed only in Financial Settings (exchange rates). The spread and the age thresholds are set in the Bizum parameters."
     }
   },
   "cart": {

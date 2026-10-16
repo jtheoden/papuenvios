@@ -634,12 +634,14 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
         'guard_orders_stock_columns',
         'guard_payment_method_enabled',
         'guard_reset_lock_orders',
+        'seal_bizum_payment',
         'trigger_set_order_number'
       ]);
     });
 
     it('orders BEFORE UPDATE', async () => {
       expect(await triggers('orders', 'before', 'update')).toEqual([
+        'guard_bizum_quote_immutable',
         'guard_orders_owner_update',
         'trigger_update_orders_updated_at'
       ]);
