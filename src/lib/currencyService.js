@@ -5,47 +5,36 @@ import {
   createValidationError,
   createNotFoundError,
   parseSupabaseError,
-  ERROR_CODES,
-  isSchemaMissingError
+  AppError,
+  ERROR_CODES
 } from './errorHandler';
 
-const OFFICIAL_RATE_FALLBACKS = {
-  USD: 1,
-  MLC: 1,
-  CUP: 0.041
+const ratesChangedListeners = new Set();
+
+/**
+ * Subscribe to exchange-rate writes so rate caches can invalidate themselves.
+ * @param {function} listener
+ * @returns {function} unsubscribe
+ */
+export const subscribeRatesChanged = (listener) => {
+  ratesChangedListeners.add(listener);
+  return () => ratesChangedListeners.delete(listener);
 };
 
-const OFFICIAL_RATES_STORAGE_KEY = 'officialRatesUnavailable';
-const isBrowser = typeof window !== 'undefined';
-const officialRatesDisabledByEnv = typeof import.meta !== 'undefined' && import.meta.env?.VITE_DISABLE_OFFICIAL_RATES === 'true';
-
-const getPersistedOfficialRatesUnavailable = () => {
-  if (!isBrowser) return false;
-  try {
-    return window.localStorage.getItem(OFFICIAL_RATES_STORAGE_KEY) === 'true';
-  } catch (error) {
-    console.warn('[currencyService] Unable to read official rates availability from storage:', error);
-    return false;
-  }
+const notifyRatesChanged = () => {
+  ratesChangedListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch (error) {
+      logError(error, { operation: 'notifyRatesChanged' });
+    }
+  });
 };
-
-const markOfficialRatesUnavailable = () => {
-  officialRatesUnavailable = true;
-  if (!isBrowser) return;
-  try {
-    window.localStorage.setItem(OFFICIAL_RATES_STORAGE_KEY, 'true');
-  } catch (error) {
-    console.warn('[currencyService] Unable to persist official rates availability flag:', error);
-  }
-};
-
-// Circuit breaker to avoid spamming Supabase when the table/columns are missing
-let officialRatesUnavailable = officialRatesDisabledByEnv || getPersistedOfficialRatesUnavailable();
 
 /**
  * Currency Service - Manages currency CRUD operations and rate conversions
  * Currencies: USD, EUR, CUP (Cuba market focus)
- * Rate Conversion Hierarchy: defined rates → official rates fallback
+ * Rate conversion uses only active exchange_rates rows; without one it fails closed
  */
 
 /**
@@ -288,14 +277,14 @@ export const deleteCurrency = async (currencyId) => {
 /**
  * Get conversion rate between two currencies using IDs
  * CONVERSION HIERARCHY:
- * 1. Check exchange_rates table (defined/API rates)
- * 2. If not found, check official_currency_rates (fallback)
- * 3. If not found, throw SERVICE_UNAVAILABLE error
+ * 1. Active direct rate in exchange_rates
+ * 2. Inverse of the active opposite rate
+ * 3. Otherwise throw SERVICE_UNAVAILABLE (no static or invented fallback)
  *
  * @param {string} fromCurrencyId - Source currency UUID
  * @param {string} toCurrencyId - Target currency UUID
  * @returns {Promise<number>} Conversion rate (amount in fromCurrency * rate = amount in toCurrency)
- * @throws {AppError} NOT_FOUND if currencies not found, SERVICE_UNAVAILABLE if rates unavailable
+ * @throws {AppError} SERVICE_UNAVAILABLE if no active rate exists
  */
 export const getConversionRate = async (fromCurrencyId, toCurrencyId) => {
   try {
@@ -349,73 +338,13 @@ export const getConversionRate = async (fromCurrencyId, toCurrencyId) => {
       return 1 / parseFloat(inverseRateData.rate);
     }
 
-    // 3. Fallback: Official currency rates (table or static defaults)
-    const { data: fromCurr, error: err1 } = await supabase
-      .from('currencies')
-      .select('code')
-      .eq('id', fromCurrencyId)
-      .single();
-
-    const { data: toCurr, error: err2 } = await supabase
-      .from('currencies')
-      .select('code')
-      .eq('id', toCurrencyId)
-      .single();
-
-    if (err1 || err2) {
-      throw createNotFoundError('Currency', fromCurrencyId || toCurrencyId);
-    }
-
-    const fetchOfficialRate = async (currencyCode) => {
-      try {
-        if (officialRatesUnavailable) {
-          return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
-        }
-
-        const { data, error } = await supabase
-          .from('official_currency_rates')
-          .select('rate_to_usd')
-          .eq('currency_code', currencyCode)
-          .maybeSingle();
-
-        if (error) {
-          const parsed = parseSupabaseError(error);
-          const supabaseCode = error?.code || parsed?.context?.originalError?.code || parsed?.context?.postgresCode || parsed?.code || error?.status;
-          // If table/column is missing or inaccessible, gracefully fall back
-          if (isSchemaMissingError(error) ||
-              isSchemaMissingError(parsed) ||
-              ['42P01', 'PGRST116', 'PGRST204', '42703', 404, '404'].includes(supabaseCode) ||
-              error?.status === 404 ||
-              parsed?.context?.originalError?.status === 404) {
-            markOfficialRatesUnavailable();
-            return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
-          }
-          throw parsed;
-        }
-
-        if (data?.rate_to_usd !== undefined && data?.rate_to_usd !== null) {
-          return parseFloat(data.rate_to_usd);
-        }
-
-        return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
-      } catch (rateError) {
-        logError(rateError, { operation: 'getConversionRate - officialRateFallback', currency: currencyCode });
-        if (isSchemaMissingError(rateError) || rateError?.status === 404) {
-          markOfficialRatesUnavailable();
-        }
-        return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
-      }
-    };
-
-    const fromRate = await fetchOfficialRate(fromCurr.code);
-    const toRate = await fetchOfficialRate(toCurr.code);
-
-    if (fromRate !== null && fromRate !== undefined && toRate !== null && toRate !== undefined) {
-      // Calculate: (1 from_currency = X USD) / (1 to_currency = Y USD) = conversion rate
-      return fromRate / toRate;
-    }
-
-    throw new Error(`Official rates not found for ${fromCurr.code} or ${toCurr.code}`);
+    // 3. No active pair: fail closed, never invent a rate
+    throw new AppError(
+      'No active exchange rate for this currency pair',
+      ERROR_CODES.SERVICE_UNAVAILABLE,
+      503,
+      { from: fromCurrencyId, to: toCurrencyId }
+    );
 
   } catch (error) {
     if (error.code) throw error;
@@ -721,6 +650,7 @@ export const saveExchangeRate = async (rateData) => {
       throw parseSupabaseError(error);
     }
 
+    notifyRatesChanged();
     return data;
   } catch (error) {
     if (error.code) throw error;
@@ -759,6 +689,7 @@ export const deleteExchangeRate = async (rateId) => {
       throw parseSupabaseError(error);
     }
 
+    notifyRatesChanged();
     return true;
   } catch (error) {
     if (error.code) throw error;
@@ -821,6 +752,7 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
       throw parseSupabaseError(inverseError);
     }
 
+    notifyRatesChanged();
     return { updatedCount: 2 };
   } catch (error) {
     if (error.code) throw error;
@@ -865,6 +797,7 @@ export const deleteExchangeRatePair = async (fromCurrencyId, toCurrencyId) => {
       throw parseSupabaseError(error);
     }
 
+    notifyRatesChanged();
     return { deletedCount: data?.length || 0 };
   } catch (error) {
     if (error.code) throw error;

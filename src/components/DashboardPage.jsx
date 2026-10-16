@@ -94,9 +94,8 @@ const DashboardPage = ({ onNavigate }) => {
     loading: true
   });
 
-  const [currencies, setCurrencies] = useState([]);
-  const [selectedCurrency, setSelectedCurrency] = useState(null);
-  const [exchangeRate, setExchangeRate] = useState(1);
+  // Dashboard figures are always computed in the base currency; no conversion is offered
+  const [baseCurrency, setBaseCurrency] = useState(null);
 
   const isProductNearExpiration = (product) => {
     if (!product.expiryDate) return false;
@@ -109,37 +108,20 @@ const DashboardPage = ({ onNavigate }) => {
 
   const expiringProducts = products.filter(isProductNearExpiration);
 
-  // Load currencies
+  // Load the base currency (label for the figures)
   useEffect(() => {
-    const loadCurrencies = async () => {
+    const loadBaseCurrency = async () => {
       const { data } = await supabase
         .from('currencies')
-        .select('*')
+        .select('id, code, symbol, is_base')
         .eq('is_active', true)
         .order('code', { ascending: true });
 
-      if (data) {
-        setCurrencies(data);
-        const baseCurrency = data.find(c => c.is_base);
-        if (baseCurrency) {
-          setSelectedCurrency(baseCurrency.id);
-          setExchangeRate(1);
-        }
-      }
+      setBaseCurrency(data?.find(c => c.is_base) || null);
     };
 
-    loadCurrencies();
+    loadBaseCurrency();
   }, []);
-
-  // Update exchange rate when currency changes
-  useEffect(() => {
-    if (selectedCurrency && currencies.length > 0) {
-      const currency = currencies.find(c => c.id === selectedCurrency);
-      if (currency) {
-        setExchangeRate(currency.exchange_rate || 1);
-      }
-    }
-  }, [selectedCurrency, currencies]);
 
   // Fetch visit statistics
   const fetchVisitStats = useCallback(async () => {
@@ -520,15 +502,13 @@ const DashboardPage = ({ onNavigate }) => {
   const combinedMonthlyProfit = Number(monthlyProfit || 0) + monthlyRemittanceProfit;
   const combinedYearlyProfit = Number(yearlyProfit || 0) + yearlyRemittanceProfit;
 
-  // Get current currency symbol and code
-  const currentCurrency = currencies.find(c => c.id === selectedCurrency);
-  const currencySymbol = currentCurrency?.symbol || '$';
-  const currencyCode = currentCurrency?.code || 'USD';
+  // Base currency symbol and code
+  const currencySymbol = baseCurrency?.symbol || '$';
+  const currencyCode = baseCurrency?.code || 'USD';
 
   // Format currency values
   const formatCurrency = (value) => {
-    const converted = value * exchangeRate;
-    return converted.toFixed(2);
+    return Number(value).toFixed(2);
   };
 
   if (!user || (!isAdmin && !isSuperAdmin)) {
@@ -569,22 +549,6 @@ const DashboardPage = ({ onNavigate }) => {
           </div>
           {activeTab === 'overview' && (
             <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium text-gray-700">
-                  {t('dashboard.selectCurrency')}:
-                </label>
-                <select
-                  value={selectedCurrency || ''}
-                  onChange={(e) => setSelectedCurrency(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  {currencies.map(currency => (
-                    <option key={currency.id} value={currency.id}>
-                      {currency.code} ({currency.symbol})
-                    </option>
-                  ))}
-                </select>
-              </div>
               <button
                 onClick={() => {
                   fetchStats();
