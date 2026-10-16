@@ -2102,10 +2102,10 @@
     },
     "notice": {
       "title": "Important notice",
-      "notBank": "PapuEnvios is not a bank or a financial institution.",
+      "notBank": "PapuEnvios is not a bank.",
       "zelleIrreversible": "Zelle payments are irreversible.",
       "deliveryEstimates": "Delivery times are estimates.",
-      "ofac": "Shipments to Cuba are subject to U.S. regulations (OFAC); the sender is responsible for complying with applicable limits.",
+      "ofac": "Shipments to Cuba are subject to U.S. regulations (OFAC).",
       "seeTerms": "See Terms of Service"
     }
   }

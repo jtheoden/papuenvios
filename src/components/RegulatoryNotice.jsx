@@ -7,9 +7,38 @@ const NOTICE_KEYS = ['notBank', 'zelleIrreversible', 'deliveryEstimates', 'ofac'
 
 /**
  * Short regulatory / expectations notice. Makes no license or registration claims.
+ * variant 'card' is the boxed list used at checkout; 'footer' is an unboxed paragraph
+ * that inherits the footer theme through `style` and `linkStyle`.
  */
-const RegulatoryNotice = ({ onNavigate, className = '' }) => {
+const RegulatoryNotice = ({ onNavigate, className = '', variant = 'card', style, linkStyle }) => {
   const { t } = useLanguage();
+
+  if (variant === 'footer') {
+    return (
+      <aside
+        role="note"
+        aria-label={t('legal.notice.title')}
+        className={`mx-auto mt-3 max-w-2xl text-center text-xs md:text-sm leading-relaxed ${className}`}
+        style={style}
+      >
+        <p>
+          {NOTICE_KEYS.map((key) => (
+            <React.Fragment key={key}>
+              <span>{t(`legal.notice.${key}`)}</span>{' '}
+            </React.Fragment>
+          ))}
+          <LegalLink
+            page="terms"
+            onNavigate={onNavigate}
+            style={linkStyle}
+            className="underline underline-offset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-current focus-visible:ring-offset-1"
+          >
+            {t('legal.notice.seeTerms')}
+          </LegalLink>
+        </p>
+      </aside>
+    );
+  }
 
   return (
     <aside

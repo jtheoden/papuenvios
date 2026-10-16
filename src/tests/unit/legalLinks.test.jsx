@@ -4,6 +4,7 @@ import ES from '@/translations/ES.json';
 import EN from '@/translations/EN.json';
 
 const lang = { current: 'es' };
+const settings = { current: {} };
 
 const translate = (key, params = {}) => {
   const dict = lang.current === 'es' ? ES : EN;
@@ -17,7 +18,7 @@ vi.mock('@/contexts/LanguageContext', () => ({
 }));
 
 vi.mock('@/contexts/BusinessContext', () => ({
-  useBusiness: () => ({ visualSettings: {} }),
+  useBusiness: () => ({ visualSettings: settings.current }),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -33,6 +34,7 @@ import RegulatoryNotice from '@/components/RegulatoryNotice';
 
 beforeEach(() => {
   lang.current = 'es';
+  settings.current = {};
 });
 
 describe('translations parity for the legal namespace', () => {
@@ -98,6 +100,112 @@ describe('RegulatoryNotice', () => {
     expect(link).toHaveAttribute('href', '/terms');
     fireEvent.click(link);
     expect(onNavigate).toHaveBeenCalledWith('terms');
+  });
+});
+
+describe('RegulatoryNotice card variant', () => {
+  it('keeps the boxed list presentation by default', () => {
+    render(<RegulatoryNotice onNavigate={vi.fn()} />);
+    const note = screen.getByRole('note', { name: ES.legal.notice.title });
+    expect(note.className).toMatch(/bg-blue-50/);
+    expect(note.className).toMatch(/border-blue-100/);
+    expect(within(note).getAllByRole('listitem')).toHaveLength(4);
+    [
+      ES.legal.notice.notBank,
+      ES.legal.notice.zelleIrreversible,
+      ES.legal.notice.deliveryEstimates,
+      ES.legal.notice.ofac,
+    ].forEach((text) => expect(within(note).getByText(text)).toBeInTheDocument());
+    expect(within(note).getByRole('link')).toHaveAttribute('href', '/terms');
+  });
+});
+
+describe('Footer notice (compact)', () => {
+  const renderFooter = () => render(<Footer onNavigate={vi.fn()} />);
+  const sentences = () => [
+    ES.legal.notice.notBank,
+    ES.legal.notice.zelleIrreversible,
+    ES.legal.notice.deliveryEstimates,
+    ES.legal.notice.ofac,
+  ];
+
+  it('renders an unboxed note without list markup or blue box classes', () => {
+    renderFooter();
+    const note = screen.getByRole('note', { name: ES.legal.notice.title });
+    expect(note.querySelector('ul')).toBeNull();
+    expect(within(note).queryAllByRole('listitem')).toHaveLength(0);
+    [note, ...note.querySelectorAll('*')].forEach((el) => {
+      expect(el.getAttribute('class') || '').not.toMatch(/bg-blue-|border-blue-|rounded/);
+    });
+  });
+
+  it('keeps each sentence as its own span inside a single paragraph', () => {
+    renderFooter();
+    const note = screen.getByRole('note', { name: ES.legal.notice.title });
+    expect(note.querySelectorAll('p')).toHaveLength(1);
+    sentences().forEach((text) => {
+      const el = within(note).getByText(text);
+      expect(el.tagName).toBe('SPAN');
+    });
+  });
+
+  it('links to the terms with a persistent underline and navigates in-app', () => {
+    const onNavigate = vi.fn();
+    render(<Footer onNavigate={onNavigate} />);
+    const note = screen.getByRole('note', { name: ES.legal.notice.title });
+    const link = within(note).getByRole('link', { name: ES.legal.notice.seeTerms });
+    expect(link).toHaveAttribute('href', '/terms');
+    expect(link.className).toMatch(/\bunderline\b/);
+    fireEvent.click(link);
+    expect(onNavigate).toHaveBeenCalledWith('terms');
+    expect(note.getAttribute('aria-label')).not.toBe(ES.legal.nav.label);
+  });
+
+  it('uses the footer theme colours with fallbacks and does not dim the link', () => {
+    settings.current = {
+      footerTextColor: '#e5e7eb',
+      footerLinkColor: '#93c5fd',
+      footerBgColor: '#111827',
+    };
+    const { unmount } = renderFooter();
+    let note = screen.getByRole('note', { name: ES.legal.notice.title });
+    expect(note).toHaveStyle({ color: '#e5e7eb' });
+    expect(within(note).getByRole('link')).toHaveStyle({ color: '#93c5fd' });
+    expect(note.className).not.toMatch(/opacity-/);
+    unmount();
+
+    settings.current = {};
+    renderFooter();
+    note = screen.getByRole('note', { name: ES.legal.notice.title });
+    expect(note).toHaveStyle({ color: '#374151' });
+    expect(within(note).getByRole('link')).toHaveStyle({ color: '#2563eb' });
+  });
+
+  it('keeps the three legal links when the notice is hidden', () => {
+    render(<Footer onNavigate={vi.fn()} showNotice={false} />);
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: ES.legal.links.terms })).toHaveAttribute('href', '/terms');
+    expect(screen.getByRole('link', { name: ES.legal.links.privacy })).toHaveAttribute('href', '/privacy');
+    expect(screen.getByRole('link', { name: ES.legal.links.refunds })).toHaveAttribute(
+      'href',
+      '/terms#refunds'
+    );
+  });
+
+  it.each([
+    ['es', ES],
+    ['en', EN],
+  ])('keeps the %s notice copy within the approved subset', (code, dict) => {
+    lang.current = code;
+    renderFooter();
+    const text = screen.getByRole('note').textContent;
+    const lower = text.toLowerCase();
+    expect(lower).not.toMatch(/licencia|licensed|licenced|autorizad|registrad/);
+    expect(lower).not.toMatch(
+      /financial institution|institución financiera|31 cfr|límites aplicables|applicable limits/
+    );
+    expect(text).toContain('OFAC');
+    expect(text).toContain(dict.legal.notice.notBank);
   });
 });
 

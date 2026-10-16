@@ -73,12 +73,17 @@ const Footer = ({ onNavigate, showNotice = true }) => {
           <LegalLink page="terms" hash="refunds" onNavigate={onNavigate}>{t('legal.links.refunds')}</LegalLink>
         </nav>
         {showNotice && (
-          <RegulatoryNotice onNavigate={onNavigate} className="mt-3 mx-auto max-w-2xl" />
+          <RegulatoryNotice
+            variant="footer"
+            onNavigate={onNavigate}
+            style={textStyle}
+            linkStyle={linkStyle}
+          />
         )}
 
         {/* Copyright */}
         <div className="text-center mt-3 pt-3 md:mt-4 md:pt-4" style={{ borderTop: `1px solid ${visualSettings?.primaryColor || '#e5e7eb'}10` }}>
-          <p className="text-xs opacity-70">
+          <p className="text-xs opacity-80">
             <span style={textStyle}>© {currentYear}</span>{' '}
             <span style={companyNameStyle}>{visualSettings?.companyName || 'PapuEnvíos'}</span>
             <span style={textStyle}>. {t('footer.copyright')}</span>
