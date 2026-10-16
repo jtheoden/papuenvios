@@ -666,6 +666,40 @@ export const deleteExchangeRate = async (rateId) => {
   }
 };
 
+const UNIQUE_VIOLATION = '23505';
+
+/**
+ * Update the ACTIVE row of a directed pair. exchange_rates is unique on (from, to, effective_date), and
+ * the admin edit stamps today's date, so an INACTIVE leftover of the same pair and day (created, then
+ * deactivated, earlier today) blocks the update with a unique violation. Only that inactive duplicate is
+ * cleared, once, and the update is retried; an active row owning the date is never touched and the error
+ * is surfaced.
+ */
+const updateActiveRateRow = async (fromCurrencyId, toCurrencyId, values) => {
+  const run = () => supabase
+    .from('exchange_rates')
+    .update(values)
+    .eq('from_currency_id', fromCurrencyId)
+    .eq('to_currency_id', toCurrencyId)
+    .eq('is_active', true)
+    .select('id');
+
+  const result = await run();
+  if (result.error?.code !== UNIQUE_VIOLATION) return result;
+
+  const { error: clearError } = await supabase
+    .from('exchange_rates')
+    .delete()
+    .eq('from_currency_id', fromCurrencyId)
+    .eq('to_currency_id', toCurrencyId)
+    .eq('effective_date', values.effective_date)
+    .eq('is_active', false)
+    .select('id');
+  if (clearError) return result;
+
+  return run();
+};
+
 /**
  * Update exchange rate pair - updates both direct and inverse rate (ADMIN ONLY)
  * @param {string} fromCurrencyId - From currency UUID
@@ -693,13 +727,9 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
     const effDate = effectiveDate || new Date().toISOString().split('T')[0];
 
     // Update direct rate (from→to)
-    const { data: directRows, error: directError } = await supabase
-      .from('exchange_rates')
-      .update({ rate: rate, effective_date: effDate })
-      .eq('from_currency_id', fromCurrencyId)
-      .eq('to_currency_id', toCurrencyId)
-      .eq('is_active', true)
-      .select('id');
+    const { data: directRows, error: directError } = await updateActiveRateRow(
+      fromCurrencyId, toCurrencyId, { rate: rate, effective_date: effDate }
+    );
 
     if (directError) {
       throw parseSupabaseError(directError);
@@ -711,13 +741,9 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
     }
 
     // Update inverse rate (to→from)
-    const { data: inverseRows, error: inverseError } = await supabase
-      .from('exchange_rates')
-      .update({ rate: inverseRate, effective_date: effDate })
-      .eq('from_currency_id', toCurrencyId)
-      .eq('to_currency_id', fromCurrencyId)
-      .eq('is_active', true)
-      .select('id');
+    const { data: inverseRows, error: inverseError } = await updateActiveRateRow(
+      toCurrencyId, fromCurrencyId, { rate: inverseRate, effective_date: effDate }
+    );
 
     if (inverseError) {
       throw parseSupabaseError(inverseError);
