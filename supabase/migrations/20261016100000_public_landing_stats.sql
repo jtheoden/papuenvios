@@ -1,7 +1,7 @@
 -- ============================================================================
 -- get_public_landing_stats(): aggregate-only counters for the public landing page
 -- ============================================================================
--- PREPARED, NOT APPLIED to the hosted project.
+-- APPLIED to the hosted project (as public_landing_stats, 2026-10-16).
 --
 -- Problem: the home page computed its counters with direct reads of user_profiles, remittances and
 -- orders. anon has no privileges on those tables (401/42501 -> the visitor saw zeros) and a logged-in
