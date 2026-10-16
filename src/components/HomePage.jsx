@@ -20,6 +20,24 @@ import RegulatoryNotice from '@/components/RegulatoryNotice';
 
 const COMPLETED_REMITTANCE_STATUSES = ['delivered', 'completed'];
 const COMPLETED_ORDER_STATUS = 'completed';
+const DEFAULT_START_YEAR = 2020;
+
+const isCount = (value) => Number.isInteger(value) && value >= 0;
+
+// Validates the get_public_landing_stats payload; returns null when it is unusable so the caller
+// hides the counters instead of rendering misleading zeros.
+const parseLandingStats = (payload) => {
+  if (!payload || typeof payload !== 'object') return null;
+  const { users, remittances_completed: remittances, orders_completed: orders, first_year: firstYear } = payload;
+  if (![users, remittances, orders].every(isCount)) return null;
+  const startYear = Number.isInteger(firstYear) ? firstYear : DEFAULT_START_YEAR;
+  return {
+    users,
+    remittancesCompleted: remittances,
+    ordersCompleted: orders,
+    years: Math.max(1, new Date().getFullYear() - startYear + 1)
+  };
+};
 
 const HomePage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
@@ -32,12 +50,7 @@ const HomePage = ({ onNavigate }) => {
   const [testimonialsLoading, setTestimonialsLoading] = useState(true);
   const [activeOffers, setActiveOffers] = useState([]);
   const [offersLoading, setOffersLoading] = useState(true);
-  const [landingStats, setLandingStats] = useState({
-    users: 0,
-    remittancesCompleted: 0,
-    ordersCompleted: 0,
-    years: 1
-  });
+  const [landingStats, setLandingStats] = useState(null);
   const [testimonialIndex, setTestimonialIndex] = useState(0);
   const [guideArticles, setGuideArticles] = useState([]);
 
@@ -76,6 +89,8 @@ const HomePage = ({ onNavigate }) => {
     if (!delta) return;
 
     setLandingStats(prev => {
+      if (!prev) return prev;
+
       if (type === 'remittance') {
         const nextValue = Math.max(0, (prev.remittancesCompleted || 0) + delta);
         return { ...prev, remittancesCompleted: nextValue };
@@ -204,11 +219,12 @@ const HomePage = ({ onNavigate }) => {
     const fetchLandingData = async () => {
       try {
         const now = new Date();
-        const [offersRes, usersRes, remittancesRes, ordersRes] = await Promise.all([
+        const [offersRes, statsRes] = await Promise.all([
           supabase.from('offers').select('*').eq('is_active', true),
-          supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
-          supabase.from('remittances').select('id, status, created_at'),
-          supabase.from('orders').select('id, status, created_at')
+          supabase.rpc('get_public_landing_stats').then(
+            (res) => res,
+            () => ({ data: null, error: true })
+          )
         ]);
 
         const offersList = (offersRes.data || []).filter((offer) => {
@@ -219,38 +235,9 @@ const HomePage = ({ onNavigate }) => {
 
         setActiveOffers(offersList);
 
-        const remittances = remittancesRes.data || [];
-        const orders = ordersRes.data || [];
-
-        const completedRemittances = remittances.filter(r => COMPLETED_REMITTANCE_STATUSES.includes(r.status)).length;
-        const completedOrders = orders.filter(o => o.status === COMPLETED_ORDER_STATUS).length;
-
-        const earliestRemittance = remittances.reduce((earliestItem, current) => {
-          if (!current.created_at) return earliestItem;
-          if (!earliestItem) return current;
-          return new Date(current.created_at) < new Date(earliestItem.created_at) ? current : earliestItem;
-        }, null);
-
-        const earliestOrder = orders.reduce((earliestItem, current) => {
-          if (!current.created_at) return earliestItem;
-          if (!earliestItem) return current;
-          return new Date(current.created_at) < new Date(earliestItem.created_at) ? current : earliestItem;
-        }, null);
-
-        const earliestDate = [earliestRemittance?.created_at, earliestOrder?.created_at]
-          .filter(Boolean)
-          .map(date => new Date(date))
-          .sort((a, b) => a - b)[0];
-
-        const startYear = earliestDate ? earliestDate.getFullYear() : 2020;
-        const years = Math.max(1, new Date().getFullYear() - startYear + 1);
-
-        setLandingStats({
-          users: usersRes.count || 0,
-          remittancesCompleted: completedRemittances,
-          ordersCompleted: completedOrders,
-          years
-        });
+        // On RPC failure keep whatever was already loaded; with nothing loaded the block stays hidden.
+        const parsed = statsRes.error ? null : parseLandingStats(statsRes.data);
+        if (parsed) setLandingStats(parsed);
       } catch (error) {
         console.error('Error loading offers and stats:', error);
         setActiveOffers([]);
@@ -507,54 +494,56 @@ const HomePage = ({ onNavigate }) => {
         </div>
       </section>
 
-      <section className="py-16 px-4 bg-slate-50">
-        <div className="container mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="text-center mb-12"
-          >
-            <h2 className="text-4xl font-bold mb-3" style={getHeadingStyle(visualSettings)}>
-              {t('home.stats.title')}
-            </h2>
-            <p className="text-gray-600">{t('home.stats.subtitle')}</p>
-          </motion.div>
+      {landingStats && (
+        <section className="py-16 px-4 bg-slate-50">
+          <div className="container mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              className="text-center mb-12"
+            >
+              <h2 className="text-4xl font-bold mb-3" style={getHeadingStyle(visualSettings)}>
+                {t('home.stats.title')}
+              </h2>
+              <p className="text-gray-600">{t('home.stats.subtitle')}</p>
+            </motion.div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[{
-              label: t('home.stats.remittances'),
-              value: landingStats.remittancesCompleted,
-              color: 'from-emerald-500 to-green-600'
-            }, {
-              label: t('home.stats.orders'),
-              value: landingStats.ordersCompleted,
-              color: 'from-blue-500 to-cyan-600'
-            }, {
-              label: t('home.stats.users'),
-              value: landingStats.users,
-              color: 'from-purple-500 to-indigo-600'
-            }, {
-              label: t('home.stats.years'),
-              value: landingStats.years,
-              color: 'from-orange-500 to-amber-600'
-            }].map((stat, idx) => (
-              <motion.div
-                key={stat.label}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.1 }}
-                className="p-6 rounded-2xl bg-white shadow-sm border border-gray-100"
-              >
-                <div className={`w-12 h-12 rounded-xl bg-gradient-to-r ${stat.color} flex items-center justify-center mb-4 text-white text-xl font-bold`}>
-                  {stat.value}
-                </div>
-                <p className="text-gray-700 font-semibold">{stat.label}</p>
-              </motion.div>
-            ))}
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[{
+                label: t('home.stats.remittances'),
+                value: landingStats.remittancesCompleted,
+                color: 'from-emerald-500 to-green-600'
+              }, {
+                label: t('home.stats.orders'),
+                value: landingStats.ordersCompleted,
+                color: 'from-blue-500 to-cyan-600'
+              }, {
+                label: t('home.stats.users'),
+                value: landingStats.users,
+                color: 'from-purple-500 to-indigo-600'
+              }, {
+                label: t('home.stats.years'),
+                value: landingStats.years,
+                color: 'from-orange-500 to-amber-600'
+              }].map((stat, idx) => (
+                <motion.div
+                  key={stat.label}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.1 }}
+                  className="p-6 rounded-2xl bg-white shadow-sm border border-gray-100"
+                >
+                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-r ${stat.color} flex items-center justify-center mb-4 text-white text-xl font-bold`}>
+                    {stat.value}
+                  </div>
+                  <p className="text-gray-700 font-semibold">{stat.label}</p>
+                </motion.div>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       <section className="py-20 px-4">
         <div className="container mx-auto">
