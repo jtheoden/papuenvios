@@ -2298,6 +2298,30 @@
       "confirm": "By confirming, you agree to the",
       "and": "and"
     },
+    "gate": {
+      "title": "Before you continue",
+      "intro": "To place orders and send remittances we need you to accept our terms and confirm that you are of legal age.",
+      "birthDateLabel": "Date of birth",
+      "birthDateHint": "Only used to verify that you are 18 or older.",
+      "acceptLabel": "I have read and accept the",
+      "acceptAnd": "and the",
+      "acceptSuffix": "(they open in a new tab).",
+      "accept": "Accept and continue",
+      "cancel": "Cancel",
+      "saving": "Saving...",
+      "errors": {
+        "birthDateRequired": "Enter your date of birth.",
+        "invalid": "The date of birth is not valid.",
+        "underAge": "You must be 18 or older to place orders and send remittances.",
+        "conflict": "You have already corrected your date of birth the maximum number of times. Contact us and we will help.",
+        "profileNotFound": "We could not find your profile. Sign out, sign back in and try again.",
+        "versionOutdated": "The Terms and Privacy Policy were updated. Reload the page and try again.",
+        "checkFailed": "We could not verify your acceptance of the Terms. Check your connection and try again.",
+        "acceptRequired": "You must accept the Terms and the Privacy Policy to continue.",
+        "notAuthenticated": "Your session expired. Please sign in again.",
+        "unknown": "We could not save your acceptance. Please try again."
+      }
+    },
     "notice": {
       "title": "Important notice",
       "notBank": "PapuEnvios is not a bank or a financial institution.",

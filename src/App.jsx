@@ -34,6 +34,7 @@ import { LanguageProvider } from '@/contexts/LanguageContext';
 import { BusinessProvider, useBusiness } from '@/contexts/BusinessContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ModalProvider } from '@/contexts/ModalContext';
+import { LegalAcceptanceProvider } from '@/contexts/LegalAcceptanceContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { trackPageVisit } from '@/lib/analyticsService';
@@ -249,6 +250,7 @@ function App() {
             <BusinessProvider>
               <CurrencyProvider>
                 <ModalProvider>
+                <LegalAcceptanceProvider>
                 <div className="min-h-screen">
                   <DynamicVisualSettings />
                   <PageAnalyticsTracker currentPage={currentPage} />
@@ -290,6 +292,7 @@ function App() {
                 <ConsentBanner suppressed={!shouldShowFooterNotice(currentPage)} onNavigate={handleNavigate} />
                 <Toaster />
               </div>
+                </LegalAcceptanceProvider>
               </ModalProvider>
               </CurrencyProvider>
             </BusinessProvider>

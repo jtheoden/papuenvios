@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLegalAcceptance } from '@/contexts/LegalAcceptanceContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle, getAlertStyle } from '@/lib/styleUtils';
@@ -54,6 +55,7 @@ const CartPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { cart, updateCartQuantity, removeFromCart, clearCart, combos, zelleAccounts, visualSettings, businessInfo, notificationSettings, refreshStock } = useBusiness();
   const { isAuthenticated, user } = useAuth();
+  const { ensureAccepted } = useLegalAcceptance();
   const { selectedCurrency, setSelectedCurrency, currencies, currencyCode, currencySymbol, convertAmount } = useCurrency();
   const { showModal } = useModal();
   const { methods: paymentMethods, refresh: refreshPaymentMethods, isMethodEnabled } = usePaymentMethods();
@@ -723,6 +725,10 @@ const CartPage = ({ onNavigate }) => {
     setProcessingPayment(true);
 
     try {
+      // Terms + Privacy acceptance and 18+ confirmation must exist before any order is created.
+      // The button stays locked while the gate is open; declining aborts without side effects.
+      if (!(await ensureAccepted('checkout'))) return;
+
       // Re-read the switch right before creating the order: it may have been flipped
       // while the customer was filling the form. A failed read keeps the last known state.
       const latestPaymentMethods = (await refreshPaymentMethods()) ?? paymentMethods;

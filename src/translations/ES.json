@@ -2307,6 +2307,30 @@
       "confirm": "Al confirmar, aceptas los",
       "and": "y"
     },
+    "gate": {
+      "title": "Antes de continuar",
+      "intro": "Para realizar pedidos y envíos necesitamos que aceptes nuestras condiciones y confirmes que eres mayor de edad.",
+      "birthDateLabel": "Fecha de nacimiento",
+      "birthDateHint": "Solo se usa para verificar que tienes 18 años o más.",
+      "acceptLabel": "He leído y acepto los",
+      "acceptAnd": "y la",
+      "acceptSuffix": "(se abren en una pestaña nueva).",
+      "accept": "Aceptar y continuar",
+      "cancel": "Cancelar",
+      "saving": "Guardando...",
+      "errors": {
+        "birthDateRequired": "Indica tu fecha de nacimiento.",
+        "invalid": "La fecha de nacimiento no es válida.",
+        "underAge": "Debes tener 18 años o más para realizar pedidos y envíos.",
+        "conflict": "Ya corregiste tu fecha de nacimiento el máximo de veces permitido. Contáctanos para ayudarte.",
+        "profileNotFound": "No encontramos tu perfil. Cierra sesión, vuelve a entrar e inténtalo de nuevo.",
+        "versionOutdated": "Los Términos y la Política de Privacidad se actualizaron. Recarga la página e inténtalo de nuevo.",
+        "checkFailed": "No pudimos verificar tu aceptación de los Términos. Revisa tu conexión e inténtalo de nuevo.",
+        "acceptRequired": "Debes aceptar los Términos y la Política de Privacidad para continuar.",
+        "notAuthenticated": "Tu sesión expiró. Inicia sesión de nuevo.",
+        "unknown": "No pudimos guardar tu aceptación. Inténtalo de nuevo."
+      }
+    },
     "notice": {
       "title": "Aviso importante",
       "notBank": "PapuEnvios no es un banco ni una institución financiera.",
