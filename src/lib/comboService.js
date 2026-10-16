@@ -9,6 +9,7 @@ import { withCatalogInvalidation } from './catalogCache';
 import { resolveImageUrl } from './imageStorage';
 import { getCurrentTimestamp } from './queryHelpers';
 import { DEFAULTS } from './constants';
+import { resolveMarginInput } from './marginResolver';
 import {
   AppError,
   handleError,
@@ -159,7 +160,7 @@ export const createCombo = withCatalogInvalidation(async (comboData) => {
         description_en: comboData.description || '',
         image_url: imageUrl || null,
         base_total_price: baseTotalPrice,
-        profit_margin: parseFloat(comboData.profitMargin || DEFAULTS.COMBO_PROFIT_MARGIN),
+        profit_margin: resolveMarginInput(comboData.profitMargin, DEFAULTS.COMBO_PROFIT_MARGIN),
         is_active: true
       }])
       .select(PUBLIC_COMBO_COLUMNS)
@@ -239,7 +240,7 @@ export const updateCombo = withCatalogInvalidation(async (comboId, comboData) =>
       name_en: comboData.name,
       description_es: comboData.description || '',
       description_en: comboData.description || '',
-      profit_margin: parseFloat(comboData.profitMargin || DEFAULTS.COMBO_PROFIT_MARGIN),
+      profit_margin: resolveMarginInput(comboData.profitMargin, DEFAULTS.COMBO_PROFIT_MARGIN),
       updated_at: getCurrentTimestamp()
     };
 

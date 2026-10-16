@@ -15,6 +15,18 @@ import {
 
 // ─── calculatePriceWithMargin ───────────────────────────────────────────────
 
+describe('calculateCompletePrice margin',()=>{
+  it('keeps a 0% margin in the breakdown', () => {
+    const r = calculateCompletePrice({ basePrice: 100, profitMargin: 0 });
+    expect(r.beforeDiscount).toBe(100);
+    expect(r.profitMargin).toBe(0);
+  });
+
+  it('does not clamp a 150% margin to 100', () => {
+    expect(calculateCompletePrice({ basePrice: 100, profitMargin: 150 }).profitMargin).toBe(150);
+  });
+});
+
 describe('calculatePriceWithMargin', () => {
   it('applies 40% default margin', () => {
     expect(calculatePriceWithMargin(100)).toBe(140);
@@ -24,8 +36,18 @@ describe('calculatePriceWithMargin', () => {
     expect(calculatePriceWithMargin(100, 25)).toBe(125);
   });
 
-  it('clamps margin to [0, 100]', () => {
-    expect(calculatePriceWithMargin(100, 150)).toBe(200);
+  it('respects a 0% margin', () => {
+    expect(calculatePriceWithMargin(100, 0)).toBe(100);
+    expect(calculatePriceWithMargin(100, '0')).toBe(100);
+  });
+
+  it.each([[undefined], [null], [''], [NaN]])('uses the 40% default when margin is %j', (margin) => {
+    expect(calculatePriceWithMargin(100, margin)).toBe(140);
+  });
+
+  it('allows markups above 100% up to the DB maximum and clamps beyond it', () => {
+    expect(calculatePriceWithMargin(100, 150)).toBe(250);
+    expect(calculatePriceWithMargin(100, 5000)).toBe(1099.99);
     expect(calculatePriceWithMargin(100, -10)).toBe(100);
   });
 

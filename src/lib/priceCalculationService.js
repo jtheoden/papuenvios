@@ -5,17 +5,23 @@
  */
 
 import { roundMoney } from '@/lib/moneyPure';
+import { DEFAULTS } from '@/lib/constants';
+import { resolveMarginInput, MARGIN_MIN, MARGIN_MAX } from '@/lib/marginResolver';
+
+// Same bounds as the profit_margin DB constraint (0..999.99); markup over cost may exceed 100%.
+const clampMargin = (profitMargin) =>
+  Math.min(MARGIN_MAX, Math.max(MARGIN_MIN, resolveMarginInput(profitMargin, DEFAULTS.PRODUCT_PROFIT_MARGIN)));
 
 /**
  * Calculate final price with profit margin
  * @param {number} basePrice - Base price in original currency
- * @param {number} profitMargin - Profit margin as percentage (0-100)
+ * @param {number} profitMargin - Profit margin as percentage (0-999.99)
  * @returns {number} Final price with margin applied
  */
 export const calculatePriceWithMargin = (basePrice, profitMargin = 40) => {
   if (!basePrice || isNaN(basePrice)) return 0;
 
-  const margin = Math.max(0, Math.min(100, profitMargin || 40)) / 100;
+  const margin = clampMargin(profitMargin) / 100;
   const finalPrice = parseFloat(basePrice) * (1 + margin);
 
   return roundMoney(finalPrice);
@@ -78,7 +84,7 @@ export const applyDiscount = (price, discountPercent = 0) => {
  * Use this for final price calculation in checkout
  * @param {object} params - Calculation parameters
  * @param {number} params.basePrice - Base price (cost)
- * @param {number} params.profitMargin - Profit margin % (0-100)
+ * @param {number} params.profitMargin - Profit margin % (0-999.99)
  * @param {number} params.discount - Discount percentage (0-100)
  * @param {number} params.exchangeRate - Currency exchange rate (1 = base currency)
  * @returns {object} Object with breakdown of calculation
@@ -110,7 +116,7 @@ export const calculateCompletePrice = ({
     discountAmount: roundMoney(discountAmount),
     discountPercent: Math.min(100, Math.max(0, discount)),
     finalPrice: roundMoney(final),
-    profitMargin: Math.max(0, Math.min(100, profitMargin)),
+    profitMargin: clampMargin(profitMargin),
     exchangeRate: parseFloat(exchangeRate)
   };
 };

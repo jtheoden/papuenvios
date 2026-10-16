@@ -33,6 +33,18 @@ export const resolveMargin = ({ product, category, global } = {}) => {
 };
 
 /**
+ * Resolves a margin typed or stored by the admin. Only a value that was not provided
+ * (undefined, null, blank, NaN, non-numeric) falls back; 0 is a valid margin.
+ * @param {unknown} value
+ * @param {number} fallback
+ * @returns {number}
+ */
+export const resolveMarginInput = (value, fallback) => {
+  const n = toUsableNumber(value);
+  return n === null ? fallback : n;
+};
+
+/**
  * A valid margin percent is a finite number within 0..999.99
  * (matches numeric(5,2) columns and the DB CHECK constraints).
  * @param {unknown} value

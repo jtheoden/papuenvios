@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
+import { resolveMarginInput } from '@/lib/marginResolver';
 import { isImageUploadError, getImageUploadMessageKey } from '@/lib/imageStorage';
 import { createCombo, updateCombo as updateComboDB, deleteCombo, setComboActiveState } from '@/lib/comboService';
 import { checkComboStockIssues, computeComboPricing } from '@/lib/comboUtils';
@@ -365,7 +366,7 @@ const VendorCombosTab = ({
     }
 
     // Margin validation
-    const margin = parseFloat(comboForm.profitMargin || financialSettings.comboProfit);
+    const margin = resolveMarginInput(comboForm.profitMargin, financialSettings.comboProfit);
     if (margin < 0) {
       toast({
         title: t('vendor.combos.cannotSaveNegative'),
@@ -391,7 +392,7 @@ const VendorCombosTab = ({
         description: comboForm.description || '',
         image: comboForm.image || '',
         productsWithQuantities: productsWithQuantities,
-        profitMargin: parseFloat(comboForm.profitMargin || financialSettings.comboProfit),
+        profitMargin: margin,
         slug: comboForm.name.toLowerCase().replace(/\s+/g, '-')
       };
 
@@ -717,7 +718,7 @@ const VendorCombosTab = ({
                 const prices = hasProducts ? getComboCalculatedPrices(comboForm) : { base: '0.00', final: '0.00' };
                 const baseNum = parseFloat(prices.base) || 0;
                 const finalNum = hasProducts ? (parseFloat(prices.final) || 0) : 0;
-                const margin = parseFloat(comboForm.profitMargin || financialSettings.comboProfit) || 0;
+                const margin = resolveMarginInput(comboForm.profitMargin, financialSettings.comboProfit) || 0;
                 const marginAmount = finalNum - baseNum;
 
                 // Calculate user savings: sum of actual individual product final prices vs combo price

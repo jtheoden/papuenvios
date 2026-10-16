@@ -10,7 +10,7 @@ import { resolveImageUrl } from './imageStorage';
 import { generateSlug, getCurrentTimestamp } from './queryHelpers';
 import { DEFAULTS } from './constants';
 import { normalizeUnitCode } from './productUnits';
-import { validateMarginPercent, MARGIN_MIN, MARGIN_MAX } from './marginResolver';
+import { validateMarginPercent, resolveMarginInput, MARGIN_MIN, MARGIN_MAX } from './marginResolver';
 import {
   AppError,
   handleError,
@@ -322,7 +322,7 @@ export const createProduct = withCatalogInvalidation(async (productData) => {
         category_id: productData.category_id,
         base_price: parseFloat(productData.basePrice),
         base_currency_id: productData.base_currency_id,
-        profit_margin: parseFloat(productData.profitMargin || DEFAULTS.PRODUCT_PROFIT_MARGIN),
+        profit_margin: resolveMarginInput(productData.profitMargin, DEFAULTS.PRODUCT_PROFIT_MARGIN),
         min_stock_alert: productData.min_stock_alert ? parseInt(productData.min_stock_alert) : DEFAULTS.MIN_STOCK_ALERT,
         image_url: imageUrl || null,
         unit: normalizeUnitCode(productData.unit),
@@ -394,7 +394,7 @@ export const updateProduct = withCatalogInvalidation(async (productId, productDa
       category_id: productData.category_id,
       base_price: parseFloat(productData.basePrice),
       base_currency_id: productData.base_currency_id,
-      profit_margin: parseFloat(productData.profitMargin || DEFAULTS.PRODUCT_PROFIT_MARGIN),
+      profit_margin: resolveMarginInput(productData.profitMargin, DEFAULTS.PRODUCT_PROFIT_MARGIN),
       min_stock_alert: productData.min_stock_alert !== undefined ? parseInt(productData.min_stock_alert) : DEFAULTS.MIN_STOCK_ALERT,
       unit: normalizeUnitCode(productData.unit),
       updated_at: getCurrentTimestamp()
