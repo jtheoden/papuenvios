@@ -9,28 +9,19 @@ import { useCurrency } from '@/contexts/CurrencyContext';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
+import { getProductPriceInCurrency, getComboPriceInCurrency } from '@/lib/publicPricing';
+import CatalogLoadError from '@/components/CatalogLoadError';
 
 // Product Thumbnail Component with Toggle
 const ProductThumbnail = ({ product, selectedCurrency, currencySymbol, currencyCode, convertAmount, quantity = 1 }) => {
   const [expanded, setExpanded] = useState(false);
-  const { language } = useLanguage();
+  const { t, language } = useLanguage();
   const { visualSettings } = useBusiness();
 
-  const getProductPrice = () => {
-    const basePrice = parseFloat(product.final_price || product.base_price || 0);
-    const productCurrencyId = product.base_currency_id;
-
-    if (!productCurrencyId || productCurrencyId === selectedCurrency) {
-      return basePrice.toFixed(2);
-    }
-
-    const converted = convertAmount(basePrice, productCurrencyId, selectedCurrency);
-    return converted.toFixed(2);
-  };
-
-  const getTotalPrice = () => {
-    return (parseFloat(getProductPrice()) * quantity).toFixed(2);
-  };
+  // Stored final_price in the selected currency; null when the product has no usable price
+  const unitPrice = getProductPriceInCurrency(product, { convert: convertAmount, selectedCurrencyId: selectedCurrency });
+  const unitLabel = unitPrice === null ? null : unitPrice.toFixed(2);
+  const totalLabel = unitPrice === null ? null : (parseFloat(unitLabel) * quantity).toFixed(2);
 
   return (
     <div className="flex items-center gap-3 py-2 border-b border-gray-200 last:border-0">
@@ -86,14 +77,20 @@ const ProductThumbnail = ({ product, selectedCurrency, currencySymbol, currencyC
       </div>
       <div className="text-right">
         {/* Show individual price per unit */}
-        <p className="text-xs text-gray-500 mb-1">
-          {currencySymbol}{getProductPrice()} {language === 'es' ? 'c/u' : 'each'}
-        </p>
-        {/* Show total price for this product (price × quantity) */}
-        <p className="font-semibold text-gray-800">
-          {language === 'es' ? 'Total:' : 'Total:'} {currencySymbol}{getTotalPrice()}
-        </p>
-        <p className="text-xs text-gray-500">{currencyCode}</p>
+        {unitLabel === null ? (
+          <p className="text-xs text-gray-500">{t('products.priceUnavailable')}</p>
+        ) : (
+          <>
+            <p className="text-xs text-gray-500 mb-1">
+              {currencySymbol}{unitLabel} {language === 'es' ? 'c/u' : 'each'}
+            </p>
+            {/* Show total price for this product (price × quantity) */}
+            <p className="font-semibold text-gray-800">
+              {language === 'es' ? 'Total:' : 'Total:'} {currencySymbol}{totalLabel}
+            </p>
+            <p className="text-xs text-gray-500">{currencyCode}</p>
+          </>
+        )}
       </div>
     </div>
   );
@@ -101,9 +98,10 @@ const ProductThumbnail = ({ product, selectedCurrency, currencySymbol, currencyC
 
 const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
   const { t, language } = useLanguage();
-  const { products, combos, categories, addToCart, financialSettings, visualSettings } = useBusiness();
+  const { products, combos, categories, addToCart, visualSettings, catalogError } = useBusiness();
   const { isAdmin } = useAuth();
-  const { selectedCurrency, setSelectedCurrency, currencySymbol, currencyCode, convertAmount, loading: currenciesLoading } = useCurrency();
+  const { selectedCurrency, setSelectedCurrency, currencySymbol, currencyCode, convertAmount, currencies, loading: currenciesLoading } = useCurrency();
+  const baseCurrencyId = currencies?.find(currency => currency.is_base)?.id ?? null;
   const [currentItem, setCurrentItem] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentList, setCurrentList] = useState([]);
@@ -123,47 +121,16 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
   }, [itemId, itemType, products, combos]);
 
 
+  // Stored final_price of the item in the selected currency, formatted; null when it has no
+  // usable price (never 0). Products are priced in their own currency, combos in the base one.
   const getDisplayPrice = (item, isProduct) => {
-    if (!item) return '0.00';
+    if (!item) return null;
 
-    if (isProduct) {
-      // Use final_price from database which already has the product's individual profit margin applied
-      // This is a PostgreSQL GENERATED column: base_price * (1 + profit_margin / 100)
-      const finalPrice = parseFloat(item.final_price || item.base_price || 0);
-      const productCurrencyId = item.base_currency_id;
+    const price = isProduct
+      ? getProductPriceInCurrency(item, { convert: convertAmount, selectedCurrencyId: selectedCurrency })
+      : getComboPriceInCurrency(item, { convert: convertAmount, baseCurrencyId, selectedCurrencyId: selectedCurrency });
 
-      // Convert to selected currency if needed
-      let convertedPrice = finalPrice;
-      if (productCurrencyId && productCurrencyId !== selectedCurrency) {
-        convertedPrice = convertAmount(finalPrice, productCurrencyId, selectedCurrency);
-      }
-
-      return convertedPrice.toFixed(2);
-    } else {
-      // For combos, calculate from base_price and apply ONLY combo profit margin
-      let totalBasePrice = 0;
-
-      (item.products || []).forEach(productId => {
-        const product = products.find(p => p.id === productId);
-        if (product) {
-          // Use ONLY base_price (no product margin)
-          const basePrice = parseFloat(product.base_price || 0);
-          const productCurrencyId = product.base_currency_id;
-          const quantity = item.productQuantities?.[productId] || 1;
-
-          let convertedPrice = basePrice;
-          if (productCurrencyId && productCurrencyId !== selectedCurrency) {
-            convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
-          }
-
-          totalBasePrice += convertedPrice * quantity;
-        }
-      });
-
-      // Apply ONLY combo profit margin
-      const profitMargin = parseFloat(item.profitMargin || financialSettings.comboProfit) / 100;
-      return (totalBasePrice * (1 + profitMargin)).toFixed(2);
-    }
+    return price === null ? null : price.toFixed(2);
   };
 
   const handlePrevious = () => {
@@ -239,6 +206,7 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
     // For display consistency, use the price already shown in the current selected currency
     // This ensures what user sees is what gets added to cart
     const displayedPrice = parseFloat(getDisplayPrice(currentItem, isProduct));
+    if (!Number.isFinite(displayedPrice)) return;
 
     // Add to cart with price and currency info
     const itemWithPrice = {
@@ -277,7 +245,8 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
 
   if (!currentItem) {
     return (
-      <div className="min-h-screen py-8 px-4 flex items-center justify-center">
+      <div className="min-h-screen py-8 px-4 flex flex-col items-center justify-center">
+        <CatalogLoadError error={catalogError} />
         <p className="text-gray-500">{t('products.noProducts')}</p>
       </div>
     );
@@ -285,6 +254,32 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
 
   const isProduct = !currentItem.products; // Products don't have a 'products' array
   const price = getDisplayPrice(currentItem, isProduct);
+  const priceUnavailable = price === null;
+
+  // Combo vs buying the components separately, from the stored prices only. Any unpriced
+  // component makes the comparison unreliable, so it is not shown at all.
+  const comboComparison = (() => {
+    if (isProduct) return null;
+
+    const lines = (currentItem.products || []).reduce((acc, productId) => {
+      const product = products.find(p => p.id === productId);
+      if (!product) return acc;
+
+      const quantity = currentItem.productQuantities?.[productId] || 1;
+      const unit = getProductPriceInCurrency(product, { convert: convertAmount, selectedCurrencyId: selectedCurrency });
+      acc.push({ productId, product, quantity, total: unit === null ? null : unit * quantity });
+      return acc;
+    }, []);
+
+    if (lines.some(line => line.total === null)) return null;
+
+    const totalIndividual = lines.reduce((sum, line) => sum + line.total, 0);
+    return {
+      lines,
+      totalIndividual,
+      savings: priceUnavailable ? null : totalIndividual - parseFloat(price)
+    };
+  })();
 
   return (
     <div className="min-h-screen py-8 px-4">
@@ -407,8 +402,14 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
                 />
               </div>
               <div className="flex items-baseline gap-2">
-                <span className="text-4xl font-bold" style={getHeadingStyle(visualSettings)}>{currencySymbol}{price}</span>
-                <span className="text-gray-500">{currencyCode}</span>
+                {priceUnavailable ? (
+                  <span className="text-2xl font-semibold text-gray-500">{t('products.priceUnavailable')}</span>
+                ) : (
+                  <>
+                    <span className="text-4xl font-bold" style={getHeadingStyle(visualSettings)}>{currencySymbol}{price}</span>
+                    <span className="text-gray-500">{currencyCode}</span>
+                  </>
+                )}
               </div>
             </div>
 
@@ -456,28 +457,18 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
             {/* Combo-specific Details */}
             {!isProduct && (
               <div className="space-y-4">
-                {/* Price Comparison for Customers */}
-                <div className="glass-effect p-6 rounded-xl bg-gradient-to-r from-purple-50 to-pink-50">
-                  <h3 className="font-semibold text-lg mb-3" >💰
-                   <span style={getHeadingStyle(visualSettings)}> {t('products.detail.saveWithCombo')}</span>
-                  </h3>
-                  <div className="space-y-3">
-                    {/* Individual products breakdown with individual profit margins */}
-                    <div className="bg-white bg-opacity-50 p-3 rounded-lg space-y-1">
-                      <p className="text-sm font-semibold text-gray-700 mb-2">
-                        {t('products.detail.buyingSeparately')}
-                      </p>
-                      {(currentItem.products || []).map(productId => {
-                        const product = products.find(p => p.id === productId);
-                        if (!product) return null;
-
-                        // Use actual product final_price (base_price * (1 + profit_margin/100))
-                        const finalPrice = parseFloat(product.final_price || product.base_price || 0);
-                        const convertedFinal = convertAmount(finalPrice, product.base_currency_id, selectedCurrency);
-                        const quantity = currentItem.productQuantities?.[productId] || 1;
-                        const total = convertedFinal * quantity;
-
-                        return (
+                {/* Price Comparison for Customers: only when every price is a stored, usable one */}
+                {comboComparison && !priceUnavailable && (
+                  <div className="glass-effect p-6 rounded-xl bg-gradient-to-r from-purple-50 to-pink-50">
+                    <h3 className="font-semibold text-lg mb-3" >💰
+                     <span style={getHeadingStyle(visualSettings)}> {t('products.detail.saveWithCombo')}</span>
+                    </h3>
+                    <div className="space-y-3">
+                      <div className="bg-white bg-opacity-50 p-3 rounded-lg space-y-1">
+                        <p className="text-sm font-semibold text-gray-700 mb-2">
+                          {t('products.detail.buyingSeparately')}
+                        </p>
+                        {comboComparison.lines.map(({ productId, product, quantity, total }) => (
                           <div key={productId} className="flex justify-between text-xs text-gray-600">
                             <span>
                               {language === 'es'
@@ -487,59 +478,32 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
                             </span>
                             <span>{currencySymbol}{total.toFixed(2)}</span>
                           </div>
-                        );
-                      })}
-                      <div className="flex justify-between pt-2 border-t border-gray-300">
-                        <span className="font-semibold text-gray-700">{t('products.detail.total')}</span>
-                        <span className="text-lg font-semibold line-through text-gray-500">
-                          {currencySymbol}{(() => {
-                            let total = 0;
-                            (currentItem.products || []).forEach(productId => {
-                              const product = products.find(p => p.id === productId);
-                              if (product) {
-                                const finalPrice = parseFloat(product.final_price || product.base_price || 0);
-                                const convertedFinal = convertAmount(finalPrice, product.base_currency_id, selectedCurrency);
-                                const quantity = currentItem.productQuantities?.[productId] || 1;
-                                total += convertedFinal * quantity;
-                              }
-                            });
-                            return total.toFixed(2);
-                          })()}
+                        ))}
+                        <div className="flex justify-between pt-2 border-t border-gray-300">
+                          <span className="font-semibold text-gray-700">{t('products.detail.total')}</span>
+                          <span className="text-lg font-semibold line-through text-gray-500">
+                            {currencySymbol}{comboComparison.totalIndividual.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-purple-200">
+                        <span className="text-lg font-bold" style={getHeadingStyle(visualSettings)}>
+                          {t('products.detail.comboPrice')}
+                        </span>
+                        <span className="text-2xl font-bold" style={getHeadingStyle(visualSettings)}>
+                          {currencySymbol}{price}
+                        </span>
+                      </div>
+                      <div className="text-center pt-2">
+                        <span className="inline-block bg-green-100 px-4 py-2 rounded-full text-sm font-semibold" style={getHeadingStyle(visualSettings)}>
+                          {t('products.detail.youSave')}
+                          {currencySymbol}{comboComparison.savings.toFixed(2)}!
                         </span>
                       </div>
                     </div>
-
-                    <div className="flex items-center justify-between pt-2 border-t border-purple-200">
-                      <span className="text-lg font-bold" style={getHeadingStyle(visualSettings)}>
-                        {t('products.detail.comboPrice')}
-                      </span>
-                      <span className="text-2xl font-bold" style={getHeadingStyle(visualSettings)}>
-                        {currencySymbol}{price}
-                      </span>
-                    </div>
-                    <div className="text-center pt-2">
-                      <span className="inline-block bg-green-100 px-4 py-2 rounded-full text-sm font-semibold" style={getHeadingStyle(visualSettings)}>
-                        {t('products.detail.youSave')}
-                        {currencySymbol}{(() => {
-                          // Calculate total using actual product final prices
-                          let totalIndividual = 0;
-                          (currentItem.products || []).forEach(productId => {
-                            const product = products.find(p => p.id === productId);
-                            if (product) {
-                              const finalPrice = parseFloat(product.final_price || product.base_price || 0);
-                              const convertedFinal = convertAmount(finalPrice, product.base_currency_id, selectedCurrency);
-                              const quantity = currentItem.productQuantities?.[productId] || 1;
-                              totalIndividual += convertedFinal * quantity;
-                            }
-                          });
-
-                          const savings = totalIndividual - parseFloat(price);
-                          return savings.toFixed(2);
-                        })()}!
-                      </span>
-                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Included Products */}
                 <div className="glass-effect p-6 rounded-xl">
@@ -562,26 +526,19 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
                     })}
                   </div>
                 </div>
-
-                {/* Profit Margin - Only for Admin */}
-                {isAdmin && currentItem.profitMargin && (
-                  <div className="flex items-center justify-between glass-effect p-4 rounded-xl border-2 border-purple-200">
-                    <span className="text-gray-600">{t('products.detail.profitMargin')}:</span>
-                    <span className="font-semibold text-purple-600">{currentItem.profitMargin}%</span>
-                  </div>
-                )}
               </div>
             )}
 
             {/* Add to Cart Button */}
             <Button
               onClick={handleAddToCart}
+              disabled={priceUnavailable}
               size="lg"
               className="w-full text-lg py-6"
               style={getPrimaryButtonStyle(visualSettings)}
             >
               <ShoppingCart className="w-5 h-5 mr-2" />
-              {t('products.addToCart')}
+              {priceUnavailable ? t('products.priceUnavailable') : t('products.addToCart')}
             </Button>
           </motion.div>
         </div>

@@ -10,20 +10,20 @@
  */
 
 import { roundMoney, sumMoney } from '@/lib/moneyPure';
+import { resolveProductPrice, resolveComboPrice } from '@/lib/publicPricing';
 
 // Cent-round a price but keep NaN for non-finite input: roundMoney would turn it into 0 and the
 // cart would silently create a free line. buildCartLines flags such lines so checkout fails closed.
 const roundPrice = (value) => (Number.isFinite(Number(value)) ? roundMoney(value) : NaN);
 
 /**
- * Price the catalog shows for a product: final_price, a GENERATED column
- * (base_price * (1 + profit_margin / 100)), in the product's own currency.
- * Returned in the base currency and rounded to 2 decimals like the catalog does.
- * Returns null when it cannot be resolved reliably, so the caller falls back.
+ * Price the catalog shows for a product: its stored final_price, in the product's own
+ * currency. Returned in the base currency and rounded to 2 decimals like the catalog does.
+ * Returns null when it cannot be resolved reliably; the caller then fails closed (NaN).
  */
 const getCatalogProductPrice = (item, { baseCurrencyId, convertAmount }) => {
-  const finalPrice = parseFloat(item.final_price);
-  if (!Number.isFinite(finalPrice) || finalPrice < 0) return null;
+  const finalPrice = resolveProductPrice(item);
+  if (finalPrice === null) return null;
 
   let price = finalPrice;
   const productCurrencyId = item.base_currency_id;
@@ -37,6 +37,20 @@ const getCatalogProductPrice = (item, { baseCurrencyId, convertAmount }) => {
 };
 
 /**
+ * Combos added to the cart before the catalog carried their stored price have no usable
+ * final price. Take it from the live catalog combo with the same id; if the combo is gone
+ * (or has no usable price either) the item stays unpriced and the cart fails closed.
+ * Never touches an item that already carries a price, and never applies to products.
+ */
+export const withStoredComboPrice = (item, catalogCombos = []) => {
+  if (!item?.products || resolveComboPrice(item) !== null) return item;
+
+  const live = (catalogCombos || []).find((combo) => combo.id === item.id);
+  const finalPrice = live ? resolveComboPrice(live) : null;
+  return finalPrice === null ? item : { ...item, finalPrice };
+};
+
+/**
  * Resolve the unit price of one cart item.
  *
  * @param {object} item - Cart item (product or combo, with optional price snapshot fields)
@@ -44,10 +58,10 @@ const getCatalogProductPrice = (item, { baseCurrencyId, convertAmount }) => {
  * @param {string|number|null} context.selectedCurrency - Currently selected currency id
  * @param {string|number|null} [context.baseCurrencyId] - Base (USD) currency id
  * @param {function} context.convertAmount - (amount, fromCurrencyId, toCurrencyId) => number
- * @param {object} [context.financialSettings] - { productProfit, comboProfit }
- * @returns {number} Unit price
+ * @returns {number} Unit price, or NaN when the item has no resolvable stored price. The cart
+ *   flags NaN lines invalid and blocks checkout: a missing price is never charged as 0.
  */
-export const getCartItemUnitPrice = (item, { selectedCurrency, baseCurrencyId = null, convertAmount, financialSettings = {} }) => {
+export const getCartItemUnitPrice = (item, { selectedCurrency, baseCurrencyId = null, convertAmount }) => {
   if (!item) return 0;
 
   // Every branch returns a cent-rounded unit price (after any currency conversion), so the
@@ -66,21 +80,15 @@ export const getCartItemUnitPrice = (item, { selectedCurrency, baseCurrencyId = 
     return roundPrice(parseFloat(item.calculated_price_usd));
   }
 
-  // Legacy fallback (items without a price snapshot)
+  // Combo added from the catalog list: its stored final price, in the base currency.
   if (item.products) {
-    const basePrice = parseFloat(item.baseTotalPrice || 0);
-    const profitMargin = parseFloat(item.profitMargin || financialSettings.comboProfit || 35) / 100;
-    return roundPrice(basePrice * (1 + profitMargin));
+    const comboPrice = resolveComboPrice(item);
+    return comboPrice === null ? NaN : roundPrice(comboPrice);
   }
 
   // Product added from the catalog list: charge exactly what the catalog displays.
   const catalogPrice = getCatalogProductPrice(item, { baseCurrencyId, convertAmount });
-  if (catalogPrice !== null) return catalogPrice;
-
-  // Legacy fallback: product without final_price (old cart entries)
-  const basePrice = parseFloat(item.base_price || item.basePrice || 0);
-  const profitMargin = parseFloat(financialSettings.productProfit || 40) / 100;
-  return roundPrice(basePrice * (1 + profitMargin));
+  return catalogPrice === null ? NaN : catalogPrice;
 };
 
 /**

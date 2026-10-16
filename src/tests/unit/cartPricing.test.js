@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { getCartItemUnitPrice, buildCartLines } from '@/lib/cartPricing';
+import { getCartItemUnitPrice, buildCartLines, withStoredComboPrice } from '@/lib/cartPricing';
 
 const USD = 'usd-id';
 const CUP = 'cup-id';
@@ -42,14 +42,30 @@ describe('getCartItemUnitPrice - existing behaviour (must not change)', () => {
     expect(getCartItemUnitPrice({ calculated_price_usd: '7.25' }, ctx())).toBe(7.25);
   });
 
-  it('prices a combo from baseTotalPrice with its own margin', () => {
-    const item = { products: ['a', 'b'], baseTotalPrice: 100, profitMargin: 20 };
-    expect(getCartItemUnitPrice(item, ctx())).toBeCloseTo(120, 10);
+});
+
+describe('getCartItemUnitPrice - combos priced from the stored final price', () => {
+  it('charges the combo finalPrice (base currency) without recomputing from cost fields', () => {
+    const item = { products: ['a', 'b'], finalPrice: 120, baseTotalPrice: 1, profitMargin: 5 };
+    expect(getCartItemUnitPrice(item, ctx())).toBe(120);
   });
 
-  it('prices a combo with the global combo margin when it has none', () => {
-    const item = { products: ['a'], baseTotalPrice: 100 };
-    expect(getCartItemUnitPrice(item, ctx())).toBeCloseTo(135, 10);
+  it('accepts the raw final_price column name as well', () => {
+    expect(getCartItemUnitPrice({ products: ['a'], final_price: '44.5' }, ctx())).toBe(44.5);
+  });
+
+  it.each([
+    ['missing', {}],
+    ['zero (e.g. a combo stored with final_price 0.00)', { finalPrice: 0 }],
+    ['negative', { finalPrice: -3 }],
+    ['not a number', { finalPrice: 'abc' }]
+  ])('fails closed (NaN, never 0) when the combo final price is %s', (_label, extra) => {
+    expect(getCartItemUnitPrice({ products: ['a'], ...extra }, ctx())).toBeNaN();
+  });
+
+  it('does not fall back to baseTotalPrice and profitMargin for legacy cart entries', () => {
+    const item = { products: ['a'], baseTotalPrice: 100, profitMargin: 20 };
+    expect(getCartItemUnitPrice(item, ctx())).toBeNaN();
   });
 });
 
@@ -89,14 +105,23 @@ describe('getCartItemUnitPrice - product added from the catalog list (no price s
     expect(getCartItemUnitPrice(item, c)).toBe(2);
   });
 
-  it('falls back to the legacy formula when final_price is missing', () => {
+  it('fails closed (NaN, never a base_price fallback or 0) when final_price is missing', () => {
     const item = { base_price: 10, base_currency_id: USD };
-    expect(getCartItemUnitPrice(item, ctx())).toBeCloseTo(14, 10);
+    expect(getCartItemUnitPrice(item, ctx())).toBeNaN();
   });
 
-  it('falls back to the legacy formula when final_price is not a number', () => {
+  it('fails closed (NaN) when final_price is not a number', () => {
     const item = { base_price: 10, final_price: 'abc', base_currency_id: USD };
-    expect(getCartItemUnitPrice(item, ctx())).toBeCloseTo(14, 10);
+    expect(getCartItemUnitPrice(item, ctx())).toBeNaN();
+  });
+
+  it('fails closed (NaN) when final_price is 0', () => {
+    expect(getCartItemUnitPrice({ final_price: 0, base_currency_id: USD }, ctx())).toBeNaN();
+  });
+
+  it('fails closed (NaN) when the currency conversion cannot be resolved', () => {
+    const c = ctx({ convertAmount: vi.fn(() => NaN) });
+    expect(getCartItemUnitPrice({ final_price: 5, base_currency_id: CUP }, c)).toBeNaN();
   });
 
   it('prefers the displayed_price snapshot over final_price (detail page behaviour)', () => {
@@ -104,22 +129,12 @@ describe('getCartItemUnitPrice - product added from the catalog list (no price s
     expect(getCartItemUnitPrice(item, ctx())).toBe(9);
   });
 
-  it('never applies final_price to a combo', () => {
-    const item = { products: ['a'], baseTotalPrice: 100, final_price: 1 };
-    expect(getCartItemUnitPrice(item, ctx())).toBeCloseTo(135, 10);
-  });
 });
 
 describe('getCartItemUnitPrice - cent rounding at source', () => {
-  it('rounds the legacy combo branch half-up (30.9 * 1.45 = 44.805 -> 44.81)', () => {
-    const item = { products: [{}], baseTotalPrice: 30.9, profitMargin: 45 };
+  it('rounds the combo final price half-up (44.805 -> 44.81)', () => {
+    const item = { products: [{}], finalPrice: 44.805 };
     expect(getCartItemUnitPrice(item, ctx())).toBe(44.81);
-  });
-
-  it('rounds the legacy product branch (no final_price)', () => {
-    // 0.3913 * 1.4 = 0.54782 -> 0.55
-    const item = { id: 'p', base_price: 0.3913 };
-    expect(getCartItemUnitPrice(item, ctx())).toBe(0.55);
   });
 
   it('rounds the calculated_price_usd branch', () => {
@@ -191,8 +206,8 @@ describe('buildCartLines - rounded lines and subtotal', () => {
 
   it('works end to end with getCartItemUnitPrice on a mixed cart', () => {
     const cart = [
-      { id: 'combo', quantity: 2, products: [{}], baseTotalPrice: 30.9, profitMargin: 45 },
-      { id: 'prod', quantity: 27, base_price: 0.3899 },
+      { id: 'combo', quantity: 2, products: [{}], finalPrice: 44.805 },
+      { id: 'prod', quantity: 27, final_price: 0.5459, base_currency_id: USD },
       { id: 'cat', quantity: 3, final_price: 1.45, base_currency_id: USD },
     ];
     const c = ctx();
@@ -205,5 +220,37 @@ describe('buildCartLines - rounded lines and subtotal', () => {
     });
     expect(lines[0].unitPrice).toBe(44.81);
     expect(lines[0].totalPrice).toBe(89.62);
+  });
+});
+
+describe('withStoredComboPrice - combos added to the cart before the stored price was carried', () => {
+  const stale = { id: 'c1', products: ['a'], baseTotalPrice: 100, profitMargin: 20, quantity: 2 };
+
+  it('takes the stored finalPrice from the live catalog combo with the same id', () => {
+    const hydrated = withStoredComboPrice(stale, [{ id: 'c1', finalPrice: 66.5 }, { id: 'c2', finalPrice: 1 }]);
+    expect(hydrated.finalPrice).toBe(66.5);
+    expect(getCartItemUnitPrice(hydrated, ctx())).toBe(66.5);
+    expect(hydrated.quantity).toBe(2);
+  });
+
+  it('stays unpriced (NaN) when the combo is no longer in the catalog', () => {
+    const hydrated = withStoredComboPrice(stale, [{ id: 'other', finalPrice: 9 }]);
+    expect(getCartItemUnitPrice(hydrated, ctx())).toBeNaN();
+  });
+
+  it('stays unpriced when the catalog combo has no usable price either', () => {
+    const hydrated = withStoredComboPrice(stale, [{ id: 'c1', finalPrice: '0.00' }]);
+    expect(getCartItemUnitPrice(hydrated, ctx())).toBeNaN();
+  });
+
+  it('never replaces a price the item already carries, and ignores products', () => {
+    const priced = { id: 'c1', products: ['a'], finalPrice: 10 };
+    expect(withStoredComboPrice(priced, [{ id: 'c1', finalPrice: 99 }])).toBe(priced);
+    const product = { id: 'p1', final_price: 3 };
+    expect(withStoredComboPrice(product, [{ id: 'p1', finalPrice: 99 }])).toBe(product);
+  });
+
+  it('tolerates a missing catalog', () => {
+    expect(getCartItemUnitPrice(withStoredComboPrice(stale, undefined), ctx())).toBeNaN();
   });
 });

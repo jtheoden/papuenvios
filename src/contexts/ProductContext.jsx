@@ -11,6 +11,7 @@ import { getCombos } from '@/lib/comboService';
 import { getTestimonials } from '@/lib/testimonialService';
 import { getCarouselSlides } from '@/lib/carouselService';
 import { loadCached, invalidateCatalog } from '@/lib/catalogCache';
+import { classifyCatalogError } from '@/lib/catalogErrors';
 
 const ProductContext = createContext();
 
@@ -64,6 +65,9 @@ const buildCombos = (rawCombos, productsMap) =>
       products: comboProducts,
       productQuantities: productQuantities,
       items: c.items || [],
+      // Stored sale price (base currency): the only price the public catalog shows.
+      finalPrice: c.final_price,
+      // Cost fields only exist on the admin view of the rows; the public rows omit them.
       profitMargin: c.profit_margin,
       baseTotalPrice: c.base_total_price,
       is_active: c.is_active,
@@ -90,6 +94,8 @@ export const ProductProvider = ({ children }) => {
   const [carouselSlides, setCarouselSlides] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // Public catalog load failure ({ kind: 'permission' | 'load' }), shown instead of an empty catalog
+  const [catalogError, setCatalogError] = useState(null);
   const { userRole } = useAuth();
   // Category profit margins are internal: only admins load them
   const canSeeMargins = userRole === 'admin' || userRole === 'super_admin';
@@ -100,6 +106,12 @@ export const ProductProvider = ({ children }) => {
   const commitProducts = (next) => {
     productsRef.current = next;
     setProducts(next);
+  };
+
+  // A permission failure outranks a generic one: it is the one a reload can fix (stale bundle).
+  const recordCatalogFailure = (failure) => {
+    const kind = classifyCatalogError(failure);
+    setCatalogError(prev => (prev?.kind === 'permission' ? prev : { kind }));
   };
 
   // Public products: cached rows + fresh stock, loaded in parallel
@@ -134,6 +146,7 @@ export const ProductProvider = ({ children }) => {
     } catch (error) {
       console.error('Error refreshing products:', error);
       setError(error.message);
+      if (!includeInactive) recordCatalogFailure(error);
     }
   };
 
@@ -173,6 +186,7 @@ export const ProductProvider = ({ children }) => {
     } catch (error) {
       console.error('Error refreshing categories:', error);
       setError(error.message);
+      if (!canSeeMargins) recordCatalogFailure(error);
     }
   };
 
@@ -211,6 +225,7 @@ export const ProductProvider = ({ children }) => {
       setCombos(buildCombos(data, productsMap));
     } catch (error) {
       console.error('Error refreshing combos:', error);
+      if (!includeInactive) recordCatalogFailure(error);
     }
   };
 
@@ -246,9 +261,18 @@ export const ProductProvider = ({ children }) => {
   useEffect(() => {
     const loadInitialData = async () => {
       setLoading(true);
+      setCatalogError(null);
       const [productsData, rawCombos] = await Promise.all([
-        loadPublicProducts().catch(err => { console.error('Error loading products:', err); return []; }),
-        fetchRawCombos(false).catch(err => { console.error('Error refreshing combos:', err); return []; }),
+        loadPublicProducts().catch(err => {
+          console.error('Error loading products:', err);
+          recordCatalogFailure(err);
+          return [];
+        }),
+        fetchRawCombos(false).catch(err => {
+          console.error('Error refreshing combos:', err);
+          recordCatalogFailure(err);
+          return [];
+        }),
         refreshCategories(),
         refreshTestimonials(false),
         refreshCarouselSlides(false)
@@ -302,7 +326,8 @@ export const ProductProvider = ({ children }) => {
     refreshCarouselSlides,
     // State
     loading,
-    error
+    error,
+    catalogError
   };
 
   return (
