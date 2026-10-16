@@ -19,17 +19,21 @@ import { getPaymentFxStatus } from '@/lib/paymentFxService';
 import { isBizumSchemaMissing } from '@/lib/bizumErrors';
 import BizumErrorBoundary from '@/components/settings/BizumErrorBoundary';
 import PaymentFxRateCard from '@/components/settings/PaymentFxRateCard';
+import PaymentFxBadge from '@/components/settings/PaymentFxBadge';
 import BizumSettingsCard from '@/components/settings/BizumSettingsCard';
 import BizumAccountsTable from '@/components/settings/BizumAccountsTable';
 
-const SectionShell = ({ children }) => {
+const SectionShell = ({ badge = null, children }) => {
   const { t } = useLanguage();
   return (
-    <section aria-labelledby="bizum-section-title" className="mt-10 space-y-6">
+    <section aria-labelledby="bizum-section-title" className="space-y-6">
       <div>
-        <h2 id="bizum-section-title" className="text-xl font-semibold text-gray-900 sm:text-2xl">
-          {t('settings.bizum.title')}
-        </h2>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h2 id="bizum-section-title" className="text-xl font-semibold text-gray-900 sm:text-2xl">
+            {t('settings.bizum.title')}
+          </h2>
+          {badge}
+        </div>
         <p className="mt-1 text-sm text-gray-700">{t('settings.bizum.intro')}</p>
       </div>
       {children}
@@ -41,7 +45,7 @@ const isInitialLoad = (resource) => resource.loading && resource.data === null &
 // Hide only what is certainly not deployed AND was never loaded: a later reload error is shown, not hidden.
 const isMissing = (resource) => resource.data === null && Boolean(resource.error?.schemaMissing);
 
-const BizumPanel = () => {
+const BizumPanel = ({ onGoToFinancial }) => {
   // Sequential probe: with the schema absent (production today) a single call is made.
   const settings = useAsyncResource(getBizumSettings);
   const probed = !isInitialLoad(settings);
@@ -52,9 +56,9 @@ const BizumPanel = () => {
   if (!enabled || isInitialLoad(fx) || isInitialLoad(accounts)) return null;
 
   return (
-    <SectionShell>
+    <SectionShell badge={isMissing(fx) ? null : <PaymentFxBadge status={fx.data} />}>
       {!isMissing(fx) && (
-        <PaymentFxRateCard status={fx.data} error={fx.error} onRetry={fx.reload} />
+        <PaymentFxRateCard status={fx.data} error={fx.error} onRetry={fx.reload} onGoToFinancial={onGoToFinancial} />
       )}
       <BizumSettingsCard
         settings={settings.data}
@@ -79,7 +83,7 @@ const BizumPanel = () => {
   );
 };
 
-const SettingsBizumSectionContent = () => {
+const SettingsBizumSectionContent = ({ onGoToFinancial }) => {
   const { t } = useLanguage();
   const { methods, error, refresh } = usePaymentMethods({ admin: true });
 
@@ -99,12 +103,12 @@ const SettingsBizumSectionContent = () => {
   }
 
   if (!methods.some((method) => method.code === PAYMENT_METHOD_CODES.BIZUM)) return null;
-  return <BizumPanel />;
+  return <BizumPanel onGoToFinancial={onGoToFinancial} />;
 };
 
-const SettingsBizumSection = () => (
+const SettingsBizumSection = ({ onGoToFinancial }) => (
   <BizumErrorBoundary>
-    <SettingsBizumSectionContent />
+    <SettingsBizumSectionContent onGoToFinancial={onGoToFinancial} />
   </BizumErrorBoundary>
 );
 

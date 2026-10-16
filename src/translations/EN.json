@@ -1361,10 +1361,19 @@
         "warn": "Getting old: update soon",
         "blocked": "Blocked: Bizum unavailable"
       },
-      "noneHelp": "There is no active USD → EUR rate. Load and activate it in Financial Settings (exchange rates) to be able to offer Bizum.",
-      "warnHelp": "The rate is getting old. Update it soon.",
+      "noneHelp": "There is no active USD → EUR rate. Load an active USD → EUR rate in Financial Settings (exchange rates) to be able to offer Bizum.",
+      "warnHelp": "The rate is {hours} h old. Update it soon in Financial Settings.",
+      "badge": {
+        "ok": "EUR rate: current",
+        "warn": "EUR rate: getting old",
+        "blocked": "EUR rate: blocked",
+        "none": "EUR rate: none"
+      },
+      "sourceCentral": "Central rate (Financial Settings)",
+      "goToFinancial": "Go to Settings > Financial",
       "blockedHelp": "The rate is not usable (too old or outside the accepted range) and Bizum is blocked until it is fixed in Financial Settings.",
       "labels": {
+        "source": "Source",
         "mid": "Mid rate",
         "spread": "Spread",
         "effective": "Effective rate",
@@ -1380,7 +1389,8 @@
         "invalidSource": "The rate source is not valid.",
         "noteTooLong": "The note allows at most 500 characters.",
         "largeChange": "The rate change requires confirmation.",
-        "appendOnly": "Recorded rates cannot be modified."
+        "appendOnly": "Recorded rates cannot be modified.",
+        "managedCentrally": "The USD → EUR rate is managed only in Financial Settings."
       },
       "managedCentrally": "The USD → EUR rate is managed only in Financial Settings (exchange rates). The spread and the age thresholds are set in the Bizum parameters."
     },

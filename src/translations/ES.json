@@ -1370,10 +1370,19 @@
         "warn": "Antigua: actualizar pronto",
         "blocked": "Bloqueada: Bizum no disponible"
       },
-      "noneHelp": "No hay una tasa USD → EUR activa. Cárgala y actívala en Ajustes Financieros (tasas de cambio) para poder ofrecer Bizum.",
-      "warnHelp": "La tasa tiene cierta antigüedad. Actualízala pronto.",
+      "noneHelp": "No hay una tasa USD → EUR activa. Carga una y actívala en Ajustes Financieros (tasas de cambio) para poder ofrecer Bizum.",
+      "warnHelp": "La tasa tiene {hours} h de antigüedad. Actualízala pronto en Ajustes Financieros.",
+      "badge": {
+        "ok": "Tasa EUR: vigente",
+        "warn": "Tasa EUR: antigua",
+        "blocked": "Tasa EUR: bloqueada",
+        "none": "Tasa EUR: sin tasa"
+      },
+      "sourceCentral": "Tasa central (Ajustes Financieros)",
+      "goToFinancial": "Ir a Ajustes > Financiero",
       "blockedHelp": "La tasa no es utilizable (demasiado antigua o fuera del rango admitido) y Bizum está bloqueado hasta que se corrija en Ajustes Financieros.",
       "labels": {
+        "source": "Fuente",
         "mid": "Tasa media",
         "spread": "Margen",
         "effective": "Tasa efectiva",
@@ -1389,7 +1398,8 @@
         "invalidSource": "El origen de la tasa no es válido.",
         "noteTooLong": "La nota admite como máximo 500 caracteres.",
         "largeChange": "El cambio de tasa requiere confirmación.",
-        "appendOnly": "Las tasas registradas no se pueden modificar."
+        "appendOnly": "Las tasas registradas no se pueden modificar.",
+        "managedCentrally": "La tasa USD → EUR se gestiona solo en Ajustes Financieros."
       },
       "managedCentrally": "La tasa USD → EUR se gestiona solo en Ajustes Financieros (tasas de cambio). El margen y los umbrales de antigüedad se ajustan en los parámetros de Bizum."
     },

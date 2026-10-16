@@ -122,3 +122,35 @@ describe('PaymentFxRateCard is read-only: the rate is managed in Financial Setti
     }
   });
 });
+
+describe('PaymentFxRateCard read-only guidance (T10)', () => {
+  it('labels the source as the central rate', () => {
+    renderCard();
+    expect(screen.getByTestId('fx-status')).toHaveTextContent('settings.fxRate.labels.source');
+    expect(screen.getByTestId('fx-status')).toHaveTextContent('settings.fxRate.sourceCentral');
+  });
+
+  it('offers a button to Settings > Financial that calls the navigation callback', () => {
+    const onGoToFinancial = vi.fn();
+    renderCard({ onGoToFinancial });
+    fireEvent.click(screen.getByRole('button', { name: 'settings.fxRate.goToFinancial' }));
+    expect(onGoToFinancial).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no navigation button when no callback is wired', () => {
+    renderCard();
+    expect(screen.queryByRole('button', { name: 'settings.fxRate.goToFinancial' })).toBeNull();
+  });
+
+  it('includes the age in the warning help', () => {
+    renderCard({ status: status({ state: 'warn', age_hours: 30 }) });
+    expect(screen.getByRole('status')).toHaveTextContent('settings.fxRate.warnHelp');
+    expect(screen.getByRole('status')).toHaveTextContent('hours=30.0');
+  });
+
+  it('keeps the actionable none help next to the navigation button', () => {
+    renderCard({ status: { state: 'none', id: null, fx_warn_hours: 24, fx_block_hours: 96 }, onGoToFinancial: vi.fn() });
+    expect(screen.getByTestId('fx-status')).toHaveTextContent('settings.fxRate.noneHelp');
+    expect(screen.getByRole('button', { name: 'settings.fxRate.goToFinancial' })).toBeInTheDocument();
+  });
+});

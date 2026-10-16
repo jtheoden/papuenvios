@@ -475,7 +475,7 @@ const SettingsPage = () => {
           {activeTab === 'zelle' && (
             <>
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-effect p-8 rounded-2xl">
-                <SettingsPaymentsTab />
+                <SettingsPaymentsTab onGoToFinancial={() => setActiveTab('financiero')} />
               </motion.div>
             </>
           )}

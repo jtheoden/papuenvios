@@ -75,6 +75,17 @@ describe('SettingsBizumSection gating (R-01)', () => {
     expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
   });
 
+  it('shows the FX badge inside the section header from the single FX read, and no stray top margin', async () => {
+    servicesMock.getPaymentFxStatus.mockResolvedValue({ ...NONE_STATUS, state: 'blocked' });
+    render(<SettingsBizumSection />);
+    const badge = await screen.findByTestId('fx-badge');
+    expect(badge).toHaveAttribute('data-state', 'blocked');
+    const section = screen.getByRole('heading', { level: 2, name: 'settings.bizum.title' }).closest('section');
+    expect(section).toContainElement(badge);
+    expect(section.className).not.toMatch(/\bmt-\d+/);
+    expect(servicesMock.getPaymentFxStatus).toHaveBeenCalledTimes(1);
+  });
+
   it('renders nothing when the catalog has no bizum row', async () => {
     catalogMock.state = catalog(['zelle']);
     const { container } = render(<SettingsBizumSection />);

@@ -25,6 +25,7 @@ const TOKENS = [
   'payment_fx_note_too_long',
   'payment_fx_large_change',
   'payment_fx_rates_append_only',
+  'payment_fx_managed_centrally',
   'bizum_accounts_no_delete',
   'bizum_accounts_immutable_columns'
 ];
