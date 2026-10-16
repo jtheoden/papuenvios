@@ -171,6 +171,12 @@
     },
     "disabled": "Desactivado",
     "notAvailable": "No disponible",
+    "priceUnavailable": "Precio no disponible",
+    "catalogError": {
+      "permission": "El catálogo no se pudo cargar porque esta versión de la página quedó desactualizada. Recarga la página para continuar.",
+      "load": "No pudimos cargar el catálogo. Revisa tu conexión y recarga la página.",
+      "reload": "Recargar página"
+    },
     "saveBadge": "AHORRA",
     "discount": "Descuento",
     "userCategoryLabel": "Categoría: {category}"
@@ -589,6 +595,7 @@
   "vendor": {
     "title": "Gestión de la Plataforma",
     "subtitle": "Gestiona productos, categorías, combos y más.",
+    "adminDataPending": "Los datos de administración aún se están cargando. Inténtalo de nuevo en unos segundos.",
     "tabs": {
       "inventory": "Inventario",
       "categories": "Categorías",
@@ -665,6 +672,8 @@
       "deleteConfirmTitle": "Confirmar eliminación",
       "deleteConfirmMessage": "¿Seguro que deseas eliminar el producto \"{name}\"? Esta acción lo desactivará para los usuarios.",
       "productDeleted": "Producto eliminado",
+      "productAlreadyDeleted": "El producto ya no existe (probablemente lo eliminó otro usuario). Lista actualizada.",
+      "refreshFailed": "No se pudo actualizar la lista. Recarga la página.",
       "searchPlaceholder": "Buscar por nombre...",
       "filters": "Filtros",
       "filterByCategory": "Categoría",
@@ -810,7 +819,7 @@
     "remittancesTab": "Remesas",
     "offersTab": "Ofertas y Cupones",
     "remittancesKindTab": "Tipos de Remesas",
-    "zelleHistoryTab": "Historial de Pagos Zelle",
+    "zelleHistoryTab": "Historial de Pagos",
     "activityLogTab": "Registro de Actividad",
     "orderStatus": {
       "paymentPending": "Pago Pendiente",
@@ -1184,7 +1193,220 @@
       "pubSaved": "Publicaciones guardadas",
       "pubRemoved": "Publicación eliminada"
     },
-    "saveSuccess": "Ajustes guardados exitosamente"
+    "saveSuccess": "Ajustes guardados exitosamente",
+    "bizum": {
+      "title": "Bizum",
+      "intro": "Configura los parámetros de Bizum, la tasa EUR y las cuentas receptoras. Activar o desactivar Bizum se hace con los interruptores de métodos de pago.",
+      "retry": "Reintentar",
+      "loadError": "No se pudo cargar la sección Bizum. La gestión de Zelle no se ve afectada.",
+      "range": "Rango: {min} – {max}",
+      "defaultValue": "Recomendado: {default}",
+      "restore": "Restaurar valor recomendado",
+      "units": {
+        "percent": "%",
+        "minutes": "minutos",
+        "hours": "horas",
+        "count": "unidades",
+        "years": "años",
+        "eur": "EUR"
+      },
+      "fields": {
+        "default_spread_pct": {
+          "label": "Margen por defecto",
+          "help": "Margen que se suma a la tasa media cuando no se indica otro al cargar una tasa."
+        },
+        "quote_validity_minutes": {
+          "label": "Validez de la cotización",
+          "help": "Tiempo durante el cual el cliente puede pagar con la tasa cotizada."
+        },
+        "quote_grace_hours": {
+          "label": "Gracia tras vencer la cotización",
+          "help": "Horas posteriores al vencimiento en las que el pago se marca como tardío en lugar de rechazarse."
+        },
+        "fx_warn_hours": {
+          "label": "Aviso de tasa antigua",
+          "help": "Antigüedad de la tasa desde la cual se muestra el aviso ámbar. Debe ser menor que el bloqueo."
+        },
+        "fx_block_hours": {
+          "label": "Bloqueo por tasa antigua",
+          "help": "Antigüedad de la tasa desde la cual Bizum deja de ofrecerse. Debe ser mayor que el aviso."
+        },
+        "fx_max_change_pct": {
+          "label": "Variación máxima sin confirmar",
+          "help": "Cambio máximo de la tasa efectiva respecto a la anterior que se acepta sin pedir confirmación."
+        },
+        "default_per_operation_limit": {
+          "label": "Límite por operación sugerido",
+          "help": "Valor sugerido al crear una cuenta; el límite real se define en cada cuenta."
+        },
+        "remittance_warn_hours": {
+          "label": "Aviso de remesa sin comprobante",
+          "help": "Horas sin comprobante tras las cuales se avisa. Debe ser menor que la expiración."
+        },
+        "remittance_expire_hours": {
+          "label": "Expiración de remesa sin comprobante",
+          "help": "Horas sin comprobante tras las cuales la remesa Bizum expira. Debe ser mayor que el aviso."
+        },
+        "max_unpaid_ops_per_user": {
+          "label": "Operaciones sin pagar por usuario",
+          "help": "Máximo de operaciones Bizum pendientes de pago por usuario."
+        },
+        "max_open_quotes_per_user": {
+          "label": "Cotizaciones abiertas por usuario",
+          "help": "Máximo de cotizaciones vigentes por usuario."
+        },
+        "max_quotes_per_hour": {
+          "label": "Cotizaciones por hora",
+          "help": "Máximo de cotizaciones que un usuario puede generar por hora."
+        },
+        "proof_retention_years": {
+          "label": "Conservación de comprobantes",
+          "help": "Solo informativo: ningún proceso borra comprobantes automáticamente."
+        }
+      },
+      "validation": {
+        "required": "Este campo es obligatorio.",
+        "range": "Debe estar entre {min} y {max}.",
+        "integer": "Debe ser un número entero.",
+        "decimals": "Admite como máximo {decimals} decimales.",
+        "windowOrder": "Debe ser mayor que el valor de aviso."
+      },
+      "settings": {
+        "title": "Parámetros de Bizum",
+        "intro": "Cada valor se valida en el servidor. Solo se envían los parámetros que cambies.",
+        "save": "Guardar parámetros",
+        "saving": "Guardando...",
+        "saved": "Parámetros guardados",
+        "savedDescription": "Los nuevos valores ya están vigentes."
+      },
+      "accounts": {
+        "title": "Cuentas Bizum",
+        "intro": "Cuentas receptoras de pagos. No se pueden eliminar: se desactivan para conservar el histórico.",
+        "create": "Nueva cuenta",
+        "edit": "Editar",
+        "empty": "No hay cuentas Bizum configuradas. Crea una para comenzar.",
+        "activate": "Activar",
+        "deactivate": "Desactivar",
+        "active": "Activa",
+        "inactive": "Inactiva",
+        "createTitle": "Nueva cuenta Bizum",
+        "editTitle": "Editar cuenta Bizum",
+        "formDescription": "El teléfono debe estar en formato internacional, por ejemplo +34612345678.",
+        "limitHelp": "0 significa sin tope. Importe máximo por operación en EUR.",
+        "phoneHelp": "Formato E.164: signo + y entre 8 y 15 dígitos.",
+        "forProducts": "Disponible para productos",
+        "forRemittances": "Disponible para remesas",
+        "saving": "Guardando...",
+        "saved": "Cuenta guardada",
+        "statusChanged": "Estado de la cuenta actualizado",
+        "fields": {
+          "account_name": "Nombre de la cuenta",
+          "holder_name": "Titular",
+          "phone": "Teléfono",
+          "bank_name": "Banco",
+          "is_active": "Cuenta activa",
+          "for_products": "Para productos",
+          "for_remittances": "Para remesas",
+          "priority_order": "Prioridad (menor primero)",
+          "per_operation_limit": "Límite por operación (EUR)",
+          "notes": "Notas",
+          "noCap": "Sin tope"
+        },
+        "validation": {
+          "required": "Este campo es obligatorio.",
+          "tooLong": "El texto es demasiado largo.",
+          "invalid": "Introduce un teléfono en formato internacional, por ejemplo +34612345678.",
+          "integer": "Debe ser un número entero.",
+          "range": "Debe ser un importe entre 0 y 99999999.99.",
+          "decimals": "Admite como máximo 2 decimales."
+        },
+        "deactivateConfirm": {
+          "title": "Desactivar cuenta",
+          "message": "La cuenta dejará de asignarse a nuevos pagos. Las operaciones existentes conservan su histórico. Podrás activarla de nuevo.",
+          "confirm": "Desactivar"
+        },
+        "activateConfirm": {
+          "title": "Activar cuenta",
+          "message": "La cuenta volverá a poder asignarse a nuevos pagos.",
+          "confirm": "Activar"
+        },
+        "discardDraftWarning": "Tienes cambios sin guardar en esta cuenta; se descartarán al desactivarla."
+      },
+      "errors": {
+        "forbidden": "No tienes permiso para esta acción.",
+        "invalidPatch": "No hay cambios válidos que guardar.",
+        "unknownKey": "Se envió un parámetro desconocido.",
+        "outOfRange": "El valor está fuera del rango permitido.",
+        "settingsMissing": "Faltan los parámetros de Bizum en la base de datos. Contacta con soporte.",
+        "accountNoDelete": "Las cuentas Bizum no se pueden eliminar; desactívala en su lugar.",
+        "accountImmutable": "Ese dato de la cuenta no se puede modificar.",
+        "phoneDuplicate": "Ya existe una cuenta con ese teléfono.",
+        "phoneInvalid": "El teléfono no tiene un formato internacional válido.",
+        "limitInvalid": "El límite por operación no puede ser negativo.",
+        "accountNameLength": "El nombre de la cuenta debe tener entre 1 y 120 caracteres.",
+        "holderNameLength": "El titular debe tener entre 1 y 120 caracteres.",
+        "bankNameLength": "El banco admite como máximo 120 caracteres.",
+        "notesLength": "Las notas admiten como máximo 500 caracteres.",
+        "unknown": "No se pudo completar la operación. Inténtalo de nuevo."
+      },
+      "renderError": "La sección Bizum no pudo mostrarse. El resto de los ajustes sigue disponible."
+    },
+    "fxRate": {
+      "title": "Tipo EUR",
+      "intro": "Tasa USD → EUR con la que se cotiza Bizum. Cada carga queda registrada y no se puede modificar.",
+      "state": {
+        "none": "Sin tasa",
+        "ok": "Vigente",
+        "warn": "Antigua: actualizar pronto",
+        "blocked": "Bloqueada: Bizum no disponible"
+      },
+      "noneHelp": "Todavía no hay ninguna tasa. Carga la primera para poder ofrecer Bizum.",
+      "warnHelp": "La tasa tiene cierta antigüedad. Actualízala pronto.",
+      "blockedHelp": "La tasa es demasiado antigua y Bizum está bloqueado hasta que cargues una nueva.",
+      "labels": {
+        "mid": "Tasa media",
+        "spread": "Margen",
+        "effective": "Tasa efectiva",
+        "author": "Cargada por",
+        "age": "Antigüedad",
+        "thresholds": "Umbrales"
+      },
+      "age": "{hours} h",
+      "thresholds": "Aviso desde {warn} h · bloqueo desde {block} h",
+      "authorUnknown": "Desconocido",
+      "form": {
+        "title": "Cargar nueva tasa",
+        "mid": "Tasa media (EUR por 1 USD)",
+        "midHelp": "Entre 0.5 y 1.5, hasta 6 decimales.",
+        "spread": "Margen (%)",
+        "spreadHelp": "Entre 0 y 10, hasta 2 decimales. Se propone el margen por defecto de los parámetros.",
+        "note": "Nota (opcional)",
+        "submit": "Cargar tasa",
+        "submitting": "Guardando..."
+      },
+      "validation": {
+        "required": "Este campo es obligatorio.",
+        "range": "Debe estar entre {min} y {max}.",
+        "decimals": "Admite como máximo {decimals} decimales.",
+        "tooLong": "La nota admite como máximo 500 caracteres."
+      },
+      "largeChange": {
+        "title": "Cambio de tasa grande",
+        "message": "La tasa efectiva cambia más de lo habitual respecto a la anterior. Confirma que el valor es correcto antes de guardarlo.",
+        "confirm": "Confirmar y guardar",
+        "detail": "Tasa efectiva anterior: {previous}. Nueva: {next} ({change} %)."
+      },
+      "saved": "Tasa guardada",
+      "errors": {
+        "forbidden": "No tienes permiso para cargar la tasa.",
+        "invalidRate": "La tasa media debe estar entre 0.5 y 1.5 con hasta 6 decimales.",
+        "invalidSpread": "El margen debe estar entre 0 y 10 con hasta 2 decimales.",
+        "invalidSource": "El origen de la tasa no es válido.",
+        "noteTooLong": "La nota admite como máximo 500 caracteres.",
+        "largeChange": "El cambio de tasa requiere confirmación.",
+        "appendOnly": "Las tasas registradas no se pueden modificar."
+      }
+    }
   },
   "cart": {
     "clearAll": {
@@ -1871,7 +2093,7 @@
     }
   },
   "zelleHistory": {
-    "title": "Historial de Pagos Zelle",
+    "title": "Historial de Pagos",
     "date": "Fecha",
     "userName": "Nombre de Usuario",
     "email": "Correo Electrónico",
@@ -2117,5 +2339,16 @@
       "ofac": "Los envíos a Cuba están sujetos a regulaciones de EE. UU. (OFAC); el remitente es responsable de cumplir los límites aplicables.",
       "seeTerms": "Ver Términos de Servicio"
     }
+  },
+  "cookieConsent": {
+    "title": "Privacidad y analítica",
+    "description": "Usamos almacenamiento local estrictamente necesario para que el sitio funcione (por ejemplo, tu sesión). Solo si lo aceptas, registraremos las páginas que visitas con fines estadísticos: página, origen, navegador, un identificador de sesión y, si iniciaste sesión, tu identificador de usuario.",
+    "accept": "Aceptar analítica",
+    "reject": "Rechazar",
+    "privacyLink": "Política de Privacidad",
+    "statusOn": "Estado actual: analítica activada.",
+    "statusOff": "Estado actual: analítica desactivada.",
+    "gpcNote": "Detectamos la señal Global Privacy Control de tu navegador y la respetamos: la analítica permanece desactivada. Puedes activarla aquí de forma expresa.",
+    "preferencesLink": "Preferencias de cookies"
   }
 }

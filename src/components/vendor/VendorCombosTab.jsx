@@ -12,6 +12,7 @@ import { createCombo, updateCombo as updateComboDB, deleteCombo, setComboActiveS
 import { checkComboStockIssues, computeComboPricing } from '@/lib/comboUtils';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { logActivity } from '@/lib/activityLogger';
+import { hasAdminComboFields } from '@/lib/adminCatalogColumns';
 
 /**
  * Vendor Combos Tab Component
@@ -118,6 +119,14 @@ const VendorCombosTab = ({
   };
 
   const openEditComboForm = (combo) => {
+    // Rows from the public catalog carry no cost fields: reload the admin data instead of
+    // seeding a form that would overwrite them with defaults.
+    if (!hasAdminComboFields(combo)) {
+      toast({ title: t('vendor.adminDataPending'), variant: 'destructive' });
+      refreshCombos?.(true);
+      return;
+    }
+
     const productQuantities = {};
     const productIds = [];
 

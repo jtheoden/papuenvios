@@ -15,7 +15,7 @@ export const loadActors = async (admin) => {
   );
   const byEmail = Object.fromEntries(rows.map((r) => [r.email, r.id]));
   if (!byEmail[CUSTOMER_EMAIL] || !byEmail[ADMIN_EMAIL]) {
-    throw new Error('Local stack is not seeded. Run: src/tests/e2e/stack/e2e-stack.sh start (see README.md)');
+    throw new Error('Scratch DB is not seeded. Run: npm run test:db:bootstrap (see README.md)');
   }
   const base = await admin.query(
     `SELECT category_id, base_currency_id FROM public.products LIMIT 1`

@@ -331,7 +331,7 @@ const ZellePaymentHistoryTab = () => {
       {/* Header with title and action buttons */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h2 className="text-2xl font-bold gradient-text">
-          {t('zelleHistory.title') || 'Zelle Payment History'}
+          {t('zelleHistory.title') || 'Payment History'}
         </h2>
         <button
           onClick={() => setShowFilters(!showFilters)}

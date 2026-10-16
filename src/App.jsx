@@ -21,6 +21,7 @@ import BlogPage from '@/components/BlogPage';
 import PrivacyPage from '@/components/PrivacyPage';
 import TermsPage from '@/components/TermsPage';
 import Footer from '@/components/Footer';
+import ConsentBanner from '@/components/ConsentBanner';
 
 // PERF-01: admin-only areas are code-split out of the main bundle — they're never
 // touched by the public/customer golden path (home, products, cart, remittances).
@@ -288,6 +289,7 @@ function App() {
                   )}
                 </AnimatePresence>
 
+                <ConsentBanner suppressed={!shouldShowFooterNotice(currentPage)} onNavigate={handleNavigate} />
                 <Toaster />
               </div>
                 </LegalAcceptanceProvider>

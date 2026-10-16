@@ -4,7 +4,7 @@
  * set_stock_policy / reset_stock_policy (super_admin). Local Postgres only.
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { isDbReachable, connectAdmin, connectAs, connectAnon, fireTogether, endAll } from './db';
+import { dbSuiteSkipReason, connectAdmin, connectAs, connectAnon, fireTogether, endAll } from './db';
 import {
   loadActors,
   createTracker,
@@ -16,8 +16,8 @@ import {
   restoreStockPolicyRows
 } from './fixtures';
 
-const reachable = await isDbReachable();
-const describeDb = reachable ? describe : describe.skip;
+const skipReason = await dbSuiteSkipReason({ functions: ['reserve_order_inventory', 'expire_stale_order_reservations', 'set_stock_policy', 'reset_stock_policy', 'get_stock_policy'], tables: ['orders', 'inventory', 'system_config'] });
+const describeDb = skipReason ? describe.skip : describe;
 
 const KEYS = ['stock_unpaid_expiry_hours', 'stock_proof_expiry_hours', 'stock_max_open_reservations'];
 const reserveSql = 'public.reserve_order_inventory($1::uuid)';
