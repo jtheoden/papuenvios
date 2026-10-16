@@ -1222,11 +1222,11 @@
         },
         "fx_warn_hours": {
           "label": "Stale rate warning",
-          "help": "Rate age from which the amber warning is shown. Must be lower than the block threshold."
+          "help": "Hours since the effective date (day the rate was saved in Financial Settings, counted from 00:00 UTC) from which the amber warning is shown. Re-saving the rate today refreshes it; reactivating an old rate does not. Must be lower than the block threshold."
         },
         "fx_block_hours": {
           "label": "Stale rate block",
-          "help": "Rate age from which Bizum stops being offered. Must be higher than the warning threshold."
+          "help": "Hours since the effective date (day the rate was saved in Financial Settings, counted from 00:00 UTC) from which Bizum stops being offered. Re-saving the rate today refreshes it; reactivating an old rate does not. Must be higher than the warning threshold."
         },
         "fx_max_change_pct": {
           "label": "Largest change without confirmation",

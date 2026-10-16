@@ -18,7 +18,8 @@
 --                        at once; previously each loaded rate carried its own spread)
 --       effective_rate = round(rate * (1 + spread_pct / 100), 6)       (same formula as the old column)
 --       source         = 'exchange_rates' (constant), created_by = NULL (the table keeps no author),
---       created_at     = coalesce(updated_at, created_at) of the row (the age basis, see below).
+--       created_at     = the effective stamp of the row: its effective_date at 00:00 UTC, capped at now()
+--                        (the age basis, see below).
 --   * _current_payment_fx() is NOT redefined on purpose: it is a thin filter over _payment_fx_latest()
 --     (zero rows unless state is ok / warn) and inherits the new source. S5a (_seal_bizum_payment and the
 --     sealing trigger) keep calling it unchanged.
@@ -33,7 +34,7 @@
 --   Candidates: from = currency 'USD', to = currency 'EUR' (resolved by code), is_active IS TRUE, rate > 0,
 --   effective_date <= CURRENT_DATE + 1 (one day of tolerance: the browser stamps the UTC date, so a client
 --   ahead of the server clock must not lock Bizum out; a date further in the future is ignored).
---   Order: effective_date DESC, then coalesce(updated_at, created_at) DESC, then id DESC.
+--   Order: effective_date DESC, then coalesce(updated_at, created_at) DESC (tie-break only), then id DESC.
 --   There is NO inverse fallback (1 / EUR->USD), no other pair, no official_currency_rates and no hardcoded
 --   default: without a valid direct pair the function returns state 'none' and _current_payment_fx() returns
 --   ZERO rows, so create_bizum_quote fails with payment_fx_unavailable.
@@ -41,16 +42,22 @@
 --     * rate outside the sanity band 0.5 .. 1.5 (same band set_payment_fx_rate used) => blocked, so a typo
 --       such as 92 instead of 0.92 can never be quoted. The newest valid-looking row wins even when it is
 --       wrong; it does NOT silently fall back to an older, possibly stale, row.
---     * no timestamp at all, or a timestamp in the future => blocked.
 --     * age >= bizum_settings.fx_block_hours => blocked; age >= fx_warn_hours => warn; otherwise ok.
---   Age is measured on coalesce(updated_at, created_at). Financial Settings edits the row IN PLACE and a
---   BEFORE UPDATE trigger must stamp updated_at for an edit to refresh the age. The local harness clone has
---   trigger_update_exchange_rates_updated_at, but NO migration of this repository creates a trigger by that
---   name, so it is an OPERATIONAL PRECONDITION to verify on the hosted project before relying on it:
---     SELECT tgname FROM pg_trigger WHERE tgrelid = 'public.exchange_rates'::regclass AND NOT tgisinternal;
---   Without it, editing the rate does not refresh its age and Bizum blocks fx_block_hours (96 h default)
---   after the row was CREATED.
---   "Age" means last touch, not "the rate is up to date": any UPDATE (even toggling is_active) restarts it.
+--   Age basis = the EFFECTIVE DATE of the rate, not the last time the row was touched:
+--       stamped_at = LEAST(effective_date at 00:00 UTC, now())
+--       age        = now() - stamped_at
+--     * Reactivating or otherwise touching an old row (toggling is_active, any UPDATE, a trigger-stamped
+--       updated_at) does NOT make it look fresh: a rate dated 10 days ago stays blocked.
+--     * There is no dependency on any updated_at trigger on exchange_rates.
+--     * A date up to one day ahead (client clock/timezone ahead of the server) is capped at now(): age 0.
+--   Granularity is DAILY: the age of a rate dated D is between 24*N and 24*N+24 hours (N = whole days since
+--   D), so thresholds act at day boundaries, never at the hour.
+--   Tradeoffs, accepted on purpose:
+--     * Saving the same value again today counts as a current confirmation: Financial Settings stamps
+--       effective_date = today on every save (saveExchangeRate / updateExchangeRatePair), which is the
+--       admin's act of confirming the rate.
+--     * A direct SQL edit that does not change effective_date does NOT refresh the age, even if it changes
+--       the rate. Whoever edits by SQL must also set effective_date.
 --
 -- OPERATIONAL PRECONDITION (production): there is today NO active USD -> EUR row in exchange_rates (only an
 -- inactive 0.92 from Oct 2025). Bizum fails closed (payment_fx_unavailable) until an admin loads an ACTIVE
@@ -273,8 +280,6 @@ BEGIN
            -- a typo (92 instead of 0.92) must never be quoted
            WHEN r.rate < 0.5 OR r.rate > 1.5 THEN 'blocked'
            WHEN r.stamped_at IS NULL THEN 'blocked'
-           -- a stamp in the future is not trustworthy
-           WHEN extract(epoch FROM (now() - r.stamped_at)) < 0 THEN 'blocked'
            WHEN extract(epoch FROM (now() - r.stamped_at)) / 3600 >= s.fx_block_hours THEN 'blocked'
            WHEN extract(epoch FROM (now() - r.stamped_at)) / 3600 >= s.fx_warn_hours THEN 'warn'
            ELSE 'ok'
@@ -283,7 +288,8 @@ BEGIN
          s.fx_block_hours
     FROM public.bizum_settings s
     LEFT JOIN LATERAL (
-      SELECT e.id, e.rate, COALESCE(e.updated_at, e.created_at) AS stamped_at
+      SELECT e.id, e.rate,
+             LEAST((e.effective_date::timestamp AT TIME ZONE 'UTC'), now()) AS stamped_at
         FROM public.exchange_rates e
         JOIN public.currencies cf ON cf.id = e.from_currency_id AND cf.code = 'USD'
         JOIN public.currencies ct ON ct.id = e.to_currency_id AND ct.code = 'EUR'

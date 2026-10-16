@@ -1231,11 +1231,11 @@
         },
         "fx_warn_hours": {
           "label": "Aviso de tasa antigua",
-          "help": "Antigüedad de la tasa desde la cual se muestra el aviso ámbar. Debe ser menor que el bloqueo."
+          "help": "Horas desde la fecha efectiva (día en que se guardó la tasa en Ajustes Financieros, contado desde las 00:00 UTC) a partir de las cuales se muestra el aviso ámbar. Volver a guardar la tasa hoy la renueva; reactivar una tasa antigua no. Debe ser menor que el bloqueo."
         },
         "fx_block_hours": {
           "label": "Bloqueo por tasa antigua",
-          "help": "Antigüedad de la tasa desde la cual Bizum deja de ofrecerse. Debe ser mayor que el aviso."
+          "help": "Horas desde la fecha efectiva (día en que se guardó la tasa en Ajustes Financieros, contado desde las 00:00 UTC) a partir de las cuales Bizum deja de ofrecerse. Volver a guardar la tasa hoy la renueva; reactivar una tasa antigua no. Debe ser mayor que el aviso."
         },
         "fx_max_change_pct": {
           "label": "Variación máxima sin confirmar",

@@ -164,14 +164,17 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
       `SELECT * FROM public.exchange_rates WHERE from_currency_id = $1 AND to_currency_id = $2`,
       [ids.usd, ids.eur]
     )).rows;
-  /** Moves updated_at of the newest USD->EUR row back in time (the trigger is skipped on purpose). */
-  const backdateCentral = (hours) =>
-    ownerBypass(
-      `UPDATE public.exchange_rates SET updated_at = now() - make_interval(secs => $1::numeric * 3600)
+  /** Ages the newest USD->EUR row by moving its effective_date back `days` days (age basis = effective date). */
+  const backdateCentral = (days) =>
+    admin.query(
+      `UPDATE public.exchange_rates SET effective_date = CURRENT_DATE - $1::int
         WHERE id = (SELECT id FROM public.exchange_rates WHERE from_currency_id = $2 AND to_currency_id = $3
                      ORDER BY effective_date DESC, id DESC LIMIT 1)`,
-      [hours, ids.usd, ids.eur]
+      [days, ids.usd, ids.eur]
     );
+  /** Touches updated_at / created_at WITHOUT changing the effective date (what a stray UPDATE would do). */
+  const touchCentral = (id) =>
+    admin.query(`UPDATE public.exchange_rates SET updated_at = now(), created_at = now() WHERE id = $1`, [id]);
   const currentFxRows = async () =>
     (await admin.query(`SELECT * FROM public._current_payment_fx()`)).rows;
   const fxRowCount = async () =>
@@ -779,7 +782,8 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
       expect(Number(s.effective_rate)).toBe(0.94395);
       expect(s.source).toBe('exchange_rates');
       expect(s.created_by ?? null).toBeNull();
-      expect(s.age_hours).toBeLessThan(0.1);
+      expect(s.age_hours).toBeGreaterThanOrEqual(0); // hours since 00:00 UTC of the effective date
+      expect(s.age_hours).toBeLessThan(24);
       expect(s.state).toBe('ok');
     });
 
@@ -804,49 +808,84 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
       expect(Number(now.effective_rate)).toBe(0.96425);
     });
 
+    // Age is measured from the EFFECTIVE DATE (midnight UTC of that day), so it moves in day steps:
+    // a row dated N days ago is between 24*N and 24*N+24 hours old.
     it.each([
-      [0, 'ok'], [23.9, 'ok'], [24.1, 'warn'], [95.9, 'warn'], [96.1, 'blocked'], [500, 'blocked']
-    ])('default thresholds, measured on exchange_rates.updated_at: age %s h => %s', async (age, state) => {
+      [0, 'ok'], [1, 'warn'], [3, 'warn'], [4, 'blocked'], [20, 'blocked']
+    ])('default thresholds, measured on exchange_rates.effective_date: dated %s day(s) ago => %s', async (days, state) => {
       const a = await asAdmin();
       await setCentralRate(a, 0.92);
-      await backdateCentral(age);
+      await backdateCentral(days);
       const s = await fxStatus(a);
       expect(s.state).toBe(state);
-      expect(s.age_hours).toBeGreaterThanOrEqual(age);
+      expect(s.age_hours).toBeGreaterThanOrEqual(days * 24);
+      expect(s.age_hours).toBeLessThan(days * 24 + 24);
       const usable = await currentFxRows();
       expect(usable).toHaveLength(state === 'blocked' ? 0 : 1);
       if (usable[0]) expect(usable[0].state).toBe(state);
     });
 
     it.each([
-      [1.9, 'ok'], [2.1, 'warn'], [4.9, 'warn'], [5.1, 'blocked'], [30, 'blocked']
-    ])('modified thresholds (warn 2 h, block 5 h): age %s h => %s', async (age, state) => {
+      [0, 'ok'], [1, 'ok'], [2, 'warn'], [3, 'warn'], [4, 'blocked'], [30, 'blocked']
+    ])('exact day boundaries with warn 48 h / block 96 h: dated %s day(s) ago => %s', async (days, state) => {
       const a = await asAdmin();
-      await patch(a, { fx_warn_hours: 2, fx_block_hours: 5 });
+      await patch(a, { fx_warn_hours: 48, fx_block_hours: 96 });
       await setCentralRate(a, 0.92);
-      await backdateCentral(age);
+      await backdateCentral(days);
       const s = await fxStatus(a);
-      expect(s).toMatchObject({ state, fx_warn_hours: 2, fx_block_hours: 5 });
+      expect(s).toMatchObject({ state, fx_warn_hours: 48, fx_block_hours: 96 });
       expect(await currentFxRows()).toHaveLength(state === 'blocked' ? 0 : 1);
     });
 
-    it('an edit refreshes the age: the update trigger stamps updated_at', async () => {
+    it('re-saving today (effective_date = today) refreshes the age', async () => {
       const a = await asAdmin();
       const row = await setCentralRate(a, 0.92);
-      await backdateCentral(200);
+      await backdateCentral(10);
       expect((await fxStatus(a)).state).toBe('blocked');
-      await a.query(`UPDATE public.exchange_rates SET rate = 0.921 WHERE id = $1`, [row.id]);
+      await a.query(`UPDATE public.exchange_rates SET rate = 0.921, effective_date = CURRENT_DATE WHERE id = $1`, [row.id]);
       expect((await fxStatus(a)).state).toBe('ok');
     });
 
-    it('a row stamped in the future (negative age) is blocked, not trusted', async () => {
+    it('touching an old row does NOT refresh it: updated_at / created_at / is_active are not the age basis', async () => {
       const a = await asAdmin();
-      await setCentralRate(a, 0.92);
-      await backdateCentral(-5);
-      const s = await fxStatus(a);
-      expect(s.state).toBe('blocked');
-      expect(s.age_hours).toBeLessThan(0);
+      const row = await setCentralRate(a, 0.92);
+      await backdateCentral(10);
+      await touchCentral(row.id);
+      expect((await fxStatus(a)).state).toBe('blocked');
+      await a.query(`UPDATE public.exchange_rates SET rate = 0.921 WHERE id = $1`, [row.id]); // trigger stamps updated_at
+      expect((await fxStatus(a)).state).toBe('blocked');
       expect(await currentFxRows()).toHaveLength(0);
+    });
+
+    it('reactivating an old inactive row (toggle is_active) leaves it blocked or warn, never ok', async () => {
+      const a = await asAdmin();
+      const oldRow = await setCentralRate(a, 0.92, { daysAgo: 10, active: false });
+      expect((await fxStatus(a)).state).toBe('none');
+      await a.query(`UPDATE public.exchange_rates SET is_active = true WHERE id = $1`, [oldRow.id]);
+      expect((await fxStatus(a)).state).toBe('blocked');
+      expect(await currentFxRows()).toHaveLength(0);
+      await backdateCentral(2);
+      expect((await fxStatus(a)).state).toBe('warn');
+      await a.query(`UPDATE public.exchange_rates SET is_active = false WHERE id = $1`, [oldRow.id]);
+      await a.query(`UPDATE public.exchange_rates SET is_active = true WHERE id = $1`, [oldRow.id]);
+      expect((await fxStatus(a)).state).toBe('warn');
+    });
+
+    it('does not depend on an updated_at trigger: a row without any timestamp still ages by its effective date', async () => {
+      const a = await asAdmin();
+      const row = await setCentralRate(a, 0.92);
+      await ownerBypass(`UPDATE public.exchange_rates SET updated_at = NULL, created_at = NULL WHERE id = $1`, [row.id]);
+      expect((await fxStatus(a)).state).toBe('ok');
+      await backdateCentral(10);
+      expect((await fxStatus(a)).state).toBe('blocked');
+    });
+
+    it('a row dated tomorrow is treated as "now": age 0, ok, never negative', async () => {
+      const a = await asAdmin();
+      await setCentralRate(a, 0.92, { daysAgo: -1 });
+      const s = await fxStatus(a);
+      expect(s.state).toBe('ok');
+      expect(Number(s.age_hours)).toBe(0);
     });
 
     it('a row dated more than one day ahead is ignored (and never masks a valid older one)', async () => {
@@ -862,34 +901,6 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
       const a = await asAdmin();
       const row = await setCentralRate(a, 0.92, { daysAgo: -1 });
       expect((await currentFxRows())[0].id).toBe(row.id);
-    });
-
-    it('a row without any timestamp is blocked (no age, no trust)', async () => {
-      const a = await asAdmin();
-      const row = await setCentralRate(a, 0.92);
-      await ownerBypass(`UPDATE public.exchange_rates SET updated_at = NULL, created_at = NULL WHERE id = $1`, [row.id]);
-      expect((await fxStatus(a)).state).toBe('blocked');
-      expect(await currentFxRows()).toHaveLength(0);
-    });
-
-    it('thresholds are exact: 24 h => warn, 24 h minus 1 microsecond => ok; 96 h => blocked, 96 h minus 1 microsecond => warn', async () => {
-      const stateAt = async (interval) => {
-        await admin.query('BEGIN');
-        try {
-          await admin.query(
-            `INSERT INTO public.exchange_rates (from_currency_id, to_currency_id, rate, is_active, effective_date, updated_at)
-             VALUES ($1, $2, 0.92, true, CURRENT_DATE, now() - $3::interval)`,
-            [ids.usd, ids.eur, interval]
-          );
-          return (await admin.query(`SELECT state FROM public._payment_fx_latest()`)).rows[0].state;
-        } finally {
-          await admin.query('ROLLBACK');
-        }
-      };
-      expect(await stateAt('24 hours')).toBe('warn');
-      expect(await stateAt('23 hours 59 minutes 59.999999 seconds')).toBe('ok');
-      expect(await stateAt('96 hours')).toBe('blocked');
-      expect(await stateAt('95 hours 59 minutes 59.999999 seconds')).toBe('warn');
     });
 
     it('an inactive pair is ignored: no usable rate', async () => {

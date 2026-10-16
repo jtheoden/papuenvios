@@ -526,10 +526,12 @@ describeDb('Bizum S5a: payment quotes and order sealing', () => {
       const row = await setRate(0.92);
       await setBizum(true);
       await seedAccount();
-      await ownerBypass(`UPDATE public.exchange_rates SET updated_at = now() - interval '97 hours' WHERE id = $1`, [row.id]);
+      await ownerBypass(`UPDATE public.exchange_rates SET effective_date = CURRENT_DATE - 5 WHERE id = $1`, [row.id]);
       const customer = await asCustomer();
       await expectToken(quote(customer), 'payment_fx_unavailable');
-      await setRate(0.92); // an admin saves it again: the update trigger stamps updated_at
+      await ownerBypass(`UPDATE public.exchange_rates SET updated_at = now() WHERE id = $1`, [row.id]);
+      await expectToken(quote(customer), 'payment_fx_unavailable'); // touching the row does not make it fresh
+      await setRate(0.92); // an admin saves it again today: effective_date = today
       expect(Number((await quote(customer)).rate)).toBe(0.9338);
     });
 
