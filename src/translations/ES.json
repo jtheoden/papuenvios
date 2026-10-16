@@ -959,8 +959,6 @@
       "shippingInfoFixed": "✓ Tarifa fija: Se cobrará el mismo monto de envío en todos los pedidos",
       "shippingInfoUndetermined": "⚠ Por determinar: El costo de envío se mostrará como \"Por determinar\" y se calculará según la ubicación del destinatario",
       "shippingInfoCalculated": "⚠ Calculado: Envío gratis si el pedido supera el umbral, de lo contrario se determinará según ubicación",
-      "loadOfficialRates": "Cargar Tasas Oficiales",
-      "officialRatesReference": "Tasas Oficiales (Referencia)",
       "editCurrency": "Editar Moneda",
       "newCurrency": "Nueva Moneda",
       "baseCurrency": "Moneda Base",
@@ -990,7 +988,13 @@
       "currencyActivated": "Moneda activada",
       "currencyDeactivated": "Moneda desactivada",
       "activate": "Activar",
-      "deactivate": "Desactivar"
+      "deactivate": "Desactivar",
+      "rateOutOfBand": "La tasa USD a EUR debe estar entre {min} y {max}.",
+      "rateUpdatedAt": "Última actualización: {date}",
+      "rateChangeConfirmTitle": "Confirmar cambio grande de tasa",
+      "rateChangeConfirmMessage": "La tasa USD a EUR cambia de {previous} a {next} ({percent}%). Las cotizaciones de Bizum usan esta tasa; verifique que el nuevo valor sea correcto.",
+      "rateChangeConfirmAction": "Guardar de todos modos",
+      "pairNotAllowed": "Solo se pueden usar monedas activas en una tasa, salvo un EUR inactivo como destino de una tasa desde USD."
     },
     "zelle": {
       "title": "Cuentas Zelle",
@@ -1411,6 +1415,41 @@
         "noteTooLong": "La nota admite como máximo 500 caracteres.",
         "largeChange": "El cambio de tasa requiere confirmación.",
         "appendOnly": "Las tasas registradas no se pueden modificar."
+      }
+    },
+    "fxReference": {
+      "title": "Referencia externa (informativa)",
+      "check": "Consultar",
+      "refresh": "Actualizar",
+      "retry": "Reintentar",
+      "idle": "Aún no se consultó. Use \"Consultar\" para pedir el dato a la fuente externa.",
+      "loading": "Consultando la fuente externa...",
+      "source": "Fuente: {name} ({domain})",
+      "providerUpdated": "Actualizado por el proveedor: {local} (UTC: {utc})",
+      "providerDate": "Fecha del proveedor: {date}",
+      "providerUnknown": "El proveedor no informó cuándo actualizó esta tasa.",
+      "fetchedAt": "Consultado: {time} (hora local)",
+      "age": "El dato del proveedor tiene {hours} h de antigüedad",
+      "value": "Referencia: 1 USD = {rate} EUR (no es la tasa operativa)",
+      "use": "Usar como tasa",
+      "useHint": "Solo precarga el formulario de abajo; no se guarda nada.",
+      "staleTitle": "Dato antiguo",
+      "stale": "El dato del proveedor tiene {hours} h (límite {limit} h). No se puede precargar; consulte de nuevo más tarde.",
+      "staleUnknown": "El proveedor no indicó cuándo actualizó el dato, por lo que no se puede precargar.",
+      "refreshFailed": "No se pudo actualizar. Se muestra el resultado anterior.",
+      "missingCurrencies": "Cree las monedas USD y EUR antes de precargar la tasa.",
+      "error": {
+        "network": "No se pudo contactar a la fuente externa.",
+        "timeout": "La fuente externa no respondió a tiempo.",
+        "invalid_payload": "La fuente externa devolvió datos que no son confiables.",
+        "out_of_band": "La fuente externa devolvió una tasa fuera del rango esperado."
+      }
+    },
+    "payments": {
+      "tabs": {
+        "label": "Métodos de pago",
+        "zelle": "Zelle",
+        "bizum": "Bizum"
       }
     }
   },

@@ -536,43 +536,6 @@ export const convertCurrency = async (amount, fromCurrencyCode, toCurrencyCode) 
 };
 
 /**
- * Fetch official exchange rates from exchangerate-api.com
- * Returns rates relative to USD (as fallback for missing defined rates)
- *
- * @returns {Promise<Object>} Map of {currencyCode: rateToUSD}
- * @throws {AppError} NETWORK_ERROR if API call fails
- */
-export const fetchOfficialRates = async () => {
-  try {
-    const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch exchange rates from API');
-    }
-
-    const data = await response.json();
-
-    // Return rates for common currencies
-    const rates = {
-      EUR: data.rates.EUR || 1,
-      GBP: data.rates.GBP || 1,
-      CAD: data.rates.CAD || 1,
-      MXN: data.rates.MXN || 1,
-      USD: 1,
-      // Note: CUP might not be in API, will need manual input
-    };
-
-    return rates;
-  } catch (error) {
-    const appError = handleError(error, ERROR_CODES.NETWORK_ERROR, {
-      operation: 'fetchOfficialRates'
-    });
-    logError(appError, { operation: 'fetchOfficialRates' });
-    throw appError;
-  }
-};
-
-/**
  * Get all exchange rates (ADMIN VIEW)
  * @returns {Promise<Array>} Array of exchange rate objects with related currencies
  * @throws {AppError} DB_ERROR if query fails
@@ -585,6 +548,7 @@ export const getAllExchangeRates = async () => {
         id,
         rate,
         effective_date,
+        updated_at,
         is_active,
         from_currency_id,
         to_currency_id,
@@ -729,31 +693,38 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
     const effDate = effectiveDate || new Date().toISOString().split('T')[0];
 
     // Update direct rate (from→to)
-    const { error: directError } = await supabase
+    const { data: directRows, error: directError } = await supabase
       .from('exchange_rates')
       .update({ rate: rate, effective_date: effDate })
       .eq('from_currency_id', fromCurrencyId)
       .eq('to_currency_id', toCurrencyId)
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .select('id');
 
     if (directError) {
       throw parseSupabaseError(directError);
     }
 
+    // The pair may have been deactivated or deleted since the admin loaded it: never report a no-op as saved.
+    if (!directRows || directRows.length === 0) {
+      throw createNotFoundError('Exchange rate pair');
+    }
+
     // Update inverse rate (to→from)
-    const { error: inverseError } = await supabase
+    const { data: inverseRows, error: inverseError } = await supabase
       .from('exchange_rates')
       .update({ rate: inverseRate, effective_date: effDate })
       .eq('from_currency_id', toCurrencyId)
       .eq('to_currency_id', fromCurrencyId)
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .select('id');
 
     if (inverseError) {
       throw parseSupabaseError(inverseError);
     }
 
     notifyRatesChanged();
-    return { updatedCount: 2 };
+    return { updatedCount: directRows.length + (inverseRows?.length ?? 0) };
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, {
