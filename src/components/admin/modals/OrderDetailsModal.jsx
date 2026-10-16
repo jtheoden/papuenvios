@@ -6,6 +6,7 @@ import { generateProofSignedUrl } from '@/lib/remittanceService';
 import { parseRecipientInfo } from '@/lib/recipientInfo';
 import { useOrderItemLines } from '@/hooks/useOrderItemLines';
 import OrderComboComponents from '@/components/OrderComboComponents';
+import { formatQuantityWithUnit } from '@/lib/productUnits';
 
 /**
  * Order Details Modal Component
@@ -256,10 +257,10 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
                       <tr key={index} role="row">
                         <td className="px-4 py-3 text-sm text-gray-900" role="cell">
                           {language === 'es' ? (item.item_name_es || item.item_name_en) : (item.item_name_en || item.item_name_es)}
-                          <OrderComboComponents line={line} lookupDone={comboLookupDone} t={t} />
+                          <OrderComboComponents line={line} lookupDone={comboLookupDone} t={t} language={language} />
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900" role="cell">
-                          {item.quantity}
+                          {formatQuantityWithUnit(item.quantity, line.unit, language)}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900" role="cell">
                           {formatCurrency(item.unit_price, normalizedOrder.currencies?.code)}

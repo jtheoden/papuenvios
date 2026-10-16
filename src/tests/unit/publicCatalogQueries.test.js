@@ -48,7 +48,7 @@ import { PUBLIC_READABLE_COLUMNS } from '@/lib/publicCatalogColumns';
 
 const PUBLIC_PRODUCT_LIST = [
   'id', 'sku', 'name_es', 'name_en', 'description_es', 'description_en', 'category_id',
-  'base_currency_id', 'final_price', 'weight', 'dimensions', 'image_url', 'requires_expiry',
+  'base_currency_id', 'final_price', 'weight', 'unit', 'dimensions', 'image_url', 'requires_expiry',
   'is_active', 'is_featured', 'tags', 'created_at', 'updated_at'
 ];
 const PUBLIC_COMBO_LIST = [

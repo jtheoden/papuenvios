@@ -9,6 +9,7 @@ import { withCatalogInvalidation } from './catalogCache';
 import { resolveImageUrl } from './imageStorage';
 import { generateSlug, getCurrentTimestamp } from './queryHelpers';
 import { DEFAULTS } from './constants';
+import { normalizeUnitCode } from './productUnits';
 import { validateMarginPercent, MARGIN_MIN, MARGIN_MAX } from './marginResolver';
 import {
   AppError,
@@ -324,6 +325,7 @@ export const createProduct = withCatalogInvalidation(async (productData) => {
         profit_margin: parseFloat(productData.profitMargin || DEFAULTS.PRODUCT_PROFIT_MARGIN),
         min_stock_alert: productData.min_stock_alert ? parseInt(productData.min_stock_alert) : DEFAULTS.MIN_STOCK_ALERT,
         image_url: imageUrl || null,
+        unit: normalizeUnitCode(productData.unit),
         is_active: true
       }])
       .select(PUBLIC_PRODUCT_COLUMNS)
@@ -394,6 +396,7 @@ export const updateProduct = withCatalogInvalidation(async (productId, productDa
       base_currency_id: productData.base_currency_id,
       profit_margin: parseFloat(productData.profitMargin || DEFAULTS.PRODUCT_PROFIT_MARGIN),
       min_stock_alert: productData.min_stock_alert !== undefined ? parseInt(productData.min_stock_alert) : DEFAULTS.MIN_STOCK_ALERT,
+      unit: normalizeUnitCode(productData.unit),
       updated_at: getCurrentTimestamp()
     };
 

@@ -11,7 +11,7 @@ const join = (columns) => columns.join(', ');
 // image_file is left out on purpose: byte-identical copy of the base64 image_url.
 export const PUBLIC_PRODUCT_COLUMNS = join([
   'id', 'sku', 'name_es', 'name_en', 'description_es', 'description_en',
-  'category_id', 'base_currency_id', 'final_price', 'weight', 'dimensions', 'image_url',
+  'category_id', 'base_currency_id', 'final_price', 'weight', 'unit', 'dimensions', 'image_url',
   'requires_expiry', 'is_active', 'is_featured', 'tags',
   'created_at', 'updated_at'
 ]);
@@ -50,7 +50,8 @@ const split = (list) => list.split(',').map((column) => column.trim());
 export const PUBLIC_READABLE_COLUMNS = {
   products: split(PUBLIC_PRODUCT_COLUMNS),
   combo_products: split(PUBLIC_COMBO_COLUMNS),
-  combo_items: ['combo_id', 'quantity'],
+  // product_id and created_at are read by the order views (orderComboService embeds combo_items).
+  combo_items: ['combo_id', 'product_id', 'quantity', 'created_at'],
   product_categories: split(PUBLIC_CATEGORY_COLUMNS),
   inventory: [...split(PUBLIC_INVENTORY_COLUMNS), 'is_active', 'created_at'],
   shipping_zones: split(PUBLIC_SHIPPING_COLUMNS)
