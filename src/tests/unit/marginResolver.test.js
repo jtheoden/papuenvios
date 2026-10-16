@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveMargin, validateMarginPercent } from '@/lib/marginResolver';
+import { resolveMargin, resolveMarginInput, validateMarginPercent } from '@/lib/marginResolver';
 
 describe('resolveMargin', () => {
   it('prefers the product margin over category and global', () => {
@@ -51,4 +51,20 @@ describe('validateMarginPercent', () => {
     expect(validateMarginPercent(undefined)).toBe(false);
     expect(validateMarginPercent('abc')).toBe(false);
   });
+});
+
+describe('resolveMarginInput', () => {
+  it.each([[0, 0], ['0', 0], ['0.0', 0], [12.5, 12.5], ['12.5', 12.5], [' 7 ', 7]])(
+    'respects the provided value %j as %j',
+    (input, expected) => {
+      expect(resolveMarginInput(input, 40)).toBe(expected);
+    }
+  );
+
+  it.each([[undefined], [null], [''], ['   '], [NaN], ['abc'], [Infinity], [{}]])(
+    'falls back for the not-provided value %j',
+    (input) => {
+      expect(resolveMarginInput(input, 35)).toBe(35);
+    }
+  );
 });

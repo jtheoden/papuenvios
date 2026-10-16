@@ -19,7 +19,7 @@ import { getTableColumns, getModalColumns } from './ProductTableConfig';
 import { logActivity } from '@/lib/activityLogger';
 import { hasAdminProductFields } from '@/lib/adminCatalogColumns';
 import { DEFAULTS } from '@/lib/constants';
-import { resolveMargin } from '@/lib/marginResolver';
+import { resolveMargin, resolveMarginInput } from '@/lib/marginResolver';
 import { getUnitOptions, isKnownUnit, normalizeUnitCode } from '@/lib/productUnits';
 
 /**
@@ -196,7 +196,7 @@ const VendorInventoryTab = ({
     });
   };
 
-  const defaultProfitMargin = financialSettings?.productProfit || DEFAULTS.PRODUCT_PROFIT_MARGIN;
+  const defaultProfitMargin = resolveMarginInput(financialSettings?.productProfit, DEFAULTS.PRODUCT_PROFIT_MARGIN);
 
   // Precedence: product's own margin > category margin > global default.
   // Only used to pre-fill the form; existing product prices are never recomputed.
@@ -391,7 +391,7 @@ const VendorInventoryTab = ({
         stock: parseInt(productForm.stock || 0, 10),
         min_stock_alert: parseInt(productForm.min_stock_alert || 10, 10),
         unit: normalizeUnitCode(productForm.unit),
-        profitMargin: parseFloat(productForm.profitMargin || 40),
+        profitMargin: resolveMarginInput(productForm.profitMargin, DEFAULTS.PRODUCT_PROFIT_MARGIN),
         category_id: productForm.category,
         base_currency_id: finalCurrencyId,
         image: productForm.image || '',
