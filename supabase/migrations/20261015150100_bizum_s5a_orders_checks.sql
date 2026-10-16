@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Bizum S5a (part 2): CHECK constraints on orders, NOT VALID + VALIDATE
 -- ============================================================================
--- Context: design_bizum_p2p_v2 section 3.1 (M5). PREPARED, NOT APPLIED to the hosted project.
+-- Context: design_bizum_p2p_v2 section 3.1 (M5). APPLIED to the hosted project (version 20261016183529, 2026-10-16).
 -- Split from 20261015150000 so the live-table constraint step can be reviewed and applied on its own.
 -- Requires 20261015150000_bizum_s5a_quotes_and_order_sealing.sql (the columns) first.
 --

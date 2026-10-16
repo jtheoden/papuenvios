@@ -890,11 +890,13 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
 
     it('a row dated more than one day ahead is ignored (and never masks a valid older one)', async () => {
       const a = await asAdmin();
-      await setCentralRate(a, 0.8, { daysAgo: -3 });
+      const far = await setCentralRate(a, 0.8, { daysAgo: -3 });
       expect((await fxStatus(a)).state).toBe('none');
-      const valid = await setCentralRate(a, 0.92, { daysAgo: 1 });
+      // At most one ACTIVE row per pair (exchange_rates_one_active_per_pair): the admin fixes the date in place,
+      // which is what updateExchangeRatePair does.
+      await a.query(`UPDATE public.exchange_rates SET rate = 0.92, effective_date = CURRENT_DATE - 1 WHERE id = $1`, [far.id]);
       const [row] = await currentFxRows();
-      expect(row.id).toBe(valid.id);
+      expect(row.id).toBe(far.id);
     });
 
     it("tomorrow's date is accepted: a client in a timezone ahead of the server may stamp it", async () => {
@@ -924,7 +926,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
       const valid = await setCentralRate(a, 0.92, { daysAgo: 1 });
       const checks = (await admin.query(
         `SELECT 1 FROM pg_constraint WHERE conrelid = 'public.exchange_rates'::regclass AND contype = 'c'
-            AND pg_get_constraintdef(oid) ILIKE '%rate > 0%'`
+            AND pg_get_constraintdef(oid) ~* 'rate > \\(?0'`
       )).rows;
       for (const bad of [0, -0.92]) {
         let accepted = true;
@@ -941,16 +943,21 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
       }
     });
 
-    it('picks the most recent effective_date among active rows, then the latest updated_at, then the id', async () => {
+    it('a second ACTIVE row for the pair is rejected, so the choice is never ambiguous; inactive history is ignored', async () => {
       const a = await asAdmin();
-      const older = await setCentralRate(a, 0.9, { daysAgo: 2 });
-      const newer = await setCentralRate(a, 0.95, { daysAgo: 0 });
-      await a.query(`UPDATE public.exchange_rates SET rate = 0.901 WHERE id = $1`, [older.id]); // touched later, still older by date
-      const [row] = await currentFxRows();
-      expect(row.id).toBe(newer.id);
-      expect(Number(row.mid_rate)).toBe(0.95);
+      const only = await setCentralRate(a, 0.95, { daysAgo: 0 });
+      await setCentralRate(a, 0.9, { daysAgo: 2, active: false });
+      await setCentralRate(a, 0.91, { daysAgo: 3, active: false });
+      let duplicate;
+      try {
+        await setCentralRate(a, 0.9, { daysAgo: 1 });
+      } catch (error) {
+        duplicate = error;
+      }
+      expect(duplicate?.code).toBe('23505');
+      expect(duplicate?.constraint).toBe('exchange_rates_one_active_per_pair');
       // repeated reads are stable (deterministic choice)
-      for (let i = 0; i < 3; i++) expect((await currentFxRows())[0].id).toBe(newer.id);
+      for (let i = 0; i < 3; i++) expect((await currentFxRows())[0].id).toBe(only.id);
     });
 
     it('only the DIRECT USD->EUR pair counts: the inverse EUR->USD and other pairs give no rate', async () => {

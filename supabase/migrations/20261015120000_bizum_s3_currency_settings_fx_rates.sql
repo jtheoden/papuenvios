@@ -1,8 +1,8 @@
 -- ============================================================================
 -- Bizum S3: payment_methods.currency + bizum_settings + payment_fx_rates (+ RPCs)
 -- ============================================================================
--- Context: design_bizum_p2p_v2 sections 2.1, 3.1 (M1, M2), 3.2, 5. PREPARED, NOT APPLIED to the
--- hosted project: nothing here is wired to the live Zelle flow and Bizum stays available = false.
+-- Context: design_bizum_p2p_v2 sections 2.1, 3.1 (M1, M2), 3.2, 5. APPLIED to the hosted project
+-- (version 20261015210533, 2026-10-15): nothing here is wired to the live Zelle flow and Bizum stays available = false.
 --
 -- What it adds
 --   M1  payment_methods.currency ('USD' | 'EUR'); bizum = 'EUR', zelle keeps 'USD'.

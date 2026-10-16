@@ -2,7 +2,7 @@
 -- Bizum S5a: payment quotes (pay-first) + server-side sealing of Bizum ORDERS
 -- ============================================================================
 -- Context: design_bizum_p2p_v2 sections 2.3 (R-20..R-28), 3.1 (M4, M5, M6 partial, M7), 3.3, 3.13.
--- PREPARED, NOT APPLIED to the hosted project. Bizum stays available = false, so nothing here is
+-- APPLIED to the hosted project (version 20261016183509, 2026-10-16). Bizum stays available = false, so nothing here is
 -- reachable by a customer until slice S16 flips the flag.
 --
 -- DEPLOYMENT ORDER (design 3.14)
