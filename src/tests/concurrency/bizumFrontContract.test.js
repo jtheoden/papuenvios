@@ -112,7 +112,7 @@ describeDb('Bizum front contract against the real SQL', () => {
     expect(['none', 'ok', 'warn', 'blocked']).toContain(rows[0].s.state);
   });
 
-  it('the retired set_payment_fx_rate answers with a token the front does not offer a form for, and writes nothing', async () => {
+  it('the retired set_payment_fx_rate answers with a token the front maps to a managed-centrally message, and writes nothing', async () => {
     const before = await owner.query('SELECT count(*)::int AS n FROM public.payment_fx_rates');
     const raw = await failure(
       client.query(
@@ -122,7 +122,9 @@ describeDb('Bizum front contract against the real SQL', () => {
       )
     );
     expect(raw.message).toBe('payment_fx_managed_centrally');
-    expect(toBizumError(raw).token).toBe('unknown');
+    const mapped = toBizumError(raw);
+    expect(mapped.token).toBe('payment_fx_managed_centrally');
+    expect(mapped.i18nKey).toMatch(/managedCentrally$/);
     const after = await owner.query('SELECT count(*)::int AS n FROM public.payment_fx_rates');
     expect(after.rows[0].n).toBe(before.rows[0].n);
   });
