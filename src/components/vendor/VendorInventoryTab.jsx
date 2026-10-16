@@ -17,6 +17,7 @@ import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import BulkDeleteBar from '@/components/tables/BulkDeleteBar';
 import { getTableColumns, getModalColumns } from './ProductTableConfig';
 import { logActivity } from '@/lib/activityLogger';
+import { hasAdminProductFields } from '@/lib/adminCatalogColumns';
 import { DEFAULTS } from '@/lib/constants';
 import { resolveMargin } from '@/lib/marginResolver';
 
@@ -242,6 +243,14 @@ const VendorInventoryTab = ({
   };
 
   const openEditProductForm = (product) => {
+    // Rows from the public catalog carry no cost fields: reload the admin data instead of
+    // seeding a form that would overwrite them with defaults.
+    if (!hasAdminProductFields(product)) {
+      toast({ title: t('vendor.adminDataPending'), variant: 'destructive' });
+      onProductsRefresh(true);
+      return;
+    }
+
     // A product's own margin always wins; NULL falls back to category, then global
     const { value: margin, source: marginSource } = getEffectiveMargin(
       product.profit_margin,

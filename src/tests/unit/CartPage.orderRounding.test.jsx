@@ -210,10 +210,10 @@ describe('CartPage - order amounts are cent-exact', () => {
     createOrder.mockResolvedValue({ id: 'o1', order_number: 'ORD-1', payment_status: 'pending' });
     uploadPaymentProof.mockResolvedValue('https://files/proof.png');
     state.cart = [
-      // Legacy combo: 30.9 * 1.45 = 44.805 -> 44.81 (the catalog price)
-      { id: 'c1', name: 'Combo', products: [{}], baseTotalPrice: 30.9, profitMargin: 45, quantity: 2 },
-      // Legacy product: 0.3899 * 1.4 = 0.54586 -> 0.55, high quantity
-      { id: 'p1', name: 'Producto', base_price: 0.3899, quantity: 27 },
+      // Combo stored price 44.805 -> 44.81 (the catalog price)
+      { id: 'c1', name: 'Combo', products: [{}], finalPrice: 44.805, quantity: 2 },
+      // Product stored price 0.54586 -> 0.55, high quantity
+      { id: 'p1', name: 'Producto', final_price: 0.54586, base_currency_id: USD, quantity: 27 },
     ];
   });
 

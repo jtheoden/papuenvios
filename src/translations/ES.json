@@ -171,6 +171,12 @@
     },
     "disabled": "Desactivado",
     "notAvailable": "No disponible",
+    "priceUnavailable": "Precio no disponible",
+    "catalogError": {
+      "permission": "El catálogo no se pudo cargar porque esta versión de la página quedó desactualizada. Recarga la página para continuar.",
+      "load": "No pudimos cargar el catálogo. Revisa tu conexión y recarga la página.",
+      "reload": "Recargar página"
+    },
     "saveBadge": "AHORRA",
     "discount": "Descuento",
     "userCategoryLabel": "Categoría: {category}"
@@ -589,6 +595,7 @@
   "vendor": {
     "title": "Gestión de la Plataforma",
     "subtitle": "Gestiona productos, categorías, combos y más.",
+    "adminDataPending": "Los datos de administración aún se están cargando. Inténtalo de nuevo en unos segundos.",
     "tabs": {
       "inventory": "Inventario",
       "categories": "Categorías",

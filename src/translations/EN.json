@@ -171,6 +171,12 @@
     },
     "disabled": "Disabled",
     "notAvailable": "Not available",
+    "priceUnavailable": "Price unavailable",
+    "catalogError": {
+      "permission": "The catalog could not be loaded because this version of the page is out of date. Reload the page to continue.",
+      "load": "We could not load the catalog. Check your connection and reload the page.",
+      "reload": "Reload page"
+    },
     "saveBadge": "SAVE",
     "discount": "Discount",
     "userCategoryLabel": "Category: {category}"
@@ -580,6 +586,7 @@
   "vendor": {
     "title": "Platform Management",
     "subtitle": "Manage products, categories, combos and more.",
+    "adminDataPending": "Admin data is still loading. Try again in a few seconds.",
     "tabs": {
       "inventory": "Inventory",
       "categories": "Categories",

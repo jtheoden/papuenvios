@@ -24,7 +24,7 @@ import { pickAvailableZelleAccount, registerZelleTransaction, ZELLE_TRANSACTION_
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
 import { calculateOrderTotal } from '@/lib/priceCalculationService';
-import { getCartItemUnitPrice, buildCartLines } from '@/lib/cartPricing';
+import { getCartItemUnitPrice, buildCartLines, withStoredComboPrice } from '@/lib/cartPricing';
 import { roundMoney } from '@/lib/moneyPure';
 import { validateAndGetOffer, recordOfferUsage } from '@/lib/orderDiscountService';
 import { buildDiscountBreakdown } from '@/lib/discountDisplayService';
@@ -52,7 +52,7 @@ const STOCK_REFUSAL_MESSAGE_KEYS = {
 
 const CartPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
-  const { cart, updateCartQuantity, removeFromCart, clearCart, financialSettings, zelleAccounts, visualSettings, businessInfo, notificationSettings, refreshStock } = useBusiness();
+  const { cart, updateCartQuantity, removeFromCart, clearCart, combos, zelleAccounts, visualSettings, businessInfo, notificationSettings, refreshStock } = useBusiness();
   const { isAuthenticated, user } = useAuth();
   const { selectedCurrency, setSelectedCurrency, currencies, currencyCode, currencySymbol, convertAmount } = useCurrency();
   const { showModal } = useModal();
@@ -117,8 +117,8 @@ const CartPage = ({ onNavigate }) => {
 
   // Unit price of a cart item (product or combo). Logic lives in src/lib/cartPricing.js
   const getItemPrice = useCallback(
-    (item) => getCartItemUnitPrice(item, { selectedCurrency, baseCurrencyId, convertAmount, financialSettings }),
-    [financialSettings, selectedCurrency, baseCurrencyId, convertAmount]
+    (item) => getCartItemUnitPrice(withStoredComboPrice(item, combos), { selectedCurrency, baseCurrencyId, convertAmount }),
+    [combos, selectedCurrency, baseCurrencyId, convertAmount]
   );
 
   // Cent-exact lines and subtotal (sum of the already-rounded line totals). The same
