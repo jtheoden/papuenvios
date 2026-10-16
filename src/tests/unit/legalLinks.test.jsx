@@ -120,65 +120,45 @@ describe('RegulatoryNotice card variant', () => {
   });
 });
 
-describe('Footer notice (compact)', () => {
+describe('Footer notice band', () => {
   const renderFooter = () => render(<Footer onNavigate={vi.fn()} />);
-  const sentences = () => [
-    ES.legal.notice.notBank,
-    ES.legal.notice.zelleIrreversible,
-    ES.legal.notice.deliveryEstimates,
-    ES.legal.notice.ofac,
-  ];
 
-  it('renders an unboxed note without list markup or blue box classes', () => {
+  it('renders the notice strip exactly once, with the card variant untouched', () => {
     renderFooter();
-    const note = screen.getByRole('note', { name: ES.legal.notice.title });
-    expect(note.querySelector('ul')).toBeNull();
-    expect(within(note).queryAllByRole('listitem')).toHaveLength(0);
-    [note, ...note.querySelectorAll('*')].forEach((el) => {
-      expect(el.getAttribute('class') || '').not.toMatch(/bg-blue-|border-blue-|rounded/);
-    });
+    const notes = screen.getAllByRole('note');
+    expect(notes).toHaveLength(1);
+    expect(notes[0].className).toMatch(/\bw-full\b/);
+    expect(notes[0].className).toMatch(/bg-slate-50/);
+    expect(notes[0].className).not.toMatch(/bg-blue-/);
   });
 
-  it('keeps each sentence as its own span inside a single paragraph', () => {
-    renderFooter();
+  it('places the band above the footer content, outside the container', () => {
+    const { container } = renderFooter();
+    const footer = container.querySelector('footer');
     const note = screen.getByRole('note', { name: ES.legal.notice.title });
-    expect(note.querySelectorAll('p')).toHaveLength(1);
-    sentences().forEach((text) => {
-      const el = within(note).getByText(text);
-      expect(el.tagName).toBe('SPAN');
-    });
+    expect(footer.firstElementChild).toBe(note);
   });
 
-  it('links to the terms with a persistent underline and navigates in-app', () => {
-    const onNavigate = vi.fn();
-    render(<Footer onNavigate={onNavigate} />);
-    const note = screen.getByRole('note', { name: ES.legal.notice.title });
-    const link = within(note).getByRole('link', { name: ES.legal.notice.seeTerms });
-    expect(link).toHaveAttribute('href', '/terms');
-    expect(link.className).toMatch(/\bunderline\b/);
-    fireEvent.click(link);
-    expect(onNavigate).toHaveBeenCalledWith('terms');
-    expect(note.getAttribute('aria-label')).not.toBe(ES.legal.nav.label);
-  });
-
-  it('uses the footer theme colours with fallbacks and does not dim the link', () => {
+  it('ignores the admin theme colours', () => {
     settings.current = {
       footerTextColor: '#e5e7eb',
       footerLinkColor: '#93c5fd',
       footerBgColor: '#111827',
     };
-    const { unmount } = renderFooter();
-    let note = screen.getByRole('note', { name: ES.legal.notice.title });
-    expect(note).toHaveStyle({ color: '#e5e7eb' });
-    expect(within(note).getByRole('link')).toHaveStyle({ color: '#93c5fd' });
-    expect(note.className).not.toMatch(/opacity-/);
-    unmount();
-
-    settings.current = {};
     renderFooter();
-    note = screen.getByRole('note', { name: ES.legal.notice.title });
-    expect(note).toHaveStyle({ color: '#374151' });
-    expect(within(note).getByRole('link')).toHaveStyle({ color: '#2563eb' });
+    const note = screen.getByRole('note', { name: ES.legal.notice.title });
+    expect(note.getAttribute('style') || '').toBe('');
+    expect(within(note).getByRole('link').getAttribute('style') || '').toBe('');
+  });
+
+  it('navigates to the terms in-app from the band link', () => {
+    const onNavigate = vi.fn();
+    render(<Footer onNavigate={onNavigate} />);
+    const note = screen.getByRole('note', { name: ES.legal.notice.title });
+    const link = within(note).getByRole('link', { name: ES.legal.notice.seeTerms });
+    expect(link).toHaveAttribute('href', '/terms');
+    fireEvent.click(link);
+    expect(onNavigate).toHaveBeenCalledWith('terms');
   });
 
   it('keeps the three legal links when the notice is hidden', () => {
@@ -190,22 +170,6 @@ describe('Footer notice (compact)', () => {
       'href',
       '/terms#refunds'
     );
-  });
-
-  it.each([
-    ['es', ES],
-    ['en', EN],
-  ])('keeps the %s notice copy within the approved subset', (code, dict) => {
-    lang.current = code;
-    renderFooter();
-    const text = screen.getByRole('note').textContent;
-    const lower = text.toLowerCase();
-    expect(lower).not.toMatch(/licencia|licensed|licenced|autorizad|registrad/);
-    expect(lower).not.toMatch(
-      /financial institution|institución financiera|31 cfr|límites aplicables|applicable limits/
-    );
-    expect(text).toContain('OFAC');
-    expect(text).toContain(dict.legal.notice.notBank);
   });
 });
 

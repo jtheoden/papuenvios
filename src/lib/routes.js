@@ -55,8 +55,9 @@ export const resolvePageFromPathname = (path) => {
  */
 export const pageToPath = (page) => PAGE_PATHS[page] || '/';
 
-/** Pages where the footer must not repeat the regulatory notice (contextual notice or admin UI). */
+/** Pages where the footer must not repeat the regulatory notice (own notice or admin UI). */
 const FOOTER_NOTICE_HIDDEN_PAGES = new Set([
+  'home',
   'cart',
   'send-remittance',
   'admin',

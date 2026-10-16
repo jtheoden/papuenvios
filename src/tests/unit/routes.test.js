@@ -54,13 +54,13 @@ describe('pageToPath', () => {
 
 describe('shouldShowFooterNotice', () => {
   it('hides the footer notice where a contextual notice or admin UI is shown', () => {
-    for (const page of ['cart', 'send-remittance', 'admin', 'dashboard', 'settings', 'user-management']) {
+    for (const page of ['home', 'cart', 'send-remittance', 'admin', 'dashboard', 'settings', 'user-management']) {
       expect(shouldShowFooterNotice(page)).toBe(false);
     }
   });
 
-  it('shows it on customer-facing pages', () => {
-    for (const page of ['home', 'products', 'terms', 'privacy', 'remittances', 'my-remittances', 'login']) {
+  it('shows it on the other customer-facing pages', () => {
+    for (const page of ['products', 'blog', 'terms', 'privacy', 'remittances', 'my-remittances', 'login']) {
       expect(shouldShowFooterNotice(page)).toBe(true);
     }
   });
