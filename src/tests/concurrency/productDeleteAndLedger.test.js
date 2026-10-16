@@ -5,7 +5,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { isDbReachable, connectAdmin, connectAs, connectAnon, endAll } from './db';
+import { dbSuiteSkipReason, connectAdmin, connectAs, connectAnon, endAll } from './db';
 import {
   loadActors,
   createTracker,
@@ -17,8 +17,8 @@ import {
   restoreStockPolicyRows
 } from './fixtures';
 
-const reachable = await isDbReachable();
-const describeDb = reachable ? describe : describe.skip;
+const skipReason = await dbSuiteSkipReason({ functions: ['delete_product', 'get_product_blockers', 'bulk_delete_products', 'reserve_order_inventory', 'consume_order_inventory'], tables: ['orders', 'inventory', 'inventory_movements', 'order_stock_allocations', 'admin_destructive_ops_log'] });
+const describeDb = skipReason ? describe.skip : describe;
 
 const reserveSql = 'public.reserve_order_inventory($1::uuid)';
 const consumeSql = 'public.consume_order_inventory($1::uuid)';

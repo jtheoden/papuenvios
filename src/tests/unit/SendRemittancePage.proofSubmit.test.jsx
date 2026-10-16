@@ -137,7 +137,7 @@ import { getFreshGuidedWhatsappPhone } from '@/lib/notificationSettingsService';
 import { buildAdminNewPaymentProofWhatsAppUrl } from '@/lib/whatsappService';
 import { toast } from '@/components/ui/use-toast';
 
-const goToStepFour = async () => {
+const goToStepThree = async () => {
   const select = await screen.findByRole('combobox');
   await screen.findByRole('option', { name: 'USD a CUP' });
   fireEvent.change(select, { target: { value: 't1' } });
@@ -151,8 +151,12 @@ const goToStepFour = async () => {
   fireEvent.click(await screen.findByText('pick-zelle'));
   fireEvent.click(await screen.findByText('pick-recipient'));
   fireEvent.click(continueBtn());
+  await screen.findByRole('button', { name: /remittances\.wizard\.confirmAndCreate/ });
+};
 
-  fireEvent.click(await screen.findByRole('button', { name: /remittances\.wizard\.confirmAndCreate/ }));
+const goToStepFour = async () => {
+  await goToStepThree();
+  fireEvent.click(screen.getByRole('button', { name: /remittances\.wizard\.confirmAndCreate/ }));
   await screen.findByText('submit-proof');
 };
 
@@ -238,5 +242,17 @@ describe('SendRemittancePage - step 4 proof submission', () => {
     expect(modal()).toHaveAttribute('data-proof-pending', 'true');
     expect(modal()).toHaveAttribute('data-whatsapp-url', '');
     warn.mockRestore();
+  });
+});
+
+describe('SendRemittancePage - step 3 legal notices', () => {
+  it('shows the regulatory notice and the Terms/Privacy consent line with real links', async () => {
+    render(<SendRemittancePage onNavigate={vi.fn()} />);
+    await goToStepThree();
+
+    expect(screen.getByRole('note')).toBeInTheDocument();
+    const terms = screen.getAllByRole('link', { name: 'legal.links.terms' });
+    expect(terms.some((a) => a.getAttribute('href') === '/terms')).toBe(true);
+    expect(screen.getByRole('link', { name: 'legal.links.privacy' })).toHaveAttribute('href', '/privacy');
   });
 });

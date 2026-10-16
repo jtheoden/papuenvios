@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLegalAcceptance } from '@/contexts/LegalAcceptanceContext';
 import { useModal } from '@/contexts/ModalContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import {
@@ -42,10 +43,13 @@ import PaymentProofForm from '@/components/shared/PaymentProofForm';
 import PaymentMethodsUnavailable from '@/components/PaymentMethodsUnavailable';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { isPaymentMethodEnabled, isPaymentMethodDisabledError, PAYMENT_FLOWS } from '@/lib/paymentMethodsService';
+import RegulatoryNotice from '@/components/RegulatoryNotice';
+import LegalConsentLine from '@/components/LegalConsentLine';
 
 const SendRemittancePage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { user, isAdmin, isSuperAdmin } = useAuth();
+  const { ensureAccepted } = useLegalAcceptance();
   const { showModal } = useModal();
   const { notificationSettings } = useBusiness();
   const { methods: paymentMethods, refresh: refreshPaymentMethods, isMethodEnabled } = usePaymentMethods();
@@ -542,6 +546,10 @@ const SendRemittancePage = ({ onNavigate }) => {
     setSubmitting(true);
 
     try {
+      // Terms + Privacy acceptance and 18+ confirmation must exist before any remittance is created.
+      // Declining aborts without side effects; the button is released by the finally block.
+      if (!(await ensureAccepted('remittance'))) return;
+
       // Re-read the switch right before creating: it may have been flipped while the
       // customer was filling the wizard. A failed read keeps the last known state.
       const latestPaymentMethods = (await refreshPaymentMethods()) ?? paymentMethods;
@@ -1318,6 +1326,9 @@ const SendRemittancePage = ({ onNavigate }) => {
                 )}
               </div>
             </div>
+
+            <RegulatoryNotice onNavigate={onNavigate} />
+            <LegalConsentLine variant="confirm" onNavigate={onNavigate} />
 
             <div className="flex justify-between">
               <button

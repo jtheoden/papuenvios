@@ -21,6 +21,7 @@ import BlogPage from '@/components/BlogPage';
 import PrivacyPage from '@/components/PrivacyPage';
 import TermsPage from '@/components/TermsPage';
 import Footer from '@/components/Footer';
+import ConsentBanner from '@/components/ConsentBanner';
 
 // PERF-01: admin-only areas are code-split out of the main bundle — they're never
 // touched by the public/customer golden path (home, products, cart, remittances).
@@ -33,9 +34,11 @@ import { LanguageProvider } from '@/contexts/LanguageContext';
 import { BusinessProvider, useBusiness } from '@/contexts/BusinessContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ModalProvider } from '@/contexts/ModalContext';
+import { LegalAcceptanceProvider } from '@/contexts/LegalAcceptanceContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { trackPageVisit } from '@/lib/analyticsService';
+import { normalizePath, resolvePageFromPathname, pageToPath, shouldShowFooterNotice } from '@/lib/routes';
 
 // Lightweight fallback for lazy-loaded routes (admin area) — a full LoadingScreen
 // splash on every navigation between admin tabs would be a heavier UX than the
@@ -120,8 +123,6 @@ function App() {
   const ProtectedMyRemittances = React.useMemo(() => withProtectedRoute(MyRemittancesPage, 'user'), []);
   const ProtectedMyRecipients = React.useMemo(() => withProtectedRoute(MyRecipientsPage, 'user'), []);
 
-  const normalizePath = (path) => path.replace(/\/$/, '') || '/';
-
   const resolvePageFromPath = (path) => {
     const normalizedPath = normalizePath(path);
     const searchParams = new URLSearchParams(window.location.search);
@@ -136,35 +137,7 @@ function App() {
       return { page: 'auth/callback' };
     }
 
-    const productMatch = normalizedPath.match(/^\/product\/([^/]+)$/);
-    const comboMatch = normalizedPath.match(/^\/combo\/([^/]+)$/);
-
-    if (productMatch) {
-      return { page: 'product-detail', params: { itemId: productMatch[1], itemType: 'product' } };
-    }
-
-    if (comboMatch) {
-      return { page: 'product-detail', params: { itemId: comboMatch[1], itemType: 'combo' } };
-    }
-
-    const pathToPage = {
-      '/': 'home',
-      '/products': 'products',
-      '/remittances': 'remittances',
-      '/remittances/send': 'send-remittance',
-      '/remittances/my': 'my-remittances',
-      '/recipients': 'recipients',
-      '/dashboard': 'dashboard',
-      '/admin': 'admin',
-      '/settings': 'settings',
-      '/cart': 'cart',
-      '/login': 'login',
-      '/user-panel': 'user-panel',
-      '/user-management': 'user-management',
-      '/blog': 'blog'
-    };
-
-    return { page: pathToPage[normalizedPath] || 'home' };
+    return resolvePageFromPathname(normalizedPath);
   };
 
   // Handle URL-based routing for OAuth callback
@@ -219,25 +192,7 @@ function App() {
       return;
     }
 
-    const pageToPath = {
-      home: '/',
-      products: '/products',
-      remittances: '/remittances',
-      'send-remittance': '/remittances/send',
-      'my-remittances': '/remittances/my',
-      recipients: '/recipients',
-      dashboard: '/dashboard',
-      admin: '/admin',
-      settings: '/settings',
-      cart: '/cart',
-      login: '/login',
-      'user-panel': '/user-panel',
-      'user-management': '/user-management',
-      blog: '/blog',
-      'auth/callback': '/auth/callback'
-    };
-
-    const newPath = pageToPath[page] || '/';
+    const newPath = pageToPath(page);
 
     if (newPath !== window.location.pathname) {
       window.history.pushState({ path: newPath }, '', newPath);
@@ -295,6 +250,7 @@ function App() {
             <BusinessProvider>
               <CurrencyProvider>
                 <ModalProvider>
+                <LegalAcceptanceProvider>
                 <div className="min-h-screen">
                   <DynamicVisualSettings />
                   <PageAnalyticsTracker currentPage={currentPage} />
@@ -328,13 +284,15 @@ function App() {
                           </motion.div>
                         </AnimatePresence>
                       </main>
-                      {currentPage !== 'auth/callback' && <Footer />}
+                      {currentPage !== 'auth/callback' && <Footer onNavigate={handleNavigate} showNotice={shouldShowFooterNotice(currentPage)} />}
                     </motion.div>
                   )}
                 </AnimatePresence>
 
+                <ConsentBanner suppressed={!shouldShowFooterNotice(currentPage)} onNavigate={handleNavigate} />
                 <Toaster />
               </div>
+                </LegalAcceptanceProvider>
               </ModalProvider>
               </CurrencyProvider>
             </BusinessProvider>

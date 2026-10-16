@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const MIGRATION = resolve(process.cwd(), 'supabase/migrations/20261015120000_products_unit_of_measure.sql');
+const MIGRATION = resolve(process.cwd(), 'supabase/migrations/20261015140000_products_unit_of_measure.sql');
 
 describe('products.unit migration', () => {
   it('exists', () => {

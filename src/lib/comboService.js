@@ -19,14 +19,10 @@ import {
   ERROR_CODES
 } from './errorHandler';
 import { ORDER_STATUS } from './orderService';
+import { PUBLIC_COMBO_COLUMNS, PUBLIC_COMBO_ITEM_COLUMNS } from './publicCatalogColumns';
+import { ADMIN_COMBO_COLUMNS, ADMIN_COMBO_ITEM_COLUMNS } from './adminCatalogColumns';
 
-// Explicit projection (same columns `*` returned) so new heavy columns are never pulled by accident.
-const COMBO_COLUMNS = [
-  'id', 'name_es', 'name_en', 'description_es', 'description_en', 'image_url',
-  'base_total_price', 'profit_margin', 'final_price', 'shipping_free',
-  'shipping_discount_percent', 'out_of_province_shipping', 'out_of_province_price',
-  'is_active', 'is_featured', 'created_at', 'updated_at'
-].join(', ');
+// Explicit projections so new heavy or sensitive columns are never pulled by accident.
 
 /**
  * Get all combos with their products
@@ -36,10 +32,15 @@ const COMBO_COLUMNS = [
  */
 export const getCombos = async (includeInactive = false) => {
   try {
+    // The public view prices a combo from its stored final_price only. The admin view
+    // (includeInactive) also needs the cost fields until Phase 0b moves it to admin read RPCs.
+    const comboColumns = includeInactive ? ADMIN_COMBO_COLUMNS : PUBLIC_COMBO_COLUMNS;
+    const itemColumns = includeInactive ? ADMIN_COMBO_ITEM_COLUMNS : PUBLIC_COMBO_ITEM_COLUMNS;
+
     // Get combos
     let comboQuery = supabase
       .from('combo_products')
-      .select(COMBO_COLUMNS);
+      .select(comboColumns);
 
     if (!includeInactive) {
       comboQuery = comboQuery.eq('is_active', true);
@@ -51,7 +52,7 @@ export const getCombos = async (includeInactive = false) => {
       comboQuery.order('created_at', { ascending: false }),
       supabase
         .from('combo_items')
-        .select('combo_id, quantity, products(id, name_es, name_en, base_price)')
+        .select(itemColumns)
     ]);
 
     if (combosResult.error) {
@@ -161,7 +162,7 @@ export const createCombo = withCatalogInvalidation(async (comboData) => {
         profit_margin: parseFloat(comboData.profitMargin || DEFAULTS.COMBO_PROFIT_MARGIN),
         is_active: true
       }])
-      .select()
+      .select(PUBLIC_COMBO_COLUMNS)
       .single();
 
     if (comboError) {
@@ -257,7 +258,7 @@ export const updateCombo = withCatalogInvalidation(async (comboId, comboData) =>
       .from('combo_products')
       .update(updateData)
       .eq('id', comboId)
-      .select()
+      .select(PUBLIC_COMBO_COLUMNS)
       .single();
 
     if (comboError) {
@@ -333,7 +334,7 @@ export const setComboActiveState = withCatalogInvalidation(async (comboId, isAct
       .from('combo_products')
       .update({ is_active: isActive, updated_at: getCurrentTimestamp() })
       .eq('id', comboId)
-      .select()
+      .select(PUBLIC_COMBO_COLUMNS)
       .single();
 
     if (error) {

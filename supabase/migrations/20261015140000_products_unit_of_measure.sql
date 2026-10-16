@@ -1,7 +1,7 @@
 -- Unit of measure for products (shown next to quantities in order details).
 --
--- PREPARED, NOT APPLIED. Apply this migration BEFORE deploying the front that selects
--- products.unit: otherwise PostgREST answers 42703 (column does not exist) and the catalog breaks.
+-- APPLIED to production on 2026-10-15 (as `products_unit_of_measure`). It must exist BEFORE the front that
+-- selects products.unit is deployed: otherwise PostgREST answers 42703 (column does not exist).
 --
 -- Design notes:
 --   * Nullable text, no default: NULL means "no unit defined". No unit is inferred for existing rows.

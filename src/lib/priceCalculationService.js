@@ -4,6 +4,8 @@
  * Handles: base prices, profit margins, currency conversion, and discounts
  */
 
+import { roundMoney } from '@/lib/moneyPure';
+
 /**
  * Calculate final price with profit margin
  * @param {number} basePrice - Base price in original currency
@@ -16,7 +18,7 @@ export const calculatePriceWithMargin = (basePrice, profitMargin = 40) => {
   const margin = Math.max(0, Math.min(100, profitMargin || 40)) / 100;
   const finalPrice = parseFloat(basePrice) * (1 + margin);
 
-  return parseFloat(finalPrice.toFixed(2));
+  return roundMoney(finalPrice);
 };
 
 /**
@@ -44,7 +46,7 @@ export const convertPrice = (amount, fromRate = 1, toRate = 1) => {
   }
 
   const converted = (parseFloat(amount) / parseFloat(fromRate)) * parseFloat(toRate);
-  return parseFloat(converted.toFixed(2));
+  return roundMoney(converted);
 };
 
 /**
@@ -57,7 +59,7 @@ export const calculateDiscount = (price, discountPercent = 0) => {
   if (!price || isNaN(price) || !discountPercent || discountPercent <= 0) return 0;
 
   const discount = parseFloat(price) * (Math.min(100, discountPercent) / 100);
-  return parseFloat(discount.toFixed(2));
+  return roundMoney(discount);
 };
 
 /**
@@ -68,7 +70,7 @@ export const calculateDiscount = (price, discountPercent = 0) => {
  */
 export const applyDiscount = (price, discountPercent = 0) => {
   const discountAmount = calculateDiscount(price, discountPercent);
-  return parseFloat((parseFloat(price) - discountAmount).toFixed(2));
+  return roundMoney(parseFloat(price) - discountAmount);
 };
 
 /**
@@ -102,12 +104,12 @@ export const calculateCompletePrice = ({
   const final = applyDiscount(withMargin, discount);
 
   return {
-    basePrice: parseFloat(base.toFixed(2)),
-    afterExchange: parseFloat(converted.toFixed(2)),
-    beforeDiscount: parseFloat(withMargin.toFixed(2)),
-    discountAmount: parseFloat(discountAmount.toFixed(2)),
+    basePrice: roundMoney(base),
+    afterExchange: roundMoney(converted),
+    beforeDiscount: roundMoney(withMargin),
+    discountAmount: roundMoney(discountAmount),
     discountPercent: Math.min(100, Math.max(0, discount)),
-    finalPrice: parseFloat(final.toFixed(2)),
+    finalPrice: roundMoney(final),
     profitMargin: Math.max(0, Math.min(100, profitMargin)),
     exchangeRate: parseFloat(exchangeRate)
   };
@@ -128,7 +130,7 @@ export const calculateCartSubtotal = (cartItems = [], getPriceForItem = null) =>
     return sum + (parseFloat(price) * parseInt(quantity, 10));
   }, 0);
 
-  return parseFloat(subtotal.toFixed(2));
+  return roundMoney(subtotal);
 };
 
 /**
@@ -170,9 +172,12 @@ export const applyOffer = (subtotal, offer = null) => {
     discountAmount = Math.min(discountAmount, parseFloat(offer.max_discount_amount));
   }
 
+  // Round the discount first: the final subtotal must be computed from the rounded amount
+  const roundedDiscount = roundMoney(discountAmount);
+
   return {
-    discountAmount: parseFloat(discountAmount.toFixed(2)),
-    finalSubtotal: parseFloat((subtotal - discountAmount).toFixed(2)),
+    discountAmount: roundedDiscount,
+    finalSubtotal: roundMoney(subtotal - roundedDiscount),
     offerApplied: true,
     offerId: offer.id,
     offerType: offer.discount_type,
@@ -212,38 +217,40 @@ export const calculateOrderTotal = ({
   shippingCost = 0,
   taxPercent = 0
 } = {}) => {
-  const sub = parseFloat(subtotal) || 0;
-  const shipping = parseFloat(shippingCost) || 0;
+  // Every component is cent-rounded BEFORE it is combined, so that
+  // total === subtotal - discount + shipping holds exactly in cents.
+  const sub = roundMoney(subtotal);
+  const shipping = roundMoney(shippingCost);
 
   // Step 1: Apply category discount
   const categoryDiscountAmount = calculateDiscount(sub, categoryDiscount);
-  const afterCategoryDiscount = sub - categoryDiscountAmount;
+  const afterCategoryDiscount = roundMoney(sub - categoryDiscountAmount);
 
   // Step 2: Apply promotional offer (if any)
   const offerResult = applyOffer(afterCategoryDiscount, offer);
-  const afterOfferDiscount = offerResult.finalSubtotal;
+  const afterOfferDiscount = roundMoney(offerResult.finalSubtotal);
 
   // Step 3: Add shipping
-  const beforeTax = afterOfferDiscount + shipping;
+  const beforeTax = roundMoney(afterOfferDiscount + shipping);
 
   // Step 4: Apply tax if configured
   const taxAmount = calculateDiscount(beforeTax, taxPercent);
-  const total = beforeTax + taxAmount;
+  const total = roundMoney(beforeTax + taxAmount);
 
   return {
-    subtotal: parseFloat(sub.toFixed(2)),
-    categoryDiscountAmount: parseFloat(categoryDiscountAmount.toFixed(2)),
+    subtotal: roundMoney(sub),
+    categoryDiscountAmount: roundMoney(categoryDiscountAmount),
     categoryDiscountPercent: Math.max(0, Math.min(100, categoryDiscount)),
-    afterCategoryDiscount: parseFloat(afterCategoryDiscount.toFixed(2)),
+    afterCategoryDiscount: roundMoney(afterCategoryDiscount),
     offerDiscountAmount: offerResult.discountAmount,
     offerApplied: offerResult.offerApplied,
-    afterAllDiscounts: parseFloat(afterOfferDiscount.toFixed(2)),
-    shippingCost: parseFloat(shipping.toFixed(2)),
-    subtotalWithShipping: parseFloat(beforeTax.toFixed(2)),
-    taxAmount: parseFloat(taxAmount.toFixed(2)),
+    afterAllDiscounts: roundMoney(afterOfferDiscount),
+    shippingCost: roundMoney(shipping),
+    subtotalWithShipping: roundMoney(beforeTax),
+    taxAmount: roundMoney(taxAmount),
     taxPercent: Math.max(0, Math.min(100, taxPercent)),
-    totalDiscount: parseFloat((categoryDiscountAmount + offerResult.discountAmount).toFixed(2)),
-    total: parseFloat(total.toFixed(2))
+    totalDiscount: roundMoney(categoryDiscountAmount + offerResult.discountAmount),
+    total: roundMoney(total)
   };
 };
 

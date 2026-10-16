@@ -23,6 +23,13 @@ import {
 import { ORDER_STATUS } from './orderService';
 import { logActivity } from './activityLogger';
 import { isStockBelowReservedError } from './stockErrors';
+import {
+  PUBLIC_PRODUCT_COLUMNS,
+  PUBLIC_PRODUCT_CATEGORY_EMBED,
+  PUBLIC_INVENTORY_COLUMNS,
+  PUBLIC_CATEGORY_COLUMNS
+} from './publicCatalogColumns';
+import { ADMIN_PRODUCT_COLUMNS, ADMIN_CATEGORY_COLUMNS } from './adminCatalogColumns';
 
 // Legacy: Para toggle de estado activo
 const IN_PROGRESS_ORDER_STATUSES = [
@@ -32,31 +39,24 @@ const IN_PROGRESS_ORDER_STATUSES = [
   ORDER_STATUS.DELIVERED
 ];
 
-/**
- * Get all active products with their categories
- * @throws {AppError} If database query fails
- * @returns {Promise<Array>} Array of products with inventory data
- */
-// Explicit projection: `select('*')` also pulled `image_file`, a byte-identical
-// copy of the base64 `image_url` (doubling the payload). Consumers fall back
-// `image_url || image_file`, so omitting it is safe.
-const PRODUCT_COLUMNS = [
-  'id', 'sku', 'name_es', 'name_en', 'description_es', 'description_en',
-  'category_id', 'base_price', 'base_currency_id', 'cost_price', 'profit_margin',
-  'final_price', 'weight', 'unit', 'dimensions', 'image_url', 'requires_expiry',
-  'min_stock_alert', 'is_active', 'is_featured', 'tags', 'created_at', 'updated_at'
-].join(', ');
+// Explicit projections (see publicCatalogColumns): `select('*')` also pulled `image_file`, a
+// byte-identical copy of the base64 `image_url` (doubling the payload), and every cost column.
+// Consumers fall back `image_url || image_file`, so omitting it is safe.
 
 /**
  * Heavy part of the catalog: product rows (with category), without inventory.
  * Safe to cache; stock must be fetched separately via getProductStock.
+ * The public view (includeInactive = false) never asks for cost or margin columns; the admin
+ * view (includeInactive = true) keeps them until Phase 0b moves it to admin read RPCs.
+ * @throws {AppError} If database query fails
  */
 export const getProductRows = async (includeInactive = false) => {
+  const columns = includeInactive ? ADMIN_PRODUCT_COLUMNS : PUBLIC_PRODUCT_COLUMNS;
   let query = supabase
     .from('products')
     .select(`
-      ${PRODUCT_COLUMNS},
-      category:product_categories(id, name_es, name_en, slug)
+      ${columns},
+      ${PUBLIC_PRODUCT_CATEGORY_EMBED}
     `)
     .order('created_at', { ascending: false });
 
@@ -83,7 +83,7 @@ export const getProductRows = async (includeInactive = false) => {
 export const getProductStock = async () => {
   const { data, error } = await supabase
     .from('inventory')
-    .select('product_id, quantity, available_quantity, expiry_date')
+    .select(PUBLIC_INVENTORY_COLUMNS)
     .eq('is_active', true)
     .order('created_at', { ascending: false });
 
@@ -247,7 +247,7 @@ export const setProductActiveState = withCatalogInvalidation(async (productId, i
         updated_at: getCurrentTimestamp()
       })
       .eq('id', productId)
-      .select()
+      .select(PUBLIC_PRODUCT_COLUMNS)
       .single();
 
     if (error) {
@@ -328,7 +328,7 @@ export const createProduct = withCatalogInvalidation(async (productData) => {
         unit: normalizeUnitCode(productData.unit),
         is_active: true
       }])
-      .select()
+      .select(PUBLIC_PRODUCT_COLUMNS)
       .single();
 
     if (error) {
@@ -411,7 +411,7 @@ export const updateProduct = withCatalogInvalidation(async (productId, productDa
       .from('products')
       .update(updateData)
       .eq('id', productId)
-      .select()
+      .select(PUBLIC_PRODUCT_COLUMNS)
       .single();
 
     if (error) {
@@ -591,11 +591,10 @@ export const deleteProduct = withCatalogInvalidation(async (productId) => {
  */
 export const getCategories = async ({ includeMargin = false } = {}) => {
   try {
-    // profit_margin is internal business data: only admin callers ask for it
-    const publicColumns = 'id, slug, name_es, name_en, description_es, description_en, display_order, is_active';
+    // The category margin is internal business data: only admin callers ask for it
     const { data, error } = await supabase
       .from('product_categories')
-      .select(includeMargin ? `${publicColumns}, profit_margin` : publicColumns)
+      .select(includeMargin ? ADMIN_CATEGORY_COLUMNS : PUBLIC_CATEGORY_COLUMNS)
       .eq('is_active', true)
       .order('display_order', { ascending: true });
 
@@ -661,7 +660,7 @@ export const createCategory = withCatalogInvalidation(async (categoryData, perfo
         is_active: true,
         display_order: DEFAULTS.DISPLAY_ORDER
       }])
-      .select()
+      .select(PUBLIC_CATEGORY_COLUMNS)
       .single();
 
     if (error) {
@@ -734,7 +733,7 @@ export const updateCategory = withCatalogInvalidation(async (categoryId, categor
         updated_at: getCurrentTimestamp()
       })
       .eq('id', categoryId)
-      .select()
+      .select(PUBLIC_CATEGORY_COLUMNS)
       .single();
 
     if (error) {
