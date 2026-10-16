@@ -73,7 +73,9 @@ test.describe('public catalog does not touch sensitive columns', () => {
     await page.goto('/products');
     await page.waitForLoadState('networkidle');
 
-    const prices = await page.locator('text=/\\$\\s?\\d+\\.\\d{2}/').allTextContents();
+    const priceLocator = page.locator('text=/\\$\\s?\\d+\\.\\d{2}/');
+    await expect(priceLocator.first()).toBeVisible({ timeout: 15000 });
+    const prices = await priceLocator.allTextContents();
     expect(prices.length).toBeGreaterThan(0);
     prices.forEach((text) => {
       expect(text).not.toMatch(/\$\s?0\.00\b/);
