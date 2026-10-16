@@ -22,7 +22,7 @@ vi.mock('@/contexts/LanguageContext', async () => {
 vi.mock('@/contexts/BusinessContext', () => ({ useBusiness: () => business }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => auth }));
 vi.mock('@/lib/notificationSettingsService', () => ({ saveNotificationSettings: vi.fn() }));
-vi.mock('@/components/settings/SettingsPageFinancial', () => ({ default: () => null }));
+vi.mock('@/components/settings/SettingsPageFinancial', () => ({ default: () => <p>financial-tab-content</p> }));
 vi.mock('@/components/settings/SettingsPageShipping', () => ({ default: () => null }));
 vi.mock('@/components/settings/SettingsPageVisual', () => ({ default: () => null }));
 vi.mock('@/components/settings/SettingsPageContent', () => ({ default: () => null }));
@@ -124,6 +124,20 @@ describe('SettingsPage payments tab', () => {
 
     expect(await screen.findByRole('heading', { level: 2, name: 'settings.bizum.title' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'settings.payments.tabs.bizum' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('shows the FX state badge in the Bizum section header and links the rate card to Settings > Financial', async () => {
+    svc.fx.mockResolvedValue({ state: 'warn', id: 'r1', mid_rate: 0.92, spread_pct: 1.5, effective_rate: 0.93, age_hours: 30, created_at: '2026-10-15T10:00:00Z', fx_warn_hours: 24, fx_block_hours: 96 });
+    render(<SettingsPage />);
+    openPaymentsTab();
+    await openBizumTab();
+
+    expect(await screen.findByTestId('fx-badge')).toHaveAttribute('data-state', 'warn');
+    expect(svc.fx).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('financial-tab-content')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'settings.fxRate.goToFinancial' }));
+    expect(await screen.findByText('financial-tab-content')).toBeInTheDocument();
   });
 
   it('shows only Zelle, with no tablist, when the catalog has no Bizum row', () => {

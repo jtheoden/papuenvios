@@ -10,14 +10,14 @@ describe('SettingsPage mounts the payments tab, where Bizum is a sibling tab of 
   it('renders SettingsPaymentsTab under the (unchanged) zelle tab id', () => {
     expect(page).toMatch(/import SettingsPaymentsTab from '@\/components\/settings\/SettingsPaymentsTab';/);
     expect(page).toContain("activeTab === 'zelle'");
-    expect(page).toMatch(/<SettingsPaymentsTab \/>/);
+    expect(page).toMatch(/<SettingsPaymentsTab onGoToFinancial=\{\(\) => setActiveTab\(.financiero.\)\} \/>/);
   });
 
   it('keeps Zelle and Bizum as separate tabs of PaymentsTabs, never nested', () => {
     expect(payments).toMatch(/import SettingsBizumSection from '@\/components\/settings\/SettingsBizumSection';/);
     expect(payments).toMatch(/<PaymentsTabs\b/);
     expect(payments).toMatch(/id: 'zelle'[\s\S]*render: \(\) => <SettingsZelleTab \/>/);
-    expect(payments).toMatch(/id: 'bizum'[\s\S]*render: \(\) => <SettingsBizumSection \/>/);
+    expect(payments).toMatch(/id: 'bizum'[\s\S]*render: \(\) => <SettingsBizumSection onGoToFinancial=\{onGoToFinancial\} \/>/);
     expect(payments).not.toMatch(/<SettingsZelleTab \/>\s*<SettingsBizumSection \/>/);
   });
 

@@ -25,7 +25,7 @@ const Metric = ({ label, children }) => (
   </div>
 );
 
-const PaymentFxRateCard = ({ status, error, onRetry }) => {
+const PaymentFxRateCard = ({ status, error, onRetry, onGoToFinancial }) => {
   const { t, language } = useLanguage();
   const state = status?.state;
   const hasRate = state && state !== PAYMENT_FX_STATES.NONE;
@@ -58,7 +58,7 @@ const PaymentFxRateCard = ({ status, error, onRetry }) => {
           {!hasRate && <p className="text-sm">{t('settings.fxRate.noneHelp')}</p>}
           {state === PAYMENT_FX_STATES.WARN && (
             <p role="status" className="text-sm">
-              {t('settings.fxRate.warnHelp')}
+              {t('settings.fxRate.warnHelp', { hours: formatNumber(status.age_hours, language, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}
             </p>
           )}
           {state === PAYMENT_FX_STATES.BLOCKED && (
@@ -68,6 +68,7 @@ const PaymentFxRateCard = ({ status, error, onRetry }) => {
           )}
           {hasRate && (
             <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <Metric label={t('settings.fxRate.labels.source')}>{t('settings.fxRate.sourceCentral')}</Metric>
               <Metric label={t('settings.fxRate.labels.mid')}>{formatNumber(status.mid_rate, language)}</Metric>
               <Metric label={t('settings.fxRate.labels.spread')}>
                 {`${formatNumber(status.spread_pct, language, { maximumFractionDigits: 2 })}%`}
@@ -87,6 +88,11 @@ const PaymentFxRateCard = ({ status, error, onRetry }) => {
       )}
 
       <p className="text-sm text-gray-700">{t('settings.fxRate.managedCentrally')}</p>
+      {onGoToFinancial && (
+        <Button variant="outline" size="lg" onClick={onGoToFinancial}>
+          {t('settings.fxRate.goToFinancial')}
+        </Button>
+      )}
     </section>
   );
 };

@@ -4,7 +4,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 const Fallback = () => {
   const { t } = useLanguage();
   return (
-    <p role="status" className="mt-6 text-sm text-gray-700">
+    <p role="status" className="text-sm text-gray-700">
       {t('settings.bizum.renderError')}
     </p>
   );

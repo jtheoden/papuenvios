@@ -31,7 +31,7 @@ const catalogState = ({ methods, error }) => {
   return error?.context?.schemaMissing || isBizumSchemaMissing(error) ? 'absent' : 'failed';
 };
 
-const SettingsPaymentsTab = () => {
+const SettingsPaymentsTab = ({ onGoToFinancial }) => {
   const { t } = useLanguage();
   const { methods, error } = usePaymentMethods({ admin: true });
   const catalog = catalogState({ methods, error });
@@ -45,7 +45,7 @@ const SettingsPaymentsTab = () => {
     { id: 'zelle', label: t('settings.payments.tabs.zelle'), render: () => <SettingsZelleTab /> }
   ];
   if (showBizum) {
-    tabs.push({ id: 'bizum', label: t('settings.payments.tabs.bizum'), render: () => <SettingsBizumSection /> });
+    tabs.push({ id: 'bizum', label: t('settings.payments.tabs.bizum'), render: () => <SettingsBizumSection onGoToFinancial={onGoToFinancial} /> });
   }
 
   return (

@@ -28,6 +28,7 @@ export const BIZUM_ERROR_MAP = Object.freeze([
   { match: 'payment_fx_note_too_long', key: `${FX_ERRORS}.noteTooLong`, field: 'note' },
   { match: 'payment_fx_large_change', key: `${FX_ERRORS}.largeChange` },
   { match: 'payment_fx_rates_append_only', key: `${FX_ERRORS}.appendOnly` },
+  { match: 'payment_fx_managed_centrally', key: `${FX_ERRORS}.managedCentrally` },
   { match: 'bizum_accounts_no_delete', key: `${BIZUM_ERRORS}.accountNoDelete` },
   { match: 'bizum_accounts_immutable_columns', key: `${BIZUM_ERRORS}.accountImmutable` },
   { match: 'bizum_accounts_phone_key', key: `${BIZUM_ERRORS}.phoneDuplicate`, field: 'phone' },
