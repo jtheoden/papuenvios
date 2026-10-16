@@ -51,6 +51,10 @@ const STOCK_REFUSAL_MESSAGE_KEYS = {
   empty_order: 'cart.stock.emptyOrder'
 };
 
+// The cart subtotal is priced in the base currency (USD); conversion is display-only.
+const BASE_CURRENCY_CODE = 'USD';
+const BASE_CURRENCY_SYMBOL = '$';
+
 const CartPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { cart, updateCartQuantity, removeFromCart, clearCart, combos, zelleAccounts, visualSettings, businessInfo, notificationSettings, refreshStock } = useBusiness();
@@ -96,6 +100,9 @@ const CartPage = ({ onNavigate }) => {
   const [convertedDiscountedSubtotal, setConvertedDiscountedSubtotal] = useState(null);
   const [convertedShipping, setConvertedShipping] = useState(null);
   const [convertedTotal, setConvertedTotal] = useState(null);
+  // Outcome of the last conversion attempt, keyed by the currency it was made for. Amounts are
+  // only shown/charged in a non-base currency once a valid conversion succeeded for it.
+  const [conversion, setConversion] = useState({ code: BASE_CURRENCY_CODE, failed: false });
 
   // Confirmation modal state
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
@@ -222,46 +229,45 @@ const CartPage = ({ onNavigate }) => {
   };
 
   const convertAmounts = async () => {
-    // If selected currency is USD (base currency), no conversion needed
-    if (currencyCode === 'USD') {
+    const targetCode = currencyCode;
+
+    const showBaseAmounts = (failed) => {
       setConvertedSubtotal(subtotal);
       setConvertedDiscountedSubtotal(discountedSubtotal);
       setConvertedShipping(shippingCost);
       setConvertedTotal(totalAmount);
+      setConversion({ code: targetCode, failed });
+    };
+
+    // If selected currency is USD (base currency), no conversion needed
+    if (targetCode === BASE_CURRENCY_CODE) {
+      showBaseAmounts(false);
       return;
     }
 
     try {
-      // convertCurrency returns a numeric value (not an object), so keep a strict numeric fallback
-      const convertedSub = await convertCurrency(subtotal, 'USD', currencyCode);
-      const convertedDiscounted = await convertCurrency(discountedSubtotal, 'USD', currencyCode);
-      const convertedShip = await convertCurrency(shippingCost, 'USD', currencyCode);
-      const convertedGrandTotal = await convertCurrency(totalAmount, 'USD', currencyCode);
+      const [convertedSub, convertedDiscounted, convertedShip, convertedGrandTotal] = await Promise.all([
+        convertCurrency(subtotal, BASE_CURRENCY_CODE, targetCode),
+        convertCurrency(discountedSubtotal, BASE_CURRENCY_CODE, targetCode),
+        convertCurrency(shippingCost, BASE_CURRENCY_CODE, targetCode),
+        convertCurrency(totalAmount, BASE_CURRENCY_CODE, targetCode)
+      ]);
 
-      const safeConvertedSub = typeof convertedSub === 'number' && !Number.isNaN(convertedSub)
-        ? convertedSub
-        : subtotal;
-      const safeConvertedDiscounted = typeof convertedDiscounted === 'number' && !Number.isNaN(convertedDiscounted)
-        ? convertedDiscounted
-        : discountedSubtotal;
-      const safeConvertedShip = typeof convertedShip === 'number' && !Number.isNaN(convertedShip)
-        ? convertedShip
-        : shippingCost;
-      const safeConvertedGrandTotal = typeof convertedGrandTotal === 'number' && !Number.isNaN(convertedGrandTotal)
-        ? convertedGrandTotal
-        : totalAmount;
+      // Fail closed: an unconverted USD amount must never be shown under another currency code.
+      const results = [convertedSub, convertedDiscounted, convertedShip, convertedGrandTotal];
+      if (!results.every((value) => typeof value === 'number' && Number.isFinite(value))) {
+        showBaseAmounts(true);
+        return;
+      }
 
-      setConvertedSubtotal(safeConvertedSub);
-      setConvertedDiscountedSubtotal(safeConvertedDiscounted);
-      setConvertedShipping(safeConvertedShip);
-      setConvertedTotal(safeConvertedGrandTotal);
+      setConvertedSubtotal(convertedSub);
+      setConvertedDiscountedSubtotal(convertedDiscounted);
+      setConvertedShipping(convertedShip);
+      setConvertedTotal(convertedGrandTotal);
+      setConversion({ code: targetCode, failed: false });
     } catch (error) {
       console.error('Error converting currency:', error);
-      // Fallback to original values
-      setConvertedSubtotal(subtotal);
-      setConvertedDiscountedSubtotal(discountedSubtotal);
-      setConvertedShipping(shippingCost);
-      setConvertedTotal(totalAmount);
+      showBaseAmounts(true);
     }
   };
 
@@ -307,18 +313,28 @@ const CartPage = ({ onNavigate }) => {
 
   const activeZelleAccount = zelleAccounts.find(acc => acc.forProducts && acc.active);
 
+  // True while the selected non-base currency has no verified conversion (pending or failed):
+  // every amount is then shown in the base currency (USD) with the USD label.
+  const showingBaseAmounts = currencyCode !== BASE_CURRENCY_CODE
+    && !(conversion.code === currencyCode && !conversion.failed);
+  const rateUnavailable = currencyCode !== BASE_CURRENCY_CODE
+    && conversion.code === currencyCode && conversion.failed;
+  const displayCurrencyCode = showingBaseAmounts ? BASE_CURRENCY_CODE : currencyCode;
+  const displayCurrencySymbol = showingBaseAmounts ? BASE_CURRENCY_SYMBOL : currencySymbol;
+
   const exchangeRateForDisplay = useMemo(() => {
+    if (showingBaseAmounts) return 1;
     if (subtotal > 0 && convertedSubtotal !== null) {
       return convertedSubtotal / subtotal;
     }
     return 1;
-  }, [convertedSubtotal, subtotal]);
+  }, [convertedSubtotal, subtotal, showingBaseAmounts]);
 
   const displayValues = {
-    subtotal: convertedSubtotal !== null ? convertedSubtotal : subtotal,
-    discountedSubtotal: convertedDiscountedSubtotal !== null ? convertedDiscountedSubtotal : discountedSubtotal,
-    shipping: convertedShipping !== null ? convertedShipping : shippingCost,
-    total: convertedTotal !== null ? convertedTotal : totalAmount,
+    subtotal: !showingBaseAmounts && convertedSubtotal !== null ? convertedSubtotal : subtotal,
+    discountedSubtotal: !showingBaseAmounts && convertedDiscountedSubtotal !== null ? convertedDiscountedSubtotal : discountedSubtotal,
+    shipping: !showingBaseAmounts && convertedShipping !== null ? convertedShipping : shippingCost,
+    total: !showingBaseAmounts && convertedTotal !== null ? convertedTotal : totalAmount,
     categoryDiscount: categoryDiscountAmount * exchangeRateForDisplay,
     offerDiscount: offerDiscountAmount * exchangeRateForDisplay
   };
@@ -350,6 +366,7 @@ const CartPage = ({ onNavigate }) => {
 
   const handleCheckout = async () => {
     if (notifyInvalidCart()) return;
+    if (showingBaseAmounts) return;
 
     if (!isAuthenticated) {
       // Guardar estado para restaurar después del login
@@ -460,8 +477,8 @@ const CartPage = ({ onNavigate }) => {
           : 'This coupon has expired';
       case 'MIN_AMOUNT':
         return language === 'es'
-          ? `Compra mínima requerida: ${currencySymbol}${requiredAmount?.toFixed(2)}. Tu subtotal actual: ${currencySymbol}${currentAmount?.toFixed(2)}`
-          : `Minimum purchase required: ${currencySymbol}${requiredAmount?.toFixed(2)}. Your current subtotal: ${currencySymbol}${currentAmount?.toFixed(2)}`;
+          ? `Compra mínima requerida: ${displayCurrencySymbol}${requiredAmount?.toFixed(2)}. Tu subtotal actual: ${displayCurrencySymbol}${currentAmount?.toFixed(2)}`
+          : `Minimum purchase required: ${displayCurrencySymbol}${requiredAmount?.toFixed(2)}. Your current subtotal: ${displayCurrencySymbol}${currentAmount?.toFixed(2)}`;
       case 'GLOBAL_LIMIT':
         return language === 'es'
           ? 'Este cupón ya alcanzó su límite de usos'
@@ -680,9 +697,10 @@ const CartPage = ({ onNavigate }) => {
   // Pre-payment confirmation modal
   const handlePrePaymentConfirmation = async () => {
     if (notifyInvalidCart()) return;
+    if (showingBaseAmounts) return;
     if (notifyPaymentBlocker()) return;
 
-    const summaryText = `${t('cart.payment.recipientLabel')}: ${recipientDetails.fullName}\nTotal: ${currencySymbol}${convertedTotal?.toFixed(2) || totalAmount.toFixed(2)} ${currencyCode}\n${t('cart.payment.productsLabel')}: ${t('cart.payment.itemCount', { count: cart.length })}`;
+    const summaryText = `${t('cart.payment.recipientLabel')}: ${recipientDetails.fullName}\nTotal: ${displayCurrencySymbol}${displayValues.total.toFixed(2)} ${displayCurrencyCode}\n${t('cart.payment.productsLabel')}: ${t('cart.payment.itemCount', { count: cart.length })}`;
 
     const confirmed = await showModal({
       type: 'confirm',
@@ -1202,7 +1220,7 @@ const CartPage = ({ onNavigate }) => {
                   <span>
                     {t('cart.payment.categoryDiscount')} ({userCategory} · {discountBreakdown.category.percent}%):
                   </span>
-                  <span>-{currencySymbol}{discountBreakdown.category.amount.toFixed(2)}</span>
+                  <span>-{displayCurrencySymbol}{discountBreakdown.category.amount.toFixed(2)}</span>
                 </div>
               )}
               {discountBreakdown.offer.amount > 0 && appliedOffer && (
@@ -1210,10 +1228,10 @@ const CartPage = ({ onNavigate }) => {
                   <span>
                     {t('cart.payment.offerDiscount')} ({appliedOffer.code} · {appliedOffer.discount_type === 'percentage'
                       ? `${appliedOffer.discount_value}%`
-                      : `${currencySymbol}${appliedOffer.discount_value}`
+                      : `${displayCurrencySymbol}${appliedOffer.discount_value}`
                     }):
                   </span>
-                  <span>-{currencySymbol}{discountBreakdown.offer.amount.toFixed(2)}</span>
+                  <span>-{displayCurrencySymbol}{discountBreakdown.offer.amount.toFixed(2)}</span>
                 </div>
               )}
               {totalDiscountAmount > 0 && (
@@ -1495,7 +1513,7 @@ const CartPage = ({ onNavigate }) => {
                 const isCombo = !!item.products;
 
                 // Calculate converted prices for display
-                const exchangeRate = currencyCode === 'USD' ? 1 : (convertedSubtotal !== null ? convertedSubtotal / subtotal : 1);
+                const exchangeRate = showingBaseAmounts || currencyCode === BASE_CURRENCY_CODE ? 1 : (convertedSubtotal !== null && subtotal > 0 ? convertedSubtotal / subtotal : 1);
                 const convertedItemPrice = itemPrice * exchangeRate;
                 const convertedItemTotal = itemTotal * exchangeRate;
 
@@ -1529,11 +1547,11 @@ const CartPage = ({ onNavigate }) => {
                         <p className="text-sm text-gray-500 mb-2">
                           {language === 'es' ? 'Precio unitario: ' : 'Unit price: '}
                           <span className="font-semibold" style={{ color: visualSettings.accentColor || '#9333ea' }}>
-                            {currencySymbol}{convertedItemPrice.toFixed(2)} {currencyCode}
+                            {displayCurrencySymbol}{convertedItemPrice.toFixed(2)} {displayCurrencyCode}
                           </span>
                         </p>
                         <p className="text-base font-bold text-gray-900">
-                          {language === 'es' ? 'Subtotal: ' : 'Subtotal: '}{currencySymbol}{convertedItemTotal.toFixed(2)} {currencyCode}
+                          {language === 'es' ? 'Subtotal: ' : 'Subtotal: '}{displayCurrencySymbol}{convertedItemTotal.toFixed(2)} {displayCurrencyCode}
                         </p>
                       </div>
 
@@ -1585,12 +1603,12 @@ const CartPage = ({ onNavigate }) => {
                       </p>
                       {discountBreakdown.category.amount > 0 && (
                         <p className="text-xs text-green-800">
-                          {language === 'es' ? 'Categoría' : 'Category'}: {userCategory} ({discountBreakdown.category.percent}% · -{currencySymbol}{discountBreakdown.category.amount.toFixed(2)})
+                          {language === 'es' ? 'Categoría' : 'Category'}: {userCategory} ({discountBreakdown.category.percent}% · -{displayCurrencySymbol}{discountBreakdown.category.amount.toFixed(2)})
                         </p>
                       )}
                       {discountBreakdown.offer.amount > 0 && appliedOffer && (
                         <p className="text-xs text-green-800">
-                          {language === 'es' ? 'Oferta' : 'Offer'}: {appliedOffer.code} ({appliedOffer.discount_type === 'percentage' ? `${appliedOffer.discount_value}%` : `${currencySymbol}${appliedOffer.discount_value}`} · -{currencySymbol}{discountBreakdown.offer.amount.toFixed(2)})
+                          {language === 'es' ? 'Oferta' : 'Offer'}: {appliedOffer.code} ({appliedOffer.discount_type === 'percentage' ? `${appliedOffer.discount_value}%` : `${displayCurrencySymbol}${appliedOffer.discount_value}`} · -{displayCurrencySymbol}{discountBreakdown.offer.amount.toFixed(2)})
                         </p>
                       )}
                     </div>
@@ -1610,28 +1628,28 @@ const CartPage = ({ onNavigate }) => {
                   <div className="flex justify-between">
                     <span>{t('cart.subtotal')}</span>
                     <span className="font-semibold">
-                      {currencySymbol}
-                      {displayValues.subtotal.toFixed(2)} {currencyCode}
+                      {displayCurrencySymbol}
+                      {displayValues.subtotal.toFixed(2)} {displayCurrencyCode}
                     </span>
                   </div>
                   {discountBreakdown.category.amount > 0 && (
                     <div className="flex justify-between text-sm text-green-700">
                       <span>{language === 'es' ? 'Descuento categoría' : 'Category discount'} ({discountBreakdown.category.percent}%):</span>
-                      <span>-{currencySymbol}{displayValues.categoryDiscount.toFixed(2)} {currencyCode}</span>
+                      <span>-{displayCurrencySymbol}{displayValues.categoryDiscount.toFixed(2)} {displayCurrencyCode}</span>
                     </div>
                   )}
                   {discountBreakdown.offer.amount > 0 && appliedOffer && (
                     <div className="flex justify-between text-sm text-green-700">
                       <span>{language === 'es' ? 'Descuento por oferta' : 'Offer discount'} ({discountBreakdown.offer.percent}%):</span>
-                      <span>-{currencySymbol}{displayValues.offerDiscount.toFixed(2)} {currencyCode}</span>
+                      <span>-{displayCurrencySymbol}{displayValues.offerDiscount.toFixed(2)} {displayCurrencyCode}</span>
                     </div>
                   )}
                   {totalDiscountAmount > 0 && (
                     <div className="flex justify-between text-sm font-semibold text-green-800 border-t pt-2">
                       <span>{language === 'es' ? 'Subtotal con descuentos' : 'Discounted subtotal'}</span>
                       <span>
-                        {currencySymbol}
-                        {displayValues.discountedSubtotal.toFixed(2)} {currencyCode}
+                        {displayCurrencySymbol}
+                        {displayValues.discountedSubtotal.toFixed(2)} {displayCurrencyCode}
                       </span>
                     </div>
                   )}
@@ -1640,7 +1658,7 @@ const CartPage = ({ onNavigate }) => {
                     <span className="text-sm font-semibold">
                       {displayValues.shipping === 0
                         ? (language === 'es' ? 'Gratis' : 'Free')
-                        : `${currencySymbol}${displayValues.shipping.toFixed(2)} ${currencyCode}`
+                        : `${displayCurrencySymbol}${displayValues.shipping.toFixed(2)} ${displayCurrencyCode}`
                       }
                     </span>
                   </div>
@@ -1648,19 +1666,25 @@ const CartPage = ({ onNavigate }) => {
                   <div className="flex justify-between text-xl font-bold">
                     <span>{t('cart.total')}</span>
                     <span style={{ color: visualSettings.primaryColor || '#2563eb' }}>
-                      {currencySymbol}
-                      {displayValues.total.toFixed(2)} {currencyCode}
+                      {displayCurrencySymbol}
+                      {displayValues.total.toFixed(2)} {displayCurrencyCode}
                     </span>
                   </div>
                 </div>
 
                 {zelleOrdersBlocked && <PaymentMethodsUnavailable flow={PAYMENT_FLOWS.ORDERS} />}
 
+                {rateUnavailable && (
+                  <p role="alert" className="text-sm text-amber-700 font-medium">
+                    {t('cart.rateUnavailable.notice', { currency: currencyCode })}
+                  </p>
+                )}
+
                 {cartLines.hasInvalidLines && (
                   <p role="alert" className="text-sm text-red-600 font-medium">{t('cart.invalidItems')}</p>
                 )}
 
-                <Button onClick={handleCheckout} className="w-full" size="lg" style={getPrimaryButtonStyle(visualSettings)} disabled={zelleOrdersBlocked || cartLines.hasInvalidLines}>
+                <Button onClick={handleCheckout} className="w-full" size="lg" style={getPrimaryButtonStyle(visualSettings)} disabled={zelleOrdersBlocked || cartLines.hasInvalidLines || showingBaseAmounts}>
                   {t('cart.checkout')}
                 </Button>
                 <Button onClick={handleClearCart} variant="outline" className="w-full">
