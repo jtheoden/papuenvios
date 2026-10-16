@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DollarSign, Save, Plus, Edit, Trash2, AlertTriangle, ArrowRightLeft, Info, Power, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,11 +8,22 @@ import { getPrimaryButtonStyle, getHeadingStyle } from '@/lib/styleUtils';
 import { toast } from '@/components/ui/use-toast';
 import {
   getCurrencies, getAllCurrencies, createCurrency, updateCurrency, deleteCurrency,
-  fetchOfficialRates, getAllExchangeRates, saveExchangeRate, deleteExchangeRate, deleteExchangeRatePair, updateExchangeRatePair
+  getAllExchangeRates, saveExchangeRate, deleteExchangeRate, deleteExchangeRatePair, updateExchangeRatePair
 } from '@/lib/currencyService';
 import { supabase } from '@/lib/supabase';
 import { saveMarginSettings } from '@/lib/financialSettingsService';
 import { ERROR_CODES, isSessionExpiredError } from '@/lib/errorHandler';
+import { formatDateTime } from '@/lib/numberFormat';
+import {
+  USD_EUR_BOUNDS,
+  isRatePairAllowed,
+  isUsdEurPair,
+  requiresChangeConfirmation,
+  rateChangeRatio,
+  selectableRateCurrencies,
+  validateUsdEurRate
+} from '@/lib/fxRateGuards';
+import FxReferenceCard from '@/components/settings/FxReferenceCard';
 
 /**
  * Confirmation Modal Component with framer-motion animations
@@ -137,8 +148,6 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   const [currencyForm, setCurrencyForm] = useState({
     code: '', name_es: '', name_en: '', symbol: '', is_base: false
   });
-  const [officialRates, setOfficialRates] = useState(null);
-  const [loadingRates, setLoadingRates] = useState(false);
 
   // Confirmation modal state
   const [confirmModal, setConfirmModal] = useState({
@@ -146,11 +155,6 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
     currency: null,
     newStatus: false
   });
-
-  // Filter active currencies for exchange rate selectors
-  const activeCurrencies = useMemo(() => {
-    return currencies.filter(c => c.is_active);
-  }, [currencies]);
 
   // Exchange rates states
   const [exchangeRates, setExchangeRates] = useState([]);
@@ -163,6 +167,10 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
     fromCurrencyId: '', toCurrencyId: '', rate: '',
     effectiveDate: new Date().toISOString().split('T')[0]
   });
+  // Large USD->EUR change waiting for the admin's explicit confirmation
+  const [rateChangeConfirm, setRateChangeConfirm] = useState({ isOpen: false, pair: null });
+  const rateFormRef = useRef(null);
+  const [preloadTick, setPreloadTick] = useState(0);
 
   // Check if exchange rate pair already exists (including inverse)
   const duplicateRateInfo = useMemo(() => {
@@ -191,6 +199,17 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   const fromCurrency = useMemo(() => currencies.find(c => c.id === newRate.fromCurrencyId), [currencies, newRate.fromCurrencyId]);
   const toCurrency = useMemo(() => currencies.find(c => c.id === newRate.toCurrencyId), [currencies, newRate.toCurrencyId]);
   const inverseRate = useMemo(() => newRate.rate ? (1 / parseFloat(newRate.rate)) : null, [newRate.rate]);
+
+  const usdCurrency = useMemo(() => currencies.find(c => c.code === 'USD'), [currencies]);
+  const eurCurrency = useMemo(() => currencies.find(c => c.code === 'EUR'), [currencies]);
+  const fromOptions = useMemo(
+    () => selectableRateCurrencies(currencies, { role: 'from', otherId: newRate.toCurrencyId }),
+    [currencies, newRate.toCurrencyId]
+  );
+  const toOptions = useMemo(
+    () => selectableRateCurrencies(currencies, { role: 'to', otherId: newRate.fromCurrencyId }),
+    [currencies, newRate.fromCurrencyId]
+  );
 
   // Group exchange rates into pairs for display
   const groupedExchangeRates = useMemo(() => {
@@ -226,9 +245,17 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
 
   useEffect(() => {
     loadCurrencies();
-    loadOfficialRates();
     loadExchangeRates();
   }, []);
+
+  // After preloading the form from the reference, bring it into view and focus the rate field.
+  useEffect(() => {
+    if (!preloadTick) return;
+    const node = rateFormRef.current;
+    if (!node) return;
+    node.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    node.querySelector('input[type="number"]')?.focus();
+  }, [preloadTick]);
 
   // ===== FINANCIAL HANDLERS =====
   const handleFinancialSave = async () => {
@@ -248,20 +275,6 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
           : t('settings.financial.marginSaveError'),
         variant: 'destructive'
       });
-    }
-  };
-
-  // ===== OFFICIAL RATES HANDLERS =====
-  const loadOfficialRates = async () => {
-    setLoadingRates(true);
-    try {
-      const rates = await fetchOfficialRates();
-      setOfficialRates(rates || []);
-    } catch (error) {
-      console.error('Error loading official rates:', error);
-      setOfficialRates([]);
-    } finally {
-      setLoadingRates(false);
     }
   };
 
@@ -476,6 +489,24 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       return;
     }
 
+    if (!isRatePairAllowed(fromCurrency, toCurrency)) {
+      toast({
+        title: t('common.error'),
+        description: t('settings.financial.pairNotAllowed'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (isUsdEurPair(fromCurrency?.code, toCurrency?.code) && !validateUsdEurRate(newRate.rate).ok) {
+      toast({
+        title: t('common.error'),
+        description: t('settings.financial.rateOutOfBand', USD_EUR_BOUNDS),
+        variant: 'destructive'
+      });
+      return;
+    }
+
     // Check for duplicate exchange rate pair
     if (duplicateRateInfo) {
       toast({
@@ -584,6 +615,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       fromCurrencyId: pair.directRate.from_currency_id,
       toCurrencyId: pair.directRate.to_currency_id,
       rate: pair.directRate.rate,
+      originalRate: pair.directRate.rate,
       effectiveDate: pair.effectiveDate || new Date().toISOString().split('T')[0],
       fromCurrency: pair.fromCurrency,
       toCurrency: pair.toCurrency
@@ -591,23 +623,47 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
     setShowAddRate(false);
   };
 
-  // Update exchange rate pair (both direct and inverse)
-  const handleUpdateRatePair = async () => {
-    if (!editingRatePair || !editingRatePair.rate) {
-      toast({
-        title: t('common.error'),
-        description: t('settings.financial.fillAllFields'),
-        variant: 'destructive'
+  // Preload the form from the external reference. Never saves: the admin reviews and saves explicitly.
+  const handleUseReference = ({ rate }) => {
+    if (!usdCurrency || !eurCurrency) return;
+    const today = new Date().toISOString().split('T')[0];
+    // Edit only when the USD->EUR row itself exists: updating a pair touches rows by direction.
+    const current = exchangeRates.find(r => r.from_currency_id === usdCurrency.id && r.to_currency_id === eurCurrency.id);
+    if (current) {
+      setEditingRatePair({
+        fromCurrencyId: usdCurrency.id,
+        toCurrencyId: eurCurrency.id,
+        rate: String(rate),
+        originalRate: current.rate,
+        effectiveDate: today,
+        fromCurrency: usdCurrency,
+        toCurrency: eurCurrency
       });
-      return;
+      setShowAddRate(false);
+    } else {
+      setNewRate({ fromCurrencyId: usdCurrency.id, toCurrencyId: eurCurrency.id, rate: String(rate), effectiveDate: today });
+      setEditingRatePair(null);
+      setShowAddRate(true);
     }
+    setPreloadTick(tick => tick + 1);
+  };
 
+  // Changing the source can leave the target invalid (e.g. inactive EUR only pairs with USD).
+  const handleFromCurrencyChange = (value) => {
+    const nextFrom = currencies.find(c => c.id === value);
+    const currentTo = currencies.find(c => c.id === newRate.toCurrencyId);
+    const keepTo = !nextFrom || !currentTo || isRatePairAllowed(nextFrom, currentTo);
+    setNewRate({ ...newRate, fromCurrencyId: value, toCurrencyId: keepTo ? newRate.toCurrencyId : '' });
+  };
+
+  // Persist the pair (both direct and inverse) once every guard has passed
+  const commitRatePairUpdate = async (pair) => {
     try {
       const result = await updateExchangeRatePair(
-        editingRatePair.fromCurrencyId,
-        editingRatePair.toCurrencyId,
-        editingRatePair.rate,
-        editingRatePair.effectiveDate
+        pair.fromCurrencyId,
+        pair.toCurrencyId,
+        pair.rate,
+        pair.effectiveDate
       );
       if (result.error) throw result.error;
 
@@ -621,13 +677,45 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       });
     } catch (error) {
       if (handleSessionExpired(error)) return;
-      console.error('Error updating rate pair:', error);
       toast({
         title: 'Error',
         description: error.message,
         variant: 'destructive'
       });
     }
+  };
+
+  const handleUpdateRatePair = async () => {
+    if (!editingRatePair || !editingRatePair.rate) {
+      toast({
+        title: t('common.error'),
+        description: t('settings.financial.fillAllFields'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (isUsdEurPair(editingRatePair.fromCurrency?.code, editingRatePair.toCurrency?.code)) {
+      if (!validateUsdEurRate(editingRatePair.rate).ok) {
+        toast({
+          title: t('common.error'),
+          description: t('settings.financial.rateOutOfBand', USD_EUR_BOUNDS),
+          variant: 'destructive'
+        });
+        return;
+      }
+      if (requiresChangeConfirmation(editingRatePair.originalRate, editingRatePair.rate)) {
+        setRateChangeConfirm({ isOpen: true, pair: editingRatePair });
+        return;
+      }
+    }
+
+    await commitRatePairUpdate(editingRatePair);
+  };
+
+  const handleCloseRateChangeConfirm = () => setRateChangeConfirm({ isOpen: false, pair: null });
+  const handleConfirmRateChange = () => {
+    if (rateChangeConfirm.pair) commitRatePairUpdate(rateChangeConfirm.pair);
   };
 
   // Cancel editing rate pair
@@ -711,34 +799,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         <div className="border-t pt-6">
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
             <h3 className="text-xl font-semibold">{t('settings.financial.currencies')}</h3>
-            <Button
-              onClick={loadOfficialRates}
-              disabled={loadingRates}
-              variant="outline"
-              size="sm"
-              className="h-8 px-2 sm:px-3"
-              title={t('settings.financial.loadOfficialRates')}
-            >
-              <DollarSign className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">{loadingRates ? t('common.loading') : t('settings.financial.loadOfficialRates')}</span>
-            </Button>
           </div>
-
-          {officialRates && (
-            <div className="bg-green-50 p-4 rounded-lg mb-4">
-              <h4 className="font-semibold text-green-800 mb-2">
-                {t('settings.financial.officialRatesReference')}
-              </h4>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 text-sm">
-                {Object.entries(officialRates).map(([code, rate]) => (
-                  <div key={code} className="bg-white p-2 rounded flex justify-between">
-                    <span className="font-bold">{code}:</span>
-                    <span className="font-mono">{Number(rate).toFixed(4)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           <div className="space-y-2 mb-6">
             {currencies.map(currency => (
@@ -922,8 +983,13 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
           </Button>
         </div>
 
+        <FxReferenceCard
+          onUse={handleUseReference}
+          disabledReason={usdCurrency && eurCurrency ? null : t('settings.fxReference.missingCurrencies')}
+        />
+
         {showAddRate && (
-          <div className="bg-blue-50 p-4 rounded-lg mb-6">
+          <div ref={rateFormRef} className="bg-blue-50 p-4 rounded-lg mb-6">
             <h4 className="text-lg font-semibold mb-3">
               {t('settings.financial.addNewExchangeRate')}
             </h4>
@@ -957,11 +1023,11 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                 </label>
                 <select
                   value={newRate.fromCurrencyId}
-                  onChange={e => setNewRate({ ...newRate, fromCurrencyId: e.target.value })}
+                  onChange={e => handleFromCurrencyChange(e.target.value)}
                   className="input-style w-full"
                 >
                   <option value="">{t('settings.financial.select')}</option>
-                  {activeCurrencies.filter(c => c.id !== newRate.toCurrencyId).map(c => (
+                  {fromOptions.map(c => (
                     <option key={c.id} value={c.id}>{c.code} - {language === 'es' ? c.name_es : c.name_en}</option>
                   ))}
                 </select>
@@ -976,7 +1042,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                   className="input-style w-full"
                 >
                   <option value="">{t('settings.financial.select')}</option>
-                  {activeCurrencies.filter(c => c.id !== newRate.fromCurrencyId).map(c => (
+                  {toOptions.map(c => (
                     <option key={c.id} value={c.id}>{c.code} - {language === 'es' ? c.name_es : c.name_en}</option>
                   ))}
                 </select>
@@ -1059,7 +1125,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
 
         {/* Edit Exchange Rate Pair Form */}
         {editingRatePair && (
-          <div className="bg-amber-50 p-4 rounded-lg mb-6 border border-amber-200">
+          <div ref={rateFormRef} className="bg-amber-50 p-4 rounded-lg mb-6 border border-amber-200">
             <h4 className="text-lg font-semibold mb-3 flex items-center gap-2">
               <Edit className="h-5 w-5 text-amber-600" />
               {language === 'es' ? 'Editar Par de Tasas' : 'Edit Rate Pair'}
@@ -1217,6 +1283,11 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                       {language === 'es' ? 'Vigente desde: ' : 'Effective: '}
                       {new Date(pair.effectiveDate).toLocaleDateString()}
                     </div>
+                    {pair.directRate.updated_at && (
+                      <div className="text-xs text-gray-500">
+                        {t('settings.financial.rateUpdatedAt', { date: formatDateTime(pair.directRate.updated_at, language) })}
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -1249,6 +1320,24 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
           </div>
         )}
       </motion.div>
+
+      {/* Large USD->EUR rate change confirmation */}
+      <ConfirmationModal
+        isOpen={rateChangeConfirm.isOpen}
+        onClose={handleCloseRateChangeConfirm}
+        onConfirm={handleConfirmRateChange}
+        title={t('settings.financial.rateChangeConfirmTitle')}
+        message={rateChangeConfirm.pair
+          ? t('settings.financial.rateChangeConfirmMessage', {
+              previous: String(Number(rateChangeConfirm.pair.originalRate)),
+              next: String(Number(rateChangeConfirm.pair.rate)),
+              percent: (rateChangeRatio(rateChangeConfirm.pair.originalRate, rateChangeConfirm.pair.rate) * 100).toFixed(1)
+            })
+          : ''}
+        confirmText={t('settings.financial.rateChangeConfirmAction')}
+        cancelText={t('common.cancel')}
+        variant="default"
+      />
 
       {/* Currency Toggle Confirmation Modal */}
       <ConfirmationModal

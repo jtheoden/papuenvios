@@ -15,9 +15,7 @@ import SettingsPageFinancial from '@/components/settings/SettingsPageFinancial';
 import SettingsPageShipping from '@/components/settings/SettingsPageShipping';
 import SettingsPageVisual from '@/components/settings/SettingsPageVisual';
 import SettingsPageContent from '@/components/settings/SettingsPageContent';
-import SettingsZelleTab from '@/components/settings/SettingsZelleTab';
-import PaymentMethodsStatusCard from '@/components/settings/PaymentMethodsStatusCard';
-import SettingsBizumSection from '@/components/settings/SettingsBizumSection';
+import SettingsPaymentsTab from '@/components/settings/SettingsPaymentsTab';
 import SettingsSystemTab from '@/components/settings/SettingsSystemTab';
 
 const SettingsPage = () => {
@@ -52,21 +50,6 @@ const SettingsPage = () => {
   useEffect(() => {
     setLocalNotifications(notificationSettings);
   }, [notificationSettings]);
-
-  // Load official exchange rates
-  const loadOfficialRates = async () => {
-    setLoadingRates(true);
-    try {
-      const rates = await fetchOfficialRates();
-      setOfficialRates(rates || []);
-    } catch (error) {
-      console.error('[loadOfficialRates] ERROR:', error);
-      console.error('[loadOfficialRates] Error details:', { message: error?.message, code: error?.code });
-      setOfficialRates([]);
-    } finally {
-      setLoadingRates(false);
-    }
-  };
 
   if (!user || !isAdmin) {
     return (
@@ -492,9 +475,7 @@ const SettingsPage = () => {
           {activeTab === 'zelle' && (
             <>
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-effect p-8 rounded-2xl">
-                <PaymentMethodsStatusCard />
-                <SettingsZelleTab />
-                <SettingsBizumSection />
+                <SettingsPaymentsTab />
               </motion.div>
             </>
           )}

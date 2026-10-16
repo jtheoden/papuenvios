@@ -19,3 +19,10 @@ export const formatDateTime = (value, language) => {
   if (Number.isNaN(date.getTime())) return '';
   return new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 };
+
+/** Same as formatDateTime but pinned to UTC, to contrast a provider's timestamp with the local time. */
+export const formatDateTimeUtc = (value, language) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(date);
+};
