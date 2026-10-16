@@ -346,6 +346,29 @@ export const isSchemaMissingError = (error) => {
 };
 
 /**
+ * Detect errors caused by an expired or missing session (HTTP 401, Postgres 42501,
+ * PostgREST JWT errors). Works on raw Supabase errors and on AppErrors from parseSupabaseError.
+ */
+export const isSessionExpiredError = (error) => {
+  if (!error) return false;
+  const codes = [
+    error?.code,
+    error?.status,
+    error?.context?.postgresCode,
+    error?.context?.code,
+    error?.context?.originalError?.code,
+    error?.context?.originalError?.status
+  ].filter(Boolean).map(String);
+
+  if (codes.some((code) => ['401', '42501', 'PGRST301', 'PGRST302'].includes(code))) {
+    return true;
+  }
+
+  const message = (error?.message || error?.context?.originalError?.message || '').toLowerCase();
+  return message.includes('jwt expired') || message.includes('permission denied for table');
+};
+
+/**
  * Export for convenience
  */
 export default {
@@ -361,5 +384,6 @@ export default {
   createConflictError,
   createPermissionError,
   parseSupabaseError,
-  isSchemaMissingError
+  isSchemaMissingError,
+  isSessionExpiredError
 };

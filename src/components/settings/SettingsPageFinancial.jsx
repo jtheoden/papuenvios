@@ -12,7 +12,7 @@ import {
 } from '@/lib/currencyService';
 import { supabase } from '@/lib/supabase';
 import { saveMarginSettings } from '@/lib/financialSettingsService';
-import { ERROR_CODES } from '@/lib/errorHandler';
+import { ERROR_CODES, isSessionExpiredError } from '@/lib/errorHandler';
 
 /**
  * Confirmation Modal Component with framer-motion animations
@@ -155,6 +155,8 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   // Exchange rates states
   const [exchangeRates, setExchangeRates] = useState([]);
   const [loadingRates2, setLoadingRates2] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [refreshingSession, setRefreshingSession] = useState(false);
   const [showAddRate, setShowAddRate] = useState(false);
   const [editingRatePair, setEditingRatePair] = useState(null); // { fromCurrencyId, toCurrencyId, rate, effectiveDate }
   const [newRate, setNewRate] = useState({
@@ -409,16 +411,49 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   };
 
   // ===== EXCHANGE RATES HANDLERS =====
+  // An expired session surfaces as 401 / 42501: guide the admin instead of showing the raw error
+  const handleSessionExpired = (error) => {
+    if (!isSessionExpiredError(error)) return false;
+    setSessionExpired(true);
+    toast({
+      title: t('common.error'),
+      description: t('settings.financial.sessionExpired'),
+      variant: 'destructive'
+    });
+    return true;
+  };
+
   const loadExchangeRates = async () => {
     setLoadingRates2(true);
     try {
       const rates = await getAllExchangeRates();
       setExchangeRates(rates || []);
+      setSessionExpired(false);
     } catch (error) {
-      console.error('Error loading exchange rates:', error);
+      if (!handleSessionExpired(error)) {
+        console.error('Error loading exchange rates:', error);
+      }
       setExchangeRates([]);
     } finally {
       setLoadingRates2(false);
+    }
+  };
+
+  const handleRetryAfterSessionExpired = async () => {
+    setRefreshingSession(true);
+    try {
+      const { data, error } = await supabase.auth.refreshSession();
+      if (error || !data?.session) {
+        toast({
+          title: t('common.error'),
+          description: t('settings.financial.sessionExpiredSignIn'),
+          variant: 'destructive'
+        });
+        return;
+      }
+      await loadExchangeRates();
+    } finally {
+      setRefreshingSession(false);
     }
   };
 
@@ -477,6 +512,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         title: t('settings.financial.ratesSaved')
       });
     } catch (error) {
+      if (handleSessionExpired(error)) return;
       console.error('Error saving rate:', error);
       toast({
         title: t('settings.financial.saveError'),
@@ -500,6 +536,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         title: t('settings.financial.rateDeleted')
       });
     } catch (error) {
+      if (handleSessionExpired(error)) return;
       console.error('Error deleting rate:', error);
       toast({
         title: 'Error',
@@ -531,6 +568,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
           : `${result.deletedCount} exchange rates removed`
       });
     } catch (error) {
+      if (handleSessionExpired(error)) return;
       console.error('Error deleting rate pair:', error);
       toast({
         title: 'Error',
@@ -582,6 +620,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
           : 'Both rates updated (direct and inverse)'
       });
     } catch (error) {
+      if (handleSessionExpired(error)) return;
       console.error('Error updating rate pair:', error);
       toast({
         title: 'Error',
@@ -1096,6 +1135,23 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                 <span>{language === 'es' ? 'Cancelar' : 'Cancel'}</span>
               </Button>
             </div>
+          </div>
+        )}
+
+        {sessionExpired && (
+          <div role="alert" className="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex items-start gap-2 flex-1 text-amber-900 text-sm">
+              <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+              <span>{t('settings.financial.sessionExpired')}</span>
+            </div>
+            <Button
+              onClick={handleRetryAfterSessionExpired}
+              disabled={refreshingSession}
+              variant="outline"
+              className="h-9 px-3"
+            >
+              <span>{t('settings.financial.sessionExpiredRetry')}</span>
+            </Button>
           </div>
         )}
 
