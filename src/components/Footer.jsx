@@ -37,6 +37,7 @@ const Footer = ({ onNavigate, showNotice = true }) => {
 
   return (
     <footer className="mt-8 md:mt-12" style={footerStyle}>
+      {showNotice && <RegulatoryNotice variant="strip" onNavigate={onNavigate} />}
       <div className="container mx-auto px-3 py-4 md:px-4 md:py-6">
         {/* Main footer content */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-2 md:gap-3 text-xs md:text-sm">
@@ -63,7 +64,7 @@ const Footer = ({ onNavigate, showNotice = true }) => {
           </span>
         </div>
 
-        {/* Legal links and regulatory notice */}
+        {/* Legal links */}
         <nav
           aria-label={t('legal.nav.label')}
           className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs md:text-sm"
@@ -76,13 +77,10 @@ const Footer = ({ onNavigate, showNotice = true }) => {
             {t('cookieConsent.preferencesLink')}
           </button>
         </nav>
-        {showNotice && (
-          <RegulatoryNotice onNavigate={onNavigate} className="mt-3 mx-auto max-w-2xl" />
-        )}
 
         {/* Copyright */}
         <div className="text-center mt-3 pt-3 md:mt-4 md:pt-4" style={{ borderTop: `1px solid ${visualSettings?.primaryColor || '#e5e7eb'}10` }}>
-          <p className="text-xs opacity-70">
+          <p className="text-xs opacity-80">
             <span style={textStyle}>© {currentYear}</span>{' '}
             <span style={companyNameStyle}>{visualSettings?.companyName || 'PapuEnvíos'}</span>
             <span style={textStyle}>. {t('footer.copyright')}</span>

@@ -13,7 +13,7 @@ const isModifiedClick = (event) =>
  * previous position) and the target section is scrolled into view explicitly, because
  * pushState does not emit hashchange.
  */
-const LegalLink = ({ page, hash, onNavigate, className = 'underline', children }) => {
+const LegalLink = ({ page, hash, onNavigate, className = 'underline', style, children }) => {
   const path = pageToPath(page);
   const href = `${path}${hash ? `#${hash}` : ''}`;
 
@@ -34,7 +34,7 @@ const LegalLink = ({ page, hash, onNavigate, className = 'underline', children }
   };
 
   return (
-    <a href={href} onClick={handleClick} className={className}>
+    <a href={href} onClick={handleClick} className={className} style={style}>
       {children}
     </a>
   );

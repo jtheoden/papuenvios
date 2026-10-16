@@ -16,6 +16,7 @@ import { getHeadingStyle } from '@/lib/styleUtils';
 import { supabase } from '@/lib/supabase';
 import { useRealtimeSubscription, useRealtimeCarouselSlides } from '@/hooks/useRealtimeSubscription';
 import SkeletonCard from '@/components/ui/SkeletonCard';
+import RegulatoryNotice from '@/components/RegulatoryNotice';
 
 const COMPLETED_REMITTANCE_STATUSES = ['delivered', 'completed'];
 const COMPLETED_ORDER_STATUS = 'completed';
@@ -414,6 +415,8 @@ const HomePage = ({ onNavigate }) => {
           </div>
         )}
       </section>
+
+      <RegulatoryNotice variant="strip" onNavigate={onNavigate} />
 
       <section className="py-16 px-4 bg-white">
         <div className="container mx-auto">

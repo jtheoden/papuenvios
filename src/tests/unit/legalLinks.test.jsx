@@ -4,6 +4,7 @@ import ES from '@/translations/ES.json';
 import EN from '@/translations/EN.json';
 
 const lang = { current: 'es' };
+const settings = { current: {} };
 
 const translate = (key, params = {}) => {
   const dict = lang.current === 'es' ? ES : EN;
@@ -17,7 +18,7 @@ vi.mock('@/contexts/LanguageContext', () => ({
 }));
 
 vi.mock('@/contexts/BusinessContext', () => ({
-  useBusiness: () => ({ visualSettings: {} }),
+  useBusiness: () => ({ visualSettings: settings.current }),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -33,6 +34,7 @@ import RegulatoryNotice from '@/components/RegulatoryNotice';
 
 beforeEach(() => {
   lang.current = 'es';
+  settings.current = {};
 });
 
 describe('translations parity for the legal namespace', () => {
@@ -98,6 +100,76 @@ describe('RegulatoryNotice', () => {
     expect(link).toHaveAttribute('href', '/terms');
     fireEvent.click(link);
     expect(onNavigate).toHaveBeenCalledWith('terms');
+  });
+});
+
+describe('RegulatoryNotice card variant', () => {
+  it('keeps the boxed list presentation by default', () => {
+    render(<RegulatoryNotice onNavigate={vi.fn()} />);
+    const note = screen.getByRole('note', { name: ES.legal.notice.title });
+    expect(note.className).toMatch(/bg-blue-50/);
+    expect(note.className).toMatch(/border-blue-100/);
+    expect(within(note).getAllByRole('listitem')).toHaveLength(4);
+    [
+      ES.legal.notice.notBank,
+      ES.legal.notice.zelleIrreversible,
+      ES.legal.notice.deliveryEstimates,
+      ES.legal.notice.ofac,
+    ].forEach((text) => expect(within(note).getByText(text)).toBeInTheDocument());
+    expect(within(note).getByRole('link')).toHaveAttribute('href', '/terms');
+  });
+});
+
+describe('Footer notice band', () => {
+  const renderFooter = () => render(<Footer onNavigate={vi.fn()} />);
+
+  it('renders the notice strip exactly once, with the card variant untouched', () => {
+    renderFooter();
+    const notes = screen.getAllByRole('note');
+    expect(notes).toHaveLength(1);
+    expect(notes[0].className).toMatch(/\bw-full\b/);
+    expect(notes[0].className).toMatch(/bg-slate-50/);
+    expect(notes[0].className).not.toMatch(/bg-blue-/);
+  });
+
+  it('places the band above the footer content, outside the container', () => {
+    const { container } = renderFooter();
+    const footer = container.querySelector('footer');
+    const note = screen.getByRole('note', { name: ES.legal.notice.title });
+    expect(footer.firstElementChild).toBe(note);
+  });
+
+  it('ignores the admin theme colours', () => {
+    settings.current = {
+      footerTextColor: '#e5e7eb',
+      footerLinkColor: '#93c5fd',
+      footerBgColor: '#111827',
+    };
+    renderFooter();
+    const note = screen.getByRole('note', { name: ES.legal.notice.title });
+    expect(note.getAttribute('style') || '').toBe('');
+    expect(within(note).getByRole('link').getAttribute('style') || '').toBe('');
+  });
+
+  it('navigates to the terms in-app from the band link', () => {
+    const onNavigate = vi.fn();
+    render(<Footer onNavigate={onNavigate} />);
+    const note = screen.getByRole('note', { name: ES.legal.notice.title });
+    const link = within(note).getByRole('link', { name: ES.legal.notice.seeTerms });
+    expect(link).toHaveAttribute('href', '/terms');
+    fireEvent.click(link);
+    expect(onNavigate).toHaveBeenCalledWith('terms');
+  });
+
+  it('keeps the three legal links when the notice is hidden', () => {
+    render(<Footer onNavigate={vi.fn()} showNotice={false} />);
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: ES.legal.links.terms })).toHaveAttribute('href', '/terms');
+    expect(screen.getByRole('link', { name: ES.legal.links.privacy })).toHaveAttribute('href', '/privacy');
+    expect(screen.getByRole('link', { name: ES.legal.links.refunds })).toHaveAttribute(
+      'href',
+      '/terms#refunds'
+    );
   });
 });
 
