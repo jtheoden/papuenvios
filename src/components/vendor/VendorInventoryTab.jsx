@@ -11,13 +11,16 @@ import { isImageUploadError, getImageUploadMessageKey } from '@/lib/imageStorage
 import { isStockBelowReservedError } from '@/lib/stockErrors';
 import { createProduct, deleteProduct, setProductActiveState, updateProduct as updateProductDB } from '@/lib/productService';
 import { bulkDeleteProducts, previewBulkDeleteProducts } from '@/lib/bulkDeleteService';
+import { isAlreadyDeletedError, shouldRefreshAfterBulkDelete } from '@/lib/deleteOutcomePure';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import BulkDeleteBar from '@/components/tables/BulkDeleteBar';
 import { getTableColumns, getModalColumns } from './ProductTableConfig';
 import { logActivity } from '@/lib/activityLogger';
+import { hasAdminProductFields } from '@/lib/adminCatalogColumns';
 import { DEFAULTS } from '@/lib/constants';
 import { resolveMargin } from '@/lib/marginResolver';
+import { getUnitOptions, isKnownUnit, normalizeUnitCode } from '@/lib/productUnits';
 
 /**
  * Vendor Inventory Tab Component
@@ -46,6 +49,15 @@ const VendorInventoryTab = ({
   const [deletingProductId, setDeletingProductId] = useState(null);
   const [productToDelete, setProductToDelete] = useState(null);
   const [selectedProductIds, setSelectedProductIds] = useState([]);
+
+  // Drop selected ids that no longer exist (deleted here or by another user)
+  useEffect(() => {
+    const present = new Set(products.map((p) => p.id));
+    setSelectedProductIds((prev) => {
+      const next = prev.filter((id) => present.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [products]);
   const [convertedPreview, setConvertedPreview] = useState(null);
   const [isConverting, setIsConverting] = useState(false);
   const [filterName, setFilterName] = useState('');
@@ -61,6 +73,13 @@ const VendorInventoryTab = ({
   const formCurrency = getCurrencyById(productForm?.base_currency_id) || systemBaseCurrency;
   const formCurrencySymbol = formCurrency?.symbol || '$';
   const formCurrencyCode = formCurrency?.code || 'USD';
+
+  // Catalog units; a stored code outside the catalog stays selectable so saving never wipes it
+  const unitOptions = useMemo(() => {
+    const options = getUnitOptions(language);
+    const current = normalizeUnitCode(productForm?.unit);
+    return current && !isKnownUnit(current) ? [...options, { value: current, label: current }] : options;
+  }, [language, productForm?.unit]);
 
   // Calculate converted price preview when price or currency changes
   const updateConvertedPreview = useCallback(async (price, fromCurrencyId) => {
@@ -219,6 +238,7 @@ const VendorInventoryTab = ({
       category: '',
       stock: '',
       min_stock_alert: '',
+      unit: '',
       expiryDate: '',
       image: '',
       profitMargin: defaultProfitMargin,
@@ -232,6 +252,14 @@ const VendorInventoryTab = ({
   };
 
   const openEditProductForm = (product) => {
+    // Rows from the public catalog carry no cost fields: reload the admin data instead of
+    // seeding a form that would overwrite them with defaults.
+    if (!hasAdminProductFields(product)) {
+      toast({ title: t('vendor.adminDataPending'), variant: 'destructive' });
+      onProductsRefresh(true);
+      return;
+    }
+
     // A product's own margin always wins; NULL falls back to category, then global
     const { value: margin, source: marginSource } = getEffectiveMargin(
       product.profit_margin,
@@ -255,6 +283,7 @@ const VendorInventoryTab = ({
       category: product.category?.id || product.category_id || '',
       stock: product.stock || '',
       min_stock_alert: product.min_stock_alert || '',
+      unit: product.unit || '',
       expiryDate: product.expiry_date || product.expiryDate || '',
       image: product.image_url || product.image_file || product.image || '',
       sku: product.sku || ''
@@ -361,6 +390,7 @@ const VendorInventoryTab = ({
         basePrice: normalizedPrice,
         stock: parseInt(productForm.stock || 0, 10),
         min_stock_alert: parseInt(productForm.min_stock_alert || 10, 10),
+        unit: normalizeUnitCode(productForm.unit),
         profitMargin: parseFloat(productForm.profitMargin || 40),
         category_id: productForm.category,
         base_currency_id: finalCurrencyId,
@@ -467,42 +497,64 @@ const VendorInventoryTab = ({
     }
   };
 
+  // Refreshes the product list; a failure is reported but never thrown, so it
+  // cannot be mistaken for a failed delete or become an unhandled rejection.
+  const refreshProductsSafely = async () => {
+    try {
+      await onProductsRefresh(true);
+    } catch (refreshError) {
+      console.error('[refreshProductsSafely] ERROR:', refreshError);
+      toast({
+        title: t('vendor.inventory.refreshFailed'),
+        variant: 'destructive'
+      });
+    }
+  };
+
   const handleDeleteProduct = async () => {
     if (!productToDelete) return;
     setDeletingProductId(productToDelete.id);
+    let deleteResult;
     try {
       // Pass user info for activity logging
-      const result = await deleteProduct(productToDelete.id, user?.email || user?.id || 'anonymous');
-
-      // Build toast description with deactivated combos info
-      const productName = productToDelete.name_es || productToDelete.name_en || productToDelete.id;
-      let toastDescription = language === 'es'
-        ? `${productName} eliminado`
-        : `${productName} deleted`;
-
-      if (result?.deactivatedCombos?.length > 0) {
-        const comboNames = result.deactivatedCombos.map(c => c.name).join(', ');
-        toastDescription += language === 'es'
-          ? `. Combos desactivados: ${comboNames}`
-          : `. Deactivated combos: ${comboNames}`;
-      }
-
-      toast({
-        title: t('vendor.inventory.productDeleted'),
-        description: toastDescription
-      });
-      await onProductsRefresh(true);
-      setProductToDelete(null);
+      deleteResult = await deleteProduct(productToDelete.id, user?.email || user?.id || 'anonymous');
     } catch (error) {
-      console.error('[handleDeleteProduct] ERROR:', error);
-      toast({
-        title: t('common.error'),
-        description: error?.message || (language === 'es' ? 'No se pudo eliminar el producto.' : 'Could not delete the product.'),
-        variant: 'destructive'
-      });
-    } finally {
+      if (isAlreadyDeletedError(error)) {
+        toast({ title: t('vendor.inventory.productAlreadyDeleted') });
+        setProductToDelete(null);
+        await refreshProductsSafely();
+      } else {
+        console.error('[handleDeleteProduct] ERROR:', error);
+        toast({
+          title: t('common.error'),
+          description: error?.message || (language === 'es' ? 'No se pudo eliminar el producto.' : 'Could not delete the product.'),
+          variant: 'destructive'
+        });
+      }
       setDeletingProductId(null);
+      return;
     }
+
+    // Build toast description with deactivated combos info
+    const productName = productToDelete.name_es || productToDelete.name_en || productToDelete.id;
+    let toastDescription = language === 'es'
+      ? `${productName} eliminado`
+      : `${productName} deleted`;
+
+    if (deleteResult?.deactivatedCombos?.length > 0) {
+      const comboNames = deleteResult.deactivatedCombos.map(c => c.name).join(', ');
+      toastDescription += language === 'es'
+        ? `. Combos desactivados: ${comboNames}`
+        : `. Deactivated combos: ${comboNames}`;
+    }
+
+    toast({
+      title: t('vendor.inventory.productDeleted'),
+      description: toastDescription
+    });
+    setProductToDelete(null);
+    await refreshProductsSafely();
+    setDeletingProductId(null);
   };
 
   const handleBulkDeleteProducts = async (ids) => {
@@ -512,7 +564,9 @@ const VendorInventoryTab = ({
         title: t('vendor.inventory.productDeleted'),
         description: (t('tables.bulkDeleteSuccess') || '{count} item(s) deleted').replace('{count}', outcome.deleted.length)
       });
-      await onProductsRefresh(true);
+    }
+    if (shouldRefreshAfterBulkDelete(outcome)) {
+      await refreshProductsSafely();
     }
     return outcome;
   };
@@ -937,6 +991,25 @@ const VendorInventoryTab = ({
                 placeholder="10"
                 className="w-full input-style"
               />
+            </div>
+
+            {/* Unit of measure (optional) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {t('vendor.addProduct.unit')}
+              </label>
+              <select
+                data-testid="product-unit-select"
+                value={productForm.unit || ''}
+                onChange={e => handleInputChange('unit', e.target.value)}
+                className="w-full input-style"
+              >
+                <option value="">{t('vendor.addProduct.unitNone')}</option>
+                {unitOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">{t('vendor.addProduct.unitHelp')}</p>
             </div>
 
             {/* Expiry Date */}

@@ -28,7 +28,7 @@ describe('fetchComboDefinitions', () => {
     const result = await fetchComboDefinitions(['c1', 'c2']);
     expect(fromMock).toHaveBeenCalledTimes(1);
     expect(fromMock).toHaveBeenCalledWith('combo_products');
-    expect(selectMock.mock.calls[0][0]).toMatch(/combo_items\(.*created_at.*products\(name_es, ?name_en\)/s);
+    expect(selectMock.mock.calls[0][0]).toMatch(/combo_items\(.*created_at.*products\(name_es, ?name_en, ?unit\)/s);
     expect(inMock).toHaveBeenCalledWith('id', ['c1', 'c2']);
     expect([...result.keys()]).toEqual(['c1', 'c2']);
   });
@@ -36,6 +36,24 @@ describe('fetchComboDefinitions', () => {
   it('degrades to an empty map when the query fails', async () => {
     inMock.mockResolvedValue({ data: null, error: { message: 'boom' } });
     const result = await fetchComboDefinitions(['c1']);
+    expect(result.size).toBe(0);
+  });
+
+  it('retries once WITHOUT the unit column so combos still expand if products.unit is not migrated yet', async () => {
+    inMock
+      .mockResolvedValueOnce({ data: null, error: { code: '42703', message: 'column products_1.unit does not exist' } })
+      .mockResolvedValueOnce({ data: [{ id: 'c1', combo_items: [] }], error: null });
+    const result = await fetchComboDefinitions(['c1']);
+    expect(selectMock).toHaveBeenCalledTimes(2);
+    expect(selectMock.mock.calls[0][0]).toMatch(/unit/);
+    expect(selectMock.mock.calls[1][0]).not.toMatch(/unit/);
+    expect([...result.keys()]).toEqual(['c1']);
+  });
+
+  it('does not retry on unrelated errors', async () => {
+    inMock.mockResolvedValue({ data: null, error: { code: '57014', message: 'timeout' } });
+    const result = await fetchComboDefinitions(['c1']);
+    expect(selectMock).toHaveBeenCalledTimes(1);
     expect(result.size).toBe(0);
   });
 });

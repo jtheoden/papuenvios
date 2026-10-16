@@ -17,6 +17,7 @@ import SettingsPageVisual from '@/components/settings/SettingsPageVisual';
 import SettingsPageContent from '@/components/settings/SettingsPageContent';
 import SettingsZelleTab from '@/components/settings/SettingsZelleTab';
 import PaymentMethodsStatusCard from '@/components/settings/PaymentMethodsStatusCard';
+import SettingsBizumSection from '@/components/settings/SettingsBizumSection';
 import SettingsSystemTab from '@/components/settings/SettingsSystemTab';
 
 const SettingsPage = () => {
@@ -379,7 +380,7 @@ const SettingsPage = () => {
     },
     {
       id: 'zelle',
-      label: 'Zelle',
+      label: language === 'es' ? 'Pagos' : 'Payments',
       icon: CreditCard,
       color: '#3b82f6'
     },
@@ -493,6 +494,7 @@ const SettingsPage = () => {
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-effect p-8 rounded-2xl">
                 <PaymentMethodsStatusCard />
                 <SettingsZelleTab />
+                <SettingsBizumSection />
               </motion.div>
             </>
           )}
