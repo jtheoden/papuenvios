@@ -2,15 +2,27 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const page = readFileSync(resolve(process.cwd(), 'src/components/SettingsPage.jsx'), 'utf8');
+const read = (path) => readFileSync(resolve(process.cwd(), path), 'utf8');
+const page = read('src/components/SettingsPage.jsx');
+const payments = read('src/components/settings/SettingsPaymentsTab.jsx');
 
-describe('SettingsPage mounts the Bizum section as a sibling of the Zelle tab', () => {
-  it('imports and renders SettingsBizumSection right after SettingsZelleTab', () => {
-    expect(page).toMatch(/import SettingsBizumSection from '@\/components\/settings\/SettingsBizumSection';/);
-    expect(page).toMatch(/<SettingsZelleTab \/>\s*<SettingsBizumSection \/>/);
+describe('SettingsPage mounts the payments tab, where Bizum is a sibling tab of Zelle', () => {
+  it('renders SettingsPaymentsTab under the (unchanged) zelle tab id', () => {
+    expect(page).toMatch(/import SettingsPaymentsTab from '@\/components\/settings\/SettingsPaymentsTab';/);
+    expect(page).toContain("activeTab === 'zelle'");
+    expect(page).toMatch(/<SettingsPaymentsTab \/>/);
   });
 
-  it('does not rename the internal zelle tab id', () => {
-    expect(page).toContain("activeTab === 'zelle'");
+  it('keeps Zelle and Bizum as separate tabs of PaymentsTabs, never nested', () => {
+    expect(payments).toMatch(/import SettingsBizumSection from '@\/components\/settings\/SettingsBizumSection';/);
+    expect(payments).toMatch(/<PaymentsTabs\b/);
+    expect(payments).toMatch(/id: 'zelle'[\s\S]*render: \(\) => <SettingsZelleTab \/>/);
+    expect(payments).toMatch(/id: 'bizum'[\s\S]*render: \(\) => <SettingsBizumSection \/>/);
+    expect(payments).not.toMatch(/<SettingsZelleTab \/>\s*<SettingsBizumSection \/>/);
+  });
+
+  it('keeps the status card above the tablist (it applies to both methods)', () => {
+    expect(payments.indexOf('<PaymentMethodsStatusCard')).toBeGreaterThan(-1);
+    expect(payments.indexOf('<PaymentMethodsStatusCard')).toBeLessThan(payments.indexOf('<PaymentsTabs'));
   });
 });

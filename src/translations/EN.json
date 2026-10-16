@@ -950,8 +950,6 @@
       "shippingInfoFixed": "✓ Fixed rate: Same shipping amount will be charged on all orders",
       "shippingInfoUndetermined": "⚠ To be determined: Shipping cost will show as \"To be determined\" and will be calculated based on recipient location",
       "shippingInfoCalculated": "⚠ Calculated: Free shipping if order exceeds threshold, otherwise determined by location",
-      "loadOfficialRates": "Load Official Rates",
-      "officialRatesReference": "Official Rates (Reference)",
       "editCurrency": "Edit Currency",
       "newCurrency": "New Currency",
       "baseCurrency": "Base Currency",
@@ -981,7 +979,13 @@
       "currencyActivated": "Currency activated",
       "currencyDeactivated": "Currency deactivated",
       "activate": "Activate",
-      "deactivate": "Deactivate"
+      "deactivate": "Deactivate",
+      "rateOutOfBand": "The USD to EUR rate must be between {min} and {max}.",
+      "rateUpdatedAt": "Last updated: {date}",
+      "rateChangeConfirmTitle": "Confirm large rate change",
+      "rateChangeConfirmMessage": "The USD to EUR rate changes from {previous} to {next} ({percent}%). Bizum quotes use this rate; make sure the new value is correct.",
+      "rateChangeConfirmAction": "Save anyway",
+      "pairNotAllowed": "Only active currencies can be used in a rate, except an inactive EUR as the target of a USD rate."
     },
     "zelle": {
       "title": "Zelle Accounts",
@@ -1379,6 +1383,41 @@
         "appendOnly": "Recorded rates cannot be modified."
       },
       "managedCentrally": "The USD → EUR rate is managed only in Financial Settings (exchange rates). The spread and the age thresholds are set in the Bizum parameters."
+    },
+    "fxReference": {
+      "title": "External reference (informational)",
+      "check": "Check",
+      "refresh": "Refresh",
+      "retry": "Retry",
+      "idle": "Not checked yet. Use \"Check\" to query the external source.",
+      "loading": "Checking the external source...",
+      "source": "Source: {name} ({domain})",
+      "providerUpdated": "Updated by the provider: {local} (UTC: {utc})",
+      "providerDate": "Provider date: {date}",
+      "providerUnknown": "The provider did not report when it updated this rate.",
+      "fetchedAt": "Checked: {time} (local time)",
+      "age": "Provider data is {hours} h old",
+      "value": "Reference: 1 USD = {rate} EUR (not the operative rate)",
+      "use": "Use as rate",
+      "useHint": "Only preloads the form below; nothing is saved.",
+      "staleTitle": "Outdated data",
+      "stale": "The provider data is {hours} h old (limit {limit} h). It cannot be preloaded; check again later.",
+      "staleUnknown": "The provider did not say when the data was updated, so it cannot be preloaded.",
+      "refreshFailed": "Could not refresh. Showing the previous result.",
+      "missingCurrencies": "Create the USD and EUR currencies before preloading the rate.",
+      "error": {
+        "network": "The external source could not be reached.",
+        "timeout": "The external source did not answer in time.",
+        "invalid_payload": "The external source returned data that cannot be trusted.",
+        "out_of_band": "The external source returned a rate outside the expected range."
+      }
+    },
+    "payments": {
+      "tabs": {
+        "label": "Payment methods",
+        "zelle": "Zelle",
+        "bizum": "Bizum"
+      }
     }
   },
   "cart": {
@@ -1399,6 +1438,9 @@
     "checkout": "Proceed to Checkout",
     "shippingUnavailable": "We do not ship to this destination right now. Choose another municipality or province, or contact support.",
     "invalidItems": "Some items in your cart have an invalid price or quantity. Remove them or refresh the page to continue.",
+    "rateUnavailable": {
+      "notice": "No exchange rate is available for {currency}; amounts are shown in USD. Select USD to continue with payment."
+    },
     "shippingUnavailableShort": "Unavailable",
     "validation": {
       "selectRecipient": "Select a recipient",
