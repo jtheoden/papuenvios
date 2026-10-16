@@ -64,16 +64,20 @@ describe('contract with the S3/S4 migrations', () => {
     expect(s3).toMatch(/FUNCTION public\.get_bizum_settings\(\)/);
     expect(s3).toMatch(/FUNCTION public\.set_bizum_settings\(p_patch jsonb\)/);
     expect(s3).toMatch(/FUNCTION public\.get_payment_fx_status\(\)/);
-    for (const param of ['p_mid numeric', 'p_spread numeric', 'p_source text', 'p_note text', 'p_confirm_large_change boolean']) {
-      expect(s3).toContain(param);
-    }
     const service = read('src/lib/paymentFxService.js') + read('src/lib/bizumService.js');
-    for (const rpc of ['get_bizum_settings', 'set_bizum_settings', 'get_payment_fx_status', 'set_payment_fx_rate']) {
+    for (const rpc of ['get_bizum_settings', 'set_bizum_settings', 'get_payment_fx_status']) {
       expect(service).toContain(`'${rpc}'`);
     }
-    for (const arg of ['p_patch', 'p_mid', 'p_spread', 'p_source', 'p_note', 'p_confirm_large_change']) {
-      expect(service).toContain(arg);
-    }
+    expect(service).toContain('p_patch');
+  });
+
+  it('does not call the retired ledger writer: the USD->EUR rate is loaded in Financial Settings', () => {
+    const central = read('supabase/migrations/20261016120000_bizum_central_fx_rate.sql');
+    expect(central).toMatch(/FROM public\.exchange_rates/);
+    expect(central).toContain("RAISE EXCEPTION 'payment_fx_managed_centrally'");
+    const front = read('src/lib/paymentFxService.js') + read('src/components/settings/PaymentFxRateCard.jsx');
+    expect(front).not.toContain('set_payment_fx_rate');
+    expect(front).not.toContain('p_confirm_large_change');
   });
 
   it('knows every error token raised by the migrations', () => {

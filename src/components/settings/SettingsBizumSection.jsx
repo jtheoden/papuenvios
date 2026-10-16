@@ -54,13 +54,7 @@ const BizumPanel = () => {
   return (
     <SectionShell>
       {!isMissing(fx) && (
-        <PaymentFxRateCard
-          status={fx.data}
-          error={fx.error}
-          defaultSpread={settings.data?.default_spread_pct}
-          onSaved={fx.reload}
-          onRetry={fx.reload}
-        />
+        <PaymentFxRateCard status={fx.data} error={fx.error} onRetry={fx.reload} />
       )}
       <BizumSettingsCard
         settings={settings.data}

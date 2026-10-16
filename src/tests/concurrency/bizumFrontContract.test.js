@@ -38,8 +38,8 @@ describeDb('Bizum front contract against the real SQL', () => {
   let actors;
   let client;
   const clients = [];
-  const rateIds = [];
   const accountIds = [];
+  const centralRateIds = [];
 
   const ownerBypass = async (sql, params = []) => {
     await owner.query('BEGIN');
@@ -62,10 +62,7 @@ describeDb('Bizum front contract against the real SQL', () => {
   });
 
   afterAll(async () => {
-    if (rateIds.length) {
-      await ownerBypass(`DELETE FROM public.activity_logs WHERE entity_id = ANY($1::uuid[])`, [rateIds]);
-      await ownerBypass(`DELETE FROM public.payment_fx_rates WHERE id = ANY($1::uuid[])`, [rateIds]);
-    }
+    if (centralRateIds.length) await owner.query(`DELETE FROM public.exchange_rates WHERE id = ANY($1::uuid[])`, [centralRateIds]);
     if (accountIds.length) await ownerBypass(`DELETE FROM public.bizum_accounts WHERE id = ANY($1::uuid[])`, [accountIds]);
     await endAll(clients);
   });
@@ -115,25 +112,36 @@ describeDb('Bizum front contract against the real SQL', () => {
     expect(['none', 'ok', 'warn', 'blocked']).toContain(rows[0].s.state);
   });
 
-  it('set_payment_fx_rate takes the named parameters the service sends and raises payment_fx_large_change', async () => {
-    const call = (mid, confirm) =>
+  it('the retired set_payment_fx_rate answers with a token the front does not offer a form for, and writes nothing', async () => {
+    const before = await owner.query('SELECT count(*)::int AS n FROM public.payment_fx_rates');
+    const raw = await failure(
       client.query(
         `SELECT public.set_payment_fx_rate(p_mid => $1::numeric, p_spread => $2::numeric, p_source => $3::text,
                                            p_note => $4::text, p_confirm_large_change => $5::boolean) AS r`,
-        [mid, 1.5, 'manual', null, confirm]
-      );
-    const first = await call(0.92, false).catch(async (error) => {
-      // A previous rate may already exist in the scratch DB; the first call may then need confirmation.
-      expect(toBizumError(asPostgrest(error)).token).toBe('payment_fx_large_change');
-      return call(0.92, true);
-    });
-    rateIds.push(first.rows[0].r.id);
+        [0.92, 1.5, 'manual', null, false]
+      )
+    );
+    expect(raw.message).toBe('payment_fx_managed_centrally');
+    expect(toBizumError(raw).token).toBe('unknown');
+    const after = await owner.query('SELECT count(*)::int AS n FROM public.payment_fx_rates');
+    expect(after.rows[0].n).toBe(before.rows[0].n);
+  });
 
-    const raw = await failure(call(1.4, false));
-    expect(toBizumError(raw)).toMatchObject({ token: 'payment_fx_large_change', i18nKey: 'settings.fxRate.errors.largeChange' });
-
-    const confirmed = await call(1.4, true);
-    rateIds.push(confirmed.rows[0].r.id);
+  it('get_payment_fx_status reports the central row: constant source exchange_rates, no author', async () => {
+    const { rows: cur } = await owner.query(`SELECT code, id FROM public.currencies WHERE code IN ('USD', 'EUR')`);
+    const byCode = Object.fromEntries(cur.map((r) => [r.code, r.id]));
+    const { rows } = await client.query(
+      `INSERT INTO public.exchange_rates (from_currency_id, to_currency_id, rate, is_active, effective_date)
+       VALUES ($1, $2, 0.92, true, CURRENT_DATE) RETURNING id`,
+      [byCode.USD, byCode.EUR]
+    );
+    centralRateIds.push(rows[0].id);
+    const status = (await client.query('SELECT public.get_payment_fx_status() AS s')).rows[0].s;
+    expect(status).toMatchObject({ id: rows[0].id, source: 'exchange_rates', created_by: null, state: 'ok' });
+    expect(Number(status.mid_rate)).toBe(0.92);
+    for (const key of ['spread_pct', 'effective_rate', 'age_hours', 'fx_warn_hours', 'fx_block_hours']) {
+      expect(Object.keys(status), key).toContain(key);
+    }
   });
 
   it('classifies the real account errors and never carries the phone Postgres echoes', async () => {
