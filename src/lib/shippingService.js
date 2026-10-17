@@ -11,6 +11,18 @@ import {
   createNotFoundError, parseSupabaseError, ERROR_CODES
 } from './errorHandler';
 import { PUBLIC_SHIPPING_COLUMNS } from './publicCatalogColumns';
+import { ADMIN_SHIPPING_COLUMNS } from './adminCatalogColumns';
+import { listShippingZoneCosts } from './adminCostService';
+
+/** Admin zone rows: the non-sensitive columns from the table plus transport_cost from the admin RPC. */
+const withTransportCost = async (zones) => {
+  if (zones.length === 0) return zones;
+  const costs = await listShippingZoneCosts(zones.map(zone => zone.id));
+  return zones.map(zone => ({
+    ...zone,
+    transport_cost: costs.has(zone.id) ? costs.get(zone.id).transport_cost : 0
+  }));
+};
 
 /**
  * Get all active shipping zones
@@ -48,7 +60,7 @@ export const getAllShippingZones = async () => {
   try {
     const { data, error } = await supabase
       .from('shipping_zones')
-      .select('*')
+      .select(ADMIN_SHIPPING_COLUMNS)
       .order('province_name', { ascending: true })
       .order('municipality_name', { ascending: true, nullsFirst: true });
 
@@ -56,7 +68,7 @@ export const getAllShippingZones = async () => {
       throw parseSupabaseError(error);
     }
 
-    return data || [];
+    return await withTransportCost(data || []);
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getAllShippingZones' });
@@ -237,7 +249,7 @@ export const getShippingZonesForProvince = async (provinceName) => {
 
     const { data, error } = await supabase
       .from('shipping_zones')
-      .select('*')
+      .select(ADMIN_SHIPPING_COLUMNS)
       .eq('province_name', provinceName)
       .order('municipality_name', { ascending: true, nullsFirst: true });
 
@@ -245,7 +257,7 @@ export const getShippingZonesForProvince = async (provinceName) => {
       throw parseSupabaseError(error);
     }
 
-    return data || [];
+    return await withTransportCost(data || []);
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getShippingZonesForProvince', provinceName });

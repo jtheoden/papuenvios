@@ -17,8 +17,9 @@ const chain = (result) => {
   return c;
 };
 
+const rpcMock = vi.fn();
 vi.mock('@/lib/supabase', () => ({
-  supabase: { from: (...args) => fromMock(...args) }
+  supabase: { from: (...args) => fromMock(...args), rpc: (...args) => rpcMock(...args) }
 }));
 vi.mock('@/lib/activityLogger', () => ({ logActivity: vi.fn().mockResolvedValue(undefined) }));
 
@@ -36,6 +37,8 @@ const base = {
 describe('productService unit of measure', () => {
   beforeEach(() => {
     fromMock.mockReset();
+    rpcMock.mockReset();
+    rpcMock.mockResolvedValue({ data: [], error: null });
     insertPayload = undefined;
     updatePayload = undefined;
     selectArgs = [];
@@ -43,6 +46,7 @@ describe('productService unit of measure', () => {
   });
 
   it('includes unit in the product catalog projection', async () => {
+    fromMock.mockImplementation(() => chain({ data: [{ id: 'p1' }], error: null }));
     await getProductRows(true);
     expect(selectArgs[0]).toMatch(/\bunit\b/);
   });

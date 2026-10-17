@@ -5,6 +5,9 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { listProductCosts, listComboCosts } from '@/lib/adminCostService';
+import { classifyAdminCatalogError } from '@/lib/catalogErrors';
+import CatalogLoadError from './CatalogLoadError';
 import { getHeadingStyle } from '@/lib/styleUtils';
 import {
   ACTIVE_ORDER_STATUSES,
@@ -23,6 +26,12 @@ import AdminOffersTab from './AdminOffersTab';
 import RemittanceTypesConfig from './RemittanceTypesConfig';
 import ZellePaymentHistoryTab from './admin/ZellePaymentHistoryTab';
 import ActivityLogTab from './ActivityLogTab';
+
+// Cost reads settle to { data, error } so one missing RPC does not blank the whole dashboard.
+const settleCosts = (promise) =>
+  promise
+    .then((costs) => ({ data: [...costs.values()], error: null }))
+    .catch((error) => ({ data: null, error }));
 
 const DashboardPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
@@ -85,6 +94,8 @@ const DashboardPage = ({ onNavigate }) => {
 
   // Inputs for the estimated order profit (orders + order lines + per-item margins)
   const [profitSource, setProfitSource] = useState(null);
+  // Item margins come from the admin cost RPCs; a failure is shown, never swallowed into default margins
+  const [marginsError, setMarginsError] = useState(null);
 
   const [visitStats, setVisitStats] = useState({
     weekly: 0,
@@ -197,8 +208,8 @@ const DashboardPage = ({ onNavigate }) => {
         supabase.from('remittances').select('id, status, commission_total, amount_sent, amount_to_deliver, discount_amount, created_at, delivered_at, completed_at, updated_at'),
         supabase.from('remittance_types').select('id', { count: 'exact', head: true }).eq('is_active', true),
         supabase.from('zelle_transaction_history').select('id, amount, status, transaction_type, transaction_date, zelle_account_id').eq('status', 'validated'),
-        supabase.from('products').select('id, profit_margin'),
-        supabase.from('combo_products').select('id, profit_margin')
+        settleCosts(listProductCosts()),
+        settleCosts(listComboCosts())
       ]);
 
       if (productsRes.error) throw productsRes.error;
@@ -207,8 +218,8 @@ const DashboardPage = ({ onNavigate }) => {
       if (ordersRes.error) throw ordersRes.error;
       if (remittancesRes.error) throw remittancesRes.error;
       if (remittanceTypesRes.error) throw remittanceTypesRes.error;
-      if (productMarginsRes.error) throw productMarginsRes.error;
-      if (comboMarginsRes.error) throw comboMarginsRes.error;
+      const marginFailure = productMarginsRes.error || comboMarginsRes.error;
+      setMarginsError(marginFailure ? { kind: classifyAdminCatalogError(marginFailure) } : null);
       // Zelle query is non-critical - graceful fallback
       const zelleTransactions = (!zelleRes.error && zelleRes.data) ? zelleRes.data : [];
 
@@ -573,6 +584,7 @@ const DashboardPage = ({ onNavigate }) => {
               icon: <BarChart3 className="h-5 w-5" />,
               content: (
                 <>
+                  <CatalogLoadError error={marginsError} />
                   {/* Expiration Warning */}
                   {expiringProducts.length > 0 && (
                     <motion.div

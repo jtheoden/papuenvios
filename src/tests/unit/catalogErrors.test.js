@@ -1,5 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { isPermissionDeniedError, classifyCatalogError } from '@/lib/catalogErrors';
+import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('@/lib/supabase', () => ({ supabase: {} }));
+import { isPermissionDeniedError, classifyCatalogError, classifyAdminCatalogError } from '@/lib/catalogErrors';
+import { ADMIN_COST_RPC_UNAVAILABLE } from '@/lib/adminCostService';
 import { parseSupabaseError } from '@/lib/errorHandler';
 
 describe('isPermissionDeniedError', () => {
@@ -32,5 +35,16 @@ describe('classifyCatalogError', () => {
   it('returns "permission" for 42501 and "load" for any other failure', () => {
     expect(classifyCatalogError({ code: '42501' })).toBe('permission');
     expect(classifyCatalogError(new Error('network'))).toBe('load');
+  });
+});
+
+describe('classifyAdminCatalogError (admin screens that read cost data through RPCs)', () => {
+  it('a missing admin RPC (migration not applied) is "adminCosts"', () => {
+    expect(classifyAdminCatalogError({ code: ADMIN_COST_RPC_UNAVAILABLE })).toBe('adminCosts');
+  });
+
+  it('a 42501 is "permission" and anything else is "load"', () => {
+    expect(classifyAdminCatalogError(parseSupabaseError({ code: '42501', message: 'denied' }))).toBe('permission');
+    expect(classifyAdminCatalogError(new Error('network down'))).toBe('load');
   });
 });

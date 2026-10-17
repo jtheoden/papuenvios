@@ -108,19 +108,18 @@ describe('guarded tables are never queried with a wildcard', () => {
     return found.sort();
   };
 
-  it('only the two admin shipping reads keep select(*) until Phase 0b moves them to RPCs', () => {
-    expect(wildcardChains()).toEqual([
-      'src/lib/shippingService.js:shipping_zones',
-      'src/lib/shippingService.js:shipping_zones'
-    ]);
+  it('no module requests a wildcard from a guarded table any more (Phase 0b moved the admin reads to RPCs)', () => {
+    expect(wildcardChains()).toEqual([]);
   });
 });
 
-// Ratchet: the only modules allowed to name a sensitive column. Every entry is an admin or
-// vendor screen / service that Phase 0b must move to admin read RPCs. A new file appearing
-// here means a new dependency on a column that is about to be hidden.
+// Ratchet: the only modules allowed to name a sensitive column. After Phase 0b none of them
+// QUERIES a hidden column any more (see the next describe): each one either consumes rows that
+// the admin_list_* RPCs merged in (src/lib/adminCostService.js), edits those values in a form, or
+// writes them in an insert/update payload (column UPDATE privileges stay). DashboardPage left
+// the list when it moved to the RPCs. A new file appearing here means a new dependency on a
+// column that the contract file hides: read it through an RPC instead.
 const ADMIN_ONLY_SENSITIVE_COLUMN_READERS = [
-  'src/components/DashboardPage.jsx',
   'src/components/inventory/InventoryManagement.jsx',
   'src/components/inventory/InventoryTableConfig.jsx',
   'src/components/settings/SettingsPageShipping.jsx',
@@ -138,7 +137,7 @@ const ADMIN_ONLY_SENSITIVE_COLUMN_READERS = [
 ];
 
 describe('sensitive column readers are frozen to the admin surface', () => {
-  it('lists exactly the admin modules that Phase 0b must migrate', () => {
+  it('lists exactly the admin modules that still name a cost column (as data or as a write payload)', () => {
     const snakeCase = SENSITIVE_TOKENS.filter((token) => token.includes('_'));
     const readers = listSourceFiles(resolve(ROOT, 'src'))
       .filter((file) => !file.includes(`${join('src', 'translations')}`))
@@ -150,5 +149,33 @@ describe('sensitive column readers are frozen to the admin surface', () => {
       .sort();
 
     expect(readers).toEqual(ADMIN_ONLY_SENSITIVE_COLUMN_READERS);
+  });
+});
+
+describe('no query reads a hidden column (it would fail with 42501 after the contract file)', () => {
+  // First argument of the PostgREST builder methods that make the database READ or FILTER a column.
+  const READ_CALL = /\.(select|order|eq|neq|gt|gte|lt|lte|in|is|like|ilike|or|filter|not)\(\s*(['"`])([\s\S]*?)\2/g;
+
+  const offenders = () => {
+    const found = [];
+    listSourceFiles(resolve(ROOT, 'src')).forEach((file) => {
+      const code = stripComments(readFileSync(file, 'utf8'));
+      for (const match of code.matchAll(READ_CALL)) {
+        const hidden = sensitiveIn(match[3]);
+        if (hidden.length) found.push(`${relative(ROOT, file)}: .${match[1]}(${hidden.join(', ')})`);
+      }
+    });
+    return found.sort();
+  };
+
+  it('no .select / .order / filter call names a sensitive column anywhere in src', () => {
+    expect(offenders()).toEqual([]);
+  });
+
+  it('the admin cost RPC wrapper is the only module that calls the admin_list_* functions', () => {
+    const callers = listSourceFiles(resolve(ROOT, 'src'))
+      .filter((file) => /admin_list_/.test(stripComments(readFileSync(file, 'utf8'))))
+      .map((file) => relative(ROOT, file));
+    expect(callers).toEqual(['src/lib/adminCostService.js']);
   });
 });

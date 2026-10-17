@@ -1,24 +1,18 @@
 /**
- * Column lists that include cost and margin data. ADMIN USE ONLY.
+ * Admin-side catalog helpers.
  *
- * These reads still go straight to the tables today. Phase 0b replaces them with
- * SECURITY DEFINER read RPCs guarded by is_admin_user() and then this module goes away.
- * Public code must import from publicCatalogColumns.js instead.
+ * Cost and margin columns are NOT listed here any more: admin reads get them from the admin_list_* RPCs
+ * (src/lib/adminCostService.js, migration 20261016160000) and merge them onto the public rows. What stays:
+ *  - the non-sensitive extra shipping columns the admin settings screen edits, and
+ *  - the guards that keep an admin edit form from being seeded with a row that lacks the cost fields.
  */
 
-import {
-  PUBLIC_PRODUCT_COLUMNS,
-  PUBLIC_COMBO_COLUMNS,
-  PUBLIC_CATEGORY_COLUMNS
-} from './publicCatalogColumns';
-
-export const ADMIN_PRODUCT_COLUMNS = `${PUBLIC_PRODUCT_COLUMNS}, base_price, cost_price, profit_margin`;
-
-export const ADMIN_COMBO_COLUMNS = `${PUBLIC_COMBO_COLUMNS}, base_total_price, profit_margin`;
-
-export const ADMIN_CATEGORY_COLUMNS = `${PUBLIC_CATEGORY_COLUMNS}, profit_margin`;
-
-export const ADMIN_COMBO_ITEM_COLUMNS = 'combo_id, quantity, products(id, name_es, name_en, base_price)';
+// Every shipping_zones column except transport_cost (read through the RPC). The admin screen edits
+// delivery_days and delivery_note, which the public projection leaves out.
+export const ADMIN_SHIPPING_COLUMNS = [
+  'id', 'province_name', 'municipality_name', 'shipping_cost', 'is_active', 'free_shipping',
+  'created_at', 'updated_at', 'delivery_days', 'delivery_note'
+].join(', ');
 
 /**
  * Admin edit forms must only be seeded from rows loaded through the admin view: a public row

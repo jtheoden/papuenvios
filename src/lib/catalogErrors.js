@@ -19,3 +19,14 @@ export const isPermissionDeniedError = (error) => {
 /** @returns {'permission'|'load'} */
 export const classifyCatalogError = (error) =>
   isPermissionDeniedError(error) ? 'permission' : 'load';
+
+// Kept as a literal (same value as adminCostService.ADMIN_COST_RPC_UNAVAILABLE) so this module has no imports.
+const ADMIN_COST_RPC_UNAVAILABLE = 'ADMIN_COST_RPC_UNAVAILABLE';
+
+/**
+ * Admin screens read cost data through RPCs: a missing function (migration not applied yet) gets its own
+ * kind so the screen can say what to do instead of showing an empty table.
+ * @returns {'adminCosts'|'permission'|'load'}
+ */
+export const classifyAdminCatalogError = (error) =>
+  error?.code === ADMIN_COST_RPC_UNAVAILABLE ? 'adminCosts' : classifyCatalogError(error);

@@ -15,6 +15,8 @@ import {
   getShippingZonesForProvince
 } from '@/lib/shippingService';
 import { getProvinceNames, getMunicipalitiesByProvince } from '@/lib/cubanLocations';
+import { classifyAdminCatalogError } from '@/lib/catalogErrors';
+import CatalogLoadError from '@/components/CatalogLoadError';
 
 /**
  * Shipping Zones component
@@ -27,6 +29,8 @@ const SettingsPageShipping = () => {
 
   const [shippingZones, setShippingZones] = useState([]);
   const [loadingZones, setLoadingZones] = useState(false);
+  // Transport costs come from an admin RPC: when it fails the zones are not editable (see render)
+  const [loadError, setLoadError] = useState(null);
   const [savingZone, setSavingZone] = useState(null);
   const [expandedProvince, setExpandedProvince] = useState(null);
   const [municipalityZones, setMunicipalityZones] = useState({});
@@ -41,6 +45,7 @@ const SettingsPageShipping = () => {
 
   const loadShippingZones = async () => {
     setLoadingZones(true);
+    setLoadError(null);
     try {
       const zones = await getAllShippingZones();
       // Filter to only province-level zones (municipality_name is null)
@@ -70,6 +75,7 @@ const SettingsPageShipping = () => {
       setShippingZones(allZones.sort((a, b) => a.province_name.localeCompare(b.province_name)));
     } catch (error) {
       console.error('Error loading shipping zones:', error);
+      setLoadError({ kind: classifyAdminCatalogError(error) });
       toast({
         title: language === 'es' ? 'Error al cargar zonas' : 'Error loading zones',
         description: error.message,
@@ -91,10 +97,15 @@ const SettingsPageShipping = () => {
       }));
     } catch (error) {
       console.error('Error loading municipality zones:', error);
+      toast({
+        title: language === 'es' ? 'Error al cargar municipios' : 'Error loading municipalities',
+        description: error.message,
+        variant: 'destructive'
+      });
     } finally {
       setLoadingMunicipalities(null);
     }
-  }, []);
+  }, [language]);
 
   const handleExpandProvince = async (provinceName) => {
     if (expandedProvince === provinceName) {
@@ -562,6 +573,8 @@ const SettingsPageShipping = () => {
         <div className="flex justify-center py-8">
           <RefreshCw className="h-6 w-6 animate-spin" style={{ color: visualSettings.primaryColor }} />
         </div>
+      ) : loadError ? (
+        <CatalogLoadError error={loadError} />
       ) : (
         <div className="grid md:grid-cols-2 gap-4">
           {shippingZones.map(zone => (

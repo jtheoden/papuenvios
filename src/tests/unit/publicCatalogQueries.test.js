@@ -77,6 +77,12 @@ const expectNoWildcard = (selects) => {
 
 beforeEach(() => {
   recorder.reset();
+  // Admin cost RPCs (Phase 0b): echo one cost row per requested id, or none when listing everything.
+  recorder.client.rpc.mockReset();
+  recorder.client.rpc.mockImplementation(async (_name, args) => ({
+    data: (args?.p_ids ?? []).map((id) => ({ id, base_price: 4, profit_margin: 10, base_total_price: 4, transport_cost: 1 })),
+    error: null
+  }));
   recorder.results.products = () => ({ data: [{ id: 'p1' }], error: null });
   recorder.results.combo_products = () => ({ data: [{ id: 'c1' }], error: null });
   recorder.results.shipping_zones = () => ({ data: { id: 'z1', is_active: true }, error: null });
@@ -98,10 +104,11 @@ describe('public path: products', () => {
     });
   });
 
-  it('getProductRows(true) keeps the admin projection (baseline, unchanged)', async () => {
+  it('getProductRows(true) (admin) reads the same public columns; costs come from the RPC (Phase 0b)', async () => {
     await getProductRows(true);
     const [select] = recorder.selects('products');
-    expect(columnsOf(select)).toEqual(expect.arrayContaining(['base_price', 'cost_price', 'profit_margin', 'final_price']));
+    expect(containsSensitiveColumn(select)).toEqual([]);
+    expect(columnsOf(select)).toEqual(PUBLIC_PRODUCT_LIST);
   });
 
   it('getProductStock requests only the public inventory columns', async () => {
@@ -118,9 +125,9 @@ describe('public path: categories', () => {
     expect(columnsOf(recorder.selects('product_categories')[0])).toEqual(PUBLIC_CATEGORY_LIST);
   });
 
-  it('getCategories({ includeMargin: true }) is the admin-only variant (baseline, unchanged)', async () => {
+  it('getCategories({ includeMargin: true }) (admin) reads the public columns; the margin comes from the RPC (Phase 0b)', async () => {
     await getCategories({ includeMargin: true });
-    expect(columnsOf(recorder.selects('product_categories')[0])).toEqual([...PUBLIC_CATEGORY_LIST, 'profit_margin']);
+    expect(columnsOf(recorder.selects('product_categories')[0])).toEqual(PUBLIC_CATEGORY_LIST);
   });
 });
 
@@ -135,12 +142,13 @@ describe('public path: combos', () => {
     expect(itemsSelect).toContain('products(id, name_es, name_en)');
   });
 
-  it('getCombos(true) keeps the admin projection and the base_price embed (baseline, unchanged)', async () => {
+  it('getCombos(true) (admin) reads public columns and the public item embed; costs come from the RPCs (Phase 0b)', async () => {
     await getCombos(true);
     const [comboSelect] = recorder.selects('combo_products');
     const [itemsSelect] = recorder.selects('combo_items');
-    expect(columnsOf(comboSelect)).toEqual(expect.arrayContaining(['base_total_price', 'profit_margin', 'final_price']));
-    expect(itemsSelect).toContain('base_price');
+    expect(containsSensitiveColumn(comboSelect)).toEqual([]);
+    expect(columnsOf(comboSelect)).toEqual(PUBLIC_COMBO_LIST);
+    expect(containsSensitiveColumn(itemsSelect)).toEqual([]);
   });
 });
 
@@ -165,12 +173,17 @@ describe('public path: shipping zones', () => {
   });
 });
 
-describe('admin reads that still use broad projections (baseline, to migrate in Phase 0b)', () => {
-  it('getAllShippingZones and getShippingZonesForProvince are unchanged', async () => {
+describe('admin shipping reads use an explicit list too (Phase 0b); transport_cost comes from the RPC', () => {
+  it('getAllShippingZones and getShippingZonesForProvince never select *', async () => {
     recorder.results.shipping_zones = () => ({ data: [], error: null });
     await getAllShippingZones();
     await getShippingZonesForProvince('La Habana');
-    expect(recorder.selects('shipping_zones')).toEqual(['*', '*']);
+    const selects = recorder.selects('shipping_zones');
+    expect(selects).toHaveLength(2);
+    selects.forEach((select) => {
+      expect(containsSensitiveColumn(select)).toEqual([]);
+      expect(splitSelect(select)).not.toContain('*');
+    });
   });
 });
 

@@ -16,8 +16,9 @@ const chain = (result) => {
   return c;
 };
 
+const rpcMock = vi.fn();
 vi.mock('@/lib/supabase', () => ({
-  supabase: { from: (...args) => fromMock(...args) }
+  supabase: { from: (...args) => fromMock(...args), rpc: (...args) => rpcMock(...args) }
 }));
 
 vi.mock('@/lib/activityLogger', () => ({ logActivity: vi.fn().mockResolvedValue(undefined) }));
@@ -29,6 +30,7 @@ const base = { es: 'Alimentos', en: 'Food', description_es: '', description_en: 
 describe('productService categories - profit_margin', () => {
   beforeEach(() => {
     fromMock.mockReset();
+    rpcMock.mockReset();
     insertPayload = undefined;
     updatePayload = undefined;
     fromMock.mockImplementation(() => chain({ data: { id: 'c1', slug: 'alimentos' }, error: null }));
@@ -94,11 +96,20 @@ describe('productService categories - profit_margin', () => {
       expect(c.select.mock.calls[0][0]).not.toContain('profit_margin');
     });
 
-    it('selects profit_margin only when includeMargin is requested (admin product form)', async () => {
-      const c = chain({ data: [], error: null });
+    it('reads profit_margin through the admin RPC only when includeMargin is requested (admin product form)', async () => {
+      const c = chain({ data: [{ id: 'c1' }], error: null });
       fromMock.mockImplementation(() => c);
-      await getCategories({ includeMargin: true });
-      expect(c.select.mock.calls[0][0]).toContain('profit_margin');
+      rpcMock.mockResolvedValue({ data: [{ id: 'c1', profit_margin: 25 }], error: null });
+      const rows = await getCategories({ includeMargin: true });
+      expect(c.select.mock.calls[0][0]).not.toContain('profit_margin');
+      expect(rpcMock).toHaveBeenCalledWith('admin_list_category_margins', { p_limit: 500, p_offset: 0, p_ids: null });
+      expect(rows).toEqual([{ id: 'c1', profit_margin: 25 }]);
+    });
+
+    it('the public default never calls the admin RPC', async () => {
+      fromMock.mockImplementation(() => chain({ data: [{ id: 'c1' }], error: null }));
+      await getCategories();
+      expect(rpcMock).not.toHaveBeenCalled();
     });
   });
 });
