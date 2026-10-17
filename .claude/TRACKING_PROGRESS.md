@@ -161,3 +161,22 @@ Rama `fix/activity-logs-zelle-remittance-guard`. **Migraciones NO aplicadas a re
   - Migración A `20261016160000_phase0b_admin_cost_read_rpcs.sql` (5 RPC `admin_list_*`, SECURITY DEFINER, solo admin/super_admin) + rollback en `supabase/rollbacks/`. Contrato B en `supabase/contract/` (fuera de `migrations/` a propósito; NO aplicar antes de 48 h de observación) + rollback.
   - Front: `src/lib/adminCostService.js`; productos/categorías/combos/envíos/Dashboard leen costo por RPC; `adminCatalogError` + `CatalogLoadError` (kind `adminCosts`) en VendorPage, Dashboard y ajustes de envíos. `adminCatalogColumns.js` conserva solo guardas de formulario y `ADMIN_SHIPPING_COLUMNS`.
   - Pendiente: dale del dueño para A, deploy del front, observación 48 h, dale para B.
+
+### 🆕 COLA DE PENDIENTES ordenada (2026-10-17)
+
+Estado a 2026-10-17. Mergeados y desplegados en esta etapa: #85–#95. Regla vigente: ninguna migración remota, commit de contrato, merge ni push sin "dale" explícito del dueño.
+
+| # | Ítem | Estado | Puerta |
+|---|------|--------|--------|
+| 1 | Buscador de productos en el editor de combos (`feat/combo-product-search`) | Implementado y probado en local (TDD; build OK), sin commit. Falta verificar 400 px y teclado móvil | Revisión + PR + merge con dale |
+| 2 | Paso de WhatsApp opcional (`feat/whatsapp-step-optional`) | Implementado en local (guarda de salida eliminada, copy "Opcional"), sin commit. La única otra vía de aviso al admin es la insignia en tiempo real (pasiva, solo con la app abierta); `notify-order` (email) existe pero nada la invoca | Decisión del dueño: aceptar aviso pasivo o cablear email/trigger antes de mergear. Suite completa con 1 fallo sin identificar (reejecutar en máquina libre) |
+| 3 | Fase 1.5 S1/S2 (CHECKs de dinero + trigger de remesas, `feat/phase15-money-checks-remittance-guard`) | Agente en curso, todo local | Cada migración remota con dale; warn→block después |
+| 4 | Sonda PostgREST del contrato B (PR #97, reemplaza #96) | #96 cerrado: su historial tenía un commit con la contraseña por defecto de la BD local como literal (falso positivo de GitGuardian) y no se reescribió historia. #97 = mismo contenido en un commit limpio | Checks verdes + merge con dale |
+| 5 | Fase 0b contrato B (`supabase/contract/20261016160100_…`) | Preparado, NO aplicado. Ventana de observación de 48 h hasta ~2026-10-19 02:35 UTC. Mientras tanto las columnas de costo siguen legibles por anon/authenticated vía REST | Tras la ventana: sonda contra producción en solo lectura → copiar a `migrations/` con timestamp nuevo → dale → verificar `has_column_privilege` en las 9 columnas |
+| 6 | Fase 1.5 S3–S5 (trigger por línea, reconciliación, cerrar `rsh_insert`) | No iniciado | Después de 3 |
+| 7 | F4a: `create_order`/`create_remittance` con precio calculado en servidor; F4b: libro de costos append-only (`order_cost_lines`) | No iniciado | Contrato de redondeo con dale; Bizum S5b y combo editable dependen de esto |
+| 8 | Cliente #4: deshabilitar usuario con motivo | No iniciado (UI → RPC + políticas RESTRICTIVE → función Edge) | Migración y función con dale |
+| 9 | Cliente #1: costo del mensajero | No iniciado (primera versión de solo lectura en Dashboard desde `shipping_zones.transport_cost`) | Confirmar moneda de `transport_cost` y si es por municipio o por producto |
+| 10 | Cliente #3: combo editable | No iniciado | Solo después de 7 (F4a) |
+
+Decisiones y verificaciones del dueño: revisar `default_spread_pct` (1.5 %) y la visibilidad de EUR para clientes antes de habilitar Bizum; revisar en 400 px tabs/insignia de Pagos y el buscador de combos; limpieza opcional de la fila heredada USD→USD y `VALIDATE` de `exchange_rates_distinct_currencies_chk` (dale); hacer atómica `updateExchangeRatePair` (requiere RPC/migración, dale); mover o rotar los archivos con secretos OAuth de Google en `Documentos/Papuenvios`; 31/31 pedidos tienen `shipping_cost` ≠ costo de la zona (sin explicar); la CI no ejecuta la suite de BD (solo GitGuardian/Vercel).
