@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:db:bootstrap": "bash scripts/test-db-bootstrap.sh",
+    "probe:postgrest": "bash scripts/probe-postgrest-local.sh",
     "test:concurrency": "vitest run --config src/tests/concurrency/vitest.config.js",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
