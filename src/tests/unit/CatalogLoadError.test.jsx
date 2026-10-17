@@ -29,6 +29,11 @@ describe('CatalogLoadError', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('products.catalogError.load');
   });
 
+  it('shows the admin message when the cost data source is unavailable', () => {
+    render(<CatalogLoadError error={{ kind: 'adminCosts' }} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('products.catalogError.adminCosts');
+  });
+
   it('reloads the page from the button (a stale cached bundle is the likely cause)', () => {
     const reload = vi.fn();
     Object.defineProperty(window, 'location', { value: { ...originalLocation, reload }, configurable: true });

@@ -45,7 +45,9 @@ vi.mock('@/lib/supabase', () => {
       resolve({ data: tables.data[table] ?? [], count: (tables.data[table] ?? []).length, error: null });
     return chain;
   };
-  return { supabase: { from: (table) => makeChain(table) } };
+  const costRpc = { admin_list_product_costs: 'products', admin_list_combo_costs: 'combo_products' };
+  const rpc = async (name) => ({ data: tables.data[costRpc[name]] ?? [], error: null });
+  return { supabase: { from: (table) => makeChain(table), rpc } };
 });
 
 import DashboardPage from '@/components/DashboardPage';
@@ -97,5 +99,26 @@ describe('DashboardPage financials (H5, H6, H9, H10)', () => {
 
     // H6: monthly estimated order profit = 140*40/140 - 1.62 + 140*40/140 (fallback) = 78.38, plus commission 23.14
     await waitFor(() => expect(screen.getAllByText(/101\.52/).length).toBeGreaterThan(0));
+  });
+
+  it('uses the margin that the admin RPC returns (not the default) for the estimated profit', async () => {
+    tables.data = {
+      currencies: [],
+      orders: [order('o-day', 'dispatched', 'validated', '30.76', hoursAgo(1), { discount_amount: '1.62' })],
+      order_items: [{ order_id: 'o-day', item_type: 'product', item_id: 'p100', total_price: 140 }],
+      // markup 100% != default 40%: profit inside 140 is 140*100/200 = 70
+      products: [{ id: 'p100', profit_margin: 100 }],
+      combo_products: [],
+      remittances: [],
+      remittance_types: [],
+      zelle_transaction_history: [],
+      site_visits: []
+    };
+
+    render(<DashboardPage onNavigate={() => {}} />);
+
+    // 70 - 1.62 discount = 68.38 (with the default margin it would be 40 - 1.62 = 38.38)
+    await waitFor(() => expect(screen.getAllByText(/68\.38/).length).toBeGreaterThan(0));
+    expect(screen.queryByText(/38\.38/)).toBeNull();
   });
 });

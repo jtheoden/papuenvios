@@ -175,6 +175,7 @@
     "catalogError": {
       "permission": "The catalog could not be loaded because this version of the page is out of date. Reload the page to continue.",
       "load": "We could not load the catalog. Check your connection and reload the page.",
+      "adminCosts": "The cost and margin data could not be loaded because a required database function is missing. Ask the developer to apply the pending database update, then reload the page.",
       "reload": "Reload page"
     },
     "saveBadge": "SAVE",

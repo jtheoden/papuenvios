@@ -13,9 +13,11 @@ const CatalogLoadError = ({ error }) => {
 
   if (!error) return null;
 
-  const message = error.kind === 'permission'
-    ? t('products.catalogError.permission')
-    : t('products.catalogError.load');
+  const MESSAGE_KEYS = {
+    permission: 'products.catalogError.permission',
+    adminCosts: 'products.catalogError.adminCosts'
+  };
+  const message = t(MESSAGE_KEYS[error.kind] ?? 'products.catalogError.load');
 
   return (
     <div

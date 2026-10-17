@@ -13,6 +13,7 @@ import VendorCombosTab from './vendor/VendorCombosTab';
 import VendorManagementTab from './vendor/VendorManagementTab';
 import VendorInventoryTab from './vendor/VendorInventoryTab';
 import { loadAdminCatalog } from '@/lib/adminCatalogLoader';
+import CatalogLoadError from './CatalogLoadError';
 
 const VendorPage = () => {
   const { t, language } = useLanguage();
@@ -22,7 +23,8 @@ const VendorPage = () => {
     categories, refreshCategories,
     combos, refreshCombos,
     testimonials, refreshTestimonials,
-    visualSettings
+    visualSettings,
+    adminCatalogError
   } = useBusiness();
 
   // Load currency IDs for products
@@ -107,6 +109,8 @@ const VendorPage = () => {
         <h1 className="text-4xl font-bold mb-4" style={getHeadingStyle(visualSettings)}>{t('vendor.title')}</h1>
         <p className="text-xl text-gray-600 max-w-2xl mx-auto">{t('vendor.subtitle')}</p>
       </motion.div>
+
+      <CatalogLoadError error={adminCatalogError} />
 
       <TabsResponsive
         tabs={[

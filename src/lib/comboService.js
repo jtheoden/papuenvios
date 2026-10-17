@@ -21,9 +21,36 @@ import {
 } from './errorHandler';
 import { ORDER_STATUS } from './orderService';
 import { PUBLIC_COMBO_COLUMNS, PUBLIC_COMBO_ITEM_COLUMNS } from './publicCatalogColumns';
-import { ADMIN_COMBO_COLUMNS, ADMIN_COMBO_ITEM_COLUMNS } from './adminCatalogColumns';
+import { listProductCosts, listComboCosts } from './adminCostService';
+
+/** base_total_price of a combo: sum of component base_price x quantity (base prices come from the admin RPC). */
+const sumBaseTotal = (productsWithQuantities, costs) =>
+  productsWithQuantities.reduce((sum, item) => {
+    const cost = costs.get(item.productId);
+    return cost ? sum + (parseFloat(cost.base_price) * item.quantity) : sum;
+  }, 0);
 
 // Explicit projections so new heavy or sensitive columns are never pulled by accident.
+
+/**
+ * Admin combos: base_total_price / profit_margin and each component's base_price come from the admin RPCs.
+ */
+const withComboCosts = async (combos, componentProductIds) => {
+  const [comboCosts, productCosts] = await Promise.all([
+    listComboCosts(combos.map(combo => combo.id)),
+    listProductCosts(componentProductIds.filter(Boolean))
+  ]);
+  return combos.map(combo => {
+    const cost = comboCosts.get(combo.id);
+    return {
+      ...combo,
+      ...(cost ? { base_total_price: cost.base_total_price, profit_margin: cost.profit_margin } : {}),
+      items: combo.items.map(item => (item.product?.id && productCosts.has(item.product.id)
+        ? { ...item, product: { ...item.product, base_price: productCosts.get(item.product.id).base_price } }
+        : item))
+    };
+  });
+};
 
 /**
  * Get all combos with their products
@@ -34,14 +61,11 @@ import { ADMIN_COMBO_COLUMNS, ADMIN_COMBO_ITEM_COLUMNS } from './adminCatalogCol
 export const getCombos = async (includeInactive = false) => {
   try {
     // The public view prices a combo from its stored final_price only. The admin view
-    // (includeInactive) also needs the cost fields until Phase 0b moves it to admin read RPCs.
-    const comboColumns = includeInactive ? ADMIN_COMBO_COLUMNS : PUBLIC_COMBO_COLUMNS;
-    const itemColumns = includeInactive ? ADMIN_COMBO_ITEM_COLUMNS : PUBLIC_COMBO_ITEM_COLUMNS;
-
+    // (includeInactive) merges the cost fields read through the admin RPCs below.
     // Get combos
     let comboQuery = supabase
       .from('combo_products')
-      .select(comboColumns);
+      .select(PUBLIC_COMBO_COLUMNS);
 
     if (!includeInactive) {
       comboQuery = comboQuery.eq('is_active', true);
@@ -53,7 +77,7 @@ export const getCombos = async (includeInactive = false) => {
       comboQuery.order('created_at', { ascending: false }),
       supabase
         .from('combo_items')
-        .select(itemColumns)
+        .select(PUBLIC_COMBO_ITEM_COLUMNS)
     ]);
 
     if (combosResult.error) {
@@ -91,10 +115,14 @@ export const getCombos = async (includeInactive = false) => {
     });
 
     // Attach items to combos
-    const combosWithItems = combosResult.data.map(combo => ({
+    let combosWithItems = combosResult.data.map(combo => ({
       ...combo,
       items: itemsMap[combo.id] || []
     }));
+
+    if (includeInactive) {
+      combosWithItems = await withComboCosts(combosWithItems, (itemsData || []).map(item => item.products?.id));
+    }
 
     return combosWithItems;
   } catch (error) {
@@ -127,22 +155,9 @@ export const createCombo = withCatalogInvalidation(async (comboData) => {
     }
 
     // Calculate base total price from selected products with quantities
-    let baseTotalPrice = 0;
+    // (an unavailable cost source aborts the save: a silent 0 would store a wrong base_total_price)
     const productIds = comboData.productsWithQuantities.map(item => item.productId);
-    const { data: productPrices } = await supabase
-      .from('products')
-      .select('id, base_price')
-      .in('id', productIds);
-
-    if (productPrices) {
-      baseTotalPrice = comboData.productsWithQuantities.reduce((sum, item) => {
-        const product = productPrices.find(p => p.id === item.productId);
-        if (product) {
-          return sum + (parseFloat(product.base_price) * item.quantity);
-        }
-        return sum;
-      }, 0);
-    }
+    const baseTotalPrice = sumBaseTotal(comboData.productsWithQuantities, await listProductCosts(productIds));
 
     // Upload first: if it fails nothing is saved (no base64 fallback)
     const imageUrl = await resolveImageUrl(comboData.image, {
@@ -218,20 +233,7 @@ export const updateCombo = withCatalogInvalidation(async (comboId, comboData) =>
     let baseTotalPrice = undefined;
     if (comboData.productsWithQuantities && comboData.productsWithQuantities.length > 0) {
       const productIds = comboData.productsWithQuantities.map(item => item.productId);
-      const { data: productPrices } = await supabase
-        .from('products')
-        .select('id, base_price')
-        .in('id', productIds);
-
-      if (productPrices) {
-        baseTotalPrice = comboData.productsWithQuantities.reduce((sum, item) => {
-          const product = productPrices.find(p => p.id === item.productId);
-          if (product) {
-            return sum + (parseFloat(product.base_price) * item.quantity);
-          }
-          return sum;
-        }, 0);
-      }
+      baseTotalPrice = sumBaseTotal(comboData.productsWithQuantities, await listProductCosts(productIds));
     }
 
     // Update combo

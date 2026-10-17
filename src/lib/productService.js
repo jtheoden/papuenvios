@@ -29,7 +29,7 @@ import {
   PUBLIC_INVENTORY_COLUMNS,
   PUBLIC_CATEGORY_COLUMNS
 } from './publicCatalogColumns';
-import { ADMIN_PRODUCT_COLUMNS, ADMIN_CATEGORY_COLUMNS } from './adminCatalogColumns';
+import { listProductCosts, listCategoryMargins } from './adminCostService';
 
 // Legacy: Para toggle de estado activo
 const IN_PROGRESS_ORDER_STATUSES = [
@@ -43,19 +43,36 @@ const IN_PROGRESS_ORDER_STATUSES = [
 // byte-identical copy of the base64 `image_url` (doubling the payload), and every cost column.
 // Consumers fall back `image_url || image_file`, so omitting it is safe.
 
+/** Admin rows: base_price and profit_margin come from the admin RPC, not from the table. */
+const withProductCosts = async (rows) => {
+  if (rows.length === 0) return rows;
+  const costs = await listProductCosts();
+  return rows.map(row => {
+    const cost = costs.get(row.id);
+    return cost ? { ...row, base_price: cost.base_price, profit_margin: cost.profit_margin } : row;
+  });
+};
+
+/** Admin categories: the margin comes from the admin RPC (null stays null). */
+const withCategoryMargins = async (rows) => {
+  const margins = await listCategoryMargins();
+  return rows.map(row => (
+    margins.has(row.id) ? { ...row, profit_margin: margins.get(row.id).profit_margin } : row
+  ));
+};
+
 /**
  * Heavy part of the catalog: product rows (with category), without inventory.
  * Safe to cache; stock must be fetched separately via getProductStock.
- * The public view (includeInactive = false) never asks for cost or margin columns; the admin
- * view (includeInactive = true) keeps them until Phase 0b moves it to admin read RPCs.
- * @throws {AppError} If database query fails
+ * Both views read the same public columns straight from the table. The admin view (includeInactive = true)
+ * also lists inactive rows and merges the cost fields (base_price, profit_margin) from the admin RPC.
+ * @throws {AppError} If database query fails (ADMIN_COST_RPC_UNAVAILABLE if the admin RPC is missing)
  */
 export const getProductRows = async (includeInactive = false) => {
-  const columns = includeInactive ? ADMIN_PRODUCT_COLUMNS : PUBLIC_PRODUCT_COLUMNS;
   let query = supabase
     .from('products')
     .select(`
-      ${columns},
+      ${PUBLIC_PRODUCT_COLUMNS},
       ${PUBLIC_PRODUCT_CATEGORY_EMBED}
     `)
     .order('created_at', { ascending: false });
@@ -72,7 +89,8 @@ export const getProductRows = async (includeInactive = false) => {
     throw appError;
   }
 
-  return data || [];
+  const rows = data || [];
+  return includeInactive ? withProductCosts(rows) : rows;
 };
 
 /**
@@ -594,7 +612,7 @@ export const getCategories = async ({ includeMargin = false } = {}) => {
     // The category margin is internal business data: only admin callers ask for it
     const { data, error } = await supabase
       .from('product_categories')
-      .select(includeMargin ? ADMIN_CATEGORY_COLUMNS : PUBLIC_CATEGORY_COLUMNS)
+      .select(PUBLIC_CATEGORY_COLUMNS)
       .eq('is_active', true)
       .order('display_order', { ascending: true });
 
@@ -604,7 +622,7 @@ export const getCategories = async ({ includeMargin = false } = {}) => {
       throw appError;
     }
 
-    return data || [];
+    return includeMargin ? withCategoryMargins(data || []) : (data || []);
   } catch (error) {
     if (error.code) throw error; // Already an AppError
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getCategories' });

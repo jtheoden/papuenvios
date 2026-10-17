@@ -49,7 +49,9 @@ vi.mock('@/lib/supabase', () => {
       resolve({ data: tables.data[table] ?? [], count: (tables.data[table] ?? []).length, error: null });
     return chain;
   };
-  return { supabase: { from: (table) => makeChain(table) } };
+  const costRpc = { admin_list_product_costs: 'products', admin_list_combo_costs: 'combo_products' };
+  const rpc = async (name) => ({ data: tables.data[costRpc[name]] ?? [], error: null });
+  return { supabase: { from: (table) => makeChain(table), rpc } };
 });
 
 import DashboardPage from '@/components/DashboardPage';

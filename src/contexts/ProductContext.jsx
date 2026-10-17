@@ -11,7 +11,7 @@ import { getCombos } from '@/lib/comboService';
 import { getTestimonials } from '@/lib/testimonialService';
 import { getCarouselSlides } from '@/lib/carouselService';
 import { loadCached, invalidateCatalog } from '@/lib/catalogCache';
-import { classifyCatalogError } from '@/lib/catalogErrors';
+import { classifyCatalogError, classifyAdminCatalogError } from '@/lib/catalogErrors';
 
 const ProductContext = createContext();
 
@@ -96,6 +96,8 @@ export const ProductProvider = ({ children }) => {
   const [error, setError] = useState(null);
   // Public catalog load failure ({ kind: 'permission' | 'load' }), shown instead of an empty catalog
   const [catalogError, setCatalogError] = useState(null);
+  // Admin cost reads (RPCs) fail per source; the screen shows the most actionable kind.
+  const [adminFailures, setAdminFailures] = useState({});
   const { userRole } = useAuth();
   // Category profit margins are internal: only admins load them
   const canSeeMargins = userRole === 'admin' || userRole === 'super_admin';
@@ -113,6 +115,18 @@ export const ProductProvider = ({ children }) => {
     const kind = classifyCatalogError(failure);
     setCatalogError(prev => (prev?.kind === 'permission' ? prev : { kind }));
   };
+
+  const setAdminFailure = (source, failure) =>
+    setAdminFailures(prev => {
+      if (!failure && !prev[source]) return prev;
+      const next = { ...prev };
+      if (failure) next[source] = classifyAdminCatalogError(failure);
+      else delete next[source];
+      return next;
+    });
+  const ADMIN_KIND_PRIORITY = ['adminCosts', 'permission', 'load'];
+  const adminKind = ADMIN_KIND_PRIORITY.find(kind => Object.values(adminFailures).includes(kind));
+  const adminCatalogError = adminKind ? { kind: adminKind } : null;
 
   // Public products: cached rows + fresh stock, loaded in parallel
   const loadPublicProducts = async () => {
@@ -142,11 +156,13 @@ export const ProductProvider = ({ children }) => {
         ? (invalidateCatalog(), (await getProducts(true)) || [])
         : await loadPublicProducts();
       commitProducts(loaded);
+      if (includeInactive) setAdminFailure('products', null);
       return loaded;
     } catch (error) {
       console.error('Error refreshing products:', error);
       setError(error.message);
-      if (!includeInactive) recordCatalogFailure(error);
+      if (includeInactive) setAdminFailure('products', error);
+      else recordCatalogFailure(error);
     }
   };
 
@@ -183,10 +199,12 @@ export const ProductProvider = ({ children }) => {
         () => getCategories(canSeeMargins ? { includeMargin: true } : undefined),
         setCategories
       );
+      setAdminFailure('categories', null);
     } catch (error) {
       console.error('Error refreshing categories:', error);
       setError(error.message);
-      if (!canSeeMargins) recordCatalogFailure(error);
+      if (canSeeMargins) setAdminFailure('categories', error);
+      else recordCatalogFailure(error);
     }
   };
 
@@ -223,9 +241,11 @@ export const ProductProvider = ({ children }) => {
       }
 
       setCombos(buildCombos(data, productsMap));
+      if (includeInactive) setAdminFailure('combos', null);
     } catch (error) {
       console.error('Error refreshing combos:', error);
-      if (!includeInactive) recordCatalogFailure(error);
+      if (includeInactive) setAdminFailure('combos', error);
+      else recordCatalogFailure(error);
     }
   };
 
@@ -327,7 +347,8 @@ export const ProductProvider = ({ children }) => {
     // State
     loading,
     error,
-    catalogError
+    catalogError,
+    adminCatalogError
   };
 
   return (

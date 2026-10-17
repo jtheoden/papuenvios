@@ -421,9 +421,17 @@ describeDb('rate functions fix + exchange_rates constraints', () => {
   describe('migration file properties', () => {
     const readMigration = () => readFileSync(MIGRATION, 'utf8');
 
-    it('is the newest migration and carries the PREPARED, NOT APPLIED header', () => {
+    it('exists in the migration folder and carries the PREPARED, NOT APPLIED header', () => {
+      // It used to assert "newest migration"; any later migration (e.g. Phase 0b A) legitimately breaks that,
+      // so the check is now that no LATER migration touches the objects this file owns.
       const files = readdirSync('supabase/migrations').filter((f) => f.endsWith('.sql')).sort();
-      expect(files[files.length - 1]).toBe(MIGRATION.split('/').pop());
+      const own = MIGRATION.split('/').pop();
+      expect(files).toContain(own);
+      const later = files.filter((f) => f > own);
+      later.forEach((f) => {
+        expect(readFileSync(`supabase/migrations/${f}`, 'utf8'), f)
+          .not.toMatch(/exchange_rates|recalculate_remittance_at_current_rate|get_remittance_bank_accounts_admin/);
+      });
       expect(readMigration().split('\n').slice(0, 12).join('\n')).toMatch(/PREPARED, NOT APPLIED/);
     });
 

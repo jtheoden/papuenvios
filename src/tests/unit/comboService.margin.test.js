@@ -19,8 +19,10 @@ const chain = (result, table) => {
   return c;
 };
 
+// Base prices come from the admin cost RPC (Phase 0b), not from a direct read of products.
+const rpcMock = vi.fn();
 vi.mock('@/lib/supabase', () => ({
-  supabase: { from: (...args) => fromMock(...args) }
+  supabase: { from: (...args) => fromMock(...args), rpc: (...args) => rpcMock(...args) }
 }));
 vi.mock('@/lib/activityLogger', () => ({ logActivity: vi.fn().mockResolvedValue(undefined) }));
 
@@ -35,10 +37,12 @@ const base = {
 describe('comboService profit margin input', () => {
   beforeEach(() => {
     fromMock.mockReset();
+    rpcMock.mockReset();
+    rpcMock.mockResolvedValue({ data: [{ id: 'p1', base_price: 10, profit_margin: 35 }], error: null });
     comboInsert = undefined;
     updatePayload = undefined;
     fromMock.mockImplementation((table) =>
-      chain({ data: table === 'products' ? [{ id: 'p1', base_price: 10 }] : { id: 'k1' }, error: null }, table)
+      chain({ data: { id: 'k1' }, error: null }, table)
     );
   });
 
