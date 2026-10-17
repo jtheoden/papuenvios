@@ -732,7 +732,18 @@
       "sellPriceTooLowDesc": "El precio de venta no puede ser menor que el costo de productos",
       "addProductsFirst": "Agregue productos al combo primero",
       "userSavings": "Ahorro del cliente",
-      "individualTotal": "Compra individual"
+      "individualTotal": "Compra individual",
+      "priceWarningTitle": "El combo cuesta más que sus productos por separado",
+      "priceWarningComboPrice": "Precio del combo",
+      "priceWarningIndividualTotal": "Productos por separado",
+      "priceWarningDifference": "El combo es más caro por",
+      "priceWarningMaxMargin": "Use un margen de hasta {value}% para evitarlo.",
+      "priceWarningApply": "Aplicar {value}%",
+      "priceWarningNote": "Es solo una advertencia: puede guardar el combo igualmente.",
+      "confirmMoreExpensive": "Este combo es más caro que la suma de sus productos por separado. El cliente pagaría {amount} más comprando el combo. ¿Guardar de todos modos?",
+      "saveAnyway": "Guardar de todos modos",
+      "moreExpensiveBadge": "Más caro que por separado",
+      "moreExpensiveBadgeDetail": "{amount} sobre el precio por separado"
     },
     "management": {
       "title": "Gestión General",

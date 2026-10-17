@@ -10,7 +10,8 @@ import { validateAndProcessImage } from '@/lib/imageUtils';
 import { resolveMarginInput } from '@/lib/marginResolver';
 import { isImageUploadError, getImageUploadMessageKey } from '@/lib/imageStorage';
 import { createCombo, updateCombo as updateComboDB, deleteCombo, setComboActiveState } from '@/lib/comboService';
-import { checkComboStockIssues, computeComboPricing } from '@/lib/comboUtils';
+import { checkComboStockIssues, computeComboPricing, evaluateComboPricing } from '@/lib/comboUtils';
+import ComboMarginWarning from '@/components/vendor/ComboMarginWarning';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { logActivity } from '@/lib/activityLogger';
 import { hasAdminComboFields } from '@/lib/adminCatalogColumns';
@@ -39,6 +40,7 @@ const VendorCombosTab = ({
   const [processingComboId, setProcessingComboId] = useState(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState(null);
   const [showZeroMarginConfirm, setShowZeroMarginConfirm] = useState(false);
+  const [showPriceConfirm, setShowPriceConfirm] = useState(false);
 
   // Refs for form focus and scroll
   const comboFormRef = useRef(null);
@@ -100,6 +102,25 @@ const VendorCombosTab = ({
 
     return amount;
   }, [exchangeRates]);
+
+  // Compare a combo price against its products bought separately (display currency)
+  const evaluateCombo = useCallback((combo) => evaluateComboPricing({
+    combo,
+    products,
+    convert: convertPrice,
+    baseCurrencyId,
+    selectedCurrencyId: selectedCurrency || baseCurrencyId,
+    defaultProfitMargin: financialSettings.comboProfit
+  }), [products, convertPrice, baseCurrencyId, selectedCurrency, financialSettings.comboProfit]);
+
+  const comboFormEvaluation = useMemo(() => {
+    if (!comboForm?.products?.length) return null;
+    return evaluateCombo({
+      products: comboForm.products,
+      productQuantities: comboForm.productQuantities,
+      profitMargin: comboForm.profitMargin || financialSettings.comboProfit
+    });
+  }, [comboForm?.products, comboForm?.productQuantities, comboForm?.profitMargin, evaluateCombo, financialSettings.comboProfit]);
 
   const openNewComboForm = () => {
     setComboForm({
@@ -354,7 +375,7 @@ const VendorCombosTab = ({
     setConfirmingDeleteId(null);
   };
 
-  const handleComboSubmit = async (bypassZeroConfirm = false) => {
+  const handleComboSubmit = async (bypassZeroConfirm = false, bypassPriceConfirm = false) => {
 
     if (!comboForm.name) {
       toast({
@@ -377,6 +398,11 @@ const VendorCombosTab = ({
     }
     if (margin === 0 && !bypassZeroConfirm) {
       setShowZeroMarginConfirm(true);
+      return;
+    }
+    // Non-blocking: the admin may still save after explicit confirmation
+    if (comboFormEvaluation?.isMoreExpensive && !bypassPriceConfirm) {
+      setShowPriceConfirm(true);
       return;
     }
 
@@ -711,6 +737,19 @@ const VendorCombosTab = ({
               </div>
             </div>
 
+            {/* Combo more expensive than its products bought separately */}
+            {comboFormEvaluation?.isMoreExpensive && (
+              <div className="md:col-span-2">
+                <ComboMarginWarning
+                  evaluation={comboFormEvaluation}
+                  currencySymbol={currencySymbol}
+                  currencyCode={currencyCode}
+                  t={t}
+                  onApplyMargin={(value) => handleComboProfitChange('percentage', String(value))}
+                />
+              </div>
+            )}
+
             {/* Price Summary with Cost Breakdown */}
             <div className="md:col-span-2">
               {(() => {
@@ -823,9 +862,52 @@ const VendorCombosTab = ({
             </div>
           )}
 
+          {/* More-expensive-than-separate confirmation */}
+          {showPriceConfirm && comboFormEvaluation?.isMoreExpensive && (
+            <div
+              data-testid="combo-price-confirm"
+              role="alertdialog"
+              aria-label={t('vendor.combos.priceWarningTitle')}
+              className="mt-4 p-4 bg-red-50 border border-red-300 rounded-lg"
+            >
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" aria-hidden="true" />
+                <div>
+                  <p className="text-sm font-medium text-red-800">
+                    {t('vendor.combos.confirmMoreExpensive').replace(
+                      '{amount}',
+                      `${currencySymbol}${Math.abs(comboFormEvaluation.difference).toFixed(2)} ${currencyCode}`
+                    )}
+                  </p>
+                  <div className="flex gap-2 mt-3">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      data-testid="combo-price-confirm-cancel"
+                      onClick={() => setShowPriceConfirm(false)}
+                    >
+                      {t('common.cancel')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      data-testid="combo-price-confirm-accept"
+                      onClick={() => {
+                        setShowPriceConfirm(false);
+                        handleComboSubmit(false, true);
+                      }}
+                    >
+                      {t('vendor.combos.saveAnyway')}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Form Actions */}
           <div className="flex justify-end gap-4 mt-6">
-            <Button variant="outline" onClick={() => { setComboForm(null); setShowZeroMarginConfirm(false); }}>
+            <Button variant="outline" onClick={() => { setComboForm(null); setShowZeroMarginConfirm(false); setShowPriceConfirm(false); }}>
               {t('common.cancel')}
             </Button>
             <Button
@@ -853,10 +935,12 @@ const VendorCombosTab = ({
           const prices = getComboCalculatedPrices(c);
           const isConfirming = confirmingDeleteId === c.id;
           const isProcessing = processingComboId === c.id;
+          const priceEvaluation = evaluateCombo(c);
 
           return (
             <div
               key={c.id}
+              data-testid="combo-card"
               className={`glass-effect p-4 rounded-lg transition-all duration-200 ${
                 isConfirming
                   ? 'border-2 border-red-400 bg-red-50'
@@ -876,6 +960,22 @@ const VendorCombosTab = ({
                         <AlertCircle className="h-3 w-3" />
                         <span className="hidden xs:inline">{language === 'es' ? 'DESACTIVADO' : 'DEACTIVATED'}</span>
                         <span className="xs:hidden">{language === 'es' ? 'OFF' : 'OFF'}</span>
+                      </div>
+                    )}
+                    {priceEvaluation.isMoreExpensive && !isConfirming && (
+                      <div
+                        data-testid="combo-more-expensive-badge"
+                        title={t('vendor.combos.moreExpensiveBadgeDetail').replace(
+                          '{amount}',
+                          `${currencySymbol}${Math.abs(priceEvaluation.difference).toFixed(2)} ${currencyCode}`
+                        )}
+                        className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 border border-amber-400 text-xs font-semibold px-2 py-0.5 rounded mb-1 mr-1"
+                      >
+                        <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                        <span>{t('vendor.combos.moreExpensiveBadge')}</span>
+                        <span>
+                          (+{currencySymbol}{Math.abs(priceEvaluation.difference).toFixed(2)})
+                        </span>
                       </div>
                     )}
                     <h3 className={`font-bold truncate ${isDeactivated ? 'line-through text-gray-500' : ''}`}>
