@@ -522,10 +522,11 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
       expect(rows[0]).toEqual({ status: 'pending', payment_status: 'pending' });
     });
 
+    // phase 1.5 S1: subtotal moves with the total, otherwise orders_money_total_identity_chk (applies to every writer) rejects it
     it('admin and postgres bypass the owner UPDATE guard', async () => {
       const { id } = await newOrder();
       const a = await asAdmin();
-      const { rows } = await a.query(`UPDATE public.orders SET total_amount = 26 WHERE id = $1 RETURNING total_amount::float AS t`, [id]);
+      const { rows } = await a.query(`UPDATE public.orders SET subtotal = 26, total_amount = 26 WHERE id = $1 RETURNING total_amount::float AS t`, [id]);
       expect(rows[0].t).toBe(26);
     });
 
@@ -654,10 +655,11 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
       ]);
     });
 
-    it('remittances BEFORE INSERT: the payment-method check runs BEFORE the owner guard', async () => {
+    it('remittances BEFORE INSERT: the payment-method check runs BEFORE the owner guard (phase 1.5 S2 adds guard_remittance_pricing after it)', async () => {
       expect(await triggers('remittances', 'before', 'insert')).toEqual([
         'guard_payment_method_enabled',
         'guard_remittance_owner_insert',
+        'guard_remittance_pricing',
         'guard_reset_lock_remittances',
         'trigger_generate_remittance_number'
       ]);
