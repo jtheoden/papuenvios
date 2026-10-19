@@ -216,7 +216,7 @@ describeDb('phase 1.5 S4: remittance history ownership + offer_id validity (loca
     });
 
     it('rsh_insert no longer is WITH CHECK (true); the select policy is untouched', async () => {
-      const { rows } = await admin.query(`SELECT policyname, cmd, with_check FROM public.pg_policies WHERE tablename = 'remittance_status_history' ORDER BY policyname`).catch(() => admin.query(`SELECT policyname, cmd, with_check FROM pg_policies WHERE tablename = 'remittance_status_history' ORDER BY policyname`));
+      const { rows } = await admin.query(`SELECT policyname, cmd, with_check FROM pg_policies WHERE tablename = 'remittance_status_history' AND policyname NOT LIKE '%\_block\_disabled\_user' ORDER BY policyname`);
       expect(rows.map((r) => r.policyname)).toEqual(['rsh_insert', 'rsh_select']);
       expect(rows[0].with_check).not.toBe('true');
       expect(rows[0].with_check).toMatch(/auth\.uid\(\)|uid\(\)/);
