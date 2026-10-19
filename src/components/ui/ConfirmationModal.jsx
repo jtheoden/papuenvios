@@ -4,9 +4,8 @@
  * Shows order number, summary, and next steps
  */
 
-import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, CheckCircle, Package, Clock, MessageCircle, X, ArrowRight } from 'lucide-react';
+import { CheckCircle, Package, Clock, MessageCircle, X, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -31,18 +30,6 @@ const ConfirmationModal = ({
   const { language } = useLanguage();
   const { visualSettings } = useBusiness();
 
-  // Skip guard for the guided WhatsApp step: the first attempt to leave without
-  // having opened the WhatsApp link only shows a warning; the second one goes through.
-  const [whatsappClicked, setWhatsappClicked] = useState(false);
-  const [skipWarningShown, setSkipWarningShown] = useState(false);
-
-  useEffect(() => {
-    if (isOpen) {
-      setWhatsappClicked(false);
-      setSkipWarningShown(false);
-    }
-  }, [isOpen]);
-
   const isRemittance = orderType === 'remittance';
   const isProofPending = isRemittance && Boolean(proofPending);
 
@@ -58,7 +45,7 @@ const ConfirmationModal = ({
       itemsLabel: isRemittance ? 'Tipo de envío' : 'Productos',
       itemsValue: isRemittance ? 'Transferencia' : `${itemCount} artículo${itemCount !== 1 ? 's' : ''}`,
       nextStepsTitle: '¿Qué sigue?',
-      stepWhatsapp: 'Envíanos el comprobante por WhatsApp con el botón de abajo',
+      stepWhatsapp: 'Opcional: envíanos el comprobante por WhatsApp con el botón de abajo para acelerar la verificación',
       step1: 'Verificaremos tu comprobante de pago',
       step2: isRemittance
         ? 'Procesaremos tu remesa en las próximas horas'
@@ -72,7 +59,9 @@ const ConfirmationModal = ({
       whatsappChatWith: `Se abrirá un chat con ${whatsappNumber}`,
       whatsappPreparing: 'Preparando mensaje de WhatsApp…',
       whatsappNotConfigured: 'WhatsApp del administrador no configurado. Contacta al soporte.',
-      whatsappSkipWarning: 'El administrador aún no fue notificado. Envía el mensaje por WhatsApp para que procese tu operación.'
+      whatsappOptionalNote: isRemittance
+        ? 'Tu remesa ya quedó registrada. El aviso por WhatsApp es opcional.'
+        : 'Tu pedido ya quedó registrado. El aviso por WhatsApp es opcional.'
     },
     en: {
       title: isRemittance ? 'Remittance Sent!' : 'Order Confirmed!',
@@ -85,7 +74,7 @@ const ConfirmationModal = ({
       itemsLabel: isRemittance ? 'Transfer type' : 'Products',
       itemsValue: isRemittance ? 'Transfer' : `${itemCount} item${itemCount !== 1 ? 's' : ''}`,
       nextStepsTitle: 'What\'s next?',
-      stepWhatsapp: 'Send us the payment proof via WhatsApp using the button below',
+      stepWhatsapp: 'Optional: send us the payment proof via WhatsApp using the button below to speed up verification',
       step1: 'We will verify your payment proof',
       step2: isRemittance
         ? 'We will process your remittance in the next hours'
@@ -99,7 +88,9 @@ const ConfirmationModal = ({
       whatsappChatWith: `A chat with ${whatsappNumber} will open`,
       whatsappPreparing: 'Preparing WhatsApp message…',
       whatsappNotConfigured: 'Administrator WhatsApp not configured. Contact support.',
-      whatsappSkipWarning: 'The administrator has not been notified yet. Send the WhatsApp message so your operation can be processed.'
+      whatsappOptionalNote: isRemittance
+        ? 'Your remittance is already registered. The WhatsApp notice is optional.'
+        : 'Your order is already registered. The WhatsApp notice is optional.'
     }
   };
 
@@ -108,7 +99,7 @@ const ConfirmationModal = ({
     es: {
       title: '¡Remesa Registrada!',
       subtitle: 'Falta subir tu comprobante de pago',
-      stepWhatsapp: 'Avísanos por WhatsApp que registraste la remesa con el botón de abajo',
+      stepWhatsapp: 'Opcional: avísanos por WhatsApp que registraste la remesa con el botón de abajo para acelerar la verificación',
       step1: 'Sube tu comprobante de pago desde Mis Remesas',
       step2: 'Procesaremos tu remesa cuando validemos el pago',
       whatsappSendBtn: 'Avisar al administrador por WhatsApp'
@@ -116,7 +107,7 @@ const ConfirmationModal = ({
     en: {
       title: 'Remittance Registered!',
       subtitle: 'Your payment proof is still pending',
-      stepWhatsapp: 'Let us know via WhatsApp that you registered the remittance using the button below',
+      stepWhatsapp: 'Optional: let us know via WhatsApp that you registered the remittance using the button below to speed up verification',
       step1: 'Upload your payment proof from My Remittances',
       step2: 'We will process your remittance once the payment is validated',
       whatsappSendBtn: 'Notify the administrator via WhatsApp'
@@ -149,30 +140,9 @@ const ConfirmationModal = ({
     ? [t.stepWhatsapp, t.step1, t.step2, t.step3]
     : [t.step1, t.step2, t.step3];
 
-  // The guard also covers the loading phase (URL still being prepared); the resend variant has none
-  const guardActive = !isResend && (hasWhatsappUrl || whatsappLoading);
-
-  // Runs the leave action unless the guided step is still pending and unwarned
-  const guardLeave = (leave) => {
-    if (guardActive && !whatsappClicked && !skipWarningShown) {
-      setSkipWarningShown(true);
-      return;
-    }
-    leave?.();
-  };
-  const handleClose = () => guardLeave(onClose);
-  const handleViewOrders = () => guardLeave(onViewOrders);
-  const markWhatsappClicked = () => setWhatsappClicked(true);
-  const showSkipWarning = guardActive && skipWarningShown && !whatsappClicked;
-  const skipWarning = showSkipWarning ? (
-    <p
-      role="alert"
-      className="flex items-start gap-2 p-3 text-sm text-amber-900 bg-amber-50 border border-amber-300 rounded-lg"
-    >
-      <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
-      <span>{t.whatsappSkipWarning}</span>
-    </p>
-  ) : null;
+  // The WhatsApp step is optional: the operation is already registered, so leaving is never blocked
+  const handleClose = () => onClose?.();
+  const handleViewOrders = () => onViewOrders?.();
 
   if (!isOpen) return null;
 
@@ -296,7 +266,7 @@ const ConfirmationModal = ({
 
             {/* Actions */}
             <div className="px-6 py-4 space-y-3">
-              {/* Guided WhatsApp step: user-gesture link, never popup-blocked */}
+              {/* Optional WhatsApp step: user-gesture link, never popup-blocked */}
               {hasWhatsappUrl ? (
                 <div className="space-y-1.5">
                   <a
@@ -304,15 +274,17 @@ const ConfirmationModal = ({
                     target="_blank"
                     rel="noopener noreferrer"
                     data-testid="confirmation-whatsapp-link"
-                    onClick={markWhatsappClicked}
-                    onAuxClick={markWhatsappClicked}
                     className="flex items-center justify-center w-full h-12 rounded-md text-base font-medium text-white bg-[#25D366] hover:bg-[#1ebe5d] transition-colors focus:outline-none focus:ring-2 focus:ring-[#25D366] focus:ring-offset-2"
                   >
                     <MessageCircle className="mr-2 h-5 w-5" />
                     {t.whatsappSendBtn}
                   </a>
                   <p className="text-xs text-center text-gray-500">{t.whatsappChatWith}</p>
-                  {skipWarning}
+                  {!isResend && (
+                    <p className="text-xs text-center text-gray-600" data-testid="confirmation-whatsapp-optional-note">
+                      {t.whatsappOptionalNote}
+                    </p>
+                  )}
                 </div>
               ) : whatsappLoading ? (
                 <div className="space-y-1.5">
@@ -325,7 +297,6 @@ const ConfirmationModal = ({
                     <MessageCircle className="mr-2 h-5 w-5" />
                     {t.whatsappPreparing}
                   </button>
-                  {skipWarning}
                 </div>
               ) : (
                 <p className="text-xs text-center text-amber-700" role="status">{t.whatsappNotConfigured}</p>
