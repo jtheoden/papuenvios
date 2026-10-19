@@ -631,6 +631,7 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
 
     it('orders BEFORE INSERT', async () => {
       expect(await triggers('orders', 'before', 'insert')).toEqual([
+        'guard_order_offer_id',
         'guard_orders_owner_insert',
         'guard_orders_stock_columns',
         'guard_payment_method_enabled',
@@ -655,9 +656,10 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
       ]);
     });
 
-    it('remittances BEFORE INSERT: the payment-method check runs BEFORE the owner guard (phase 1.5 S2 adds guard_remittance_pricing after it)', async () => {
+    it('remittances BEFORE INSERT: the payment-method check runs BEFORE the owner guard (phase 1.5 S2 adds guard_remittance_pricing after it; S4 adds guard_remittance_offer_id before the owner guard)', async () => {
       expect(await triggers('remittances', 'before', 'insert')).toEqual([
         'guard_payment_method_enabled',
+        'guard_remittance_offer_id',
         'guard_remittance_owner_insert',
         'guard_remittance_pricing',
         'guard_reset_lock_remittances',

@@ -200,6 +200,7 @@ describeDb('phase 1.5 S2: remittance pricing guard (local Postgres)', () => {
       );
       expect(rows.map((r) => r.tgname)).toEqual([
         'guard_payment_method_enabled',
+        'guard_remittance_offer_id', // added by S4 (WHEN offer_id IS NOT NULL)
         'guard_remittance_owner_insert',
         'guard_remittance_pricing',
         'guard_reset_lock_remittances',
