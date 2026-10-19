@@ -845,7 +845,17 @@
     "yearlyBreakdown": "Yearly Breakdown",
     "yearlyRevenue": "Yearly Revenue",
     "yearlyProfit": "Estimated Yearly Profit",
-    "transportCosts": "Transportation Costs",
+    "shippingCollected": "Shipping charged to customers",
+    "courier": {
+      "title": "Courier cost",
+      "collected": "Shipping charged",
+      "cost": "Courier cost",
+      "difference": "Charged minus courier",
+      "unrecorded": "Orders without a recorded courier tariff",
+      "unavailable": "The courier cost could not be read. Reload the dashboard to retry; no values are shown so as not to mislead.",
+      "loading": "Loading courier cost…",
+      "note": "The cost is the municipality's courier tariff in force when the order was created (USD). Orders from before this feature and municipalities without a tariff are shown as not recorded, not as zero cost. Active orders only."
+    },
     "dailyShipping": "Daily Shipping",
     "monthlyShipping": "Monthly Shipping",
     "yearlyShipping": "Yearly Shipping",

@@ -854,7 +854,17 @@
     "yearlyBreakdown": "Desglose Anual",
     "yearlyRevenue": "Ingresos Anuales",
     "yearlyProfit": "Ganancia Estimada Anual",
-    "transportCosts": "Costos de Transporte",
+    "shippingCollected": "Envío cobrado a clientes",
+    "courier": {
+      "title": "Costo de mensajería",
+      "collected": "Envío cobrado",
+      "cost": "Costo de mensajería",
+      "difference": "Cobrado menos mensajería",
+      "unrecorded": "Pedidos sin tarifa de mensajería registrada",
+      "unavailable": "No se pudo leer el costo de mensajería. Recargue el panel para reintentar; no se muestran valores para no inducir a error.",
+      "loading": "Cargando costo de mensajería…",
+      "note": "El costo es la tarifa de mensajería del municipio vigente al crear el pedido (USD). Los pedidos anteriores a esta función y los municipios sin tarifa figuran como sin registrar, no como costo cero. Solo pedidos activos."
+    },
     "dailyShipping": "Envio Diario",
     "monthlyShipping": "Envio Mensual",
     "yearlyShipping": "Envio Anual",

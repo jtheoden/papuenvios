@@ -60,6 +60,33 @@ export const computeOrderTotals = (orders, now = new Date()) => {
   };
 };
 
+const roundCents = (value) => Math.round(value * 100) / 100;
+
+/**
+ * Courier (mensajeria) cost per rolling window, active orders only (same filter and windows as the other
+ * order figures). `costByOrder` is order id -> USD amount | null (service listOrderCourierCosts).
+ * A null amount or a missing row means "no tariff recorded": it is counted in *Unrecorded and adds
+ * nothing to the sum, because an unknown cost is not a 0 cost.
+ */
+export const computeCourierCostTotals = (orders, costByOrder, now = new Date()) => {
+  const w = getWindows(now);
+  const recorded = (o) => {
+    const amount = costByOrder.get(o.id);
+    return amount === null || amount === undefined ? null : toNumber(amount);
+  };
+  const sum = (since) => roundCents(sumActiveSince(orders, since, (o) => recorded(o) ?? 0));
+  const unrecorded = (since) => sumActiveSince(orders, since, (o) => (recorded(o) === null ? 1 : 0));
+
+  return {
+    dailyCourierCost: sum(w.daily),
+    monthlyCourierCost: sum(w.monthly),
+    yearlyCourierCost: sum(w.yearly),
+    dailyCourierUnrecorded: unrecorded(w.daily),
+    monthlyCourierUnrecorded: unrecorded(w.monthly),
+    yearlyCourierUnrecorded: unrecorded(w.yearly)
+  };
+};
+
 /**
  * Headline combined revenue = order revenue + remittance COMMISSION income.
  * Remittance volume sent is money moved, not income, and must not be added here.
