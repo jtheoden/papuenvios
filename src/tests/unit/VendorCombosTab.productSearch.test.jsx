@@ -92,6 +92,19 @@ describe('VendorCombosTab product search', () => {
     expect(input.getAttribute('inputmode')).toBe('search');
   });
 
+  it('hides the browser native clear button so only the custom one shows (no double x at 400 px)', () => {
+    renderTab();
+    openEdit();
+    expect(searchBox().className).toContain('[&::-webkit-search-cancel-button]:hidden');
+  });
+
+  it('gives the chip remove buttons a comfortable touch target', () => {
+    renderTab();
+    openEdit();
+    const remove = screen.getAllByRole('button', { name: /^vendor\.combos\.removeProduct/ })[0];
+    expect(remove.className).toContain('p-1.5');
+  });
+
   it('renders the same search input when creating a combo', () => {
     renderTab([]);
     openNew();

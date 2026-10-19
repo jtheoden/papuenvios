@@ -35,7 +35,7 @@ const ComboProductPicker = ({ products, selectedIds, quantities, onToggle, onQua
           aria-label={t('vendor.combos.searchProducts')}
           placeholder={t('vendor.combos.searchProductsPlaceholder')}
           autoComplete="off"
-          className="w-full pl-9 pr-9 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+          className="w-full pl-9 pr-9 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent [&::-webkit-search-cancel-button]:hidden"
         />
         {query && (
           <button
@@ -65,7 +65,7 @@ const ComboProductPicker = ({ products, selectedIds, quantities, onToggle, onQua
                 type="button"
                 onClick={() => onToggle(p.id)}
                 aria-label={t('vendor.combos.removeProduct', { name: productLabel(p) })}
-                className="p-0.5 rounded-full hover:bg-purple-100"
+                className="p-1.5 -mr-1 rounded-full hover:bg-purple-100"
               >
                 <X className="h-3 w-3" aria-hidden="true" />
               </button>
