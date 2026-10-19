@@ -17,7 +17,7 @@ Procedimiento operativo para habilitar y ejecutar `execute_platform_reset()`. Es
 Ver la migración `supabase/migrations/20260808000002_platform_reset.sql` (comentario de cabecera) para la lista completa y su justificación. Resumen:
 
 - **Se borra**: orders, remittances, recipients (+ direcciones y cuentas bancarias asociadas), carritos, ofertas, combos, inventario (⚠️ deja todos los productos en stock 0), historial/estadísticas de uso de cuentas Zelle, notification_logs, user_alerts, site_visits, user_category_history.
-- **Se conserva**: products, product_categories, remittance_types, shipping_zones, exchange_rates, currencies, publications, configuración de cuentas Zelle (solo se resetean sus contadores a 0), reglas/descuentos de categorización, `activity_logs` (rastro de auditoría — deliberadamente NO se borra, incluye el registro de este mismo reset), `admin_messages`.
+- **Se conserva**: products, product_categories, remittance_types, shipping_zones, exchange_rates, currencies, publications, configuración de cuentas Zelle (solo se resetean sus contadores a 0), reglas/descuentos de categorización, `financial_audit_log` (auditoría de cambios de dinero, append-only; si la migración 20261020100000 está aplicada, las filas de remesas/pedidos borrados quedan huérfanas a propósito), `activity_logs` (rastro de auditoría — deliberadamente NO se borra, incluye el registro de este mismo reset), `admin_messages`.
 - **Usuarios no-superadmin**: se deshabilitan (`user_profiles.is_enabled = false`), **no se borran** de `auth.users` (Opción A, decisión del usuario 2026-08-07).
 
 ## Activar el flag (el único paso que la app no puede hacer)
