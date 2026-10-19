@@ -14,6 +14,7 @@ import { checkComboStockIssues, computeComboPricing } from '@/lib/comboUtils';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { logActivity } from '@/lib/activityLogger';
 import { hasAdminComboFields } from '@/lib/adminCatalogColumns';
+import ComboProductPicker from '@/components/vendor/ComboProductPicker';
 
 /**
  * Vendor Combos Tab Component
@@ -654,61 +655,15 @@ const VendorCombosTab = ({
             {/* Right Column - Product Selection */}
             <div>
               <h3 className="font-semibold mb-2">{t('vendor.combos.products')}</h3>
-              <div className="max-h-96 overflow-y-auto space-y-2 p-2 border rounded-lg bg-white">
-                {products.map(p => {
-                  const stock = p.stock !== undefined ? p.stock : 0;
-                  const minStock = p.min_stock_alert || 10;
-                  const isOutOfStock = stock === 0;
-                  const isLowStock = stock > 0 && stock <= minStock;
-                  const requiredQuantity = comboForm.productQuantities[p.id] || 1;
-                  const hasInsufficientStock = comboForm.products.includes(p.id) && stock < requiredQuantity;
-
-                  return (
-                    <div
-                      key={p.id}
-                      className={`flex items-center gap-2 p-2 rounded ${
-                        isOutOfStock ? 'bg-red-50 border border-red-200' :
-                        isLowStock || hasInsufficientStock ? 'bg-yellow-50 border border-yellow-200' :
-                        'border border-transparent'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        id={`p-${p.id}`}
-                        checked={comboForm.products.includes(p.id)}
-                        onChange={() => handleComboProductToggle(p.id)}
-                        disabled={isOutOfStock}
-                        className="flex-shrink-0"
-                      />
-                      <label
-                        htmlFor={`p-${p.id}`}
-                        className={`cursor-pointer flex-1 ${isOutOfStock ? 'text-gray-400 line-through' : ''}`}
-                      >
-                        {p.name_es || p.name}
-                      </label>
-                      {isOutOfStock && (
-                        <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
-                      )}
-                      {isLowStock && !isOutOfStock && (
-                        <AlertTriangle className="h-4 w-4 text-orange-500 flex-shrink-0" />
-                      )}
-                      {hasInsufficientStock && (
-                        <AlertTriangle className="h-4 w-4 text-orange-600 flex-shrink-0" />
-                      )}
-                      {comboForm.products.includes(p.id) && (
-                        <input
-                          type="number"
-                          min="1"
-                          value={comboForm.productQuantities[p.id] || 1}
-                          onChange={(e) => handleComboProductQuantityChange(p.id, e.target.value)}
-                          className="w-16 px-2 py-1 border rounded text-sm"
-                          placeholder="Cant."
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+              <ComboProductPicker
+                key={comboForm.id || 'new'}
+                products={products}
+                selectedIds={comboForm.products}
+                quantities={comboForm.productQuantities}
+                onToggle={handleComboProductToggle}
+                onQuantityChange={handleComboProductQuantityChange}
+                t={t}
+              />
             </div>
 
             {/* Price Summary with Cost Breakdown */}
@@ -940,6 +895,7 @@ const VendorCombosTab = ({
                             size="icon"
                             onClick={() => openEditComboForm(c)}
                             disabled={isProcessing}
+                            aria-label={t('vendor.combos.edit')}
                             className="h-8 w-8"
                           >
                             <Edit className="h-4 w-4" />
