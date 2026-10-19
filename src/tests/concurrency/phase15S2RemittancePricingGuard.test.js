@@ -262,7 +262,7 @@ describeDb('phase 1.5 S2: remittance pricing guard (local Postgres)', () => {
 
     it('does not modify other tables: orders / remittances / remittance_types policies and column sets are unchanged', async () => {
       const { rows } = await admin.query(
-        `SELECT tablename, count(*)::int AS n FROM pg_policies WHERE tablename IN ('remittances','remittance_types') GROUP BY 1 ORDER BY 1`
+        `SELECT tablename, count(*)::int AS n FROM pg_policies WHERE tablename IN ('remittances','remittance_types') AND policyname NOT LIKE '%\_block\_disabled\_user' GROUP BY 1 ORDER BY 1`
       );
       expect(rows).toEqual([{ tablename: 'remittance_types', n: 2 }, { tablename: 'remittances', n: 5 }]);
       const cols = await admin.query(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_schema='public' AND table_name='remittances'`);

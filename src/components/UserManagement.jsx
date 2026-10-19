@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Shield, UserCheck, UserX, Trash2, AlertCircle, BarChart3, Settings, Edit, Save, X } from 'lucide-react';
+import { Users, Shield, Trash2, AlertCircle, BarChart3, Settings, Edit, Save, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -16,6 +16,7 @@ import { getUserTableColumns, getUserModalColumns } from '@/components/admin/Use
 import { getCategoryRules, getCategoryDiscounts, recalculateAllCategories, updateCategoryDiscount, updateCategoryRule } from '@/lib/userCategorizationService';
 import { ICON_MAP } from '@/components/CategoryBadge';
 import SlideToConfirm from '@/components/ui/SlideToConfirm';
+import UserStatusAction from '@/components/admin/UserStatusAction';
 
 const UserManagement = () => {
   const { t } = useLanguage();
@@ -64,7 +65,7 @@ const UserManagement = () => {
     try {
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('id, email, role, is_enabled, full_name, avatar_url, created_at')
+        .select('id, email, role, is_enabled, disabled_reason, disabled_at, disabled_by, full_name, avatar_url, created_at')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -195,42 +196,6 @@ const UserManagement = () => {
       logUserManagementAction('update_role_error', { userId, message: error.message });
       toast({
         title: t('users.roleUpdateError'),
-        description: error.message,
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleToggleUserStatus = async (userId, isEnabled) => {
-    try {
-      const targetUser = users.find(u => u.id === userId);
-
-      if (targetUser?.role === 'super_admin') {
-        console.warn('[handleToggleUserStatus] BLOCKED - Cannot modify super admin:', targetUser?.email);
-        throw new Error(t('users.cannotModifySuperAdmin'));
-      }
-
-      logUserManagementAction('toggle_user_status_start', { userId, enable: isEnabled });
-
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({ is_enabled: isEnabled })
-        .eq('id', userId);
-
-      if (error) throw error;
-
-      await fetchUsers();
-      logUserManagementAction('toggle_user_status_success', { userId, enable: isEnabled });
-      toast({
-        title: isEnabled ? t('users.userEnabled') : t('users.userDisabled'),
-        description: t('users.statusUpdateSuccess'),
-      });
-    } catch (error) {
-      console.error('[handleToggleUserStatus] ERROR:', error);
-      console.error('[handleToggleUserStatus] Error details:', { message: error?.message, code: error?.code, userId, isEnabled });
-      logUserManagementAction('toggle_user_status_error', { userId, message: error.message });
-      toast({
-        title: t('users.statusUpdateError'),
         description: error.message,
         variant: "destructive",
       });
@@ -605,25 +570,12 @@ const UserManagement = () => {
             }
             return (
               <div className="flex items-center justify-end gap-1 sm:gap-2">
-                <Button
-                  variant={row.is_enabled ? "outline" : "default"}
-                  size="sm"
-                  className="h-8 px-2 sm:px-3"
-                  onClick={() => handleToggleUserStatus(row.id, !row.is_enabled)}
-                  title={row.is_enabled ? t('users.disableUser') : t('users.enableUser')}
-                >
-                  {row.is_enabled ? (
-                    <>
-                      <UserX className="w-4 h-4 sm:mr-1" />
-                      <span className="hidden sm:inline">{t('users.disable')}</span>
-                    </>
-                  ) : (
-                    <>
-                      <UserCheck className="w-4 h-4 sm:mr-1" />
-                      <span className="hidden sm:inline">{t('users.enable')}</span>
-                    </>
-                  )}
-                </Button>
+                <UserStatusAction
+                  targetUser={row}
+                  currentUserId={user?.id}
+                  isSuperAdmin={isSuperAdmin}
+                  onChanged={fetchUsers}
+                />
                 <Button
                   variant="outline"
                   size="sm"
@@ -652,7 +604,7 @@ const UserManagement = () => {
     }
 
     return baseColumns;
-  }, [t, isSuperAdmin, user?.email, visualSettings, categoryRules, handleRoleChange, handleCategoryChange, handleToggleUserStatus, handleDeleteUser]);
+  }, [t, isSuperAdmin, user?.email, visualSettings, categoryRules, handleRoleChange, handleCategoryChange, fetchUsers, handleDeleteUser]);
 
   const renderUsersTab = () => (
     <>
@@ -861,8 +813,30 @@ const UserManagement = () => {
                 <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
                   selectedUser.is_enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                 }`}>
-                  {selectedUser.is_enabled ? t('users.table.active') : t('users.table.inactive')}
+                  {selectedUser.is_enabled ? t('users.table.active') : t('users.table.disabled')}
                 </span>
+                {!selectedUser.is_enabled && (
+                  <dl className="mt-2 space-y-1 text-sm text-gray-700">
+                    {selectedUser.disabled_reason && (
+                      <div>
+                        <dt className="inline font-medium">{t('users.disabledReason')}: </dt>
+                        <dd className="inline break-words">{selectedUser.disabled_reason}</dd>
+                      </div>
+                    )}
+                    {selectedUser.disabled_at && (
+                      <div>
+                        <dt className="inline font-medium">{t('users.disabledAt')}: </dt>
+                        <dd className="inline">{new Date(selectedUser.disabled_at).toLocaleString()}</dd>
+                      </div>
+                    )}
+                    {selectedUser.disabled_by && (
+                      <div>
+                        <dt className="inline font-medium">{t('users.disabledBy')}: </dt>
+                        <dd className="inline">{users.find(u => u.id === selectedUser.disabled_by)?.email || selectedUser.disabled_by}</dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
               </div>
 
               {/* Created At */}
@@ -879,27 +853,17 @@ const UserManagement = () => {
             {/* Action Buttons */}
             {isSuperAdmin && selectedUser.role !== 'super_admin' && (
               <div className="mt-6 pt-4 border-t flex flex-wrap gap-2">
-                <Button
-                  variant={selectedUser.is_enabled ? "outline" : "default"}
-                  size="sm"
+                <UserStatusAction
+                  targetUser={selectedUser}
+                  currentUserId={user?.id}
+                  isSuperAdmin={isSuperAdmin}
+                  showLabel
                   className="flex-1 min-w-[120px]"
-                  onClick={() => {
-                    handleToggleUserStatus(selectedUser.id, !selectedUser.is_enabled);
-                    setSelectedUser(prev => ({ ...prev, is_enabled: !prev.is_enabled }));
+                  onChanged={async () => {
+                    await fetchUsers();
+                    setShowUserModal(false);
                   }}
-                >
-                  {selectedUser.is_enabled ? (
-                    <>
-                      <UserX className="w-4 h-4 mr-2" />
-                      {t('users.disable')}
-                    </>
-                  ) : (
-                    <>
-                      <UserCheck className="w-4 h-4 mr-2" />
-                      {t('users.enable')}
-                    </>
-                  )}
-                </Button>
+                />
                 <Button
                   variant="outline"
                   size="sm"

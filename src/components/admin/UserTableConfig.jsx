@@ -115,11 +115,14 @@ export const getUserTableColumns = (t, isSuperAdmin, currentUserEmail) => {
       key: 'is_enabled',
       label: t('users.table.status'),
       width: '10%',
-      render: (value) => (
-        <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
-          value ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-        }`}>
-          {value ? t('users.table.active') : t('users.table.inactive')}
+      render: (value, row) => (
+        <span
+          className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
+            value ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+          }`}
+          title={!value && row?.disabled_reason ? `${t('users.disabledReason')}: ${row.disabled_reason}` : undefined}
+        >
+          {value ? t('users.table.active') : t('users.table.disabled')}
         </span>
       )
     }
