@@ -848,13 +848,16 @@
     "shippingCollected": "Shipping charged to customers",
     "courier": {
       "title": "Courier cost",
-      "collected": "Shipping charged",
+      "collected": "Shipping charged (all)",
+      "collectedCompared": "Charged, with tariff",
       "cost": "Courier cost",
-      "difference": "Charged minus courier",
-      "unrecorded": "Orders without a recorded courier tariff",
+      "difference": "Difference (with tariff)",
+      "notAvailable": "n/a",
+      "unrecorded": "Orders without a tariff",
+      "missingRow": "No record since activation: possible failure",
       "unavailable": "The courier cost could not be read. Reload the dashboard to retry; no values are shown so as not to mislead.",
       "loading": "Loading courier cost…",
-      "note": "The cost is the municipality's courier tariff in force when the order was created (USD). Orders from before this feature and municipalities without a tariff are shown as not recorded, not as zero cost. Active orders only."
+      "note": "The cost is the municipality's courier tariff in force when the order was created (USD). The difference only compares orders with a recorded tariff (charged with tariff minus cost); if none has one it shows n/a. Municipalities without a tariff are shown as without tariff, not as zero cost. Orders from before recording was activated show as without tariff; orders after that date that have a zone but no record (possible recording failure) are counted separately. Active orders only. Amounts in USD, no conversion."
     },
     "dailyShipping": "Daily Shipping",
     "monthlyShipping": "Monthly Shipping",

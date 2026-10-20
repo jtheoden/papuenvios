@@ -20,6 +20,21 @@ const MIGRATION = 'supabase/migrations/20261019140000_order_courier_costs.sql';
 describe('order_courier_costs migration (static)', () => {
   const sql = readFileSync(resolve(process.cwd(), MIGRATION), 'utf8');
 
+  it('runs inside an explicit transaction so SET LOCAL lock_timeout takes effect', () => {
+    const begin = sql.search(/^BEGIN;/m);
+    const setLocal = sql.search(/^SET LOCAL lock_timeout/m);
+    const commit = sql.search(/^COMMIT;/m);
+    expect(begin).toBeGreaterThanOrEqual(0);
+    expect(setLocal).toBeGreaterThan(begin);
+    expect(commit).toBeGreaterThan(setLocal);
+    expect(sql.trimEnd().endsWith('COMMIT;')).toBe(true);
+  });
+
+  it('states that admin-only covers the snapshot and the source tariff stays public until contract B', () => {
+    expect(sql).toMatch(/contract B/);
+    expect(sql).toMatch(/transport_cost[\s\S]{0,120}(public|anon)/i);
+  });
+
   it('hardens the trigger function and swallows its own errors', () => {
     expect(sql).toMatch(/SECURITY DEFINER/);
     expect(sql).toMatch(/SET search_path = public, pg_temp/);
@@ -130,18 +145,46 @@ describeDb('order_courier_costs (local Postgres)', () => {
       expect(row.shipping_zone_id).toBe(zone);
     });
 
-    it('is idempotent: re-running the snapshot never duplicates or overwrites the row', async () => {
+    it('is idempotent: firing the real trigger function again never duplicates or overwrites the row', async () => {
       const zone = await seedZone('3.25');
       const orderId = await insertOrder(admin, zone);
       await admin.query('UPDATE public.shipping_zones SET transport_cost = 50 WHERE id = $1', [zone]);
-      await admin.query(
-        `INSERT INTO public.order_courier_costs (order_id, shipping_zone_id, amount_usd) VALUES ($1, $2, 50)
-         ON CONFLICT (order_id) DO NOTHING`,
-        [orderId, zone]
-      );
+      // A trigger function cannot be called directly, so fire it again through a scratch table that carries
+      // the same trigger and reuses an order id that already has its snapshot.
+      await admin.query('CREATE TABLE public.tmp_courier_refire (id uuid, shipping_zone_id uuid)');
+      try {
+        await admin.query(
+          `CREATE TRIGGER tmp_refire AFTER INSERT ON public.tmp_courier_refire
+           FOR EACH ROW EXECUTE FUNCTION public.snapshot_order_courier_cost()`
+        );
+        await admin.query('INSERT INTO public.tmp_courier_refire (id, shipping_zone_id) VALUES ($1, $2)', [orderId, zone]);
+      } finally {
+        await admin.query('DROP TABLE public.tmp_courier_refire');
+      }
       const { rows } = await admin.query('SELECT amount_usd FROM public.order_courier_costs WHERE order_id = $1', [orderId]);
       expect(rows).toHaveLength(1);
       expect(Number(rows[0].amount_usd)).toBe(3.25);
+    });
+
+    it('monitoring query: an order with a zone and no row (trigger failure) is detectable, a normal one is not', async () => {
+      const missingRowsQuery = `
+        SELECT o.id FROM public.orders o
+        LEFT JOIN public.order_courier_costs c ON c.order_id = o.id
+        WHERE o.shipping_zone_id IS NOT NULL AND c.order_id IS NULL AND o.id = ANY($1)`;
+      const zone = await seedZone('8.00');
+      const okId = await insertOrder(admin, zone);
+      await admin.query(
+        `ALTER TABLE public.order_courier_costs ADD CONSTRAINT tmp_force_snapshot_failure2 CHECK (false) NOT VALID`
+      );
+      let failedId;
+      try {
+        failedId = await insertOrder(admin, zone);
+      } finally {
+        await admin.query('ALTER TABLE public.order_courier_costs DROP CONSTRAINT tmp_force_snapshot_failure2');
+      }
+      const noZoneId = await insertOrder(admin, null);
+      const { rows } = await admin.query(missingRowsQuery, [[okId, failedId, noZoneId]]);
+      expect(rows.map((r) => r.id)).toEqual([failedId]);
     });
 
     it('never breaks order creation when the snapshot write fails', async () => {

@@ -857,13 +857,16 @@
     "shippingCollected": "Envío cobrado a clientes",
     "courier": {
       "title": "Costo de mensajería",
-      "collected": "Envío cobrado",
+      "collected": "Envío cobrado (todos)",
+      "collectedCompared": "Cobrado con tarifa",
       "cost": "Costo de mensajería",
-      "difference": "Cobrado menos mensajería",
-      "unrecorded": "Pedidos sin tarifa de mensajería registrada",
+      "difference": "Diferencia (con tarifa)",
+      "notAvailable": "n/d",
+      "unrecorded": "Pedidos sin tarifa",
+      "missingRow": "Sin registro desde la activación: posible fallo",
       "unavailable": "No se pudo leer el costo de mensajería. Recargue el panel para reintentar; no se muestran valores para no inducir a error.",
       "loading": "Cargando costo de mensajería…",
-      "note": "El costo es la tarifa de mensajería del municipio vigente al crear el pedido (USD). Los pedidos anteriores a esta función y los municipios sin tarifa figuran como sin registrar, no como costo cero. Solo pedidos activos."
+      "note": "El costo es la tarifa de mensajería del municipio vigente al crear el pedido (USD). La diferencia compara solo los pedidos con tarifa registrada (cobrado con tarifa menos costo); si ninguno la tiene, se muestra n/d. Los municipios sin tarifa figuran como sin tarifa, no como costo cero. Los pedidos anteriores a la activación del registro figuran como sin tarifa; los posteriores a esa fecha con zona pero sin registro (posible fallo al registrar) se cuentan aparte. Solo pedidos activos. Importes en USD sin conversión."
     },
     "dailyShipping": "Envio Diario",
     "monthlyShipping": "Envio Mensual",

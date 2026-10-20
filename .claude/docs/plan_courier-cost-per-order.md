@@ -47,3 +47,46 @@ Should the shipping charged to the customer offset the courier cost in the "esti
 
 ## Rollback
 `DROP TRIGGER IF EXISTS order_courier_cost_snapshot ON public.orders; DROP FUNCTION IF EXISTS public.snapshot_order_courier_cost(); DROP TABLE IF EXISTS public.order_courier_costs;` Front without the table shows the unavailable message, nothing else breaks.
+
+## Correcciones de la revisión (adversarial, PR #113)
+
+Orden: cada corrección se hizo con su test en rojo primero. Sigue SIN commit, SIN push, SIN aplicar a prod.
+
+### W2 - la diferencia comparaba conjuntos distintos
+- Qué: `diferencia = cobrado - costo` usaba el envío cobrado de TODOS los pedidos activos y el costo solo de los que tienen tarifa. Hoy ningún pedido tiene fila, así que la diferencia habría sido el 100% de lo cobrado.
+- Corrección: la diferencia se calcula sobre el MISMO conjunto: pedidos activos con tarifa registrada (fila con `amount_usd` no nulo). La tarjeta muestra además "Envío cobrado" (total, todos los pedidos activos) y "Cobrado en pedidos con tarifa" (el conjunto comparado). Si en la ventana ningún pedido tiene tarifa, la diferencia es `null` y se muestra "n/d" (EN: "n/a"), clave `dashboard.courier.notAvailable`; nunca 0 ni un número.
+- Objeción del abogado del diablo: "con 'n/d' el dueño no ve nada hasta que haya pedidos nuevos". Respuesta: es lo correcto; un número inventado sería peor. El total cobrado sigue visible en su fila y el contador "sin tarifa" explica por qué.
+
+### W1 - fallo del trigger vs. "sin tarifa"
+- Qué: el trigger traga errores (`EXCEPTION WHEN OTHERS`, solo WARNING) y deja "fila ausente"; el Dashboard lo mezclaba con "sin tarifa".
+- Corrección: `missingRow` = pedidos activos CON `shipping_zone_id`, SIN fila en `order_courier_costs` y creados DESPUÉS del corte, contados aparte y mostrados como alerta ámbar distinta ("posible fallo de registro"), no sumados a "sin tarifa". "Sin tarifa" = fila con `amount_usd` NULL, pedido sin zona, o pedido anterior al corte. Una fila con monto NULL sigue siendo "sin tarifa". El Dashboard pide `shipping_zone_id` en el select de `orders`.
+- Corte (sin fechas hardcodeadas, la migración puede aplicarse cuando sea): `created_at` de la fila MÁS ANTIGUA de `order_courier_costs` = momento en que la función empezó a operar. `listOrderCourierCosts` lo expone como `firstRecordedAt` (propiedad del Map, ISO UTC) y `computeCourierCostTotals(orders, costs, now, recordingStart)` lo recibe; comparación de instantes con `Date.parse`, no de strings. Tabla vacía = sin corte = `missingRow` 0 (no se distingue "aún sin tráfico" de "fallo").
+- Por qué: los 31 pedidos anteriores a la migración (sin backfill, a propósito) encenderían la alerta hasta 365 días; una alerta permanente se ignora. Siguen contando como "sin tarifa" en los demás contadores.
+- `shortcut:` el comparador es `order.created_at > corte` estricto (un pedido se crea antes que su propia fila, así que con `>=` el pedido de la primera fila sería sospechoso por definición). Consecuencia: si falla el PRIMER pedido tras la activación, queda antes del corte (la primera fila será la de un pedido posterior) y no se detecta; aceptado. Mejora posible: guardar una marca de activación explícita.
+- Monitoreo (solo SELECT, correr periódicamente tras aplicar la migración; usa el mismo corte):
+  ```sql
+  SELECT o.id, o.order_number, o.created_at
+  FROM public.orders o
+  LEFT JOIN public.order_courier_costs c ON c.order_id = o.id
+  WHERE o.shipping_zone_id IS NOT NULL AND c.order_id IS NULL
+    AND o.created_at > (SELECT min(created_at) FROM public.order_courier_costs)
+  ORDER BY o.created_at DESC;
+  ```
+  Si la tabla está vacía, `min()` es NULL y no devuelve nada. Cualquier fila devuelta es un fallo del trigger: revisar el log de Postgres buscando `snapshot_order_courier_cost failed`.
+
+### W4 - `SET LOCAL lock_timeout` fuera de transacción
+- Qué: `SET LOCAL` solo rige dentro de una transacción; sin ella es un no-op con WARNING.
+- Corrección: la migración se envuelve en `BEGIN; ... COMMIT;` explícitos. El repo ya tiene este patrón (p. ej. `20261013100100_restrict_activity_logs_select_admin.sql`, `20260909110000_preview_bulk_delete.sql`), así que no se inventa uno nuevo; las migraciones phase15 usan `SET LOCAL` sin `BEGIN` y dependen de que el ejecutor abra transacción. Sigue siendo idempotente (`IF NOT EXISTS`, `DROP ... IF EXISTS`, `CREATE OR REPLACE`).
+- Objeción: "si el ejecutor ya abre una transacción, el `BEGIN` anidado da WARNING y el `COMMIT` confirma antes". Aceptado: es inocuo aquí (todo el archivo es una unidad y es idempotente); el harness de pruebas lo reproduce con `psql --single-transaction`.
+
+### W5 - tests de concurrencia
+- (a) "is idempotent" hacía un INSERT manual y no ejercitaba la función. Ahora se dispara la función trigger real sobre una tabla auxiliar con el mismo trigger (una función trigger no se puede llamar directo), con un `id` ya registrado y una tarifa distinta: debe quedar 1 fila con el monto original.
+- (b) Test de la señal W1: tras forzar el fallo del trigger, la query de monitoreo de arriba encuentra el pedido; un pedido normal no aparece.
+
+### S2 / S4
+- S2: el negativo se muestra `-$3.00` (signo delante) y la tarjeta indica USD explícito en el título. Límite: no hay conversión de moneda; si la moneda base deja de ser USD (hoy lo es, verificado) la tarjeta (y el resto del Dashboard) necesita conversión real.
+- S4: etiquetas más cortas y primera columna con ancho fijo que admite salto de línea, para evitar scroll horizontal a 400 px.
+
+### Alcance que NO cambia
+- C1 (contrato B): `shipping_zones.transport_cost` sigue siendo legible por `anon`. "Admin-only" aplica a la INSTANTÁNEA `order_courier_costs`; la tarifa de origen sigue pública hasta el contrato B (en espera). Está dicho en la cabecera de la migración.
+- Sin cambios a producción, sin backfill.

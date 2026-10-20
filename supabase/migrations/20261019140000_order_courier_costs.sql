@@ -39,12 +39,22 @@
 --   trigger_set_order_number, trigger_update_orders_updated_at (none named order_courier_cost_snapshot);
 --   supabase_realtime holds only orders and remittances; base currency is USD.
 --
+-- SCOPE OF "admin-only": it applies to this SNAPSHOT table. The source tariff shipping_zones.transport_cost is
+--   still readable by anon/authenticated (finding C1) and stays public until contract B (pending); this migration
+--   does not change that.
+--
+-- TRANSACTION: the file is wrapped in an explicit BEGIN/COMMIT (same pattern as 20261013100100_*.sql) so that
+--   SET LOCAL lock_timeout takes effect whether the runner opens a transaction or not. Under a runner that already
+--   opened one, BEGIN only warns and COMMIT ends it early; harmless because every statement is idempotent.
+--
 -- Apply BEFORE merging the Dashboard change (the Dashboard reads this table). Idempotent.
 --
 -- ROLLBACK (exact; the table holds only derived accounting data):
 --   DROP TRIGGER IF EXISTS order_courier_cost_snapshot ON public.orders;
 --   DROP FUNCTION IF EXISTS public.snapshot_order_courier_cost();
 --   DROP TABLE IF EXISTS public.order_courier_costs;
+
+BEGIN;
 
 SET LOCAL lock_timeout = '5s';
 
@@ -97,3 +107,5 @@ DROP TRIGGER IF EXISTS order_courier_cost_snapshot ON public.orders;
 CREATE TRIGGER order_courier_cost_snapshot
   AFTER INSERT ON public.orders
   FOR EACH ROW EXECUTE FUNCTION public.snapshot_order_courier_cost();
+
+COMMIT;

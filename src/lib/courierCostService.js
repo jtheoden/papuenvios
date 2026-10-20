@@ -11,13 +11,18 @@ import { ERROR_CODES, AppError, parseSupabaseError, logError } from './errorHand
 
 const PAGE_SIZE = 1000;
 
-/** @returns {Promise<Map<string, number|null>>} order id -> USD amount (null = no tariff was configured) */
+/**
+ * @returns {Promise<Map<string, number|null> & { firstRecordedAt: string|null }>} order id -> USD amount (null = no
+ * tariff was configured). `firstRecordedAt` is the ISO instant of the oldest snapshot row (the moment the feature
+ * started recording), null while the table is empty. It is a property of the Map so existing callers keep working.
+ */
 export const listOrderCourierCosts = async () => {
   const costs = new Map();
+  let firstMs = Infinity;
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await supabase
       .from('order_courier_costs')
-      .select('order_id, amount_usd')
+      .select('order_id, amount_usd, created_at')
       .order('order_id', { ascending: true })
       .range(from, from + PAGE_SIZE - 1);
     if (error) {
@@ -26,9 +31,12 @@ export const listOrderCourierCosts = async () => {
       throw appError;
     }
     (data || []).forEach((row) => {
+      const ms = Date.parse(row.created_at);
+      if (ms < firstMs) firstMs = ms;
       costs.set(row.order_id, row.amount_usd === null || row.amount_usd === undefined ? null : Number(row.amount_usd));
     });
     if (!data || data.length < PAGE_SIZE) break;
   }
+  costs.firstRecordedAt = Number.isFinite(firstMs) ? new Date(firstMs).toISOString() : null;
   return costs;
 };

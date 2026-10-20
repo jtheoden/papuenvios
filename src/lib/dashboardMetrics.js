@@ -65,26 +65,48 @@ const roundCents = (value) => Math.round(value * 100) / 100;
 /**
  * Courier (mensajeria) cost per rolling window, active orders only (same filter and windows as the other
  * order figures). `costByOrder` is order id -> USD amount | null (service listOrderCourierCosts).
- * A null amount or a missing row means "no tariff recorded": it is counted in *Unrecorded and adds
- * nothing to the sum, because an unknown cost is not a 0 cost.
+ *
+ * Every active order falls in exactly one bucket:
+ *  - with tariff:  row with a non-null amount. Only these feed the cost and the difference, so
+ *                  difference = charged(with tariff) - cost compares the SAME set of orders.
+ *  - unrecorded:   row with a NULL amount (the zone had no tariff) or an order without shipping_zone_id.
+ *  - missingRow:   shipping_zone_id present, no row at all, and created AFTER `recordingStart` (created_at of the
+ *                  oldest snapshot row = when the feature started recording): a trigger failure (it only logs a
+ *                  WARNING). Orders from before that instant (no backfill) stay "unrecorded". Without a
+ *                  `recordingStart` (empty table) it is 0: "no traffic yet" cannot be told from a failure.
+ *                  shortcut: strict `>` because an order is never created after its own snapshot, so the first
+ *                  order that fails (it would be the oldest one) is not detected; accepted, upgrade by storing an
+ *                  explicit activation timestamp.
+ * The difference is null (shown as n/a) when no order of the window has a tariff: an unknown is not a 0.
  */
-export const computeCourierCostTotals = (orders, costByOrder, now = new Date()) => {
+export const computeCourierCostTotals = (orders, costByOrder, now = new Date(), recordingStart = null) => {
   const w = getWindows(now);
-  const recorded = (o) => {
+  const startMs = recordingStart ? Date.parse(recordingStart) : NaN;
+  const amountOf = (o) => {
     const amount = costByOrder.get(o.id);
     return amount === null || amount === undefined ? null : toNumber(amount);
   };
-  const sum = (since) => roundCents(sumActiveSince(orders, since, (o) => recorded(o) ?? 0));
-  const unrecorded = (since) => sumActiveSince(orders, since, (o) => (recorded(o) === null ? 1 : 0));
-
-  return {
-    dailyCourierCost: sum(w.daily),
-    monthlyCourierCost: sum(w.monthly),
-    yearlyCourierCost: sum(w.yearly),
-    dailyCourierUnrecorded: unrecorded(w.daily),
-    monthlyCourierUnrecorded: unrecorded(w.monthly),
-    yearlyCourierUnrecorded: unrecorded(w.yearly)
+  const kind = (o) => {
+    if (amountOf(o) !== null) return 'tariff';
+    if (!costByOrder.has(o.id) && o.shipping_zone_id && Date.parse(o.created_at) > startMs) return 'missingRow';
+    return 'unrecorded';
   };
+  const count = (since, wanted) => sumActiveSince(orders, since, (o) => (kind(o) === wanted ? 1 : 0));
+  const withTariff = (since, pick) => roundCents(sumActiveSince(orders, since, (o) => (kind(o) === 'tariff' ? pick(o) : 0)));
+
+  const forWindow = (since, prefix) => {
+    const cost = withTariff(since, amountOf);
+    const collected = withTariff(since, (o) => toNumber(o.shipping_cost));
+    return {
+      [`${prefix}CourierCost`]: cost,
+      [`${prefix}CourierCollected`]: collected,
+      [`${prefix}CourierDifference`]: count(since, 'tariff') === 0 ? null : roundCents(collected - cost),
+      [`${prefix}CourierUnrecorded`]: count(since, 'unrecorded'),
+      [`${prefix}CourierMissingRow`]: count(since, 'missingRow')
+    };
+  };
+
+  return { ...forWindow(w.daily, 'daily'), ...forWindow(w.monthly, 'monthly'), ...forWindow(w.yearly, 'yearly') };
 };
 
 /**
