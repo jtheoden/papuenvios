@@ -620,7 +620,7 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
     const triggers = async (table, timing, event) => {
       const { rows } = await admin.query(
         `SELECT tgname FROM pg_trigger
-          WHERE tgrelid = $1::regclass AND NOT tgisinternal AND tgenabled = 'O'
+          WHERE tgrelid = $1::regclass AND NOT tgisinternal AND tgenabled IN ('O', 'A') -- A = ENABLE ALWAYS (financial audit trail)
             AND (tgtype & 1) = 1 AND (tgtype & $2) = $2
             AND ((tgtype & 2) = 2) = $3
           ORDER BY tgname COLLATE "C"`,

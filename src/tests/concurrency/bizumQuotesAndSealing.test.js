@@ -1258,6 +1258,8 @@ describeDb('Bizum S5a: payment quotes and order sealing', () => {
       await admin.query('BEGIN');
       try {
         await admin.query(`SET LOCAL session_replication_role = 'replica'`);
+        // The financial audit trigger (20261020100000, later than Bizum) depends on orders.payment_* columns, so its down runs first.
+        await admin.query(readFileSync('supabase/rollbacks/20261020100000_financial_audit_log_down.sql', 'utf8'));
         await admin.query(statements.join('\n'));
         const gone = await admin.query(
           `SELECT to_regclass('public.payment_quotes') AS quotes, to_regclass('public.payment_reviews') AS reviews,

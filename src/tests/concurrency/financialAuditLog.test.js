@@ -9,10 +9,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { dbSuiteSkipReason, connectAdmin, connectAs, connectAnon, endAll } from './db';
-import { loadActors } from './fixtures';
+import { loadActors, createTracker, seedProduct, seedOrder, cleanup } from './fixtures';
 
 const skipReason = await dbSuiteSkipReason({
-  tables: ['remittances', 'orders', 'remittance_types', 'shipping_zones', 'financial_audit_log']
+  tables: ['remittances', 'orders', 'remittance_types', 'shipping_zones', 'exchange_rates', 'financial_audit_log'],
+  functions: ['reserve_order_inventory']
 });
 const describeDb = skipReason ? describe.skip : describe;
 
@@ -27,6 +28,18 @@ const REMITTANCE_COLUMNS = [
 ];
 const TYPE_COLUMNS = ['exchange_rate', 'commission_percentage', 'commission_fixed', 'min_amount', 'max_amount'];
 const ZONE_COLUMNS = ['shipping_cost', 'transport_cost'];
+// The single source of truth is public.financial_audit_columns(); this is the spec the tests pin it to.
+const EXPECTED_COLUMNS = {
+  remittances: ['commission_percentage', 'commission_fixed', 'commission_total', 'exchange_rate', 'amount_sent', 'amount_to_deliver',
+    'discount_amount', 'delivery_cost', 'shipping_zone_id', 'remittance_type_id', 'currency_sent', 'currency_delivered'],
+  orders: ['subtotal', 'discount_amount', 'shipping_cost', 'tax_amount', 'total_amount', 'shipping_zone_id', 'payment_amount',
+    'payment_usd_reference', 'payment_fx_rate', 'currency_id', 'payment_currency'],
+  remittance_types: ['exchange_rate', 'commission_percentage', 'commission_fixed', 'min_amount', 'max_amount', 'is_active',
+    'currency_code', 'delivery_currency'],
+  shipping_zones: ['shipping_cost', 'transport_cost', 'free_shipping', 'is_active'],
+  exchange_rates: ['rate', 'is_active', 'effective_date', 'from_currency_id', 'to_currency_id']
+};
+const sorted = (a) => [...a].sort();
 
 describeDb('financial audit log (local Postgres)', () => {
   let admin;
@@ -159,13 +172,15 @@ describeDb('financial audit log (local Postgres)', () => {
       expect(fn.rows[0].proconfig).toContain('search_path=public, pg_temp');
     });
 
-    it('triggers: UPDATE audit on the four tables, DELETE audit on types and zones, plus immutability guards', async () => {
+    it('triggers: UPDATE audit on five tables, DELETE audit on types, zones and exchange rates, plus immutability guards', async () => {
       const { rows } = await admin.query(
         `SELECT tgrelid::regclass::text AS t, tgname FROM pg_trigger
           WHERE NOT tgisinternal AND tgname LIKE ANY (ARRAY['audit_financial_%','financial_audit_log_immutable_%'])
           ORDER BY 1, 2`
       );
       expect(rows.map((r) => `${r.t}:${r.tgname}`)).toEqual([
+        'exchange_rates:audit_financial_delete',
+        'exchange_rates:audit_financial_update',
         'financial_audit_log:financial_audit_log_immutable_row',
         'financial_audit_log:financial_audit_log_immutable_truncate',
         'orders:audit_financial_update',
@@ -347,6 +362,94 @@ describeDb('financial audit log (local Postgres)', () => {
       expect((await auditRows(id)).map((r) => [r.column_name, r.old_value, r.new_value])).toEqual([['free_shipping', 'false', 'true']]);
     });
 
+    it('remittances.remittance_type_id / currency_sent / currency_delivered', async () => {
+      const typeA = await makeType();
+      const typeB = await makeType();
+      const id = await makeRemittance({ typeId: typeA });
+      const adm = await asAdmin();
+      await adm.query(`UPDATE public.remittances SET remittance_type_id = $2, currency_sent = 'EUR', currency_delivered = 'USD' WHERE id = $1`, [id, typeB]);
+      expect((await auditRows(id)).map((r) => [r.column_name, r.old_value, r.new_value]).sort()).toEqual([
+        ['currency_delivered', 'CUP', 'USD'], ['currency_sent', 'USD', 'EUR'], ['remittance_type_id', typeA, typeB]
+      ]);
+    });
+
+    it('orders.currency_id', async () => {
+      const id = await makeOrder();
+      const other = (await admin.query('SELECT id FROM public.currencies WHERE id <> $1 LIMIT 1', [actors.currencyId])).rows[0].id;
+      const adm = await asAdmin();
+      await adm.query('UPDATE public.orders SET currency_id = $2 WHERE id = $1', [id, other]);
+      expect((await auditRows(id)).map((r) => [r.column_name, r.old_value, r.new_value])).toEqual([['currency_id', actors.currencyId, other]]);
+    });
+
+    it('orders.payment_currency', async () => {
+      const id = await makeOrder();
+      await rolledBack(admin, async () => {
+        await admin.query('ALTER TABLE public.orders DROP CONSTRAINT orders_zelle_clean');
+        await admin.query(`UPDATE public.orders SET payment_currency = 'EUR' WHERE id = $1`, [id]);
+        expect((await auditRows(id)).map((r) => [r.column_name, r.old_value, r.new_value])).toEqual([['payment_currency', null, 'EUR']]);
+      });
+    });
+
+    it('shipping_zones.is_active', async () => {
+      const id = await makeZone();
+      const adm = await asAdmin();
+      await adm.query('UPDATE public.shipping_zones SET is_active = false WHERE id = $1', [id]);
+      expect((await auditRows(id)).map((r) => [r.column_name, r.old_value, r.new_value])).toEqual([['is_active', 'true', 'false']]);
+    });
+
+    // exchange_rates: the remittance re-pricing reads it. Inactive far-future rows so no active pair is disturbed.
+    describe('exchange_rates', () => {
+      const makeRate = async (isActive = false) => {
+        const [from, to] = [actors.currencyId, (await admin.query('SELECT id FROM public.currencies WHERE id <> $1 ORDER BY id LIMIT 1', [actors.currencyId])).rows[0].id];
+        const day = `20${70 + Math.floor(Math.random() * 29)}-0${1 + Math.floor(Math.random() * 9)}-1${Math.floor(Math.random() * 9)}`;
+        const { rows } = await admin.query(
+          `INSERT INTO public.exchange_rates (from_currency_id, to_currency_id, rate, is_active, effective_date)
+           VALUES ($1,$2,123.456789,$3,$4) RETURNING id`, [from, to, isActive, day]
+        );
+        return { id: rows[0].id, from, to };
+      };
+
+      it('rate keeps its exact scale', async () => {
+        const { id } = await makeRate();
+        const adm = await asAdmin();
+        await adm.query('UPDATE public.exchange_rates SET rate = 124.5 WHERE id = $1', [id]);
+        expect((await auditRows(id)).map((r) => [r.table_name, r.column_name, r.old_value, r.new_value, r.changed_by_role])).toEqual([
+          ['exchange_rates', 'rate', '123.456789', '124.500000', 'admin']
+        ]);
+      });
+
+      it('is_active, effective_date and both currency ids', async () => {
+        const { id, from, to } = await makeRate();
+        const third = (await admin.query('SELECT id FROM public.currencies WHERE id NOT IN ($1,$2) LIMIT 1', [from, to])).rows[0].id;
+        const adm = await asAdmin();
+        await rolledBack(adm, async () => {
+          await adm.query(`UPDATE public.exchange_rates SET is_active = false WHERE from_currency_id = $1 AND to_currency_id = $2 AND is_active`, [from, third]);
+          await adm.query(`UPDATE public.exchange_rates SET is_active = true, effective_date = '2099-12-31', from_currency_id = $2, to_currency_id = $3 WHERE id = $1`, [id, third, from]);
+          expect((await adm.query(`SELECT column_name, old_value, new_value FROM public.financial_audit_log WHERE row_id = $1 ORDER BY column_name`, [id])).rows).toEqual([
+            { column_name: 'effective_date', old_value: expect.any(String), new_value: '2099-12-31' },
+            { column_name: 'from_currency_id', old_value: from, new_value: third },
+            { column_name: 'is_active', old_value: 'false', new_value: 'true' },
+            { column_name: 'to_currency_id', old_value: to, new_value: from }
+          ]);
+        });
+      });
+
+      it('DELETE audits every monitored column with new_value NULL', async () => {
+        const { id } = await makeRate();
+        const adm = await asAdmin();
+        await adm.query('DELETE FROM public.exchange_rates WHERE id = $1', [id]);
+        const rows = await auditRows(id);
+        expect(rows.map((r) => r.column_name).sort()).toEqual(sorted(EXPECTED_COLUMNS.exchange_rates));
+        expect(rows.every((r) => r.operation === 'DELETE' && r.new_value === null && r.changed_by_role === 'admin')).toBe(true);
+      });
+
+      it('updated_at-only changes (the existing touch trigger) write nothing', async () => {
+        const { id } = await makeRate();
+        await admin.query('UPDATE public.exchange_rates SET updated_at = now() WHERE id = $1', [id]);
+        expect(await auditRows(id)).toEqual([]);
+      });
+    });
+
     it('a multi-column UPDATE writes one row per changed column, all in the same transaction id', async () => {
       const id = await makeRemittance({ typeId: await makeType() });
       const adm = await asAdmin();
@@ -377,6 +480,38 @@ describeDb('financial audit log (local Postgres)', () => {
       await adm.query(`UPDATE public.orders SET status = 'processing' WHERE id = $1`, [oid]);
       expect(await auditRows(rid)).toEqual([]);
       expect(await auditRows(oid)).toEqual([]);
+    });
+  });
+
+  describe('edge cases', () => {
+    it('value -> NULL is recorded with new_value NULL', async () => {
+      const id = await makeRemittance({ typeId: await makeType() });
+      const adm = await asAdmin();
+      await adm.query('UPDATE public.remittances SET shipping_zone_id = $2 WHERE id = $1', [id, zoneA]);
+      await adm.query('UPDATE public.remittances SET shipping_zone_id = NULL WHERE id = $1', [id]);
+      const rows = await auditRows(id);
+      expect(rows.map((r) => [r.old_value, r.new_value])).toEqual([[null, zoneA], [zoneA, null]]);
+    });
+
+    it('a multi-row UPDATE in one statement audits each row once, in one transaction', async () => {
+      const ids = [await makeZone(), await makeZone(), await makeZone()];
+      const adm = await asAdmin();
+      await adm.query('UPDATE public.shipping_zones SET shipping_cost = shipping_cost + 1, transport_cost = transport_cost WHERE id = ANY($1)', [ids]);
+      const all = [];
+      for (const id of ids) {
+        const rows = await auditRows(id);
+        expect(rows.map((r) => [r.column_name, r.old_value, r.new_value])).toEqual([['shipping_cost', '10', '11']]);
+        all.push(rows[0].txid);
+      }
+      expect(new Set(all).size).toBe(1);
+    });
+
+    it('a scale-only change (10 -> 10.00) is not a change: numeric equality, no row', async () => {
+      const id = await makeZone();
+      const adm = await asAdmin();
+      await adm.query('UPDATE public.shipping_zones SET shipping_cost = 10.00 WHERE id = $1', [id]);
+      expect((await admin.query('SELECT shipping_cost::text AS c FROM public.shipping_zones WHERE id = $1', [id])).rows[0].c).toBe('10.00');
+      expect(await auditRows(id)).toEqual([]);
     });
   });
 
@@ -415,6 +550,32 @@ describeDb('financial audit log (local Postgres)', () => {
       await svc.query('COMMIT'); // the audit row must be committed; the GRANT is reverted below
       await admin.query('REVOKE UPDATE, SELECT ON public.shipping_zones FROM service_role');
       expect((await auditRows(id))[0]).toMatchObject({ changed_by: null, changed_by_role: 'service_role' });
+    });
+  });
+
+  describe('via_function and changed_at', () => {
+    it('via_function is the nearest calling function even with characters outside [A-Za-z0-9_] (regex [^(\\s]+)', async () => {
+      const id = await makeZone();
+      await rolledBack(admin, async () => {
+        await admin.query(`CREATE FUNCTION public.fal_via$x1(p uuid) RETURNS void LANGUAGE plpgsql AS $f$
+          BEGIN UPDATE public.shipping_zones SET shipping_cost = 44 WHERE id = p; END $f$`);
+        await admin.query('SELECT public.fal_via$x1($1)', [id]);
+        // pg prints names that need quoting in double quotes; the old [A-Za-z0-9_]+ regex returned NULL here
+        expect((await auditRows(id))[0].via_function).toBe('"fal_via$x1"');
+      });
+    });
+
+    it('changed_at is the statement-time clock (clock_timestamp), so two changes in one transaction are ordered', async () => {
+      const id = await makeZone();
+      await rolledBack(admin, async () => {
+        await admin.query('UPDATE public.shipping_zones SET shipping_cost = 61 WHERE id = $1', [id]);
+        await admin.query('SELECT pg_sleep(0.01)');
+        await admin.query('UPDATE public.shipping_zones SET shipping_cost = 62 WHERE id = $1', [id]);
+        const { rows } = await admin.query('SELECT changed_at, txid FROM public.financial_audit_log WHERE row_id = $1 ORDER BY id', [id]);
+        expect(rows).toHaveLength(2);
+        expect(rows[0].txid).toBe(rows[1].txid);
+        expect(rows[1].changed_at.getTime()).toBeGreaterThan(rows[0].changed_at.getTime());
+      });
     });
   });
 
@@ -470,12 +631,24 @@ describeDb('financial audit log (local Postgres)', () => {
       expect(await auditRows(rid)).toEqual([]);
     });
 
-    it('stock reservation / release on an order (reserve_order_inventory, release trigger) keeps working with no audit rows', async () => {
-      const oid = await makeOrder();
-      const adm = await asAdmin();
-      await adm.query('SELECT public.reserve_order_inventory($1)', [oid]).catch(() => {}); // order without items: result irrelevant
-      await adm.query(`UPDATE public.orders SET status = 'cancelled' WHERE id = $1`, [oid]);
-      expect(await auditRows(oid)).toEqual([]);
+    it('stock reservation / release of a stock_managed order with real items and batches runs _reserve_order_locked and writes no audit', async () => {
+      const tracker = createTracker();
+      try {
+        const { productId, inventoryId } = await seedProduct(admin, actors, tracker, { quantity: 5 });
+        const oid = await seedOrder(admin, actors, tracker, [{ type: 'product', id: productId, quantity: 2 }]);
+        const cust = await asCustomer();
+        const { rows } = await cust.query('SELECT public.reserve_order_inventory($1) AS r', [oid]);
+        expect(rows[0].r).toMatchObject({ ok: true });
+        expect((await admin.query('SELECT stock_reserved FROM public.orders WHERE id = $1', [oid])).rows[0].stock_reserved).toBe(true);
+        const inv = () => admin.query('SELECT reserved_quantity AS r FROM public.inventory WHERE id = $1', [inventoryId]);
+        expect((await inv()).rows[0].r).toBe(2);
+
+        await cust.query(`UPDATE public.orders SET status = 'cancelled' WHERE id = $1`, [oid]); // release trigger
+        expect((await inv()).rows[0].r).toBe(0);
+        expect(await auditRows(oid)).toEqual([]);
+      } finally {
+        await cleanup(admin, tracker);
+      }
     });
 
     it('checkout INSERT (customer) is not affected: no audit row, no extra failure', async () => {
@@ -531,14 +704,100 @@ describeDb('financial audit log (local Postgres)', () => {
       expect(rows.find((r) => r.column_name === 'exchange_rate').old_value).toBe('800.0000');
     });
 
-    it('deleting a shipping zone audits its three money columns', async () => {
+    it('deleting a shipping zone audits its monitored columns', async () => {
       const id = await makeZone();
       const adm = await asAdmin();
       await adm.query('DELETE FROM public.shipping_zones WHERE id = $1', [id]);
       const rows = await auditRows(id);
-      expect(rows.map((r) => r.column_name).sort()).toEqual(['free_shipping', 'shipping_cost', 'transport_cost']);
+      expect(rows.map((r) => r.column_name).sort()).toEqual(['free_shipping', 'is_active', 'shipping_cost', 'transport_cost']);
       expect(rows.every((r) => r.operation === 'DELETE' && r.new_value === null)).toBe(true);
     });
+  });
+
+  // ------------------------------------------------------------------------------------------------
+  describe('column list: single source, real columns, gated triggers', () => {
+    const fnCols = async (t) => (await admin.query('SELECT public.financial_audit_columns($1) AS c', [t])).rows[0].c;
+
+    it('financial_audit_columns() is IMMUTABLE, not callable by API roles, and returns the pinned lists', async () => {
+      const { rows } = await admin.query(
+        `SELECT p.provolatile, has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_x,
+                has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth_x
+           FROM pg_proc p WHERE p.proname = 'financial_audit_columns' AND p.pronamespace = 'public'::regnamespace`
+      );
+      expect(rows).toEqual([{ provolatile: 'i', anon_x: false, auth_x: false }]);
+      for (const [t, cols] of Object.entries(EXPECTED_COLUMNS)) expect(sorted(await fnCols(t))).toEqual(sorted(cols));
+      expect(await fnCols('nope')).toEqual([]);
+    });
+
+    it('every monitored column exists in information_schema.columns (a rename/drop would otherwise fail open silently)', async () => {
+      for (const t of Object.keys(EXPECTED_COLUMNS)) {
+        const { rows } = await admin.query(
+          `SELECT c AS col FROM unnest(public.financial_audit_columns($1)) c
+            WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns i
+                               WHERE i.table_schema = 'public' AND i.table_name = $1 AND i.column_name = c)`, [t]
+        );
+        expect(rows, `${t} has monitored columns that do not exist`).toEqual([]);
+      }
+    });
+
+    it('UPDATE triggers are `UPDATE OF <cols> ... WHEN (old.c IS DISTINCT FROM new.c ...)` and both lists equal the function list', async () => {
+      for (const t of Object.keys(EXPECTED_COLUMNS)) {
+        const def = (await admin.query(
+          `SELECT pg_get_triggerdef(oid) AS d FROM pg_trigger WHERE tgrelid = $1::regclass AND tgname = 'audit_financial_update'`, [`public.${t}`]
+        )).rows[0].d;
+        expect(def).toMatch(/AFTER UPDATE OF .+ ON public\.\w+ FOR EACH ROW WHEN \(/);
+        const updateOf = def.match(/UPDATE OF (.+?) ON /)[1].split(',').map((c) => c.trim());
+        // varchar columns are printed as (old.c)::text IS DISTINCT FROM (new.c)::text
+        const when = [...def.matchAll(/\(?(?:old|new)\.(\w+)\)?(?:::\w+)? IS DISTINCT FROM \(?(?:old|new)\.(\w+)\)?(?:::\w+)?/g)];
+        expect(when.every((m) => m[1] === m[2])).toBe(true);
+        const whenCols = [...new Set(when.map((m) => m[1]))];
+        expect(sorted(updateOf), `${t} UPDATE OF`).toEqual(sorted(await fnCols(t)));
+        expect(sorted(whenCols), `${t} WHEN`).toEqual(sorted(await fnCols(t)));
+      }
+    });
+
+    it('audit and log triggers are ENABLE ALWAYS (tgenabled = A): they also fire under session_replication_role = replica', async () => {
+      const { rows } = await admin.query(
+        `SELECT tgrelid::regclass::text AS t, tgname, tgenabled FROM pg_trigger
+          WHERE NOT tgisinternal AND tgname LIKE ANY (ARRAY['audit_financial_%','financial_audit_log_immutable_%']) ORDER BY 1, 2`
+      );
+      expect(rows).toHaveLength(10);
+      expect(rows.filter((r) => r.tgenabled !== 'A')).toEqual([]);
+
+      const id = await makeZone();
+      await rolledBack(admin, async () => {
+        await admin.query(`SET LOCAL session_replication_role = replica`); // only a superuser may; the local postgres is one
+        await admin.query('UPDATE public.shipping_zones SET shipping_cost = 31 WHERE id = $1', [id]);
+        expect((await auditRows(id)).map((r) => r.column_name)).toEqual(['shipping_cost']);
+      });
+    });
+
+    // The function is swapped for a counter inside a rolled-back transaction: it proves WHEN the TRIGGER calls it.
+    const withCounter = async (fn) =>
+      rolledBack(admin, async () => {
+        await admin.query(`SELECT set_config('fal.calls', '0', true)`);
+        await admin.query(`CREATE OR REPLACE FUNCTION public.audit_financial_changes() RETURNS trigger LANGUAGE plpgsql AS $f$
+          BEGIN PERFORM set_config('fal.calls', (current_setting('fal.calls')::int + 1)::text, true); RETURN NULL; END $f$`);
+        const calls = async () => Number((await admin.query(`SELECT current_setting('fal.calls') AS n`)).rows[0].n);
+        return fn(calls);
+      });
+
+    it('status / stock / non-monitored updates do not execute the trigger function; money changes do (once per row)', async () => {
+      const rid = await makeRemittance({ typeId: await makeType() });
+      const oid = await makeOrder();
+      await withCounter(async (calls) => {
+        await admin.query(`UPDATE public.orders SET status = 'processing', stock_reserved = true, updated_at = now() WHERE id = $1`, [oid]);
+        await admin.query(`UPDATE public.remittances SET status = 'payment_proof_uploaded', updated_at = now() WHERE id = $1`, [rid]);
+        await admin.query('UPDATE public.orders SET total_amount = total_amount, shipping_cost = 2 WHERE id = $1', [oid]); // same values
+        expect(await calls()).toBe(0);
+
+        await admin.query('UPDATE public.orders SET shipping_cost = 3, total_amount = 15 WHERE id = $1', [oid]);
+        expect(await calls()).toBe(1);
+        await admin.query('UPDATE public.remittances SET commission_total = 12 WHERE id = $1', [rid]);
+        expect(await calls()).toBe(2);
+      });
+    });
+
   });
 
   // ------------------------------------------------------------------------------------------------
@@ -564,7 +823,7 @@ describeDb('financial audit log (local Postgres)', () => {
         const after = (await admin.query('SELECT count(*)::int AS n FROM public.financial_audit_log')).rows[0].n;
         expect(after).toBe(before);
         const trg = await admin.query(`SELECT count(*)::int AS n FROM pg_trigger WHERE NOT tgisinternal AND (tgname LIKE 'audit_financial_%' OR tgname LIKE 'financial_audit_log_immutable_%')`);
-        expect(trg.rows[0].n).toBe(8);
+        expect(trg.rows[0].n).toBe(10);
       });
     });
 
@@ -573,20 +832,21 @@ describeDb('financial audit log (local Postgres)', () => {
         (await admin.query(
           `SELECT (to_regclass('public.financial_audit_log') IS NOT NULL) AS tbl,
                   (to_regproc('public.audit_financial_changes') IS NOT NULL) AS fn,
+                  (to_regproc('public.financial_audit_columns') IS NOT NULL) AS cols_fn,
                   (SELECT count(*)::int FROM pg_trigger WHERE NOT tgisinternal
                       AND (tgname LIKE 'audit_financial_%' OR tgname LIKE 'financial_audit_log_immutable_%')) AS triggers`
         )).rows[0];
       await rolledBack(admin, async () => {
-        expect(await objects()).toEqual({ tbl: true, fn: true, triggers: 8 });
+        expect(await objects()).toEqual({ tbl: true, fn: true, cols_fn: true, triggers: 10 });
         await admin.query(read(ROLLBACK));
-        expect(await objects()).toEqual({ tbl: false, fn: false, triggers: 0 });
+        expect(await objects()).toEqual({ tbl: false, fn: false, cols_fn: false, triggers: 0 });
         // money updates still work with the audit gone
         const z = (await admin.query(`INSERT INTO public.shipping_zones (province_name, shipping_cost) VALUES ('fal-rb', 1) RETURNING id`)).rows[0].id;
         await admin.query('UPDATE public.shipping_zones SET shipping_cost = 2 WHERE id = $1', [z]);
         await admin.query(read(MIGRATION));
-        expect(await objects()).toEqual({ tbl: true, fn: true, triggers: 8 });
+        expect(await objects()).toEqual({ tbl: true, fn: true, cols_fn: true, triggers: 10 });
       });
-      expect(await objects()).toEqual({ tbl: true, fn: true, triggers: 8 });
+      expect(await objects()).toEqual({ tbl: true, fn: true, cols_fn: true, triggers: 10 });
     });
   });
 });
