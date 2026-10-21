@@ -7,6 +7,7 @@
 import { supabase } from '@/lib/supabase';
 import { isValidPayerPhone, normalizePayerPhone } from '@/lib/payerPhone';
 import { logActivity } from '@/lib/activityLogger';
+import { normalizeDiscountType } from '@/lib/offerRules';
 import { recordOfferUsage } from '@/lib/orderDiscountService';
 import {
   handleError,
@@ -689,9 +690,10 @@ export const calculateRemittance = async (typeId, amount, offer = null) => {
     // Apply offer discount to commission if present
     let discountAmount = 0;
     if (offer && offer.discount_type && offer.discount_value) {
-      if (offer.discount_type === 'percentage') {
+      const discountType = normalizeDiscountType(offer.discount_type);
+      if (discountType === 'percentage') {
         discountAmount = totalCommission * (offer.discount_value / 100);
-      } else if (offer.discount_type === 'fixed') {
+      } else if (discountType === 'fixed_amount') {
         discountAmount = Math.min(offer.discount_value, totalCommission);
       }
       discountAmount = Math.round(discountAmount * 100) / 100;

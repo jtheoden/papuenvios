@@ -2,6 +2,7 @@
  * Pure remittance calculation functions — no DB dependencies.
  * These are the single source of truth formulas used by remittanceService.js.
  */
+import { normalizeDiscountType } from './offerRules';
 
 /**
  * Forward: given amount to send, calculate amount delivered.
@@ -12,9 +13,10 @@ export function calcForward({ amount, exchangeRate, commissionPct, commissionFix
   let discountAmount = 0;
 
   if (offer?.discount_type && offer?.discount_value) {
-    if (offer.discount_type === 'percentage') {
+    const discountType = normalizeDiscountType(offer.discount_type);
+    if (discountType === 'percentage') {
       discountAmount = totalCommission * (offer.discount_value / 100);
-    } else if (offer.discount_type === 'fixed') {
+    } else if (discountType === 'fixed_amount') {
       discountAmount = Math.min(offer.discount_value, totalCommission);
     }
     discountAmount = Math.round(discountAmount * 100) / 100;

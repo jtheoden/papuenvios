@@ -38,6 +38,7 @@ import { supabase } from '@/lib/supabase';
 import { logActivity } from '@/lib/activityLogger';
 import { useRealtimeOffers } from '@/hooks/useRealtimeSubscription';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
+import { normalizeDiscountType } from '@/lib/offerRules';
 
 const AdminOffersTab = () => {
   const { t, language } = useLanguage();
@@ -69,7 +70,7 @@ const AdminOffersTab = () => {
     nameEs: '',
     nameEn: '',
     appliesTo: 'product', // product, combo, remittance
-    discountType: 'percentage', // percentage or fixed
+    discountType: 'percentage', // percentage or fixed_amount
     discountValue: '',
     minPurchaseAmount: '',
     maxUsageGlobal: '',
@@ -356,7 +357,7 @@ const AdminOffersTab = () => {
       nameEs: offer.name_es || '',
       nameEn: offer.name_en || '',
       appliesTo: offer.applies_to || 'product',
-      discountType: offer.discount_type,
+      discountType: normalizeDiscountType(offer.discount_type) || 'percentage',
       discountValue: offer.discount_value,
       minPurchaseAmount: offer.min_purchase_amount || '',
       maxUsageGlobal: offer.max_usage_global || '',
@@ -680,7 +681,7 @@ const AdminOffersTab = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   >
                     <option value="percentage">{language === 'es' ? 'Porcentaje (%)' : 'Percentage (%)'}</option>
-                    <option value="fixed">{language === 'es' ? 'Cantidad Fija' : 'Fixed Amount'}</option>
+                    <option value="fixed_amount">{language === 'es' ? 'Cantidad Fija' : 'Fixed Amount'}</option>
                   </select>
                 </div>
 
