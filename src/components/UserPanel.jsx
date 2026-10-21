@@ -24,9 +24,34 @@ import AdminWorkTabs from '@/components/admin/AdminWorkTabs';
 import OrderComboComponents from '@/components/OrderComboComponents';
 import { formatQuantityWithUnit } from '@/lib/productUnits';
 import { useOrderItemLines } from '@/hooks/useOrderItemLines';
+import { usePaymentProofUrl } from '@/hooks/usePaymentProofUrl';
 
 // Constante de paginación fuera del componente para evitar recreación
 const ORDERS_PER_PAGE = 20;
+
+// Payment proofs live in a private bucket: show them through a short-lived signed URL.
+const OrderPaymentProof = ({ value, language, borderColor }) => {
+  const { url, error } = usePaymentProofUrl(value);
+  if (error) {
+    return (
+      <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+        {language === 'es'
+          ? 'No se pudo cargar el comprobante. Intenta de nuevo.'
+          : 'The payment proof could not be loaded. Please try again.'}
+      </p>
+    );
+  }
+  if (!url) return <Loader2 className="h-5 w-5 animate-spin mx-auto" aria-hidden="true" />;
+  return (
+    <div
+      className="rounded-lg border overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+      style={{ borderColor }}
+      onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
+    >
+      <img src={url} alt="Payment proof" className="w-full h-auto object-contain max-h-[600px] bg-gray-50" />
+    </div>
+  );
+};
 
 const UserPanel = ({ onNavigate }) => {
   const { user, userRole, userCategory } = useAuth();
@@ -1621,21 +1646,11 @@ const UserPanel = ({ onNavigate }) => {
                             <h4 className="text-lg font-semibold mb-3" style={getTextStyle(visualSettings, 'primary')}>
                               {language === 'es' ? 'Comprobante de Pago' : 'Payment Proof'}
                             </h4>
-                            <div
-                              className="rounded-lg border overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
-                              style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}
-                              onClick={() => window.open(selectedOrder.payment_proof_url, '_blank')}
-                            >
-                              <img
-                                src={selectedOrder.payment_proof_url}
-                                alt="Payment proof"
-                                className="w-full h-auto object-contain max-h-[600px] bg-gray-50"
-                                onError={(e) => {
-                                  console.error('[UserPanel] Error loading payment proof image:', selectedOrder.payment_proof_url);
-                                  e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect fill="%23f3f4f6" width="400" height="300"/><text x="50%" y="50%" font-family="Arial" font-size="16" fill="%236b7280" text-anchor="middle">Error al cargar imagen</text></svg>';
-                                }}
-                              />
-                            </div>
+                            <OrderPaymentProof
+                              value={selectedOrder.payment_proof_url}
+                              language={language}
+                              borderColor={visualSettings.borderColor || '#e5e7eb'}
+                            />
                             <p className="text-xs text-center mt-2" style={getTextStyle(visualSettings, 'muted')}>
                               {language === 'es' ? 'Click para ver en tamaño completo' : 'Click to view full size'}
                             </p>

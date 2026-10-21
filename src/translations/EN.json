@@ -1687,6 +1687,7 @@
       "shippingInfo": "Shipping Information",
       "paymentProof": "Payment Proof",
       "viewFullSize": "View full size",
+      "paymentProofError": "The payment proof could not be loaded. Please try again.",
       "noPaymentProof": "No payment proof",
       "close": "Close",
       "closeOrderDetails": "Close order details"

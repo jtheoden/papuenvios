@@ -5,6 +5,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { generateProofSignedUrl } from '@/lib/remittanceService';
 import { parseRecipientInfo } from '@/lib/recipientInfo';
 import { useOrderItemLines } from '@/hooks/useOrderItemLines';
+import { usePaymentProofUrl } from '@/hooks/usePaymentProofUrl';
 import OrderComboComponents from '@/components/OrderComboComponents';
 import { formatQuantityWithUnit } from '@/lib/productUnits';
 
@@ -23,6 +24,7 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
   const titleId = `order-modal-title-${order?.id}`;
 
   // State for signed delivery proof URL
+  const paymentProof = usePaymentProofUrl(order?.payment_proof_url);
   const [deliveryProofSignedUrl, setDeliveryProofSignedUrl] = useState(null);
   const [loadingDeliveryProof, setLoadingDeliveryProof] = useState(false);
 
@@ -372,21 +374,31 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
                 <h4 className="text-lg font-semibold text-gray-900">
                   {t('adminOrders.detail.paymentProof')}
                 </h4>
-                <div className="bg-gray-50 rounded-lg border border-gray-200 p-2">
-                  <img
-                    src={normalizedOrder.payment_proof_url}
-                    alt={t('adminOrders.detail.paymentProof')}
-                    className="w-full h-auto rounded-lg"
-                  />
-                </div>
-                <a
-                  href={normalizedOrder.payment_proof_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-center text-sm text-blue-600 hover:text-blue-700 hover:underline"
-                >
-                  {t('adminOrders.detail.viewFullSize')} →
-                </a>
+                {paymentProof.error ? (
+                  <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                    {t('adminOrders.detail.paymentProofError')}
+                  </p>
+                ) : paymentProof.url ? (
+                  <>
+                    <div className="bg-gray-50 rounded-lg border border-gray-200 p-2">
+                      <img
+                        src={paymentProof.url}
+                        alt={t('adminOrders.detail.paymentProof')}
+                        className="w-full h-auto rounded-lg"
+                      />
+                    </div>
+                    <a
+                      href={paymentProof.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block text-center text-sm text-blue-600 hover:text-blue-700 hover:underline"
+                    >
+                      {t('adminOrders.detail.viewFullSize')} →
+                    </a>
+                  </>
+                ) : (
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-400 mx-auto" aria-hidden="true" />
+                )}
               </div>
             ) : (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">

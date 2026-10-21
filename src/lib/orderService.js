@@ -21,6 +21,7 @@ import { getUserCategoryWithDiscount } from './orderDiscountService';
 import { ZELLE_STATUS, ZELLE_TRANSACTION_TYPES, upsertZelleTransactionStatus } from './zelleService';
 import { isInsufficientStockError } from './stockErrors';
 import { roundMoney } from './moneyPure';
+import { PAYMENT_PROOF_MIME_EXT, validatePaymentProofFile } from './paymentProofService';
 
 export { isInsufficientStockError };
 
@@ -1316,7 +1317,7 @@ export const updateOrderStatus = async (orderId, newStatus, adminId, notes = '')
  * @param {Object} [options]
  * @param {string} options.payerPhone - Payer contact phone (required; stored in orders.payer_phone)
  * @throws {AppError} If validation fails, authorization fails, or upload fails
- * @returns {Promise<string>} Public URL of uploaded proof
+ * @returns {Promise<string>} Storage path of the uploaded proof (private bucket; sign it to view)
  */
 export const uploadPaymentProof = async (file, orderId, userId, paymentReference = '', options = {}) => {
   try {
@@ -1328,6 +1329,11 @@ export const uploadPaymentProof = async (file, orderId, userId, paymentReference
         userId: !userId ? 'User ID is required' : undefined,
         payerPhone: !isValidPayerPhone(payerPhone) ? 'A valid payer contact phone is required' : undefined
       }, 'Missing required fields for proof upload');
+    }
+
+    const fileError = validatePaymentProofFile(file);
+    if (fileError) {
+      throw createValidationError({ file: fileError }, 'Invalid payment proof file');
     }
 
     // Fetch order to validate ownership and state
@@ -1360,20 +1366,7 @@ export const uploadPaymentProof = async (file, orderId, userId, paymentReference
       );
     }
 
-    // Handle both File and Blob objects
-    let fileExt = 'jpg';
-    if (file.name) {
-      fileExt = file.name.split('.').pop();
-    } else if (file.type) {
-      const mimeToExt = {
-        'image/jpeg': 'jpg',
-        'image/jpg': 'jpg',
-        'image/png': 'png',
-        'image/webp': 'webp',
-        'image/gif': 'gif'
-      };
-      fileExt = mimeToExt[file.type] || 'jpg';
-    }
+    const fileExt = PAYMENT_PROOF_MIME_EXT[file.type];
 
     const fileName = `payment-proof-${orderId}-${Date.now()}.${fileExt}`;
     const filePath = `payment-proofs/${fileName}`;
@@ -1392,14 +1385,9 @@ export const uploadPaymentProof = async (file, orderId, userId, paymentReference
       throw appError;
     }
 
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from('order-documents')
-      .getPublicUrl(filePath);
-
     // Update order with proof URL, payment reference, and mark as proof uploaded
     const updateData = {
-      payment_proof_url: urlData.publicUrl,
+      payment_proof_url: filePath,
       payment_status: PAYMENT_STATUS.PROOF_UPLOADED,
       payer_phone: normalizePayerPhone(payerPhone),
       rejection_reason: null,
@@ -1431,11 +1419,11 @@ export const uploadPaymentProof = async (file, orderId, userId, paymentReference
       description: `Comprobante subido - Orden ${order?.order_number || orderId}`,
       metadata: buildOrderPaymentMetadata(
         { ...order, payment_status: PAYMENT_STATUS.PROOF_UPLOADED },
-        { orderId, orderNumber: order?.order_number, paymentProofUrl: urlData.publicUrl }
+        { orderId, orderNumber: order?.order_number, paymentProofUrl: filePath }
       )
     });
 
-    return urlData.publicUrl;
+    return filePath;
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
