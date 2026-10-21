@@ -428,7 +428,9 @@ describeDb('rate functions fix + exchange_rates constraints', () => {
       const own = MIGRATION.split('/').pop();
       expect(files).toContain(own);
       // phase 1.5 S2 only READS exchange_rates (rate resolution inside its BEFORE INSERT guard); it redefines none of these objects
-      const later = files.filter((f) => f > own && f !== '20261017110000_phase15_s2_remittance_pricing_guard.sql');
+      const later = files.filter((f) => f > own && f !== '20261017110000_phase15_s2_remittance_pricing_guard.sql'
+        // the financial audit trail only observes exchange_rates (AFTER UPDATE/DELETE audit trigger); it redefines none of them
+        && f !== '20261020100000_financial_audit_log.sql');
       later.forEach((f) => {
         expect(readFileSync(`supabase/migrations/${f}`, 'utf8'), f)
           .not.toMatch(/exchange_rates|recalculate_remittance_at_current_rate|get_remittance_bank_accounts_admin/);
