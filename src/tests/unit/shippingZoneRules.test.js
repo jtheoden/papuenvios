@@ -6,6 +6,7 @@ import {
   getShippingState,
   isShippingBlocked,
   isCashDeliveryBlocked,
+  resolveShippingZone,
 } from '@/lib/shippingZoneRules';
 
 let nextId = 1;
@@ -189,5 +190,36 @@ describe('isCashDeliveryBlocked', () => {
 
   it('does not block while no recipient province is chosen', () => {
     expect(isCashDeliveryBlocked({ zones, deliveryMethod: 'cash', province: '', municipality: '' })).toBe(false);
+  });
+});
+
+describe('resolveShippingZone', () => {
+  const zones = buildZones();
+  const byName = (province, municipality) =>
+    zones.find((z) => z.province_name === province && z.municipality_name === municipality);
+
+  it('returns the municipality row when it exists (the row that prices the order)', () => {
+    expect(resolveShippingZone(zones, 'Ciego de Ávila', 'Bolivia')).toBe(byName('Ciego de Ávila', 'Bolivia'));
+  });
+
+  it('falls back to the province row when the municipality has no row', () => {
+    expect(resolveShippingZone(zones, 'Ciego de Ávila', 'Baraguá')).toBe(byName('Ciego de Ávila', null));
+  });
+
+  it('returns the province row when no municipality is chosen', () => {
+    expect(resolveShippingZone(zones, 'Ciego de Ávila', '')).toBe(byName('Ciego de Ávila', null));
+  });
+
+  it('ignores inactive rows and returns null for an unknown or empty province', () => {
+    expect(resolveShippingZone(zones, 'Matanzas', 'Matanzas')).toBeNull();
+    expect(resolveShippingZone(zones, 'Atlantis', null)).toBeNull();
+    expect(resolveShippingZone(zones, '', null)).toBeNull();
+    expect(resolveShippingZone(null, 'Camagüey', null)).toBeNull();
+  });
+
+  it('agrees with getShippingState on which row is used', () => {
+    const resolved = resolveShippingZone(zones, 'Ciego de Ávila', 'Primero de Enero');
+    expect(resolved.free_shipping).toBe(true);
+    expect(getShippingState(zones, 'Ciego de Ávila', 'Primero de Enero').freeShipping).toBe(true);
   });
 });

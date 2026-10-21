@@ -6,6 +6,7 @@ import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { listProductCosts, listComboCosts } from '@/lib/adminCostService';
+import { listOrderCourierCosts } from '@/lib/courierCostService';
 import { classifyAdminCatalogError } from '@/lib/catalogErrors';
 import CatalogLoadError from './CatalogLoadError';
 import { getHeadingStyle } from '@/lib/styleUtils';
@@ -13,6 +14,7 @@ import {
   ACTIVE_ORDER_STATUSES,
   buildMarginLookup,
   computeCombinedRevenue,
+  computeCourierCostTotals,
   computeOrderCounters,
   computeOrderProfitTotals,
   computeOrderTotals,
@@ -96,6 +98,8 @@ const DashboardPage = ({ onNavigate }) => {
   const [profitSource, setProfitSource] = useState(null);
   // Item margins come from the admin cost RPCs; a failure is shown, never swallowed into default margins
   const [marginsError, setMarginsError] = useState(null);
+  // Courier cost snapshot per order (admin-only table). A failed read is shown as unavailable, never as zeros.
+  const [courier, setCourier] = useState({ status: 'loading', totals: null });
 
   const [visitStats, setVisitStats] = useState({
     weekly: 0,
@@ -204,7 +208,7 @@ const DashboardPage = ({ onNavigate }) => {
         supabase.from('products').select('id', { count: 'exact', head: true }),
         supabase.from('combo_products').select('id', { count: 'exact', head: true }),
         supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
-        supabase.from('orders').select('id, status, payment_status, total_amount, shipping_cost, discount_amount, payment_method, created_at'),
+        supabase.from('orders').select('id, status, payment_status, total_amount, shipping_cost, shipping_zone_id, discount_amount, payment_method, created_at'),
         supabase.from('remittances').select('id, status, commission_total, amount_sent, amount_to_deliver, discount_amount, created_at, delivered_at, completed_at, updated_at'),
         supabase.from('remittance_types').select('id', { count: 'exact', head: true }).eq('is_active', true),
         supabase.from('zelle_transaction_history').select('id, amount, status, transaction_type, transaction_date, zelle_account_id').eq('status', 'validated'),
@@ -265,6 +269,13 @@ const DashboardPage = ({ onNavigate }) => {
         yearlyDiscounts: yearlyOrderDiscounts,
         paymentMethodBreakdown
       } = computeOrderTotals(orders, now);
+
+      try {
+        const costByOrder = await listOrderCourierCosts();
+        setCourier({ status: 'ok', totals: computeCourierCostTotals(orders, costByOrder, now, costByOrder.firstRecordedAt) });
+      } catch {
+        setCourier({ status: 'error', totals: null });
+      }
 
       // Estimated order profit (per-product margin). Lines are fetched in pages
       // for active orders only (single embedded query, no N+1).
@@ -521,6 +532,13 @@ const DashboardPage = ({ onNavigate }) => {
   const formatCurrency = (value) => {
     return Number(value).toFixed(2);
   };
+
+  // Courier card amounts are USD (tariff and snapshot are USD). shortcut: no currency conversion, "charged" is the
+  // base-currency shipping; base is USD today, a real conversion is needed if that ever changes. null -> n/a.
+  const formatUsd = (value) =>
+    value === null || value === undefined
+      ? t('dashboard.courier.notAvailable')
+      : `${value < 0 ? '-' : ''}$${formatCurrency(Math.abs(value))}`;
 
   if (!user || (!isAdmin && !isSuperAdmin)) {
     return (
@@ -944,7 +962,7 @@ const DashboardPage = ({ onNavigate }) => {
                             <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
                               <Truck className="w-4 h-4 text-amber-600" />
                             </div>
-                            <h4 className="text-sm font-semibold">{t('dashboard.transportCosts')}</h4>
+                            <h4 className="text-sm font-semibold">{t('dashboard.shippingCollected')}</h4>
                           </div>
                           <div className="space-y-3">
                             {[
@@ -1003,6 +1021,73 @@ const DashboardPage = ({ onNavigate }) => {
                             ))}
                           </div>
                         </div>
+                      </div>
+
+                      {/* Courier cost: what the courier is owed vs. the shipping charged to customers */}
+                      <div className="glass-effect rounded-2xl p-5 mt-4" data-testid="courier-cost-card">
+                        <div className="flex items-center gap-2 mb-4">
+                          <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+                            <Truck className="w-4 h-4 text-orange-600" />
+                          </div>
+                          <h4 className="text-sm font-semibold">{t('dashboard.courier.title')} <span className="text-xs font-normal text-gray-400">USD</span></h4>
+                        </div>
+                        {courier.status === 'error' && (
+                          <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                            {t('dashboard.courier.unavailable')}
+                          </p>
+                        )}
+                        {courier.status === 'loading' && (
+                          <p role="status" className="text-sm text-gray-500">{t('dashboard.courier.loading')}</p>
+                        )}
+                        {courier.status === 'ok' && (
+                          <>
+                            <div className="overflow-x-auto">
+                              <table className="w-full table-fixed text-sm">
+                                <thead>
+                                  <tr className="border-b text-left">
+                                    <th scope="col" className="w-2/5 pb-2"><span className="sr-only">{t('dashboard.courier.title')}</span></th>
+                                    <th scope="col" className="pb-2 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">{t('dashboard.dailyBreakdown')}</th>
+                                    <th scope="col" className="pb-2 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">{t('dashboard.monthlyBreakdown')}</th>
+                                    <th scope="col" className="pb-2 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">{t('dashboard.yearlyBreakdown')}</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {[
+                                    { key: 'collected', label: t('dashboard.courier.collected'), values: [stats.dailyShippingCost, stats.monthlyShippingCost, stats.yearlyShippingCost], money: true },
+                                    { key: 'collectedCompared', label: t('dashboard.courier.collectedCompared'), values: [courier.totals.dailyCourierCollected, courier.totals.monthlyCourierCollected, courier.totals.yearlyCourierCollected], money: true },
+                                    { key: 'cost', label: t('dashboard.courier.cost'), values: [courier.totals.dailyCourierCost, courier.totals.monthlyCourierCost, courier.totals.yearlyCourierCost], money: true },
+                                    {
+                                      key: 'difference',
+                                      label: t('dashboard.courier.difference'),
+                                      values: [courier.totals.dailyCourierDifference, courier.totals.monthlyCourierDifference, courier.totals.yearlyCourierDifference],
+                                      money: true,
+                                      strong: true
+                                    },
+                                    { key: 'unrecorded', label: t('dashboard.courier.unrecorded'), values: [courier.totals.dailyCourierUnrecorded, courier.totals.monthlyCourierUnrecorded, courier.totals.yearlyCourierUnrecorded], money: false },
+                                    // Orders with a zone but no row: possible trigger failure, shown apart from "no tariff".
+                                    {
+                                      key: 'missingRow',
+                                      label: t('dashboard.courier.missingRow'),
+                                      values: [courier.totals.dailyCourierMissingRow, courier.totals.monthlyCourierMissingRow, courier.totals.yearlyCourierMissingRow],
+                                      money: false,
+                                      alert: true
+                                    }
+                                  ].filter((row) => !row.alert || row.values.some((v) => v > 0)).map((row) => (
+                                    <tr key={row.key} className={`border-b border-gray-100 ${row.alert ? 'bg-amber-50' : ''}`}>
+                                      <th scope="row" className={`py-1.5 pr-2 text-left text-xs break-words ${row.alert ? 'font-semibold text-amber-800' : row.strong ? 'font-bold text-gray-900' : 'font-normal text-gray-600'}`}>{row.label}</th>
+                                      {row.values.map((value, i) => (
+                                        <td key={i} className={`py-1.5 text-right ${row.strong ? 'font-bold' : 'font-medium'} ${row.alert ? 'text-amber-800' : row.money ? 'text-orange-700' : 'text-gray-600'}`}>
+                                          {row.money ? formatUsd(value) : value}
+                                        </td>
+                                      ))}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                            <p className="mt-3 text-[11px] text-gray-500">{t('dashboard.courier.note')}</p>
+                          </>
+                        )}
                       </div>
                     </motion.div>
                   )}

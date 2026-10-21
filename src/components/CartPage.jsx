@@ -11,7 +11,7 @@ import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle, getAlertStyle } from '@/lib/styleUtils';
 import { processImage } from '@/lib/imageUtils';
 import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingService';
-import { getSelectableProvinces, getShippingState, isShippingBlocked } from '@/lib/shippingZoneRules';
+import { getSelectableProvinces, getShippingState, isShippingBlocked, resolveShippingZone } from '@/lib/shippingZoneRules';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
 import { convertCurrency } from '@/lib/currencyService';
 import { generateWhatsAppURL, buildAdminNewPaymentWhatsAppUrl, openWhatsAppChat } from '@/lib/whatsappService';
@@ -770,7 +770,7 @@ const CartPage = ({ onNavigate }) => {
       }
 
       // Get shipping zone ID
-      const shippingZone = shippingZones.find(z => z.province_name === recipientDetails.province);
+      const shippingZone = resolveShippingZone(allShippingZones, recipientDetails.province, recipientDetails.municipality);
 
       // Get Zelle account: prioritize user selection, fallback to automatic assignment
       let selectedZelleAccountId = selectedZelle?.id || null;
