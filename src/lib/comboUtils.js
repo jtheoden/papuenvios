@@ -147,6 +147,92 @@ export const computeComboPricing = ({
   return { basePrice: roundedBase, finalPrice };
 };
 
+const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+const PRICE_TOLERANCE = 0.005;
+
+/**
+ * Compare a combo's price against the sum of its products bought separately.
+ * Reuses computeComboPricing for the combo side so admin views stay in sync.
+ *
+ * @param {Object} params
+ * @param {Object} params.combo - Combo (products, productQuantities, profitMargin|profit_margin)
+ * @param {Array} [params.products=[]] - Product catalog
+ * @param {Function} params.convert - Conversion fn(amount, fromCurrencyId, toCurrencyId)
+ * @param {string} params.baseCurrencyId - Base currency UUID
+ * @param {string} [params.selectedCurrencyId] - Currency to express the result in (defaults to base)
+ * @param {number} [params.defaultProfitMargin=0] - Combo margin when absent
+ * @returns {{ comboPrice: number, individualTotal: number, difference: number,
+ *   savingsPercent: number, isMoreExpensive: boolean, maxMarginWithoutLoss: number }}
+ *   difference = individualTotal - comboPrice (negative => combo is more expensive).
+ */
+export const evaluateComboPricing = ({
+  combo,
+  products = [],
+  convert,
+  baseCurrencyId,
+  selectedCurrencyId,
+  defaultProfitMargin = 0
+}) => {
+  const neutral = {
+    comboPrice: 0,
+    individualTotal: 0,
+    difference: 0,
+    savingsPercent: 0,
+    isMoreExpensive: false,
+    maxMarginWithoutLoss: 0
+  };
+  if (!combo) return neutral;
+
+  const targetCurrencyId = selectedCurrencyId || baseCurrencyId;
+  const { basePrice, finalPrice } = computeComboPricing({
+    combo,
+    products,
+    convert,
+    selectedCurrencyId: targetCurrencyId,
+    baseCurrencyId,
+    defaultProfitMargin
+  });
+
+  let individualTotal = 0;
+  (combo.products || []).forEach(productId => {
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+
+    const quantity = combo.productQuantities?.[productId] || 1;
+    const productBase = parseFloat(product.base_price ?? 0) || 0;
+    const storedFinal = parseFloat(product.final_price ?? 0) || 0;
+    const productMargin = parseFloat(product.profit_margin ?? 0) || 0;
+    const unitPrice = storedFinal > 0 ? storedFinal : productBase * (1 + productMargin / 100);
+
+    const inTarget = convert && targetCurrencyId && product.base_currency_id && product.base_currency_id !== targetCurrencyId
+      ? convert(unitPrice, product.base_currency_id, targetCurrencyId)
+      : unitPrice;
+
+    individualTotal += inTarget * quantity;
+  });
+
+  const roundedIndividual = roundMoney(individualTotal);
+  if (roundedIndividual <= 0) {
+    return { ...neutral, comboPrice: finalPrice };
+  }
+
+  const difference = roundMoney(roundedIndividual - finalPrice);
+  const savingsPercent = (difference / roundedIndividual) * 100;
+  const maxMargin = basePrice > 0
+    ? Math.max(0, Math.floor(((roundedIndividual / basePrice - 1) * 100) * 100 + 1e-6) / 100)
+    : 0;
+
+  return {
+    comboPrice: finalPrice,
+    individualTotal: roundedIndividual,
+    difference,
+    savingsPercent,
+    isMoreExpensive: finalPrice > roundedIndividual + PRICE_TOLERANCE,
+    maxMarginWithoutLoss: maxMargin
+  };
+};
+
 /**
  * Check for stock issues in combo products
  * @param {object} combo - Combo object
