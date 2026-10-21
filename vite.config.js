@@ -13,12 +13,17 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    // Default 5 s flakes under CI/coverage load (heavy RTL page renders)
+    testTimeout: 30000,
+    hookTimeout: 30000,
     setupFiles: ['./src/tests/setup.js'],
     include: ['src/tests/unit/**/*.test.{js,jsx}'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
-      include: ['src/lib/priceCalculationService.js', 'src/lib/remittanceCalculations.js'],
+      include: ['src/lib/**', 'src/contexts/**', 'src/hooks/**'],
+      // Ratchet: measured 41.39/37.2/53.31/40.48 on 2026-10-21, floored. Raise as coverage grows.
+      thresholds: { statements: 41, branches: 37, functions: 53, lines: 40 },
     },
   },
    server: {
