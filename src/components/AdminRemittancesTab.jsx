@@ -11,6 +11,8 @@ import { useModal } from '@/contexts/ModalContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { calcTotalToPay } from '@/lib/remittanceCalculations';
+import { canAdjustCommission } from '@/lib/commissionOverrideRules';
+import CommissionOverrideModal from '@/components/admin/CommissionOverrideModal';
 import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import {
   getAllRemittances,
@@ -23,6 +25,7 @@ import {
   generateProofSignedUrl,
   getRemittanceBankAccountDetails,
   getBankAccountByRecipientId,
+  getCommissionOverride,
   REMITTANCE_STATUS
 } from '@/lib/remittanceService';
 async function decryptData(encryptedBase64) {
@@ -67,6 +70,25 @@ const AdminRemittancesTab = () => {
   const [deliveryProofSignedUrl, setDeliveryProofSignedUrl] = useState(null);
   const [showPaymentProofModal, setShowPaymentProofModal] = useState(false);
   const [selectedProofUrl, setSelectedProofUrl] = useState(null);
+  const [showCommissionModal, setShowCommissionModal] = useState(false);
+  // Latest row of remittance_commission_overrides (admin-only RLS): reason and standard commission never travel in the remittance row
+  const [commissionOverride, setCommissionOverride] = useState(null);
+
+  const loadCommissionOverride = async (remittanceId) => {
+    try {
+      setCommissionOverride(await getCommissionOverride(remittanceId));
+    } catch {
+      setCommissionOverride(null); // the note is informative only: the detail stays usable
+    }
+  };
+
+  const handleCommissionSaved = (updated) => {
+    // The RPC returns the bare row (no joins): merge it so the joined type and proofs stay on screen
+    setSelectedRemittance((prev) => ({ ...prev, ...updated }));
+    setRemittances((list) => list.map((r) => (r.id === updated.id ? { ...r, ...updated } : r)));
+    setShowCommissionModal(false);
+    loadCommissionOverride(updated.id);
+  };
 
   // Helper to format account number with spaces every 4 digits
   const formatAccountNumberDisplay = (accountNumber) => {
@@ -78,6 +100,18 @@ const AdminRemittancesTab = () => {
   useEffect(() => {
     loadRemittances();
   }, []);
+
+  // Closing the detail also closes the commission modal, so the next remittance does not open with it
+  useEffect(() => {
+    if (!selectedRemittance) setShowCommissionModal(false);
+  }, [selectedRemittance]);
+
+  const selectedId = selectedRemittance?.id;
+  useEffect(() => {
+    setCommissionOverride(null);
+    if (selectedId) loadCommissionOverride(selectedId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadCommissionOverride only closes over a stable setter
+  }, [selectedId]);
 
   // Req 8: Auto-select remittance from URL parameter ?id=X
   useEffect(() => {
@@ -1123,7 +1157,29 @@ const AdminRemittancesTab = () => {
                       <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.toDeliver')}</p>
                       <p className="text-base sm:text-lg font-bold text-green-600">{selectedRemittance.amount_to_deliver?.toFixed(2)} {selectedRemittance.currency_delivered}</p>
                     </div>
+                    <div>
+                      <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.commissionOverride.commission')}</p>
+                      <p className="text-base sm:text-lg font-bold text-gray-700">{Number(selectedRemittance.commission_total).toFixed(2)} {selectedRemittance.currency_sent}</p>
+                    </div>
                   </div>
+                  {commissionOverride && (
+                    <p className="text-xs sm:text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                      {t('remittances.admin.commissionOverride.adjustedNote', {
+                        standard: Number(commissionOverride.standard_commission).toFixed(2),
+                        currency: selectedRemittance.currency_sent
+                      })}{' '}
+                      <span className="font-medium">{commissionOverride.reason}</span>
+                    </p>
+                  )}
+                  {(isAdmin || isSuperAdmin) && canAdjustCommission(selectedRemittance) && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCommissionModal(true)}
+                      className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs sm:text-sm hover:bg-white transition-colors"
+                    >
+                      {t('remittances.admin.commissionOverride.adjustButton')}
+                    </button>
+                  )}
                 </div>
 
                 {/* Recipient Information */}
@@ -1452,6 +1508,15 @@ const AdminRemittancesTab = () => {
         title={t('remittances.user.paymentProof')}
         bucketName="remittance-proofs"
       />
+
+      {selectedRemittance && showCommissionModal && (
+        <CommissionOverrideModal
+          remittance={selectedRemittance}
+          override={commissionOverride}
+          onClose={() => setShowCommissionModal(false)}
+          onSaved={handleCommissionSaved}
+        />
+      )}
     </div>
   );
 };
