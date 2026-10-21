@@ -669,7 +669,8 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
     });
 
     it('remittances BEFORE UPDATE and AFTER UPDATE', async () => {
-      expect(await triggers('remittances', 'before', 'update')).toEqual(['guard_remittance_owner_update']);
+      // + money-columns guard (20261023110000), fires first (alphabetical order)
+      expect(await triggers('remittances', 'before', 'update')).toEqual(['guard_remittance_money_columns', 'guard_remittance_owner_update']);
       expect(await triggers('remittances', 'after', 'update')).toEqual(['audit_financial_update', 'audit_remittance_status']); // + financial audit trail (20261020100000)
     });
   });

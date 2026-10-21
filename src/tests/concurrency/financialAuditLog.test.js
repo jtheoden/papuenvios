@@ -31,7 +31,9 @@ const ZONE_COLUMNS = ['shipping_cost', 'transport_cost'];
 // The single source of truth is public.financial_audit_columns(); this is the spec the tests pin it to.
 const EXPECTED_COLUMNS = {
   remittances: ['commission_percentage', 'commission_fixed', 'commission_total', 'exchange_rate', 'amount_sent', 'amount_to_deliver',
-    'discount_amount', 'delivery_cost', 'shipping_zone_id', 'remittance_type_id', 'currency_sent', 'currency_delivered'],
+    'discount_amount', 'delivery_cost', 'shipping_zone_id', 'remittance_type_id', 'currency_sent', 'currency_delivered',
+    // 20261023120000: a PATCH of offer_id changes the discount a later re-pricing re-derives
+    'offer_id'],
   orders: ['subtotal', 'discount_amount', 'shipping_cost', 'tax_amount', 'total_amount', 'shipping_zone_id', 'payment_amount',
     'payment_usd_reference', 'payment_fx_rate', 'currency_id', 'payment_currency'],
   remittance_types: ['exchange_rate', 'commission_percentage', 'commission_fixed', 'min_amount', 'max_amount', 'is_active',
@@ -55,6 +57,15 @@ describeDb('financial audit log (local Postgres)', () => {
   };
   const asAdmin = () => as(actors.adminId);
   const asCustomer = () => as(actors.customerId);
+  // Since 20261023110000 a direct (authenticated) PATCH of remittance money columns is rejected by
+  // guard_remittance_money_columns. The audit trail is still exercised for those columns from the owner role carrying
+  // the admin's JWT, which is exactly how a SECURITY DEFINER RPC looks to the audit trigger.
+  const asAdminViaRpc = async () => {
+    const c = await connectAdmin();
+    await c.query('SELECT set_config($1, $2, false)', ['request.jwt.claims', JSON.stringify({ sub: actors.adminId, role: 'authenticated' })]);
+    clients.push(c);
+    return c;
+  };
 
   const auditRows = async (rowId) =>
     (await admin.query(
@@ -248,7 +259,7 @@ describeDb('financial audit log (local Postgres)', () => {
     it.each(REMITTANCE_COLUMNS)('remittances.%s', async (col) => {
       const id = await makeRemittance({ typeId: await makeType() });
       const before = (await admin.query(`SELECT ${col}::text AS v FROM public.remittances WHERE id = $1`, [id])).rows[0].v;
-      const adm = await asAdmin();
+      const adm = await asAdminViaRpc();
       await adm.query(`UPDATE public.remittances SET ${col} = ${col} + 1 WHERE id = $1`, [id]);
       const after = (await admin.query(`SELECT ${col}::text AS v FROM public.remittances WHERE id = $1`, [id])).rows[0].v;
       const rows = await auditRows(id);
@@ -261,7 +272,7 @@ describeDb('financial audit log (local Postgres)', () => {
 
     it('remittances.shipping_zone_id', async () => {
       const id = await makeRemittance({ typeId: await makeType() });
-      const adm = await asAdmin();
+      const adm = await asAdminViaRpc();
       await adm.query('UPDATE public.remittances SET shipping_zone_id = $2 WHERE id = $1', [id, zoneA]);
       await adm.query('UPDATE public.remittances SET shipping_zone_id = $2 WHERE id = $1', [id, zoneB]);
       const rows = await auditRows(id);
@@ -366,7 +377,7 @@ describeDb('financial audit log (local Postgres)', () => {
       const typeA = await makeType();
       const typeB = await makeType();
       const id = await makeRemittance({ typeId: typeA });
-      const adm = await asAdmin();
+      const adm = await asAdminViaRpc();
       await adm.query(`UPDATE public.remittances SET remittance_type_id = $2, currency_sent = 'EUR', currency_delivered = 'USD' WHERE id = $1`, [id, typeB]);
       expect((await auditRows(id)).map((r) => [r.column_name, r.old_value, r.new_value]).sort()).toEqual([
         ['currency_delivered', 'CUP', 'USD'], ['currency_sent', 'USD', 'EUR'], ['remittance_type_id', typeA, typeB]
@@ -452,7 +463,7 @@ describeDb('financial audit log (local Postgres)', () => {
 
     it('a multi-column UPDATE writes one row per changed column, all in the same transaction id', async () => {
       const id = await makeRemittance({ typeId: await makeType() });
-      const adm = await asAdmin();
+      const adm = await asAdminViaRpc();
       await adm.query('UPDATE public.remittances SET commission_total = 9, amount_to_deliver = 70000, delivery_cost = 5 WHERE id = $1', [id]);
       const rows = await auditRows(id);
       expect(rows.map((r) => r.column_name).sort()).toEqual(['amount_to_deliver', 'commission_total']); // delivery_cost unchanged
@@ -486,7 +497,7 @@ describeDb('financial audit log (local Postgres)', () => {
   describe('edge cases', () => {
     it('value -> NULL is recorded with new_value NULL', async () => {
       const id = await makeRemittance({ typeId: await makeType() });
-      const adm = await asAdmin();
+      const adm = await asAdminViaRpc();
       await adm.query('UPDATE public.remittances SET shipping_zone_id = $2 WHERE id = $1', [id, zoneA]);
       await adm.query('UPDATE public.remittances SET shipping_zone_id = NULL WHERE id = $1', [id]);
       const rows = await auditRows(id);
@@ -587,8 +598,9 @@ describeDb('financial audit log (local Postgres)', () => {
       const cust = await asCustomer();
       await cust.query('SELECT public.recalculate_remittance_at_current_rate($1)', [rid]);
       const rows = await auditRows(rid);
+      // commission_total stays 2.5: gross 3.5 (2.5% of 100 + 1) minus the stored discount_amount 1 (no offer row => kept).
       expect(rows.map((r) => r.column_name).sort()).toEqual(
-        ['amount_to_deliver', 'commission_fixed', 'commission_percentage', 'commission_total', 'exchange_rate']
+        ['amount_to_deliver', 'commission_fixed', 'commission_percentage', 'exchange_rate']
       );
       expect(rows.every((r) => r.via_function === 'recalculate_remittance_at_current_rate' && r.changed_by === actors.customerId && r.changed_by_role === 'user')).toBe(true);
       expect(rows.find((r) => r.column_name === 'exchange_rate')).toMatchObject({ old_value: '700.0000', new_value: '800.0000' });
@@ -669,7 +681,7 @@ describeDb('financial audit log (local Postgres)', () => {
       const typeId = await makeType();
       const rid = await makeRemittance({ typeId });
       const oid = await makeOrder();
-      const adm = await asAdmin();
+      const adm = await asAdminViaRpc();
       await adm.query('UPDATE public.remittances SET commission_total = 11 WHERE id = $1', [rid]);
       await adm.query('UPDATE public.orders SET shipping_cost = 3, total_amount = 15 WHERE id = $1', [oid]);
       expect(await auditRows(rid)).toHaveLength(1);

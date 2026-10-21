@@ -430,7 +430,13 @@ describeDb('rate functions fix + exchange_rates constraints', () => {
       // phase 1.5 S2 only READS exchange_rates (rate resolution inside its BEFORE INSERT guard); it redefines none of these objects
       const later = files.filter((f) => f > own && f !== '20261017110000_phase15_s2_remittance_pricing_guard.sql'
         // the financial audit trail only observes exchange_rates (AFTER UPDATE/DELETE audit trigger); it redefines none of them
-        && f !== '20261020100000_financial_audit_log.sql');
+        && f !== '20261020100000_financial_audit_log.sql'
+        // wave 4 deliberately redefines recalculate_remittance_at_current_rate (rounding contract, then the commission
+        // override); its rate resolution is a verbatim copy and is covered by this suite + remittanceQuote/commissionOverride
+        && f !== '20261023100000_remittance_quote_and_recalculate.sql'
+        && f !== '20261023120000_remittance_commission_override.sql'
+        // the money-columns guard only NAMES the RPC in its comments (it lets the SECURITY DEFINER RPCs through)
+        && f !== '20261023110000_remittance_money_columns_guard.sql');
       later.forEach((f) => {
         expect(readFileSync(`supabase/migrations/${f}`, 'utf8'), f)
           .not.toMatch(/exchange_rates|recalculate_remittance_at_current_rate|get_remittance_bank_accounts_admin/);

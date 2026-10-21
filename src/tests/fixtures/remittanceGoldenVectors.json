@@ -1,0 +1,384 @@
+{
+  "_comment": "Golden vectors for the remittance rounding contract. Computed with an exact BigInt oracle (no floats). Read by the Vitest unit tests AND by src/tests/concurrency/remittanceQuote.test.js (SQL).",
+  "forward": [
+    {
+      "name": "half-up 0.285 -> 0.29",
+      "input": {
+        "amount": 0.285,
+        "rate": 1,
+        "pct": 0,
+        "fixed": 0,
+        "offer": null
+      },
+      "expected": {
+        "amountSent": 0.29,
+        "gross": 0,
+        "discount": 0,
+        "commission": 0,
+        "amountToDeliver": 0.29
+      }
+    },
+    {
+      "name": "half-up 1.005 -> 1.01",
+      "input": {
+        "amount": 1.005,
+        "rate": 1,
+        "pct": 0,
+        "fixed": 0,
+        "offer": null
+      },
+      "expected": {
+        "amountSent": 1.01,
+        "gross": 0,
+        "discount": 0,
+        "commission": 0,
+        "amountToDeliver": 1.01
+      }
+    },
+    {
+      "name": "10.01 x 780.5 rounds half-up to 7812.81",
+      "input": {
+        "amount": 10.01,
+        "rate": 780.5,
+        "pct": 0,
+        "fixed": 0,
+        "offer": null
+      },
+      "expected": {
+        "amountSent": 10.01,
+        "gross": 0,
+        "discount": 0,
+        "commission": 0,
+        "amountToDeliver": 7812.81
+      }
+    },
+    {
+      "name": "REM-2026-001125: 765 at 800, 2.5%",
+      "input": {
+        "amount": 765,
+        "rate": 800,
+        "pct": 2.5,
+        "fixed": 0,
+        "offer": null
+      },
+      "expected": {
+        "amountSent": 765,
+        "gross": 19.13,
+        "discount": 0,
+        "commission": 19.13,
+        "amountToDeliver": 596696
+      }
+    },
+    {
+      "name": "real type 2.4390243902% at 820, 100",
+      "input": {
+        "amount": 100,
+        "rate": 820,
+        "pct": 2.4390243902,
+        "fixed": 0,
+        "offer": null
+      },
+      "expected": {
+        "amountSent": 100,
+        "gross": 2.44,
+        "discount": 0,
+        "commission": 2.44,
+        "amountToDeliver": 79999.2
+      }
+    },
+    {
+      "name": "real type 2.4390243902% at 820, 205",
+      "input": {
+        "amount": 205,
+        "rate": 820,
+        "pct": 2.4390243902,
+        "fixed": 0,
+        "offer": null
+      },
+      "expected": {
+        "amountSent": 205,
+        "gross": 5,
+        "discount": 0,
+        "commission": 5,
+        "amountToDeliver": 164000
+      }
+    },
+    {
+      "name": "USD to USD 4.7619047619%",
+      "input": {
+        "amount": 100,
+        "rate": 1,
+        "pct": 4.7619047619,
+        "fixed": 0,
+        "offer": null
+      },
+      "expected": {
+        "amountSent": 100,
+        "gross": 4.76,
+        "discount": 0,
+        "commission": 4.76,
+        "amountToDeliver": 95.24
+      }
+    },
+    {
+      "name": "rate with 5 decimals is rounded to 4",
+      "input": {
+        "amount": 100,
+        "rate": 790.12345,
+        "pct": 2.5,
+        "fixed": 0,
+        "offer": null
+      },
+      "expected": {
+        "amountSent": 100,
+        "gross": 2.5,
+        "discount": 0,
+        "commission": 2.5,
+        "amountToDeliver": 77037.04
+      }
+    },
+    {
+      "name": "percentage discount 15% of 3.50",
+      "input": {
+        "amount": 100,
+        "rate": 800,
+        "pct": 2.5,
+        "fixed": 1,
+        "offer": {
+          "discount_type": "percentage",
+          "discount_value": 15
+        }
+      },
+      "expected": {
+        "amountSent": 100,
+        "gross": 3.5,
+        "discount": 0.53,
+        "commission": 2.97,
+        "amountToDeliver": 77624
+      }
+    },
+    {
+      "name": "percentage discount 100%",
+      "input": {
+        "amount": 100,
+        "rate": 800,
+        "pct": 2.5,
+        "fixed": 0,
+        "offer": {
+          "discount_type": "percentage",
+          "discount_value": 100
+        }
+      },
+      "expected": {
+        "amountSent": 100,
+        "gross": 2.5,
+        "discount": 2.5,
+        "commission": 0,
+        "amountToDeliver": 80000
+      }
+    },
+    {
+      "name": "fixed_amount discount below commission",
+      "input": {
+        "amount": 200,
+        "rate": 800,
+        "pct": 2.5,
+        "fixed": 0,
+        "offer": {
+          "discount_type": "fixed_amount",
+          "discount_value": 1
+        }
+      },
+      "expected": {
+        "amountSent": 200,
+        "gross": 5,
+        "discount": 1,
+        "commission": 4,
+        "amountToDeliver": 156800
+      }
+    },
+    {
+      "name": "fixed_amount discount above commission is capped",
+      "input": {
+        "amount": 200,
+        "rate": 800,
+        "pct": 2.5,
+        "fixed": 0,
+        "offer": {
+          "discount_type": "fixed_amount",
+          "discount_value": 50
+        }
+      },
+      "expected": {
+        "amountSent": 200,
+        "gross": 5,
+        "discount": 5,
+        "commission": 0,
+        "amountToDeliver": 160000
+      }
+    },
+    {
+      "name": "legacy \"fixed\" spelling behaves as fixed_amount",
+      "input": {
+        "amount": 200,
+        "rate": 800,
+        "pct": 2.5,
+        "fixed": 0,
+        "offer": {
+          "discount_type": "fixed",
+          "discount_value": 1
+        }
+      },
+      "expected": {
+        "amountSent": 200,
+        "gross": 5,
+        "discount": 1,
+        "commission": 4,
+        "amountToDeliver": 156800
+      }
+    },
+    {
+      "name": "commission_fixed > 0",
+      "input": {
+        "amount": 33.33,
+        "rate": 790,
+        "pct": 2.5,
+        "fixed": 1.5,
+        "offer": null
+      },
+      "expected": {
+        "amountSent": 33.33,
+        "gross": 2.33,
+        "discount": 0,
+        "commission": 2.33,
+        "amountToDeliver": 24490
+      }
+    },
+    {
+      "name": "zero commission",
+      "input": {
+        "amount": 100,
+        "rate": 24,
+        "pct": 0,
+        "fixed": 0,
+        "offer": null
+      },
+      "expected": {
+        "amountSent": 100,
+        "gross": 0,
+        "discount": 0,
+        "commission": 0,
+        "amountToDeliver": 2400
+      }
+    },
+    {
+      "name": "base scenario 5% + 2 fixed",
+      "input": {
+        "amount": 100,
+        "rate": 24,
+        "pct": 5,
+        "fixed": 2,
+        "offer": null
+      },
+      "expected": {
+        "amountSent": 100,
+        "gross": 7,
+        "discount": 0,
+        "commission": 7,
+        "amountToDeliver": 2232
+      }
+    }
+  ],
+  "reverse": [
+    {
+      "name": "50000 CUP at 790, 2.5%",
+      "input": {
+        "desired": 50000,
+        "rate": 790,
+        "pct": 2.5,
+        "fixed": 0
+      },
+      "expected": {
+        "amountToSend": 64.92,
+        "amountToDeliver": 50007,
+        "commission": 1.62,
+        "iterations": 0
+      }
+    },
+    {
+      "name": "2400 CUP at 24, no commission",
+      "input": {
+        "desired": 2400,
+        "rate": 24,
+        "pct": 0,
+        "fixed": 0
+      },
+      "expected": {
+        "amountToSend": 100,
+        "amountToDeliver": 2400,
+        "commission": 0,
+        "iterations": 0
+      }
+    },
+    {
+      "name": "with commission_fixed",
+      "input": {
+        "desired": 1000,
+        "rate": 100,
+        "pct": 3,
+        "fixed": 1.5
+      },
+      "expected": {
+        "amountToSend": 11.86,
+        "amountToDeliver": 1000,
+        "commission": 1.86,
+        "iterations": 0
+      }
+    },
+    {
+      "name": "needs a second iteration (1)",
+      "input": {
+        "desired": 31625.17,
+        "rate": 656.1,
+        "pct": 6.09,
+        "fixed": 0
+      },
+      "expected": {
+        "amountToSend": 51.34,
+        "amountToDeliver": 31630.58,
+        "commission": 3.13,
+        "iterations": 1
+      }
+    },
+    {
+      "name": "needs a second iteration (2)",
+      "input": {
+        "desired": 16888.08,
+        "rate": 828.5,
+        "pct": 14.78,
+        "fixed": 0
+      },
+      "expected": {
+        "amountToSend": 23.93,
+        "amountToDeliver": 16893.12,
+        "commission": 3.54,
+        "iterations": 1
+      }
+    },
+    {
+      "name": "needs a second iteration (3)",
+      "input": {
+        "desired": 28994.57,
+        "rate": 794.8,
+        "pct": 3.84,
+        "fixed": 0
+      },
+      "expected": {
+        "amountToSend": 37.95,
+        "amountToDeliver": 29002.25,
+        "commission": 1.46,
+        "iterations": 1
+      }
+    }
+  ]
+}

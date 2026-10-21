@@ -12,28 +12,10 @@ import {
   getPendingRemittancesCountByType,
   DELIVERY_METHODS
 } from '@/lib/remittanceService';
+import { simulateRemittance } from '@/lib/remittanceCalculations';
 import { getCurrenciesWithRates } from '@/lib/currencyService';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
-
-// Forward simulation (mirrors remittanceService.calculateRemittance)
-const simulateRemittance = ({ amount, exchangeRate, commissionPercentage, commissionFixed }) => {
-  const commPctAmount = (amount * (commissionPercentage || 0)) / 100;
-  const commFixedAmount = commissionFixed || 0;
-  const totalCommission = commPctAmount + commFixedAmount;
-  const netAmount = amount - totalCommission;
-  const amountToDeliver = netAmount * exchangeRate;
-  const effectiveRate = amount > 0 ? amountToDeliver / amount : 0;
-  return { amount, commPctAmount, commFixedAmount, totalCommission, netAmount, exchangeRate, amountToDeliver, effectiveRate };
-};
-
-// Reverse simulation (mirrors remittanceService.calculateReverseRemittance)
-const simulateReverseRemittance = ({ desiredDeliveryAmount, exchangeRate, commissionPercentage, commissionFixed }) => {
-  const denominator = 1 - ((commissionPercentage || 0) / 100);
-  if (denominator <= 0) return null;
-  const amountToSend = ((desiredDeliveryAmount / exchangeRate) + (commissionFixed || 0)) / denominator;
-  return simulateRemittance({ amount: amountToSend, exchangeRate, commissionPercentage, commissionFixed });
-};
 
 // Calculate commission % from market rate and delivery rate
 const calcCommissionFromRates = (marketRate, deliveryRate) => {
@@ -101,21 +83,23 @@ const RemittanceTypesConfig = () => {
   }, [editingType]);
 
   // Simulator computation
-  const simResult = useMemo(() => {
+  const simulation = useMemo(() => {
     const exchangeRate = parseFloat(formData.exchange_rate);
     const commissionPercentage = parseFloat(formData.commission_percentage) || 0;
     const commissionFixed = parseFloat(formData.commission_fixed) || 0;
     const amount = parseFloat(simAmount);
 
-    if (!exchangeRate || exchangeRate <= 0) return null;
-    if (!amount || amount <= 0) return null;
+    if (!exchangeRate || exchangeRate <= 0) return { result: null, failed: false };
+    if (!amount || amount <= 0) return { result: null, failed: false };
 
-    if (simMode === 'send') {
-      return simulateRemittance({ amount, exchangeRate, commissionPercentage, commissionFixed });
-    } else {
-      return simulateReverseRemittance({ desiredDeliveryAmount: amount, exchangeRate, commissionPercentage, commissionFixed });
+    // A render must never crash while the admin is typing (e.g. a rate that rounds to 0 at 4 decimals).
+    try {
+      return { result: simulateRemittance({ mode: simMode, amount, exchangeRate, commissionPercentage, commissionFixed }), failed: false };
+    } catch {
+      return { result: null, failed: true };
     }
-  }, [formData.exchange_rate, formData.commission_percentage, formData.commission_fixed, simAmount, simMode]);
+  },[formData.exchange_rate, formData.commission_percentage, formData.commission_fixed, simAmount, simMode]);
+  const simResult = simulation.result;
 
   const loadCurrencies = async () => {
     try {
@@ -686,6 +670,10 @@ const RemittanceTypesConfig = () => {
                       </div>
                     )}
                   </div>
+                ) : simulation.failed ? (
+                  <p role="alert" className="text-xs text-amber-700">
+                    {t('remittances.admin.simulator.calculationUnavailable')}
+                  </p>
                 ) : (
                   <p className="text-xs text-gray-400">
                     {!parseFloat(formData.exchange_rate) ? t('remittances.admin.simulator.enterValidRate') : t('remittances.admin.simulator.enterValidAmount')}

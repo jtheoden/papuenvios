@@ -21,16 +21,48 @@
  * @param {number|string|null|undefined} value
  * @returns {number}
  */
-export const roundMoney = (value) => {
+export const roundMoney = (value) => roundTo(value, 2);
+
+/**
+ * Same float-safe half-up rounding as roundMoney, at an arbitrary scale (e.g. 4 for exchange rates).
+ * roundMoney(v) === roundTo(v, 2).
+ *
+ * @param {number|string|null|undefined} value
+ * @param {number} decimals
+ * @returns {number}
+ */
+export function roundTo(value, decimals) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
 
   const sign = n < 0 ? -1 : 1;
   const clean = Number(Math.abs(n).toPrecision(15));
-  const shifted = Number(`${clean}e2`);
+  const shifted = Number(`${clean}e${decimals}`);
   // Exponent-notation strings (e.g. "1e-7") break the shift; plain scaling is safe there
-  const cents = Number.isFinite(shifted) ? Math.round(shifted) : Math.round(clean * 100);
-  const result = sign * Number(`${cents}e-2`);
+  const units = Number.isFinite(shifted) ? Math.round(shifted) : Math.round(clean * 10 ** decimals);
+  const result = sign * Number(`${units}e-${decimals}`);
+
+  return result === 0 ? 0 : result;
+}
+
+/**
+ * Round UP to the next cent (toward +infinity), float-safe: exact cents stay put
+ * (0.1 + 0.2 -> 0.3, not 0.31). Used by the reverse remittance calculation so the recipient never
+ * receives less than requested.
+ *
+ * Non-finite or non-numeric input yields 0. Never returns -0.
+ *
+ * @param {number|string|null|undefined} value
+ * @returns {number}
+ */
+export const ceilMoney = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+
+  const clean = Number(n.toPrecision(15));
+  const shifted = Number(`${clean}e2`);
+  const cents = Number.isFinite(shifted) ? Math.ceil(shifted) : Math.ceil(clean * 100);
+  const result = Number(`${cents}e-2`);
 
   return result === 0 ? 0 : result;
 };
