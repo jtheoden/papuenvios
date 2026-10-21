@@ -620,7 +620,7 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
     const triggers = async (table, timing, event) => {
       const { rows } = await admin.query(
         `SELECT tgname FROM pg_trigger
-          WHERE tgrelid = $1::regclass AND NOT tgisinternal AND tgenabled = 'O'
+          WHERE tgrelid = $1::regclass AND NOT tgisinternal AND tgenabled IN ('O', 'A') -- A = ENABLE ALWAYS (financial audit trail)
             AND (tgtype & 1) = 1 AND (tgtype & $2) = $2
             AND ((tgtype & 2) = 2) = $3
           ORDER BY tgname COLLATE "C"`,
@@ -651,6 +651,7 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
 
     it('orders AFTER UPDATE', async () => {
       expect(await triggers('orders', 'after', 'update')).toEqual([
+        'audit_financial_update', // financial audit trail (20261020100000)
         'audit_order_status',
         'release_stock_on_order_cancel'
       ]);
@@ -668,8 +669,9 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
     });
 
     it('remittances BEFORE UPDATE and AFTER UPDATE', async () => {
-      expect(await triggers('remittances', 'before', 'update')).toEqual(['guard_remittance_owner_update']);
-      expect(await triggers('remittances', 'after', 'update')).toEqual(['audit_remittance_status']);
+      // + money-columns guard (20261023110000), fires first (alphabetical order)
+      expect(await triggers('remittances', 'before', 'update')).toEqual(['guard_remittance_money_columns', 'guard_remittance_owner_update']);
+      expect(await triggers('remittances', 'after', 'update')).toEqual(['audit_financial_update', 'audit_remittance_status']); // + financial audit trail (20261020100000)
     });
   });
 

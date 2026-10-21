@@ -188,45 +188,23 @@ const validatePaymentTransition = (currentStatus, newStatus) => {
 // ============================================================================
 
 /**
- * Generate unique order number
+ * Generate an order number
  * Format: ORD-YYYYMMDD-XXXXX (e.g., ORD-20251007-12345)
- * Uses timestamp + random to avoid race conditions, with DB constraint as backup
- * @throws {AppError} If generation fails
- * @returns {Promise<string>} Unique order number
+ * 5 random digits per day; the UNIQUE constraint on orders.order_number is the real guard
+ * and createOrder retries with a fresh number on collision.
+ * shortcut: 100k numbers/day, birthday collisions get likely past ~300 orders/day; widen the
+ * suffix or move to a DB sequence before that volume.
+ * @returns {Promise<string>} Order number
  */
 export const generateOrderNumber = async () => {
-  try {
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-
-    // Use timestamp (last 5 digits) + random (2 digits) for uniqueness
-    const timestamp = Date.now().toString().slice(-5);
-    const random = Math.floor(Math.random() * 100).toString().padStart(2, '0');
-    const uniqueId = `${timestamp}${random}`.slice(0, 5);
-
-    const orderNumber = `ORD-${today}-${uniqueId}`;
-
-    // Verify uniqueness (unlikely collision, but safety check)
-    // NOTE: This is a graceful fallback - database constraint on order_number is the primary guard
-    const { data } = await supabase
-      .from('orders')
-      .select('order_number', { count: 'exact', head: true })
-      .eq('order_number', orderNumber);
-
-    // If collision (extremely rare), add microseconds
-    if (data && data.length > 0) {
-      const microseconds = (Date.now() % 1000).toString().padStart(3, '0');
-      return `ORD-${today}-${timestamp.slice(-2)}${microseconds}`;
-    }
-
-    return orderNumber;
-  } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'generateOrderNumber'
-    });
-    throw appError;
-  }
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const suffix = crypto.getRandomValues(new Uint32Array(1))[0] % 100000;
+  return `ORD-${today}-${String(suffix).padStart(5, '0')}`;
 };
+
+const MAX_ORDER_NUMBER_ATTEMPTS = 3;
+const isOrderNumberCollision = (error) =>
+  error?.code === '23505' && /order_number/.test(`${error.message || ''} ${error.details || ''}`);
 
 // ============================================================================
 // USER EMAIL HELPER (for activity logging)
@@ -302,12 +280,8 @@ export const createOrder = async (orderData, items) => {
 
     // Note: Orders always start in PENDING status
 
-    // Generate order number
-    const orderNumber = await generateOrderNumber();
-
-    // Prepare order data with initial state
+    // Prepare order data with initial state (order_number is set per insert attempt)
     const order = {
-      order_number: orderNumber,
       user_id: orderData.userId,
       order_type: orderData.orderType || 'product',
       status: ORDER_STATUS.PENDING,
@@ -333,17 +307,24 @@ export const createOrder = async (orderData, items) => {
       offer_id: orderData.offerId || null
     };
 
-    // ATOMIC: Insert order
-    const { data: createdOrder, error: orderError } = await supabase
-      .from('orders')
-      .insert(order)
-      .select()
-      .single();
+    // ATOMIC: Insert order, retrying with a new number if order_number collides
+    let createdOrder = null;
+    let orderNumber = null;
+    for (let attempt = 1; attempt <= MAX_ORDER_NUMBER_ATTEMPTS; attempt += 1) {
+      orderNumber = await generateOrderNumber();
+      const { data, error: orderError } = await supabase
+        .from('orders')
+        .insert({ ...order, order_number: orderNumber })
+        .select()
+        .single();
 
-    if (orderError) {
+      if (!orderError) {
+        createdOrder = data;
+        break;
+      }
       const appError = parseSupabaseError(orderError);
-      logError(appError, { operation: 'createOrder - insert order', orderNumber });
-      throw appError;
+      logError(appError, { operation: 'createOrder - insert order', orderNumber, attempt });
+      if (!isOrderNumberCollision(orderError) || attempt === MAX_ORDER_NUMBER_ATTEMPTS) throw appError;
     }
 
     // ATOMIC: Prepare and insert order items
@@ -515,7 +496,7 @@ const releaseOrderStock = async (orderId) => {
 /** Best-effort compensation when a reserve call failed for transport reasons. */
 const revertOrderToCancelled = async (orderId, reason) => {
   try {
-    await supabase
+    const { error } = await supabase
       .from('orders')
       .update({
         status: ORDER_STATUS.CANCELLED,
@@ -524,6 +505,7 @@ const revertOrderToCancelled = async (orderId, reason) => {
         updated_at: new Date().toISOString()
       })
       .eq('id', orderId);
+    if (error) logError(error, { operation: 'revertOrderToCancelled', orderId });
   } catch (revertError) {
     logError(revertError, { operation: 'revertOrderToCancelled', orderId });
   }
@@ -1022,7 +1004,7 @@ export const validatePayment = async (orderId, adminId) => {
 
     // Log status change (graceful fallback if fails)
     try {
-      await supabase
+      const { error: historyError } = await supabase
         .from('order_status_history')
         .insert({
           order_id: orderId,
@@ -1031,6 +1013,7 @@ export const validatePayment = async (orderId, adminId) => {
           changed_by: adminId,
           notes: 'Payment validated by admin'
         });
+      if (historyError) logError(historyError, { operation: 'validatePayment - log history', orderId });
     } catch (historyError) {
       logError(historyError, { operation: 'validatePayment - log history', orderId });
     }
@@ -1150,7 +1133,7 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
 
     // Log status change (graceful fallback if fails)
     try {
-      await supabase
+      const { error: historyError } = await supabase
         .from('order_status_history')
         .insert({
           order_id: orderId,
@@ -1159,6 +1142,7 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
           changed_by: adminId,
           notes: `Payment rejected: ${rejectionReason}`
         });
+      if (historyError) logError(historyError, { operation: 'rejectPayment - log history', orderId });
     } catch (historyError) {
       logError(historyError, { operation: 'rejectPayment - log history', orderId });
     }
@@ -1274,7 +1258,7 @@ export const updateOrderStatus = async (orderId, newStatus, adminId, notes = '')
 
     // Log status change (graceful fallback if fails)
     try {
-      await supabase
+      const { error: historyError } = await supabase
         .from('order_status_history')
         .insert({
           order_id: orderId,
@@ -1283,6 +1267,7 @@ export const updateOrderStatus = async (orderId, newStatus, adminId, notes = '')
           changed_by: adminId,
           notes: notes
         });
+      if (historyError) logError(historyError, { operation: 'updateOrderStatus - log history', orderId });
     } catch (historyError) {
       logError(historyError, { operation: 'updateOrderStatus - log history', orderId });
     }
@@ -1853,7 +1838,7 @@ export const cancelOrder = async (orderId, adminId, reason) => {
 
     // Log status change (graceful fallback if fails)
     try {
-      await supabase
+      const { error: historyError } = await supabase
         .from('order_status_history')
         .insert({
           order_id: orderId,
@@ -1862,6 +1847,7 @@ export const cancelOrder = async (orderId, adminId, reason) => {
           changed_by: adminId,
           notes: `Cancelled: ${reason}`
         });
+      if (historyError) logError(historyError, { operation: 'cancelOrder - log history', orderId });
     } catch (historyError) {
       logError(historyError, { operation: 'cancelOrder - log history', orderId });
     }

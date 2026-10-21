@@ -240,7 +240,7 @@ const SendRemittancePage = ({ onNavigate }) => {
           const result = await calculateRemittance(selectedType.id, parseFloat(amount), appliedOffer || null);
           setLiveCalc({
             mode: 'send',
-            amountToSend: parseFloat(amount),
+            amountToSend: result.amount ?? parseFloat(amount),
             amountToReceive: result.amountToDeliver,
             commission: result.totalCommission,
             originalCommission: result.originalCommission || result.totalCommission,
@@ -255,7 +255,8 @@ const SendRemittancePage = ({ onNavigate }) => {
           setLiveCalc({
             mode: 'receive',
             amountToSend: result.amountToSend,
-            amountToReceive: parseFloat(desiredReceiveAmount),
+            // The contract rounds the amount to send UP, so the recipient may get a few cents more than requested
+            amountToReceive: result.amountToDeliver ?? parseFloat(desiredReceiveAmount),
             commission: result.totalCommission,
             exchangeRate: result.exchangeRate,
             currency: result.currency,

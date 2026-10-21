@@ -475,6 +475,10 @@ const CartPage = ({ onNavigate }) => {
         return language === 'es'
           ? 'Este cupón ha expirado'
           : 'This coupon has expired';
+      case 'NOT_STARTED':
+        return language === 'es'
+          ? 'Este cupón aún no está vigente'
+          : 'This coupon is not active yet';
       case 'MIN_AMOUNT':
         return language === 'es'
           ? `Compra mínima requerida: ${displayCurrencySymbol}${requiredAmount?.toFixed(2)}. Tu subtotal actual: ${displayCurrencySymbol}${currentAmount?.toFixed(2)}`

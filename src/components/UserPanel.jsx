@@ -16,6 +16,7 @@ import { getHeadingStyle, getTextStyle, getPillStyle, getStatusStyle } from '@/l
 import { generateWhatsAppURL } from '@/lib/whatsappService';
 import { getActiveWhatsappRecipient } from '@/lib/notificationSettingsService';
 import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/use-toast';
 import CategoryBadge from '@/components/CategoryBadge';
 import { derivePercentFromAmount } from '@/lib/discountDisplayService';
 import { useUserDiscounts } from '@/hooks/useUserDiscounts';
@@ -52,6 +53,9 @@ const OrderPaymentProof = ({ value, language, borderColor }) => {
     </div>
   );
 };
+
+const notifyError = (t, key) =>
+  toast({ title: t('common.error'), description: t(key), variant: 'destructive' });
 
 const UserPanel = ({ onNavigate }) => {
   const { user, userRole, userCategory } = useAuth();
@@ -197,7 +201,7 @@ const UserPanel = ({ onNavigate }) => {
         setRemittances(result.remittances || []);
       }
     } catch (error) {
-      console.error('Error loading remittances:', error);
+      notifyError(t, 'userPanel.loadRemittancesError');
     }
   }, [user?.id]);
 
@@ -255,7 +259,7 @@ const UserPanel = ({ onNavigate }) => {
         setOrders(userOrders || []);
       }
     } catch (error) {
-      console.error('Error loading orders:', error);
+      notifyError(t, 'userPanel.loadOrdersError');
     } finally {
       setLoading(false);
     }
@@ -293,7 +297,7 @@ const UserPanel = ({ onNavigate }) => {
       const order = await getOrderById(orderId);
       setSelectedOrder(order);
     } catch (error) {
-      console.error('Error loading order details:', error);
+      notifyError(t, 'userPanel.loadOrderDetailsError');
     } finally {
       setLoadingDetails(false);
     }
@@ -315,7 +319,7 @@ const UserPanel = ({ onNavigate }) => {
         setSelectedOrder(null);
       }
     } catch (error) {
-      console.error('Error validating payment:', error);
+      notifyError(t, 'userPanel.validatePaymentError');
     } finally {
       setLoadingDetails(false);
       setActionOrderId(null);
@@ -341,7 +345,7 @@ const UserPanel = ({ onNavigate }) => {
         setSelectedOrder(null);
       }
     } catch (error) {
-      console.error('Error rejecting payment:', error);
+      notifyError(t, 'userPanel.rejectPaymentError');
     } finally {
       setLoadingDetails(false);
       setActionOrderId(null);
@@ -358,7 +362,7 @@ const UserPanel = ({ onNavigate }) => {
       setShowOrderDetails(false);
       setSelectedOrder(null);
     } catch (error) {
-      console.error('Error cancelling order:', error);
+      notifyError(t, 'userPanel.cancelOrderError');
     } finally {
       setProcessingAction(false);
     }
@@ -422,7 +426,7 @@ const UserPanel = ({ onNavigate }) => {
       const refreshed = await getOrderById(selectedOrder.id);
       setSelectedOrder(refreshed);
     } catch (error) {
-      console.error('Error marking order as dispatched:', error);
+      notifyError(t, 'userPanel.markDispatchedError');
     } finally {
       setProcessingAction(false);
     }
@@ -437,7 +441,7 @@ const UserPanel = ({ onNavigate }) => {
       const refreshed = await getOrderById(selectedOrder.id);
       setSelectedOrder(refreshed);
     } catch (error) {
-      console.error('Error marking order as delivered:', error);
+      notifyError(t, 'userPanel.markDeliveredError');
     } finally {
       setProcessingAction(false);
     }
@@ -452,7 +456,7 @@ const UserPanel = ({ onNavigate }) => {
       const refreshed = await getOrderById(selectedOrder.id);
       setSelectedOrder(refreshed);
     } catch (error) {
-      console.error('Error completing order:', error);
+      notifyError(t, 'userPanel.completeOrderError');
     } finally {
       setProcessingAction(false);
     }
