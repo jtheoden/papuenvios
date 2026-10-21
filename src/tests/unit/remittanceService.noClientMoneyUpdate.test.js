@@ -60,6 +60,14 @@ describe('client code never writes remittance money columns directly', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('the commission override goes through the RPC only: the service has no remittances UPDATE with override columns', () => {
+    const service = readFileSync(join(SRC_DIR, 'lib', 'remittanceService.js'), 'utf8');
+    expect(service).toMatch(/\.rpc\(\s*'admin_set_remittance_commission'/);
+    expect(findRemittanceUpdatePayloads(service).filter((p) => /commission_override/.test(p))).toEqual([]);
+    const sample = "supabase.from('remittances').update({ commission_override: 1 }).eq('id', 1)";
+    expect(MONEY_COLUMNS.test(findRemittanceUpdatePayloads(sample)[0])).toBe(true);
+  });
+
   it('scanner detects a money update (self-check)', () => {
     const sample = "supabase.from('remittances').update({ exchange_rate: 1 }).eq('id', 1)";
     const payloads = findRemittanceUpdatePayloads(sample);

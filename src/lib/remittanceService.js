@@ -7,7 +7,6 @@
 import { supabase } from '@/lib/supabase';
 import { isValidPayerPhone, normalizePayerPhone } from '@/lib/payerPhone';
 import { logActivity } from '@/lib/activityLogger';
-import { normalizeDiscountType } from '@/lib/offerRules';
 import { recordOfferUsage } from '@/lib/orderDiscountService';
 import {
   handleError,
@@ -31,7 +30,9 @@ import {
   ZELLE_TRANSACTION_TYPES
 } from '@/lib/zelleService';
 import { getExchangeRate as getCurrencyExchangeRate } from '@/lib/currencyService';
-import { calcTotalToPay } from '@/lib/remittanceCalculations';
+import { calcForward, calcReverse, calcTotalToPay } from '@/lib/remittanceCalculations';
+import { roundMoney } from '@/lib/moneyPure';
+import { validateCommissionOverride } from '@/lib/commissionOverrideRules';
 import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingService';
 import { getShippingState } from '@/lib/shippingZoneRules';
 
@@ -613,6 +614,69 @@ export const recalculateRemittanceAtCurrentRate = async (remittanceId) => {
   }
 };
 
+/**
+ * Admin: set a different (final) commission on a remittance whose payment is still pending or was rejected.
+ * Server-side RPC (SECURITY DEFINER, admin only, audited): it zeroes the offer discount, recomputes the amount to
+ * deliver at the stored rate and records who and why. Clients cannot PATCH money columns.
+ * @param {string} remittanceId
+ * @param {number|string} commission - final commission, 0 <= c < amount sent
+ * @param {string} reason - internal reason, 10..500 characters
+ * @throws {AppError} If the input is invalid or the server refuses
+ * @returns {Promise<Object>} The updated remittance row (without joins)
+ */
+export const setRemittanceCommission = async (remittanceId, commission, reason) => {
+  try {
+    const errors = validateCommissionOverride({ commission, reason });
+    if (!remittanceId || Object.keys(errors).length > 0) {
+      throw createValidationError(
+        { remittanceId: remittanceId ? undefined : 'Remittance ID is required', ...errors },
+        'Invalid commission adjustment'
+      );
+    }
+
+    const { data, error } = await supabase.rpc('admin_set_remittance_commission', {
+      p_remittance_id: remittanceId,
+      p_commission: roundMoney(commission),
+      p_reason: String(reason).trim()
+    });
+
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return data;
+  } catch (error) {
+    if (error.code) throw error;
+    throw handleError(error, ERROR_CODES.DB_ERROR, { operation: 'setRemittanceCommission', remittanceId });
+  }
+};
+
+/**
+ * Admin: the latest commission override of a remittance (commission, standard_commission, reason, set_by, set_at),
+ * or null. It lives in remittance_commission_overrides (RLS: administrators only), never in the remittance row,
+ * so the customer who owns the remittance cannot read the reason.
+ * @param {string} remittanceId
+ * @throws {AppError} If the query fails
+ * @returns {Promise<Object|null>}
+ */
+export const getCommissionOverride = async (remittanceId) => {
+  if (!remittanceId) return null;
+  try {
+    const { data, error } = await supabase
+      .from('remittance_commission_overrides')
+      .select('commission, standard_commission, reason, set_by, set_at')
+      .eq('remittance_id', remittanceId)
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw parseSupabaseError(error);
+    return data ?? null;
+  } catch (error) {
+    if (error.code) throw error;
+    throw handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getCommissionOverride', remittanceId });
+  }
+};
+
 // ============================================================================
 // GESTIÓN DE REMESAS (USUARIO)
 // ============================================================================
@@ -682,38 +746,25 @@ export const calculateRemittance = async (typeId, amount, offer = null) => {
       type.exchange_rate
     );
 
-    // Calculate commission - single source of truth formula
-    const commissionPercentage = (amount * (type.commission_percentage || 0)) / 100;
-    const commissionFixed = type.commission_fixed || 0;
-    const totalCommission = commissionPercentage + commissionFixed;
-
-    // Apply offer discount to commission if present
-    let discountAmount = 0;
-    if (offer && offer.discount_type && offer.discount_value) {
-      const discountType = normalizeDiscountType(offer.discount_type);
-      if (discountType === 'percentage') {
-        discountAmount = totalCommission * (offer.discount_value / 100);
-      } else if (discountType === 'fixed_amount') {
-        discountAmount = Math.min(offer.discount_value, totalCommission);
-      }
-      discountAmount = Math.round(discountAmount * 100) / 100;
-    }
-
-    const effectiveCommission = Math.max(0, totalCommission - discountAmount);
-
-    // Calculate delivery amount using the resolved exchange rate
-    const amountToDeliver = (amount * exchangeRate) - (effectiveCommission * exchangeRate);
-
-    return {
+    // Single rounding contract (calcForward); every value comes back already rounded to its stored scale
+    const calc = calcForward({
       amount,
       exchangeRate,
+      commissionPct: type.commission_percentage || 0,
+      commissionFixed: type.commission_fixed || 0,
+      offer
+    });
+
+    return {
+      amount: calc.amountSent,
+      exchangeRate: calc.exchangeRate,
       exchangeRateSource: rateSource,
       commissionPercentage: type.commission_percentage || 0,
       commissionFixed: type.commission_fixed || 0,
-      totalCommission: effectiveCommission,
-      originalCommission: totalCommission,
-      discountAmount,
-      amountToDeliver,
+      totalCommission: calc.effectiveCommission,
+      originalCommission: calc.totalCommission,
+      discountAmount: calc.discountAmount,
+      amountToDeliver: calc.amountToDeliver,
       currency: type.currency_code,
       deliveryCurrency: type.delivery_currency,
       deliveryMethod: type.delivery_method
@@ -768,16 +819,6 @@ export const calculateReverseRemittance = async (typeId, desiredReceiveAmount) =
       throw createNotFoundError('Remittance type', typeId);
     }
 
-    // Reverse formula:
-    // Normal: amountToDeliver = (amount - totalCommission) * exchange_rate
-    // Where: totalCommission = (amount * commission_percentage / 100) + commission_fixed
-    //
-    // Solving for amount:
-    // desiredReceive = (amount - (amount * commPct / 100) - commFixed) * exchangeRate
-    // desiredReceive / exchangeRate = amount * (1 - commPct/100) - commFixed
-    // (desiredReceive / exchangeRate) + commFixed = amount * (1 - commPct/100)
-    // amount = ((desiredReceive / exchangeRate) + commFixed) / (1 - commPct/100)
-
     // Get exchange rate from configured rates (exchange_rates table) or fallback to type rate
     const { rate: exchangeRate, source: rateSource } = await getRemittanceExchangeRate(
       type.currency_code,
@@ -788,15 +829,25 @@ export const calculateReverseRemittance = async (typeId, desiredReceiveAmount) =
     const commissionPercentage = type.commission_percentage || 0;
     const commissionFixed = type.commission_fixed || 0;
 
-    // Calculate amount to send
-    const denominator = 1 - (commissionPercentage / 100);
-    if (denominator <= 0) {
+    if (1 - (commissionPercentage / 100) <= 0) {
       throw createValidationError({ commission: 'Commission percentage cannot be 100% or more' });
     }
 
-    const amountToSend = ((desiredReceiveAmount / exchangeRate) + commissionFixed) / denominator;
+    // Rounded up to the cent, adjusted until the recipient gets at least what was requested
+    let amountToSend;
+    try {
+      amountToSend = calcReverse({
+        desiredReceive: desiredReceiveAmount,
+        exchangeRate,
+        commissionPct: commissionPercentage,
+        commissionFixed
+      });
+    } catch (calcError) {
+      throw createValidationError({ calculation: calcError.message }, 'Reverse calculation not possible');
+    }
+    const forward = calcForward({ amount: amountToSend, exchangeRate, commissionPct: commissionPercentage, commissionFixed });
 
-    // Validate against limits
+    // Validate against limits (on the final amount to send)
     if (amountToSend < type.min_amount) {
       throw createValidationError(
         { amount: `Amount to send (${amountToSend.toFixed(2)}) is below minimum ${type.min_amount} ${type.currency_code}` },
@@ -811,18 +862,15 @@ export const calculateReverseRemittance = async (typeId, desiredReceiveAmount) =
       );
     }
 
-    // Recalculate commission for display
-    const totalCommissionPercentage = (amountToSend * commissionPercentage) / 100;
-    const totalCommission = totalCommissionPercentage + commissionFixed;
-
     return {
-      amountToSend: Math.round(amountToSend * 100) / 100, // Round to 2 decimals
+      amountToSend,
+      amountToDeliver: forward.amountToDeliver,
       desiredReceiveAmount,
-      exchangeRate,
+      exchangeRate: forward.exchangeRate,
       exchangeRateSource: rateSource,
       commissionPercentage,
       commissionFixed,
-      totalCommission: Math.round(totalCommission * 100) / 100,
+      totalCommission: forward.effectiveCommission,
       currency: type.currency_code,
       deliveryCurrency: type.delivery_currency,
       deliveryMethod: type.delivery_method,
@@ -894,6 +942,7 @@ export const createRemittance = async (remittanceData) => {
     // Calculate using single source of truth (with optional offer discount)
     const calculation = await calculateRemittance(remittance_type_id, amount, offerForCalc);
     const {
+      amount: amountSent, // rounded to cents by the contract: what is stored and charged
       commissionPercentage,
       commissionFixed,
       totalCommission,
@@ -920,11 +969,11 @@ export const createRemittance = async (remittanceData) => {
           'Delivery not available for the selected destination'
         );
       }
-      const shipping = await calculateShippingCost(destinationProvince, amount, destinationMunicipality);
+      const shipping = await calculateShippingCost(destinationProvince, amountSent, destinationMunicipality);
       deliveryCost = shipping.cost;
       shippingZoneId = shipping.zone?.id ?? null;
     }
-    const totalToPay = calcTotalToPay({ amountSent: amount, deliveryCost });
+    const totalToPay = calcTotalToPay({ amountSent, deliveryCost });
 
     // Get authenticated user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -972,7 +1021,7 @@ export const createRemittance = async (remittanceData) => {
     const insertData = {
       user_id: user.id,
       remittance_type_id,
-      amount_sent: amount,
+      amount_sent: amountSent,
       delivery_cost: deliveryCost,
       shipping_zone_id: shippingZoneId,
       exchange_rate: exchangeRate,
