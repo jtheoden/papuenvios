@@ -6,6 +6,7 @@
 
 import { roundMoney } from '@/lib/moneyPure';
 import { DEFAULTS } from '@/lib/constants';
+import { normalizeDiscountType } from '@/lib/offerRules';
 import { resolveMarginInput, MARGIN_MIN, MARGIN_MAX } from '@/lib/marginResolver';
 
 // Same bounds as the profit_margin DB constraint (0..999.99); markup over cost may exceed 100%.
@@ -167,9 +168,10 @@ export const applyOffer = (subtotal, offer = null) => {
 
   let discountAmount = 0;
 
-  if (offer.discount_type === 'percentage') {
+  const discountType = normalizeDiscountType(offer.discount_type);
+  if (discountType === 'percentage') {
     discountAmount = calculateDiscount(subtotal, offer.discount_value);
-  } else if (offer.discount_type === 'fixed_amount') {
+  } else if (discountType === 'fixed_amount') {
     discountAmount = Math.min(parseFloat(offer.discount_value), subtotal);
   }
 
