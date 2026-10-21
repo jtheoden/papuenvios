@@ -189,12 +189,7 @@ export const handleError = (error, code = ERROR_CODES.INTERNAL_SERVER_ERROR, con
   // Log the error
   logError(appError, context);
 
-  return {
-    success: false,
-    error: getUserFriendlyMessage(appError.code, appError.message),
-    code: appError.code,
-    details: appError  // For debugging (remove in production)
-  };
+  return appError;
 };
 
 /**
@@ -206,7 +201,7 @@ export const asyncHandler = (fn) => {
     try {
       return await fn(...args);
     } catch (error) {
-      return handleError(error);
+      throw handleError(error);
     }
   };
 };
