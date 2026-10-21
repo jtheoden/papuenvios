@@ -17,6 +17,8 @@ import { resolve } from 'node:path';
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { dbSuiteSkipReason, connectAdmin, connectAs, endAll } from './db';
 import { loadActors } from './fixtures';
+import { calcForward } from '../../lib/remittanceCalculations';
+import golden from '../fixtures/remittanceGoldenVectors.json';
 
 const skipReason = await dbSuiteSkipReason({ tables: ['remittances', 'remittance_types', 'system_config', 'currencies', 'exchange_rates'] });
 const describeDb = skipReason ? describe.skip : describe;
@@ -25,7 +27,11 @@ const MIGRATION = 'supabase/migrations/20261017110000_phase15_s2_remittance_pric
 const MODE_KEY = 'remittance_pricing_guard_mode';
 const UNIFORM_MESSAGE = 'remittance_pricing_rejected';
 
-/** Mirror of the client arithmetic in calculateRemittance() (JS floats, commission NOT rounded). */
+/**
+ * Mirror of the PRE-wave-4 client arithmetic (JS floats, commission NOT rounded). Kept on purpose: a cached older
+ * bundle still sends these values and must keep passing. The current client sends calcForward() values (rounded),
+ * covered by 'payloads of the rounding contract' below.
+ */
 const clientCalc = (type, amount, offer = null) => {
   const sameCurrency = type.currency_code === type.delivery_currency;
   const rate = sameCurrency ? 1 : type.exchange_rate;
@@ -610,5 +616,58 @@ describeDb('phase 1.5 S2: remittance pricing guard (local Postgres)', () => {
       expect(failures).toBe(0);
       expect(worstSlack).toBeGreaterThan(0);
     }, 120000);
+
+    // Wave 4: createRemittance now stores the values of the rounding contract (calcForward), not the raw float arithmetic.
+    describe('payloads of the rounding contract (calcForward) pass in block mode without a single flag', () => {
+      const contractPayload = (type, amount, offer = null) => {
+        const sameCurrency = type.currency_code === type.delivery_currency;
+        const r = calcForward({
+          amount, exchangeRate: sameCurrency ? 1 : type.exchange_rate,
+          commissionPct: type.commission_percentage, commissionFixed: type.commission_fixed, offer
+        });
+        return payloadFor(type, r.amountSent, {
+          exchange_rate: r.exchangeRate, commission_total: r.effectiveCommission, amount_to_deliver: r.amountToDeliver,
+          ...(r.discountAmount ? { discount_amount: r.discountAmount } : {})
+        });
+      };
+
+      it('every golden forward vector, plus a round-down case (101 USD at 820 and 2.4390243902%)', async () => {
+        await setMode('block');
+        const c = await asCustomer();
+        const vectors = [...golden.forward.map((v) => v.input), { amount: 101, rate: 820, pct: 2.4390243902, fixed: 0, offer: null }];
+        for (const [i, v] of vectors.entries()) {
+          const sameCurrency = v.rate === 1;
+          const type = await makeType(`p15-s2-golden-${i}`, {
+            currency_code: 'USD', delivery_currency: sameCurrency ? 'USD' : 'CUP', exchange_rate: v.rate,
+            commission_percentage: v.pct, commission_fixed: v.fixed, min_amount: 0.01, max_amount: null
+          });
+          const id = await insert(c, contractPayload(type, v.amount, v.offer));
+          expect(await flagsFor(id), JSON.stringify(v)).toEqual([]);
+        }
+      });
+
+      it('3000 seeded random amounts, rates and offers are accepted (400 of them also leave no flag)', async () => {
+        await setMode('block');
+        const c = await asCustomer();
+        const real = await makeType('p15-s2-real', { currency_code: 'USD', delivery_currency: 'CUP', exchange_rate: 820, commission_percentage: 2.4390243902, min_amount: 1, max_amount: 5000 });
+        const rnd = mulberry32(20261023);
+        const offers = [null, { discount_type: 'percentage', discount_value: 10 }, { discount_type: 'percentage', discount_value: 33 }, { discount_type: 'fixed_amount', discount_value: 1.25 }];
+        const pool = [types.cash, types.fixedFee, types.usd, real];
+        let failures = 0;
+        for (let i = 0; i < 3000; i += 1) {
+          const type = pool[i % pool.length];
+          const max = type.max_amount ? Number(type.max_amount) : 3000;
+          const amount = type.min_amount + rnd() * (Math.min(max, 3000) - type.min_amount);
+          const payload = contractPayload(type, amount, offers[i % offers.length]);
+          if (i % 7 === 0 && i / 7 < 400) {
+            const id = await insert(c, payload);
+            expect(await flagsFor(id), JSON.stringify(payload)).toEqual([]);
+          } else if (!(await probe(c, payload)).ok) {
+            failures += 1;
+          }
+        }
+        expect(failures).toBe(0);
+      }, 180000);
+    });
   });
 });
