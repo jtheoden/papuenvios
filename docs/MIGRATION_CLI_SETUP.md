@@ -81,10 +81,12 @@ DB_PASSWORD=your_actual_database_password
 
 # Keep these as-is
 SUPABASE_PROJECT_ID=qcwnlbpultscerwdnzbm
-SUPABASE_ACCESS_TOKEN=sbp_660a64450ab81afe4c6e80fa4b2c8ff5cfd7ee9a
+SUPABASE_ACCESS_TOKEN=sbp_<tu-token>
 ```
 
 > **Security Note:** `.env.local` is in `.gitignore` - it's never committed to git
+
+> **Nota de seguridad:** los tokens (`SUPABASE_ACCESS_TOKEN`, service role key, etc.) se leen de variables de entorno locales y nunca se commitean. Un test (`src/tests/unit/noSecretsInRepo.test.js`) falla si aparece uno en los archivos trackeados.
 
 ### Verify Configuration
 
