@@ -1732,6 +1732,7 @@
       "shippingInfo": "Información de Envío",
       "paymentProof": "Comprobante de Pago",
       "viewFullSize": "Ver en tamaño completo",
+      "paymentProofError": "No se pudo cargar el comprobante. Intenta de nuevo.",
       "noPaymentProof": "Sin comprobante de pago",
       "close": "Cerrar",
       "closeOrderDetails": "Cerrar detalles de la orden"

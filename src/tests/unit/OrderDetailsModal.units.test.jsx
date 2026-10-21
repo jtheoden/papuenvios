@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('@/lib/paymentProofService', () => ({ getPaymentProofSignedUrl: vi.fn().mockResolvedValue({ success: false }) }));
 import { render, screen, within, waitFor } from '@testing-library/react';
 
 let currentLanguage = 'es';
