@@ -17,6 +17,7 @@ import {
   updateRecipientAddress,
   deleteRecipientAddress
 } from '@/lib/recipientService';
+import { findEquivalentAddress } from '@/lib/recipientIdentity';
 import { getProvinceNames, getMunicipalitiesByProvince } from '@/lib/cubanLocations';
 
 const MyRecipientsPage = ({ onNavigate }) => {
@@ -26,6 +27,7 @@ const MyRecipientsPage = ({ onNavigate }) => {
   const [recipients, setRecipients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [editingRecipient, setEditingRecipient] = useState(null);
   const [provinces, setProvinces] = useState([]);
   const [municipalities, setMunicipalities] = useState([]);
@@ -165,42 +167,54 @@ const MyRecipientsPage = ({ onNavigate }) => {
       return;
     }
 
-    let result;
-    if (editingRecipient) {
-      result = await updateRecipient(editingRecipient.id, formData);
-      if (result.success && addressForm.province && addressForm.address_line_1) {
-        if (editingRecipient.addresses?.[0]) {
-          await updateRecipientAddress(editingRecipient.addresses[0].id, addressForm);
-        } else {
+    if (saving) return;
+    setSaving(true);
+    try {
+      let result;
+      if (editingRecipient) {
+        result = await updateRecipient(editingRecipient.id, formData);
+        if (result.success && addressForm.province && addressForm.address_line_1) {
+          if (editingRecipient.addresses?.[0]) {
+            await updateRecipientAddress(editingRecipient.addresses[0].id, addressForm);
+          } else {
+            await addRecipientAddress({
+              recipient_id: editingRecipient.id,
+              ...addressForm
+            });
+          }
+        }
+      } else {
+        result = await createRecipient(formData);
+        // An existing recipient may already have this very address: do not stack a duplicate
+        const hasTypedAddress = addressForm.province && addressForm.address_line_1;
+        if (result.success && hasTypedAddress && !(result.existing && findEquivalentAddress(result.recipient.addresses, addressForm))) {
           await addRecipientAddress({
-            recipient_id: editingRecipient.id,
+            recipient_id: result.recipient.id,
             ...addressForm
           });
         }
       }
-    } else {
-      result = await createRecipient(formData);
-      if (result.success && addressForm.province && addressForm.address_line_1) {
-        await addRecipientAddress({
-          recipient_id: result.recipient.id,
-          ...addressForm
+
+      if (result.success) {
+        toast({
+          title: t('common.success'),
+          description: result.existing
+            ? t('recipients.recipientAlreadyExists')
+            : editingRecipient ? t('recipients.recipientUpdated') : t('recipients.recipientCreated')
+        });
+        handleCloseForm();
+        loadRecipients();
+      } else {
+        toast({
+          title: t('common.error'),
+          description: result.code === 'DB_UNIQUE_VIOLATION'
+            ? t('recipients.recipientDuplicateOnEdit')
+            : (result.error ?? result.message),
+          variant: 'destructive'
         });
       }
-    }
-
-    if (result.success) {
-      toast({
-        title: t('common.success'),
-        description: editingRecipient ? t('recipients.recipientUpdated') : t('recipients.recipientCreated')
-      });
-      handleCloseForm();
-      loadRecipients();
-    } else {
-      toast({
-        title: t('common.error'),
-        description: result.error,
-        variant: 'destructive'
-      });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -604,7 +618,9 @@ const MyRecipientsPage = ({ onNavigate }) => {
                   </button>
                   <button
                     type="submit"
-                    className={`flex-1 ${getPrimaryButtonStyle()} flex items-center justify-center gap-2`}
+                    disabled={saving}
+                    aria-busy={saving}
+                    className={`flex-1 ${getPrimaryButtonStyle()} flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed`}
                   >
                     <Save className="h-5 w-5" />
                     {editingRecipient ? t('recipients.updateButton') : t('common.save')}

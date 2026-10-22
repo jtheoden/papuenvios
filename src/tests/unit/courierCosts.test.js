@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ES from '@/translations/ES.json';
 import EN from '@/translations/EN.json';
-import { computeCourierCostTotals } from '@/lib/dashboardMetrics';
+import { computeCourierCostTotals, computeRemittanceCourierTotals } from '@/lib/dashboardMetrics';
 
 const state = vi.hoisted(() => ({ pages: [], calls: [] }));
 vi.mock('@/lib/supabase', () => ({
@@ -18,12 +18,12 @@ vi.mock('@/lib/supabase', () => ({
   }
 }));
 
-import { listOrderCourierCosts } from '@/lib/courierCostService';
+import { listOrderCourierCosts, listRemittanceCourierCosts } from '@/lib/courierCostService';
 
 const NOW = new Date('2026-10-14T21:00:00Z');
 const hoursAgo = (h) => new Date(NOW.getTime() - h * 3600 * 1000).toISOString();
 const daysAgo = (d) => hoursAgo(d * 24);
-const order = (id, status, created_at) => ({ id, status, created_at });
+const order = (id, status, created_at) => ({ id, status, created_at, payment_status: 'validated', validated_at: created_at });
 
 describe('computeCourierCostTotals', () => {
   const orders = [
@@ -46,7 +46,7 @@ describe('computeCourierCostTotals', () => {
     ['nullcost', null]
   ]);
 
-  it('sums only active orders per rolling window, like the other order figures', () => {
+  it('sums only active orders per ET calendar window, like the other order figures', () => {
     const t = computeCourierCostTotals(orders, costs, NOW);
     expect(t.dailyCourierCost).toBe(5.5);
     expect(t.monthlyCourierCost).toBe(9.5);
@@ -75,7 +75,7 @@ describe('computeCourierCostTotals', () => {
 
 describe('computeCourierCostTotals: difference over the same set of orders (W2) and missing rows (W1)', () => {
   const o = (id, shipping_cost, zone, created = hoursAgo(1), status = 'completed') =>
-    ({ id, status, created_at: created, shipping_cost, shipping_zone_id: zone });
+    ({ id, status, created_at: created, payment_status: 'validated', validated_at: created, shipping_cost, shipping_zone_id: zone });
 
   it('compares charged vs courier only on orders WITH a recorded tariff', () => {
     const orders = [o('a', '10', 'z1'), o('b', '20', 'z2')]; // b has no row
@@ -113,8 +113,8 @@ describe('computeCourierCostTotals: difference over the same set of orders (W2) 
 
     it('does not count an order older than the cutoff, it stays unrecorded', () => {
       const t = computeCourierCostTotals([o('old', '5', 'z1', hoursAgo(20))], new Map(), NOW, CUT);
-      expect(t.dailyCourierMissingRow).toBe(0);
-      expect(t.dailyCourierUnrecorded).toBe(1);
+      expect(t.monthlyCourierMissingRow).toBe(0);
+      expect(t.monthlyCourierUnrecorded).toBe(1);
     });
 
     it('counts a newer order with zone and no row', () => {
@@ -164,6 +164,67 @@ describe('computeCourierCostTotals: difference over the same set of orders (W2) 
     expect(t.yearlyCourierMissingRow).toBe(0);
     expect(t.yearlyCourierCollected).toBe(0);
     expect(t.yearlyCourierDifference).toBeNull();
+  });
+});
+
+describe('computeRemittanceCourierTotals', () => {
+  const rem = (id, extra = {}) => ({
+    id, status: 'processing', payment_validated_at: hoursAgo(1), created_at: hoursAgo(2),
+    delivery_cost: '15', shipping_zone_id: 'z1', ...extra
+  });
+
+  it('sums the courier cost and the delivery charge of the same remittances, dated by payment_validated_at', () => {
+    const t = computeRemittanceCourierTotals([rem('a')], new Map([['a', 4]]), NOW, hoursAgo(5));
+    expect(t.dailyRemittanceCourierCost).toBe(4);
+    expect(t.dailyRemittanceCourierCollected).toBe(15);
+    expect(t.dailyRemittanceCourierDifference).toBe(11);
+    expect(t.yearlyRemittanceCourierCost).toBe(4);
+  });
+
+  it('ignores remittances without a delivery zone, not validated ones and validations outside the window', () => {
+    const rows = [
+      rem('nozone', { shipping_zone_id: null, delivery_cost: '0' }),
+      rem('pending', { status: 'payment_pending' }),
+      rem('old', { payment_validated_at: hoursAgo(24 * 60) })
+    ];
+    const t = computeRemittanceCourierTotals(rows, new Map([['nozone', 9], ['pending', 9], ['old', 9]]), NOW, hoursAgo(5));
+    expect(t.dailyRemittanceCourierCost).toBe(0);
+    expect(t.dailyRemittanceCourierUnrecorded).toBe(0);
+    expect(t.monthlyRemittanceCourierCost).toBe(0);
+    expect(t.yearlyRemittanceCourierCost).toBe(9); // only 'old' falls in the year
+  });
+
+  it('separates "no tariff recorded" from a cost of zero: the difference is null (n/a)', () => {
+    const t = computeRemittanceCourierTotals([rem('a')], new Map([['a', null]]), NOW, hoursAgo(5));
+    expect(t.dailyRemittanceCourierCost).toBe(0);
+    expect(t.dailyRemittanceCourierUnrecorded).toBe(1);
+    expect(t.dailyRemittanceCourierDifference).toBeNull();
+  });
+
+  it('flags a remittance created after the first snapshot that has no row as missing', () => {
+    const t = computeRemittanceCourierTotals([rem('a')], new Map(), NOW, hoursAgo(10));
+    expect(t.dailyRemittanceCourierMissingRow).toBe(1);
+    const legacy = computeRemittanceCourierTotals([rem('a', { created_at: hoursAgo(20) })], new Map(), NOW, hoursAgo(10));
+    expect(legacy.dailyRemittanceCourierMissingRow).toBe(0);
+    expect(legacy.dailyRemittanceCourierUnrecorded).toBe(1);
+  });
+});
+
+describe('listRemittanceCourierCosts', () => {
+  beforeEach(() => { state.pages = []; state.calls = []; });
+
+  it('reads remittance_courier_costs into a Map remittance id -> amount with firstRecordedAt', async () => {
+    state.pages = [{ data: [{ remittance_id: 'r1', amount_usd: '4.00', created_at: '2026-10-14T10:00:00Z' }, { remittance_id: 'r2', amount_usd: null, created_at: '2026-10-14T11:00:00Z' }], error: null }];
+    const map = await listRemittanceCourierCosts();
+    expect(state.calls[0].table).toBe('remittance_courier_costs');
+    expect(map.get('r1')).toBe(4);
+    expect(map.get('r2')).toBeNull();
+    expect(map.firstRecordedAt).toBe('2026-10-14T10:00:00.000Z');
+  });
+
+  it('throws when the table cannot be read (not deployed yet)', async () => {
+    state.pages = [{ data: null, error: { code: '42P01', message: 'relation does not exist' } }];
+    await expect(listRemittanceCourierCosts()).rejects.toBeTruthy();
   });
 });
 

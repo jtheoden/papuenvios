@@ -58,3 +58,15 @@ describe('OrderDetailsModal payer phone', () => {
     expect(EN.adminOrders.detail.payerPhone).toBeTruthy();
   });
 });
+
+describe('OrderDetailsModal delivery without a photo (W6a)', () => {
+  it.each(['delivered', 'completed'])('shows the "no photo" badge when a %s order has no delivery proof', (status) => {
+    renderModal({ status, delivered_at: '2026-01-05T00:00:00Z', delivery_proof_url: null });
+    expect(screen.getByText('adminOrders.detail.noDeliveryPhoto')).toBeInTheDocument();
+  });
+
+  it.each([['dispatched', null], ['delivered', 'u/o/p.jpg']])('does not show it for %s with proof %j', (status, delivery_proof_url) => {
+    renderModal({ status, delivery_proof_url });
+    expect(screen.queryByText('adminOrders.detail.noDeliveryPhoto')).toBeNull();
+  });
+});

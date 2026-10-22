@@ -12,31 +12,38 @@ import { ERROR_CODES, AppError, parseSupabaseError, logError } from './errorHand
 const PAGE_SIZE = 1000;
 
 /**
- * @returns {Promise<Map<string, number|null> & { firstRecordedAt: string|null }>} order id -> USD amount (null = no
+ * Reads a whole snapshot table (one row per order/remittance) in pages.
+ * @returns {Promise<Map<string, number|null> & { firstRecordedAt: string|null }>} id -> USD amount (null = no
  * tariff was configured). `firstRecordedAt` is the ISO instant of the oldest snapshot row (the moment the feature
  * started recording), null while the table is empty. It is a property of the Map so existing callers keep working.
  */
-export const listOrderCourierCosts = async () => {
+const listCourierCosts = async (table, keyColumn, operation) => {
   const costs = new Map();
   let firstMs = Infinity;
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await supabase
-      .from('order_courier_costs')
-      .select('order_id, amount_usd, created_at')
-      .order('order_id', { ascending: true })
+      .from(table)
+      .select(`${keyColumn}, amount_usd, created_at`)
+      .order(keyColumn, { ascending: true })
       .range(from, from + PAGE_SIZE - 1);
     if (error) {
       const appError = parseSupabaseError(error) ?? new AppError('Unknown error', ERROR_CODES.DB_ERROR, 500);
-      logError(appError, { operation: 'listOrderCourierCosts' });
+      logError(appError, { operation });
       throw appError;
     }
     (data || []).forEach((row) => {
       const ms = Date.parse(row.created_at);
       if (ms < firstMs) firstMs = ms;
-      costs.set(row.order_id, row.amount_usd === null || row.amount_usd === undefined ? null : Number(row.amount_usd));
+      costs.set(row[keyColumn], row.amount_usd === null || row.amount_usd === undefined ? null : Number(row.amount_usd));
     });
     if (!data || data.length < PAGE_SIZE) break;
   }
   costs.firstRecordedAt = Number.isFinite(firstMs) ? new Date(firstMs).toISOString() : null;
   return costs;
 };
+
+export const listOrderCourierCosts = () => listCourierCosts('order_courier_costs', 'order_id', 'listOrderCourierCosts');
+
+/** Same snapshot for remittances (table remittance_courier_costs, cash deliveries only). Throws if not deployed yet. */
+export const listRemittanceCourierCosts = () =>
+  listCourierCosts('remittance_courier_costs', 'remittance_id', 'listRemittanceCourierCosts');

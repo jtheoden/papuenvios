@@ -352,7 +352,8 @@ describeDb('order transition RPCs', () => {
     it.each([['123'], ['9'.repeat(31)]])('submit_proof rejects the phone %j', async (phone) => {
       await invalidArgument('order_submit_proof', [PROOF, null, phone], ['pending', 'pending'], 'owner');
     });
-    it.each([[null], [''], ['a/../b.jpg']])('mark_delivered needs a proof path (%j)', async (path) => {
+    // W6a: the delivery photo is optional; when a path IS given its shape is still validated.
+    it.each([['a/../b.jpg'], ['/abs.jpg'], ['back\\slash.jpg'], ['x'.repeat(501)]])('mark_delivered rejects a malformed proof path (%j)', async (path) => {
       await invalidArgument('order_mark_delivered', [path], ['dispatched', 'validated']);
     });
   });
@@ -411,6 +412,32 @@ describeDb('order transition RPCs', () => {
       const r = await call(c, 'order_mark_delivered', [id, DELIVERY]);
       expect(r.delivery_proof_url).toBe(DELIVERY);
       expect(r.delivered_at).not.toBeNull();
+    });
+
+    it.each([[null], [''], ['   ']])('mark_delivered without a proof (%j) delivers and stores NULL, never an empty string', async (path) => {
+      const id = await seed('dispatched', 'validated');
+      const c = await as(actors.adminId);
+      const r = await call(c, 'order_mark_delivered', [id, path]);
+      expect(r.status).toBe('delivered');
+      expect(r.delivery_proof_url).toBeNull();
+      expect(r.delivered_at).not.toBeNull();
+    });
+
+    it('order_mark_delivered can be called with the order id alone (proof argument has a default)', async () => {
+      const id = await seed('dispatched', 'validated');
+      const c = await as(actors.adminId);
+      const r = await call(c, 'order_mark_delivered', [id]);
+      expect(r).toMatchObject({ status: 'delivered', delivery_proof_url: null });
+    });
+
+    it('mark_delivered writes "Delivered with proof" / "Delivered without proof" to the history', async () => {
+      const withProof = await seed('dispatched', 'validated');
+      const without = await seed('dispatched', 'validated');
+      const c = await as(actors.adminId);
+      await call(c, 'order_mark_delivered', [withProof, DELIVERY]);
+      await call(c, 'order_mark_delivered', [without, null]);
+      expect((await history(withProof))[0].notes).toBe('Delivered with proof');
+      expect((await history(without))[0].notes).toBe('Delivered without proof');
     });
 
     it('complete stamps completed_at and appends notes without losing the previous ones', async () => {

@@ -32,7 +32,7 @@ vi.mock('@/components/ActivityLogTab', () => ({ default: () => null }));
 vi.mock('@/lib/supabase', () => {
   const makeChain = (table) => {
     const chain = {};
-    ['select', 'eq', 'in', 'order', 'range'].forEach((m) => { chain[m] = () => chain; });
+    ['select', 'eq', 'in', 'order', 'range', 'gte'].forEach((m) => { chain[m] = () => chain; });
     chain.then = (resolve) => resolve({ data: [], count: 0, error: null, table });
     return chain;
   };

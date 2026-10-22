@@ -16,7 +16,6 @@ import {
   cancelRemittance,
   calculateDeliveryAlert,
   generateProofSignedUrl,
-  confirmDelivery,
   recalculateRemittanceAtCurrentRate,
   REMITTANCE_STATUS
 } from '@/lib/remittanceService';
@@ -54,8 +53,6 @@ const MyRemittancesPage = ({ onNavigate }) => {
   const [proofSignedUrl, setProofSignedUrl] = useState(null);
   const [deliveryProofSignedUrl, setDeliveryProofSignedUrl] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [showDeliveryProofModal, setShowDeliveryProofModal] = useState(false);
-  const [deliveryProofFile, setDeliveryProofFile] = useState(null);
   const [uploadData, setUploadData] = useState({
     file: null,
     reference: '',
@@ -63,7 +60,6 @@ const MyRemittancesPage = ({ onNavigate }) => {
     notes: ''
   });
   const [imagePreview, setImagePreview] = useState(null);
-  const [deliveryProofPreview, setDeliveryProofPreview] = useState(null);
 
   // Guided WhatsApp confirmation shown after a late payment-proof upload
   const [showProofConfirmation, setShowProofConfirmation] = useState(false);
@@ -330,7 +326,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
   // Generate signed URL for delivery proof
   useEffect(() => {
     const loadDeliveryProofUrl = async () => {
-      if (selectedRemittance?.delivery_proof_url && !showDeliveryProofModal) {
+      if (selectedRemittance?.delivery_proof_url) {
         setDeliveryProofSignedUrl(null);
         const result = await generateProofSignedUrl(selectedRemittance.delivery_proof_url, 'remittance-delivery-proofs');
         if (result.success) {
@@ -342,7 +338,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
     };
 
     loadDeliveryProofUrl();
-  }, [selectedRemittance?.delivery_proof_url, showDeliveryProofModal]);
+  }, [selectedRemittance?.delivery_proof_url]);
 
   const handleUploadProof = (remittance) => {
     setSelectedRemittance(remittance);
@@ -371,23 +367,6 @@ const MyRemittancesPage = ({ onNavigate }) => {
       reader.readAsDataURL(file);
     } else {
       setImagePreview(null);
-    }
-  };
-
-  // Handle delivery proof file change with preview generation
-  const handleDeliveryProofChange = (e) => {
-    const file = e.target.files[0];
-    setDeliveryProofFile(file);
-
-    // Generate preview
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setDeliveryProofPreview(reader.result);
-      };
-      reader.readAsDataURL(file);
-    } else {
-      setDeliveryProofPreview(null);
     }
   };
 
@@ -546,37 +525,6 @@ const MyRemittancesPage = ({ onNavigate }) => {
       toast({
         title: t('common.error'),
         description: transitionMessage(t, error, error?.message || t('common.error')),
-        variant: 'destructive'
-      });
-    }
-  };
-
-  const handleUploadDeliveryProof = async () => {
-    if (!selectedRemittance || !deliveryProofFile) {
-      toast({
-        title: t('common.error'),
-        description: 'Por favor selecciona una foto de evidencia',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    try {
-      const result = await confirmDelivery(selectedRemittance.id, deliveryProofFile);
-      toast({
-        title: t('common.success'),
-        description: 'Evidencia de entrega subida correctamente',
-      });
-      setDeliveryProofFile(null);
-      setDeliveryProofPreview(null);
-      setShowDeliveryProofModal(false);
-      await loadRemittances();
-      setSelectedRemittance(result);
-    } catch (error) {
-      console.error('Error uploading delivery proof:', error);
-      toast({
-        title: t('common.error'),
-        description: error.message,
         variant: 'destructive'
       });
     }
@@ -1278,6 +1226,14 @@ const MyRemittancesPage = ({ onNavigate }) => {
                       <Truck className="w-4 h-4" />
                       {t('remittances.user.deliveryEvidenceTitle')}
                     </h3>
+                    {(selectedRemittance.delivered_at || selectedRemittance.updated_at) && (
+                      <p className="text-sm text-gray-800 mb-3">
+                        {t('remittances.user.deliveredOn', {
+                          date: new Date(selectedRemittance.delivered_at || selectedRemittance.updated_at)
+                            .toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US')
+                        })}
+                      </p>
+                    )}
                     {selectedRemittance.delivery_proof_url ? (
                       <>
                         {deliveryProofSignedUrl ? (
@@ -1313,17 +1269,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                           </div>
                         )}
                       </>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center p-6 sm:p-12 bg-green-50 border-2 border-green-200 border-dashed rounded-lg">
-                        <Truck className="w-12 h-12 text-green-600 mb-4" />
-                        <p className="text-xs sm:text-sm font-medium text-green-800 text-center">
-                          {t('remittances.user.deliveryEvidencePending')}
-                        </p>
-                        <p className="text-xs text-green-700 text-center mt-2">
-                          {t('remittances.user.uploadDeliveryProof')}
-                        </p>
-                      </div>
-                    )}
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -1331,90 +1277,12 @@ const MyRemittancesPage = ({ onNavigate }) => {
 
             {/* Botones de Acción */}
             <div className="mt-6 pt-6 border-t space-y-3">
-              {/* Upload Delivery Proof Button - Only show if delivered and no proof yet */}
-              {selectedRemittance.status === REMITTANCE_STATUS.DELIVERED && !selectedRemittance.delivery_proof_url && (
-                <button
-                  onClick={() => setShowDeliveryProofModal(true)}
-                  className="w-full py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center justify-center gap-2 text-sm"
-                >
-                  <Upload className="h-4 w-4" />
-                  {t('remittances.user.uploadDeliveryProofButton')}
-                </button>
-              )}
-
               <button
                 onClick={() => setSelectedRemittance(null)}
                 className="w-full py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm"
               >
                 {t('remittances.user.closeButton')}
               </button>
-            </div>
-          </motion.div>
-        </div>
-      )}
-
-      {/* Delivery Proof Upload Modal */}
-      {showDeliveryProofModal && selectedRemittance && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 sm:p-6 overflow-y-auto"
-          onClick={() => setShowDeliveryProofModal(false)}
-        >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl p-4 sm:p-6 max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-xl sm:text-2xl font-bold gradient-text mb-4">
-              {t('remittances.user.uploadDeliveryProofTitle')}
-            </h2>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
-                  {t('remittances.user.remittanceLabel')}
-                </label>
-                <p className="font-semibold">{selectedRemittance.remittance_number}</p>
-                <p className="text-xs sm:text-sm text-gray-600">
-                  {selectedRemittance.amount_to_deliver} {selectedRemittance.currency_delivered}
-                </p>
-              </div>
-
-              <FileUploadWithPreview
-                label={t('remittances.user.deliveryPhotoLabel')}
-                accept="image/*"
-                value={deliveryProofFile}
-                preview={deliveryProofPreview}
-                onChange={handleDeliveryProofChange}
-                previewPosition="above"
-              />
-
-              <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                <p className="text-xs text-green-800">
-                  {t('remittances.user.deliveryPhotoTip')}
-                </p>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowDeliveryProofModal(false);
-                    setDeliveryProofFile(null);
-                    setDeliveryProofPreview(null);
-                  }}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm"
-                >
-                  {t('common.cancel')}
-                </button>
-                <button
-                  onClick={handleUploadDeliveryProof}
-                  className={`flex-1 ${getPrimaryButtonStyle()} flex items-center justify-center gap-2 text-sm`}
-                >
-                  <Upload className="h-4 w-4" />
-                  {t('remittances.user.send')}
-                </button>
-              </div>
             </div>
           </motion.div>
         </div>

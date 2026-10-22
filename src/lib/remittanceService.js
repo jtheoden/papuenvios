@@ -1181,7 +1181,8 @@ const syncRemittanceZelle = async (remittance, status, performedBy, operation) =
       referenceId: remittance.id,
       transactionType: ZELLE_TRANSACTION_TYPES.REMITTANCE,
       status,
-      amount: remittance.amount_sent || 0,
+      // What the customer actually paid (same total the Zelle record is created with), not just amount_sent.
+      amount: calcTotalToPay({ amountSent: remittance.amount_sent || 0, deliveryCost: remittance.delivery_cost || 0 }),
       zelleAccountId: remittance.zelle_account_id,
       validatedBy: performedBy
     });
@@ -1765,13 +1766,23 @@ export const startProcessing = async (remittanceId) => {
   }
 };
 
+const MIME_EXTENSIONS = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/heic': 'heic' };
+
+// A name without a dot used to yield the whole name as "extension": take it from the name only when it looks like one.
+const proofExtension = (file) => {
+  const fromName = file.name?.includes('.') ? file.name.split('.').pop().toLowerCase() : '';
+  return /^[a-z0-9]{1,5}$/.test(fromName) ? fromName : (MIME_EXTENSIONS[file.type] ?? 'jpg');
+};
+
 /**
  * Confirm delivery of a remittance (Admin)
- * Marks remittance as delivered with delivery proof. Requires proof file or existing proof.
+ * The delivery photo is OPTIONAL: a new file wins, else the stored proof is kept, else it is delivered without one.
+ * The file goes to remittance-delivery-proofs as {remittance.user_id}/{remittance.id}_delivery_proof_{timestamp}.ext
+ * (owner folder first, as the customer's read policy expects; the stored delivery_proof_url is what the views sign).
  * @param {string} remittanceId - Remittance ID
  * @param {File} proofFile - Optional new delivery proof file
  * @param {string} notes - Optional delivery notes
- * @throws {AppError} If validation fails, no proof provided, or update fails
+ * @throws {AppError} If validation fails, the upload fails, or the transition fails
  * @returns {Promise<Object>} Updated remittance
  */
 export const confirmDelivery = async (remittanceId, proofFile = null, notes = '') => {
@@ -1797,26 +1808,23 @@ export const confirmDelivery = async (remittanceId, proofFile = null, notes = ''
       throw createNotFoundError('Remittance', remittanceId);
     }
 
-    // CRITICAL: Require delivery proof - either new file or existing proof
-    const hasExistingProof = remittance.delivery_proof_url && remittance.delivery_proof_url.trim() !== '';
-    if (!proofFile && !hasExistingProof) {
-      throw new Error('Delivery proof required. Please provide a photo or document as evidence.');
-    }
-
-    let proofPath = null; // null = keep the stored proof
+    let proofPath = null; // null = keep the stored proof (or none)
     if (proofFile) {
-      const user = await requireAuthUser('confirmDelivery');
-      const fileExt = proofFile.name.split('.').pop();
-      proofPath = `${user.id}/delivery/${remittance.remittance_number}_delivery.${fileExt}`;
+      if (!proofFile.type?.startsWith('image/')) {
+        throw createValidationError({ proofFile: 'The delivery proof must be an image' });
+      }
+      // Unique per attempt: the bucket's UPDATE policy is owner-only, so a retry (maybe by another admin) must never overwrite.
+      // Owner folder first, shape accepted by the RPC (no '..', no leading '/', no backslash).
+      proofPath = `${remittance.user_id}/${remittance.id}_delivery_proof_${Date.now()}.${proofExtension(proofFile)}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('remittance-proofs')
-        .upload(proofPath, proofFile, { upsert: true });
+        .from('remittance-delivery-proofs')
+        .upload(proofPath, proofFile, { upsert: false });
 
       if (uploadError) {
         const appError = parseSupabaseError(uploadError);
         logError(appError, { operation: 'confirmDelivery - upload', filePath: proofPath });
-        throw appError;
+        throw Object.assign(appError, { stage: 'upload' }); // lets the dialog offer "retry / confirm without photo"
       }
     }
 

@@ -7,6 +7,7 @@ import {
   REASON_MAX_LENGTH,
   validateCommissionOverride,
   calcCommissionOverride,
+  isLowerOnlyCommission,
 } from '@/lib/commissionOverrideRules';
 
 const KEY = 'remittances.admin.commissionOverride';
@@ -28,7 +29,13 @@ const CommissionOverrideModal = ({ remittance, override = null, onClose, onSaved
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const errors = validateCommissionOverride({ commission, reason, amountSent });
+  const lowerOnly = isLowerOnlyCommission(remittance);
+  const errors = validateCommissionOverride({
+    commission,
+    reason,
+    amountSent,
+    maxCommission: lowerOnly ? currentCommission : undefined,
+  });
   const valid = Object.keys(errors).length === 0;
   const preview = errors.commission
     ? null
@@ -83,6 +90,11 @@ const CommissionOverrideModal = ({ remittance, override = null, onClose, onSaved
         </h2>
         <p className="text-sm font-medium text-gray-500 mb-2">{remittance.remittance_number}</p>
         <p className="text-sm text-gray-600 mb-4">{t(`${KEY}.modalIntro`)}</p>
+        {lowerOnly && (
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-4">
+            {t(`${KEY}.lowerOnlyHint`)}
+          </p>
+        )}
 
         <dl className="grid grid-cols-2 gap-3 text-sm mb-4">
           <div>
@@ -119,7 +131,7 @@ const CommissionOverrideModal = ({ remittance, override = null, onClose, onSaved
             />
             {errors.commission && (
               <p id="commission-override-value-error" role="alert" className="text-xs text-red-600 mt-1">
-                {t(`${KEY}.errorCommissionRange`)}
+                {errors.commission === 'lowerOnly' ? t(`${KEY}.errorLowerOnly`) : t(`${KEY}.errorCommissionRange`)}
               </p>
             )}
           </div>

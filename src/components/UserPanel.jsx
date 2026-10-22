@@ -23,6 +23,7 @@ import { derivePercentFromAmount } from '@/lib/discountDisplayService';
 import { useUserDiscounts } from '@/hooks/useUserDiscounts';
 import { useRealtimeRemittances, useRealtimeOrders } from '@/hooks/useRealtimeSubscription';
 import AdminWorkTabs from '@/components/admin/AdminWorkTabs';
+import DeliveryProofModal from '@/components/admin/modals/DeliveryProofModal';
 import OrderComboComponents from '@/components/OrderComboComponents';
 import { formatQuantityWithUnit } from '@/lib/productUnits';
 import { useOrderItemLines } from '@/hooks/useOrderItemLines';
@@ -85,7 +86,7 @@ const UserPanel = ({ onNavigate }) => {
   const [rejectionReason, setRejectionReason] = useState('');
   const [actionOrderId, setActionOrderId] = useState(null);
   const [trackingInfo, setTrackingInfo] = useState('');
-  const [deliveryProofFile, setDeliveryProofFile] = useState(null);
+  const [showDeliveryDialog, setShowDeliveryDialog] = useState(false);
   const [retryProofFile, setRetryProofFile] = useState(null);
   const [retryProofReference, setRetryProofReference] = useState('');
   const [retryPayerPhone, setRetryPayerPhone] = useState('');
@@ -291,7 +292,7 @@ const UserPanel = ({ onNavigate }) => {
     setLoadingDetails(true);
     setShowOrderDetails(true);
     setTrackingInfo('');
-    setDeliveryProofFile(null);
+    setShowDeliveryDialog(false);
     setRetryProofFile(null);
 
     try {
@@ -433,16 +434,22 @@ const UserPanel = ({ onNavigate }) => {
     }
   };
 
-  const handleMarkDelivered = async () => {
-    if (!selectedOrder?.id || !deliveryProofFile) return;
+  // Called by the delivery dialog with { file } (file may be null: the photo is optional). Errors propagate so the
+  // dialog shows them with its "retry / confirm without photo" options.
+  const handleMarkDelivered = async ({ file }) => {
+    if (!selectedOrder?.id) return;
     setProcessingAction(true);
     try {
-      await markOrderAsDelivered(selectedOrder.id, deliveryProofFile, user.id);
-      await loadUserOrders();
-      const refreshed = await getOrderById(selectedOrder.id);
-      setSelectedOrder(refreshed);
-    } catch (error) {
-      notifyError(t, transitionErrorKey(error, 'userPanel.markDeliveredError'));
+      await markOrderAsDelivered(selectedOrder.id, file, user.id);
+      // The delivery is done: close the dialog first. A failing refresh below is a refresh problem, not a delivery
+      // failure (retrying the delivery would only hit invalid_transition).
+      setShowDeliveryDialog(false);
+      try {
+        await loadUserOrders();
+        setSelectedOrder(await getOrderById(selectedOrder.id));
+      } catch {
+        notifyError(t, 'userPanel.loadOrderDetailsError');
+      }
     } finally {
       setProcessingAction(false);
     }
@@ -1669,6 +1676,14 @@ const UserPanel = ({ onNavigate }) => {
                           </div>
                         )}
 
+                        {/* Delivery without a photo (it is optional): the customer still sees the delivery date */}
+                        {!selectedOrder.delivery_proof_url && selectedOrder.delivered_at && ['delivered', 'completed'].includes(selectedOrder.status) && (
+                          <p className="mt-6 text-sm text-green-700 font-medium flex items-center gap-2">
+                            <Truck className="h-4 w-4" />
+                            {language === 'es' ? 'Entregado el' : 'Delivered on'}: {new Date(selectedOrder.delivered_at).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US')}
+                          </p>
+                        )}
+
                         {/* Delivery Proof Section - Show when admin has uploaded delivery evidence */}
                         {selectedOrder.delivery_proof_url && (
                           <div className="mt-6">
@@ -1909,19 +1924,13 @@ const UserPanel = ({ onNavigate }) => {
                         <p className="font-semibold mb-2" style={getTextStyle(visualSettings, 'primary')}>
                           {language === 'es' ? 'Confirmar entrega' : 'Confirm delivery'}
                         </p>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => setDeliveryProofFile(e.target.files?.[0] || null)}
-                          className="mb-3"
-                        />
                         <Button
-                          onClick={handleMarkDelivered}
-                          disabled={processingAction || !deliveryProofFile}
+                          onClick={() => setShowDeliveryDialog(true)}
+                          disabled={processingAction}
                           className="bg-green-600 hover:bg-green-700 text-white"
                         >
                           {processingAction ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
-                          {language === 'es' ? 'Marcar como entregado' : 'Mark delivered'}
+                          {t('adminOrders.action.markAsDelivered')}
                         </Button>
                       </div>
                     )}
@@ -2062,6 +2071,18 @@ const UserPanel = ({ onNavigate }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {showDeliveryDialog && selectedOrder && (
+        <DeliveryProofModal
+          summary={[
+            { label: 'adminOrders.deliveryModal.orderLabel', value: selectedOrder.order_number },
+            { label: 'adminOrders.deliveryModal.customerLabel', value: selectedOrder.user_profiles?.full_name || selectedOrder.user_profiles?.email || '' }
+          ]}
+          onClose={() => setShowDeliveryDialog(false)}
+          onConfirm={handleMarkDelivered}
+          t={t}
+        />
+      )}
     </div>
   );
 };

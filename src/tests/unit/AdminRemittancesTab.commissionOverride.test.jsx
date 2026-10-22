@@ -84,10 +84,21 @@ describe('AdminRemittancesTab - commission adjustment entry point', () => {
     auth.isSuperAdmin = false;
   });
 
-  it.each(['payment_pending', 'payment_rejected'])('an admin sees the adjust button for %s', async (status) => {
-    REMITTANCES = [row('1', status)];
+  it.each(['payment_pending', 'payment_rejected', 'payment_proof_uploaded', 'payment_validated'])(
+    'an admin sees the ENABLED adjust button for %s',
+    async (status) => {
+      REMITTANCES = [row('1', status)];
+      await openDetail();
+      const button = screen.getByRole('button', { name: `${KEY}.adjustButton` });
+      expect(button).toBeInTheDocument();
+      expect(button).not.toHaveAttribute('aria-disabled', 'true');
+    }
+  );
+
+  it('payment_validated shows the lower-only hint next to the button', async () => {
+    REMITTANCES = [row('1', 'payment_validated')];
     await openDetail();
-    expect(screen.getByRole('button', { name: `${KEY}.adjustButton` })).toBeInTheDocument();
+    expect(screen.getByText(`${KEY}.lowerOnlyHint`)).toBeInTheDocument();
   });
 
   it('a super_admin sees it too', async () => {
@@ -98,12 +109,18 @@ describe('AdminRemittancesTab - commission adjustment entry point', () => {
     expect(screen.getByRole('button', { name: `${KEY}.adjustButton` })).toBeInTheDocument();
   });
 
-  it.each(['payment_proof_uploaded', 'payment_validated', 'processing', 'completed', 'cancelled'])(
-    'is hidden for %s',
+  it.each(['processing', 'delivered', 'completed', 'cancelled'])(
+    'is always visible to admins but DISABLED for %s, explained with the reason and the current status',
     async (status) => {
       REMITTANCES = [row('1', status)];
       await openDetail();
-      expect(screen.queryByRole('button', { name: `${KEY}.adjustButton` })).not.toBeInTheDocument();
+      const button = screen.getByRole('button', { name: `${KEY}.adjustButton` });
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+      const reason = document.getElementById(button.getAttribute('aria-describedby'));
+      expect(reason).toHaveTextContent(`${KEY}.disabledReason`);
+      expect(reason).toHaveTextContent(`remittances.status.`);
+      fireEvent.click(button);
+      expect(screen.queryByRole('dialog', { name: `${KEY}.modalTitle` })).not.toBeInTheDocument();
     }
   );
 

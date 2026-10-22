@@ -45,7 +45,7 @@ import {
   restockOrder
 } from '@/lib/orderService';
 import { isInsufficientStockError } from '@/lib/stockErrors';
-import { transitionErrorKey } from '@/lib/statusConflict';
+import { isStatusConflictError, transitionErrorKey } from '@/lib/statusConflict';
 import { ORDER_STATUS, PAYMENT_STATUS, ITEM_TYPES } from '@/lib/constants';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -130,8 +130,6 @@ const AdminOrdersTab = () => {
 
   // Delivery proof modal state
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
-  const [deliveryProofFile, setDeliveryProofFile] = useState(null);
-  const [deliveryProofPreview, setDeliveryProofPreview] = useState(null);
 
   // Custom modal states
   const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
@@ -458,60 +456,34 @@ const AdminOrdersTab = () => {
     setShowDeliveryModal(true);
   };
 
-  const handleDeliveryProofFileChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  // The dialog calls this with { file } (file may be null: the photo is optional). It throws on failure so the
+  // dialog can show the error and its "retry / confirm without photo" options.
+  const handleConfirmDelivery = async ({ file }) => {
+    if (!selectedOrder) return;
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      showToast(t('adminOrders.messages.invalidImage'), 'error');
-      return;
-    }
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      showToast(t('adminOrders.messages.imageTooLarge'), 'error');
-      return;
-    }
-
-    setDeliveryProofFile(file);
-
-    // Create preview
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setDeliveryProofPreview(reader.result);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleSubmitDeliveryProof = async () => {
-    if (!deliveryProofFile || !selectedOrder) {
-      showToast(t('adminOrders.messages.selectImage'), 'error');
-      return;
-    }
-
-    // Validate order status - only allow uploading proof for dispatched orders
+    // Only dispatched orders can be delivered
     if (selectedOrder.status !== 'dispatched') {
-      showToast(t('adminOrders.messages.onlyDispatchedOrders'), 'error');
-      return;
+      scheduleReload(); // the row we hold is stale
+      throw new Error(t('adminOrders.messages.onlyDispatchedOrders'));
     }
 
     setActionLoading(selectedOrder.id);
     try {
-      const result = await markOrderAsDelivered(selectedOrder.id, deliveryProofFile, user.id);
-      if (operationSucceeded(result)) {
-        showToast(t('adminOrders.messages.deliverSuccess'), 'success');
-        setShowDeliveryModal(false);
-        setDeliveryProofFile(null);
-        setDeliveryProofPreview(null);
-        setSelectedOrder(null);
-        scheduleReload(); // Refresh orders
-      } else {
-        showToast(`${t('common.error')}: ${result.error}`, 'error');
+      const result = await markOrderAsDelivered(selectedOrder.id, file, user.id);
+      if (!operationSucceeded(result)) {
+        throw new Error(result?.error || t('common.error'));
       }
+      showToast(t(file ? 'adminOrders.messages.deliverSuccess' : 'adminOrders.messages.deliveredWithoutPhoto'), 'success');
+      setShowDeliveryModal(false);
+      setSelectedOrder(null);
+      scheduleReload(); // Refresh orders
     } catch (err) {
-      console.error('Error uploading delivery proof:', err);
+      if (!isStatusConflictError(err)) throw err; // the dialog shows it with its retry options
+      // Another admin (or the owner) moved the order first: nothing to retry, show the fresh list.
       showToast(t(transitionErrorKey(err)), 'error');
+      setShowDeliveryModal(false);
+      setSelectedOrder(null);
+      scheduleReload();
     } finally {
       setActionLoading(null);
     }
@@ -953,17 +925,15 @@ const AdminOrdersTab = () => {
       {/* Delivery Proof Upload Modal */}
       {showDeliveryModal && selectedOrder && (
         <DeliveryProofModal
-          order={selectedOrder}
+          summary={[
+            { label: 'adminOrders.deliveryModal.orderLabel', value: selectedOrder.order_number },
+            { label: 'adminOrders.deliveryModal.customerLabel', value: selectedOrder.user_name }
+          ]}
           onClose={() => {
             setShowDeliveryModal(false);
             setSelectedOrder(null);
-            setDeliveryProofFile(null);
-            setDeliveryProofPreview(null);
           }}
-          onFileChange={handleDeliveryProofFileChange}
-          onSubmit={handleSubmitDeliveryProof}
-          preview={deliveryProofPreview}
-          loading={actionLoading === selectedOrder.id}
+          onConfirm={handleConfirmDelivery}
           t={t}
         />
       )}
