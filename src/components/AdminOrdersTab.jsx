@@ -45,6 +45,7 @@ import {
   restockOrder
 } from '@/lib/orderService';
 import { isInsufficientStockError } from '@/lib/stockErrors';
+import { transitionErrorKey } from '@/lib/statusConflict';
 import { ORDER_STATUS, PAYMENT_STATUS, ITEM_TYPES } from '@/lib/constants';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -362,7 +363,7 @@ const AdminOrdersTab = () => {
           }
         } catch (err) {
           console.error('Error validating payment:', err);
-          showToast(isInsufficientStockError(err) ? t('adminOrders.messages.validateStockError') : t('common.error'), 'error');
+          showToast(t(isInsufficientStockError(err) ? 'adminOrders.messages.validateStockError' : transitionErrorKey(err)), 'error');
         } finally {
           setActionLoading(null);
         }
@@ -392,7 +393,7 @@ const AdminOrdersTab = () => {
           }
         } catch (err) {
           console.error('Error rejecting payment:', err);
-          showToast(t('common.error'), 'error');
+          showToast(t(transitionErrorKey(err)), 'error');
         } finally {
           setActionLoading(null);
         }
@@ -417,7 +418,7 @@ const AdminOrdersTab = () => {
           }
         } catch (err) {
           console.error('Error starting processing:', err);
-          showToast(t('common.error'), 'error');
+          showToast(t(transitionErrorKey(err)), 'error');
         } finally {
           setActionLoading(null);
         }
@@ -443,7 +444,7 @@ const AdminOrdersTab = () => {
           }
         } catch (err) {
           console.error('Error marking as dispatched:', err);
-          showToast(t('common.error'), 'error');
+          showToast(t(transitionErrorKey(err)), 'error');
         } finally {
           setActionLoading(null);
         }
@@ -510,7 +511,7 @@ const AdminOrdersTab = () => {
       }
     } catch (err) {
       console.error('Error uploading delivery proof:', err);
-      showToast(t('common.error'), 'error');
+      showToast(t(transitionErrorKey(err)), 'error');
     } finally {
       setActionLoading(null);
     }
@@ -533,7 +534,7 @@ const AdminOrdersTab = () => {
           }
         } catch (err) {
           console.error('Error completing order:', err);
-          showToast(t('common.error'), 'error');
+          showToast(t(transitionErrorKey(err)), 'error');
         } finally {
           setActionLoading(null);
         }
@@ -578,7 +579,7 @@ const AdminOrdersTab = () => {
               }
             } catch (err) {
               console.error('Error cancelling order:', err);
-              showToast(t('common.error'), 'error');
+              showToast(t(transitionErrorKey(err)), 'error');
             } finally {
               setActionLoading(null);
             }

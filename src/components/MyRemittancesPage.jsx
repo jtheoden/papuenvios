@@ -1,3 +1,4 @@
+import { transitionMessage } from '@/lib/statusConflict';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -463,7 +464,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
       console.error('Error uploading payment proof:', error);
       toast({
         title: t('common.error'),
-        description: error?.message || t('remittances.wizard.errorUploadingProof') || t('common.error'),
+        description: transitionMessage(t, error, error?.message || t('remittances.wizard.errorUploadingProof') || t('common.error')),
         variant: 'destructive'
       });
     }
@@ -544,7 +545,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
       console.error('Error cancelling remittance:', error);
       toast({
         title: t('common.error'),
-        description: error?.message || t('common.error'),
+        description: transitionMessage(t, error, error?.message || t('common.error')),
         variant: 'destructive'
       });
     }

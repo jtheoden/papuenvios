@@ -4,10 +4,12 @@ const fromMock = vi.fn();
 const getUserMock = vi.fn();
 const logActivityMock = vi.fn();
 const upsertZelleMock = vi.fn();
+const rpcMock = vi.fn();
 
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     from: (...args) => fromMock(...args),
+    rpc: (...args) => rpcMock(...args),
     auth: { getUser: (...args) => getUserMock(...args) }
   }
 }));
@@ -58,22 +60,25 @@ const buildRemittance = (overrides = {}) => ({
   ...overrides
 });
 
+/** What each transition RPC leaves on the row (the database applies it; here it is emulated). */
+const AFTER_RPC = {
+  remittance_validate_payment: { status: 'payment_validated', payment_validated: true },
+  remittance_reject_payment: { status: 'payment_rejected' }
+};
+
 /**
- * Wires supabase.from('remittances') so the initial fetch returns `remittance`
- * and the subsequent update returns the row merged with the update payload.
+ * The transition RPC answers with the row after the transition; the service then re-reads it with its type.
  */
 const mockRemittanceTable = (remittance) => {
+  let current = remittance;
+  rpcMock.mockImplementation(async (name) => {
+    current = { ...remittance, ...AFTER_RPC[name] };
+    return { data: current, error: null };
+  });
   fromMock.mockImplementation(() => ({
     select: () => ({
       eq: () => ({
-        single: () => Promise.resolve({ data: remittance, error: null })
-      })
-    }),
-    update: (payload) => ({
-      eq: () => ({
-        select: () => ({
-          single: () => Promise.resolve({ data: { ...remittance, ...payload }, error: null })
-        })
+        single: () => Promise.resolve({ data: current, error: null })
       })
     })
   }));
@@ -88,6 +93,7 @@ const NON_INSERTED_RESULTS = [
 
 beforeEach(() => {
   fromMock.mockReset();
+  rpcMock.mockReset();
   getUserMock.mockReset();
   logActivityMock.mockReset();
   upsertZelleMock.mockReset();

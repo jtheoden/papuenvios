@@ -58,7 +58,7 @@ describeDb('atomic stock reservation (local Postgres)', () => {
     actors = await loadActors(admin);
     await admin.query(`
       CREATE OR REPLACE FUNCTION public.__test_admin_cancel(p_order_id uuid) RETURNS jsonb
-      LANGUAGE plpgsql SECURITY INVOKER AS $fn$
+      LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $fn$
       BEGIN
         UPDATE public.orders SET status = 'cancelled' WHERE id = p_order_id;
         RETURN public.release_order_inventory(p_order_id);
@@ -66,7 +66,7 @@ describeDb('atomic stock reservation (local Postgres)', () => {
       $fn$`);
     await admin.query(`
       CREATE OR REPLACE FUNCTION public.__test_admin_reopen(p_order_id uuid) RETURNS jsonb
-      LANGUAGE plpgsql SECURITY INVOKER AS $fn$
+      LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $fn$
       BEGIN
         UPDATE public.orders SET status = 'pending', payment_status = 'pending' WHERE id = p_order_id;
         RETURN public.reserve_order_inventory(p_order_id);
@@ -259,10 +259,7 @@ describeDb('atomic stock reservation (local Postgres)', () => {
     expect((await readInventory(admin, productId))[0].reserved).toBe(2);
 
     // Cancel as the owner would (allowed by the owner guard), then 6 concurrent releases.
-    await owner.query(
-      `UPDATE public.orders SET status = 'cancelled', payment_status = 'rejected', rejection_reason = 'cancelled_by_user' WHERE id = $1`,
-      [orderId]
-    );
+    await owner.query(`SELECT public.order_cancel($1, 'cancelled_by_user')`, [orderId]);
     const workers = await Promise.all(Array.from({ length: 6 }, () => asCustomer()));
     const results = await fireTogether(
       workers.map((client) => ({ client, sql: releaseSql, params: [orderId] }))
@@ -562,7 +559,7 @@ describeDb('atomic stock reservation (local Postgres)', () => {
       );
       const adminClient = await asAdmin();
       await adminClient.query(`SELECT ${consumeSql}`, [orderId]);
-      await adminClient.query(`UPDATE public.orders SET status = 'cancelled' WHERE id = $1`, [orderId]);
+      await adminClient.query(`SELECT public.order_cancel($1, 'admin_cancel')`, [orderId]);
       await adminClient.query(`SELECT ${releaseSql}`, [orderId]);
 
       for (let run = 0; run < 2; run += 1) {
@@ -919,7 +916,6 @@ describeDb('atomic stock reservation (local Postgres)', () => {
       // Free the units again: the reopen now reserves anew.
       await admin.query(`UPDATE public.orders SET status = 'cancelled' WHERE id = $1`, [other]);
       await owner.query(`SELECT ${releaseSql}`, [other]);
-      await adminClient.query(`UPDATE public.orders SET status = 'cancelled' WHERE id = $1`, [orderId]);
       const reopened = await adminClient.query('SELECT public.__test_admin_reopen($1::uuid) AS r', [orderId]);
       expect(reopened.rows[0].r.ok).toBe(true);
       expect((await readInventory(admin, productId))[0]).toMatchObject({ quantity: 2, reserved: 2 });
@@ -1024,7 +1020,7 @@ describeDb('atomic stock reservation (local Postgres)', () => {
     ]);
     const owner = await asCustomer();
     await owner.query(`SELECT ${reserveSql}`, [orderId]);
-    await owner.query(`UPDATE public.orders SET status = 'cancelled', payment_status = 'rejected', rejection_reason = 'x' WHERE id = $1`, [orderId]);
+    await owner.query(`SELECT public.order_cancel($1, 'cancelled_by_user')`, [orderId]);
     await owner.query(`SELECT ${releaseSql}`, [orderId]);
     expect((await readInventory(admin, productId))[0].reserved).toBe(0);
 
@@ -1032,10 +1028,9 @@ describeDb('atomic stock reservation (local Postgres)', () => {
     const other = await seedOrder(admin, actors, tracker, [{ type: 'product', id: productId, quantity: 1 }]);
     await owner.query(`SELECT ${reserveSql}`, [other]);
 
-    // Reopen: status back to pending, then reserve -> insufficient -> cancelled again with reason.
-    await owner.query(`UPDATE public.orders SET status = 'pending', payment_status = 'pending' WHERE id = $1`, [orderId]);
-    const { rows } = await owner.query(`SELECT ${reserveSql} AS r`, [orderId]);
-    expect(rows[0].r).toMatchObject({ ok: false, reason: 'insufficient_stock' });
+    // Reopen goes through order_reopen (E8): it re-reserves in the same transaction, finds the stock gone and
+    // refuses with stock_refused, so the order simply stays cancelled (no pending -> cancelled flip-flop).
+    await expect(owner.query('SELECT public.order_reopen($1)', [orderId])).rejects.toMatchObject({ code: 'P0001', message: 'stock_refused' });
     expect(await readOrder(admin, orderId)).toMatchObject({ status: 'cancelled', stock_reserved: false });
     expect((await readInventory(admin, productId))[0].reserved).toBe(1);
   });

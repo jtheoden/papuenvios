@@ -197,6 +197,21 @@ describe('AdminRemittancesInbox', () => {
     expect(onChanged).not.toHaveBeenCalled();
   });
 
+  it('explains a status conflict (someone else already moved the remittance) instead of the raw error', async () => {
+    showModal.mockResolvedValue('');
+    const conflict = Object.assign(new Error('Remittance r changed state'), {
+      code: 'CONFLICT',
+      context: { reason: 'invalid_transition' }
+    });
+    validatePayment.mockRejectedValueOnce(conflict);
+    renderInbox();
+    const row = screen.getAllByRole('listitem').find((li) => li.getAttribute('data-remittance-number') === 'REM-PROOF-OLD');
+    fireEvent.click(within(row).getByRole('button', { name: 'adminInbox.validate' }));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive', description: 'common.statusConflict' }))
+    );
+  });
+
   it('shows a busy skeleton while loading', () => {
     const { container } = renderInbox({ remittances: [], loading: true });
     expect(container.querySelector('[aria-busy="true"]')).toBeTruthy();

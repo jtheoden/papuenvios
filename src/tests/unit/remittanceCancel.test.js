@@ -2,11 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const fromMock = vi.fn();
 const getUserMock = vi.fn();
+const rpcMock = vi.fn();
 const updateSpy = vi.fn();
 
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     from: (...args) => fromMock(...args),
+    rpc: (...args) => rpcMock(...args),
     auth: { getUser: (...args) => getUserMock(...args) }
   }
 }));
@@ -34,68 +36,49 @@ vi.mock('@/lib/currencyService', () => ({ getExchangeRate: vi.fn() }));
 
 import { cancelRemittance } from '@/lib/remittanceService';
 
-const OWNER = { id: 'user-1', email: 'owner@example.com' };
-
-const mockRemittanceTable = (remittance) => {
-  fromMock.mockImplementation(() => ({
-    select: () => ({
-      eq: () => ({
-        single: () => Promise.resolve({ data: remittance, error: null })
-      })
-    }),
-    update: (payload) => {
-      updateSpy(payload);
-      return {
-        eq: () => ({
-          select: () => ({
-            single: () => Promise.resolve({ data: { ...remittance, ...payload }, error: null })
-          })
-        })
-      };
-    }
-  }));
-};
-
-const buildRemittance = (status) => ({
-  id: 'rem-1',
-  remittance_number: 'REM-2026-0001',
-  user_id: OWNER.id,
-  status
-});
+const cancelled = { id: 'rem-1', remittance_number: 'REM-2026-0001', user_id: 'user-1', status: 'cancelled' };
 
 beforeEach(() => {
   fromMock.mockReset();
+  rpcMock.mockReset();
   getUserMock.mockReset();
   updateSpy.mockReset();
-  getUserMock.mockResolvedValue({ data: { user: OWNER }, error: null });
+  fromMock.mockImplementation(() => ({
+    select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: cancelled, error: null }) }) }),
+    update: updateSpy
+  }));
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
-describe('remittanceService.cancelRemittance — allowed statuses', () => {
-  // Mirrors guard_remittance_owner_update in the database (owner may cancel until an admin validates)
-  it.each(['payment_pending', 'payment_rejected', 'payment_proof_uploaded'])('cancels a %s remittance', async (status) => {
-    mockRemittanceTable(buildRemittance(status));
+// The matrix (owner may cancel payment_pending / payment_rejected / payment_proof_uploaded only) lives in
+// remittance_cancel and is covered against a real database in src/tests/concurrency/remittanceTransitions.test.js.
+describe('remittanceService.cancelRemittance', () => {
+  it('cancels through remittance_cancel and never writes the table directly', async () => {
+    rpcMock.mockResolvedValue({ data: cancelled, error: null });
 
     const result = await cancelRemittance('rem-1', 'changed my mind');
 
     expect(result.status).toBe('cancelled');
-    expect(updateSpy).toHaveBeenCalledTimes(1);
-    expect(Object.keys(updateSpy.mock.calls[0][0]).sort()).toEqual(
-      ['cancellation_reason', 'cancelled_at', 'status', 'updated_at']
-    );
+    expect(rpcMock).toHaveBeenCalledWith('remittance_cancel', { p_remittance_id: 'rem-1', p_reason: 'changed my mind' });
+    expect(updateSpy).not.toHaveBeenCalled();
   });
 
-  it.each([
-    'payment_validated',
-    'processing',
-    'delivered',
-    'completed',
-    'cancelled'
-  ])('rejects cancelling a %s remittance without writing to the database', async (status) => {
-    mockRemittanceTable(buildRemittance(status));
+  it('surfaces a refused transition as a CONFLICT instead of swallowing it', async () => {
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: { code: '22023', message: 'invalid_transition', details: '{"status":"processing"}' }
+    });
 
-    await expect(cancelRemittance('rem-1', 'changed my mind')).rejects.toThrow();
+    await expect(cancelRemittance('rem-1', 'late')).rejects.toMatchObject({
+      code: 'CONFLICT',
+      context: { reason: 'invalid_transition' }
+    });
     expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it('requires a remittance id', async () => {
+    await expect(cancelRemittance('')).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 });

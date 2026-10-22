@@ -56,7 +56,8 @@ vi.mock('@/lib/zelleService', () => ({
   upsertZelleTransactionStatus: vi.fn()
 }));
 
-import { createOrder, generateOrderNumber, updateOrderStatus, cancelOrder } from '@/lib/orderService';
+import * as orderServiceModule from '@/lib/orderService';
+import { createOrder } from '@/lib/orderService';
 
 const baseOrderData = { userId: 'u1', totalAmount: 10, currencyId: 'c1', paymentReference: 'J', payerPhone: '+1 305 555 0100' };
 const items = [{ itemType: 'combo', itemId: 'p1', nameEs: 'a', nameEn: 'a', quantity: 1, unitPrice: 10, totalPrice: 10 }];
@@ -74,27 +75,21 @@ beforeEach(() => {
   rpcMock.mockResolvedValue({ data: { ok: true }, error: null });
 });
 
-describe('generateOrderNumber', () => {
-  it('keeps the ORD-YYYYMMDD-NNNNN format and varies between calls', async () => {
-    const nums = await Promise.all(Array.from({ length: 20 }, () => generateOrderNumber()));
-    nums.forEach((n) => expect(n).toMatch(/^ORD-\d{8}-\d{5}$/));
-    expect(new Set(nums).size).toBeGreaterThan(1);
-  });
-});
-
-describe('createOrder order_number collisions', () => {
-  it('retries with a NEW order number when the insert hits the order_number unique violation', async () => {
-    state.orderInsertResults = [uniqueViolation];
-    const result = await createOrder(baseOrderData, items);
-    expect(result.id).toBe('new');
-    expect(state.orderInserts).toHaveLength(2);
-    expect(state.orderInserts[1].order_number).not.toBe(state.orderInserts[0].order_number);
+describe('createOrder order_number (assigned by the database, ND-7)', () => {
+  it('does not send an order_number: the trigger set_order_number fills it', async () => {
+    await createOrder(baseOrderData, items);
+    expect(state.orderInserts).toHaveLength(1);
+    expect(state.orderInserts[0]).not.toHaveProperty('order_number');
   });
 
-  it('gives up after a bounded number of attempts with a unique-violation error', async () => {
-    state.orderInsertResults = [uniqueViolation, uniqueViolation, uniqueViolation, uniqueViolation, uniqueViolation];
+  it('no longer exports the client-side generator', () => {
+    expect(orderServiceModule.generateOrderNumber).toBeUndefined();
+  });
+
+  it('does not retry on a unique violation: it propagates', async () => {
+    state.orderInsertResults = [uniqueViolation, uniqueViolation];
     await expect(createOrder(baseOrderData, items)).rejects.toMatchObject({ code: 'DB_UNIQUE_VIOLATION' });
-    expect(state.orderInserts).toHaveLength(3);
+    expect(state.orderInserts).toHaveLength(1);
   });
 
   it('does not retry on other errors', async () => {
@@ -102,38 +97,18 @@ describe('createOrder order_number collisions', () => {
     await expect(createOrder(baseOrderData, items)).rejects.toBeTruthy();
     expect(state.orderInserts).toHaveLength(1);
   });
-
-  it('does not retry on a unique violation of a different constraint', async () => {
-    state.orderInsertResults = [{ data: null, error: { code: '23505', message: 'duplicate key ... "orders_other_key"' } }];
-    await expect(createOrder(baseOrderData, items)).rejects.toBeTruthy();
-    expect(state.orderInserts).toHaveLength(1);
-  });
 });
 
 describe('revertOrderToCancelled (reserve compensation)', () => {
-  it('logs when the compensating update returns an error instead of losing it', async () => {
-    rpcMock.mockResolvedValue({ data: null, error: { code: 'XX000', message: 'rpc down' } });
-    state.updateResult = { error: { code: '42501', message: 'update denied' } };
+  it('cancels through order_cancel and logs when that compensation fails instead of losing it', async () => {
+    rpcMock.mockImplementation(async (name) =>
+      name === 'order_cancel'
+        ? { data: null, error: { code: '42501', message: 'not_authorized' } }
+        : { data: null, error: { code: 'XX000', message: 'rpc down' } }
+    );
     await expect(createOrder(baseOrderData, items)).rejects.toBeTruthy();
     const ops = logErrorMock.mock.calls.map((c) => c[1]?.operation);
     expect(ops).toContain('revertOrderToCancelled');
-  });
-});
-
-describe('order_status_history insert errors are surfaced', () => {
-  const historyErr = { error: { code: '42501', message: 'history denied' } };
-
-  it('updateOrderStatus logs a failed history insert and still succeeds', async () => {
-    state.historyResult = historyErr;
-    await updateOrderStatus('ord-1', 'processing', 'admin-1', 'n');
-    const ops = logErrorMock.mock.calls.map((c) => c[1]?.operation);
-    expect(ops).toContain('updateOrderStatus - log history');
-  });
-
-  it('cancelOrder logs a failed history insert and still succeeds', async () => {
-    state.historyResult = historyErr;
-    await cancelOrder('ord-1', 'admin-1', 'reason');
-    const ops = logErrorMock.mock.calls.map((c) => c[1]?.operation);
-    expect(ops).toContain('cancelOrder - log history');
+    expect(rpcMock).toHaveBeenCalledWith('order_cancel', { p_order_id: 'new', p_reason: 'reservation_failed' });
   });
 });

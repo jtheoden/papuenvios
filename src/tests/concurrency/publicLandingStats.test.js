@@ -127,7 +127,7 @@ describeDb('get_public_landing_stats', () => {
   });
 
   it('first_year is the earliest year among orders and remittances', async () => {
-    await seedRemittance('pending', '2018-06-01T12:00:00Z');
+    await seedRemittance('payment_pending', '2018-06-01T12:00:00Z');
     const orderId = await seedOrder(admin, actors, tracker, [], { status: 'pending' });
     await admin.query(`UPDATE public.orders SET created_at = '2017-02-03T12:00:00Z' WHERE id = $1`, [orderId]);
     expect((await stats(admin)).first_year).toBe(2017);
