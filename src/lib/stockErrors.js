@@ -1,4 +1,4 @@
-import { ERROR_CODES } from './errorHandler';
+import { AppError, ERROR_CODES } from './errorHandler';
 
 /**
  * True when the error is the typed "not enough stock" error raised by the
@@ -30,3 +30,34 @@ export const isStockReservationRefusal = (error) =>
  */
 export const isStockBelowReservedError = (error) =>
   Boolean(error) && error.context?.reason === 'stock_below_reserved';
+
+/**
+ * Typed error for a stock refusal answered by the stock RPCs (reserve / consume / restock) or raised by the
+ * transition RPCs as `stock_refused` (the JSON answer travels in DETAIL).
+ * Shortage and invalid items -> INSUFFICIENT_STOCK; any other refusal -> INVALID_OPERATION (context.reason kept).
+ * @param {{reason?: string, product_id?: string, available?: number}} result
+ * @param {string} orderId
+ * @returns {AppError}
+ */
+export const stockRefusalToError = (result, orderId) => {
+  const reason = result.reason || 'unknown';
+  if (reason === 'insufficient_stock' || reason === 'invalid_item') {
+    return new AppError(
+      `Stock reservation refused: ${reason}`,
+      ERROR_CODES.INSUFFICIENT_STOCK,
+      409,
+      {
+        reason,
+        orderId,
+        productId: result.product_id ?? null,
+        available: result.available ?? null
+      }
+    );
+  }
+  return new AppError(
+    `Stock operation refused: ${reason}`,
+    ERROR_CODES.INVALID_OPERATION,
+    409,
+    { reason, orderId }
+  );
+};

@@ -230,8 +230,20 @@ const AdminOffersTab = () => {
       return;
     }
 
+    // Both dates are required: an offer without a window never expires (isOfferInWindow treats null as open-ended)
+    if (!formData.startDate || !formData.endDate) {
+      toast({
+        title: language === 'es' ? 'Fechas requeridas' : 'Dates required',
+        description: language === 'es'
+          ? 'La fecha de inicio y la de fin son obligatorias'
+          : 'Start date and end date are required',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     // Validate that start date is before end date
-    if (formData.startDate && formData.endDate && formData.startDate >= formData.endDate) {
+    if (formData.startDate >= formData.endDate) {
       toast({
         title: language === 'es' ? 'Error de fechas' : 'Date Error',
         description: language === 'es'
@@ -253,8 +265,8 @@ const AdminOffersTab = () => {
         min_purchase_amount: formData.minPurchaseAmount ? parseFloat(formData.minPurchaseAmount) : null,
         max_usage_global: formData.maxUsageGlobal ? parseInt(formData.maxUsageGlobal) : null,
         max_usage_per_user: formData.maxUsagePerUser ? parseInt(formData.maxUsagePerUser) : null,
-        start_date: formData.startDate ? formData.startDate : null,
-        end_date: formData.endDate ? formData.endDate : null,
+        start_date: formData.startDate,
+        end_date: formData.endDate,
         is_active: formData.isActive
       };
 
@@ -755,11 +767,12 @@ const AdminOffersTab = () => {
                 {/* Start Date */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {language === 'es' ? 'Fecha de Inicio' : 'Start Date'}
+                    {language === 'es' ? 'Fecha de Inicio *' : 'Start Date *'}
                   </label>
                   <input
                     type="date"
                     value={formData.startDate}
+                    required
                     onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   />
@@ -768,11 +781,12 @@ const AdminOffersTab = () => {
                 {/* End Date */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {language === 'es' ? 'Fecha de Fin' : 'End Date'}
+                    {language === 'es' ? 'Fecha de Fin *' : 'End Date *'}
                   </label>
                   <input
                     type="date"
                     value={formData.endDate}
+                    required
                     onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
                     min={formData.startDate || undefined}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"

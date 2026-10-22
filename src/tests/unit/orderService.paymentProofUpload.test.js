@@ -11,7 +11,7 @@ const ORDER = {
   payment_reference: 'John'
 };
 
-const state = { updatePayload: null };
+const state = { updatePayload: null, rpcCalls: [] };
 const uploadMock = vi.fn(async () => ({ error: null }));
 const getPublicUrlMock = vi.fn(() => ({ data: { publicUrl: 'https://public.test/leak' } }));
 
@@ -32,7 +32,10 @@ const makeQuery = () => {
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     from: vi.fn(() => makeQuery()),
-    rpc: vi.fn(),
+    rpc: vi.fn(async (name, args) => {
+      state.rpcCalls.push([name, args]);
+      return { data: { ...ORDER, payment_status: 'proof_uploaded' }, error: null };
+    }),
     storage: {
       from: vi.fn(() => ({
         upload: (...args) => uploadMock(...args),
@@ -56,6 +59,7 @@ const PHONE = '+13055550100';
 
 beforeEach(() => {
   state.updatePayload = null;
+  state.rpcCalls = [];
   vi.clearAllMocks();
 });
 
@@ -64,7 +68,8 @@ describe('orderService.uploadPaymentProof (private bucket)', () => {
     const result = await uploadPaymentProof(png(), 'ord-1', 'user-1', 'John', { payerPhone: PHONE });
     expect(getPublicUrlMock).not.toHaveBeenCalled();
     expect(result).toMatch(/^payment-proofs\/payment-proof-ord-1-\d+\.png$/);
-    expect(state.updatePayload.payment_proof_url).toBe(result);
+    expect(state.rpcCalls[0]).toEqual(['order_submit_proof', expect.objectContaining({ p_order_id: 'ord-1', p_proof_path: result })]);
+    expect(state.updatePayload).toBeNull();
     expect(uploadMock.mock.calls[0][0]).toBe(result);
   });
 

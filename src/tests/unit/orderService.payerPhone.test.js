@@ -11,7 +11,7 @@ const ORDER = {
   payment_reference: 'John'
 };
 
-const state = { inserts: [], updatePayload: null, fromCalls: 0 };
+const state = { inserts: [], updatePayload: null, fromCalls: 0, rpcCalls: [] };
 const uploadMock = vi.fn(async () => ({ error: null }));
 
 // Thenable chain: awaiting any step resolves to an empty successful result,
@@ -41,8 +41,13 @@ vi.mock('@/lib/supabase', () => ({
       state.fromCalls += 1;
       return makeQuery(table);
     }),
-    // createOrder reserves stock through the atomic RPC
-    rpc: vi.fn(async () => ({ data: { ok: true, reason: null }, error: null })),
+    // createOrder reserves stock through the atomic RPC; order_* transition RPCs answer with the order row
+    rpc: vi.fn(async (name, args) => {
+      state.rpcCalls.push([name, args]);
+      return name.startsWith('order_')
+        ? { data: { ...ORDER, payment_status: 'proof_uploaded' }, error: null }
+        : { data: { ok: true, reason: null }, error: null };
+    }),
     storage: {
       from: vi.fn(() => ({
         upload: (...args) => uploadMock(...args),
@@ -74,6 +79,7 @@ beforeEach(() => {
   state.inserts = [];
   state.updatePayload = null;
   state.fromCalls = 0;
+  state.rpcCalls = [];
   vi.clearAllMocks();
 });
 
@@ -98,13 +104,14 @@ describe('orderService.createOrder payer phone', () => {
 
 describe('orderService.uploadPaymentProof payer phone (late upload)', () => {
   it.each([[undefined], [''], ['abc']])(
-    'rejects payerPhone=%j before fetching the order or uploading to storage',
+    'rejects payerPhone=%j before uploading to storage or calling the RPC',
     async (payerPhone) => {
       await expect(
         uploadPaymentProof(file, 'ord-1', 'user-1', 'John', { payerPhone })
       ).rejects.toMatchObject({ code: expect.any(String) });
       expect(uploadMock).not.toHaveBeenCalled();
       expect(state.fromCalls).toBe(0);
+      expect(state.rpcCalls).toEqual([]);
       expect(state.updatePayload).toBeNull();
     }
   );
@@ -114,10 +121,13 @@ describe('orderService.uploadPaymentProof payer phone (late upload)', () => {
     expect(uploadMock).not.toHaveBeenCalled();
   });
 
-  it('persists the trimmed payer_phone in the proof update and keeps it out of activity_logs', async () => {
+  it('sends the trimmed payer_phone to order_submit_proof and keeps it out of activity_logs', async () => {
     await uploadPaymentProof(file, 'ord-1', 'user-1', 'John', { payerPhone: PHONE });
     expect(uploadMock).toHaveBeenCalledTimes(1);
-    expect(state.updatePayload.payer_phone).toBe('+1 305 555 0100');
+    const [name, args] = state.rpcCalls[0];
+    expect(name).toBe('order_submit_proof');
+    expect(args.p_payer_phone).toBe('+1 305 555 0100');
+    expect(state.updatePayload).toBeNull();
     expect(JSON.stringify(logActivityMock.mock.calls)).not.toContain('305');
   });
 });

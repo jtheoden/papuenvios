@@ -8,6 +8,11 @@ const REMITTANCE = {
 };
 
 const state = { updateCalled: false, updatePayload: null };
+const rpcMock = vi.fn(async (_name, args) => {
+  state.updateCalled = true;
+  state.updatePayload = { payer_phone: args.p_payer_phone, payment_reference: args.p_reference };
+  return { data: { ...REMITTANCE, status: 'payment_proof_uploaded', payment_proof_url: args.p_proof_path, payer_phone: args.p_payer_phone }, error: null };
+});
 const uploadMock = vi.fn(async () => ({ error: null }));
 
 const makeQuery = () => {
@@ -32,6 +37,7 @@ const makeQuery = () => {
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     from: vi.fn(() => makeQuery()),
+    rpc: (...a) => rpcMock(...a),
     auth: {
       getUser: vi.fn(async () => ({
         data: { user: { id: 'user-1', email: 'u@example.com', user_metadata: {} } },
@@ -83,7 +89,7 @@ describe('remittanceService.uploadPaymentProof notification', () => {
 describe('remittanceService.uploadPaymentProof payer phone', () => {
   beforeEach(resetState);
 
-  it('persists the trimmed payer_phone in the update payload', async () => {
+  it('sends the trimmed payer_phone to remittance_submit_proof', async () => {
     await uploadPaymentProof('rem-1', file, 'John Doe', 'note', { payerPhone: `  ${PHONE}  ` });
     expect(state.updatePayload).toMatchObject({ payer_phone: PHONE });
   });

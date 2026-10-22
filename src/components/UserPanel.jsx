@@ -8,6 +8,7 @@ import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2,
 import { getPaymentConfirmationBlocker } from '@/lib/orderPayerPhone';
 import { isValidPayerPhone, normalizePayerPhone, PAYER_PHONE_MAX_LENGTH } from '@/lib/payerPhone';
 import { isInsufficientStockError } from '@/lib/stockErrors';
+import { transitionErrorKey, transitionMessage } from '@/lib/statusConflict';
 import { getUserOrders, getOrderById, getAllOrders, getPendingOrdersCount, validatePayment, rejectPayment, cancelOrderByUser, uploadPaymentProof, markOrderAsDispatched, markOrderAsDelivered, completeOrder, reopenOrder, ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderService';
 import { getUserTestimonial, createTestimonial } from '@/lib/testimonialService';
 import { getMyRemittances, generateProofSignedUrl } from '@/lib/remittanceService';
@@ -319,7 +320,7 @@ const UserPanel = ({ onNavigate }) => {
         setSelectedOrder(null);
       }
     } catch (error) {
-      notifyError(t, 'userPanel.validatePaymentError');
+      notifyError(t, transitionErrorKey(error, 'userPanel.validatePaymentError'));
     } finally {
       setLoadingDetails(false);
       setActionOrderId(null);
@@ -345,7 +346,7 @@ const UserPanel = ({ onNavigate }) => {
         setSelectedOrder(null);
       }
     } catch (error) {
-      notifyError(t, 'userPanel.rejectPaymentError');
+      notifyError(t, transitionErrorKey(error, 'userPanel.rejectPaymentError'));
     } finally {
       setLoadingDetails(false);
       setActionOrderId(null);
@@ -362,7 +363,7 @@ const UserPanel = ({ onNavigate }) => {
       setShowOrderDetails(false);
       setSelectedOrder(null);
     } catch (error) {
-      notifyError(t, 'userPanel.cancelOrderError');
+      notifyError(t, transitionErrorKey(error, 'userPanel.cancelOrderError'));
     } finally {
       setProcessingAction(false);
     }
@@ -407,7 +408,7 @@ const UserPanel = ({ onNavigate }) => {
         title: t('common.error'),
         message: isInsufficientStockError(error)
           ? t('userPanel.reopenInsufficientStock')
-          : (error.message || t('userPanel.reopenOrderError')),
+          : transitionMessage(t, error, error.message || t('userPanel.reopenOrderError')),
         type: 'danger',
         confirmText: t('common.ok'),
         cancelText: null
@@ -426,7 +427,7 @@ const UserPanel = ({ onNavigate }) => {
       const refreshed = await getOrderById(selectedOrder.id);
       setSelectedOrder(refreshed);
     } catch (error) {
-      notifyError(t, 'userPanel.markDispatchedError');
+      notifyError(t, transitionErrorKey(error, 'userPanel.markDispatchedError'));
     } finally {
       setProcessingAction(false);
     }
@@ -441,7 +442,7 @@ const UserPanel = ({ onNavigate }) => {
       const refreshed = await getOrderById(selectedOrder.id);
       setSelectedOrder(refreshed);
     } catch (error) {
-      notifyError(t, 'userPanel.markDeliveredError');
+      notifyError(t, transitionErrorKey(error, 'userPanel.markDeliveredError'));
     } finally {
       setProcessingAction(false);
     }
@@ -456,7 +457,7 @@ const UserPanel = ({ onNavigate }) => {
       const refreshed = await getOrderById(selectedOrder.id);
       setSelectedOrder(refreshed);
     } catch (error) {
-      notifyError(t, 'userPanel.completeOrderError');
+      notifyError(t, transitionErrorKey(error, 'userPanel.completeOrderError'));
     } finally {
       setProcessingAction(false);
     }

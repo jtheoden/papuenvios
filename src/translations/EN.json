@@ -2,6 +2,9 @@
   "common": {
     "success": "Success",
     "error": "Error",
+    "statusNotAuthorized": "You do not have permission to perform this action.",
+    "statusUserDisabled": "Your account is disabled. Please contact support.",
+    "statusConflict": "The status changed while you were acting (someone else already processed it). Reload the list and try again.",
     "cancel": "Cancel",
     "loading": "Loading...",
     "loadingPlatform": "Loading your digital commerce platform...",
@@ -1765,7 +1768,7 @@
       "invalidImage": "Please select a valid image",
       "imageTooLarge": "File is too large. Max 5MB",
       "onlyDispatchedOrders": "You can only upload proof for dispatched orders",
-      "validateStockError": "Payment could not be validated: there is not enough stock for this order. The status was restored; check the inventory and try again.",
+      "validateStockError": "Payment could not be validated: there is not enough stock for this order. The order was left unchanged; check the inventory and try again.",
       "restockPrompt": "The cancelled order had already deducted its stock. Return the units only if you have confirmed the goods physically came back to the warehouse. Otherwise choose No: the stock stays deducted.",
       "restockSuccess": "Units returned to inventory",
       "restockNothing": "There were no units left to return",

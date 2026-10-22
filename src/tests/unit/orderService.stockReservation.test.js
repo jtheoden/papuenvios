@@ -20,7 +20,6 @@ const BASE_ORDER = {
 };
 
 const state = {
-  revertError: null,
   consumedRows: [],
   consumedError: null,
   log: [],
@@ -58,10 +57,9 @@ const makeQuery = (table) => {
         state.log.push('allocations:select');
         return resolve({ data: state.consumedError ? null : state.consumedRows, error: state.consumedError });
       }
-      const isRevert = table === 'orders' && lastPayload && lastPayload.status === 'pending' && 'validated_by' in lastPayload;
       return resolve({
         data: table === 'order_items' ? [{ id: 'oi-new' }] : [],
-        error: isRevert ? state.revertError : null
+        error: null
       });
     }
   };
@@ -74,7 +72,10 @@ vi.mock('@/lib/supabase', () => ({
     rpc: vi.fn(async (name, args) => {
       state.log.push(`rpc:${name}`);
       const responder = state.rpc[name];
-      return responder ? responder(args) : { data: { ok: true, reason: null }, error: null };
+      if (responder) return responder(args);
+      // order_* transition RPCs answer with the fresh order row
+      if (name.startsWith('order_')) return { data: { ...state.order, id: args.p_order_id }, error: null };
+      return { data: { ok: true, reason: null }, error: null };
     })
   }
 }));
@@ -96,7 +97,6 @@ import {
   rejectPayment,
   validatePayment,
   reopenOrder,
-  reopenOrderByAdmin,
   restockOrder,
   isInsufficientStockError
 } from '@/lib/orderService';
@@ -119,7 +119,6 @@ beforeEach(() => {
   state.log = [];
   state.updates = [];
   state.rpc = {};
-  state.revertError = null;
   state.consumedRows = [];
   state.consumedError = null;
   state.order = { ...BASE_ORDER, order_items: [...BASE_ORDER.order_items] };
@@ -162,80 +161,77 @@ describe('createOrder stock reservation', () => {
 
     await expect(createOrder(orderData, items)).rejects.toBeTruthy();
 
-    const cancel = state.updates.find((u) => u.table === 'orders');
-    expect(cancel.payload).toMatchObject({ status: 'cancelled', rejection_reason: 'reservation_failed' });
+    expect(rpcCalls('order_cancel')).toEqual([{ p_order_id: 'ord-1', p_reason: 'reservation_failed' }]);
+    expect(state.updates.filter((u) => u.table === 'orders')).toEqual([]);
   });
 });
 
-describe('cancel flows release the reservation exactly once', () => {
-  it('cancelOrder updates the status first and then calls release once', async () => {
-    state.order.status = 'pending';
-
+describe('cancel flows leave the release to the database (trigger, same transaction)', () => {
+  it('cancelOrder calls order_cancel once and never the release RPC or a direct UPDATE', async () => {
     await cancelOrder('ord-1', 'admin-1', 'duplicate');
 
-    expect(rpcCalls('release_order_inventory')).toEqual([{ p_order_id: 'ord-1' }]);
-    expect(state.log.indexOf('orders:update')).toBeLessThan(state.log.indexOf('rpc:release_order_inventory'));
+    expect(rpcCalls('order_cancel')).toEqual([{ p_order_id: 'ord-1', p_reason: 'duplicate' }]);
+    expect(rpcCalls('release_order_inventory')).toHaveLength(0);
+    expect(state.updates.filter((u) => u.table === 'orders')).toEqual([]);
     expect(supabase.from).not.toHaveBeenCalledWith('inventory');
   });
 
-  it('cancelOrder still succeeds when the release call fails (the sweep heals the orphan)', async () => {
-    state.rpc.release_order_inventory = () => ({ data: null, error: { message: 'boom' } });
+  it('cancelOrder surfaces a conflict when the order already moved', async () => {
+    state.rpc.order_cancel = () => ({ data: null, error: { code: '22023', message: 'invalid_transition', details: '{"status":"completed"}' } });
 
-    const result = await cancelOrder('ord-1', 'admin-1', 'duplicate');
-
-    expect(result.status).toBe('cancelled');
+    await expect(cancelOrder('ord-1', 'admin-1', 'duplicate')).rejects.toMatchObject({ code: 'CONFLICT' });
   });
 
-  it('cancelOrderByUser releases once after cancelling', async () => {
+  it('cancelOrderByUser calls order_cancel once and never the release RPC', async () => {
     await cancelOrderByUser('ord-1', 'user-1');
 
-    expect(rpcCalls('release_order_inventory')).toHaveLength(1);
-    expect(state.log.indexOf('orders:update')).toBeLessThan(state.log.indexOf('rpc:release_order_inventory'));
+    expect(rpcCalls('order_cancel')).toHaveLength(1);
+    expect(rpcCalls('release_order_inventory')).toHaveLength(0);
   });
 
   it('rejectPayment keeps the order pending for a retry and therefore does NOT release', async () => {
     await rejectPayment('ord-1', 'admin-1', 'wrong amount');
 
+    expect(rpcCalls('order_reject_payment')).toEqual([{ p_order_id: 'ord-1', p_reason: 'wrong amount' }]);
     expect(rpcCalls('release_order_inventory')).toHaveLength(0);
-    expect(state.updates.find((u) => u.table === 'orders').payload).toMatchObject({
-      status: 'pending',
-      payment_status: 'rejected'
-    });
+    expect(state.updates.filter((u) => u.table === 'orders')).toEqual([]);
   });
 });
 
-describe('validatePayment consumes the reservation', () => {
-  it('updates the order, then consumes through the RPC; no client-side inventory writes', async () => {
-    state.rpc.consume_order_inventory = () => okResult({ consumed: true });
-
+describe('validatePayment consumes the reservation inside order_validate_payment', () => {
+  it('is ONE RPC: no client-side consume, no UPDATE, no inventory writes', async () => {
     await validatePayment('ord-1', 'admin-1');
 
-    expect(rpcCalls('consume_order_inventory')).toEqual([{ p_order_id: 'ord-1' }]);
-    expect(state.log.indexOf('orders:update')).toBeLessThan(state.log.indexOf('rpc:consume_order_inventory'));
+    expect(rpcCalls('order_validate_payment')).toEqual([{ p_order_id: 'ord-1' }]);
+    expect(rpcCalls('consume_order_inventory')).toHaveLength(0);
+    expect(state.updates.filter((u) => u.table === 'orders')).toEqual([]);
     expect(supabase.from).not.toHaveBeenCalledWith('inventory');
     expect(supabase.from).not.toHaveBeenCalledWith('combo_items');
     expect(supabase.from).not.toHaveBeenCalledWith('inventory_movements');
   });
 
-  it('is a plain success for legacy orders (consume reports a no-op)', async () => {
-    state.rpc.consume_order_inventory = () => okResult({ consumed: false, reason: 'legacy_order' });
-
+  it('is a plain success for legacy orders (the RPC answers with the row)', async () => {
     await expect(validatePayment('ord-1', 'admin-1')).resolves.toMatchObject({ id: 'ord-1' });
   });
 
-  it('fails loudly when stock cannot be consumed (retry is safe: consume is idempotent)', async () => {
-    state.rpc.consume_order_inventory = () => insufficient;
+  it('fails loudly when stock cannot be consumed; the database rolled everything back, so there is no revert', async () => {
+    state.rpc.order_validate_payment = () => ({
+      data: null,
+      error: { code: 'P0001', message: 'stock_refused', details: JSON.stringify({ ok: false, reason: 'insufficient_stock', product_id: 'p1', available: 1 }) }
+    });
 
     const error = await validatePayment('ord-1', 'admin-1').catch((e) => e);
 
     expect(error.code).toBe('INSUFFICIENT_STOCK');
-    // The status change is undone so the admin can retry from the original state.
-    const revert = state.updates.filter((u) => u.table === 'orders').pop().payload;
-    expect(revert).toMatchObject({ status: 'pending', payment_status: 'proof_uploaded' });
+    expect(error.context).toMatchObject({ productId: 'p1', available: 1 });
+    expect(state.updates).toEqual([]);
   });
 
-  it('fails loudly on any other consume refusal', async () => {
-    state.rpc.consume_order_inventory = () => ({ data: { ok: false, reason: 'order_not_active' }, error: null });
+  it('fails loudly on any other stock refusal', async () => {
+    state.rpc.order_validate_payment = () => ({
+      data: null,
+      error: { code: 'P0001', message: 'stock_refused', details: JSON.stringify({ ok: false, reason: 'order_not_active' }) }
+    });
 
     const error = await validatePayment('ord-1', 'admin-1').catch((e) => e);
 
@@ -243,25 +239,25 @@ describe('validatePayment consumes the reservation', () => {
   });
 });
 
-describe('reopen flows re-reserve', () => {
+describe('reopenOrder re-reserves inside order_reopen', () => {
   beforeEach(() => {
-    state.order = { ...BASE_ORDER, status: 'cancelled', payment_status: 'rejected' };
+    state.order = { ...BASE_ORDER, status: 'pending', payment_status: 'pending' };
   });
 
-  it('reopenOrder sets pending, then reserves again; payload only has real orders columns', async () => {
+  it('is ONE RPC: no client UPDATE and no separate reserve call', async () => {
     const reopened = await reopenOrder('ord-1', 'user-1');
 
     expect(reopened.status).toBe('pending');
-    expect(rpcCalls('reserve_order_inventory')).toEqual([{ p_order_id: 'ord-1' }]);
-    const payload = state.updates.find((u) => u.table === 'orders').payload;
-    expect(payload).toMatchObject({ status: 'pending', payment_status: 'pending' });
-    expect(payload).not.toHaveProperty('cancelled_by');
-    expect(payload).not.toHaveProperty('cancelled_at');
-    expect(payload).not.toHaveProperty('cancellation_reason');
+    expect(rpcCalls('order_reopen')).toEqual([{ p_order_id: 'ord-1' }]);
+    expect(rpcCalls('reserve_order_inventory')).toHaveLength(0);
+    expect(state.updates.filter((u) => u.table === 'orders')).toEqual([]);
   });
 
-  it('reopenOrder refuses with a typed error when there is not enough stock', async () => {
-    state.rpc.reserve_order_inventory = () => insufficient;
+  it('refuses with a typed error when there is not enough stock (the order stays cancelled in the database)', async () => {
+    state.rpc.order_reopen = () => ({
+      data: null,
+      error: { code: 'P0001', message: 'stock_refused', details: JSON.stringify({ ok: false, reason: 'insufficient_stock' }) }
+    });
 
     const error = await reopenOrder('ord-1', 'user-1').catch((e) => e);
 
@@ -269,13 +265,9 @@ describe('reopen flows re-reserve', () => {
     expect(isInsufficientStockError(error)).toBe(true);
   });
 
-  it('reopenOrderByAdmin reserves again and refuses when stock is gone', async () => {
-    await reopenOrderByAdmin('ord-1', 'admin-1', 'customer asked');
-    expect(rpcCalls('reserve_order_inventory')).toHaveLength(1);
-
-    state.rpc.reserve_order_inventory = () => insufficient;
-    const error = await reopenOrderByAdmin('ord-1', 'admin-1').catch((e) => e);
-    expect(error.code).toBe('INSUFFICIENT_STOCK');
+  it('there is no admin reopen any more (ND-3)', async () => {
+    const mod = await import('@/lib/orderService');
+    expect(mod.reopenOrderByAdmin).toBeUndefined();
   });
 });
 
@@ -293,22 +285,19 @@ describe('SQL / schema errors are never swallowed (migration must be applied fir
 
     await expect(createOrder(orderData, items)).rejects.toBeTruthy();
 
-    const cancel = state.updates.find((u) => u.table === 'orders');
-    expect(cancel.payload).toMatchObject({ status: 'cancelled', rejection_reason: 'reservation_failed' });
+    expect(rpcCalls('order_cancel')).toEqual([{ p_order_id: 'ord-1', p_reason: 'reservation_failed' }]);
   });
 
-  it.each(sqlErrors)('validatePayment rejects and reverts the order on %s', async (code, message) => {
-    state.rpc.consume_order_inventory = () => ({ data: null, error: { code, message } });
+  it.each(sqlErrors)('validatePayment rejects on %s (nothing to revert: the database transaction rolled back)', async (code, message) => {
+    state.rpc.order_validate_payment = () => ({ data: null, error: { code, message } });
 
     await expect(validatePayment('ord-1', 'admin-1')).rejects.toBeTruthy();
 
-    const revert = state.updates.filter((u) => u.table === 'orders').pop().payload;
-    expect(revert).toMatchObject({ status: 'pending', payment_status: 'proof_uploaded' });
+    expect(state.updates).toEqual([]);
   });
 
   it.each(sqlErrors)('reopenOrder rejects on %s', async (code, message) => {
-    state.order = { ...BASE_ORDER, status: 'cancelled', payment_status: 'rejected' };
-    state.rpc.reserve_order_inventory = () => ({ data: null, error: { code, message } });
+    state.rpc.order_reopen = () => ({ data: null, error: { code, message } });
 
     await expect(reopenOrder('ord-1', 'user-1')).rejects.toBeTruthy();
   });
@@ -327,6 +316,7 @@ describe('new refusal reasons', () => {
     expect(error.context.reason).toBe('too_many_open_reservations');
     // The server cancelled the order itself: no client-side compensation
     expect(state.updates.filter((u) => u.table === 'orders')).toEqual([]);
+    expect(rpcCalls('order_cancel')).toHaveLength(0);
   });
 
   it('maps empty_order the same way', async () => {
@@ -335,19 +325,6 @@ describe('new refusal reasons', () => {
     const error = await createOrder(orderData, items).catch((e) => e);
 
     expect(error.context.reason).toBe('empty_order');
-  });
-});
-
-describe('validatePayment revert failures are logged (W6)', () => {
-  it('logs the revert error instead of ignoring it, and still throws the original error', async () => {
-    state.rpc.consume_order_inventory = () => insufficient;
-    state.revertError = { message: 'revert denied', code: '42501' };
-    logErrorSpy.mockClear();
-
-    const error = await validatePayment('ord-1', 'admin-1').catch((e) => e);
-
-    expect(error.code).toBe('INSUFFICIENT_STOCK');
-    expect(logErrorSpy.mock.calls.some(([, ctx]) => ctx?.operation === 'validatePayment - revert')).toBe(true);
   });
 });
 
@@ -406,12 +383,12 @@ describe('cancelOrder reports whether consumed stock may need restocking (W7: fr
     expect(logErrorSpy).toHaveBeenCalled();
   });
 
-  it('asks the database after the release, not before', async () => {
+  it('asks the database after the cancellation, not before', async () => {
     state.order = { ...BASE_ORDER, status: 'processing', payment_status: 'validated', stock_managed: true };
 
     await cancelOrder('ord-1', 'admin-1', 'duplicate');
 
-    expect(state.log.indexOf('allocations:select')).toBeGreaterThan(state.log.indexOf('rpc:release_order_inventory'));
+    expect(state.log.indexOf('allocations:select')).toBeGreaterThan(state.log.indexOf('rpc:order_cancel'));
   });
 });
 

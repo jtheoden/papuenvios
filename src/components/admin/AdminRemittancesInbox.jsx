@@ -1,3 +1,4 @@
+import { transitionMessage } from '@/lib/statusConflict';
 import React, { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle, Clock, FileText, Loader2, Truck, XCircle } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -131,7 +132,7 @@ const AdminRemittancesInbox = ({
     } catch (err) {
       toast({
         title: t('common.error'),
-        description: err?.message || t(failureKey),
+        description: transitionMessage(t, err, err?.message || t(failureKey)),
         variant: 'destructive'
       });
     } finally {

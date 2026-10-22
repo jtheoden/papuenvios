@@ -2,6 +2,9 @@
   "common": {
     "success": "Éxito",
     "error": "Error",
+    "statusNotAuthorized": "No tienes permiso para realizar esta acción.",
+    "statusUserDisabled": "Tu cuenta está deshabilitada. Contacta a soporte.",
+    "statusConflict": "El estado cambió mientras actuabas (otra persona ya lo procesó). Recarga la lista e inténtalo de nuevo.",
     "cancel": "Cancelar",
     "loading": "Cargando...",
     "loadingPlatform": "Cargando tu plataforma de comercio digital...",
@@ -1774,7 +1777,7 @@
       "invalidImage": "Por favor seleccione una imagen válida",
       "imageTooLarge": "El archivo es muy grande. Máximo 5MB",
       "onlyDispatchedOrders": "Solo puedes subir evidencia para órdenes despachadas",
-      "validateStockError": "No se pudo validar el pago: no hay stock suficiente para esta orden. El estado se restauró; revisa el inventario e inténtalo de nuevo.",
+      "validateStockError": "No se pudo validar el pago: no hay stock suficiente para esta orden. La orden quedó sin cambios; revisa el inventario e inténtalo de nuevo.",
       "restockPrompt": "La orden cancelada ya había descontado su stock. Devuelve las unidades solo si confirmaste que los productos regresaron físicamente al almacén. Si no, elige No: el stock permanece descontado.",
       "restockSuccess": "Unidades devueltas al inventario",
       "restockNothing": "No había unidades pendientes de devolver",

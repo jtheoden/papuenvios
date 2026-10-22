@@ -1,3 +1,4 @@
+import { transitionMessage } from '@/lib/statusConflict';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -388,7 +389,7 @@ const AdminRemittancesTab = () => {
     } catch (error) {
       toast({
         title: t('common.error'),
-        description: error?.message || t('remittances.admin.paymentValidationFailed'),
+        description: transitionMessage(t, error, error?.message || t('remittances.admin.paymentValidationFailed')),
         variant: 'destructive'
       });
     }
@@ -420,7 +421,7 @@ const AdminRemittancesTab = () => {
     } catch (error) {
       toast({
         title: t('common.error'),
-        description: error?.message || t('remittances.admin.paymentRejectionFailed'),
+        description: transitionMessage(t, error, error?.message || t('remittances.admin.paymentRejectionFailed')),
         variant: 'destructive'
       });
     }
@@ -447,7 +448,7 @@ const AdminRemittancesTab = () => {
     } catch (error) {
       toast({
         title: t('common.error'),
-        description: error?.message || t('remittances.admin.processingFailed'),
+        description: transitionMessage(t, error, error?.message || t('remittances.admin.processingFailed')),
         variant: 'destructive'
       });
     }
@@ -544,7 +545,7 @@ const AdminRemittancesTab = () => {
     } catch (error) {
       toast({
         title: t('common.error'),
-        description: error?.message || t('remittances.admin.deliveryConfirmationFailed'),
+        description: transitionMessage(t, error, error?.message || t('remittances.admin.deliveryConfirmationFailed')),
         variant: 'destructive'
       });
     }
@@ -572,7 +573,7 @@ const AdminRemittancesTab = () => {
     } catch (error) {
       toast({
         title: t('common.error'),
-        description: error?.message || t('remittances.admin.completionFailed'),
+        description: transitionMessage(t, error, error?.message || t('remittances.admin.completionFailed')),
         variant: 'destructive'
       });
     }
