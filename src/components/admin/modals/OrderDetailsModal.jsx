@@ -408,6 +408,13 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
               </div>
             )}
 
+            {/* Delivery without a photo (optional): a discreet badge, detail view only */}
+            {!normalizedOrder.delivery_proof_url && ['delivered', 'completed'].includes(normalizedOrder.status) && (
+              <span className="inline-flex w-fit items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-800">
+                {t('adminOrders.detail.noDeliveryPhoto')}
+              </span>
+            )}
+
             {/* Delivery Proof Section */}
             {normalizedOrder.delivery_proof_url && (
               <div className="space-y-3">

@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, within, fireEvent, waitFor, act } from '@testing-library/react';
 
 const NOW = new Date('2026-10-14T12:00:00Z');
 const hoursAgo = (h) => new Date(NOW.getTime() - h * 3600 * 1000).toISOString();
@@ -35,12 +35,23 @@ vi.mock('@/lib/remittanceService', () => {
     validatePayment: vi.fn(async () => ({})),
     rejectPayment: vi.fn(async () => ({})),
     startProcessing: vi.fn(async () => ({})),
-    confirmDelivery: vi.fn(async () => ({}))
+    confirmDelivery: vi.fn(async () => ({})),
+    getCommissionOverride: vi.fn(async () => null)
   };
 });
+vi.mock('@/components/admin/CommissionOverrideModal', () => ({
+  default: ({ remittance, override, onClose, onSaved }) => (
+    <div data-testid="commission-modal">
+      <span>{remittance.id}</span>
+      <span data-testid="override-of">{override?.remittance_id ?? 'none'}</span>
+      <button type="button" onClick={onClose}>commission-close</button>
+      <button type="button" onClick={() => onSaved({ ...remittance, commission_total: 1 })}>commission-saved</button>
+    </div>
+  )
+}));
 
 import AdminRemittancesInbox from '@/components/admin/AdminRemittancesInbox';
-import { validatePayment, rejectPayment, startProcessing, confirmDelivery } from '@/lib/remittanceService';
+import { validatePayment, rejectPayment, startProcessing, confirmDelivery, getCommissionOverride } from '@/lib/remittanceService';
 
 const base = {
   currency_sent: 'USD',
@@ -234,23 +245,100 @@ describe('AdminRemittancesInbox', () => {
     expect(screen.getByText('adminInbox.emptyToProcess')).toBeTruthy();
   });
 
-  it('disables Confirm delivery without delivery proof, with a visible hint and a link to the full tab', () => {
+  it('Confirm delivery is enabled WITHOUT a delivery photo and there is no "proof missing" hint', () => {
     renderInbox();
     const row = screen.getAllByRole('listitem').find((li) => li.getAttribute('data-remittance-number') === 'REM-PROCESSING');
-    expect(within(row).getByRole('button', { name: 'adminInbox.confirmDelivery' }).disabled).toBe(true);
-    expect(within(row).getByText('adminInbox.deliveryProofMissing')).toBeTruthy();
-    expect(within(row).getByRole('link', { name: 'adminInbox.openFullTab' }).getAttribute('href')).toBe('/dashboard?tab=remittances');
+    expect(within(row).getByRole('button', { name: 'adminInbox.confirmDelivery' }).disabled).toBe(false);
+    expect(within(row).queryByText('adminInbox.deliveryProofMissing')).toBeNull();
+    expect(within(row).queryByRole('link', { name: 'adminInbox.openFullTab' })).toBeNull();
   });
 
-  it('enables Confirm delivery when the delivery proof exists and confirms through the service', async () => {
-    showModal.mockResolvedValue('');
-    const withProof = REMITTANCES.map((r) => (r.id === 'd-proc' ? { ...r, delivery_proof_url: 'u/d.png' } : r));
-    renderInbox({ remittances: withProof });
+  it('Confirm delivery opens the optional-photo dialog and confirms without a photo, with notes', async () => {
+    const { onChanged } = renderInbox();
     const row = screen.getAllByRole('listitem').find((li) => li.getAttribute('data-remittance-number') === 'REM-PROCESSING');
-    const button = within(row).getByRole('button', { name: 'adminInbox.confirmDelivery' });
-    expect(button.disabled).toBe(false);
-    fireEvent.click(button);
-    await waitFor(() => expect(confirmDelivery).toHaveBeenCalledWith('d-proc', null, ''));
+    fireEvent.click(within(row).getByRole('button', { name: 'adminInbox.confirmDelivery' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByPlaceholderText('adminOrders.deliveryModal.notesPlaceholder'), { target: { value: 'left with neighbour' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'adminOrders.deliveryModal.submit' }));
+    await waitFor(() => expect(confirmDelivery).toHaveBeenCalledWith('d-proc', null, 'left with neighbour'));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ description: 'remittances.admin.deliveryConfirmedNoPhoto' }));
+  });
+
+  it('a failing list refresh AFTER the delivery succeeded closes the dialog and shows no delivery error', async () => {
+    const { onChanged } = renderInbox();
+    onChanged.mockRejectedValueOnce(new Error('reload failed'));
+    const row = screen.getAllByRole('listitem').find((li) => li.getAttribute('data-remittance-number') === 'REM-PROCESSING');
+    fireEvent.click(within(row).getByRole('button', { name: 'adminInbox.confirmDelivery' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'adminOrders.deliveryModal.submit' }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.queryByText(/reload failed/)).toBeNull();
+    expect(confirmDelivery).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failed confirmation keeps the dialog open and does not report a change', async () => {
+    confirmDelivery.mockRejectedValueOnce(new Error('boom'));
+    const { onChanged } = renderInbox();
+    const row = screen.getAllByRole('listitem').find((li) => li.getAttribute('data-remittance-number') === 'REM-PROCESSING');
+    fireEvent.click(within(row).getByRole('button', { name: 'adminInbox.confirmDelivery' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'adminOrders.deliveryModal.submit' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('boom');
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
+  describe('commission adjustment entry', () => {
+    const rowOf = (n) => screen.getAllByRole('listitem').find((li) => li.getAttribute('data-remittance-number') === n);
+    const adjust = 'adminInbox.adjustCommission';
+
+    it.each(['REM-PROOF-NEW', 'REM-VALIDATED'])('shows "adjust commission" on %s', (n) => {
+      renderInbox();
+      expect(within(rowOf(n)).getByRole('button', { name: adjust })).toBeTruthy();
+    });
+
+    it('shows it on a payment_pending row (awaiting-customer view) and not on a processing one', () => {
+      renderInbox();
+      expect(within(rowOf('REM-PROCESSING')).queryByRole('button', { name: adjust })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: /adminInbox.filter.awaitingCustomer/ }));
+      expect(within(rowOf('REM-PENDING-NEW')).getByRole('button', { name: adjust })).toBeTruthy();
+    });
+
+    it('opens the shared commission modal for that row; saving closes it, reloads the list and toasts', async () => {
+      const { onChanged } = renderInbox();
+      fireEvent.click(within(rowOf('REM-PROOF-NEW')).getByRole('button', { name: adjust }));
+      const modal = await screen.findByTestId('commission-modal');
+      expect(modal.textContent).toContain('v-new');
+      fireEvent.click(within(modal).getByRole('button', { name: 'commission-saved' }));
+      await waitFor(() => expect(onChanged).toHaveBeenCalled());
+      expect(screen.queryByTestId('commission-modal')).toBeNull();
+    });
+
+    it('ignores a stale override response when another remittance was opened meanwhile', async () => {
+      let resolveFirst;
+      getCommissionOverride
+        .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+        .mockImplementationOnce(async () => ({ remittance_id: 'd-val' }));
+      renderInbox();
+      fireEvent.click(within(rowOf('REM-PROOF-NEW')).getByRole('button', { name: adjust }));
+      fireEvent.click(await screen.findByRole('button', { name: 'commission-close' }));
+      fireEvent.click(within(rowOf('REM-VALIDATED')).getByRole('button', { name: adjust }));
+      await waitFor(() => expect(screen.getByTestId('override-of').textContent).toBe('d-val'));
+
+      await act(async () => { resolveFirst({ remittance_id: 'v-new' }); });
+
+      expect(screen.getByTestId('override-of').textContent).toBe('d-val');
+    });
+
+    it('closing the modal changes nothing', async () => {
+      const { onChanged } = renderInbox();
+      fireEvent.click(within(rowOf('REM-VALIDATED')).getByRole('button', { name: adjust }));
+      fireEvent.click(await screen.findByRole('button', { name: 'commission-close' }));
+      expect(screen.queryByTestId('commission-modal')).toBeNull();
+      expect(onChanged).not.toHaveBeenCalled();
+    });
   });
 
   it('shows an inline warning and keeps the list when a refresh failed after a good load', () => {

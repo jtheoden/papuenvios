@@ -10,6 +10,7 @@ const state = {
   rpcCalls: [],
   directWrites: [],
   uploads: [],
+  uploadError: null,
   consumed: false
 };
 
@@ -50,7 +51,7 @@ vi.mock('@/lib/supabase', () => ({
       from: (bucket) => ({
         upload: async (path, file, opts) => {
           state.uploads.push({ bucket, path, opts });
-          return { error: null };
+          return { error: state.uploadError };
         }
       })
     }
@@ -96,6 +97,7 @@ beforeEach(() => {
   state.rpcCalls = [];
   state.directWrites = [];
   state.uploads = [];
+  state.uploadError = null;
   state.consumed = false;
   zelleUpsert.mockClear();
   vi.clearAllMocks();
@@ -135,6 +137,24 @@ describe('each function calls its RPC', () => {
     expect(state.uploads[0].bucket).toBe('order-delivery-proofs');
     expect(state.uploads[0].path).toMatch(/^admin-1\/ord-1\/delivery-proof-\d+\.jpg$/);
     expect(lastRpc()).toEqual(['order_mark_delivered', { p_order_id: 'ord-1', p_proof_path: state.uploads[0].path }]);
+  });
+
+  it.each([[null], [undefined]])('markOrderAsDelivered without a photo (%s) skips the upload and sends p_proof_path: null explicitly', async (file) => {
+    await markOrderAsDelivered('ord-1', file, 'admin-1');
+    expect(state.uploads).toEqual([]);
+    expect(lastRpc()).toEqual(['order_mark_delivered', { p_order_id: 'ord-1', p_proof_path: null }]);
+  });
+
+  it('a failed delivery-photo upload is flagged stage=upload and never reaches the RPC', async () => {
+    state.uploadError = { message: 'storage down', statusCode: '500' };
+    await expect(markOrderAsDelivered('ord-1', png, 'admin-1')).rejects.toMatchObject({ stage: 'upload' });
+    expect(state.rpcCalls).toEqual([]);
+  });
+
+  it('markOrderAsDelivered still requires the order and the admin id', async () => {
+    await expect(markOrderAsDelivered('', null, 'admin-1')).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    await expect(markOrderAsDelivered('ord-1', null, '')).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    expect(state.rpcCalls).toEqual([]);
   });
 
   it('completeOrder -> order_complete with the notes (null when empty)', async () => {

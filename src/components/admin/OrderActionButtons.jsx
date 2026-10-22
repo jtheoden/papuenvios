@@ -1,5 +1,5 @@
 import React from 'react';
-import { Eye, Play, Truck, Camera, Check, Ban, CheckCircle, XCircle, Undo2 } from 'lucide-react';
+import { Eye, Play, Truck, Check, Ban, CheckCircle, XCircle, Undo2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 /**
@@ -55,12 +55,12 @@ const OrderActionButtons = ({
 
     if (status === 'dispatched') {
       return {
-        icon: <Camera className="h-4 w-4" />,
-        label: t('adminOrders.action.uploadProof'),
+        icon: <CheckCircle className="h-4 w-4" />,
+        label: t('adminOrders.action.markAsDelivered'),
         onClick: () => onUploadDeliveryProof(order),
         disabled: isLoading,
         color: 'bg-purple-500 hover:bg-purple-600 text-white',
-        tooltip: t('adminOrders.action.uploadProof')
+        tooltip: t('adminOrders.action.markAsDelivered')
       };
     }
 

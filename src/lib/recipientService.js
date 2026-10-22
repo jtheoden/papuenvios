@@ -10,6 +10,7 @@ import {
   handleError, logError, createValidationError,
   createNotFoundError, createPermissionError, parseSupabaseError, ERROR_CODES
 } from './errorHandler';
+import { isSameRecipient } from './recipientIdentity';
 async function encryptData(plaintext) {
   const { data, error } = await supabase.functions.invoke('bank-account-crypto', {
     body: { action: 'encrypt', data: plaintext },
@@ -43,7 +44,11 @@ export const getMyRecipients = async () => {
       .from('recipients')
       .select(`
         *,
-        addresses:recipient_addresses(*)
+        addresses:recipient_addresses(*),
+        bank_links:recipient_bank_accounts(
+          is_active,
+          bank_account:bank_accounts!bank_account_id(account_number_last4, bank:banks!bank_id(name))
+        )
       `)
       .eq('user_id', user.id)
       .order('is_favorite', { ascending: false })
@@ -112,11 +117,42 @@ export const getRecipientById = async (recipientId) => {
   }
 };
 
+// Same person = same user + normalized name + normalized phone (see recipientIdentity.js).
+const findExistingRecipient = async (userId, recipientData) => {
+  const { data, error } = await supabase
+    .from('recipients')
+    .select('*, addresses:recipient_addresses(*)')
+    .eq('user_id', userId);
+  if (error) throw parseSupabaseError(error);
+  return (data || []).find((r) => isSameRecipient(r, recipientData)) || null;
+};
+
+const FILLABLE_FIELDS = ['id_number', 'email', 'notes'];
+const isBlank = (value) => value == null || String(value).trim() === '';
+
+// Reusing a row must not lose corrected data: fill only the empty fields, never overwrite present ones.
+const completeExisting = async (existing, incoming) => {
+  const patch = {};
+  FILLABLE_FIELDS.forEach((field) => {
+    if (isBlank(existing[field]) && !isBlank(incoming[field])) patch[field] = incoming[field];
+  });
+  if (Object.keys(patch).length === 0) return existing;
+  const { data, error } = await supabase
+    .from('recipients')
+    .update(patch)
+    .eq('id', existing.id)
+    .select()
+    .single();
+  if (error) throw parseSupabaseError(error);
+  return { ...existing, ...data };
+};
+
 /**
- * Create new recipient for authenticated user
+ * Create new recipient for authenticated user, or return the one that already exists
+ * (same normalized name + phone) with `existing: true`. Works with and without the unique index:
+ * a 23505 on insert (race between tabs) is resolved to the existing row.
  * @param {Object} recipientData - Recipient data
- * @returns {Promise<Object>} Created recipient object
- * @throws {AppError} AUTH_REQUIRED if not authenticated, VALIDATION_FAILED if invalid data, DB_ERROR on failure
+ * @returns {Promise<Object>} { success, recipient, existing? } or an AppError
  */
 export const createRecipient = async (recipientData) => {
   try {
@@ -130,6 +166,11 @@ export const createRecipient = async (recipientData) => {
       throw createValidationError({ recipientData: 'Valid recipient data required' }, 'Invalid recipient data');
     }
 
+    const existing = await findExistingRecipient(user.id, recipientData);
+    if (existing) {
+      return { success: true, recipient: await completeExisting(existing, recipientData), existing: true };
+    }
+
     const { data, error } = await supabase
       .from('recipients')
       .insert([{
@@ -140,6 +181,10 @@ export const createRecipient = async (recipientData) => {
       .single();
 
     if (error) {
+      if (error.code === '23505') {
+        const twin = await findExistingRecipient(user.id, recipientData);
+        if (twin) return { success: true, recipient: await completeExisting(twin, recipientData), existing: true };
+      }
       throw parseSupabaseError(error);
     }
 
@@ -193,6 +238,7 @@ export const updateRecipient = async (recipientId, updates) => {
       .single();
 
     if (error) {
+      // 23505 -> DB_UNIQUE_VIOLATION (another recipient already has this name + phone); the UI shows a clear message
       throw parseSupabaseError(error);
     }
 

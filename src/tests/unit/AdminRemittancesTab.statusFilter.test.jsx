@@ -7,6 +7,7 @@ const REMITTANCES = [
   { id: '2', remittance_number: 'REM-PROOF', status: 'payment_proof_uploaded', created_at: '2026-01-02T10:00:00Z' },
   { id: '3', remittance_number: 'REM-REJECTED', status: 'payment_rejected', created_at: '2026-01-03T10:00:00Z' },
   { id: '4', remittance_number: 'REM-DONE', status: 'completed', created_at: '2026-01-04T10:00:00Z', amount_sent: 10 },
+  { id: '5', remittance_number: 'REM-DELIVERED', status: 'delivered', created_at: '2026-01-05T10:00:00Z', amount_sent: 5 },
 ];
 
 vi.mock('@/contexts/LanguageContext', () => ({
@@ -79,5 +80,16 @@ describe('AdminRemittancesTab - status filter and counters', () => {
     );
     expect(label).toBeTruthy();
     expect(label.closest('div.rounded-lg')).toHaveTextContent(/1$/);
+  });
+
+  it('counts delivered and completed in the completed stat card, like the dashboard summary', async () => {
+    const { container } = render(<AdminRemittancesTab />);
+    await waitFor(() => expect(hasRow('REM-DELIVERED')).toBe(true));
+
+    const label = [...container.querySelectorAll('span.uppercase')].find(
+      (el) => el.textContent === 'remittances.status.completed'
+    );
+    expect(label).toBeTruthy();
+    expect(label.closest('div.rounded-lg')).toHaveTextContent(/2$/);
   });
 });

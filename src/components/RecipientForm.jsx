@@ -44,6 +44,7 @@ const RecipientForm = ({
   submitLabel = 'Guardar',
   onSubmit,
   onCancel,
+  submitting = false, // true while the parent is saving: blocks double submits
   deliveryMethod = 'cash', // 'cash' | 'transfer' | 'card' | 'moneypocket'
   recipientId = null, // Required if deliveryMethod is not 'cash'
   fields = {
@@ -215,7 +216,9 @@ const RecipientForm = ({
           {onSubmit && (
             <button
               onClick={onSubmit}
-              className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              disabled={submitting}
+              aria-busy={submitting}
+              className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {submitLabel}
             </button>

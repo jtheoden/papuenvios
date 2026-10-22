@@ -12,8 +12,9 @@ import { useModal } from '@/contexts/ModalContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { calcTotalToPay } from '@/lib/remittanceCalculations';
-import { canAdjustCommission } from '@/lib/commissionOverrideRules';
+import { canAdjustCommission, isLowerOnlyCommission, remittanceStatusLabelKey } from '@/lib/commissionOverrideRules';
 import CommissionOverrideModal from '@/components/admin/CommissionOverrideModal';
+import DeliveryProofModal from '@/components/admin/modals/DeliveryProofModal';
 import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import {
   getAllRemittances,
@@ -42,6 +43,7 @@ import ImageProofModal from './ImageProofModal';
 import TooltipButton from './TooltipButton';
 import RecipientLocation from './RecipientLocation';
 import { formatRecipientLocation } from '@/lib/recipientInfo';
+import { REMITTANCE_DELIVERED_STATUSES } from '@/lib/dashboardMetrics';
 
 const AdminRemittancesTab = () => {
   const { t, language } = useLanguage();
@@ -72,6 +74,7 @@ const AdminRemittancesTab = () => {
   const [showPaymentProofModal, setShowPaymentProofModal] = useState(false);
   const [selectedProofUrl, setSelectedProofUrl] = useState(null);
   const [showCommissionModal, setShowCommissionModal] = useState(false);
+  const [deliveryTarget, setDeliveryTarget] = useState(null);
   // Latest row of remittance_commission_overrides (admin-only RLS): reason and standard commission never travel in the remittance row
   const [commissionOverride, setCommissionOverride] = useState(null);
 
@@ -351,7 +354,8 @@ const AdminRemittancesTab = () => {
 
   // Stats calculation (matching AdminOrdersTab pattern)
   const stats = useMemo(() => {
-    const completedRemittances = filteredRemittances.filter(r => r.status === REMITTANCE_STATUS.COMPLETED);
+    // Same definition as the dashboard summary: delivered and completed both count as completed
+    const completedRemittances = filteredRemittances.filter(r => REMITTANCE_DELIVERED_STATUSES.includes(r.status));
     return {
       total: filteredRemittances.length,
       pendingValidation: filteredRemittances.filter(r => r.status === REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED).length,
@@ -502,53 +506,22 @@ const AdminRemittancesTab = () => {
     }
   };
 
-  const handleConfirmDelivery = async (remittance) => {
-    // SECURITY: Check if delivery proof exists
-    const hasDeliveryProof = remittance.delivery_proof_url && remittance.delivery_proof_url.trim() !== '';
+  // Opens the delivery dialog: the photo is optional, so nothing blocks the confirmation.
+  const handleConfirmDelivery = (remittance) => setDeliveryTarget(remittance);
 
-    if (!hasDeliveryProof) {
-      // Delivery proof is required but missing
-      toast({
-        title: t('common.error'),
-        description: t('remittances.admin.deliveryProofRequired'),
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    const notes = await showModal({
-      title: t('remittances.admin.confirmDelivery'),
-      message: t('remittances.admin.confirmDeliveryMessage', {
-        amount: remittance.amount_to_deliver,
-        currency: remittance.currency_delivered,
-        recipient: remittance.recipient_name
-      }),
-      input: true,
-      inputLabel: t('remittances.admin.deliveryNotes'),
-      inputPlaceholder: t('remittances.admin.deliveryNotesPlaceholder'),
-      confirmText: t('remittances.admin.confirmDelivery'),
-      cancelText: t('common.cancel'),
-      type: 'success'
+  // Called by the dialog; throws on failure so the dialog shows the error and its retry options.
+  const submitDelivery = async ({ file, notes }) => {
+    const remittance = deliveryTarget;
+    if (!remittance) return;
+    await confirmDelivery(remittance.id, file, notes || '');
+    const hasProof = Boolean(file) || Boolean(remittance.delivery_proof_url?.trim());
+    toast({
+      title: t('common.success'),
+      description: t(hasProof ? 'remittances.admin.deliveryConfirmed' : 'remittances.admin.deliveryConfirmedNoPhoto')
     });
-
-    if (notes === false) return;
-
-    try {
-      // Pass null for proofFile since proof must already exist (enforced by validation above)
-      await confirmDelivery(remittance.id, null, notes || '');
-      toast({
-        title: t('common.success'),
-        description: t('remittances.admin.deliveryConfirmed')
-      });
-      await loadRemittances();
-      setSelectedRemittance(null);
-    } catch (error) {
-      toast({
-        title: t('common.error'),
-        description: transitionMessage(t, error, error?.message || t('remittances.admin.deliveryConfirmationFailed')),
-        variant: 'destructive'
-      });
-    }
+    setDeliveryTarget(null);
+    await loadRemittances();
+    setSelectedRemittance(null);
   };
 
   const handleComplete = async (remittance) => {
@@ -727,16 +700,12 @@ const AdminRemittancesTab = () => {
               )}
             </div>
 
-            {/* Confirm Delivery - Only enabled if proof exists */}
+            {/* Confirm Delivery - the photo is optional */}
             <TooltipButton
               tooltipText={t('remittances.admin.confirmDelivery')}
               onClick={() => handleConfirmDelivery(remittance)}
-              disabled={!hasDeliveryProof}
               className="flex items-center gap-1 px-2 sm:px-3 py-1 rounded-lg transition-colors text-sm"
-              style={hasDeliveryProof
-                ? { backgroundColor: visualSettings?.accentColor || '#9333ea', color: '#ffffff' }
-                : { backgroundColor: '#9ca3af', color: '#e5e7eb', cursor: 'not-allowed' }
-              }
+              style={{ backgroundColor: visualSettings?.accentColor || '#9333ea', color: '#ffffff' }}
               title={t('remittances.admin.confirmDelivery')}
             >
               <Truck className="h-4 w-4" />
@@ -1172,14 +1141,25 @@ const AdminRemittancesTab = () => {
                       <span className="font-medium">{commissionOverride.reason}</span>
                     </p>
                   )}
-                  {(isAdmin || isSuperAdmin) && canAdjustCommission(selectedRemittance) && (
-                    <button
-                      type="button"
-                      onClick={() => setShowCommissionModal(true)}
-                      className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs sm:text-sm hover:bg-white transition-colors"
-                    >
-                      {t('remittances.admin.commissionOverride.adjustButton')}
-                    </button>
+                  {(isAdmin || isSuperAdmin) && (
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => canAdjustCommission(selectedRemittance) && setShowCommissionModal(true)}
+                        aria-disabled={!canAdjustCommission(selectedRemittance)}
+                        aria-describedby="commission-adjust-help"
+                        className={`px-3 py-1.5 border border-gray-300 rounded-lg text-xs sm:text-sm transition-colors ${
+                          canAdjustCommission(selectedRemittance) ? 'hover:bg-white' : 'opacity-60 cursor-not-allowed'
+                        }`}
+                      >
+                        {t('remittances.admin.commissionOverride.adjustButton')}
+                      </button>
+                      <p id="commission-adjust-help" className="text-xs text-gray-700 mt-1">
+                        {canAdjustCommission(selectedRemittance)
+                          ? (isLowerOnlyCommission(selectedRemittance) ? t('remittances.admin.commissionOverride.lowerOnlyHint') : '')
+                          : `${t('remittances.admin.commissionOverride.disabledReason')} ${t('remittances.admin.commissionOverride.currentStatus')}: ${t(remittanceStatusLabelKey(selectedRemittance.status))}`}
+                      </p>
+                    </div>
                   )}
                 </div>
 
@@ -1477,11 +1457,9 @@ const AdminRemittancesTab = () => {
                         )}
                       </>
                     ) : (
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                        <p className="text-sm text-green-800 font-medium">
-                          {t('remittances.admin.noPendingDeliveryProof')}
-                        </p>
-                      </div>
+                      <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-800">
+                        {t('remittances.admin.noDeliveryPhoto')}
+                      </span>
                     )}
                   </div>
                 ) : null}
@@ -1499,6 +1477,20 @@ const AdminRemittancesTab = () => {
             </div>
           </motion.div>
         </div>
+      )}
+
+      {deliveryTarget && (
+        <DeliveryProofModal
+          summary={[
+            { label: 'remittances.admin.deliveryModal.remittanceLabel', value: deliveryTarget.remittance_number },
+            { label: 'remittances.admin.deliveryModal.recipientLabel', value: deliveryTarget.recipient_name },
+            { label: 'remittances.admin.deliveryModal.amountLabel', value: `${deliveryTarget.amount_to_deliver} ${deliveryTarget.currency_delivered}` }
+          ]}
+          notesEnabled
+          onClose={() => setDeliveryTarget(null)}
+          onConfirm={submitDelivery}
+          t={t}
+        />
       )}
 
       {/* Payment Proof Modal */}

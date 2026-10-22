@@ -994,43 +994,46 @@ export const markOrderAsDispatched = async (orderId, adminId, trackingInfo = '')
 export const markOrderAsShipped = markOrderAsDispatched;
 
 /**
- * Mark order as delivered with proof (order_mark_delivered: dispatched -> delivered).
- * The proof goes to the private order-delivery-proofs bucket first (path {user_id}/{order_id}/..., required by RLS).
+ * Mark order as delivered (order_mark_delivered: dispatched -> delivered). The delivery photo is OPTIONAL.
+ * With a photo it goes to the private order-delivery-proofs bucket first (path {user_id}/{order_id}/..., required by RLS);
+ * without one the RPC receives an explicit null proof path and stores no delivery_proof_url.
  * @param {string} orderId - Order ID
- * @param {File} proofFile - Delivery proof image file
+ * @param {File|null} proofFile - Optional delivery proof image file
  * @param {string} adminId - Admin user ID
  * @throws {AppError} If validation fails, the upload fails, the order already moved (CONFLICT) or the RPC fails
  * @returns {Promise<Object>} Updated order in delivered state
  */
-export const markOrderAsDelivered = async (orderId, proofFile, adminId) => {
+export const markOrderAsDelivered = async (orderId, proofFile = null, adminId) => {
   try {
-    if (!orderId || !proofFile || !adminId) {
+    if (!orderId || !adminId) {
       throw createValidationError({
         orderId: !orderId ? 'Order ID is required' : undefined,
-        proofFile: !proofFile ? 'Delivery proof file is required' : undefined,
         adminId: !adminId ? 'Admin ID is required' : undefined
       }, 'Missing required fields for delivery confirmation');
     }
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user?.id) {
-      const appError = parseSupabaseError(authError) || new Error('User not authenticated');
-      logError(appError, { operation: 'markOrderAsDelivered - getUser', orderId });
-      throw appError;
-    }
+    let fileName = null; // null = deliver without a photo (the RPC stores no delivery_proof_url)
+    if (proofFile) {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user?.id) {
+        const appError = parseSupabaseError(authError) || new Error('User not authenticated');
+        logError(appError, { operation: 'markOrderAsDelivered - getUser', orderId });
+        throw appError;
+      }
 
-    const fileName = `${user.id}/${orderId}/delivery-proof-${Date.now()}.jpg`;
-    const { error: uploadError } = await supabase.storage
-      .from('order-delivery-proofs')
-      .upload(fileName, proofFile, {
-        cacheControl: '3600',
-        upsert: false
-      });
+      fileName = `${user.id}/${orderId}/delivery-proof-${Date.now()}.jpg`;
+      const { error: uploadError } = await supabase.storage
+        .from('order-delivery-proofs')
+        .upload(fileName, proofFile, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
-    if (uploadError) {
-      const appError = parseSupabaseError(uploadError);
-      logError(appError, { operation: 'markOrderAsDelivered - upload', fileName });
-      throw appError;
+      if (uploadError) {
+        const appError = parseSupabaseError(uploadError);
+        logError(appError, { operation: 'markOrderAsDelivered - upload', fileName });
+        throw Object.assign(appError, { stage: 'upload' }); // lets the dialog offer "retry / confirm without photo"
+      }
     }
 
     // Store the file path (NOT a public URL): signed URLs are generated when displaying.
@@ -1045,8 +1048,8 @@ export const markOrderAsDelivered = async (orderId, proofFile, adminId) => {
       action: 'order_delivered',
       entityId: orderId,
       performedBy: adminEmail,
-      description: `Entregada con evidencia - Orden ${updatedOrder?.order_number || orderId}`,
-      metadata: { orderId, orderNumber: updatedOrder?.order_number, deliveryProofPath: fileName }
+      description: `${fileName ? 'Entregada con evidencia' : 'Entregada sin evidencia'} - Orden ${updatedOrder?.order_number || orderId}`,
+      metadata: { orderId, orderNumber: updatedOrder?.order_number, ...(fileName ? { deliveryProofPath: fileName } : {}) }
     });
 
     return updatedOrder;

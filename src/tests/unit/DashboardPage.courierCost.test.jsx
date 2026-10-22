@@ -1,7 +1,9 @@
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 
+// Pinned to 17:00 ET (mid month): "today" is a calendar day, so hoursAgo(1..50) must stay inside it.
+const PINNED_NOW = new Date('2026-10-14T21:00:00Z');
 const hoursAgo = (h) => new Date(Date.now() - h * 3600 * 1000).toISOString();
 
 const tables = vi.hoisted(() => ({ data: {}, errors: {} }));
@@ -31,7 +33,7 @@ vi.mock('@/components/ActivityLogTab', () => ({ default: () => null }));
 vi.mock('@/lib/supabase', () => {
   const makeChain = (table) => {
     const chain = {};
-    ['select', 'eq', 'in', 'order', 'range'].forEach((m) => { chain[m] = () => chain; });
+    ['select', 'eq', 'in', 'order', 'range', 'gte'].forEach((m) => { chain[m] = () => chain; });
     chain.then = (resolve) =>
       resolve({
         data: tables.errors[table] ? null : (tables.data[table] ?? []),
@@ -45,9 +47,12 @@ vi.mock('@/lib/supabase', () => {
 
 import DashboardPage from '@/components/DashboardPage';
 
+beforeEach(() => vi.setSystemTime(PINNED_NOW));
+afterEach(() => vi.useRealTimers());
+
 const order = (id, status, created_at, shipping_cost, shipping_zone_id = 'z1') => ({
   id, status, shipping_zone_id, payment_status: 'validated', total_amount: '50', shipping_cost, discount_amount: '0',
-  payment_method: 'zelle', created_at
+  payment_method: 'zelle', created_at, validated_at: created_at
 });
 const base = () => ({
   currencies: [], order_items: [], products: [], combo_products: [], remittances: [],

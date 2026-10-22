@@ -85,6 +85,26 @@ describe('CommissionOverrideModal', () => {
     expect(screen.queryByText(`${KEY}.higherWarning`)).not.toBeInTheDocument();
   });
 
+  it('payment_validated: shows the lower-only hint, blocks a raise with its own message and allows lowering', () => {
+    setup(remittance({ status: 'payment_validated' }));
+    expect(screen.getByText(`${KEY}.lowerOnlyHint`)).toBeInTheDocument();
+    typeReason(REASON);
+    typeCommission('3');
+    expect(screen.getByRole('alert')).toHaveTextContent(`${KEY}.errorLowerOnly`);
+    expect(confirmButton()).toBeDisabled();
+    typeCommission('1');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(confirmButton()).not.toBeDisabled();
+  });
+
+  it('payment_proof_uploaded: no lower-only hint and a raise is allowed', () => {
+    setup(remittance({ status: 'payment_proof_uploaded' }));
+    expect(screen.queryByText(`${KEY}.lowerOnlyHint`)).not.toBeInTheDocument();
+    typeReason(REASON);
+    typeCommission('3');
+    expect(confirmButton()).not.toBeDisabled();
+  });
+
   it('when an override already exists the standard is its standard_commission, not the current commission', () => {
     setup(remittance({ commission_total: 5 }), { commission: 5, standard_commission: 2.5, reason: REASON });
     typeCommission('2.5');

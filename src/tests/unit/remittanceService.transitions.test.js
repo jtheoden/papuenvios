@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const state = { rpcResults: {}, rpcCalls: [], directWrites: [], uploads: [], selectRow: null };
+const state = { rpcResults: {}, rpcCalls: [], directWrites: [], uploads: [], uploadError: null, selectRow: null };
 
 const ROW = { id: 'rem-1', remittance_number: 'REM-1', user_id: 'u1', status: 'payment_pending', zelle_account_id: 'z1', amount_sent: 50, delivery_proof_url: null };
 
@@ -40,9 +40,9 @@ vi.mock('@/lib/supabase', () => ({
     auth: { getUser: async () => ({ data: { user: { id: 'u1', email: 'u@x.test' } }, error: null }) },
     storage: {
       from: (bucket) => ({
-        upload: async (path) => {
-          state.uploads.push({ bucket, path });
-          return { error: null };
+        upload: async (path, _file, options) => {
+          state.uploads.push({ bucket, path, upsert: Boolean(options?.upsert) });
+          return { error: state.uploadError };
         }
       })
     }
@@ -87,7 +87,7 @@ const png = { name: 'p.png', type: 'image/png', size: 10 };
 const lastRpc = () => state.rpcCalls[state.rpcCalls.length - 1];
 
 beforeEach(() => {
-  Object.assign(state, { rpcResults: {}, rpcCalls: [], directWrites: [], uploads: [], selectRow: null });
+  Object.assign(state, { rpcResults: {}, rpcCalls: [], directWrites: [], uploads: [], uploadError: null, selectRow: null });
   zelleUpsert.mockClear();
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'info').mockImplementation(() => {});
@@ -116,6 +116,14 @@ describe('each function calls its RPC', () => {
     expect(zelleUpsert).toHaveBeenCalledWith(expect.objectContaining({ status: 'validated', referenceId: 'rem-1' }));
   });
 
+  it('validatePayment syncs Zelle with what the customer paid (amount_sent + delivery_cost), not amount_sent', async () => {
+    const row = { ...ROW, amount_sent: 52.5, delivery_cost: 15 };
+    state.rpcResults.remittance_validate_payment = { data: row, error: null };
+    state.selectRow = { ...row, remittance_types: { id: 't1' } };
+    await validatePayment('rem-1');
+    expect(zelleUpsert).toHaveBeenCalledWith(expect.objectContaining({ status: 'validated', amount: 67.5 }));
+  });
+
   it('rejectPayment -> remittance_reject_payment with the reason, then syncs Zelle', async () => {
     await rejectPayment('rem-1', 'blurry');
     expect(state.rpcCalls[0]).toEqual(['remittance_reject_payment', { p_remittance_id: 'rem-1', p_reason: 'blurry' }]);
@@ -127,10 +135,40 @@ describe('each function calls its RPC', () => {
     expect(lastRpc()).toEqual(['remittance_start_processing', { p_remittance_id: 'rem-1' }]);
   });
 
-  it('confirmDelivery with a new file uploads it and passes the path', async () => {
+  it('confirmDelivery with a new file uploads it under a unique per-attempt path in the owner folder and passes the path', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1760000000000);
     await confirmDelivery('rem-1', png, 'left at door');
-    expect(state.uploads).toHaveLength(1);
-    expect(lastRpc()).toEqual(['remittance_confirm_delivery', { p_remittance_id: 'rem-1', p_proof_path: state.uploads[0].path, p_notes: 'left at door' }]);
+    const path = 'u1/rem-1_delivery_proof_1760000000000.png';
+    expect(state.uploads).toEqual([{ bucket: 'remittance-delivery-proofs', path, upsert: false }]);
+    expect(lastRpc()).toEqual(['remittance_confirm_delivery', { p_remittance_id: 'rem-1', p_proof_path: path, p_notes: 'left at door' }]);
+    // shape accepted by the RPC: no '..', no leading '/', no backslash, <= 500 chars
+    expect(path).not.toMatch(/\.\.|^\/|\\/);
+    Date.now.mockRestore();
+  });
+
+  it('two attempts never reuse the same object path (a retry by another admin cannot hit the owner-only UPDATE policy)', async () => {
+    const now = vi.spyOn(Date, 'now');
+    now.mockReturnValueOnce(1).mockReturnValueOnce(2);
+    await confirmDelivery('rem-1', png, '');
+    await confirmDelivery('rem-1', png, '');
+    expect(new Set(state.uploads.map((u) => u.path)).size).toBe(2);
+    now.mockRestore();
+  });
+
+  it('derives the extension from the MIME type when the file name has no dot, and rejects non-image files', async () => {
+    await confirmDelivery('rem-1', { name: 'photo', type: 'image/jpeg', size: 10 }, '');
+    expect(state.uploads[0].path).toMatch(/^u1\/rem-1_delivery_proof_\d+\.jpg$/);
+
+    state.uploads.length = 0;
+    await expect(confirmDelivery('rem-1', { name: 'doc.pdf', type: 'application/pdf', size: 10 }, '')).rejects.toBeTruthy();
+    expect(state.uploads).toHaveLength(0);
+    expect(state.rpcCalls).toHaveLength(1);
+  });
+
+  it('confirmDelivery uses the REMITTANCE owner (not the admin) in the storage path', async () => {
+    state.selectRow = { ...ROW, user_id: 'customer-9', id: 'rem-1' };
+    await confirmDelivery('rem-1', png, '');
+    expect(state.uploads[0].path.startsWith('customer-9/')).toBe(true);
   });
 
   it('confirmDelivery without a file relies on the stored proof (path null)', async () => {
@@ -140,9 +178,16 @@ describe('each function calls its RPC', () => {
     expect(state.uploads).toHaveLength(0);
   });
 
-  it('confirmDelivery without a file and without a stored proof fails before the RPC', async () => {
+  it('confirmDelivery without a file and without a stored proof still confirms (the photo is optional)', async () => {
     state.selectRow = { ...ROW, delivery_proof_url: null };
-    await expect(confirmDelivery('rem-1', null, '')).rejects.toThrow(/proof/i);
+    await confirmDelivery('rem-1', null, '');
+    expect(state.uploads).toHaveLength(0);
+    expect(lastRpc()).toEqual(['remittance_confirm_delivery', { p_remittance_id: 'rem-1', p_proof_path: null, p_notes: null }]);
+  });
+
+  it('a failed delivery-photo upload is flagged stage=upload and never reaches the RPC', async () => {
+    state.uploadError = { message: 'storage down', statusCode: '500' };
+    await expect(confirmDelivery('rem-1', png, '')).rejects.toMatchObject({ stage: 'upload' });
     expect(state.rpcCalls).toEqual([]);
   });
 

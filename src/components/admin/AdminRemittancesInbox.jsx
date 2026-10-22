@@ -1,6 +1,6 @@
 import { transitionMessage } from '@/lib/statusConflict';
-import React, { useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle, Clock, FileText, Loader2, Truck, XCircle } from 'lucide-react';
+import React, { useMemo, useRef, useState } from 'react';
+import { AlertTriangle, CheckCircle, Clock, FileText, Loader2, Percent, Truck, XCircle } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useModal } from '@/contexts/ModalContext';
 import { toast } from '@/components/ui/use-toast';
@@ -12,9 +12,13 @@ import {
   validatePayment,
   rejectPayment,
   startProcessing,
-  confirmDelivery
+  confirmDelivery,
+  getCommissionOverride
 } from '@/lib/remittanceService';
 import ImageProofModal from '@/components/ImageProofModal';
+import DeliveryProofModal from '@/components/admin/modals/DeliveryProofModal';
+import CommissionOverrideModal from '@/components/admin/CommissionOverrideModal';
+import { canAdjustCommission } from '@/lib/commissionOverrideRules';
 
 const HOUR_MS = 60 * 60 * 1000;
 const AMBER_AFTER_HOURS = 24;
@@ -110,6 +114,10 @@ const AdminRemittancesInbox = ({
   const [filter, setFilter] = useState('toProcess');
   const [busyId, setBusyId] = useState(null);
   const [proofUrl, setProofUrl] = useState(null);
+  const [deliveryTarget, setDeliveryTarget] = useState(null);
+  const [commissionTarget, setCommissionTarget] = useState(null);
+  const [commissionOverride, setCommissionOverride] = useState(null);
+  const overrideRequestRef = useRef(0);
 
   const filters = useMemo(buildFilters, []);
   const sorted = useMemo(() => sortForInbox(remittances), [remittances]);
@@ -200,37 +208,36 @@ const AdminRemittancesInbox = ({
     );
   };
 
-  const handleConfirmDelivery = async (remittance) => {
-    // Same rule as the full remittances tab: delivery proof must already exist.
-    if (!remittance.delivery_proof_url || remittance.delivery_proof_url.trim() === '') {
-      toast({
-        title: t('common.error'),
-        description: t('remittances.admin.deliveryProofRequired'),
-        variant: 'destructive'
-      });
-      return;
-    }
-    const notes = await showModal({
-      title: t('remittances.admin.confirmDelivery'),
-      message: t('remittances.admin.confirmDeliveryMessage', {
-        amount: remittance.amount_to_deliver,
-        currency: remittance.currency_delivered,
-        recipient: remittance.recipient_name
-      }),
-      input: true,
-      inputLabel: t('remittances.admin.deliveryNotes'),
-      inputPlaceholder: t('remittances.admin.deliveryNotesPlaceholder'),
-      confirmText: t('remittances.admin.confirmDelivery'),
-      cancelText: t('common.cancel'),
-      type: 'success'
+  // The delivery photo is optional: the dialog collects it (and the notes) and throws on failure so it can offer a retry.
+  const handleConfirmDelivery = (remittance) => setDeliveryTarget(remittance);
+
+  const submitDelivery = async ({ file, notes }) => {
+    const remittance = deliveryTarget;
+    if (!remittance) return;
+    await confirmDelivery(remittance.id, file, notes || '');
+    const hasProof = Boolean(file) || Boolean(remittance.delivery_proof_url?.trim());
+    toast({
+      title: t('common.success'),
+      description: t(hasProof ? 'remittances.admin.deliveryConfirmed' : 'remittances.admin.deliveryConfirmedNoPhoto')
     });
-    if (notes === false) return;
-    await runAction(
-      remittance,
-      () => confirmDelivery(remittance.id, null, notes || ''),
-      'remittances.admin.deliveryConfirmed',
-      'remittances.admin.deliveryConfirmationFailed'
-    );
+    setDeliveryTarget(null);
+    if (onChanged) await onChanged();
+  };
+
+  const handleAdjustCommission = (remittance) => {
+    setCommissionOverride(null);
+    setCommissionTarget(remittance);
+    // Informative only (standard commission in the modal): a failed read must not block the adjustment.
+    const requestId = ++overrideRequestRef.current; // a late answer for a previously opened remittance is ignored
+    const apply = (value) => {
+      if (requestId === overrideRequestRef.current) setCommissionOverride(value);
+    };
+    getCommissionOverride(remittance.id).then(apply).catch(() => apply(null));
+  };
+
+  const handleCommissionSaved = async () => {
+    setCommissionTarget(null);
+    if (onChanged) await onChanged();
   };
 
   const handleViewAll = (event) => {
@@ -242,6 +249,18 @@ const AdminRemittancesInbox = ({
   const renderActions = (remittance) => {
     const disabled = busyId === remittance.id;
     const base = `inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${FOCUS_RING}`;
+
+    const adjustButton = canAdjustCommission(remittance) && (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => handleAdjustCommission(remittance)}
+        className={`${base} border border-gray-300 text-gray-800 hover:bg-gray-50 bg-white`}
+      >
+        <Percent className="h-4 w-4" aria-hidden="true" />
+        {t('adminInbox.adjustCommission')}
+      </button>
+    );
 
     if (remittance.status === 'payment_proof_uploaded') {
       return (
@@ -264,51 +283,40 @@ const AdminRemittancesInbox = ({
             <XCircle className="h-4 w-4" aria-hidden="true" />
             {t('adminInbox.reject')}
           </button>
+          {adjustButton}
         </>
       );
     }
     if (remittance.status === 'payment_validated') {
       return (
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => handleStartProcessing(remittance)}
-          className={`${base} bg-blue-600 hover:bg-blue-700 text-white`}
-        >
-          <Truck className="h-4 w-4" aria-hidden="true" />
-          {t('adminInbox.startProcessing')}
-        </button>
+        <>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => handleStartProcessing(remittance)}
+            className={`${base} bg-blue-600 hover:bg-blue-700 text-white`}
+          >
+            <Truck className="h-4 w-4" aria-hidden="true" />
+            {t('adminInbox.startProcessing')}
+          </button>
+          {adjustButton}
+        </>
       );
     }
     if (remittance.status === 'processing') {
-      const hasDeliveryProof = !!remittance.delivery_proof_url && remittance.delivery_proof_url.trim() !== '';
       return (
-        <>
         <button
           type="button"
-          disabled={disabled || !hasDeliveryProof}
+          disabled={disabled}
           onClick={() => handleConfirmDelivery(remittance)}
           className={`${base} bg-green-700 hover:bg-green-800 text-white`}
         >
           <CheckCircle className="h-4 w-4" aria-hidden="true" />
           {t('adminInbox.confirmDelivery')}
         </button>
-        {!hasDeliveryProof && (
-          <p className="basis-full text-sm text-gray-700">
-            {t('adminInbox.deliveryProofMissing')}{' '}
-            <a
-              href={VIEW_ALL_PATH}
-              onClick={handleViewAll}
-              className={`rounded font-medium text-blue-700 underline ${FOCUS_RING}`}
-            >
-              {t('adminInbox.openFullTab')}
-            </a>
-          </p>
-        )}
-        </>
       );
     }
-    return null;
+    return adjustButton || null;
   };
 
   const renderBody = () => {
@@ -441,6 +449,29 @@ const AdminRemittancesInbox = ({
         </a>
         {busyId && <Loader2 className="h-4 w-4 animate-spin text-gray-500" aria-hidden="true" />}
       </div>
+
+      {deliveryTarget && (
+        <DeliveryProofModal
+          summary={[
+            { label: 'remittances.admin.deliveryModal.remittanceLabel', value: deliveryTarget.remittance_number },
+            { label: 'remittances.admin.deliveryModal.recipientLabel', value: deliveryTarget.recipient_name },
+            { label: 'remittances.admin.deliveryModal.amountLabel', value: `${deliveryTarget.amount_to_deliver} ${deliveryTarget.currency_delivered}` }
+          ]}
+          notesEnabled
+          onClose={() => setDeliveryTarget(null)}
+          onConfirm={submitDelivery}
+          t={t}
+        />
+      )}
+
+      {commissionTarget && (
+        <CommissionOverrideModal
+          remittance={commissionTarget}
+          override={commissionOverride}
+          onClose={() => setCommissionTarget(null)}
+          onSaved={handleCommissionSaved}
+        />
+      )}
 
       <ImageProofModal
         isOpen={!!proofUrl}

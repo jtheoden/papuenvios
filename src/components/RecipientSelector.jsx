@@ -15,6 +15,7 @@ import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
 import { isProvinceSelectable } from '@/lib/shippingZoneRules';
 import RecipientForm from '@/components/RecipientForm';
 import BankAccountSelector from '@/components/BankAccountSelector';
+import { describeRecipient, findEquivalentAddress, findSamePhone, normalizeRecipientPhone } from '@/lib/recipientIdentity';
 
 const RecipientSelector = React.forwardRef((
   {
@@ -141,21 +142,25 @@ const RecipientSelector = React.forwardRef((
     return recipient.addresses.some(addr => hasValidShippingZone(addr.province));
   };
 
-  // Filter recipients: must have valid address with valid shipping zone
-  // Also filter by search term
-  const filteredRecipients = useMemo(() => {
-    // First filter by valid shipping zones
-    const validRecipients = recipients.filter(r => hasValidAddress(r));
+  // Cash needs a delivery address in an available zone; any other method only needs the bank account,
+  // which BankAccountSelector filters per recipient (otherwise recipients created for a transfer vanish).
+  const selectableRecipients = useMemo(
+    () => (deliveryMethod === 'cash' ? recipients.filter(r => hasValidAddress(r)) : recipients),
+    [recipients, deliveryMethod, shippingZones]
+  );
 
-    // Then filter by search term
-    if (!searchTerm) return validRecipients;
+  const filteredRecipients = useMemo(() => {
+    if (!searchTerm) return selectableRecipients;
     const term = searchTerm.toLowerCase();
-    return validRecipients.filter(r =>
+    const digits = normalizeRecipientPhone(searchTerm);
+    return selectableRecipients.filter(r =>
       r.full_name.toLowerCase().includes(term) ||
-      r.phone.includes(term) ||
+      (digits && normalizeRecipientPhone(r.phone).includes(digits)) ||
       r.email?.toLowerCase().includes(term)
     );
-  }, [recipients, searchTerm, shippingZones]);
+  }, [selectableRecipients, searchTerm]);
+
+  const samePhoneRecipient = showForm ? findSamePhone(recipients, formData.phone) : null;
 
   const handleRecipientSelect = (recipient) => {
     setSelectedRecipient(recipient);
@@ -194,6 +199,8 @@ const RecipientSelector = React.forwardRef((
   };
 
   const handleFormSubmit = async () => {
+    if (creatingRecipient) return;
+
     if (!formData.full_name || !formData.phone) {
       toast({
         title: t('common.error'),
@@ -236,47 +243,45 @@ const RecipientSelector = React.forwardRef((
       });
 
       if (!recipientResult.success) {
-        throw new Error(recipientResult.error);
+        throw new Error(recipientResult.error || recipientResult.message);
       }
 
-      const newRecipientId = recipientResult.recipient.id;
+      const created = recipientResult.recipient;
+      let addresses = recipientResult.existing ? (created.addresses || []) : [];
 
-      // Create address if provinces are shown
+      // Create the typed address unless the recipient already has an equivalent one
       if (showProvinceInForm && formData.province) {
-        const addressResult = await addRecipientAddress({
-          recipient_id: newRecipientId,
-          address_line_1: formData.address_line_1,
-          address_line_2: formData.address_line_2 || '',
-          province: formData.province,
-          municipality: formData.municipality,
-          is_default: true
-        });
+        const equivalent = recipientResult.existing ? findEquivalentAddress(addresses, formData) : null;
+        if (equivalent) {
+          addresses = addresses.map(a => ({ ...a, is_default: a.id === equivalent.id }));
+        } else {
+          const addressResult = await addRecipientAddress({
+            recipient_id: created.id,
+            address_line_1: formData.address_line_1,
+            address_line_2: formData.address_line_2 || '',
+            province: formData.province,
+            municipality: formData.municipality,
+            is_default: true
+          });
 
-        if (!addressResult.success) {
-          throw new Error(addressResult.error);
+          if (!addressResult.success) {
+            throw new Error(addressResult.error || addressResult.message);
+          }
+
+          addresses = [...addresses.map(a => ({ ...a, is_default: false })), { ...addressResult.address, is_default: true }];
         }
-
-        toast({
-          title: t('common.success'),
-          description: t('recipients.recipientCreated')
-        });
       }
+
+      toast({
+        title: t('common.success'),
+        description: t(recipientResult.existing ? 'recipients.recipientAlreadyExists' : 'recipients.recipientCreated')
+      });
 
       // Reload and notify
       await loadRecipients();
 
-      // Auto-select the new recipient
-      const newRecipient = {
-        ...recipientResult.recipient,
-        addresses: showProvinceInForm ? [{
-          id: recipientResult.address?.id,
-          address_line_1: formData.address_line_1,
-          address_line_2: formData.address_line_2,
-          province: formData.province,
-          municipality: formData.municipality,
-          is_default: true
-        }] : []
-      };
+      // Auto-select the new (or already existing) recipient with its real address ids
+      const newRecipient = { ...created, addresses };
 
       handleRecipientSelect(newRecipient);
       resetForm();
@@ -305,7 +310,7 @@ const RecipientSelector = React.forwardRef((
           </label>
 
           {/* Search Input */}
-          {recipients.length > 7 && (
+          {selectableRecipients.length > 2 && (
             <div className="relative mb-3">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -327,7 +332,7 @@ const RecipientSelector = React.forwardRef((
           )}
 
           {/* Recipients List - Conditional render: Cards for ≤2, Dropdown for >2 (Req 6dup) */}
-          {recipients.length <= 2 ? (
+          {selectableRecipients.length <= 2 ? (
             /* Card-based selection for few recipients */
             <div className="space-y-2">
               {filteredRecipients.length > 0 ? (
@@ -345,6 +350,9 @@ const RecipientSelector = React.forwardRef((
                   >
                     <p className="font-medium">{recipient.full_name}</p>
                     <p className="text-xs text-gray-500">{recipient.phone}</p>
+                    {describeRecipient(recipient, deliveryMethod) && (
+                      <p className="text-xs text-gray-500">{describeRecipient(recipient, deliveryMethod)}</p>
+                    )}
                   </motion.button>
                 ))
               ) : (
@@ -369,7 +377,7 @@ const RecipientSelector = React.forwardRef((
                 <option value="">{language === 'es' ? 'Selecciona un destinatario' : 'Select a recipient'}</option>
                 {filteredRecipients.map((recipient) => (
                   <option key={recipient.id} value={recipient.id}>
-                    {recipient.full_name} - {recipient.phone}
+                    {[recipient.full_name, recipient.phone, describeRecipient(recipient, deliveryMethod)].filter(Boolean).join(' - ')}
                   </option>
                 ))}
               </select>
@@ -480,6 +488,13 @@ const RecipientSelector = React.forwardRef((
             exit={{ opacity: 0, y: -10 }}
             className="p-4 bg-blue-50 rounded-lg border-2 border-blue-200"
           >
+            {samePhoneRecipient && (
+              <p role="status" className="mb-3 p-2 text-sm bg-yellow-50 border border-yellow-300 rounded-lg text-yellow-800">
+                {language === 'es'
+                  ? `Ya tienes un destinatario con este teléfono: ${samePhoneRecipient.full_name}. ¿Es esta persona?`
+                  : `You already have a recipient with this phone: ${samePhoneRecipient.full_name}. Is this the same person?`}
+              </p>
+            )}
             <RecipientForm
               formData={formData}
               onChange={setFormData}
@@ -490,6 +505,7 @@ const RecipientSelector = React.forwardRef((
               submitLabel={language === 'es' ? 'Guardar Destinatario' : 'Save Recipient'}
               onSubmit={handleFormSubmit}
               onCancel={resetForm}
+              submitting={creatingRecipient}
               deliveryMethod={deliveryMethod}
               recipientId={selectedRecipientData?.recipientId || null}
               fields={{
