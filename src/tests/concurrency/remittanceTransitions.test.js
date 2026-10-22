@@ -310,9 +310,28 @@ describeDb('remittance transition RPCs', () => {
     it.each([['123'], ['9'.repeat(31)]])('submit_proof rejects the phone %j', async (phone) => {
       await invalidArgument('remittance_submit_proof', [PROOF, 'ref', null, phone], 'payment_pending', 'owner');
     });
-    it('confirm_delivery without a proof (new or existing) is refused by the RPC itself', async () => {
-      await invalidArgument('remittance_confirm_delivery', [null, 'n'], 'processing', 'admin');
-      await invalidArgument('remittance_confirm_delivery', ['  ', 'n'], 'processing', 'admin');
+    // W6a: the delivery photo is optional; a non-empty malformed path is still refused.
+    it.each([['../x.jpg'], ['/abs.jpg'], ['back\\slash.jpg'], ['x'.repeat(501)]])('confirm_delivery rejects a malformed proof path %j', async (path) => {
+      await invalidArgument('remittance_confirm_delivery', [path, 'n'], 'processing', 'admin');
+    });
+    it.each([[null], ['  ']])('confirm_delivery without any proof (%j) delivers with delivery_proof_url NULL', async (path) => {
+      const id = await seed('processing');
+      const c = await as(actors.adminId);
+      const r = await call(c, 'remittance_confirm_delivery', [id, path, 'n']);
+      expect(r).toMatchObject({ status: 'delivered', delivery_proof_url: null });
+      expect(r.delivered_at).not.toBeNull();
+    });
+    it('confirm_delivery history says "with" or "without" proof, counting a previously stored one as a proof', async () => {
+      const bare = await seed('processing');
+      const stored = await seed('processing', { deliveryProof: 'u/r_delivery_proof.jpg' });
+      const fresh = await seed('processing');
+      const c = await as(actors.adminId);
+      await call(c, 'remittance_confirm_delivery', [bare, null, null]);
+      await call(c, 'remittance_confirm_delivery', [stored, null, null]);
+      await call(c, 'remittance_confirm_delivery', [fresh, DELIVERY, null]);
+      expect((await history(bare))[0].notes).toBe('Delivery confirmed without proof');
+      expect((await history(stored))[0].notes).toBe('Delivery confirmed with proof');
+      expect((await history(fresh))[0].notes).toBe('Delivery confirmed with proof');
     });
     it('confirm_delivery keeps the existing proof when no new one is given', async () => {
       const id = await seed('processing', { deliveryProof: 'admin-id/delivery/existing.jpg' });
