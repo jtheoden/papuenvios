@@ -1,13 +1,14 @@
 /**
  * ProvinceSelector Component
  * Reusable selector for Province and Municipality
- * Supports municipality-specific shipping costs with fallback to province default.
+ * Fees are shown ONLY in the municipality selector: the municipality's own fee, or the province
+ * default when it has none. The province selector never shows a fee.
  * Rules live in @/lib/shippingZoneRules (province selectable if any municipality is available)
  */
 
 import { useMemo } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { getSelectableProvinces, getShippingState, isZoneAvailable } from '@/lib/shippingZoneRules';
+import { getSelectableProvinces, getShippingState } from '@/lib/shippingZoneRules';
 
 const ProvinceSelector = ({
   shippingZones = [],
@@ -55,20 +56,6 @@ const ProvinceSelector = ({
     return { cost: state.cost, label: `$${state.cost.toFixed(2)}`, isSpecific, unavailable: false };
   };
 
-  // Province label: its own fee when the province row is available, nothing otherwise
-  // (a province selectable only through municipalities shows the prices per municipality)
-  const getProvinceCostLabel = (zone) => {
-    if (!showCosts || !isZoneAvailable(zone)) return '';
-
-    // Free shipping
-    if (zone.free_shipping) {
-      return ` - ${language === 'es' ? 'Envío Gratis' : 'Free Shipping'}`;
-    }
-
-    // Has cost
-    return ` - $${parseFloat(zone.shipping_cost).toFixed(2)}`;
-  };
-
   return (
     <>
       {/* Province Selection */}
@@ -89,7 +76,7 @@ const ProvinceSelector = ({
           </option>
           {provinceZones.map(zone => (
             <option key={zone.id} value={zone.province_name}>
-              {zone.province_name}{getProvinceCostLabel(zone)}
+              {zone.province_name}
             </option>
           ))}
         </select>
