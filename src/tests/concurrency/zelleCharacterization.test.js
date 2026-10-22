@@ -489,12 +489,12 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
     it('owner can upload a proof: payment_proof_url + payment_reference + payment_status proof_uploaded', async () => {
       const { id } = await newOrder();
       const owner = await asCustomer();
+      // E8: the status columns change only through the RPC, which stores the proof in the same statement
       const { rows } = await owner.query(
-        `UPDATE public.orders SET payment_proof_url = 'https://example.test/p.png', payment_reference = 'REF-1',
-                payment_status = 'proof_uploaded' WHERE id = $1 RETURNING payment_status, payment_proof_url`,
-        [id]
+        'SELECT payment_status, payment_proof_url FROM public.order_submit_proof($1, $2, $3)',
+        [id, 'payment-proofs/p.png', 'REF-1']
       );
-      expect(rows[0]).toMatchObject({ payment_status: 'proof_uploaded', payment_proof_url: 'https://example.test/p.png' });
+      expect(rows[0]).toMatchObject({ payment_status: 'proof_uploaded', payment_proof_url: 'payment-proofs/p.png' });
     });
 
     it('owner cannot set the proof fields without moving to proof_uploaded, nor self-validate', async () => {
@@ -511,14 +511,9 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
     it('owner can cancel a pending order (pending -> cancelled + rejected) and reopen it', async () => {
       const { id } = await newOrder();
       const owner = await asCustomer();
-      await owner.query(
-        `UPDATE public.orders SET status = 'cancelled', payment_status = 'rejected', rejection_reason = 'changed my mind' WHERE id = $1`,
-        [id]
-      );
-      const { rows } = await owner.query(
-        `UPDATE public.orders SET status = 'pending', payment_status = 'pending' WHERE id = $1 RETURNING status, payment_status`,
-        [id]
-      );
+      const cancelled = await owner.query('SELECT status, payment_status FROM public.order_cancel($1, $2)', [id, 'changed my mind']);
+      expect(cancelled.rows[0]).toEqual({ status: 'cancelled', payment_status: 'rejected' });
+      const { rows } = await owner.query('SELECT status, payment_status FROM public.order_reopen($1)', [id]);
       expect(rows[0]).toEqual({ status: 'pending', payment_status: 'pending' });
     });
 
@@ -645,6 +640,7 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
       expect(await triggers('orders', 'before', 'update')).toEqual([
         'guard_bizum_quote_immutable',
         'guard_orders_owner_update',
+        'guard_status_via_rpc', // E8 (20261024120000): status columns only through the transition RPCs
         'trigger_update_orders_updated_at'
       ]);
     });
@@ -670,7 +666,7 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
 
     it('remittances BEFORE UPDATE and AFTER UPDATE', async () => {
       // + money-columns guard (20261023110000), fires first (alphabetical order)
-      expect(await triggers('remittances', 'before', 'update')).toEqual(['guard_remittance_money_columns', 'guard_remittance_owner_update']);
+      expect(await triggers('remittances', 'before', 'update')).toEqual(['guard_remittance_money_columns', 'guard_remittance_owner_update', 'guard_status_via_rpc']);
       expect(await triggers('remittances', 'after', 'update')).toEqual(['audit_financial_update', 'audit_remittance_status']); // + financial audit trail (20261020100000)
     });
   });

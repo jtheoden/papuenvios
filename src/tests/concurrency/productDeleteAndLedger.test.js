@@ -14,7 +14,8 @@ import {
   seedOrder,
   cleanup,
   readInventory,
-  restoreStockPolicyRows
+  restoreStockPolicyRows,
+  withConstraintDropped
 } from './fixtures';
 
 const skipReason = await dbSuiteSkipReason({ functions: ['delete_product', 'get_product_blockers', 'bulk_delete_products', 'reserve_order_inventory', 'consume_order_inventory'], tables: ['orders', 'inventory', 'inventory_movements', 'order_stock_allocations', 'admin_destructive_ops_log'] });
@@ -156,14 +157,19 @@ describeDb('product delete safety + inventory ledger safety net (local Postgres)
       }
     );
 
+    // orders_status_check (20261024100000) makes an unknown status unreachable; the constraint is dropped for the
+    // duration of this test so the function's own fail-closed branch stays covered.
     it('fails closed on an unknown status', async () => {
       const { productId } = await seedProduct(admin, actors, tracker, { quantity: 5 });
-      const orderId = await seedOrder(admin, actors, tracker, [{ type: 'product', id: productId, quantity: 1 }], {
-        status: 'on_hold_review'
-      });
       const superClient = await asSuper();
 
-      expect(await blockers(superClient, productId)).toEqual([expect.objectContaining({ order_id: orderId })]);
+      await withConstraintDropped(admin, 'orders', 'orders_status_check', async () => {
+        const orderId = await seedOrder(admin, actors, tracker, [{ type: 'product', id: productId, quantity: 1 }], {
+          status: 'on_hold_review'
+        });
+        expect(await blockers(superClient, productId)).toEqual([expect.objectContaining({ order_id: orderId })]);
+        await admin.query('DELETE FROM public.orders WHERE id = $1', [orderId]);
+      });
     });
 
     it('blocks a CANCELLED order that still holds a reserved allocation (orphan), via allocation', async () => {

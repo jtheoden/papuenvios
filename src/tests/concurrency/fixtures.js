@@ -175,3 +175,23 @@ export const setStockPolicyRows = async (admin, values) => {
 
 /** Put the three stock policy rows back to the approved defaults. */
 export const restoreStockPolicyRows = (admin) => setStockPolicyRows(admin, POLICY_DEFAULTS);
+
+/**
+ * Runs `fn` with a CHECK constraint temporarily dropped and puts it back afterwards (same definition).
+ * For defense-in-depth tests of functions that must fail closed on a value the constraint now makes
+ * unreachable. `fn` must delete the rows it created with the forbidden value before it returns, otherwise the
+ * constraint cannot be re-added.
+ */
+export const withConstraintDropped = async (admin, table, constraint, fn) => {
+  const { rows } = await admin.query(
+    `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = $1 AND conrelid = $2::regclass`,
+    [constraint, `public.${table}`]
+  );
+  if (!rows[0]) throw new Error(`constraint ${constraint} not found on ${table}`);
+  await admin.query(`ALTER TABLE public.${table} DROP CONSTRAINT ${constraint}`);
+  try {
+    return await fn();
+  } finally {
+    await admin.query(`ALTER TABLE public.${table} ADD CONSTRAINT ${constraint} ${rows[0].def}`);
+  }
+};

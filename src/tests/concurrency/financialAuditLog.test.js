@@ -482,13 +482,13 @@ describeDb('financial audit log (local Postgres)', () => {
   // ------------------------------------------------------------------------------------------------
   describe('no real change, no row', () => {
     it('same value, status-only and non-monitored updates write nothing', async () => {
-      const rid = await makeRemittance({ typeId: await makeType() });
+      const rid = await makeRemittance({ typeId: await makeType(), status: 'payment_proof_uploaded' });
       const oid = await makeOrder();
       const adm = await asAdmin();
       await adm.query('UPDATE public.remittances SET commission_total = commission_total, amount_sent = 100.00 WHERE id = $1', [rid]);
-      await adm.query(`UPDATE public.remittances SET status = 'payment_proof_uploaded', updated_at = now() WHERE id = $1`, [rid]);
+      await adm.query('SELECT public.remittance_validate_payment($1)', [rid]); // status-only change, through the RPC (E8)
       await adm.query('UPDATE public.orders SET total_amount = total_amount, shipping_cost = 2 WHERE id = $1', [oid]);
-      await adm.query(`UPDATE public.orders SET status = 'processing' WHERE id = $1`, [oid]);
+      await adm.query(`SELECT public.order_cancel($1, 'duplicate')`, [oid]);
       expect(await auditRows(rid)).toEqual([]);
       expect(await auditRows(oid)).toEqual([]);
     });
@@ -621,7 +621,7 @@ describeDb('financial audit log (local Postgres)', () => {
     it('payment validation (status + payment_validated) by an admin works and writes no financial audit', async () => {
       const rid = await makeRemittance({ typeId: await makeType(), status: 'payment_proof_uploaded' });
       const adm = await asAdmin();
-      await adm.query(`UPDATE public.remittances SET status = 'payment_validated', payment_validated = true, updated_at = now() WHERE id = $1`, [rid]);
+      await adm.query('SELECT public.remittance_validate_payment($1)', [rid]);
       expect((await admin.query('SELECT status, payment_validated FROM public.remittances WHERE id = $1', [rid])).rows[0]).toEqual({
         status: 'payment_validated', payment_validated: true
       });
@@ -632,11 +632,8 @@ describeDb('financial audit log (local Postgres)', () => {
       const oid = await makeOrder();
       const rid = await makeRemittance({ typeId: await makeType() });
       const cust = await asCustomer();
-      await cust.query(`UPDATE public.orders SET status = 'cancelled' WHERE id = $1`, [oid]);
-      await cust.query(
-        `UPDATE public.remittances SET status = 'cancelled', cancelled_at = now(), cancelled_by = $2, cancellation_reason = 'x' WHERE id = $1`,
-        [rid, actors.customerId]
-      );
+      await cust.query(`SELECT public.order_cancel($1, 'changed my mind')`, [oid]);
+      await cust.query(`SELECT public.remittance_cancel($1, 'x')`, [rid]);
       expect((await admin.query(`SELECT status FROM public.orders WHERE id = $1`, [oid])).rows[0].status).toBe('cancelled');
       expect((await admin.query(`SELECT status FROM public.remittances WHERE id = $1`, [rid])).rows[0].status).toBe('cancelled');
       expect(await auditRows(oid)).toEqual([]);
@@ -655,7 +652,7 @@ describeDb('financial audit log (local Postgres)', () => {
         const inv = () => admin.query('SELECT reserved_quantity AS r FROM public.inventory WHERE id = $1', [inventoryId]);
         expect((await inv()).rows[0].r).toBe(2);
 
-        await cust.query(`UPDATE public.orders SET status = 'cancelled' WHERE id = $1`, [oid]); // release trigger
+        await cust.query(`SELECT public.order_cancel($1, 'changed my mind')`, [oid]); // release trigger
         expect((await inv()).rows[0].r).toBe(0);
         expect(await auditRows(oid)).toEqual([]);
       } finally {

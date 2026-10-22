@@ -144,18 +144,18 @@ describeDb('guard_remittance_money_columns', () => {
     it('a no-op write of the same money value is allowed (column listed, value unchanged)', async () => {
       const rid = await seedRemittance(await seedType());
       const c = await as(actors.adminId);
-      await c.query('UPDATE public.remittances SET commission_total = 2.5, status = $2 WHERE id = $1', [rid, 'payment_proof_uploaded']);
-      expect((await read(rid)).status).toBe('payment_proof_uploaded');
+      await c.query('UPDATE public.remittances SET commission_total = 2.5, delivery_notes_admin = $2 WHERE id = $1', [rid, 'same money']);
+      expect((await read(rid)).delivery_notes_admin).toBe('same money');
     });
   });
 
   describe('flows that must keep working', () => {
-    it('an admin can still change status, delivery proof and admin notes by PATCH', async () => {
+    it('an admin can still PATCH delivery proof and admin notes, and moves the status through the RPC', async () => {
       const rid = await seedRemittance(await seedType(), { status: 'processing' });
       const c = await as(actors.adminId);
       await c.query(
-        `UPDATE public.remittances SET delivery_proof_url = 'p/x.png', delivery_notes_admin = 'ok', status = 'delivered',
-                delivered_at = now(), updated_at = now() WHERE id = $1`, [rid]);
+        `UPDATE public.remittances SET delivery_proof_url = 'p/x.png', delivery_notes_admin = 'ok', updated_at = now() WHERE id = $1`, [rid]);
+      await c.query('SELECT public.remittance_confirm_delivery($1)', [rid]);
       const row = await read(rid);
       expect([row.status, row.delivery_proof_url]).toEqual(['delivered', 'p/x.png']);
     });
@@ -163,10 +163,8 @@ describeDb('guard_remittance_money_columns', () => {
     it('the owner can still cancel and upload a payment proof', async () => {
       const rid = await seedRemittance(await seedType());
       const c = await as(actors.customerId);
-      await c.query(
-        `UPDATE public.remittances SET payment_proof_url = 'u/p.png', payment_reference = 'ref', status = 'payment_proof_uploaded',
-                payment_proof_uploaded_at = now(), updated_at = now() WHERE id = $1`, [rid]);
-      await c.query(`UPDATE public.remittances SET status = 'cancelled', cancelled_at = now(), cancellation_reason = 'x' WHERE id = $1`, [rid]);
+      await c.query('SELECT public.remittance_submit_proof($1, $2, $3)', [rid, 'u/p.png', 'ref']);
+      await c.query('SELECT public.remittance_cancel($1, $2)', [rid, 'x']);
       expect((await read(rid)).status).toBe('cancelled');
     });
 

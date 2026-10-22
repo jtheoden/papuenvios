@@ -66,7 +66,7 @@ describeDb('stock reservation hardening (local Postgres)', () => {
     actors = await loadActors(admin);
     await admin.query(`
       CREATE OR REPLACE FUNCTION public.__test_cancel_direct(p_order_id uuid) RETURNS boolean
-      LANGUAGE plpgsql SECURITY INVOKER AS $fn$
+      LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $fn$
       BEGIN
         UPDATE public.orders SET status = 'cancelled' WHERE id = p_order_id;
         RETURN true;
@@ -133,10 +133,7 @@ describeDb('stock reservation hardening (local Postgres)', () => {
       // Drift: somebody zeroed the counter behind our back (e.g. a manual inventory edit).
       await admin.query(`UPDATE public.inventory SET reserved_quantity = 1 WHERE id = $1`, [inventoryId]);
 
-      await customer.query(
-        `UPDATE public.orders SET status = 'cancelled', payment_status = 'rejected', rejection_reason = 'cancelled_by_user' WHERE id = $1`,
-        [orderId]
-      );
+      await customer.query(`SELECT public.order_cancel($1, 'cancelled_by_user')`, [orderId]);
 
       const [inv] = await readInventory(admin, productId);
       expect(inv.reserved).toBe(0);
@@ -153,10 +150,7 @@ describeDb('stock reservation hardening (local Postgres)', () => {
       await customer.query(`SELECT ${reserveSql}`, [orderId]);
       expect((await readInventory(admin, productId))[0].reserved).toBe(2);
 
-      await customer.query(
-        `UPDATE public.orders SET status = 'cancelled', payment_status = 'rejected', rejection_reason = 'cancelled_by_user' WHERE id = $1`,
-        [orderId]
-      );
+      await customer.query(`SELECT public.order_cancel($1, 'cancelled_by_user')`, [orderId]);
 
       expect((await readInventory(admin, productId))[0].reserved).toBe(0);
       expect(await readOrder(admin, orderId)).toMatchObject({ status: 'cancelled', stock_reserved: false });
@@ -186,7 +180,7 @@ describeDb('stock reservation hardening (local Postgres)', () => {
       const adminClient = await asAdmin();
       await adminClient.query(`SELECT public.consume_order_inventory($1::uuid)`, [orderId]);
 
-      await adminClient.query(`UPDATE public.orders SET status = 'cancelled' WHERE id = $1`, [orderId]);
+      await adminClient.query(`SELECT public.order_cancel($1, 'admin_cancel')`, [orderId]);
 
       const [inv] = await readInventory(admin, productId);
       expect(inv).toMatchObject({ quantity: 2, reserved: 0 });
@@ -204,10 +198,7 @@ describeDb('stock reservation hardening (local Postgres)', () => {
         first.push(id);
       }
       for (const id of first) {
-        await customer.query(
-          `UPDATE public.orders SET status = 'cancelled', payment_status = 'rejected', rejection_reason = 'cancelled_by_user' WHERE id = $1`,
-          [id]
-        );
+        await customer.query(`SELECT public.order_cancel($1, 'cancelled_by_user')`, [id]);
       }
       // The two cancelled orders no longer count: two fresh ones fit.
       for (let i = 0; i < 2; i += 1) {

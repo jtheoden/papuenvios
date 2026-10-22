@@ -862,9 +862,8 @@ describeDb('Bizum S5a: payment quotes and order sealing', () => {
 
     it('cancelling and changing status / payment_status do NOT execute the guard function', async () => {
       const { customer, order } = await sealedOrder();
-      await customer.query(
-        `UPDATE public.orders SET status = 'cancelled', payment_status = 'rejected' WHERE id = $1`, [order.id]
-      );
+      // status columns change only through the transition RPCs (E8): the owner cancels with order_cancel
+      await customer.query('SELECT public.order_cancel($1, $2)', [order.id, 'cancelled_by_user']);
       const after = await admin.query(`SELECT status, payment_status, payment_amount FROM public.orders WHERE id = $1`, [order.id]);
       expect(after.rows[0]).toEqual({ status: 'cancelled', payment_status: 'rejected', payment_amount: '93.38' });
 

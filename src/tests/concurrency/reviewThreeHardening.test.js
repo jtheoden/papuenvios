@@ -19,7 +19,8 @@ import {
   readOrder,
   readAllocations,
   setStockPolicyRows,
-  restoreStockPolicyRows
+  restoreStockPolicyRows,
+  withConstraintDropped
 } from './fixtures';
 
 const skipReason = await dbSuiteSkipReason({ functions: ['reserve_order_inventory', 'release_order_inventory', 'consume_order_inventory', 'expire_stale_order_reservations', 'get_product_blockers'], tables: ['orders', 'inventory', 'inventory_movements', 'order_stock_allocations', 'system_config'] });
@@ -107,13 +108,18 @@ describeDb('third review hardening (local Postgres)', () => {
       expect(await blockers(client, comboId)).toEqual([]);
     });
 
+    // orders_status_check (20261024100000) makes an unknown status unreachable; the constraint is dropped for the
+    // duration of this test so the function's own fail-closed branch stays covered.
     it('fails closed on an unknown status', async () => {
       const { productId } = await seedProduct(admin, actors, tracker, { quantity: 5 });
       const comboId = await seedCombo(admin, tracker, [{ productId, quantity: 1 }]);
-      const o = await seedOrder(admin, actors, tracker, [{ type: 'combo', id: comboId, quantity: 1 }], { status: 'on_hold_review' });
       const client = await asAdmin();
 
-      expect(await blockers(client, comboId)).toEqual([expect.objectContaining({ order_id: o })]);
+      await withConstraintDropped(admin, 'orders', 'orders_status_check', async () => {
+        const o = await seedOrder(admin, actors, tracker, [{ type: 'combo', id: comboId, quantity: 1 }], { status: 'on_hold_review' });
+        expect(await blockers(client, comboId)).toEqual([expect.objectContaining({ order_id: o })]);
+        await admin.query('DELETE FROM public.orders WHERE id = $1', [o]);
+      });
     });
 
     it('blocks a cancelled order that references the combo and still holds a reserved allocation of a component', async () => {
@@ -397,10 +403,7 @@ describeDb('third review hardening (local Postgres)', () => {
       );
 
       await expect(
-        customer.query(
-          `UPDATE public.orders SET status = 'cancelled', payment_status = 'rejected', rejection_reason = 'cancelled_by_user' WHERE id = $1`,
-          [orderId]
-        )
+        customer.query('SELECT public.order_cancel($1, $2)', [orderId, 'cancelled_by_user'])
       ).resolves.toBeTruthy();
 
       expect((await readOrder(admin, orderId)).status).toBe('cancelled');
