@@ -6,8 +6,8 @@
  *     place the override and its reason live: remittances gets no new column, so the owner of a remittance (who can
  *     SELECT the whole row) can neither read the reason nor tell that the commission was adjusted (ND-5).
  *   * RPC admin_set_remittance_commission(id, commission, reason): SECURITY DEFINER, admin only, payment_pending /
- *     payment_rejected / payment_proof_uploaded (up or down) and payment_validated (DOWN only, W6a migration
- *     20261025100000_commission_override_window.sql), discount_amount forced to 0, amount_to_deliver = round((sent - commission) * rate4, 2)
+ *     payment_rejected only (frozen once the proof is uploaded, M0 migration
+ *     20261028100000_commission_freeze_after_proof.sql), discount_amount forced to 0, amount_to_deliver = round((sent - commission) * rate4, 2)
  *   * recalculate_remittance_at_current_rate keeps the latest override
  *   * offer_id joins the audited / guarded columns
  *
@@ -137,7 +137,7 @@ describeDb('admin_set_remittance_commission', () => {
       expect((await failure(c.query(SET, [randomUUID(), 1, REASON]))).code).toBe('P0002');
     });
 
-    it.each(['processing', 'delivered', 'completed', 'cancelled'])('status %s is refused (22023)', async (status) => {
+    it.each(['payment_proof_uploaded', 'payment_validated', 'processing', 'delivered', 'completed', 'cancelled'])('status %s is refused (22023)', async (status) => {
       const rid = await seedRemittance(await seedType(), { status });
       const c = await as(actors.adminId);
       const err = await failure(c.query(SET, [rid, 1, REASON]));
@@ -182,9 +182,9 @@ describeDb('admin_set_remittance_commission', () => {
     });
   });
 
-  describe('adjustment window (W6a: 20261025100000_commission_override_window.sql)', () => {
-    it('payment_proof_uploaded accepts a commission above and below the current one', async () => {
-      const rid = await seedRemittance(await seedType(), { status: 'payment_proof_uploaded' });
+  describe('freeze after proof (M0: 20261028100000_commission_freeze_after_proof.sql)', () => {
+    it.each(['payment_pending', 'payment_rejected'])('%s accepts a commission above and below the current one', async (status) => {
+      const rid = await seedRemittance(await seedType(), { status });
       const c = await as(actors.adminId);
       const up = await c.query(SET, [rid, 6, REASON]);
       expect(Number(up.rows[0].commission_total)).toBe(6);
@@ -194,41 +194,36 @@ describeDb('admin_set_remittance_commission', () => {
       expect(await overrideRows(rid)).toHaveLength(2);
     });
 
-    it('payment_validated accepts a lower (or equal) commission and recalculates the delivery amount', async () => {
-      const rid = await seedRemittance(await seedType(), { status: 'payment_validated' });
-      const c = await as(actors.adminId);
-      const { rows } = await c.query(SET, [rid, 1, REASON]);
-      expect(Number(rows[0].commission_total)).toBe(1);
-      expect(Number(rows[0].amount_to_deliver)).toBe(79200);
-      expect(rows[0].status).toBe('payment_validated');
-      expect((await c.query(SET, [rid, 1, REASON])).rows[0].commission_total).toBeDefined(); // equal is not a raise
-    });
+    it.each(['payment_proof_uploaded', 'payment_validated'])(
+      '%s is frozen: 22023 invalid_status, up or down, and nothing is written', async (status) => {
+        const rid = await seedRemittance(await seedType(), { status });
+        const c = await as(actors.adminId);
+        for (const value of [1, 6]) {
+          const err = await failure(c.query(SET, [rid, value, REASON]));
+          expect(err.code).toBe('22023');
+          expect(err.message).toMatch(/invalid_status/);
+          expect(err.message).toMatch(/frozen/);
+        }
+        expect(Number((await read(rid)).commission_total)).toBe(2.5);
+        expect(await overrideRows(rid)).toEqual([]);
+      });
 
-    it('payment_validated refuses RAISING the commission (22023 invalid_commission) and leaves everything untouched', async () => {
-      const rid = await seedRemittance(await seedType(), { status: 'payment_validated' });
-      const c = await as(actors.adminId);
-      const err = await failure(c.query(SET, [rid, 2.51, REASON]));
-      expect(err.code).toBe('22023');
-      expect(err.message).toMatch(/invalid_commission/);
-      expect(Number((await read(rid)).commission_total)).toBe(2.5);
-      expect(await overrideRows(rid)).toEqual([]);
-    });
-
-    it('after a validated-stage reduction the NEW commission is the ceiling for a further one', async () => {
-      const rid = await seedRemittance(await seedType(), { status: 'payment_validated' });
-      const c = await as(actors.adminId);
-      await c.query(SET, [rid, 1, REASON]);
-      expect((await failure(c.query(SET, [rid, 2, REASON]))).code).toBe('22023');
+    it('a non-admin on a frozen remittance still gets 42501, not the status error', async () => {
+      const rid = await seedRemittance(await seedType(), { status: 'payment_proof_uploaded' });
+      const c = await as(actors.customerId);
+      expect((await failure(c.query(SET, [rid, 1, REASON]))).code).toBe('42501');
     });
 
     it('the file keeps the usual hygiene: header with rollback, transaction, lock_timeout, pinned search_path', () => {
-      const sql = readFileSync('supabase/migrations/20261025100000_commission_override_window.sql', 'utf8');
+      const sql = readFileSync('supabase/migrations/20261028100000_commission_freeze_after_proof.sql', 'utf8');
       expect(sql.split('\n').slice(0, 40).join('\n')).toMatch(/ROLLBACK/);
       expect(sql).toMatch(/^BEGIN;/m);
       expect(sql).toMatch(/SET LOCAL lock_timeout/);
       expect(sql).toMatch(/SET search_path = public, pg_temp/);
       expect(sql).toMatch(/^COMMIT;/m);
-      expect(readFileSync('supabase/rollbacks/20261025100000_commission_override_window_down.sql', 'utf8')).toMatch(/payment_pending.*payment_rejected/s);
+      const down = readFileSync('supabase/rollbacks/20261028100000_commission_freeze_after_proof_down.sql', 'utf8');
+      expect(down).toMatch(/payment_proof_uploaded/);
+      expect(down).toMatch(/payment_validated' AND p_commission > v_rem\.commission_total/);
     });
   });
 
