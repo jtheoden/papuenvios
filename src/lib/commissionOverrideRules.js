@@ -7,14 +7,18 @@ import { roundMoney, roundTo } from './moneyPure';
 export const REASON_MIN_LENGTH = 10;
 export const REASON_MAX_LENGTH = 500;
 
-// Up or down while no payment has been accepted; once validated the customer has seen the delivery amount, so the
-// commission can only go DOWN (the RPC enforces it: new commission <= commission_total).
-const ANY_DIRECTION_STATUSES = ['payment_pending', 'payment_rejected', 'payment_proof_uploaded'];
+// Owner decision: the commission freezes once the customer uploads the proof, so it can only be adjusted (up or down)
+// before that. shortcut: the prod RPC still accepts payment_proof_uploaded and payment_validated until a migration
+// restricts it; the UI is stricter on purpose.
+const ADJUSTABLE_STATUSES = ['payment_pending', 'payment_rejected'];
+const FROZEN_STATUSES = ['payment_proof_uploaded', 'payment_validated'];
 const LOWER_ONLY_STATUSES = ['payment_validated'];
 
-/** True in the states the RPC accepts (before the delivery starts). */
-export const canAdjustCommission = (remittance) =>
-  ANY_DIRECTION_STATUSES.includes(remittance?.status) || LOWER_ONLY_STATUSES.includes(remittance?.status);
+/** True when the commission can still be adjusted from the UI. */
+export const canAdjustCommission = (remittance) => ADJUSTABLE_STATUSES.includes(remittance?.status);
+
+/** True when the commission is frozen because the payment was already made (proof uploaded or validated). */
+export const isCommissionFrozen = (remittance) => FROZEN_STATUSES.includes(remittance?.status);
 
 /** True when the commission may only be lowered (payment already validated). */
 export const isLowerOnlyCommission = (remittance) => LOWER_ONLY_STATUSES.includes(remittance?.status);

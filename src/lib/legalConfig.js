@@ -8,7 +8,7 @@
 export const LEGAL_VERSION = '2026-10-15';
 
 /** Human-visible "last updated" date shown on the legal pages (ISO date). */
-export const LEGAL_LAST_UPDATED = '2026-10-15';
+export const LEGAL_LAST_UPDATED = '2026-10-23';
 
 /** Hours after a transaction within which a claim must be raised (existing text: 48h). */
 export const CLAIM_WINDOW_HOURS = 48;

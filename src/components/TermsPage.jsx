@@ -138,12 +138,12 @@ const TermsPage = ({ onNavigate }) => {
                   <ul className="list-disc pl-5 space-y-2">
                     <li>
                       <strong>Antes del despacho:</strong> mientras un pedido o remesa aún no haya
-                      sido despachado, puede solicitar su cancelación. Las remesas se cancelan
-                      directamente desde Mis Remesas hasta que nuestro equipo valide el pago; en los
-                      demás casos, incluidos los pedidos de productos, la cancelación se solicita
-                      por soporte. Si hubo un pago, se reembolsa el monto total pagado, de forma
-                      manual y al mismo método Zelle utilizado, dentro de {REFUND_BUSINESS_DAYS} días
-                      hábiles.
+                      sido despachado, puede solicitar su cancelación. Las remesas y los pedidos de
+                      productos se cancelan directamente desde Mis Remesas y Mis Pedidos hasta que
+                      nuestro equipo valide el pago. Una vez validado el pago y antes del despacho,
+                      la cancelación se solicita por soporte (<LegalContact es />). Si hubo un
+                      pago, se reembolsa el monto total pagado, de forma manual y al mismo método
+                      Zelle utilizado, dentro de {REFUND_BUSINESS_DAYS} días hábiles.
                     </li>
                     <li>
                       <strong>Pedidos sin pago verificado:</strong> los pedidos cuyo pago no se
@@ -292,11 +292,12 @@ const TermsPage = ({ onNavigate }) => {
                   <ul className="list-disc pl-5 space-y-2">
                     <li>
                       <strong>Before dispatch:</strong> while an order or remittance has not been
-                      dispatched, you may request its cancellation. Remittances can be cancelled
-                      directly from My Remittances until our team validates the payment; in all
-                      other cases, including product orders, cancellation is requested through
-                      support. If a payment was made, the full amount paid is refunded manually to
-                      the same Zelle method used, within {REFUND_BUSINESS_DAYS} business days.
+                      dispatched, you may request its cancellation. Remittances and product orders
+                      can be cancelled directly from My Remittances and My Orders until our team
+                      validates the payment. Once the payment is validated and before dispatch,
+                      cancellation is requested through support (<LegalContact es={false} />). If a
+                      payment was made, the full amount paid is refunded manually to the same Zelle
+                      method used, within {REFUND_BUSINESS_DAYS} business days.
                     </li>
                     <li>
                       <strong>Orders without verified payment:</strong> orders whose payment is not

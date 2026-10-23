@@ -68,6 +68,10 @@ vi.mock('@/lib/remittanceService', () => ({
 
 import AdminRemittancesTab from '@/components/AdminRemittancesTab';
 
+// The list card now has its own adjust button too: the detail one is the one wired to the help text
+const detailAdjustButton = () =>
+  screen.getAllByRole('button', { name: `${KEY}.adjustButton` }).find((b) => b.getAttribute('aria-describedby') === 'commission-adjust-help');
+
 const openDetail = async () => {
   render(<AdminRemittancesTab />);
   const button = await screen.findByRole('button', { name: 'remittances.admin.viewDetails' });
@@ -84,29 +88,36 @@ describe('AdminRemittancesTab - commission adjustment entry point', () => {
     auth.isSuperAdmin = false;
   });
 
-  it.each(['payment_pending', 'payment_rejected', 'payment_proof_uploaded', 'payment_validated'])(
+  it.each(['payment_pending', 'payment_rejected'])(
     'an admin sees the ENABLED adjust button for %s',
     async (status) => {
       REMITTANCES = [row('1', status)];
       await openDetail();
-      const button = screen.getByRole('button', { name: `${KEY}.adjustButton` });
+      const button = detailAdjustButton();
       expect(button).toBeInTheDocument();
       expect(button).not.toHaveAttribute('aria-disabled', 'true');
     }
   );
 
-  it('payment_validated shows the lower-only hint next to the button', async () => {
-    REMITTANCES = [row('1', 'payment_validated')];
-    await openDetail();
-    expect(screen.getByText(`${KEY}.lowerOnlyHint`)).toBeInTheDocument();
-  });
+  it.each(['payment_proof_uploaded', 'payment_validated'])(
+    'is DISABLED for %s with the "commission frozen after payment" reason',
+    async (status) => {
+      REMITTANCES = [row('1', status)];
+      await openDetail();
+      const button = detailAdjustButton();
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+      expect(document.getElementById(button.getAttribute('aria-describedby'))).toHaveTextContent(`${KEY}.frozenAfterPayment`);
+      fireEvent.click(button);
+      expect(screen.queryByRole('dialog', { name: `${KEY}.modalTitle` })).not.toBeInTheDocument();
+    }
+  );
 
   it('a super_admin sees it too', async () => {
     auth.isAdmin = false;
     auth.isSuperAdmin = true;
     REMITTANCES = [row('1', 'payment_pending')];
     await openDetail();
-    expect(screen.getByRole('button', { name: `${KEY}.adjustButton` })).toBeInTheDocument();
+    expect(detailAdjustButton()).toBeInTheDocument();
   });
 
   it.each(['processing', 'delivered', 'completed', 'cancelled'])(
@@ -114,7 +125,7 @@ describe('AdminRemittancesTab - commission adjustment entry point', () => {
     async (status) => {
       REMITTANCES = [row('1', status)];
       await openDetail();
-      const button = screen.getByRole('button', { name: `${KEY}.adjustButton` });
+      const button = detailAdjustButton();
       expect(button).toHaveAttribute('aria-disabled', 'true');
       const reason = document.getElementById(button.getAttribute('aria-describedby'));
       expect(reason).toHaveTextContent(`${KEY}.disabledReason`);
@@ -136,7 +147,7 @@ describe('AdminRemittancesTab - commission adjustment entry point', () => {
   it('opens the modal with the remittance data', async () => {
     REMITTANCES = [row('1', 'payment_pending')];
     await openDetail();
-    fireEvent.click(screen.getByRole('button', { name: `${KEY}.adjustButton` }));
+    fireEvent.click(detailAdjustButton());
     await waitFor(() => expect(screen.getByRole('dialog', { name: `${KEY}.modalTitle` })).toBeInTheDocument());
   });
 
@@ -160,7 +171,7 @@ describe('AdminRemittancesTab - commission adjustment entry point', () => {
     getCommissionOverride.mockRejectedValueOnce(new Error('permission denied'));
     await openDetail();
     await waitFor(() => expect(getCommissionOverride).toHaveBeenCalled());
-    expect(screen.getByRole('button', { name: `${KEY}.adjustButton` })).toBeInTheDocument();
+    expect(detailAdjustButton()).toBeInTheDocument();
   });
 
   it('never reads the override reason from the remittance row', async () => {

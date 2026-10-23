@@ -208,9 +208,13 @@ describe.each(LANGS)('Support channel and cancellation wording (%s)', (language)
     expect(html).not.toContain('wa.me/');
   });
 
-  it('explains that remittances can be cancelled in the app until payment validation', () => {
+  it('explains that remittances AND product orders are cancelled in the app until payment validation, then through support', () => {
     const { text } = textOf(TermsPage, language);
-    expect(text).toContain(language === 'es' ? 'Mis Remesas' : 'My Remittances');
-    expect(text).toMatch(language === 'es' ? /hasta que (nuestro equipo )?valide/i : /until our team validates/i);
+    const es = language === 'es';
+    expect(text).toContain(es ? 'Mis Remesas' : 'My Remittances');
+    expect(text).toContain(es ? 'Mis Pedidos' : 'My Orders');
+    expect(text).toMatch(es ? /hasta que (nuestro equipo )?valide/i : /until our team validates/i);
+    expect(text).toMatch(es ? /una vez validado el pago[^.]*por soporte/i : /once the payment is validated[^.]*through support/i);
+    expect(text).not.toMatch(es ? /incluidos los pedidos de productos, la cancelación se solicita/i : /including product orders, cancellation is requested/i);
   });
 });
