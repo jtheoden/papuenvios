@@ -11,11 +11,11 @@ import {
 const REASON = 'Cliente frecuente, acuerdo comercial';
 
 describe('canAdjustCommission', () => {
-  it.each(['payment_pending', 'payment_rejected', 'payment_proof_uploaded', 'payment_validated'])('is true for %s', (status) => {
+  it.each(['payment_pending', 'payment_rejected'])('is true for %s', (status) => {
     expect(canAdjustCommission({ status })).toBe(true);
   });
 
-  it.each(['processing', 'delivered', 'completed', 'cancelled', undefined])('is false for %s', (status) => {
+  it.each(['payment_proof_uploaded', 'payment_validated', 'processing', 'delivered', 'completed', 'cancelled', undefined])('is false for %s (the commission freezes once the proof is uploaded)', (status) => {
     expect(canAdjustCommission({ status })).toBe(false);
   });
 

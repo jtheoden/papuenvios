@@ -1,4 +1,4 @@
-import { transitionMessage } from '@/lib/statusConflict';
+import { isStatusConflictError, transitionMessage } from '@/lib/statusConflict';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -22,6 +22,7 @@ import {
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { useModal } from '@/contexts/ModalContext';
+import CancelRefundMessage from '@/components/CancelRefundMessage';
 import FileUploadWithPreview from '@/components/FileUploadWithPreview';
 import TooltipButton from './TooltipButton';
 import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
@@ -499,14 +500,35 @@ const MyRemittancesPage = ({ onNavigate }) => {
     }
   };
 
+  // Refund notice that mirrors the Terms (section 9); only when money may already have been sent
+  const renderCancelMessage = (remittance) => {
+    const noteKey = {
+      [REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED]: 'remittances.user.cancelProofWarning'
+    }[remittance.status];
+    const question = t('remittances.user.cancelRemittanceMessage', { number: remittance.remittance_number });
+    return noteKey ? <CancelRefundMessage question={question} noteKey={noteKey} /> : question;
+  };
+
+  const cancelInFlight = useRef(false);
+
   const handleCancel = async (remittance) => {
+    if (cancelInFlight.current) return; // ignore a second click while the dialog or the request is open
+    cancelInFlight.current = true;
+    try {
+      await cancelWithConfirmation(remittance);
+    } finally {
+      cancelInFlight.current = false;
+    }
+  };
+
+  const cancelWithConfirmation = async (remittance) => {
     const reason = await showModal({
-      title: 'Cancelar Remesa',
-      message: `¿Está seguro que desea cancelar la remesa ${remittance.remittance_number}?`,
+      title: t('remittances.user.cancelRemittanceTitle'),
+      message: renderCancelMessage(remittance),
       input: true,
-      inputLabel: 'Razón (opcional)',
-      inputPlaceholder: 'Motivo de la cancelación...',
-      confirmText: 'Cancelar Remesa',
+      inputLabel: t('remittances.user.cancelReasonLabel'),
+      inputPlaceholder: t('remittances.user.cancelReasonPlaceholder'),
+      confirmText: t('remittances.user.cancelRemittance'),
       cancelText: t('common.back'),
       type: 'danger'
     });
@@ -522,6 +544,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
       await loadRemittances();
     } catch (error) {
       console.error('Error cancelling remittance:', error);
+      if (isStatusConflictError(error)) await loadRemittances(); // show the real state, not the stale card
       toast({
         title: t('common.error'),
         description: transitionMessage(t, error, error?.message || t('common.error')),
@@ -923,15 +946,6 @@ const MyRemittancesPage = ({ onNavigate }) => {
                           <Upload className="h-4 w-4" />
                           <span className="hidden sm:inline">{t('remittances.user.uploadProof')}</span>
                         </TooltipButton>
-                        <TooltipButton
-                          tooltipText={t('common.cancel')}
-                          onClick={() => handleCancel(remittance)}
-                          className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
-                          title={t('common.cancel')}
-                        >
-                          <XCircle className="h-4 w-4" />
-                          <span className="hidden sm:inline">{t('common.cancel')}</span>
-                        </TooltipButton>
                       </>
                     )}
 
@@ -944,6 +958,19 @@ const MyRemittancesPage = ({ onNavigate }) => {
                       >
                         <RefreshCw className="h-4 w-4" />
                         <span className="hidden sm:inline">{t('remittances.user.reUploadProof')}</span>
+                      </TooltipButton>
+                    )}
+
+                    {/* The RPC lets the owner cancel until the payment is validated */}
+                    {[REMITTANCE_STATUS.PAYMENT_PENDING, REMITTANCE_STATUS.PAYMENT_REJECTED, REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED].includes(remittance.status) && (
+                      <TooltipButton
+                        tooltipText={t('common.cancel')}
+                        onClick={() => handleCancel(remittance)}
+                        className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                        title={t('common.cancel')}
+                      >
+                        <XCircle className="h-4 w-4" />
+                        <span className="hidden sm:inline">{t('common.cancel')}</span>
                       </TooltipButton>
                     )}
                   </div>

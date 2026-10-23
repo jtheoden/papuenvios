@@ -64,6 +64,7 @@ const base = {
 };
 
 const REMITTANCES = [
+  { ...base, id: 'p-old', remittance_number: 'REM-PENDING-OLD', status: 'payment_pending', amount_sent: 11, created_at: hoursAgo(9) },
   { ...base, id: 'p-new', remittance_number: 'REM-PENDING-NEW', status: 'payment_pending', amount_sent: 10, created_at: hoursAgo(2) },
   { ...base, id: 'v-new', remittance_number: 'REM-PROOF-NEW', status: 'payment_proof_uploaded', amount_sent: 20, created_at: hoursAgo(5), payment_proof_url: 'u/new.png' },
   { ...base, id: 'v-old', remittance_number: 'REM-PROOF-OLD', status: 'payment_proof_uploaded', amount_sent: 30, created_at: hoursAgo(50), payment_proof_url: 'u/old.png' },
@@ -117,8 +118,8 @@ describe('AdminRemittancesInbox', () => {
     expect(within(chip('toProcess')).getByText('4')).toBeTruthy();
     expect(within(chip('needsValidation')).getByText('2')).toBeTruthy();
     expect(within(chip('needsDelivery')).getByText('2')).toBeTruthy();
-    expect(within(chip('awaitingCustomer')).getByText('1')).toBeTruthy();
-    expect(within(chip('all')).getByText('5')).toBeTruthy();
+    expect(within(chip('awaitingCustomer')).getByText('2')).toBeTruthy();
+    expect(within(chip('all')).getByText('6')).toBeTruthy();
     expect(chip('toProcess').getAttribute('aria-pressed')).toBe('true');
   });
 
@@ -294,23 +295,32 @@ describe('AdminRemittancesInbox', () => {
     const rowOf = (n) => screen.getAllByRole('listitem').find((li) => li.getAttribute('data-remittance-number') === n);
     const adjust = 'adminInbox.adjustCommission';
 
-    it.each(['REM-PROOF-NEW', 'REM-VALIDATED'])('shows "adjust commission" on %s', (n) => {
+    const awaiting = () => fireEvent.click(screen.getByRole('button', { name: /adminInbox.filter.awaitingCustomer/ }));
+
+    it.each(['REM-PROOF-NEW', 'REM-VALIDATED'])('does not show "adjust commission" on %s (commission frozen after payment)', (n) => {
       renderInbox();
-      expect(within(rowOf(n)).getByRole('button', { name: adjust })).toBeTruthy();
+      expect(within(rowOf(n)).queryByRole('button', { name: adjust })).toBeNull();
+    });
+
+    it('the adjust button has a 44px touch target', () => {
+      renderInbox();
+      awaiting();
+      expect(within(rowOf('REM-PENDING-NEW')).getByRole('button', { name: adjust }).className).toContain('min-h-[44px]');
     });
 
     it('shows it on a payment_pending row (awaiting-customer view) and not on a processing one', () => {
       renderInbox();
       expect(within(rowOf('REM-PROCESSING')).queryByRole('button', { name: adjust })).toBeNull();
-      fireEvent.click(screen.getByRole('button', { name: /adminInbox.filter.awaitingCustomer/ }));
+      awaiting();
       expect(within(rowOf('REM-PENDING-NEW')).getByRole('button', { name: adjust })).toBeTruthy();
     });
 
     it('opens the shared commission modal for that row; saving closes it, reloads the list and toasts', async () => {
       const { onChanged } = renderInbox();
-      fireEvent.click(within(rowOf('REM-PROOF-NEW')).getByRole('button', { name: adjust }));
+      awaiting();
+      fireEvent.click(within(rowOf('REM-PENDING-NEW')).getByRole('button', { name: adjust }));
       const modal = await screen.findByTestId('commission-modal');
-      expect(modal.textContent).toContain('v-new');
+      expect(modal.textContent).toContain('p-new');
       fireEvent.click(within(modal).getByRole('button', { name: 'commission-saved' }));
       await waitFor(() => expect(onChanged).toHaveBeenCalled());
       expect(screen.queryByTestId('commission-modal')).toBeNull();
@@ -320,21 +330,23 @@ describe('AdminRemittancesInbox', () => {
       let resolveFirst;
       getCommissionOverride
         .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
-        .mockImplementationOnce(async () => ({ remittance_id: 'd-val' }));
+        .mockImplementationOnce(async () => ({ remittance_id: 'p-old' }));
       renderInbox();
-      fireEvent.click(within(rowOf('REM-PROOF-NEW')).getByRole('button', { name: adjust }));
+      awaiting();
+      fireEvent.click(within(rowOf('REM-PENDING-NEW')).getByRole('button', { name: adjust }));
       fireEvent.click(await screen.findByRole('button', { name: 'commission-close' }));
-      fireEvent.click(within(rowOf('REM-VALIDATED')).getByRole('button', { name: adjust }));
-      await waitFor(() => expect(screen.getByTestId('override-of').textContent).toBe('d-val'));
+      fireEvent.click(within(rowOf('REM-PENDING-OLD')).getByRole('button', { name: adjust }));
+      await waitFor(() => expect(screen.getByTestId('override-of').textContent).toBe('p-old'));
 
-      await act(async () => { resolveFirst({ remittance_id: 'v-new' }); });
+      await act(async () => { resolveFirst({ remittance_id: 'p-new' }); });
 
-      expect(screen.getByTestId('override-of').textContent).toBe('d-val');
+      expect(screen.getByTestId('override-of').textContent).toBe('p-old');
     });
 
     it('closing the modal changes nothing', async () => {
       const { onChanged } = renderInbox();
-      fireEvent.click(within(rowOf('REM-VALIDATED')).getByRole('button', { name: adjust }));
+      awaiting();
+      fireEvent.click(within(rowOf('REM-PENDING-NEW')).getByRole('button', { name: adjust }));
       fireEvent.click(await screen.findByRole('button', { name: 'commission-close' }));
       expect(screen.queryByTestId('commission-modal')).toBeNull();
       expect(onChanged).not.toHaveBeenCalled();

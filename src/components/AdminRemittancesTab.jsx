@@ -12,7 +12,7 @@ import { useModal } from '@/contexts/ModalContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { calcTotalToPay } from '@/lib/remittanceCalculations';
-import { canAdjustCommission, isLowerOnlyCommission, remittanceStatusLabelKey } from '@/lib/commissionOverrideRules';
+import { canAdjustCommission, isCommissionFrozen, remittanceStatusLabelKey } from '@/lib/commissionOverrideRules';
 import CommissionOverrideModal from '@/components/admin/CommissionOverrideModal';
 import DeliveryProofModal from '@/components/admin/modals/DeliveryProofModal';
 import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
@@ -77,19 +77,37 @@ const AdminRemittancesTab = () => {
   const [deliveryTarget, setDeliveryTarget] = useState(null);
   // Latest row of remittance_commission_overrides (admin-only RLS): reason and standard commission never travel in the remittance row
   const [commissionOverride, setCommissionOverride] = useState(null);
+  // Id whose override fetch finished: the modal must not preview against a standard commission that is still unknown
+  const [overrideLoadedFor, setOverrideLoadedFor] = useState(null);
+  // True when the modal was opened from a list card: the detail is not shown under it, and closing it leaves no detail behind
+  const [commissionFromCard, setCommissionFromCard] = useState(false);
 
   const loadCommissionOverride = async (remittanceId) => {
     try {
       setCommissionOverride(await getCommissionOverride(remittanceId));
     } catch {
       setCommissionOverride(null); // the note is informative only: the detail stays usable
+    } finally {
+      setOverrideLoadedFor(remittanceId);
+    }
+  };
+
+  const closeCommissionModal = () => {
+    setShowCommissionModal(false);
+    if (commissionFromCard) {
+      setCommissionFromCard(false);
+      setSelectedRemittance(null);
     }
   };
 
   const handleCommissionSaved = (updated) => {
     // The RPC returns the bare row (no joins): merge it so the joined type and proofs stay on screen
-    setSelectedRemittance((prev) => ({ ...prev, ...updated }));
     setRemittances((list) => list.map((r) => (r.id === updated.id ? { ...r, ...updated } : r)));
+    if (commissionFromCard) {
+      closeCommissionModal();
+      return;
+    }
+    setSelectedRemittance((prev) => ({ ...prev, ...updated }));
     setShowCommissionModal(false);
     loadCommissionOverride(updated.id);
   };
@@ -107,12 +125,16 @@ const AdminRemittancesTab = () => {
 
   // Closing the detail also closes the commission modal, so the next remittance does not open with it
   useEffect(() => {
-    if (!selectedRemittance) setShowCommissionModal(false);
+    if (!selectedRemittance) {
+      setShowCommissionModal(false);
+      setCommissionFromCard(false);
+    }
   }, [selectedRemittance]);
 
   const selectedId = selectedRemittance?.id;
   useEffect(() => {
     setCommissionOverride(null);
+    setOverrideLoadedFor(null);
     if (selectedId) loadCommissionOverride(selectedId);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- loadCommissionOverride only closes over a stable setter
   }, [selectedId]);
@@ -627,6 +649,24 @@ const AdminRemittancesTab = () => {
     );
   };
 
+  // Same state/modal as the detail button: the card only opens the modal (z-60, above the detail layer) for its own remittance
+  const openCommissionFromCard = (remittance) => {
+    setSelectedRemittance(remittance);
+    setCommissionFromCard(true);
+    setShowCommissionModal(true);
+  };
+
+  const renderAdjustCommissionButton = (remittance) =>
+    canAdjustCommission(remittance) && (
+      <button
+        type="button"
+        onClick={() => openCommissionFromCard(remittance)}
+        className="inline-flex min-h-[44px] min-w-0 items-center justify-center px-3 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-600"
+      >
+        {t('remittances.admin.commissionOverride.adjustButton')}
+      </button>
+    );
+
   const renderActionButtons = (remittance) => {
     switch (remittance.status) {
       case REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED:
@@ -1014,6 +1054,7 @@ const AdminRemittancesTab = () => {
                     <span className="hidden sm:inline">{t('remittances.admin.viewDetails')}</span>
                   </TooltipButton>
                   {renderActionButtons(remittance)}
+                  {renderAdjustCommissionButton(remittance)}
                 </div>
               </div>
             </motion.div>
@@ -1053,7 +1094,7 @@ const AdminRemittancesTab = () => {
       )}
 
       {/* Details Modal (simplified - full implementation would use a proper modal component) */}
-      {selectedRemittance && (
+      {selectedRemittance && !commissionFromCard && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
           onClick={() => setSelectedRemittance(null)}
@@ -1148,7 +1189,7 @@ const AdminRemittancesTab = () => {
                         onClick={() => canAdjustCommission(selectedRemittance) && setShowCommissionModal(true)}
                         aria-disabled={!canAdjustCommission(selectedRemittance)}
                         aria-describedby="commission-adjust-help"
-                        className={`px-3 py-1.5 border border-gray-300 rounded-lg text-xs sm:text-sm transition-colors ${
+                        className={`min-h-[44px] px-3 border border-gray-300 rounded-lg text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-600 ${
                           canAdjustCommission(selectedRemittance) ? 'hover:bg-white' : 'opacity-60 cursor-not-allowed'
                         }`}
                       >
@@ -1156,8 +1197,10 @@ const AdminRemittancesTab = () => {
                       </button>
                       <p id="commission-adjust-help" className="text-xs text-gray-700 mt-1">
                         {canAdjustCommission(selectedRemittance)
-                          ? (isLowerOnlyCommission(selectedRemittance) ? t('remittances.admin.commissionOverride.lowerOnlyHint') : '')
-                          : `${t('remittances.admin.commissionOverride.disabledReason')} ${t('remittances.admin.commissionOverride.currentStatus')}: ${t(remittanceStatusLabelKey(selectedRemittance.status))}`}
+                          ? ''
+                          : isCommissionFrozen(selectedRemittance)
+                            ? t('remittances.admin.commissionOverride.frozenAfterPayment')
+                            : `${t('remittances.admin.commissionOverride.disabledReason')} ${t('remittances.admin.commissionOverride.currentStatus')}: ${t(remittanceStatusLabelKey(selectedRemittance.status))}`}
                       </p>
                     </div>
                   )}
@@ -1506,7 +1549,8 @@ const AdminRemittancesTab = () => {
         <CommissionOverrideModal
           remittance={selectedRemittance}
           override={commissionOverride}
-          onClose={() => setShowCommissionModal(false)}
+          loading={overrideLoadedFor !== selectedRemittance.id}
+          onClose={closeCommissionModal}
           onSaved={handleCommissionSaved}
         />
       )}

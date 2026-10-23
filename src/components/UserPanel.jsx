@@ -4,11 +4,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useModal } from '@/contexts/ModalContext';
+import CancelRefundMessage from '@/components/CancelRefundMessage';
 import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users, Crown, TrendingDown, Gift, Truck, Upload, EyeOff, Filter, ChevronDown, BookOpen } from 'lucide-react';
 import { getPaymentConfirmationBlocker } from '@/lib/orderPayerPhone';
 import { isValidPayerPhone, normalizePayerPhone, PAYER_PHONE_MAX_LENGTH } from '@/lib/payerPhone';
 import { isInsufficientStockError } from '@/lib/stockErrors';
-import { transitionErrorKey, transitionMessage } from '@/lib/statusConflict';
+import { isStatusConflictError, transitionErrorKey, transitionMessage } from '@/lib/statusConflict';
 import { getUserOrders, getOrderById, getAllOrders, getPendingOrdersCount, validatePayment, rejectPayment, cancelOrderByUser, uploadPaymentProof, markOrderAsDispatched, markOrderAsDelivered, completeOrder, reopenOrder, ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderService';
 import { getUserTestimonial, createTestimonial } from '@/lib/testimonialService';
 import { getMyRemittances, generateProofSignedUrl } from '@/lib/remittanceService';
@@ -355,16 +356,35 @@ const UserPanel = ({ onNavigate }) => {
     }
   };
 
-  const handleCancelOrderUser = async (orderId) => {
-    if (!orderId) return;
+  const handleCancelOrderUser = async (order) => {
+    if (!order?.id) return;
+    // Always confirm. A proof already sent means the customer may have paid: add how the refund works (Terms, section 9)
+    const withRefundNotice = order.payment_status === 'proof_uploaded';
+    const question = t('userPanel.cancelOrderQuestion');
+    const confirmed = await showModal({
+      title: t('userPanel.cancelOrderTitle'),
+      message: withRefundNotice
+        ? <CancelRefundMessage question={question} noteKey="userPanel.cancelProofUploadedWarning" />
+        : question,
+      type: 'danger',
+      confirmText: t('userPanel.cancelOrderConfirm'),
+      cancelText: t('common.back')
+    });
+    if (!confirmed) return;
     setProcessingAction(true);
     try {
-      await cancelOrderByUser(orderId, user.id, 'cancelled_by_user');
+      await cancelOrderByUser(order.id, user.id, 'cancelled_by_user');
       await loadUserOrders();
       setShowOrderDetails(false);
       setSelectedOrder(null);
     } catch (error) {
       notifyError(t, transitionErrorKey(error, 'userPanel.cancelOrderError'));
+      if (isStatusConflictError(error)) {
+        // Someone else already moved the order: show its real state instead of a stale detail
+        await loadUserOrders();
+        setShowOrderDetails(false);
+        setSelectedOrder(null);
+      }
     } finally {
       setProcessingAction(false);
     }
@@ -1747,11 +1767,11 @@ const UserPanel = ({ onNavigate }) => {
                       </div>
                     )}
 
-                    {/* User actions: cancel pending order */}
-                    {isRegularUser && selectedOrder.status === 'pending' && selectedOrder.payment_status === 'pending' && (
+                    {/* User actions: cancel a pending order until its payment is validated */}
+                    {isRegularUser && selectedOrder.status === 'pending' && selectedOrder.payment_status !== 'validated' && (
                       <div className="flex gap-3 pt-4 border-t" style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}>
                         <Button
-                          onClick={() => handleCancelOrderUser(selectedOrder.id)}
+                          onClick={() => handleCancelOrderUser(selectedOrder)}
                           disabled={processingAction}
                           variant="destructive"
                           className="flex-1"

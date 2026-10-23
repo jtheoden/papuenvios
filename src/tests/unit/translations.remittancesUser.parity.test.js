@@ -5,7 +5,6 @@ import EN from '@/translations/EN.json';
 // Known pre-existing gaps (ES-only keys). Pinned so that any NEW drift in the
 // namespace (including a one-sided removal of a key) fails this test.
 const KNOWN_ES_ONLY = [
-  'cancelReasonPlaceholder',
   'close',
   'confirmCancelMessage',
   'paymentProofAlt',
