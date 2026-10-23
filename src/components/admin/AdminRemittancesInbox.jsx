@@ -248,7 +248,7 @@ const AdminRemittancesInbox = ({
 
   const renderActions = (remittance) => {
     const disabled = busyId === remittance.id;
-    const base = `inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${FOCUS_RING}`;
+    const base = `inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${FOCUS_RING}`;
 
     const adjustButton = canAdjustCommission(remittance) && (
       <button

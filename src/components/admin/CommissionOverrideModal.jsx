@@ -17,7 +17,7 @@ const KEY = 'remittances.admin.commissionOverride';
  * Shows the standard commission and what the recipient would get before anything is saved.
  * The server (RPC admin_set_remittance_commission) re-validates and audits the change.
  */
-const CommissionOverrideModal = ({ remittance, override = null, onClose, onSaved }) => {
+const CommissionOverrideModal = ({ remittance, override = null, loading = false, onClose, onSaved }) => {
   const { t } = useLanguage();
   const amountSent = Number(remittance.amount_sent);
   const currentCommission = Number(remittance.commission_total);
@@ -187,7 +187,7 @@ const CommissionOverrideModal = ({ remittance, override = null, onClose, onSaved
             </button>
             <button
               type="submit"
-              disabled={!valid || saving}
+              disabled={!valid || saving || loading}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {saving ? t(`${KEY}.saving`) : t(`${KEY}.confirm`)}
