@@ -990,6 +990,14 @@
       "thisYear": "Este Año",
       "allTime": "Histórico",
       "unavailable": "No se pudieron leer las visitas; se muestran como no disponibles."
+    },
+    "courierMargin": {
+      "title": "Margen en riesgo (mes actual)",
+      "critical": "Margen crítico",
+      "warning": "Margen en alerta",
+      "unknown": "Margen desconocido",
+      "unknownAmount": "Costo de mensajero desconocido",
+      "note": "Según los umbrales que usted fijó en Configuración. Lo desconocido se muestra aparte y nunca como cero."
     }
   },
   "activityLog": {
@@ -2706,5 +2714,238 @@
     "statusOff": "Estado actual: analítica desactivada.",
     "gpcNote": "Detectamos la señal Global Privacy Control de tu navegador y la respetamos: la analítica permanece desactivada. Puedes activarla aquí de forma expresa.",
     "preferencesLink": "Preferencias de cookies"
+  },
+  "couriers": {
+    "title": "Gestión de mensajería",
+    "loading": "Cargando...",
+    "unavailable": "El módulo de mensajería aún no está disponible. Cuando se active, esta sección se habilitará sola; no necesita hacer nada.",
+    "tabs": {
+      "label": "Secciones de mensajería",
+      "couriers": "Mensajeros",
+      "types": "Tipos de pago",
+      "payable": "Por pagar",
+      "reports": "Reportes"
+    },
+    "common": {
+      "save": "Guardar",
+      "cancel": "Cancelar",
+      "edit": "Editar",
+      "deactivate": "Desactivar",
+      "activate": "Activar",
+      "active": "Activo",
+      "inactive": "Inactivo",
+      "unknown": "Desconocido",
+      "choose": "Seleccione...",
+      "retry": "Reintentar",
+      "unassigned": "Sin mensajero",
+      "kind": {
+        "order": "Pedido",
+        "remittance": "Remesa"
+      }
+    },
+    "couriers": {
+      "title": "Mensajeros",
+      "intro": "Personas que entregan pedidos y remesas. Desactivar un mensajero no borra su historial.",
+      "add": "Agregar mensajero",
+      "addTitle": "Nuevo mensajero",
+      "editTitle": "Editar mensajero",
+      "name": "Nombre",
+      "phone": "Teléfono",
+      "phoneHint": "Opcional. Solo para uso interno.",
+      "notes": "Notas",
+      "empty": "Todavía no hay mensajeros registrados.",
+      "saved": "Mensajero guardado."
+    },
+    "errors": {
+      "generic": "No se pudo completar la operación. Inténtelo de nuevo.",
+      "unavailable": "El módulo de mensajería aún no está disponible.",
+      "overlap": "Ya existe una regla vigente que se solapa con esta (mismo alcance y período). Ajuste la vigencia o el alcance.",
+      "duplicateName": "Ya existe un mensajero con ese nombre.",
+      "superAdminOnly": "Solo un super administrador puede realizar esta acción.",
+      "forbidden": "No tiene permisos para realizar esta acción.",
+      "pastDate": "La vigencia no puede comenzar en el pasado. La regla solo aplica a entregas nuevas.",
+      "notPayable": "Alguno de los conceptos seleccionados no se puede pagar (monto desconocido, de otro mensajero, ya pagado o anulado).",
+      "notRecalculable": "Este concepto no se puede recalcular.",
+      "alreadyDelivered": "Esta operación ya fue entregada: no se puede cambiar el mensajero desde aquí.",
+      "invalid": "Alguno de los datos no es válido. Revíselos e inténtelo de nuevo.",
+      "required": "Complete los campos obligatorios."
+    },
+    "validation": {
+      "required": "Este campo es obligatorio.",
+      "invalid": "Valor no válido.",
+      "remittanceOnly": "Este método solo aplica a remesas.",
+      "nonNegative": "Debe ser un número mayor o igual a cero.",
+      "percentRange": "El porcentaje debe estar entre 0 y 100.",
+      "tierOrder": "El monto máximo debe ser mayor que el mínimo.",
+      "windowOrder": "La vigencia final debe ser posterior a la inicial."
+    },
+    "margin": {
+      "ok": "Margen correcto",
+      "warning": "Margen en alerta",
+      "critical": "Margen crítico",
+      "unknown": "Margen desconocido"
+    },
+    "thresholds": {
+      "title": "Umbrales de margen",
+      "intro": "Usted fija los porcentajes. Mientras estén vacíos, no se generan alertas de margen.",
+      "saved": "Umbrales guardados.",
+      "remittance": "Remesas",
+      "order": "Pedidos",
+      "targetPct": "Margen objetivo",
+      "warningPct": "Alerta bajo",
+      "criticalPct": "Crítico bajo"
+    },
+    "simulator": {
+      "title": "Simulador",
+      "intro": "Ingrese un caso para ver el costo y el margen que resultaría con esta regla. No se guarda nada.",
+      "sent": "Monto enviado (USD)",
+      "commission": "Comisión cobrada (USD)",
+      "deliveryCharge": "Entrega cobrada al cliente (USD)",
+      "rate": "Tasa (CUP por USD)",
+      "toDeliver": "Equivalente entregado (CUP)",
+      "completeForm": "Complete el formulario para simular.",
+      "cost": "Costo del mensajero",
+      "unknownBasis": "Faltan datos de la base de cálculo: el costo queda desconocido, no cero.",
+      "margin": "Margen",
+      "belowWarning": "queda bajo el umbral de alerta",
+      "belowCritical": "queda bajo el umbral crítico",
+      "noThresholds": "No hay umbrales configurados: no se evalúan alertas."
+    },
+    "types": {
+      "title": "Tipos de pago",
+      "add": "Agregar tipo de pago",
+      "intro": "Define cuánto se paga a cada mensajero por entrega. Cada cambio crea una versión nueva; las anteriores se conservan.",
+      "noRuleUnknown": "Sin regla aplicable, el costo de la entrega queda como desconocido (no como cero) y se puede recalcular después.",
+      "onlyNewDeliveries": "Aplica solo a entregas nuevas. Las entregas ya registradas no cambian.",
+      "formTitle": "Tipo de pago",
+      "code": "Código",
+      "codeHint": "Identificador interno estable, por ejemplo el nombre corto de la regla.",
+      "codeLocked": "El código no cambia: se guardará una versión nueva.",
+      "name": "Nombre",
+      "appliesTo": "Aplica a",
+      "applies": {
+        "remittance": "Remesas",
+        "order": "Pedidos",
+        "both": "Remesas y pedidos"
+      },
+      "method": "Método de cálculo",
+      "methods": {
+        "fixed_cup": "Monto fijo en CUP",
+        "per_usd_delivered": "CUP por cada USD entregado",
+        "percent_of_base": "Porcentaje de una base"
+      },
+      "fixedCup": "Monto (CUP)",
+      "cupPerUsd": "CUP por USD",
+      "percent": "Porcentaje (%)",
+      "base": "Base de cálculo",
+      "bases": {
+        "per_usd_delivered": {
+          "nominal_usd": "USD nominales enviados",
+          "delivered_cup": "Equivalente entregado en CUP"
+        },
+        "percent_of_base": {
+          "nominal_usd": "USD nominales enviados",
+          "delivered_cup": "Equivalente entregado en CUP"
+        }
+      },
+      "summary": {
+        "fixed_cup": "{value} CUP fijos por entrega",
+        "per_usd_delivered": "{value} CUP por USD ({base})",
+        "percent_of_base": "{value}% de {base}"
+      },
+      "scope": "Alcance (opcional)",
+      "courier": "Mensajero",
+      "anyCourier": "Cualquier mensajero",
+      "zone": "Zona",
+      "anyZone": "Cualquier zona",
+      "remittanceType": "Tipo de remesa",
+      "anyType": "Cualquier tipo",
+      "amountFrom": "Monto desde (USD, excluido)",
+      "amountTo": "Monto hasta (USD, incluido)",
+      "tierHint": "Tramo (desde, hasta]. Déjelo vacío para cualquier monto.",
+      "validFrom": "Vigente desde",
+      "validFromHint": "Vacío significa desde ahora. No puede quedar en el pasado.",
+      "validTo": "Vigente hasta",
+      "saveVersion": "Guardar nueva versión",
+      "saved": "Tipo de pago guardado.",
+      "deactivated": "Tipo de pago desactivado.",
+      "showHistory": "Mostrar versiones anteriores y cerradas",
+      "empty": "No hay tipos de pago vigentes.",
+      "closed": "Cerrado",
+      "newVersion": "Nueva versión",
+      "versionNote": "Las versiones anteriores se conservan para auditoría y no se pueden borrar."
+    },
+    "payable": {
+      "title": "Por pagar",
+      "empty": "No hay pagos pendientes a mensajeros.",
+      "adjustment": "ajuste",
+      "void": "Anular",
+      "adjust": "Ajustar",
+      "adjustAmount": "Nuevo monto (CUP)",
+      "adjustHint": "Se registra como un ajuste; el pago original no se modifica.",
+      "reason": "Motivo",
+      "reasonHint": "Mínimo 10 caracteres. Queda en la auditoría.",
+      "unknownAmounts": "{count} entrega(s) sin monto definido (no hay regla aplicable). No se pueden pagar hasta recalcular.",
+      "recalculate": "Recalcular",
+      "recalcWarning": "Usa la regla y la tasa de ahora, no las de la fecha de entrega.",
+      "recalculatedOk": "Monto recalculado.",
+      "selectedTotal": "Total seleccionado",
+      "markPaid": "Marcar pagado",
+      "payIntro": "Se marcarán como pagados {count} concepto(s).",
+      "method": "Método de pago",
+      "reference": "Referencia",
+      "paidAt": "Fecha y hora del pago",
+      "confirmPay": "Confirmar pago",
+      "paidOk": "Pago registrado.",
+      "voidedOk": "Concepto anulado.",
+      "adjustedOk": "Ajuste registrado.",
+      "paidTitle": "Pagados recientes",
+      "paidEmpty": "Todavía no hay pagos registrados.",
+      "superAdminOnlyReason": "Anular o ajustar un concepto ya pagado requiere un super administrador.",
+      "gapsTitle": "Entregas sin costo registrado",
+      "gapsIntro": "Entregas anteriores al módulo no se tocan automáticamente. Puede revisarlas y, si lo desea, generarlas de forma explícita.",
+      "gapsFrom": "Revisar desde",
+      "gapsFromHint": "Fecha de inicio obligatoria.",
+      "gapsReview": "Revisar",
+      "gapsNone": "No hay entregas sin costo en ese período.",
+      "gapsCount": "{count} entrega(s) sin costo registrado.",
+      "backfill": "Generar costos faltantes",
+      "backfillConfirm": "Se generarán costos para {count} entrega(s).",
+      "backfillYes": "Sí, generar",
+      "backfillOk": "Costos generados.",
+      "backfillSuperOnly": "Generar costos faltantes requiere un super administrador, porque usa la regla y la tasa de ahora."
+    },
+    "reports": {
+      "title": "Reportes por mensajero",
+      "from": "Desde",
+      "to": "Hasta",
+      "courier": "Mensajero",
+      "allCouriers": "Todos",
+      "run": "Ver reporte",
+      "note": "Los importes desconocidos se cuentan aparte y nunca se suman como cero. No incluye datos personales de clientes.",
+      "empty": "No hay datos en ese período.",
+      "exportCsv": "Exportar CSV",
+      "cols": {
+        "remittance_deliveries": "Entregas de remesas",
+        "order_deliveries": "Entregas de pedidos",
+        "remittance_amount_sent_usd": "USD enviados en remesas",
+        "accrued_cup": "Devengado (CUP)",
+        "accrued_usd": "Devengado (USD)",
+        "paid_cup": "Pagado (CUP)",
+        "pending_cup": "Pendiente (CUP)",
+        "voided_cup": "Anulado (CUP)",
+        "voided_after_payment_cup": "Anulado tras pago (CUP)",
+        "unknown_amount_count": "Entregas con monto desconocido",
+        "margin_warning_count": "Margen en alerta",
+        "margin_critical_count": "Margen crítico",
+        "margin_unknown_count": "Margen desconocido"
+      }
+    },
+    "delivery": {
+      "label": "Quién entregó (opcional)",
+      "none": "Sin especificar",
+      "hint": "Si lo indica, se registra el costo de esta entrega para el mensajero.",
+      "clearedWarning": "Había elegido un mensajero antes: la asignación anterior se mantiene. Puede corregirla después en Mensajería."
+    }
   }
 }

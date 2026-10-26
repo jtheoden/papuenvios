@@ -46,11 +46,13 @@ vi.mock('@/lib/supabase', () => {
     ['select', 'eq', 'in', 'order', 'range', 'gte'].forEach((m) => {
       chain[m] = () => chain;
     });
+    // the effective-cost view is absent unless a test provides it (front before the migrations => legacy tables)
+    const error = tables.errors[table] ?? (table === 'v_effective_courier_cost' && !(table in tables.data) ? { code: '42P01', message: 'missing' } : null);
     chain.then = (resolve) =>
       resolve({
-        data: tables.errors[table] ? null : (tables.data[table] ?? []),
+        data: error ? null : (tables.data[table] ?? []),
         count: (tables.data[table] ?? []).length,
-        error: tables.errors[table] ?? null
+        error
       });
     return chain;
   };

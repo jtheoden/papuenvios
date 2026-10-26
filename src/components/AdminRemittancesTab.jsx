@@ -1542,6 +1542,8 @@ const AdminRemittancesTab = () => {
           notesEnabled
           onClose={() => setDeliveryTarget(null)}
           onConfirm={submitDelivery}
+          courierKind="remittance"
+          courierOperationId={deliveryTarget.id}
           t={t}
         />
       )}

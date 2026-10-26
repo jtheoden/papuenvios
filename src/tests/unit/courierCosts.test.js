@@ -3,13 +3,18 @@ import ES from '@/translations/ES.json';
 import EN from '@/translations/EN.json';
 import { computeCourierCostTotals, computeRemittanceCourierTotals } from '@/lib/dashboardMetrics';
 
-const state = vi.hoisted(() => ({ pages: [], calls: [] }));
+// view: pages served by v_effective_courier_cost; null = the view does not exist yet (front deployed before the migrations)
+const state = vi.hoisted(() => ({ pages: [], calls: [], view: null, viewCalls: [] }));
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     from: (table) => {
       const chain = { table };
-      ['select', 'order'].forEach((m) => { chain[m] = () => chain; });
+      ['select', 'order', 'eq'].forEach((m) => { chain[m] = (...args) => { if (m === 'eq') chain.eqArgs = args; return chain; }; });
       chain.range = (from, to) => {
+        if (table === 'v_effective_courier_cost') {
+          state.viewCalls.push({ from, to, eq: chain.eqArgs });
+          return Promise.resolve(state.view ? (state.view.shift() ?? { data: [], error: null }) : { data: null, error: { code: '42P01', message: 'relation does not exist' } });
+        }
         state.calls.push({ table, from, to });
         return Promise.resolve(state.pages.shift() ?? { data: [], error: null });
       };
@@ -261,6 +266,44 @@ describe('listOrderCourierCosts', () => {
   it('throws on a read error instead of returning an empty map', async () => {
     state.pages = [{ data: null, error: { code: '42P01', message: 'relation "order_courier_costs" does not exist' } }];
     await expect(listOrderCourierCosts()).rejects.toBeTruthy();
+  });
+});
+
+describe('courier costs read the effective view first (no double counting), legacy tables only before the migrations', () => {
+  beforeEach(() => { state.pages = []; state.calls = []; state.view = null; state.viewCalls = []; });
+
+  it('reads v_effective_courier_cost filtered by kind and never touches the legacy table when the view exists', async () => {
+    state.view = [{ data: [
+      { source_id: 'a', amount_usd: '5.50', recorded_at: '2026-10-14T10:00:00Z' },
+      { source_id: 'b', amount_usd: null, recorded_at: '2026-10-14T09:00:00Z' }
+    ], error: null }];
+    const map = await listOrderCourierCosts();
+    expect(state.viewCalls[0].eq).toEqual(['source_kind', 'order']);
+    expect(state.calls).toEqual([]);
+    expect(map.get('a')).toBe(5.5);
+    expect(map.get('b')).toBeNull();
+    expect(map.firstRecordedAt).toBe('2026-10-14T09:00:00.000Z');
+  });
+
+  it('uses the remittance kind for remittances', async () => {
+    state.view = [{ data: [{ source_id: 'r1', amount_usd: '4', recorded_at: '2026-10-14T10:00:00Z' }], error: null }];
+    const map = await listRemittanceCourierCosts();
+    expect(state.viewCalls[0].eq).toEqual(['source_kind', 'remittance']);
+    expect(map.get('r1')).toBe(4);
+  });
+
+  it.each(['42P01', 'PGRST205'])('falls back to the legacy table when the view is missing (%s)', async (code) => {
+    state.view = [{ data: null, error: { code, message: 'missing' } }];
+    state.pages = [{ data: [{ order_id: 'a', amount_usd: '5.50', created_at: '2026-10-14T10:00:00Z' }], error: null }];
+    const map = await listOrderCourierCosts();
+    expect(state.calls[0].table).toBe('order_courier_costs');
+    expect(map.get('a')).toBe(5.5);
+  });
+
+  it('throws on any other view error instead of falling back (a half-read would double count)', async () => {
+    state.view = [{ data: null, error: { code: '42501', message: 'permission denied' } }];
+    await expect(listOrderCourierCosts()).rejects.toBeTruthy();
+    expect(state.calls).toEqual([]);
   });
 });
 

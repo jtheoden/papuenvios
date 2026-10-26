@@ -982,6 +982,14 @@
       "thisYear": "This Year",
       "allTime": "All Time",
       "unavailable": "Visits could not be read; they are shown as unavailable."
+    },
+    "courierMargin": {
+      "title": "Margin at risk (current month)",
+      "critical": "Critical margin",
+      "warning": "Warning margin",
+      "unknown": "Unknown margin",
+      "unknownAmount": "Unknown courier cost",
+      "note": "Based on the thresholds you set in Settings. Unknown values are shown apart and never as zero."
     }
   },
   "activityLog": {
@@ -2698,5 +2706,238 @@
     "statusOff": "Current status: analytics disabled.",
     "gpcNote": "We detected the Global Privacy Control signal from your browser and we honor it: analytics stay off. You can turn them on here explicitly.",
     "preferencesLink": "Cookie preferences"
+  },
+  "couriers": {
+    "title": "Courier management",
+    "loading": "Loading...",
+    "unavailable": "The courier module is not available yet. This section will enable itself once it is activated; no action is needed.",
+    "tabs": {
+      "label": "Courier sections",
+      "couriers": "Couriers",
+      "types": "Payment types",
+      "payable": "Payable",
+      "reports": "Reports"
+    },
+    "common": {
+      "save": "Save",
+      "cancel": "Cancel",
+      "edit": "Edit",
+      "deactivate": "Deactivate",
+      "activate": "Activate",
+      "active": "Active",
+      "inactive": "Inactive",
+      "unknown": "Unknown",
+      "choose": "Choose...",
+      "retry": "Retry",
+      "unassigned": "No courier",
+      "kind": {
+        "order": "Order",
+        "remittance": "Remittance"
+      }
+    },
+    "couriers": {
+      "title": "Couriers",
+      "intro": "People who deliver orders and remittances. Deactivating a courier does not delete their history.",
+      "add": "Add courier",
+      "addTitle": "New courier",
+      "editTitle": "Edit courier",
+      "name": "Name",
+      "phone": "Phone",
+      "phoneHint": "Optional. Internal use only.",
+      "notes": "Notes",
+      "empty": "There are no couriers yet.",
+      "saved": "Courier saved."
+    },
+    "errors": {
+      "generic": "The operation could not be completed. Please try again.",
+      "unavailable": "The courier module is not available yet.",
+      "overlap": "An active rule already overlaps this one (same scope and period). Adjust the validity or the scope.",
+      "duplicateName": "A courier with that name already exists.",
+      "superAdminOnly": "Only a super admin can perform this action.",
+      "forbidden": "You do not have permission to perform this action.",
+      "pastDate": "The validity cannot start in the past. A rule only applies to new deliveries.",
+      "notPayable": "Some selected items cannot be paid (unknown amount, another courier, already paid or voided).",
+      "notRecalculable": "This item cannot be recalculated.",
+      "alreadyDelivered": "This operation is already delivered: the courier cannot be changed from here.",
+      "invalid": "Some data is not valid. Review it and try again.",
+      "required": "Fill in the required fields."
+    },
+    "validation": {
+      "required": "This field is required.",
+      "invalid": "Invalid value.",
+      "remittanceOnly": "This method only applies to remittances.",
+      "nonNegative": "It must be a number greater than or equal to zero.",
+      "percentRange": "The percentage must be between 0 and 100.",
+      "tierOrder": "The maximum amount must be greater than the minimum.",
+      "windowOrder": "The end of the validity must be after its start."
+    },
+    "margin": {
+      "ok": "Margin ok",
+      "warning": "Margin warning",
+      "critical": "Margin critical",
+      "unknown": "Margin unknown"
+    },
+    "thresholds": {
+      "title": "Margin thresholds",
+      "intro": "You set the percentages. While they are empty, no margin alerts are raised.",
+      "saved": "Thresholds saved.",
+      "remittance": "Remittances",
+      "order": "Orders",
+      "targetPct": "Target margin",
+      "warningPct": "Warning below",
+      "criticalPct": "Critical below"
+    },
+    "simulator": {
+      "title": "Simulator",
+      "intro": "Enter a case to see the cost and margin this rule would give. Nothing is saved.",
+      "sent": "Amount sent (USD)",
+      "commission": "Commission charged (USD)",
+      "deliveryCharge": "Delivery charged to the customer (USD)",
+      "rate": "Rate (CUP per USD)",
+      "toDeliver": "Delivered equivalent (CUP)",
+      "completeForm": "Complete the form to simulate.",
+      "cost": "Courier cost",
+      "unknownBasis": "The calculation base is missing: the cost stays unknown, not zero.",
+      "margin": "Margin",
+      "belowWarning": "falls below the warning threshold",
+      "belowCritical": "falls below the critical threshold",
+      "noThresholds": "No thresholds are set: alerts are not evaluated."
+    },
+    "types": {
+      "title": "Payment types",
+      "add": "Add payment type",
+      "intro": "Defines how much each courier is paid per delivery. Every change creates a new version; earlier ones are kept.",
+      "noRuleUnknown": "Without an applicable rule the delivery cost is unknown (not zero) and can be recalculated later.",
+      "onlyNewDeliveries": "Applies to new deliveries only. Deliveries already recorded do not change.",
+      "formTitle": "Payment type",
+      "code": "Code",
+      "codeHint": "Stable internal identifier, for example the rule short name.",
+      "codeLocked": "The code does not change: a new version will be saved.",
+      "name": "Name",
+      "appliesTo": "Applies to",
+      "applies": {
+        "remittance": "Remittances",
+        "order": "Orders",
+        "both": "Remittances and orders"
+      },
+      "method": "Calculation method",
+      "methods": {
+        "fixed_cup": "Fixed amount in CUP",
+        "per_usd_delivered": "CUP per USD delivered",
+        "percent_of_base": "Percentage of a base"
+      },
+      "fixedCup": "Amount (CUP)",
+      "cupPerUsd": "CUP per USD",
+      "percent": "Percentage (%)",
+      "base": "Calculation base",
+      "bases": {
+        "per_usd_delivered": {
+          "nominal_usd": "Nominal USD sent",
+          "delivered_cup": "Delivered equivalent in CUP"
+        },
+        "percent_of_base": {
+          "nominal_usd": "Nominal USD sent",
+          "delivered_cup": "Delivered equivalent in CUP"
+        }
+      },
+      "summary": {
+        "fixed_cup": "{value} CUP fixed per delivery",
+        "per_usd_delivered": "{value} CUP per USD ({base})",
+        "percent_of_base": "{value}% of {base}"
+      },
+      "scope": "Scope (optional)",
+      "courier": "Courier",
+      "anyCourier": "Any courier",
+      "zone": "Zone",
+      "anyZone": "Any zone",
+      "remittanceType": "Remittance type",
+      "anyType": "Any type",
+      "amountFrom": "Amount from (USD, exclusive)",
+      "amountTo": "Amount up to (USD, inclusive)",
+      "tierHint": "Tier (from, to]. Leave empty for any amount.",
+      "validFrom": "Valid from",
+      "validFromHint": "Empty means from now. It cannot be in the past.",
+      "validTo": "Valid until",
+      "saveVersion": "Save new version",
+      "saved": "Payment type saved.",
+      "deactivated": "Payment type deactivated.",
+      "showHistory": "Show earlier and closed versions",
+      "empty": "There are no current payment types.",
+      "closed": "Closed",
+      "newVersion": "New version",
+      "versionNote": "Earlier versions are kept for audit and cannot be deleted."
+    },
+    "payable": {
+      "title": "Payable",
+      "empty": "There are no pending courier payments.",
+      "adjustment": "adjustment",
+      "void": "Void",
+      "adjust": "Adjust",
+      "adjustAmount": "New amount (CUP)",
+      "adjustHint": "It is recorded as an adjustment; the original payment is not modified.",
+      "reason": "Reason",
+      "reasonHint": "At least 10 characters. It is kept in the audit log.",
+      "unknownAmounts": "{count} delivery(ies) with no amount (no applicable rule). They cannot be paid until recalculated.",
+      "recalculate": "Recalculate",
+      "recalcWarning": "It uses the rule and the rate of now, not those of the delivery date.",
+      "recalculatedOk": "Amount recalculated.",
+      "selectedTotal": "Selected total",
+      "markPaid": "Mark as paid",
+      "payIntro": "{count} item(s) will be marked as paid.",
+      "method": "Payment method",
+      "reference": "Reference",
+      "paidAt": "Payment date and time",
+      "confirmPay": "Confirm payment",
+      "paidOk": "Payment recorded.",
+      "voidedOk": "Item voided.",
+      "adjustedOk": "Adjustment recorded.",
+      "paidTitle": "Recently paid",
+      "paidEmpty": "There are no recorded payments yet.",
+      "superAdminOnlyReason": "Voiding or adjusting a paid item requires a super admin.",
+      "gapsTitle": "Deliveries without a recorded cost",
+      "gapsIntro": "Deliveries from before the module are not touched automatically. You can review them and, if you wish, generate them explicitly.",
+      "gapsFrom": "Review from",
+      "gapsFromHint": "A start date is required.",
+      "gapsReview": "Review",
+      "gapsNone": "There are no deliveries without a cost in that period.",
+      "gapsCount": "{count} delivery(ies) without a recorded cost.",
+      "backfill": "Generate missing costs",
+      "backfillConfirm": "Costs will be generated for {count} delivery(ies).",
+      "backfillYes": "Yes, generate",
+      "backfillOk": "Costs generated.",
+      "backfillSuperOnly": "Generating missing costs requires a super admin, because it uses the rule and rate of now."
+    },
+    "reports": {
+      "title": "Courier reports",
+      "from": "From",
+      "to": "To",
+      "courier": "Courier",
+      "allCouriers": "All",
+      "run": "Run report",
+      "note": "Unknown amounts are counted apart and never added as zero. It contains no customer personal data.",
+      "empty": "There is no data in that period.",
+      "exportCsv": "Export CSV",
+      "cols": {
+        "remittance_deliveries": "Remittance deliveries",
+        "order_deliveries": "Order deliveries",
+        "remittance_amount_sent_usd": "USD sent in remittances",
+        "accrued_cup": "Accrued (CUP)",
+        "accrued_usd": "Accrued (USD)",
+        "paid_cup": "Paid (CUP)",
+        "pending_cup": "Pending (CUP)",
+        "voided_cup": "Voided (CUP)",
+        "voided_after_payment_cup": "Voided after payment (CUP)",
+        "unknown_amount_count": "Deliveries with unknown amount",
+        "margin_warning_count": "Margin warnings",
+        "margin_critical_count": "Margin critical",
+        "margin_unknown_count": "Margin unknown"
+      }
+    },
+    "delivery": {
+      "label": "Delivered by (optional)",
+      "none": "Not specified",
+      "hint": "If set, the cost of this delivery is recorded for the courier.",
+      "clearedWarning": "You chose a courier earlier: the previous assignment is kept. You can correct it later under Couriers."
+    }
   }
 }

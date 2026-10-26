@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { listProductCosts, listComboCosts } from '@/lib/adminCostService';
 import { listOrderCourierCosts, listRemittanceCourierCosts } from '@/lib/courierCostService';
+import CourierMarginCard from '@/components/admin/CourierMarginCard';
 import { classifyAdminCatalogError } from '@/lib/catalogErrors';
 import CatalogLoadError from './CatalogLoadError';
 import RefundsAlertCard from '@/components/admin/RefundsAlertCard';
@@ -956,6 +957,7 @@ const DashboardPage = ({ onNavigate }) => {
                           </>
                         )}
                       </div>
+                      <CourierMarginCard t={t} />
                     </motion.div>
                   )}
 
