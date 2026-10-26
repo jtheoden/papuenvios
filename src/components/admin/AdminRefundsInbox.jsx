@@ -120,7 +120,9 @@ const AdminRefundsInbox = ({
   onChanged,
   liveMessage = '',
   total = null,
-  now = null
+  now = null,
+  currentUserId = null,
+  isSuperAdmin = false
 }) => {
   const { t, language } = useLanguage();
   const [filter, setFilter] = useState('toRefund');
@@ -145,6 +147,11 @@ const AdminRefundsInbox = ({
     const typed = type === 'all' ? items : items.filter((r) => r.operation_type === type);
     return sortRefunds(filterRefunds(searchRefunds(typed, query), filter));
   }, [items, type, query, filter]);
+
+  // Separation of duties: the customer of a refund cannot resolve it (the database refuses it too). Only a super admin may, after a
+  // reinforced confirmation, because he can be the sole administrator.
+  const isOwn = (refund) => Boolean(currentUserId) && refund.user_id === currentUserId;
+  const ownBlocked = (refund) => isOwn(refund) && !isSuperAdmin;
 
   const customerOf = (refund) => refund.customer_name || refund.customer_email || t(`${K}unknownCustomer`);
   const summaryText = (refund) =>
@@ -185,8 +192,10 @@ const AdminRefundsInbox = ({
 
   const renderActions = (refund) => {
     const held = refund.queueState === 'on_hold';
+    const blocked = ownBlocked(refund);
     const number = refund.operation_number;
     const holdId = `refund-hold-${refund.id}`;
+    const ownId = `refund-own-${refund.id}`;
     return (
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {refund.payment_proof_url && (
@@ -212,23 +221,30 @@ const AdminRefundsInbox = ({
         <button
           type="button"
           aria-label={t(`${K}actions.notApplicableAria`, { number })}
-          onClick={() => setResolveTarget({ refund, action: 'not_applicable' })}
-          className={`${BUTTON} border border-gray-400 bg-white text-gray-800 hover:bg-gray-50`}
+          aria-disabled={blocked ? 'true' : undefined}
+          aria-describedby={blocked ? ownId : undefined}
+          onClick={() => {
+            if (!blocked) setResolveTarget({ refund, action: 'not_applicable' });
+          }}
+          className={`${BUTTON} border border-gray-400 ${blocked ? 'cursor-not-allowed bg-gray-100 text-gray-600' : 'bg-white text-gray-800 hover:bg-gray-50'}`}
         >
           {t(`${K}actions.notApplicable`)}
         </button>
         <button
           type="button"
           aria-label={t(`${K}actions.markRefundedAria`, { number })}
-          aria-disabled={held ? 'true' : undefined}
-          aria-describedby={held ? holdId : undefined}
+          aria-disabled={held || blocked ? 'true' : undefined}
+          aria-describedby={blocked ? ownId : held ? holdId : undefined}
           onClick={() => {
-            if (!held) setResolveTarget({ refund, action: 'refunded' });
+            if (!held && !blocked) setResolveTarget({ refund, action: 'refunded' });
           }}
-          className={`${BUTTON} ${held ? 'cursor-not-allowed bg-gray-200 text-gray-600' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+          className={`${BUTTON} ${held || blocked ? 'cursor-not-allowed bg-gray-200 text-gray-600' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
         >
           {t(`${K}actions.markRefunded`)}
         </button>
+        {blocked && (
+          <p id={ownId} className="basis-full text-xs text-gray-700">{t(`${K}actions.ownBlocked`)}</p>
+        )}
         {held && (
           <p id={holdId} className="basis-full text-xs text-gray-700">
             {t(`${K}actions.onHoldBlocked`, {
@@ -271,6 +287,9 @@ const AdminRefundsInbox = ({
             <p className="font-mono font-semibold text-gray-900">{refund.operation_number}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {isOwn(refund) && (
+              <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-900">{t(`${K}ownOperation`)}</span>
+            )}
             {open && (
               <span
                 className={`rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -441,6 +460,7 @@ const AdminRefundsInbox = ({
           refund={resolveTarget.refund}
           action={resolveTarget.action}
           summaryText={summaryText(resolveTarget.refund)}
+          isOwn={isOwn(resolveTarget.refund)}
           language={language}
           t={t}
           onClose={() => setResolveTarget(null)}

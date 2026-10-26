@@ -19,6 +19,17 @@ const MIGRATIONS = [
   '20261029100300_refund_rpcs',
   '20261029100400_fix_pending_orders_count_cancelled'
 ];
+// Migrations stacked on top of these (refund audit trail, proofs, retention): they depend on refund_requests, so they are rolled
+// back first and re-applied last. Their own safety suite is refundAuditMigrationsSafety.test.js.
+const STACKED = [
+  '20261029110000_refund_request_events',
+  '20261029110100_operation_timeline_trace',
+  '20261029110200_refund_metrics_export',
+  '20261029110300_refund_proofs_bucket',
+  '20261029110400_refund_resolve_with_proof',
+  '20261029110500_refund_proof_retention',
+  '20261029110600_refund_constants_search_path'
+];
 const up = (name) => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 const down = (name) => readFileSync(`supabase/rollbacks/${name}_down.sql`, 'utf8');
 
@@ -147,7 +158,9 @@ describeDb('refund migrations on realistic data (dynamic)', () => {
     let refundRowsAfterApply;
     try {
       // 1. Production-like state: the migrations are not there.
-      for (const name of [...MIGRATIONS].reverse()) await admin.query(down(name));
+      await admin.query("SET app.confirm_refund_rollback = 'yes'");
+      for (const name of [...MIGRATIONS, ...STACKED].reverse()) await admin.query(down(name));
+      await admin.query('RESET app.confirm_refund_rollback');
       expect((await admin.query(`SELECT to_regclass('public.refund_requests') AS t`)).rows[0].t).toBeNull();
 
       // 2. Realistic data, including operations ALREADY cancelled after being paid (the case a backfill would target).
@@ -178,7 +191,7 @@ describeDb('refund migrations on realistic data (dynamic)', () => {
       expect(pendingAfter.rows[0].n).toBe(pendingBefore.rows[0].n - staleCancelled);
     } finally {
       // Whatever happened, leave the scratch database with the migrations applied (idempotent files).
-      for (const name of MIGRATIONS) await admin.query(up(name));
+      for (const name of [...MIGRATIONS, ...STACKED]) await admin.query(up(name));
     }
 
     expect(after).toEqual(before);

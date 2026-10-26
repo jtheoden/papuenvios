@@ -9,7 +9,10 @@ import {
   sortRefunds,
   buildRefundCopyText,
   refundedAtFromDate,
-  isRefundDateClamped
+  isRefundDateClamped,
+  REFUND_PROOF_MAX_BYTES,
+  validateRefundProofFile,
+  refundProofExtension
 } from '@/lib/refundRules';
 
 const NOW = new Date('2026-10-30T12:00:00.000Z');
@@ -129,5 +132,33 @@ describe('refundRules', () => {
       const expected = noon < eligible ? eligibleAt : noon.toISOString();
       expect(refundedAtFromDate(sameDay, eligibleAt, NOW)).toBe(expected);
     });
+  });
+});
+
+describe('refund proof file rules', () => {
+  const file = (name, type, size = 10) => ({ name, type, size });
+
+  it('accepts jpeg, png, webp and pdf up to 5 MB', () => {
+    expect(REFUND_PROOF_MAX_BYTES).toBe(5 * 1024 * 1024);
+    for (const [name, type] of [['a.jpg', 'image/jpeg'], ['a.png', 'image/png'], ['a.webp', 'image/webp'], ['a.pdf', 'application/pdf']]) {
+      expect(validateRefundProofFile(file(name, type))).toBeNull();
+    }
+    expect(validateRefundProofFile(file('a.png', 'image/png', REFUND_PROOF_MAX_BYTES))).toBeNull();
+  });
+
+  it('refuses a missing file, other types, an empty file and a file over 5 MB', () => {
+    expect(validateRefundProofFile(null)).toBe('missing');
+    expect(validateRefundProofFile(file('a.txt', 'text/plain'))).toBe('type');
+    expect(validateRefundProofFile(file('a.gif', 'image/gif'))).toBe('type');
+    expect(validateRefundProofFile(file('a.png', 'image/png', 0))).toBe('size');
+    expect(validateRefundProofFile(file('a.png', 'image/png', REFUND_PROOF_MAX_BYTES + 1))).toBe('size');
+  });
+
+  it('derives the storage extension from the MIME type, never from the file name', () => {
+    expect(refundProofExtension('image/jpeg')).toBe('jpg');
+    expect(refundProofExtension('image/png')).toBe('png');
+    expect(refundProofExtension('image/webp')).toBe('webp');
+    expect(refundProofExtension('application/pdf')).toBe('pdf');
+    expect(refundProofExtension('text/html')).toBeNull();
   });
 });

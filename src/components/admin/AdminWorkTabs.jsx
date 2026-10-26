@@ -76,7 +76,7 @@ const RefundCountBadge = ({ count, overdue, t }) => {
   );
 };
 
-const AdminWorkTabsInner = ({ ordersCount, onNavigate, children }) => {
+const AdminWorkTabsInner = ({ ordersCount, onNavigate, children, currentUserId = null, isSuperAdmin = false }) => {
   const { t } = useLanguage();
   const baseId = useId();
   const { remittances, loading, error, refreshFailed, toProcessCount, newCount, reload, retry } = usePendingRemittances({ enabled: true });
@@ -211,6 +211,8 @@ const AdminWorkTabsInner = ({ ordersCount, onNavigate, children }) => {
               onRetry={refundQueue.retry}
               stale={refundQueue.refreshFailed}
               onChanged={refundQueue.reload}
+              currentUserId={currentUserId}
+              isSuperAdmin={isSuperAdmin}
               liveMessage={refundQueue.newCount > 0 ? t('adminRefunds.states.liveNew', { count: refundQueue.newCount }) : ''}
             />
           </section>

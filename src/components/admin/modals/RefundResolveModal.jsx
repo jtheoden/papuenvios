@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, X } from 'lucide-react';
-import { isRefundDateClamped, refundedAtFromDate, todayLocalDay } from '@/lib/refundRules';
+import { REFUND_PROOF_ACCEPT, isRefundDateClamped, refundedAtFromDate, todayLocalDay, validateRefundProofFile } from '@/lib/refundRules';
 import { REFUND_HOLD_HOURS } from '@/lib/legalConfig';
 
 const K = 'adminRefunds.';
@@ -25,7 +25,16 @@ export const refundErrorMessage = (t, error, language = 'es') => {
       return t(`${K}errors.notAuthorized`);
     case 'refund_not_found':
       return t(`${K}errors.notFound`);
+    case 'proof_required':
+      return t(`${K}errors.proofRequired`);
+    case 'invalid_proof_file':
+      return t(`${K}errors.proofInvalid`);
+    case 'proof_upload_failed':
+      return t(`${K}errors.proofUploadFailed`);
+    case 'self_resolution_not_allowed':
+      return t(`${K}errors.selfResolution`);
     case 'invalid_argument':
+      if (context.field === 'p_proof_path') return t(`${K}errors.proofInvalid`);
       if (context.field === 'p_reference') return t(`${K}errors.invalidReference`);
       if (context.field === 'p_refunded_at') return t(`${K}errors.invalidDate`);
       if (context.field === 'p_reason') return t(`${K}errors.invalidReason`);
@@ -42,7 +51,7 @@ export const refundErrorMessage = (t, error, language = 'es') => {
  *  action 'not_applicable' reason (required) with presets; allowed during the 48 h hold.
  * `onSubmit(payload)` resolves on success (the caller closes the dialog) or throws; the message is shown inline.
  */
-const RefundResolveModal = ({ refund, action, summaryText, language = 'es', t, onClose, onSubmit }) => {
+const RefundResolveModal = ({ refund, action, summaryText, language = 'es', t, onClose, onSubmit, isOwn = false }) => {
   const isRefund = action === 'refunded';
   const mustConfirmArrival = isRefund && refund.payment_evidence === 'proof_unverified';
   const dialogRef = useRef(null);
@@ -53,6 +62,8 @@ const RefundResolveModal = ({ refund, action, summaryText, language = 'es', t, o
   const [day, setDay] = useState(todayLocalDay());
   const [confirmed, setConfirmed] = useState(false);
   const [reason, setReason] = useState('');
+  const [proofFile, setProofFile] = useState(null);
+  const [selfConfirmed, setSelfConfirmed] = useState(false);
   const [error, setError] = useState('');
   const [working, setWorking] = useState(false);
   const titleId = 'refund-resolve-title';
@@ -101,14 +112,22 @@ const RefundResolveModal = ({ refund, action, summaryText, language = 'es', t, o
       const ref = reference.trim();
       if (ref.length < 1 || ref.length > MAX_REFERENCE) return setError(t(`${K}errors.invalidReference`));
       if (!day) return setError(t(`${K}errors.invalidDate`));
+      const problem = validateRefundProofFile(proofFile);
+      if (problem === 'missing') return setError(t(`${K}errors.proofRequired`));
+      if (problem) return setError(t(`${K}errors.proofInvalid`));
       if (mustConfirmArrival && !confirmed) {
         return setError(t(`${K}errors.confirmArrival`));
       }
-      payload = { action, reference: ref, refundedAt: refundedAtFromDate(day, refund.eligible_at, new Date()) };
+      payload = { action, reference: ref, refundedAt: refundedAtFromDate(day, refund.eligible_at, new Date()), proofFile };
     } else {
       const text = reason.trim();
       if (text.length < 1 || text.length > MAX_REASON) return setError(t(`${K}errors.invalidReason`));
       payload = { action, reason: text };
+    }
+    // Own operation (super admin only; the screen blocks everyone else): reinforced confirmation, sent to the database.
+    if (isOwn) {
+      if (!selfConfirmed) return setError(t(`${K}errors.selfResolveConfirm`));
+      payload.selfResolveConfirm = true;
     }
     setError('');
     setWorking(true);
@@ -198,6 +217,20 @@ const RefundResolveModal = ({ refund, action, summaryText, language = 'es', t, o
                   </p>
                 )}
               </div>
+              <div>
+                <label htmlFor="refund-proof" className="block text-sm font-medium text-gray-800">
+                  {t(`${K}modal.refunded.proofLabel`)} *
+                </label>
+                <input
+                  id="refund-proof"
+                  type="file"
+                  accept={REFUND_PROOF_ACCEPT}
+                  onChange={(e) => setProofFile(e.target.files?.[0] || null)}
+                  aria-describedby="refund-proof-help"
+                  className={`${field} file:mr-3 file:rounded file:border-0 file:bg-gray-100 file:px-3 file:py-1`}
+                />
+                <p id="refund-proof-help" className="mt-1 text-xs text-gray-600">{t(`${K}modal.refunded.proofHelp`)}</p>
+              </div>
               {mustConfirmArrival && (
                 <label className="flex items-start gap-3 rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-900">
                   <input
@@ -242,6 +275,18 @@ const RefundResolveModal = ({ refund, action, summaryText, language = 'es', t, o
               />
               <p id="refund-reason-help" className="mt-1 text-xs text-gray-600">{t(`${K}modal.notApplicable.reasonHelp`)}</p>
             </div>
+          )}
+
+          {isOwn && (
+            <label className="flex items-start gap-3 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900">
+              <input
+                type="checkbox"
+                checked={selfConfirmed}
+                onChange={(e) => setSelfConfirmed(e.target.checked)}
+                className="mt-0.5 h-5 w-5 shrink-0"
+              />
+              <span>{t(`${K}modal.selfResolve.confirm`)}</span>
+            </label>
           )}
 
           {error && (

@@ -2462,6 +2462,7 @@
     "zelleAccount": "Cuenta Zelle que recibió el pago",
     "paymentReference": "Referencia del pago",
     "unknownCustomer": "Cliente sin nombre",
+    "ownOperation": "Operación propia",
     "cancelledOn": "Cancelado el {date} {by}",
     "cancelledBy": {
       "customer": "por el cliente",
@@ -2483,7 +2484,8 @@
       "viewProofAria": "Ver comprobante de pago de {number}",
       "copied": "Datos copiados",
       "copyFailed": "No se pudo copiar. Seleccione y copie manualmente.",
-      "onHoldBlocked": "Disponible desde el {date} (espera de {hours} h)"
+      "onHoldBlocked": "Disponible desde el {date} (espera de {hours} h)",
+      "ownBlocked": "Es una operación suya: otro administrador debe resolver este reembolso."
     },
     "modal": {
       "summary": "{amount} {currency} · {customer}",
@@ -2495,7 +2497,12 @@
         "confirmArrived": "Confirmé que el pago llegó a la cuenta Zelle {account}",
         "dateClamped": "Se registrará con la hora en que se habilitó el reembolso ({date}).",
         "confirmArrivedNoAccount": "Confirmé que el pago llegó a la cuenta Zelle",
+        "proofLabel": "Comprobante del reembolso",
+        "proofHelp": "Obligatorio. Captura o PDF del reembolso (JPG, PNG, WebP o PDF, máximo 5 MB). Puede contener datos personales: recorte lo que no haga falta. Se elimina automáticamente un año después del reembolso.",
         "submit": "Guardar reembolso"
+      },
+      "selfResolve": {
+        "confirm": "Esta devolución es de mi propia operación y soy el único administrador disponible para resolverla. Queda registrado."
       },
       "notApplicable": {
         "title": "Marcar como no procede",
@@ -2530,6 +2537,11 @@
       "invalidDate": "La fecha del reembolso no es válida.",
       "invalidReason": "Ingrese el motivo (hasta 500 caracteres).",
       "confirmArrival": "Confirme que el pago llegó a la cuenta Zelle antes de reembolsar.",
+      "proofRequired": "Adjunte el comprobante del reembolso.",
+      "proofInvalid": "El comprobante debe ser JPG, PNG, WebP o PDF de hasta 5 MB.",
+      "proofUploadFailed": "No se pudo subir el comprobante. Intente de nuevo.",
+      "selfResolution": "No puede resolver una devolución de su propia operación. Debe hacerlo otro administrador.",
+      "selfResolveConfirm": "Confirme que resuelve su propia devolución.",
       "invalidArgument": "Revise los datos ingresados.",
       "notAuthorized": "No tiene permiso para resolver devoluciones.",
       "notFound": "La devolución ya no existe.",
