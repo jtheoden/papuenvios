@@ -11,6 +11,7 @@ import CourierMarginCard from '@/components/admin/CourierMarginCard';
 import { classifyAdminCatalogError } from '@/lib/catalogErrors';
 import CatalogLoadError from './CatalogLoadError';
 import RefundsAlertCard from '@/components/admin/RefundsAlertCard';
+import RefundKpiCards from '@/components/admin/RefundKpiCards';
 import { getHeadingStyle } from '@/lib/styleUtils';
 import {
   ACTIVE_ORDER_STATUSES,
@@ -441,6 +442,7 @@ const DashboardPage = ({ onNavigate }) => {
                   <CatalogLoadError error={marginsError} />
                   {/* Pending refunds: what needs action goes before what is read */}
                   <RefundsAlertCard enabled={Boolean(isAdmin)} onNavigate={onNavigate} />
+                  <RefundKpiCards enabled={Boolean(isAdmin)} />
                   {/* Expiration Warning */}
                   {expiringProducts.length > 0 && (
                     <motion.div

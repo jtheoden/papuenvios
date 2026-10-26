@@ -13,8 +13,10 @@ import { refundProofExtension, validateRefundProofFile } from './refundRules';
 const MISSING_RETRY_MS = 5 * 60 * 1000;
 let missingAt = null; // when the backend was last found missing
 const backendKnownMissing = () => missingAt !== null && Date.now() - missingAt < MISSING_RETRY_MS;
+const softMissingAt = new Map(); // per RPC, for the read-only audit surfaces
 export const resetRefundBackendForTests = () => {
   missingAt = null;
+  softMissingAt.clear();
 };
 
 /** Event the refunds screen dispatches after a resolution so other surfaces (header badge) refresh at once. */
@@ -205,4 +207,117 @@ export const resolveRefund = async ({
   // An idempotent replay returns the row as it was stored: if its proof is not the one just uploaded, the new object is an orphan.
   if (proofPath && data.refund?.proof_path !== proofPath) await discardUpload();
   return data.refund;
+};
+
+/**
+ * Read-only RPC for surfaces that must never add noise (detail sections, KPIs, customer view): any failure reads as null.
+ * A missing RPC (migration not applied yet) is remembered for 5 minutes per RPC so the page does not keep asking.
+ */
+const softRpc = async (name, args) => {
+  const missing = softMissingAt.get(name);
+  if (missing !== undefined && Date.now() - missing < MISSING_RETRY_MS) return null;
+  try {
+    const { data, error } = await supabase.rpc(name, args);
+    if (error) {
+      if (isBackendMissingError(error)) softMissingAt.set(name, Date.now());
+      return null;
+    }
+    return data ?? null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Refund episodes and event timeline of an operation, admin only. Personal columns (customer id, payment evidence) and the
+ * actor / reference ids of the timeline are dropped here: the screens never see them.
+ * @returns {Promise<{ refunds: object[], timeline: object[], incomplete: boolean } | null>} null when neither RPC answered
+ */
+export const getOperationRefundDetail = async (kind, operationId) => {
+  const args = { p_operation_type: kind, p_operation_id: operationId };
+  const [refunds, timeline] = await Promise.all([softRpc('admin_get_operation_refunds', args), softRpc('admin_operation_timeline', args)]);
+  if (!Array.isArray(refunds) && !Array.isArray(timeline)) return null;
+  return {
+    incomplete: !Array.isArray(refunds) || !Array.isArray(timeline),
+    refunds: (Array.isArray(refunds) ? refunds : []).map(
+      ({ user_id: _user, payment_evidence: _evidence, resolved_by: _resolver, ...safe }) => safe
+    ),
+    timeline: (Array.isArray(timeline) ? timeline : []).map(({ ts, source, kind: eventKind, summary }) => ({
+      ts,
+      source,
+      kind: eventKind,
+      summary: summary || {}
+    }))
+  };
+};
+
+/** Aggregated refund metrics (no PII) for a [from, to) range, or null when unavailable. */
+export const getRefundMetrics = ({ from, to, operationType = null }) =>
+  softRpc('admin_refund_metrics', {
+    p_from: new Date(from).toISOString(),
+    p_to: new Date(to).toISOString(),
+    p_operation_type: operationType
+  });
+
+/** Proofs whose one-year retention ends within `days`: { count, overdueUnpurged } or null. */
+export const getExpiringProofs = async (days = 30) => {
+  const data = await softRpc('admin_refund_proofs_expiring', { p_days: days });
+  if (!data) return null;
+  return { count: toNumber(data.count), overdueUnpurged: toNumber(data.overdue_unpurged) };
+};
+
+/** Customer view: refund episodes of one of MY operations ([] when none, or when the RPC does not exist yet). */
+export const getMyOperationRefund = async (kind, operationId) => {
+  const data = await softRpc('my_operation_refund', { p_kind: kind, p_operation_id: operationId });
+  return Array.isArray(data?.refunds) ? data.refunds : [];
+};
+
+/**
+ * Which of the given refunds have an open dispute: an array of ids, or null when the state cannot be known
+ * (RPC not applied yet, no permission): the screens then hide the dispute control instead of offering a blind button.
+ */
+export const getRefundDisputeStates = async (refundIds) => {
+  const ids = [...new Set(refundIds ?? [])].slice(0, 500);
+  if (ids.length === 0) return [];
+  const data = await softRpc('admin_refund_dispute_states', { p_refund_ids: ids });
+  return Array.isArray(data) ? data : null;
+};
+
+/** Opens or closes a dispute on a refund (a dispute blocks the purge of its proof). Writes never degrade. */
+export const setRefundDispute = async (refundId, open) => {
+  const { data, error } = await supabase.rpc('admin_set_refund_dispute', { p_refund_id: refundId, p_open: open === true });
+  if (error) throw toAppError(error, 'admin_set_refund_dispute');
+  if (!data || data.ok !== true) {
+    const self = data?.code === 'self_resolution_not_allowed';
+    throw refusal(self ? 'self_resolution_not_allowed' : 'invalid_argument', self ? ERROR_CODES.FORBIDDEN : ERROR_CODES.VALIDATION_FAILED, self ? 403 : 400);
+  }
+  return data;
+};
+
+const invokePurge = async (body) => {
+  const { data, error } = await supabase.functions.invoke('purge-refund-proofs', { body });
+  if (error) {
+    const status = error?.context?.status;
+    if (status === 401 || status === 403) throw refusal('not_authorized', ERROR_CODES.FORBIDDEN, 403);
+    const countChanged = status === 409;
+    const appError = refusal(countChanged ? 'count_changed' : 'purge_failed', countChanged ? ERROR_CODES.CONFLICT : ERROR_CODES.DB_ERROR, countChanged ? 409 : 500);
+    logError(appError, { operation: 'purge_refund_proofs' });
+    throw appError;
+  }
+  return data;
+};
+
+/** Edge Function, preview mode: how many expired proofs would be deleted. Nothing is deleted. */
+export const previewPurgeRefundProofs = async () => {
+  const data = await invokePurge({ mode: 'preview' });
+  return { due: toNumber(data?.due), capped: data?.capped === true };
+};
+
+/** Edge Function, execute mode: the count must equal the one the admin saw (the function refuses otherwise). */
+export const executePurgeRefundProofs = async (confirmCount) => {
+  if (!Number.isInteger(confirmCount) || confirmCount < 0) {
+    throw refusal('invalid_argument', ERROR_CODES.VALIDATION_FAILED, 400);
+  }
+  const data = await invokePurge({ mode: 'execute', confirm_count: confirmCount });
+  return { purged: toNumber(data?.purged), skipped: toNumber(data?.skipped), failed: toNumber(data?.failed) };
 };

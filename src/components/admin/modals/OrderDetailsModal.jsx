@@ -8,6 +8,7 @@ import { useOrderItemLines } from '@/hooks/useOrderItemLines';
 import { usePaymentProofUrl } from '@/hooks/usePaymentProofUrl';
 import OrderComboComponents from '@/components/OrderComboComponents';
 import { formatQuantityWithUnit } from '@/lib/productUnits';
+import OperationRefundSection from '@/components/refunds/OperationRefundSection';
 
 /**
  * Order Details Modal Component
@@ -462,6 +463,7 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
                 )}
               </div>
             )}
+            <OperationRefundSection kind="order" operationId={normalizedOrder.id} />
           </div>
         </div>
 

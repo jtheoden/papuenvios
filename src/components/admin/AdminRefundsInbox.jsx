@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle, Clock, Copy, FileText, Package, Search, Send } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
-import { resolveRefund, notifyRefundsChanged } from '@/lib/refundService';
+import { resolveRefund, notifyRefundsChanged, getRefundDisputeStates } from '@/lib/refundService';
 import { PAYMENT_PROOF_BUCKET } from '@/lib/paymentProofUrl';
 import { REFUND_BUSINESS_DAYS, REFUND_HOLD_HOURS } from '@/lib/legalConfig';
 import {
@@ -17,6 +17,8 @@ import {
 } from '@/lib/refundRules';
 import ImageProofModal from '@/components/ImageProofModal';
 import RefundResolveModal from '@/components/admin/modals/RefundResolveModal';
+import RefundDisputeControl from '@/components/admin/RefundDisputeControl';
+import RefundProofsMaintenance from '@/components/admin/RefundProofsMaintenance';
 
 const K = 'adminRefunds.';
 const HOUR_MS = 3600 * 1000;
@@ -137,6 +139,24 @@ const AdminRefundsInbox = ({
   useEffect(() => {
     if (focusSummary > 0) summaryRef.current?.focus();
   }, [focusSummary]);
+
+  // Real dispute state of the resolved refunds; null = unknown (RPC not applied yet): the dispute control is then hidden.
+  const [disputes, setDisputes] = useState(null);
+  const refundedKey = useMemo(() => refunds.filter((r) => r.status === 'refunded').map((r) => r.id).slice(0, 500).join(','), [refunds]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const open = await getRefundDisputeStates(refundedKey ? refundedKey.split(',') : []);
+        if (!cancelled) setDisputes(Array.isArray(open) ? new Set(open) : null);
+      } catch {
+        if (!cancelled) setDisputes(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refundedKey]);
 
   const nowMs = (now || new Date()).getTime();
   const clock = useMemo(() => new Date(nowMs), [nowMs]);
@@ -338,6 +358,9 @@ const AdminRefundsInbox = ({
         </div>
 
         {open && renderActions(refund)}
+        {refund.status === 'refunded' && disputes && (
+          <RefundDisputeControl key={`${refund.id}-${disputes.has(refund.id)}`} refund={refund} open={disputes.has(refund.id)} isOwn={isOwn(refund)} />
+        )}
       </li>
     );
   };
@@ -454,6 +477,8 @@ const AdminRefundsInbox = ({
       )}
 
       {renderBody()}
+
+      <RefundProofsMaintenance />
 
       {resolveTarget && (
         <RefundResolveModal

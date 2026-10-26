@@ -33,7 +33,9 @@ vi.mock('@/contexts/LanguageContext', () => ({
   })
 }));
 vi.mock('@/components/ui/use-toast', () => ({ toast }));
+const getRefundDisputeStates = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/refundService', () => ({
+  getRefundDisputeStates,
   resolveRefund,
   notifyRefundsChanged: () => window.dispatchEvent(new Event('papuenvios:refunds-changed'))
 }));
@@ -88,6 +90,8 @@ const numbersShown = () => [...document.querySelectorAll('[data-operation-number
 describe('AdminRefundsInbox', () => {
   beforeEach(() => {
     resolveRefund.mockReset();
+    getRefundDisputeStates.mockReset();
+    getRefundDisputeStates.mockResolvedValue(null);
     resolveRefund.mockResolvedValue({});
     toast.mockReset();
     proofModal.mockReset();
@@ -242,7 +246,10 @@ describe('AdminRefundsInbox', () => {
       const done = cardOf('ORD-4000');
       expect(within(done).getByText(/adminRefunds\.refundedLine/)).toBeTruthy();
       expect(within(done).getByText(/ZELLE-77/)).toBeTruthy();
+      // No resolution action on a resolved card (dispute control hidden here: the state is unknown in this suite)
+      expect(within(done).queryByRole('button', { name: /adminRefunds\.actions\.(markRefunded|notApplicable)Aria/ })).toBeNull();
       expect(within(done).queryByRole('button')).toBeNull();
+      expect(within(cardOf('ORD-5000')).queryByRole('button')).toBeNull();
       expect(within(cardOf('ORD-5000')).getByText('adminRefunds.reopenedLine')).toBeTruthy();
       expect(within(cardOf('REM-9000')).getByText(/adminRefunds\.notApplicableLine/)).toBeTruthy();
     });

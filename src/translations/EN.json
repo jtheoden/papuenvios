@@ -2954,5 +2954,137 @@
       "hint": "If set, the cost of this delivery is recorded for the courier.",
       "clearedWarning": "You chose a courier earlier: the previous assignment is kept. You can correct it later under Couriers."
     }
+  },
+  "refundAudit": {
+    "section": {
+      "title": "Refund",
+      "loading": "Loading refund...",
+      "none": "This operation has no refunds.",
+      "episode": "Refund {index} of {total}",
+      "partial": "Part of the information could not be loaded. Close and reopen the details to retry."
+    },
+    "status": {
+      "pending": "Pending",
+      "refunded": "Refunded",
+      "not_applicable": "Not applicable"
+    },
+    "queue": {
+      "on_hold": "On 48 h hold",
+      "on_time": "On time",
+      "due_soon": "Due soon",
+      "overdue": "Overdue"
+    },
+    "field": {
+      "amount": "Amount",
+      "cancelledAt": "Cancelled",
+      "eligibleAt": "Refundable from",
+      "dueAt": "Due by",
+      "resolvedAt": "Resolved",
+      "refundedAt": "Refunded on",
+      "proof": "Proof",
+      "selfResolved": "Resolved by the customer who is an admin"
+    },
+    "proof": {
+      "none": "No proof",
+      "available": "Proof stored",
+      "expired": "Proof deleted after expiry",
+      "expiresAt": "Kept until {date}"
+    },
+    "timeline": {
+      "title": "Timeline",
+      "empty": "No events recorded.",
+      "statusChanged": "Status change: {from} → {to}",
+      "markerEligible": "The refund became eligible",
+      "markerDue": "Refund deadline",
+      "event": {
+        "created": "Refund requested",
+        "closed_refunded": "Refund paid",
+        "closed_not_applicable": "Closed as not applicable",
+        "closed_by_reopen": "Closed because the operation was reopened",
+        "proof_attached": "Proof attached",
+        "proof_expired": "Proof deleted after expiry",
+        "dispute_opened": "Dispute opened",
+        "dispute_closed": "Dispute closed",
+        "self_resolution_blocked": "Self-resolution attempt blocked",
+        "commission_proposed": "Commission change proposed",
+        "commission_accepted": "Commission change accepted",
+        "commission_rejected": "Commission change rejected",
+        "commission_override_set": "Commission adjusted",
+        "unknown": "Recorded event"
+      },
+      "listLabel": "Operation events"
+    },
+    "kpi": {
+      "title": "Refunds (last 30 days)",
+      "refunded": "Refunded",
+      "pending": "Pending",
+      "onTime": "On time",
+      "medianHours": "Median time to refund",
+      "withProof": "With proof",
+      "hours": "{value} h",
+      "percent": "{value} %",
+      "noData": "No data",
+      "region": "Refund indicators"
+    },
+    "dispute": {
+      "open": "Open dispute",
+      "close": "Close dispute",
+      "openAria": "Open dispute for the refund of {number}",
+      "closeAria": "Close dispute for the refund of {number}",
+      "opened": "Dispute opened: the proof will not be deleted.",
+      "closed": "Dispute closed.",
+      "ownBlocked": "You cannot manage the dispute of your own refund.",
+      "failed": "The dispute could not be updated. Please try again.",
+      "badge": "Dispute open"
+    },
+    "purge": {
+      "heading": "Expired proofs",
+      "button": "Purge expired proofs",
+      "checking": "Checking...",
+      "none": "There are no expired proofs to purge.",
+      "confirmTitle": "Confirm purge",
+      "confirmBody": "{count} proofs whose one-year retention has expired will be permanently deleted. Open disputes are skipped. This cannot be undone.",
+      "capped": "There are more expired proofs; this run handles one batch and you can repeat it.",
+      "confirm": "Delete {count} proofs",
+      "cancel": "Cancel",
+      "running": "Deleting...",
+      "done": "Purge finished: {purged} deleted, {skipped} skipped, {failed} failed.",
+      "countChanged": "The count changed since the check. Review the new number and confirm again.",
+      "failed": "The purge could not be completed. Please try again.",
+      "forbidden": "Only an administrator can purge proofs."
+    },
+    "expiring": {
+      "warning": "{count} proofs expire within the next 30 days.",
+      "overdue": "{count} expired proofs are waiting to be purged."
+    },
+    "opStatus": {
+      "pending": "Pending",
+      "validated": "Validated",
+      "rejected": "Rejected",
+      "processing": "Processing",
+      "dispatched": "Dispatched",
+      "shipped": "Shipped",
+      "delivered": "Delivered",
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "payment_pending": "Payment pending",
+      "payment_proof_uploaded": "Proof uploaded",
+      "payment_validated": "Payment validated",
+      "payment_rejected": "Payment rejected"
+    }
+  },
+  "myRefund": {
+    "title": "Your refund status",
+    "region": "Refund for this operation",
+    "stage": {
+      "on_hold": "We received your request. The refund can be processed from {date}.",
+      "processing": "We are processing your refund. Deadline: {date}.",
+      "refunded": "Your refund was paid on {date}.",
+      "not_applicable": "We reviewed your request and no refund applied. Contact us if you have questions."
+    },
+    "amount": "Amount: {amount}",
+    "cancelledOn": "Cancelled on {date}",
+    "eligibleFrom": "From: {date}",
+    "dueBy": "Until: {date}"
   }
 }

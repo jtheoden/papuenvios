@@ -32,6 +32,7 @@ import OrderComboComponents from '@/components/OrderComboComponents';
 import { formatQuantityWithUnit } from '@/lib/productUnits';
 import { useOrderItemLines } from '@/hooks/useOrderItemLines';
 import { usePaymentProofUrl } from '@/hooks/usePaymentProofUrl';
+import MyOperationRefund from '@/components/refunds/MyOperationRefund';
 
 // Constante de paginación fuera del componente para evitar recreación
 const ORDERS_PER_PAGE = 20;
@@ -1361,6 +1362,7 @@ const UserPanel = ({ onNavigate }) => {
                   </div>
                 ) : selectedOrder ? (
                   <div className="space-y-6">
+                    <MyOperationRefund kind="order" operationId={selectedOrder.id} />
                     {/* User Info (Admin only) */}
                     {(userRole === 'admin' || userRole === 'super_admin') && selectedOrder.user_profiles && (
                       <div className="p-4 rounded-lg border" style={{ borderColor: visualSettings.borderColor || '#e5e7eb', backgroundColor: `${visualSettings.primaryColor}10` }}>
