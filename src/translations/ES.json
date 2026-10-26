@@ -2399,6 +2399,158 @@
     "bulkDeletePreviewProducts": "{count} producto(s) asociado(s)",
     "bulkDeletePreviewNoImpact": "sin elementos relacionados"
   },
+  "adminRefunds": {
+    "tab": "Devoluciones",
+    "tabCountSr": "{count} devoluciones por hacer",
+    "tabCountOverdueSr": "{count} devoluciones por hacer, {overdue} vencidas",
+    "heading": "Devoluciones",
+    "intro": "Operaciones canceladas que ya tenían pago o comprobante. El reembolso es manual por Zelle: se habilita {hours} horas después de la cancelación y vence {days} días hábiles después.",
+    "summary": {
+      "pending": "Pendientes",
+      "amountUsd": "Monto pendiente (solo USD)",
+      "attention": "Vencen pronto / vencidas",
+      "onHold": "En espera de {hours} h"
+    },
+    "filterLabel": "Filtrar devoluciones",
+    "filter": {
+      "toRefund": "Por devolver",
+      "verify": "Verificar recepción",
+      "onHold": "En espera de {hours} h",
+      "overdue": "Vencidas",
+      "refunded": "Reembolsadas",
+      "notApplicable": "No procede / Reabierto",
+      "all": "Todas"
+    },
+    "typeLabel": "Tipo de operación",
+    "type": {
+      "all": "Todas",
+      "order": "Pedidos",
+      "remittance": "Remesas"
+    },
+    "searchLabel": "Buscar por número o cliente",
+    "searchPlaceholder": "Número, nombre o correo",
+    "level": {
+      "validated": "Devolución debida",
+      "proof_unverified": "Verificar recepción"
+    },
+    "operation": {
+      "order": "Pedido",
+      "remittance": "Remesa"
+    },
+    "deadline": {
+      "onTime": "Quedan {time}",
+      "dueSoon": "Vence en {time}",
+      "overdue": "Vencida hace {time}",
+      "onHold": "Disponible el {date}",
+      "dueBy": "Fecha límite: {date}"
+    },
+    "duration": {
+      "minutes": "{count} min",
+      "hours": "{count} h",
+      "days": "{count} d"
+    },
+    "customer": "Cliente",
+    "payerPhone": "Teléfono del pagador",
+    "zelleAccount": "Cuenta Zelle que recibió el pago",
+    "paymentReference": "Referencia del pago",
+    "unknownCustomer": "Cliente sin nombre",
+    "cancelledOn": "Cancelado el {date} {by}",
+    "cancelledBy": {
+      "customer": "por el cliente",
+      "admin": "por un administrador",
+      "system": "automáticamente"
+    },
+    "cancellationReason": "Motivo: {reason}",
+    "refundedLine": "Reembolsado el {date} · ref. {reference}",
+    "notApplicableLine": "No procede: {reason}",
+    "reopenedLine": "Reabierto por el cliente: la solicitud se cerró sola.",
+    "actions": {
+      "markRefunded": "Marcar reembolsado",
+      "markRefundedAria": "Marcar reembolsada la devolución de {number}",
+      "notApplicable": "No procede",
+      "notApplicableAria": "Marcar como no procede la devolución de {number}",
+      "copy": "Copiar datos",
+      "copyAria": "Copiar los datos de la devolución de {number}",
+      "viewProof": "Comprobante",
+      "viewProofAria": "Ver comprobante de pago de {number}",
+      "copied": "Datos copiados",
+      "copyFailed": "No se pudo copiar. Seleccione y copie manualmente.",
+      "onHoldBlocked": "Disponible desde el {date} (espera de {hours} h)"
+    },
+    "modal": {
+      "summary": "{amount} {currency} · {customer}",
+      "refunded": {
+        "title": "Marcar reembolsado",
+        "referenceLabel": "Referencia del reembolso",
+        "referenceHelp": "Código o referencia del Zelle que envió.",
+        "dateLabel": "Fecha del reembolso",
+        "confirmArrived": "Confirmé que el pago llegó a la cuenta Zelle {account}",
+        "dateClamped": "Se registrará con la hora en que se habilitó el reembolso ({date}).",
+        "confirmArrivedNoAccount": "Confirmé que el pago llegó a la cuenta Zelle",
+        "submit": "Guardar reembolso"
+      },
+      "notApplicable": {
+        "title": "Marcar como no procede",
+        "reasonLabel": "Motivo",
+        "reasonHelp": "Obligatorio. Queda registrado con su usuario.",
+        "presets": {
+          "neverArrived": "El pago nunca llegó",
+          "outsideApp": "Reembolsado fuera de la app",
+          "duplicate": "Duplicado de otra devolución"
+        },
+        "submit": "Guardar"
+      },
+      "working": "Guardando...",
+      "cancel": "Cancelar"
+    },
+    "states": {
+      "loading": "Cargando devoluciones",
+      "error": "No se pudieron cargar las devoluciones.",
+      "retry": "Reintentar",
+      "stale": "No se pudo actualizar; se muestran los últimos datos cargados.",
+      "emptyPending": "No hay devoluciones pendientes. Cuando se cancele un pedido o una remesa ya pagados, aparecerá aquí con su plazo.",
+      "emptyOnHold": "No hay devoluciones para hacer hoy; {count} en espera de {hours} h.",
+      "showing": "Mostrando {shown} de {total} devoluciones; las resueltas más antiguas no se cargan.",
+      "emptyFilter": "Nada en este filtro.",
+      "liveNew": "{count} devolución(es) nueva(s) pendiente(s)",
+      "conflict": "La devolución cambió; la lista se actualizó."
+    },
+    "errors": {
+      "onHold": "Todavía no se puede reembolsar: la espera de {hours} h termina el {date}.",
+      "alreadyResolved": "Esta devolución ya fue resuelta por otra persona.",
+      "invalidReference": "Ingrese la referencia del reembolso (hasta 200 caracteres).",
+      "invalidDate": "La fecha del reembolso no es válida.",
+      "invalidReason": "Ingrese el motivo (hasta 500 caracteres).",
+      "confirmArrival": "Confirme que el pago llegó a la cuenta Zelle antes de reembolsar.",
+      "invalidArgument": "Revise los datos ingresados.",
+      "notAuthorized": "No tiene permiso para resolver devoluciones.",
+      "notFound": "La devolución ya no existe.",
+      "generic": "No se pudo guardar. Intente de nuevo."
+    },
+    "success": {
+      "refunded": "Devolución marcada como reembolsada",
+      "notApplicable": "Devolución marcada como no procede"
+    },
+    "badge": {
+      "overdueSr": "{count} devoluciones vencidas"
+    },
+    "dashboard": {
+      "title": "{count} devoluciones por hacer",
+      "titleOnHold": "{count} devoluciones en espera de {hours} h",
+      "amount": "Monto pendiente (solo USD): {amount}",
+      "overdue": "{count} vencidas",
+      "onHold": "{count} en espera de {hours} h",
+      "cta": "Ir a devoluciones"
+    },
+    "copy": {
+      "amount": "Monto a devolver",
+      "customer": "Cliente",
+      "email": "Correo",
+      "phone": "Teléfono del pagador",
+      "paymentReference": "Referencia del pago original",
+      "operation": "Operación"
+    }
+  },
   "adminInbox": {
     "tablistLabel": "Trabajo pendiente para administradores",
     "ordersTab": "Pedidos por procesar",

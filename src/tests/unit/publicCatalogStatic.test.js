@@ -172,10 +172,14 @@ describe('no query reads a hidden column (it would fail with 42501 after the con
     expect(offenders()).toEqual([]);
   });
 
-  it('the admin cost RPC wrapper is the only module that calls the admin_list_* functions', () => {
+  // admin_list_refunds is a different RPC (refunds queue); only its own client may call it.
+  const REFUND_RPC_ALLOWLIST = ['src/lib/refundService.js'];
+
+  it('the admin cost RPC wrapper is the only module that calls the admin_list_* cost functions (refundService.js is allow-listed for admin_list_refunds)', () => {
     const callers = listSourceFiles(resolve(ROOT, 'src'))
       .filter((file) => /admin_list_/.test(stripComments(readFileSync(file, 'utf8'))))
-      .map((file) => relative(ROOT, file));
+      .map((file) => relative(ROOT, file))
+      .filter((file) => !REFUND_RPC_ALLOWLIST.includes(file));
     expect(callers).toEqual(['src/lib/adminCostService.js']);
   });
 });

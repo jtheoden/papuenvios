@@ -54,7 +54,7 @@ describe('DashboardPage admin cost reads', () => {
     state.rpcError = null;
     state.rpcCalls = [];
     render(<DashboardPage onNavigate={() => {}} />);
-    await waitFor(() => expect(state.rpcCalls.map((c) => c.name).sort()).toEqual(['admin_list_combo_costs', 'admin_list_product_costs']));
+    await waitFor(() => expect(state.rpcCalls.map((c) => c.name).filter((name) => name.endsWith('_costs')).sort()).toEqual(['admin_list_combo_costs', 'admin_list_product_costs']));
     expect(screen.queryByText('products.catalogError.adminCosts')).toBeNull();
   });
 

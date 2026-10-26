@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/use-toast';
 import { getPendingOrdersCount } from '@/lib/orderService';
 import { getPendingRemittancesCount } from '@/lib/remittanceService';
+import { getRefundCounts, REFUNDS_CHANGED_EVENT } from '@/lib/refundService';
 import { useRealtimeOrders, useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import { semanticColors } from '@/lib/colorTokens';
 
@@ -17,6 +18,7 @@ const Header = ({ currentPage, onNavigate }) => {
   const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [overdueRefunds, setOverdueRefunds] = useState(0);
   const [isMobileUser, setIsMobileUser] = useState(false);
   const { language, setLanguage, t } = useLanguage();
   const { cart, visualSettings } = useBusiness();
@@ -83,16 +85,19 @@ const Header = ({ currentPage, onNavigate }) => {
 
   const isAdminRole = userRole === 'admin' || userRole === 'super_admin';
 
-  // Pending work for admins: orders + remittances. A failing source counts as 0 without hiding the other.
+  // Pending work for admins: orders + remittances + refunds that can be paid today (past the 48 h hold).
+  // A failing source counts as 0 without hiding the others.
   const loadPendingCount = useCallback(async () => {
-    const [orders, remittances] = await Promise.all([
+    const [orders, remittances, refunds] = await Promise.all([
       getPendingOrdersCount().catch((error) => {
         console.error('Error loading pending orders:', error);
         return 0;
       }),
-      getPendingRemittancesCount()
+      getPendingRemittancesCount(),
+      getRefundCounts().catch(() => ({ actionable: 0, overdue: 0 }))
     ]);
-    setPendingCount((orders || 0) + (remittances || 0));
+    setPendingCount((orders || 0) + (remittances || 0) + (refunds?.actionable || 0));
+    setOverdueRefunds(refunds?.overdue || 0);
   }, []);
 
   // Initial load + 30s polling as a safety net in case a realtime event is missed
@@ -101,6 +106,13 @@ const Header = ({ currentPage, onNavigate }) => {
     loadPendingCount();
     const interval = setInterval(loadPendingCount, 30000);
     return () => clearInterval(interval);
+  }, [isAdminRole, loadPendingCount]);
+
+  // The refunds screen announces a resolution so the badge drops without waiting for the 30 s poll
+  useEffect(() => {
+    if (!isAdminRole) return undefined;
+    window.addEventListener(REFUNDS_CHANGED_EVENT, loadPendingCount);
+    return () => window.removeEventListener(REFUNDS_CHANGED_EVENT, loadPendingCount);
   }, [isAdminRole, loadPendingCount]);
 
   // Real time: any change in orders/remittances (e.g. a new remittance registered) refreshes the badge
@@ -415,7 +427,18 @@ const Header = ({ currentPage, onNavigate }) => {
                         >
                           {pendingCount > 99 ? '99+' : pendingCount}
                         </span>
+                        {overdueRefunds > 0 && (
+                          <span
+                            aria-hidden="true"
+                            className="absolute -top-1.5 -left-1.5 bg-amber-400 text-red-900 text-[11px] leading-none rounded-full h-5 w-5 flex items-center justify-center font-black shadow-lg ring-2 ring-white"
+                          >
+                            !
+                          </span>
+                        )}
                         <span className="sr-only">{t('adminInbox.badgeAria', { count: pendingCount })}</span>
+                        {overdueRefunds > 0 && (
+                          <span className="sr-only">{t('adminRefunds.badge.overdueSr', { count: overdueRefunds })}</span>
+                        )}
                       </>
                     )}
                   </div>

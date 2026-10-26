@@ -9,6 +9,7 @@ import { listProductCosts, listComboCosts } from '@/lib/adminCostService';
 import { listOrderCourierCosts, listRemittanceCourierCosts } from '@/lib/courierCostService';
 import { classifyAdminCatalogError } from '@/lib/catalogErrors';
 import CatalogLoadError from './CatalogLoadError';
+import RefundsAlertCard from '@/components/admin/RefundsAlertCard';
 import { getHeadingStyle } from '@/lib/styleUtils';
 import {
   ACTIVE_ORDER_STATUSES,
@@ -437,6 +438,8 @@ const DashboardPage = ({ onNavigate }) => {
                     </div>
                   )}
                   <CatalogLoadError error={marginsError} />
+                  {/* Pending refunds: what needs action goes before what is read */}
+                  <RefundsAlertCard enabled={Boolean(isAdmin)} onNavigate={onNavigate} />
                   {/* Expiration Warning */}
                   {expiringProducts.length > 0 && (
                     <motion.div
