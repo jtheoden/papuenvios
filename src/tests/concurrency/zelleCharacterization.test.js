@@ -483,7 +483,7 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
       await expect(owner.query(`UPDATE public.orders SET zelle_account_id = $2 WHERE id = $1`, [id, other.id]))
         .rejects.toMatchObject({ code: '42501', message: 'orders_owner_update_forbidden: column zelle_account_id' });
       await expect(owner.query(`UPDATE public.orders SET total_amount = 1 WHERE id = $1`, [id]))
-        .rejects.toMatchObject({ code: '42501', message: 'orders_owner_update_forbidden: column total_amount' });
+        .rejects.toMatchObject({ code: '42501', message: 'order_money_columns_rpc_only: column total_amount' }); // money guard (20261102100000) fires before the owner guard
     });
 
     it('owner can upload a proof: payment_proof_url + payment_reference + payment_status proof_uploaded', async () => {
@@ -518,11 +518,15 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
     });
 
     // phase 1.5 S1: subtotal moves with the total, otherwise orders_money_total_identity_chk (applies to every writer) rejects it
-    it('admin and postgres bypass the owner UPDATE guard', async () => {
+    it('admin and postgres bypass the owner UPDATE guard (money columns are RPC-only since 20261102100000)', async () => {
       const { id } = await newOrder();
       const a = await asAdmin();
-      const { rows } = await a.query(`UPDATE public.orders SET subtotal = 26, total_amount = 26 WHERE id = $1 RETURNING total_amount::float AS t`, [id]);
-      expect(rows[0].t).toBe(26);
+      const { rows } = await a.query(`UPDATE public.orders SET admin_notes = 'n' WHERE id = $1 RETURNING admin_notes`, [id]);
+      expect(rows[0].admin_notes).toBe('n');
+      await expect(a.query(`UPDATE public.orders SET subtotal = 26, total_amount = 26 WHERE id = $1`, [id]))
+        .rejects.toMatchObject({ code: '42501', message: 'order_money_columns_rpc_only: column subtotal' });
+      const { rows: pg } = await admin.query(`UPDATE public.orders SET subtotal = 26, total_amount = 26 WHERE id = $1 RETURNING total_amount::float AS t`, [id]);
+      expect(pg[0].t).toBe(26);
     });
 
     it('owner INSERT: only for self, status/payment_status pending, no staff-only fields', async () => {
@@ -639,6 +643,7 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
     it('orders BEFORE UPDATE', async () => {
       expect(await triggers('orders', 'before', 'update')).toEqual([
         'guard_bizum_quote_immutable',
+        'guard_orders_money_columns', // money columns only through RPCs (20261102100000).
         'guard_orders_owner_update',
         'guard_status_via_rpc', // E8 (20261024120000): status columns only through the transition RPCs
         'trg_orders_admin_self_dealing', // separation of duties (20261101100100); acts only for an admin acting on his own order

@@ -57,8 +57,8 @@ describeDb('financial audit log (local Postgres)', () => {
   };
   const asAdmin = () => as(actors.adminId);
   const asCustomer = () => as(actors.customerId);
-  // Since 20261023110000 a direct (authenticated) PATCH of remittance money columns is rejected by
-  // guard_remittance_money_columns. The audit trail is still exercised for those columns from the owner role carrying
+  // Since 20261023110000 (remittances) and 20261102100000 (orders) a direct (authenticated) PATCH of money columns is rejected by
+  // guard_remittance_money_columns / guard_orders_money_columns. The audit trail is still exercised for those columns from the owner role carrying
   // the admin's JWT, which is exactly how a SECURITY DEFINER RPC looks to the audit trigger.
   const asAdminViaRpc = async () => {
     const c = await connectAdmin();
@@ -285,7 +285,7 @@ describeDb('financial audit log (local Postgres)', () => {
     // orders_money_total_identity_chk ties total_amount to subtotal - discount + shipping + tax: move the column and the total together.
     it.each([['subtotal', 1], ['discount_amount', -1], ['shipping_cost', 1], ['tax_amount', 1]])('orders.%s (and the total it drags along)', async (col, totalDelta) => {
       const id = await makeOrder();
-      const adm = await asAdmin();
+      const adm = await asAdminViaRpc();
       await adm.query(`UPDATE public.orders SET ${col} = ${col} + 1, total_amount = total_amount + ${totalDelta} WHERE id = $1`, [id]);
       const rows = await auditRows(id);
       expect(rows.map((r) => r.column_name).sort()).toEqual([col, 'total_amount'].sort());
@@ -321,7 +321,7 @@ describeDb('financial audit log (local Postgres)', () => {
 
     it('orders.shipping_zone_id', async () => {
       const id = await makeOrder();
-      const adm = await asAdmin();
+      const adm = await asAdminViaRpc();
       await adm.query('UPDATE public.orders SET shipping_zone_id = $2 WHERE id = $1', [id, zoneA]);
       expect((await auditRows(id)).map((r) => [r.column_name, r.old_value, r.new_value])).toEqual([['shipping_zone_id', null, zoneA]]);
     });
@@ -387,7 +387,7 @@ describeDb('financial audit log (local Postgres)', () => {
     it('orders.currency_id', async () => {
       const id = await makeOrder();
       const other = (await admin.query('SELECT id FROM public.currencies WHERE id <> $1 LIMIT 1', [actors.currencyId])).rows[0].id;
-      const adm = await asAdmin();
+      const adm = await asAdminViaRpc();
       await adm.query('UPDATE public.orders SET currency_id = $2 WHERE id = $1', [id, other]);
       expect((await auditRows(id)).map((r) => [r.column_name, r.old_value, r.new_value])).toEqual([['currency_id', actors.currencyId, other]]);
     });
