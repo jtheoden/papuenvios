@@ -46,6 +46,7 @@ import { toast } from '@/components/ui/use-toast';
 import ImageProofModal from './ImageProofModal';
 import TooltipButton from './TooltipButton';
 import RecipientLocation from './RecipientLocation';
+import OperationRefundSection from '@/components/refunds/OperationRefundSection';
 import { formatRecipientLocation } from '@/lib/recipientInfo';
 import { REMITTANCE_DELIVERED_STATUSES } from '@/lib/dashboardMetrics';
 
@@ -1536,6 +1537,7 @@ const AdminRemittancesTab = () => {
                     )}
                   </div>
                 ) : null}
+                <OperationRefundSection kind="remittance" operationId={selectedRemittance.id} />
               </div>
             </div>
 

@@ -3,9 +3,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const rpc = vi.fn();
 const upload = vi.fn();
 const remove = vi.fn();
+const invoke = vi.fn();
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     rpc: (...args) => rpc(...args),
+    functions: { invoke: (...args) => invoke(...args) },
     storage: { from: (bucket) => ({ upload: (...a) => upload(bucket, ...a), remove: (...a) => remove(bucket, ...a) }) }
   }
 }));
@@ -19,6 +21,14 @@ import {
   getRefundCounts,
   listRefunds,
   resolveRefund,
+  getOperationRefundDetail,
+  getRefundMetrics,
+  getExpiringProofs,
+  getMyOperationRefund,
+  getRefundDisputeStates,
+  setRefundDispute,
+  previewPurgeRefundProofs,
+  executePurgeRefundProofs,
   resetRefundBackendForTests
 } from '@/lib/refundService';
 
@@ -27,6 +37,7 @@ const ZERO_COUNTS = { actionable: 0, onHold: 0, dueSoon: 0, overdue: 0, pendingA
 describe('refundService', () => {
   beforeEach(() => {
     rpc.mockReset();
+    invoke.mockReset();
     upload.mockReset().mockResolvedValue({ data: {}, error: null });
     remove.mockReset().mockResolvedValue({ data: [], error: null });
     logError.mockReset();
@@ -274,6 +285,145 @@ describe('refundService', () => {
       expect(logged).not.toContain('SECRET-ZELLE-77');
       expect(logged).not.toContain('refunds/');
       expect(logged).not.toContain('zelle.png');
+    });
+  });
+
+  describe('read-only audit surfaces (degrade silently)', () => {
+    const missing = { data: null, error: { code: '42883', message: 'missing' } };
+
+    it('getOperationRefundDetail strips actor ids, ref ids and personal columns', async () => {
+      rpc.mockImplementation(async (name) =>
+        name === 'admin_get_operation_refunds'
+          ? { data: [{ id: 'r1', status: 'pending', user_id: 'u', payment_evidence: 'validated', amount: 10, currency: 'USD', proof_state: 'none', queue_state: 'on_hold', eligible_at: 'e', due_at: 'd', cancelled_at: 'c', resolved_at: null, refunded_at: null, self_resolved: false, proof_expires_at: null }], error: null }
+          : { data: [{ ts: 't', source: 'refund_event', kind: 'created', actor_id: 'a', ref_id: 'x', summary: { to: 'pending' } }], error: null }
+      );
+      const detail = await getOperationRefundDetail('order', 'op1');
+      expect(rpc).toHaveBeenCalledWith('admin_get_operation_refunds', { p_operation_type: 'order', p_operation_id: 'op1' });
+      expect(rpc).toHaveBeenCalledWith('admin_operation_timeline', { p_operation_type: 'order', p_operation_id: 'op1' });
+      expect(detail.timeline).toEqual([{ ts: 't', source: 'refund_event', kind: 'created', summary: { to: 'pending' } }]);
+      expect(detail.refunds[0]).not.toHaveProperty('user_id');
+      expect(detail.refunds[0]).not.toHaveProperty('payment_evidence');
+      expect(detail.refunds[0].status).toBe('pending');
+    });
+
+    it('getOperationRefundDetail flags a partial failure as incomplete', async () => {
+      rpc.mockImplementation(async (name) =>
+        name === 'admin_get_operation_refunds' ? { data: [], error: null } : { data: null, error: { code: '42501', message: 'x' } }
+      );
+      const detail = await getOperationRefundDetail('order', 'op1');
+      expect(detail.incomplete).toBe(true);
+      expect(detail.refunds).toEqual([]);
+    });
+
+    it('getOperationRefundDetail returns null when both RPCs are missing, and never throws on other failures', async () => {
+      rpc.mockResolvedValue(missing);
+      expect(await getOperationRefundDetail('order', 'op1')).toBeNull();
+      resetRefundBackendForTests();
+      rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'nope' } });
+      expect(await getOperationRefundDetail('remittance', 'op1')).toBeNull();
+    });
+
+    it('getRefundMetrics returns the payload, or null when absent or failing', async () => {
+      rpc.mockResolvedValueOnce({ data: { total_refunded: 4 }, error: null });
+      const range = { from: new Date('2026-10-01T00:00:00Z'), to: new Date('2026-11-01T00:00:00Z') };
+      expect(await getRefundMetrics(range)).toEqual({ total_refunded: 4 });
+      expect(rpc).toHaveBeenCalledWith('admin_refund_metrics', {
+        p_from: '2026-10-01T00:00:00.000Z',
+        p_to: '2026-11-01T00:00:00.000Z',
+        p_operation_type: null
+      });
+      rpc.mockResolvedValueOnce(missing);
+      expect(await getRefundMetrics(range)).toBeNull();
+      resetRefundBackendForTests();
+      rpc.mockResolvedValueOnce({ data: null, error: { code: '42501', message: 'x' } });
+      expect(await getRefundMetrics(range)).toBeNull();
+    });
+
+    it('getExpiringProofs maps the payload and degrades to null', async () => {
+      rpc.mockResolvedValueOnce({ data: { count: 2, items: [{ refund_id: 'r', proof_expires_at: 'x' }], overdue_unpurged: 1 }, error: null });
+      expect(await getExpiringProofs(30)).toEqual({ count: 2, overdueUnpurged: 1 });
+      expect(rpc).toHaveBeenCalledWith('admin_refund_proofs_expiring', { p_days: 30 });
+      rpc.mockResolvedValueOnce(missing);
+      expect(await getExpiringProofs(30)).toBeNull();
+    });
+
+    it('getMyOperationRefund returns the owner refunds and [] when the RPC is missing or fails', async () => {
+      rpc.mockResolvedValueOnce({ data: { refunds: [{ status: 'pending', stage: 'on_hold' }] }, error: null });
+      expect(await getMyOperationRefund('remittance', 'op1')).toEqual([{ status: 'pending', stage: 'on_hold' }]);
+      expect(rpc).toHaveBeenCalledWith('my_operation_refund', { p_kind: 'remittance', p_operation_id: 'op1' });
+      rpc.mockResolvedValueOnce(missing);
+      expect(await getMyOperationRefund('order', 'op1')).toEqual([]);
+      resetRefundBackendForTests();
+      rpc.mockResolvedValueOnce({ data: null, error: { code: 'XX000', message: 'boom' } });
+      expect(await getMyOperationRefund('order', 'op1')).toEqual([]);
+    });
+  });
+
+  describe('getRefundDisputeStates', () => {
+    it('returns the ids with an open dispute', async () => {
+      rpc.mockResolvedValueOnce({ data: ['a', 'c'], error: null });
+      expect(await getRefundDisputeStates(['a', 'b', 'c'])).toEqual(['a', 'c']);
+      expect(rpc).toHaveBeenCalledWith('admin_refund_dispute_states', { p_refund_ids: ['a', 'b', 'c'] });
+    });
+    it('does not call the RPC for an empty list', async () => {
+      expect(await getRefundDisputeStates([])).toEqual([]);
+      expect(rpc).not.toHaveBeenCalled();
+    });
+    it('returns null (state unknown) when the RPC is missing or fails', async () => {
+      rpc.mockResolvedValueOnce({ data: null, error: { code: '42883', message: 'missing' } });
+      expect(await getRefundDisputeStates(['a'])).toBeNull();
+      resetRefundBackendForTests();
+      rpc.mockResolvedValueOnce({ data: null, error: { code: '42501', message: 'x' } });
+      expect(await getRefundDisputeStates(['a'])).toBeNull();
+    });
+  });
+
+  describe('dispute and purge (writes never degrade)', () => {
+    it('setRefundDispute returns the RPC answer', async () => {
+      rpc.mockResolvedValue({ data: { ok: true, open: true }, error: null });
+      expect(await setRefundDispute('r1', true)).toEqual({ ok: true, open: true });
+      expect(rpc).toHaveBeenCalledWith('admin_set_refund_dispute', { p_refund_id: 'r1', p_open: true });
+    });
+
+    it('setRefundDispute surfaces the self-management refusal as a typed error', async () => {
+      rpc.mockResolvedValue({ data: { ok: false, code: 'self_resolution_not_allowed' }, error: null });
+      await expect(setRefundDispute('r1', true)).rejects.toMatchObject({ context: { reason: 'self_resolution_not_allowed' } });
+    });
+
+    it('setRefundDispute throws on an RPC error (not_authorized for 42501)', async () => {
+      rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'x' } });
+      await expect(setRefundDispute('r1', false)).rejects.toMatchObject({ context: { reason: 'not_authorized' } });
+    });
+
+    it('previewPurgeRefundProofs calls the Edge Function in preview mode', async () => {
+      invoke.mockResolvedValue({ data: { due: 3, capped: false }, error: null });
+      expect(await previewPurgeRefundProofs()).toEqual({ due: 3, capped: false });
+      expect(invoke).toHaveBeenCalledWith('purge-refund-proofs', { body: { mode: 'preview' } });
+    });
+
+    it('executePurgeRefundProofs sends the confirmed count and returns the counters', async () => {
+      invoke.mockResolvedValue({ data: { purged: 2, skipped: 1, failed: 0 }, error: null });
+      expect(await executePurgeRefundProofs(3)).toEqual({ purged: 2, skipped: 1, failed: 0 });
+      expect(invoke).toHaveBeenCalledWith('purge-refund-proofs', { body: { mode: 'execute', confirm_count: 3 } });
+    });
+
+    it('executePurgeRefundProofs refuses a non-integer count without calling the function', async () => {
+      await expect(executePurgeRefundProofs('3')).rejects.toMatchObject({ context: { reason: 'invalid_argument' } });
+      expect(invoke).not.toHaveBeenCalled();
+    });
+
+    it('maps 401/403 from the function to not_authorized', async () => {
+      for (const status of [401, 403]) {
+        invoke.mockResolvedValueOnce({ data: null, error: { context: { status }, message: 'x' } });
+        await expect(previewPurgeRefundProofs()).rejects.toMatchObject({ context: { reason: 'not_authorized' } });
+      }
+    });
+
+    it('a 409 from the function is reported as count_changed; other failures as purge_failed', async () => {
+      invoke.mockResolvedValueOnce({ data: null, error: { context: { status: 409 }, message: 'x' } });
+      await expect(executePurgeRefundProofs(3)).rejects.toMatchObject({ context: { reason: 'count_changed' } });
+      invoke.mockResolvedValueOnce({ data: null, error: { context: { status: 500 }, message: 'x' } });
+      await expect(previewPurgeRefundProofs()).rejects.toMatchObject({ context: { reason: 'purge_failed' } });
     });
   });
 });

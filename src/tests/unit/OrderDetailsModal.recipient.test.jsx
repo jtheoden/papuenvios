@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 
+// The refund section/block imports refundService, which imports the Supabase client (needs env vars): stub it.
+vi.mock('@/lib/supabase', () => ({ supabase: {} }));
+
 vi.mock('@/lib/paymentProofService', () => ({ getPaymentProofSignedUrl: vi.fn().mockResolvedValue({ success: false }) }));
 import { render, screen } from '@testing-library/react';
 import ES from '@/translations/ES.json';

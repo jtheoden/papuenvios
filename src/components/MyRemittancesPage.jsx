@@ -33,6 +33,7 @@ import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import SkeletonCard from '@/components/ui/SkeletonCard';
 import SearchFilterBar from '@/components/ui/SearchFilterBar';
 import RemittanceTimeline from '@/components/ui/RemittanceTimeline';
+import MyOperationRefund from '@/components/refunds/MyOperationRefund';
 import NotifyAdminWhatsAppButton from '@/components/NotifyAdminWhatsAppButton';
 import RecipientLocation from '@/components/RecipientLocation';
 import { isValidPayerPhone, normalizePayerPhone, PAYER_PHONE_MAX_LENGTH } from '@/lib/payerPhone';
@@ -1286,6 +1287,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                     compact={false}
                   />
                 </div>
+                <MyOperationRefund kind="remittance" operationId={selectedRemittance.id} />
               </div>
 
               {/* Columna Derecha - Comprobante de Pago */}

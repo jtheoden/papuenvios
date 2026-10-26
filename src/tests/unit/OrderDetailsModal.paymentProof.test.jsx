@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// The refund section/block imports refundService, which imports the Supabase client (needs env vars): stub it.
+vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 import { render, screen, waitFor } from '@testing-library/react';
 import ES from '@/translations/ES.json';
 import EN from '@/translations/EN.json';

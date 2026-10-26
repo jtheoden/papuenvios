@@ -2962,5 +2962,137 @@
       "hint": "Si lo indica, se registra el costo de esta entrega para el mensajero.",
       "clearedWarning": "Había elegido un mensajero antes: la asignación anterior se mantiene. Puede corregirla después en Mensajería."
     }
+  },
+  "refundAudit": {
+    "section": {
+      "title": "Reembolso",
+      "loading": "Cargando reembolso...",
+      "none": "Esta operación no tiene reembolsos.",
+      "episode": "Reembolso {index} de {total}",
+      "partial": "Parte de la información no pudo cargarse. Cierre y vuelva a abrir el detalle para reintentar."
+    },
+    "status": {
+      "pending": "Pendiente",
+      "refunded": "Reembolsado",
+      "not_applicable": "No aplica"
+    },
+    "queue": {
+      "on_hold": "En espera de 48 h",
+      "on_time": "A tiempo",
+      "due_soon": "Por vencer",
+      "overdue": "Vencido"
+    },
+    "field": {
+      "amount": "Monto",
+      "cancelledAt": "Cancelado",
+      "eligibleAt": "Reembolsable desde",
+      "dueAt": "Plazo límite",
+      "resolvedAt": "Resuelto",
+      "refundedAt": "Reembolsado el",
+      "proof": "Comprobante",
+      "selfResolved": "Resuelto por el propio cliente administrador"
+    },
+    "proof": {
+      "none": "Sin comprobante",
+      "available": "Comprobante guardado",
+      "expired": "Comprobante eliminado por vencimiento",
+      "expiresAt": "Se conserva hasta {date}"
+    },
+    "timeline": {
+      "title": "Línea de tiempo",
+      "empty": "Sin eventos registrados.",
+      "statusChanged": "Cambio de estado: {from} → {to}",
+      "markerEligible": "El reembolso pasó a ser elegible",
+      "markerDue": "Fecha límite del reembolso",
+      "event": {
+        "created": "Reembolso solicitado",
+        "closed_refunded": "Reembolso realizado",
+        "closed_not_applicable": "Cerrado como no aplica",
+        "closed_by_reopen": "Cerrado por reapertura de la operación",
+        "proof_attached": "Comprobante adjuntado",
+        "proof_expired": "Comprobante eliminado por vencimiento",
+        "dispute_opened": "Disputa abierta",
+        "dispute_closed": "Disputa cerrada",
+        "self_resolution_blocked": "Intento de autorresolución bloqueado",
+        "commission_proposed": "Cambio de comisión propuesto",
+        "commission_accepted": "Cambio de comisión aceptado",
+        "commission_rejected": "Cambio de comisión rechazado",
+        "commission_override_set": "Comisión ajustada",
+        "unknown": "Evento registrado"
+      },
+      "listLabel": "Eventos de la operación"
+    },
+    "kpi": {
+      "title": "Reembolsos (últimos 30 días)",
+      "refunded": "Reembolsados",
+      "pending": "Pendientes",
+      "onTime": "A tiempo",
+      "medianHours": "Mediana hasta reembolso",
+      "withProof": "Con comprobante",
+      "hours": "{value} h",
+      "percent": "{value} %",
+      "noData": "Sin datos",
+      "region": "Indicadores de reembolsos"
+    },
+    "dispute": {
+      "open": "Abrir disputa",
+      "close": "Cerrar disputa",
+      "openAria": "Abrir disputa del reembolso de {number}",
+      "closeAria": "Cerrar disputa del reembolso de {number}",
+      "opened": "Disputa abierta: el comprobante no se eliminará.",
+      "closed": "Disputa cerrada.",
+      "ownBlocked": "No puede gestionar la disputa de su propio reembolso.",
+      "failed": "No se pudo actualizar la disputa. Intente de nuevo.",
+      "badge": "Disputa abierta"
+    },
+    "purge": {
+      "heading": "Comprobantes vencidos",
+      "button": "Purgar comprobantes vencidos",
+      "checking": "Consultando...",
+      "none": "No hay comprobantes vencidos para purgar.",
+      "confirmTitle": "Confirmar purga",
+      "confirmBody": "Se eliminarán de forma definitiva {count} comprobantes cuya retención de un año ya venció. Las disputas abiertas se omiten. Esta acción no se puede deshacer.",
+      "capped": "Hay más comprobantes vencidos; esta corrida procesa un lote y podrá repetirla.",
+      "confirm": "Eliminar {count} comprobantes",
+      "cancel": "Cancelar",
+      "running": "Eliminando...",
+      "done": "Purga terminada: {purged} eliminados, {skipped} omitidos, {failed} con error.",
+      "countChanged": "La cantidad cambió desde la consulta. Revise el nuevo número y confirme de nuevo.",
+      "failed": "No se pudo completar la purga. Intente de nuevo.",
+      "forbidden": "Solo un administrador puede purgar comprobantes."
+    },
+    "expiring": {
+      "warning": "{count} comprobantes vencen en los próximos 30 días.",
+      "overdue": "{count} comprobantes ya vencidos esperan la purga."
+    },
+    "opStatus": {
+      "pending": "Pendiente",
+      "validated": "Validado",
+      "rejected": "Rechazado",
+      "processing": "En proceso",
+      "dispatched": "Despachado",
+      "shipped": "Enviado",
+      "delivered": "Entregado",
+      "completed": "Completado",
+      "cancelled": "Cancelado",
+      "payment_pending": "Pendiente de pago",
+      "payment_proof_uploaded": "Comprobante enviado",
+      "payment_validated": "Pago validado",
+      "payment_rejected": "Pago rechazado"
+    }
+  },
+  "myRefund": {
+    "title": "Estado de su reembolso",
+    "region": "Reembolso de esta operación",
+    "stage": {
+      "on_hold": "Recibimos su solicitud. El reembolso se podrá procesar a partir del {date}.",
+      "processing": "Estamos procesando su reembolso. Fecha límite: {date}.",
+      "refunded": "Su reembolso fue realizado el {date}.",
+      "not_applicable": "Revisamos su solicitud y no correspondía un reembolso. Si tiene dudas, contáctenos."
+    },
+    "amount": "Monto: {amount}",
+    "cancelledOn": "Cancelado el {date}",
+    "eligibleFrom": "Desde: {date}",
+    "dueBy": "Hasta: {date}"
   }
 }
