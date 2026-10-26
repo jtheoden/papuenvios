@@ -188,6 +188,7 @@ const AdminWorkTabsInner = ({ ordersCount, onNavigate, children, currentUserId =
               stale={refreshFailed}
               onChanged={reload}
               onNavigate={onNavigate}
+              currentUserId={currentUserId}
               liveMessage={newCount > 0 ? t('adminInbox.liveNew', { count: newCount }) : ''}
             />
           </section>

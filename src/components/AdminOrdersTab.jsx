@@ -54,6 +54,7 @@ import { useRealtimeOrders } from '@/hooks/useRealtimeSubscription';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import OrderActionButtons from '@/components/admin/OrderActionButtons';
+import { isOwnOperation } from '@/lib/selfDealing';
 import { getTableColumns, getModalColumns } from '@/components/admin/OrderTableConfig';
 import {
   OrderDetailsModal,
@@ -678,12 +679,14 @@ const AdminOrdersTab = () => {
             onCancelOrder={() => handleCancelOrder(order)}
             onRestockOrder={() => handleRestockClick(order)}
             actionLoading={actionLoading === order.id}
+            ownOperation={isOwnOperation(order, user?.id)}
           />
         )
       }
     ];
   }, [
     t,
+    user?.id,
     actionLoading,
     viewOrderDetails,
     handleValidatePayment,

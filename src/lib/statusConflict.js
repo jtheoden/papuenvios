@@ -3,6 +3,7 @@
  * statusTransition.js (which needs the Supabase client) so components can import them without side effects.
  */
 import { ERROR_CODES } from './errorHandler';
+import { SELF_DEALING_REASONS } from './selfDealing';
 
 /** True when the RPC refused because the row is no longer in a state that allows the action. */
 export const isStatusConflictError = (error) =>
@@ -10,7 +11,8 @@ export const isStatusConflictError = (error) =>
 
 const FORBIDDEN_REASON_KEYS = {
   not_authorized: 'common.statusNotAuthorized',
-  user_disabled: 'common.statusUserDisabled'
+  user_disabled: 'common.statusUserDisabled',
+  ...Object.fromEntries(SELF_DEALING_REASONS.map((reason) => [reason, 'common.statusSelfDealing']))
 };
 
 const knownKey = (error) => {

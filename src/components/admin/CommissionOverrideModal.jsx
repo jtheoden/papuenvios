@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { isSelfDealingMessage } from '@/lib/selfDealing';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
 import { setRemittanceCommission } from '@/lib/remittanceService';
@@ -76,7 +77,9 @@ const CommissionOverrideModal = ({ remittance, override = null, loading = false,
     } catch (error) {
       const description = /invalid_status/.test(error?.message || '')
         ? t(`${KEY}.errorInvalidStatus`)
-        : error?.message || t(`${KEY}.saveError`);
+        : isSelfDealingMessage(error?.message)
+          ? t('common.statusSelfDealing')
+          : error?.message || t(`${KEY}.saveError`);
       toast({ title: t('common.error'), description, variant: 'destructive' });
       setSaving(false);
     }

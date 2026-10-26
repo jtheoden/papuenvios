@@ -22,6 +22,7 @@ import CommissionProposalBadge from '@/components/admin/CommissionProposalBadge'
 import useCommissionProposals from '@/hooks/useCommissionProposals';
 import { isInformedCurrent } from '@/lib/commissionProposalRules';
 import { canAdjustCommission } from '@/lib/commissionOverrideRules';
+import { isOwnOperation } from '@/lib/selfDealing';
 
 const HOUR_MS = 60 * 60 * 1000;
 const AMBER_AFTER_HOURS = 24;
@@ -110,7 +111,8 @@ const AdminRemittancesInbox = ({
   onRetry,
   onChanged,
   onNavigate,
-  liveMessage = ''
+  liveMessage = '',
+  currentUserId
 }) => {
   const { t } = useLanguage();
   const { showModal } = useModal();
@@ -253,6 +255,16 @@ const AdminRemittancesInbox = ({
   const renderActions = (remittance) => {
     const disabled = busyId === remittance.id;
     const base = `inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${FOCUS_RING}`;
+
+    // Separation of duties: the admin is the customer; the server refuses these actions (works without currentUserId, which only degrades the hint).
+    if (isOwnOperation(remittance, currentUserId)) {
+      return (
+        <div role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+          <span className="font-semibold">{t('common.ownOperation')}</span>
+          <p>{t('common.ownOperationReason')}</p>
+        </div>
+      );
+    }
 
     const adjustButton = canAdjustCommission(remittance) && (
       <button

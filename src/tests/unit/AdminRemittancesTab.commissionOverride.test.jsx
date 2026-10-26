@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 const KEY = 'remittances.admin.commissionOverride';
-const auth = { isAdmin: true, isSuperAdmin: false };
+const auth = { isAdmin: true, isSuperAdmin: false, user: undefined };
 
 const row = (id, status, extra = {}) => ({
   id,
@@ -179,5 +179,46 @@ describe('AdminRemittancesTab - commission adjustment entry point', () => {
     await openDetail();
     await waitFor(() => expect(getCommissionOverride).toHaveBeenCalled());
     expect(screen.queryByText(/LEAK from the row/)).not.toBeInTheDocument();
+  });
+});
+
+describe('AdminRemittancesTab - own remittance (separation of duties)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    OVERRIDE = null;
+    getCommissionOverride.mockImplementation(async () => OVERRIDE);
+    auth.isAdmin = true;
+    auth.isSuperAdmin = false;
+    auth.user = { id: 'admin-1' };
+  });
+
+  it('hides validate / reject for an own remittance and explains why; others keep them', async () => {
+    REMITTANCES = [
+      row('1', 'payment_proof_uploaded', { user_id: 'admin-1' }),
+      row('2', 'payment_proof_uploaded', { user_id: 'customer-9', remittance_number: 'REM-OTHER' })
+    ];
+    render(<AdminRemittancesTab />);
+    await screen.findAllByText('common.ownOperationReason');
+    expect(screen.getAllByText('common.ownOperationReason')).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'remittances.admin.validate' })).toHaveLength(1);
+  });
+
+  it('disables the commission button of an own remittance with the reason (detail)', async () => {
+    REMITTANCES = [row('1', 'payment_pending', { user_id: 'admin-1' })];
+    render(<AdminRemittancesTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'remittances.admin.viewDetails' }));
+    await screen.findByText('remittances.admin.amountInfoTitle');
+    const button = screen.getAllByRole('button', { name: `${KEY}.adjustButton` }).find((b) => b.getAttribute('aria-describedby') === 'commission-adjust-help');
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(document.getElementById('commission-adjust-help')).toHaveTextContent('common.ownOperationReason');
+    fireEvent.click(button);
+    expect(screen.queryByRole('dialog', { name: `${KEY}.modalTitle` })).not.toBeInTheDocument();
+  });
+
+  it('degrades without a signed-in user id (no own-operation logic)', async () => {
+    auth.user = undefined;
+    REMITTANCES = [row('1', 'payment_proof_uploaded', { user_id: 'admin-1' })];
+    render(<AdminRemittancesTab />);
+    expect(await screen.findByRole('button', { name: 'remittances.admin.validate' })).toBeInTheDocument();
   });
 });

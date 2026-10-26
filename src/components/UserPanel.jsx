@@ -10,6 +10,9 @@ import { getPaymentConfirmationBlocker } from '@/lib/orderPayerPhone';
 import { isValidPayerPhone, normalizePayerPhone, PAYER_PHONE_MAX_LENGTH } from '@/lib/payerPhone';
 import { isInsufficientStockError } from '@/lib/stockErrors';
 import { isStatusConflictError, transitionErrorKey, transitionMessage } from '@/lib/statusConflict';
+import { isOwnOperation } from '@/lib/selfDealing';
+
+const OWN_REASON_ID = 'own-operation-reason';
 import { getUserOrders, getOrderById, getAllOrders, getPendingOrdersCount, validatePayment, rejectPayment, cancelOrderByUser, uploadPaymentProof, markOrderAsDispatched, markOrderAsDelivered, completeOrder, reopenOrder, ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderService';
 import { getUserTestimonial, createTestimonial } from '@/lib/testimonialService';
 import { getMyRemittances, generateProofSignedUrl } from '@/lib/remittanceService';
@@ -1899,12 +1902,20 @@ const UserPanel = ({ onNavigate }) => {
                       </motion.div>
                     )}
 
+                    {isAdminRole && isOwnOperation(selectedOrder, user?.id) && (
+                      <div id={OWN_REASON_ID} role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                        <span className="font-semibold">{t('common.ownOperation')}. </span>
+                        {t('common.ownOperationReason')}
+                      </div>
+                    )}
+
                     {/* Admin Action Buttons */}
                     {(userRole === 'admin' || userRole === 'super_admin') && ['pending', 'proof_uploaded'].includes(selectedOrder.payment_status) && (
                       <div className="flex gap-3 pt-4 border-t" style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}>
                         <Button
                           onClick={() => handleValidatePayment(selectedOrder.id)}
-                          disabled={loadingDetails}
+                          disabled={loadingDetails || isOwnOperation(selectedOrder, user?.id)}
+                          aria-describedby={isOwnOperation(selectedOrder, user?.id) ? OWN_REASON_ID : undefined}
                           className="flex-1 bg-green-600 hover:bg-green-700 text-white"
                         >
                           <CheckCircle className="h-4 w-4 mr-2" />
@@ -1912,7 +1923,8 @@ const UserPanel = ({ onNavigate }) => {
                         </Button>
                         <Button
                           onClick={() => handleRejectPayment(selectedOrder.id)}
-                          disabled={loadingDetails}
+                          disabled={loadingDetails || isOwnOperation(selectedOrder, user?.id)}
+                          aria-describedby={isOwnOperation(selectedOrder, user?.id) ? OWN_REASON_ID : undefined}
                           variant="destructive"
                           className="flex-1"
                         >
@@ -1936,7 +1948,8 @@ const UserPanel = ({ onNavigate }) => {
                         />
                         <Button
                           onClick={handleMarkDispatched}
-                          disabled={processingAction}
+                          disabled={processingAction || isOwnOperation(selectedOrder, user?.id)}
+                          aria-describedby={isOwnOperation(selectedOrder, user?.id) ? OWN_REASON_ID : undefined}
                           className="bg-blue-600 hover:bg-blue-700 text-white"
                         >
                           {processingAction ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Truck className="h-4 w-4 mr-2" />}
@@ -1952,7 +1965,8 @@ const UserPanel = ({ onNavigate }) => {
                         </p>
                         <Button
                           onClick={() => setShowDeliveryDialog(true)}
-                          disabled={processingAction}
+                          disabled={processingAction || isOwnOperation(selectedOrder, user?.id)}
+                          aria-describedby={isOwnOperation(selectedOrder, user?.id) ? OWN_REASON_ID : undefined}
                           className="bg-green-600 hover:bg-green-700 text-white"
                         >
                           {processingAction ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
@@ -1968,7 +1982,8 @@ const UserPanel = ({ onNavigate }) => {
                         </p>
                         <Button
                           onClick={handleCompleteOrder}
-                          disabled={processingAction}
+                          disabled={processingAction || isOwnOperation(selectedOrder, user?.id)}
+                          aria-describedby={isOwnOperation(selectedOrder, user?.id) ? OWN_REASON_ID : undefined}
                           className="bg-purple-600 hover:bg-purple-700 text-white"
                         >
                           {processingAction ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
