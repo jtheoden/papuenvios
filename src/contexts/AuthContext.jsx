@@ -245,9 +245,14 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     mountedRef.current = true;
+    // Effect-local (not a ref): each StrictMode run owns its flag, so a
+    // discarded run finishing cannot re-open the guard of the live one.
+    let initializing = false;
 
     // Global timeout to prevent infinite loading
     const globalTimer = setTimeout(() => {
+      // A hung getSession() must not keep dropping auth events forever.
+      initializing = false;
       if (mountedRef.current && loading) {
         console.warn('[Auth] Init timeout - clearing loading state');
         setLoading(false);
@@ -255,6 +260,7 @@ export const AuthProvider = ({ children }) => {
     }, TIMEOUTS.INIT_AUTH);
 
     const initialize = async () => {
+      initializing = true;
       setLoading(true);
 
       try {
@@ -273,6 +279,7 @@ export const AuthProvider = ({ children }) => {
         console.error('[Auth] Init error:', err);
       } finally {
         clearTimeout(globalTimer);
+        initializing = false;
         if (mountedRef.current) {
           setLoading(false);
         }
@@ -292,11 +299,31 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
+      // While `initialize()` is running it independently resolves the
+      // current session via its own getSession() call and calls
+      // updateUserState itself. supabase-js's internal
+      // _recoverAndRefresh() also notifies this listener for that same
+      // stored session — observed in real browsers as 'SIGNED_IN' fired
+      // BEFORE 'INITIAL_SESSION' (not always 'INITIAL_SESSION' alone, and
+      // not necessarily in event-name order). Skipping by the `initializing` flag
+      // (a time window) instead of by specific event name covers both,
+      // and any other event supabase-js may emit during that window,
+      // without needing to duplicate updateUserState here.
+      if (initializing) return;
+
       if (event === 'TOKEN_REFRESHED') {
       }
 
+      // Do NOT await updateUserState here: supabase-js's internal
+      // _notifyAllSubscribers awaits this callback's returned promise as
+      // part of _recoverAndRefresh(), which getSession() itself awaits via
+      // initializePromise. Since updateUserState -> fetchProfile needs a
+      // valid session (which requires getSession() to resolve), awaiting it
+      // here creates a circular wait: getSession() blocks on this callback,
+      // which blocks on getSession(). Firing it without awaiting lets this
+      // callback's promise resolve immediately, breaking the deadlock.
       if (session) {
-        await updateUserState(session);
+        updateUserState(session);
       }
     });
 
