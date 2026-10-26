@@ -37,6 +37,9 @@ vi.mock('@/components/AdminOffersTab', () => ({ default: () => null }));
 vi.mock('@/components/RemittanceTypesConfig', () => ({ default: () => null }));
 vi.mock('@/components/admin/ZellePaymentHistoryTab', () => ({ default: () => null }));
 vi.mock('@/components/ActivityLogTab', () => ({ default: () => null }));
+vi.mock('@/components/admin/RefundsAlertCard', () => ({
+  default: ({ enabled }) => <div data-testid="refunds-card" data-enabled={String(enabled)} />
+}));
 vi.mock('@/lib/supabase', () => {
   const makeChain = (table) => {
     const chain = {};
@@ -135,6 +138,13 @@ describe('DashboardPage financials (H5, H6, H9, H10)', () => {
     // H10: dedicated row shows 1
     const row = screen.getByText('dashboard.orderStatus.proofToReview').parentElement;
     expect(within(row).getByText('1')).toBeTruthy();
+  });
+
+  it('shows the pending-refunds alert card in the summary, enabled for admins', async () => {
+    tables.data = baseTables();
+    render(<DashboardPage onNavigate={() => {}} />);
+    const card = await screen.findByTestId('refunds-card');
+    expect(card.getAttribute('data-enabled')).toBe('true');
   });
 
   it('defines the three headline metrics in tooltips', async () => {

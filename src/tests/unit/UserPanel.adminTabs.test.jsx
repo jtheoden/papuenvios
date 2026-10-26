@@ -114,11 +114,11 @@ describe('UserPanel admin work tabs', () => {
     window.history.replaceState({}, '', '/user-panel');
   });
 
-  it('renders an accessible tablist with order and remittance tabs for admins', async () => {
+  it('renders an accessible tablist with order, remittance and refund tabs for admins', async () => {
     render(<UserPanel onNavigate={() => {}} />);
     const tablist = await screen.findByRole('tablist');
     expect(tablist.getAttribute('aria-label')).toBe('adminInbox.tablistLabel');
-    expect(screen.getAllByRole('tab')).toHaveLength(2);
+    expect(screen.getAllByRole('tab')).toHaveLength(3);
     expect(tab('adminInbox.ordersTab').getAttribute('aria-selected')).toBe('true');
     expect(tab('adminInbox.remittancesTab').getAttribute('aria-selected')).toBe('false');
     expect(tab('adminInbox.ordersTab').getAttribute('aria-controls')).toBe(
@@ -171,15 +171,18 @@ describe('UserPanel admin work tabs', () => {
     expect(remittances.getAttribute('aria-selected')).toBe('true');
     expect(document.activeElement).toBe(remittances);
 
+    const refunds = tab('adminRefunds.tab');
     fireEvent.keyDown(remittances, { key: 'ArrowRight' });
+    expect(refunds.getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(refunds, { key: 'ArrowRight' });
     expect(orders.getAttribute('aria-selected')).toBe('true');
 
     fireEvent.keyDown(orders, { key: 'End' });
-    expect(remittances.getAttribute('aria-selected')).toBe('true');
-    fireEvent.keyDown(remittances, { key: 'Home' });
+    expect(refunds.getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(refunds, { key: 'Home' });
     expect(orders.getAttribute('aria-selected')).toBe('true');
     fireEvent.keyDown(orders, { key: 'ArrowLeft' });
-    expect(remittances.getAttribute('aria-selected')).toBe('true');
+    expect(refunds.getAttribute('aria-selected')).toBe('true');
   });
 
   it('opens the remittances tab when the URL says ?tab=remittances', async () => {

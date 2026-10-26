@@ -1,0 +1,20 @@
+{
+  "_doc": "Shared by src/tests/unit/refundWindow.test.js (JS mirror) and src/tests/concurrency/refundRequests.test.js (SQL). Instants are UTC; the names give the America/New_York wall clock. eligible_at = cancelled_at + 48 real hours; due_at = end of the 5th business day (Mon-Fri, New York) after eligible_at, i.e. 00:00 New York of the following day.",
+  "constants": { "holdHours": 48, "businessDays": 5 },
+  "windows": [
+    { "name": "Mon 26-Oct 10:00 ET: plain week", "cancelled_at": "2026-10-26T14:00:00.000Z", "eligible_at": "2026-10-28T14:00:00.000Z", "due_at": "2026-11-05T05:00:00.000Z" },
+    { "name": "Fri 23-Oct 18:00 ET: eligible on Sunday, day 1 is Monday", "cancelled_at": "2026-10-23T22:00:00.000Z", "eligible_at": "2026-10-25T22:00:00.000Z", "due_at": "2026-10-31T04:00:00.000Z" },
+    { "name": "Sat 24-Oct 12:00 ET: eligible Monday, crosses the DST change", "cancelled_at": "2026-10-24T16:00:00.000Z", "eligible_at": "2026-10-26T16:00:00.000Z", "due_at": "2026-11-03T05:00:00.000Z" },
+    { "name": "Tue 27-Oct 23:30 ET (already the 28th in UTC): business day evaluated in ET, not UTC", "cancelled_at": "2026-10-28T03:30:00.000Z", "eligible_at": "2026-10-30T03:30:00.000Z", "due_at": "2026-11-06T05:00:00.000Z" },
+    { "name": "Fri 30-Oct 12:00 EDT: 48 real hours land on Sun 1-Nov 11:00 EST, not 12:00", "cancelled_at": "2026-10-30T16:00:00.000Z", "eligible_at": "2026-11-01T16:00:00.000Z", "due_at": "2026-11-07T05:00:00.000Z" },
+    { "name": "Wed 4-Nov 09:00 EST: after the DST change", "cancelled_at": "2026-11-04T14:00:00.000Z", "eligible_at": "2026-11-06T14:00:00.000Z", "due_at": "2026-11-14T05:00:00.000Z" }
+  ],
+  "states": [
+    { "name": "1 s before eligible_at", "eligible_at": "2026-10-28T14:00:00.000Z", "due_at": "2026-11-05T05:00:00.000Z", "now": "2026-10-28T13:59:59.000Z", "state": "on_hold" },
+    { "name": "exactly eligible_at", "eligible_at": "2026-10-28T14:00:00.000Z", "due_at": "2026-11-05T05:00:00.000Z", "now": "2026-10-28T14:00:00.000Z", "state": "on_time" },
+    { "name": "due_at - 24h - 1s", "eligible_at": "2026-10-28T14:00:00.000Z", "due_at": "2026-11-05T05:00:00.000Z", "now": "2026-11-04T04:59:59.000Z", "state": "on_time" },
+    { "name": "due_at - 24h", "eligible_at": "2026-10-28T14:00:00.000Z", "due_at": "2026-11-05T05:00:00.000Z", "now": "2026-11-04T05:00:00.000Z", "state": "due_soon" },
+    { "name": "due_at - 1s", "eligible_at": "2026-10-28T14:00:00.000Z", "due_at": "2026-11-05T05:00:00.000Z", "now": "2026-11-05T04:59:59.000Z", "state": "due_soon" },
+    { "name": "exactly due_at", "eligible_at": "2026-10-28T14:00:00.000Z", "due_at": "2026-11-05T05:00:00.000Z", "now": "2026-11-05T05:00:00.000Z", "state": "overdue" }
+  ]
+}

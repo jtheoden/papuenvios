@@ -4,6 +4,7 @@ import {
   LEGAL_LAST_UPDATED,
   CLAIM_WINDOW_HOURS,
   REFUND_BUSINESS_DAYS,
+  REFUND_HOLD_HOURS,
   getSupportEmail,
 } from '@/lib/legalConfig';
 
@@ -18,6 +19,8 @@ describe('legalConfig constants', () => {
     expect(CLAIM_WINDOW_HOURS).toBeGreaterThan(0);
     expect(Number.isInteger(REFUND_BUSINESS_DAYS)).toBe(true);
     expect(REFUND_BUSINESS_DAYS).toBeGreaterThan(0);
+    expect(Number.isInteger(REFUND_HOLD_HOURS)).toBe(true);
+    expect(REFUND_HOLD_HOURS).toBeGreaterThan(0);
   });
 });
 

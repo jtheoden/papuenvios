@@ -16,6 +16,12 @@ export const CLAIM_WINDOW_HOURS = 48;
 /** Business days to return a refund to the original Zelle method (proposal). */
 export const REFUND_BUSINESS_DAYS = 5;
 
+/**
+ * Hours after a cancellation before the refund process starts (owner policy, requested by the customer).
+ * Deliberately NOT derived from CLAIM_WINDOW_HOURS: same value today, unrelated policy. SQL copy: refund_hold_hours().
+ */
+export const REFUND_HOLD_HOURS = 48;
+
 /** Business hours the team may take to verify an uploaded payment proof (existing text: 24h). */
 export const PAYMENT_VERIFICATION_BUSINESS_HOURS = 24;
 

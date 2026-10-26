@@ -62,7 +62,7 @@ describeDb('get_pending_orders_count caller check (local Postgres)', () => {
 
   it('returns the real count to an admin', async () => {
     const expected = (await admin.query(
-      `SELECT COUNT(*)::int AS n FROM public.orders WHERE status = 'pending' OR payment_status = 'pending'`
+      `SELECT COUNT(*)::int AS n FROM public.orders WHERE status <> 'cancelled' AND (status = 'pending' OR payment_status = 'pending')`
     )).rows[0].n;
     expect(expected).toBeGreaterThan(0);
     const c = await as(actors.adminId);

@@ -2391,6 +2391,158 @@
     "bulkDeletePreviewProducts": "{count} associated product(s)",
     "bulkDeletePreviewNoImpact": "no related items"
   },
+  "adminRefunds": {
+    "tab": "Refunds",
+    "tabCountSr": "{count} refunds to do",
+    "tabCountOverdueSr": "{count} refunds to do, {overdue} overdue",
+    "heading": "Refunds",
+    "intro": "Cancelled operations that already had a payment or proof. Refunds are manual by Zelle: they open {hours} hours after the cancellation and are due {days} business days later.",
+    "summary": {
+      "pending": "Pending",
+      "amountUsd": "Pending amount (USD only)",
+      "attention": "Due soon / overdue",
+      "onHold": "On hold for {hours} h"
+    },
+    "filterLabel": "Filter refunds",
+    "filter": {
+      "toRefund": "To refund",
+      "verify": "Verify receipt",
+      "onHold": "On hold for {hours} h",
+      "overdue": "Overdue",
+      "refunded": "Refunded",
+      "notApplicable": "Not applicable / Reopened",
+      "all": "All"
+    },
+    "typeLabel": "Operation type",
+    "type": {
+      "all": "All",
+      "order": "Orders",
+      "remittance": "Remittances"
+    },
+    "searchLabel": "Search by number or customer",
+    "searchPlaceholder": "Number, name or email",
+    "level": {
+      "validated": "Refund due",
+      "proof_unverified": "Verify receipt"
+    },
+    "operation": {
+      "order": "Order",
+      "remittance": "Remittance"
+    },
+    "deadline": {
+      "onTime": "{time} left",
+      "dueSoon": "Due in {time}",
+      "overdue": "Overdue by {time}",
+      "onHold": "Available on {date}",
+      "dueBy": "Deadline: {date}"
+    },
+    "duration": {
+      "minutes": "{count} min",
+      "hours": "{count} h",
+      "days": "{count} d"
+    },
+    "customer": "Customer",
+    "payerPhone": "Payer phone",
+    "zelleAccount": "Zelle account that received the payment",
+    "paymentReference": "Payment reference",
+    "unknownCustomer": "Unnamed customer",
+    "cancelledOn": "Cancelled on {date} {by}",
+    "cancelledBy": {
+      "customer": "by the customer",
+      "admin": "by an administrator",
+      "system": "automatically"
+    },
+    "cancellationReason": "Reason: {reason}",
+    "refundedLine": "Refunded on {date} · ref. {reference}",
+    "notApplicableLine": "Not applicable: {reason}",
+    "reopenedLine": "Reopened by the customer: the request closed itself.",
+    "actions": {
+      "markRefunded": "Mark refunded",
+      "markRefundedAria": "Mark the refund of {number} as refunded",
+      "notApplicable": "Not applicable",
+      "notApplicableAria": "Mark the refund of {number} as not applicable",
+      "copy": "Copy details",
+      "copyAria": "Copy the refund details of {number}",
+      "viewProof": "Proof",
+      "viewProofAria": "View payment proof of {number}",
+      "copied": "Details copied",
+      "copyFailed": "Could not copy. Select and copy manually.",
+      "onHoldBlocked": "Available from {date} ({hours} h hold)"
+    },
+    "modal": {
+      "summary": "{amount} {currency} · {customer}",
+      "refunded": {
+        "title": "Mark refunded",
+        "referenceLabel": "Refund reference",
+        "referenceHelp": "Code or reference of the Zelle you sent.",
+        "dateLabel": "Refund date",
+        "confirmArrived": "I confirmed the payment arrived in the Zelle account {account}",
+        "dateClamped": "It will be recorded with the time the refund became available ({date}).",
+        "confirmArrivedNoAccount": "I confirmed the payment arrived in the Zelle account",
+        "submit": "Save refund"
+      },
+      "notApplicable": {
+        "title": "Mark as not applicable",
+        "reasonLabel": "Reason",
+        "reasonHelp": "Required. It is recorded with your user.",
+        "presets": {
+          "neverArrived": "The payment never arrived",
+          "outsideApp": "Refunded outside the app",
+          "duplicate": "Duplicate of another refund"
+        },
+        "submit": "Save"
+      },
+      "working": "Saving...",
+      "cancel": "Cancel"
+    },
+    "states": {
+      "loading": "Loading refunds",
+      "error": "Refunds could not be loaded.",
+      "retry": "Retry",
+      "stale": "Could not refresh; showing the last loaded data.",
+      "emptyPending": "No refunds pending. When a paid order or remittance is cancelled it will show up here with its deadline.",
+      "emptyOnHold": "No refunds to make today; {count} on hold for {hours} h.",
+      "showing": "Showing {shown} of {total} refunds; the oldest resolved ones are not loaded.",
+      "emptyFilter": "Nothing in this filter.",
+      "liveNew": "{count} new pending refund(s)",
+      "conflict": "The refund changed; the list was refreshed."
+    },
+    "errors": {
+      "onHold": "It cannot be refunded yet: the {hours} h hold ends on {date}.",
+      "alreadyResolved": "This refund was already resolved by someone else.",
+      "invalidReference": "Enter the refund reference (up to 200 characters).",
+      "invalidDate": "The refund date is not valid.",
+      "invalidReason": "Enter the reason (up to 500 characters).",
+      "confirmArrival": "Confirm that the payment arrived in the Zelle account before refunding.",
+      "invalidArgument": "Check the data you entered.",
+      "notAuthorized": "You do not have permission to resolve refunds.",
+      "notFound": "The refund no longer exists.",
+      "generic": "Could not save. Try again."
+    },
+    "success": {
+      "refunded": "Refund marked as refunded",
+      "notApplicable": "Refund marked as not applicable"
+    },
+    "badge": {
+      "overdueSr": "{count} overdue refunds"
+    },
+    "dashboard": {
+      "title": "{count} refunds to do",
+      "titleOnHold": "{count} refunds on hold for {hours} h",
+      "amount": "Pending amount (USD only): {amount}",
+      "overdue": "{count} overdue",
+      "onHold": "{count} on hold for {hours} h",
+      "cta": "Go to refunds"
+    },
+    "copy": {
+      "amount": "Amount to refund",
+      "customer": "Customer",
+      "email": "Email",
+      "phone": "Payer phone",
+      "paymentReference": "Original payment reference",
+      "operation": "Operation"
+    }
+  },
   "adminInbox": {
     "tablistLabel": "Work pending for administrators",
     "ordersTab": "Orders to process",

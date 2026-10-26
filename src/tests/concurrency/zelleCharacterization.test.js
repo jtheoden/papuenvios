@@ -649,7 +649,9 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
       expect(await triggers('orders', 'after', 'update')).toEqual([
         'audit_financial_update', // financial audit trail (20261020100000)
         'audit_order_status',
-        'release_stock_on_order_cancel'
+        'release_stock_on_order_cancel',
+        'trg_refund_request_on_cancel', // refunds queue (20261029100200)
+        'trg_refund_request_on_reopen'
       ]);
     });
 
@@ -667,7 +669,7 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
     it('remittances BEFORE UPDATE and AFTER UPDATE', async () => {
       // + money-columns guard (20261023110000), fires first (alphabetical order)
       expect(await triggers('remittances', 'before', 'update')).toEqual(['guard_commission_acceptance', 'guard_remittance_money_columns', 'guard_remittance_owner_update', 'guard_status_via_rpc']); // + commission acceptance guard (20261028100200)
-      expect(await triggers('remittances', 'after', 'update')).toEqual(['audit_financial_update', 'audit_remittance_status']); // + financial audit trail (20261020100000)
+      expect(await triggers('remittances', 'after', 'update')).toEqual(['audit_financial_update', 'audit_remittance_status', 'trg_refund_request_on_cancel', 'trg_refund_request_on_reopen']); // + financial audit trail (20261020100000), refunds queue (20261029100200)
     });
   });
 
