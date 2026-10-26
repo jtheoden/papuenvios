@@ -33,6 +33,7 @@ describeDb('refund queue (database layer)', () => {
   let admin;
   let actors;
   let typeId;
+  let proofRuleWasOn = false;
   const clients = [];
   const tracker = createTracker();
   const remittances = [];
@@ -106,6 +107,13 @@ describeDb('refund queue (database layer)', () => {
       [`rt-${randomUUID().slice(0, 8)}`]
     );
     typeId = t.rows[0].id;
+    // These R4 tests resolve with the v1 RPC and no proof. The proof rule (R5) is covered in refundAuditTrail.test.js, so it is
+    // switched off here (files run sequentially) and restored in afterAll. The function only exists once R5 is applied.
+    const fn = await admin.query(`SELECT to_regprocedure('public.refund_proof_required()') AS f`);
+    proofRuleWasOn = fn.rows[0].f !== null;
+    if (proofRuleWasOn) {
+      await admin.query(`CREATE OR REPLACE FUNCTION public.refund_proof_required() RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path = pg_catalog AS $f$ SELECT false $f$`);
+    }
   });
   afterEach(async () => {
     await endAll(clients.splice(0));
@@ -130,6 +138,9 @@ describeDb('refund queue (database layer)', () => {
     await cleanup(admin, tracker);
   });
   afterAll(async () => {
+    if (proofRuleWasOn) {
+      await admin.query(`CREATE OR REPLACE FUNCTION public.refund_proof_required() RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path = pg_catalog AS $f$ SELECT true $f$`);
+    }
     await admin.query('DELETE FROM public.remittance_types WHERE id = $1', [typeId]);
     await admin.end();
   });

@@ -110,3 +110,17 @@ export const isRefundDateClamped = (dateText, eligibleAt, now = new Date()) => {
 };
 
 export const todayLocalDay = (now = new Date()) => toLocalDay(now);
+
+// Refund proof (private bucket `refund-proofs`): same limits as the bucket. The extension comes from the MIME type, never the file name.
+export const REFUND_PROOF_MAX_BYTES = 5 * 1024 * 1024;
+const PROOF_EXTENSIONS = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf' };
+export const REFUND_PROOF_ACCEPT = Object.keys(PROOF_EXTENSIONS).join(',');
+export const refundProofExtension = (mime) => PROOF_EXTENSIONS[mime] ?? null;
+
+/** @returns {null|'missing'|'type'|'size'} null when the file can be uploaded as a refund proof. */
+export const validateRefundProofFile = (file) => {
+  if (!file) return 'missing';
+  if (!refundProofExtension(file.type)) return 'type';
+  if (!(file.size > 0) || file.size > REFUND_PROOF_MAX_BYTES) return 'size';
+  return null;
+};

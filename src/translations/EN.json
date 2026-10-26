@@ -2454,6 +2454,7 @@
     "zelleAccount": "Zelle account that received the payment",
     "paymentReference": "Payment reference",
     "unknownCustomer": "Unnamed customer",
+    "ownOperation": "Own operation",
     "cancelledOn": "Cancelled on {date} {by}",
     "cancelledBy": {
       "customer": "by the customer",
@@ -2475,7 +2476,8 @@
       "viewProofAria": "View payment proof of {number}",
       "copied": "Details copied",
       "copyFailed": "Could not copy. Select and copy manually.",
-      "onHoldBlocked": "Available from {date} ({hours} h hold)"
+      "onHoldBlocked": "Available from {date} ({hours} h hold)",
+      "ownBlocked": "This is your own operation: another administrator must resolve this refund."
     },
     "modal": {
       "summary": "{amount} {currency} · {customer}",
@@ -2487,7 +2489,12 @@
         "confirmArrived": "I confirmed the payment arrived in the Zelle account {account}",
         "dateClamped": "It will be recorded with the time the refund became available ({date}).",
         "confirmArrivedNoAccount": "I confirmed the payment arrived in the Zelle account",
+        "proofLabel": "Refund proof",
+        "proofHelp": "Required. Screenshot or PDF of the refund (JPG, PNG, WebP or PDF, 5 MB max). It may contain personal data: crop what is not needed. It is deleted automatically one year after the refund.",
         "submit": "Save refund"
+      },
+      "selfResolve": {
+        "confirm": "This refund belongs to my own operation and I am the only administrator available to resolve it. It is recorded."
       },
       "notApplicable": {
         "title": "Mark as not applicable",
@@ -2522,6 +2529,11 @@
       "invalidDate": "The refund date is not valid.",
       "invalidReason": "Enter the reason (up to 500 characters).",
       "confirmArrival": "Confirm that the payment arrived in the Zelle account before refunding.",
+      "proofRequired": "Attach the refund proof.",
+      "proofInvalid": "The proof must be a JPG, PNG, WebP or PDF of up to 5 MB.",
+      "proofUploadFailed": "The proof could not be uploaded. Try again.",
+      "selfResolution": "You cannot resolve a refund of your own operation. Another administrator must do it.",
+      "selfResolveConfirm": "Confirm that you are resolving your own refund.",
       "invalidArgument": "Check the data you entered.",
       "notAuthorized": "You do not have permission to resolve refunds.",
       "notFound": "The refund no longer exists.",

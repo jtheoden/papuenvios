@@ -8,6 +8,7 @@
 import { supabase } from './supabase';
 import { AppError, ERROR_CODES, logError } from './errorHandler';
 import { isBackendMissingError } from './commissionProposalRules';
+import { refundProofExtension, validateRefundProofFile } from './refundRules';
 
 const MISSING_RETRY_MS = 5 * 60 * 1000;
 let missingAt = null; // when the backend was last found missing
@@ -22,7 +23,22 @@ export const notifyRefundsChanged = () => {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(REFUNDS_CHANGED_EVENT));
 };
 
+const REFUND_PROOF_BUCKET = 'refund-proofs';
+
+/** Typed refusal raised on the client: context.reason is what the screens switch on. */
+const refusal = (reason, code, status, extra = {}) => new AppError(reason, code, status, { reason, ...extra });
+
+const sha256Hex = async (file) => {
+  try {
+    const digest = await globalThis.crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return null; // the hash is optional
+  }
+};
+
 const REASON_CODES = {
+  proof_required: ERROR_CODES.VALIDATION_FAILED,
   refund_on_hold: ERROR_CODES.CONFLICT,
   already_resolved: ERROR_CODES.CONFLICT,
   invalid_argument: ERROR_CODES.VALIDATION_FAILED,
@@ -42,6 +58,7 @@ const refusalContext = (error) => {
       return { reason: 'refund_on_hold', eligibleAt: match ? match[1] : null };
     }
     if (message.includes('already_resolved')) return { reason: 'already_resolved' };
+    if (message.includes('proof_required')) return { reason: 'proof_required' };
     if (message.includes('invalid_argument')) return { reason: 'invalid_argument', field: details || null };
   }
   return null;
@@ -118,20 +135,74 @@ export const listRefunds = async ({ status = 'all', limit = 200, offset = 0, que
  * refund_on_hold (context.eligibleAt) | already_resolved | invalid_argument (context.field) | not_authorized | refund_not_found.
  * @param {{ refundId: string, action: 'refunded'|'not_applicable', reference?: string, refundedAt?: string|null, reason?: string }} input
  */
-export const resolveRefund = async ({ refundId, action, reference = null, refundedAt = null, reason = null }) => {
+export const resolveRefund = async ({
+  refundId,
+  action,
+  reference = null,
+  refundedAt = null,
+  reason = null,
+  proofFile = null,
+  selfResolveConfirm = false
+}) => {
   if (!refundId || !['refunded', 'not_applicable'].includes(action)) {
     throw new AppError('invalid_argument: refundId and a valid action are required', ERROR_CODES.VALIDATION_FAILED, 400, {
       reason: 'invalid_argument'
     });
   }
   const trimmed = (value) => (typeof value === 'string' && value.trim() ? value.trim() : null);
-  const { data, error } = await supabase.rpc('admin_resolve_refund', {
+
+  // 'refunded' needs a proof (the database enforces it too). Checked here so nothing is uploaded for a doomed request.
+  let proofPath = null;
+  let proofSha = null;
+  if (action === 'refunded') {
+    const problem = validateRefundProofFile(proofFile);
+    if (problem === 'missing') throw refusal('proof_required', ERROR_CODES.VALIDATION_FAILED, 400);
+    if (problem) throw refusal('invalid_proof_file', ERROR_CODES.VALIDATION_FAILED, 400, { problem });
+    proofPath = `refunds/${refundId}/${globalThis.crypto.randomUUID()}.${refundProofExtension(proofFile.type)}`;
+    proofSha = await sha256Hex(proofFile);
+    const { error: uploadError } = await supabase.storage
+      .from(REFUND_PROOF_BUCKET)
+      .upload(proofPath, proofFile, { contentType: proofFile.type, upsert: false });
+    if (uploadError) {
+      const appError = refusal('proof_upload_failed', ERROR_CODES.DB_ERROR, 500);
+      logError(appError, { operation: 'refund_proof_upload' });
+      throw appError;
+    }
+  }
+
+  // The upload happened before the RPC: if the RPC does not accept the resolution, the object is removed (best effort) so no
+  // orphan stays in the private bucket. A failing cleanup never hides the original error.
+  const discardUpload = async () => {
+    if (!proofPath) return;
+    try {
+      await supabase.storage.from(REFUND_PROOF_BUCKET).remove([proofPath]);
+    } catch {
+      /* the original error matters more */
+    }
+  };
+
+  const { data, error } = await supabase.rpc('admin_resolve_refund_v2', {
     p_refund_id: refundId,
     p_action: action,
     p_reference: trimmed(reference),
     p_refunded_at: refundedAt || null,
-    p_reason: trimmed(reason)
+    p_reason: trimmed(reason),
+    p_proof_path: proofPath,
+    p_proof_sha256: proofSha,
+    p_self_resolve_confirm: selfResolveConfirm === true
   });
-  if (error) throw toAppError(error, 'admin_resolve_refund');
-  return data;
+  if (error) {
+    await discardUpload();
+    throw toAppError(error, 'admin_resolve_refund_v2');
+  }
+  if (!data || data.ok !== true) {
+    await discardUpload();
+    // The only documented non-exception refusal: the admin is the customer of this refund (separation of duties).
+    throw refusal(data?.code === 'self_resolution_not_allowed' ? 'self_resolution_not_allowed' : 'invalid_argument',
+      data?.code === 'self_resolution_not_allowed' ? ERROR_CODES.FORBIDDEN : ERROR_CODES.VALIDATION_FAILED,
+      data?.code === 'self_resolution_not_allowed' ? 403 : 400);
+  }
+  // An idempotent replay returns the row as it was stored: if its proof is not the one just uploaded, the new object is an orphan.
+  if (proofPath && data.refund?.proof_path !== proofPath) await discardUpload();
+  return data.refund;
 };

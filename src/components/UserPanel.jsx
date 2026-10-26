@@ -879,7 +879,13 @@ const UserPanel = ({ onNavigate }) => {
           </motion.div>
         )}
 
-        <AdminWorkTabs enabled={isAdminRole} ordersCount={pendingOrdersCount} onNavigate={onNavigate}>
+        <AdminWorkTabs
+          enabled={isAdminRole}
+          ordersCount={pendingOrdersCount}
+          onNavigate={onNavigate}
+          currentUserId={user?.id ?? null}
+          isSuperAdmin={userRole === 'super_admin'}
+        >
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

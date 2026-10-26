@@ -290,7 +290,14 @@ describe('AdminRefundsInbox', () => {
       return screen.getByRole('dialog');
     };
 
-    it('requires a reference, shows amount and customer, and saves with a null date for today', async () => {
+    const PROOF_LABEL = /adminRefunds\.modal\.refunded\.proofLabel/;
+    const proof = () => new File(['proof'], 'zelle.png', { type: 'image/png' });
+    const attach = (dialog, file = proof()) => {
+      fireEvent.change(within(dialog).getByLabelText(PROOF_LABEL), { target: { files: [file] } });
+      return file;
+    };
+
+    it('requires a reference and a proof, shows amount and customer, and saves with a null date for today', async () => {
       const { onChanged } = renderInbox();
       const dialog = await open();
       expect(within(dialog).getByText(/\$?10\.00|10\.00/)).toBeTruthy();
@@ -302,8 +309,13 @@ describe('AdminRefundsInbox', () => {
 
       await userEvent.type(within(dialog).getByLabelText(/adminRefunds\.modal\.refunded\.referenceLabel/), '  ZELLE-9 ');
       await userEvent.click(submit);
+      expect(resolveRefund).not.toHaveBeenCalled();
+      expect(within(dialog).getByRole('alert').textContent).toContain('adminRefunds.errors.proofRequired');
+
+      const file = attach(dialog);
+      await userEvent.click(submit);
       await waitFor(() => expect(resolveRefund).toHaveBeenCalledTimes(1));
-      expect(resolveRefund).toHaveBeenCalledWith({ refundId: 'ontime', action: 'refunded', reference: 'ZELLE-9', refundedAt: null });
+      expect(resolveRefund).toHaveBeenCalledWith({ refundId: 'ontime', action: 'refunded', reference: 'ZELLE-9', refundedAt: null, proofFile: file });
       await waitFor(() => expect(onChanged).toHaveBeenCalled());
       expect(toast).toHaveBeenCalledWith(expect.objectContaining({ description: 'adminRefunds.success.refunded' }));
       expect(screen.queryByRole('dialog')).toBeNull();
@@ -315,6 +327,7 @@ describe('AdminRefundsInbox', () => {
       renderInbox();
       const dialog = await open();
       await userEvent.type(within(dialog).getByLabelText(/adminRefunds\.modal\.refunded\.referenceLabel/), 'ZELLE-9');
+      attach(dialog);
       await userEvent.click(within(dialog).getByRole('button', { name: 'adminRefunds.modal.refunded.submit' }));
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
       expect(listener).toHaveBeenCalledTimes(1);
@@ -329,6 +342,7 @@ describe('AdminRefundsInbox', () => {
       renderInbox();
       const dialog = await open();
       await userEvent.type(within(dialog).getByLabelText(/adminRefunds\.modal\.refunded\.referenceLabel/), 'ZELLE-1');
+      attach(dialog);
       await userEvent.click(within(dialog).getByRole('button', { name: 'adminRefunds.modal.refunded.submit' }));
       await waitFor(() => expect(listener).toHaveBeenCalled());
       await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('refunds-summary')));
@@ -353,11 +367,33 @@ describe('AdminRefundsInbox', () => {
       renderInbox();
       const dialog = await open('REM-0311');
       await userEvent.type(within(dialog).getByLabelText(/adminRefunds\.modal\.refunded\.referenceLabel/), 'ZELLE-10');
+      attach(dialog);
       await userEvent.click(within(dialog).getByRole('button', { name: 'adminRefunds.modal.refunded.submit' }));
       expect(resolveRefund).not.toHaveBeenCalled();
       await userEvent.click(within(dialog).getByRole('checkbox', { name: /adminRefunds\.modal\.refunded\.confirmArrived/ }));
       await userEvent.click(within(dialog).getByRole('button', { name: 'adminRefunds.modal.refunded.submit' }));
       await waitFor(() => expect(resolveRefund).toHaveBeenCalled());
+    });
+
+    it('refuses a proof of another type or over 5 MB without calling the service', async () => {
+      renderInbox();
+      const dialog = await open('ORD-2000');
+      await userEvent.type(within(dialog).getByLabelText(/adminRefunds\.modal\.refunded\.referenceLabel/), 'ZELLE-1');
+      attach(dialog, new File(['x'], 'a.txt', { type: 'text/plain' }));
+      await userEvent.click(within(dialog).getByRole('button', { name: 'adminRefunds.modal.refunded.submit' }));
+      expect(within(dialog).getByRole('alert').textContent).toContain('adminRefunds.errors.proofInvalid');
+      const big = new File(['x'], 'big.png', { type: 'image/png' });
+      Object.defineProperty(big, 'size', { value: 6 * 1024 * 1024 });
+      attach(dialog, big);
+      await userEvent.click(within(dialog).getByRole('button', { name: 'adminRefunds.modal.refunded.submit' }));
+      expect(within(dialog).getByRole('alert').textContent).toContain('adminRefunds.errors.proofInvalid');
+      expect(resolveRefund).not.toHaveBeenCalled();
+    });
+
+    it('"not applicable" asks for no proof', async () => {
+      renderInbox();
+      await userEvent.click(within(cardOf('ORD-2000')).getByRole('button', { name: /adminRefunds\.actions\.notApplicableAria/ }));
+      expect(within(screen.getByRole('dialog')).queryByLabelText(PROOF_LABEL)).toBeNull();
     });
 
     it('the validated level has no arrival checkbox', async () => {
@@ -371,6 +407,7 @@ describe('AdminRefundsInbox', () => {
       renderInbox();
       const dialog = await open('ORD-2000');
       await userEvent.type(within(dialog).getByLabelText(/adminRefunds\.modal\.refunded\.referenceLabel/), 'ZELLE-1');
+      attach(dialog);
       await userEvent.click(within(dialog).getByRole('button', { name: 'adminRefunds.modal.refunded.submit' }));
       await waitFor(() => expect(within(dialog).getByRole('alert').textContent).toContain('adminRefunds.errors.onHold'));
       expect(screen.getByRole('dialog')).toBeTruthy();
@@ -381,6 +418,7 @@ describe('AdminRefundsInbox', () => {
       const { onChanged } = renderInbox();
       const dialog = await open('ORD-2000');
       await userEvent.type(within(dialog).getByLabelText(/adminRefunds\.modal\.refunded\.referenceLabel/), 'ZELLE-1');
+      attach(dialog);
       await userEvent.click(within(dialog).getByRole('button', { name: 'adminRefunds.modal.refunded.submit' }));
       await waitFor(() => expect(onChanged).toHaveBeenCalled());
       expect(toast).toHaveBeenCalledWith(expect.objectContaining({ description: 'adminRefunds.states.conflict' }));
@@ -427,6 +465,65 @@ describe('AdminRefundsInbox', () => {
       await userEvent.type(within(dialog).getByLabelText(/adminRefunds\.modal\.notApplicable\.reasonLabel/), 'no money received');
       await userEvent.click(within(dialog).getByRole('button', { name: 'adminRefunds.modal.notApplicable.submit' }));
       await waitFor(() => expect(resolveRefund).toHaveBeenCalledWith({ refundId: 'hold', action: 'not_applicable', reason: 'no money received' }));
+    });
+  });
+  describe('own operation (separation of duties)', () => {
+    const own = mk({ id: 'own', operation_type: 'order', order_id: 'o7', operation_number: 'ORD-7000', user_id: 'me', amount: '20.00' });
+    const other = mk({ id: 'other', operation_type: 'order', order_id: 'o8', operation_number: 'ORD-8000', user_id: 'someone-else', amount: '30.00' });
+
+    it('labels the admin\'s own operation and blocks both resolutions with the reason', async () => {
+      renderInbox({ refunds: [own, other], currentUserId: 'me', isSuperAdmin: false });
+      const card = cardOf('ORD-7000');
+      expect(within(card).getByText('adminRefunds.ownOperation')).toBeTruthy();
+      expect(within(cardOf('ORD-8000')).queryByText('adminRefunds.ownOperation')).toBeNull();
+      for (const name of [/adminRefunds\.actions\.markRefundedAria/, /adminRefunds\.actions\.notApplicableAria/]) {
+        const button = within(card).getByRole('button', { name });
+        expect(button.getAttribute('aria-disabled')).toBe('true');
+        await userEvent.click(button);
+      }
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(within(card).getByText('adminRefunds.actions.ownBlocked')).toBeTruthy();
+    });
+
+    it('another admin resolves it normally', async () => {
+      renderInbox({ refunds: [own], currentUserId: 'someone-else', isSuperAdmin: false });
+      const button = within(cardOf('ORD-7000')).getByRole('button', { name: /adminRefunds\.actions\.notApplicableAria/ });
+      expect(button.getAttribute('aria-disabled')).toBeNull();
+      await userEvent.click(button);
+      expect(screen.getByRole('dialog')).toBeTruthy();
+    });
+
+    it('a super admin can resolve his own only after a reinforced confirmation, which is sent to the service', async () => {
+      renderInbox({ refunds: [own], currentUserId: 'me', isSuperAdmin: true });
+      await userEvent.click(within(cardOf('ORD-7000')).getByRole('button', { name: /adminRefunds\.actions\.notApplicableAria/ }));
+      const dialog = screen.getByRole('dialog');
+      await userEvent.type(within(dialog).getByLabelText(/adminRefunds\.modal\.notApplicable\.reasonLabel/), 'duplicate');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'adminRefunds.modal.notApplicable.submit' }));
+      expect(resolveRefund).not.toHaveBeenCalled();
+      expect(within(dialog).getByRole('alert').textContent).toContain('adminRefunds.errors.selfResolveConfirm');
+      await userEvent.click(within(dialog).getByRole('checkbox', { name: /adminRefunds\.modal\.selfResolve\.confirm/ }));
+      await userEvent.click(within(dialog).getByRole('button', { name: 'adminRefunds.modal.notApplicable.submit' }));
+      await waitFor(() => expect(resolveRefund).toHaveBeenCalledWith({ refundId: 'own', action: 'not_applicable', reason: 'duplicate', selfResolveConfirm: true }));
+    });
+
+    it('a normal refund never sends the confirmation flag', async () => {
+      renderInbox({ refunds: [other], currentUserId: 'me', isSuperAdmin: true });
+      await userEvent.click(within(cardOf('ORD-8000')).getByRole('button', { name: /adminRefunds\.actions\.notApplicableAria/ }));
+      const dialog = screen.getByRole('dialog');
+      expect(within(dialog).queryByRole('checkbox')).toBeNull();
+      await userEvent.type(within(dialog).getByLabelText(/adminRefunds\.modal\.notApplicable\.reasonLabel/), 'duplicate');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'adminRefunds.modal.notApplicable.submit' }));
+      await waitFor(() => expect(resolveRefund).toHaveBeenCalledWith({ refundId: 'other', action: 'not_applicable', reason: 'duplicate' }));
+    });
+
+    it('shows the typed refusals inside the dialog', async () => {
+      resolveRefund.mockRejectedValue(Object.assign(new Error('x'), { context: { reason: 'self_resolution_not_allowed' } }));
+      renderInbox({ refunds: [other], currentUserId: 'nobody', isSuperAdmin: false });
+      await userEvent.click(within(cardOf('ORD-8000')).getByRole('button', { name: /adminRefunds\.actions\.notApplicableAria/ }));
+      const dialog = screen.getByRole('dialog');
+      await userEvent.type(within(dialog).getByLabelText(/adminRefunds\.modal\.notApplicable\.reasonLabel/), 'x');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'adminRefunds.modal.notApplicable.submit' }));
+      await waitFor(() => expect(within(dialog).getByRole('alert').textContent).toContain('adminRefunds.errors.selfResolution'));
     });
   });
 });

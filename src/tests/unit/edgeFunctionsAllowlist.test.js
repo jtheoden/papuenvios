@@ -3,7 +3,7 @@ import { readdirSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 // Dead functions must not reappear without review: adding a function means adding it here on purpose.
-const ALLOWED = ['_shared', 'bank-account-crypto', 'notification-settings', 'notify-zelle-deactivation'];
+const ALLOWED = ['_shared', 'bank-account-crypto', 'notification-settings', 'notify-zelle-deactivation', 'purge-refund-proofs'];
 
 describe('supabase/functions allowlist', () => {
   it('only contains reviewed function directories', () => {
