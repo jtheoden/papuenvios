@@ -19,6 +19,7 @@ vi.mock('@/lib/remittanceCalculations', () => ({
 vi.mock('@/components/ImageProofModal', () => ({
   default: ({ isOpen, proofUrl }) => (isOpen ? <div data-testid="proof-modal">{proofUrl}</div> : null)
 }));
+vi.mock('@/lib/commissionProposalService', () => ({ getOpenProposals: vi.fn(async () => []) }));
 vi.mock('@/lib/remittanceService', () => {
   const groups = {
     needs_validation: ['payment_proof_uploaded'],

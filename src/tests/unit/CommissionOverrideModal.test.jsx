@@ -4,6 +4,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 const toast = vi.fn();
 const setRemittanceCommission = vi.fn();
+const getOpenProposals = vi.fn();
 
 vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({
@@ -12,6 +13,7 @@ vi.mock('@/contexts/LanguageContext', () => ({
   }),
 }));
 vi.mock('@/components/ui/use-toast', () => ({ toast: (...args) => toast(...args) }));
+vi.mock('@/lib/commissionProposalService', () => ({ getOpenProposals: (...a) => getOpenProposals(...a) }));
 vi.mock('@/lib/remittanceService', () => ({
   setRemittanceCommission: (...args) => setRemittanceCommission(...args),
 }));
@@ -50,6 +52,7 @@ describe('CommissionOverrideModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setRemittance();
+    getOpenProposals.mockResolvedValue([{ id: 'p1', remittance_id: 'rem-1', status: 'pending', new_commission: '5.00' }]);
   });
   function setRemittance() {
     setRemittanceCommission.mockResolvedValue({ id: 'rem-1', commission_total: 5, amount_to_deliver: 76000 });
@@ -85,23 +88,12 @@ describe('CommissionOverrideModal', () => {
     expect(screen.queryByText(`${KEY}.higherWarning`)).not.toBeInTheDocument();
   });
 
-  it('payment_validated: shows the lower-only hint, blocks a raise with its own message and allows lowering', () => {
-    setup(remittance({ status: 'payment_validated' }));
-    expect(screen.getByText(`${KEY}.lowerOnlyHint`)).toBeInTheDocument();
-    typeReason(REASON);
-    typeCommission('3');
-    expect(screen.getByRole('alert')).toHaveTextContent(`${KEY}.errorLowerOnly`);
-    expect(confirmButton()).toBeDisabled();
-    typeCommission('1');
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(confirmButton()).not.toBeDisabled();
-  });
-
-  it('payment_proof_uploaded: no lower-only hint and a raise is allowed', () => {
-    setup(remittance({ status: 'payment_proof_uploaded' }));
+  it('has no lower-only mode any more: neither hint nor extra error, whatever the status', () => {
+    setup(remittance({ status: 'payment_pending' }));
     expect(screen.queryByText(`${KEY}.lowerOnlyHint`)).not.toBeInTheDocument();
     typeReason(REASON);
     typeCommission('3');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(confirmButton()).not.toBeDisabled();
   });
 
@@ -134,6 +126,37 @@ describe('CommissionOverrideModal', () => {
     fireEvent.click(confirmButton());
     await waitFor(() => expect(setRemittanceCommission).toHaveBeenCalledWith('rem-1', 5, REASON));
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith({ id: 'rem-1', commission_total: 5, amount_to_deliver: 76000 }));
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ description: `${KEY}.savedAwaitingCustomer` }));
+  });
+
+  it('a decrease: the backend created an informed proposal -> "customer informed" message', async () => {
+    getOpenProposals.mockResolvedValue([{ id: 'p2', remittance_id: 'rem-1', status: 'informed', new_commission: '1.00' }]);
+    setRemittanceCommission.mockResolvedValue({ id: 'rem-1', commission_total: 1 });
+    setup();
+    typeCommission('1');
+    typeReason(REASON);
+    fireEvent.click(confirmButton());
+    await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ description: `${KEY}.savedCustomerInformed` })));
+    expect(getOpenProposals).toHaveBeenCalledWith(['rem-1']);
+  });
+
+  it('an old backend that created no proposal gets the neutral message, never a claim that the customer was notified', async () => {
+    getOpenProposals.mockResolvedValue([]);
+    setup();
+    typeCommission('5');
+    typeReason(REASON);
+    fireEvent.click(confirmButton());
+    await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ description: `${KEY}.saved` })));
+    expect(toast).not.toHaveBeenCalledWith(expect.objectContaining({ description: `${KEY}.savedAwaitingCustomer` }));
+  });
+
+  it('a failing proposals read falls back to the neutral message and still saves', async () => {
+    getOpenProposals.mockRejectedValue(new Error('x'));
+    const { onSaved } = setup();
+    typeCommission('5');
+    typeReason(REASON);
+    fireEvent.click(confirmButton());
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ description: `${KEY}.saved` }));
   });
 

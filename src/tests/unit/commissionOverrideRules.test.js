@@ -3,7 +3,6 @@ import {
   REASON_MIN_LENGTH,
   REASON_MAX_LENGTH,
   canAdjustCommission,
-  isLowerOnlyCommission,
   validateCommissionOverride,
   calcCommissionOverride,
 } from '@/lib/commissionOverrideRules';
@@ -21,16 +20,6 @@ describe('canAdjustCommission', () => {
 
   it('is false without a remittance', () => {
     expect(canAdjustCommission(null)).toBe(false);
-  });
-});
-
-describe('isLowerOnlyCommission', () => {
-  it('is true only once the payment is validated (the customer already saw the delivery amount)', () => {
-    expect(isLowerOnlyCommission({ status: 'payment_validated' })).toBe(true);
-    for (const status of ['payment_pending', 'payment_rejected', 'payment_proof_uploaded', 'processing']) {
-      expect(isLowerOnlyCommission({ status })).toBe(false);
-    }
-    expect(isLowerOnlyCommission(null)).toBe(false);
   });
 });
 
@@ -71,14 +60,6 @@ describe('validateCommissionOverride', () => {
   it('rejects more than 2 decimals instead of silently rounding what the admin typed', () => {
     expect(validateCommissionOverride({ commission: 1.005, reason: REASON, amountSent: 100 })).toHaveProperty('commission');
     expect(validateCommissionOverride({ commission: 1.5, reason: REASON, amountSent: 100 })).toEqual({});
-  });
-});
-
-describe('validateCommissionOverride - lower-only ceiling', () => {
-  it('rejects a commission above maxCommission with the lowerOnly code, accepts equal or below', () => {
-    expect(validateCommissionOverride({ commission: 2.51, reason: REASON, amountSent: 100, maxCommission: 2.5 })).toEqual({ commission: 'lowerOnly' });
-    expect(validateCommissionOverride({ commission: 2.5, reason: REASON, amountSent: 100, maxCommission: 2.5 })).toEqual({});
-    expect(validateCommissionOverride({ commission: 0, reason: REASON, amountSent: 100, maxCommission: 2.5 })).toEqual({});
   });
 });
 

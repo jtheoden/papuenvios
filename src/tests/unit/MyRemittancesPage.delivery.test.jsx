@@ -40,6 +40,7 @@ vi.mock('@/lib/whatsappService', () => ({
   getAdminNotificationUrlBuilder: vi.fn(),
   openAdminNotification: vi.fn(),
 }));
+vi.mock('@/lib/commissionProposalService', () => ({ getOpenProposals: vi.fn(async () => []), acceptCommission: vi.fn() }));
 vi.mock('@/lib/remittanceService', () => ({
   getMyRemittances: vi.fn(async () => [DELIVERED]),
   getRemittanceDetails: vi.fn(async () => DELIVERED),

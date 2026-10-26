@@ -18,6 +18,9 @@ import {
 import ImageProofModal from '@/components/ImageProofModal';
 import DeliveryProofModal from '@/components/admin/modals/DeliveryProofModal';
 import CommissionOverrideModal from '@/components/admin/CommissionOverrideModal';
+import CommissionProposalBadge from '@/components/admin/CommissionProposalBadge';
+import useCommissionProposals from '@/hooks/useCommissionProposals';
+import { isInformedCurrent } from '@/lib/commissionProposalRules';
 import { canAdjustCommission } from '@/lib/commissionOverrideRules';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -121,6 +124,7 @@ const AdminRemittancesInbox = ({
 
   const filters = useMemo(buildFilters, []);
   const sorted = useMemo(() => sortForInbox(remittances), [remittances]);
+  const { pending: pendingProposals, informed: informedProposals } = useCommissionProposals(remittances);
   const counts = useMemo(
     () => Object.fromEntries(filters.map((f) => [f.id, sorted.filter((r) => f.statuses.includes(r.status)).length])),
     [filters, sorted]
@@ -369,6 +373,10 @@ const AdminRemittancesInbox = ({
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASSES[remittance.status] || 'bg-gray-100 text-gray-700'}`}>
                   {t(`remittances.status.${STATUS_LABEL_KEYS[remittance.status] || 'paymentPending'}`)}
                 </span>
+                {canAdjustCommission(remittance) && (
+                  <CommissionProposalBadge proposal={pendingProposals[remittance.id] ||
+                      (isInformedCurrent(remittance, informedProposals[remittance.id]) ? informedProposals[remittance.id] : null)} />
+                )}
               </div>
             </div>
 

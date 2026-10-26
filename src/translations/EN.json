@@ -363,13 +363,13 @@
         "errorCommissionRange": "The commission must be between 0 and the amount sent (excluded), with up to 2 decimals.",
         "errorReasonLength": "The reason must be between {min} and {max} characters.",
         "saveError": "Could not save the commission adjustment",
-        "errorInvalidStatus": "This remittance can no longer be adjusted: the commission can only be changed before the delivery starts (once the payment is validated, only lowered). Refresh the list.",
+        "errorInvalidStatus": "This remittance no longer accepts adjustments: the fee can only be changed while the payment is pending or rejected, before the customer uploads the proof. Refresh the list.",
         "frozenAfterPayment": "Commission frozen after payment: it can no longer be adjusted.",
-        "disabledReason": "The commission can only be adjusted before the delivery starts.",
+        "disabledReason": "The fee can only be adjusted while the payment is pending or rejected, before the customer uploads the proof.",
         "currentStatus": "Current status",
-        "lowerOnlyHint": "The payment is already validated: the commission can only be lowered.",
-        "errorLowerOnly": "With the payment validated the commission can only go down (at most the current commission).",
-        "saved": "Commission adjusted successfully"
+        "saved": "Commission adjusted successfully",
+        "savedAwaitingCustomer": "Fee adjusted. The customer was notified and must accept it before they can pay.",
+        "savedCustomerInformed": "Fee adjusted. The customer was notified; no acceptance needed."
       },
       "recipientInfoTitle": "Recipient Information",
       "recipientName": "Name:",
@@ -429,6 +429,11 @@
         "calculationUnavailable": "Cannot simulate with these values (check the rate and the commission).",
         "enterValidAmount": "Enter a valid test amount",
         "mustSend": "Must send"
+      },
+      "commissionProposal": {
+        "pending": "Waiting for the customer",
+        "pendingHelp": "The customer must accept the new fee before they can upload the proof.",
+        "informed": "Customer informed of the decrease"
       }
     },
     "user": {
@@ -621,6 +626,36 @@
       "couponInvalid": "Invalid or expired coupon",
       "offCommission": "off commission",
       "enterAmountFirst": "Enter an amount first"
+    },
+    "commissionChange": {
+      "title": "The fee on your remittance {number} changed",
+      "intro": "The fee went from {oldCommission} to {newCommission} {currency}. You pay the same; what your recipient receives changes.",
+      "listLabel": "Comparison before and now",
+      "commission": "Fee",
+      "recipientReceives": "Your recipient receives",
+      "before": "Before",
+      "after": "Now",
+      "youPay": "You pay",
+      "unchanged": "No change",
+      "acceptHint": "Accept the new fee to be able to send your payment proof, or cancel the remittance.",
+      "accept": "Accept new fee",
+      "accepting": "Accepting...",
+      "decline": "Cancel remittance",
+      "accepted": "You accepted the new fee. You can now upload your proof.",
+      "uploadBlocked": "Accept the new fee to be able to upload the proof.",
+      "declinePendingMessage": "Cancel remittance {number}? No payment has been registered yet.",
+      "declineTitle": "Cancel remittance",
+      "informedTitle": "We lowered the fee on your remittance {number}",
+      "informedBody": "Your recipient will receive {amount} {currency}. No action needed.",
+      "dismiss": "Got it",
+      "errors": {
+        "pendingAcceptance": "You must accept the new fee of this remittance before uploading the proof.",
+        "notOpen": "The adjustment changed while you were reviewing it. We are showing you the updated proposal.",
+        "stale": "The fee changed while you were reviewing it. We are showing you the updated value.",
+        "invalidTransition": "The remittance is no longer in a state that allows accepting the fee. We refreshed the list.",
+        "notAuthorized": "You are not allowed to respond to this adjustment.",
+        "generic": "Your answer could not be saved. Please try again."
+      }
     }
   },
   "vendor": {

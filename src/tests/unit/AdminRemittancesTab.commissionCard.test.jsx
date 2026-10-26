@@ -22,6 +22,8 @@ const row = (id, status, extra = {}) => ({
 
 let REMITTANCES = [];
 let OVERRIDE = null;
+let PROPOSALS = [];
+const getOpenProposals = vi.fn(async () => PROPOSALS);
 const getCommissionOverride = vi.fn(async () => OVERRIDE);
 
 vi.mock('@/contexts/LanguageContext', () => ({
@@ -41,6 +43,7 @@ vi.mock('@/components/TooltipButton', () => ({
     <button type="button" onClick={onClick} aria-label={title}>{children}</button>
   ),
 }));
+vi.mock('@/lib/commissionProposalService', () => ({ getOpenProposals: (...args) => getOpenProposals(...args) }));
 vi.mock('@/lib/remittanceService', () => ({
   getAllRemittances: vi.fn(async () => REMITTANCES),
   validatePayment: vi.fn(),
@@ -74,6 +77,8 @@ describe('AdminRemittancesTab - commission adjustment from the list cards', () =
   beforeEach(() => {
     vi.clearAllMocks();
     OVERRIDE = null;
+    PROPOSALS = [];
+    getOpenProposals.mockImplementation(async () => PROPOSALS);
     getCommissionOverride.mockImplementation(async () => OVERRIDE);
     auth.isAdmin = true;
     auth.isSuperAdmin = false;
@@ -174,5 +179,42 @@ describe('AdminRemittancesTab - commission adjustment from the list cards', () =
     expect(save).toBeDisabled();
     resolveOverride(null);
     await waitFor(() => expect(save).not.toBeDisabled());
+  });
+
+  describe('commission proposal badge', () => {
+    const pending = { id: 'p1', remittance_id: '1', status: 'pending', created_at: '2026-01-02', baseline_commission: '2.50', new_commission: '6.00' };
+
+    it('shows "waiting for the customer" on the card of a remittance with a pending raise, and only there', async () => {
+      REMITTANCES = [row('1', 'payment_pending'), row('2', 'payment_pending')];
+      PROPOSALS = [pending];
+      render(<AdminRemittancesTab />);
+      await screen.findAllByRole('button', { name: 'remittances.admin.viewDetails' });
+      await waitFor(() => expect(screen.getAllByText('remittances.admin.commissionProposal.pending')).toHaveLength(1));
+    });
+
+    it('hides a stale informed badge once the live commission moved on (6 -> 1 informed, later raised to 8)', async () => {
+      REMITTANCES = [row('1', 'payment_pending', { commission_total: 8 })];
+      PROPOSALS = [{ id: 'p9', remittance_id: '1', status: 'informed', created_at: '2026-01-02', baseline_commission: '6.00', new_commission: '1.00' }];
+      render(<AdminRemittancesTab />);
+      await screen.findByRole('button', { name: 'remittances.admin.viewDetails' });
+      await waitFor(() => expect(getOpenProposals).toHaveBeenCalled());
+      expect(screen.queryByText('remittances.admin.commissionProposal.informed')).toBeNull();
+    });
+
+    it('shows it in the detail too and no badge when there is no proposal', async () => {
+      REMITTANCES = [row('1', 'payment_pending')];
+      PROPOSALS = [];
+      render(<AdminRemittancesTab />);
+      await screen.findByRole('button', { name: 'remittances.admin.viewDetails' });
+      expect(screen.queryByText('remittances.admin.commissionProposal.pending')).toBeNull();
+    });
+
+    it('the adjust button still follows canAdjustCommission (hidden once frozen) even with a stale pending row', async () => {
+      REMITTANCES = [row('1', 'payment_proof_uploaded')];
+      PROPOSALS = [pending];
+      render(<AdminRemittancesTab />);
+      await screen.findByRole('button', { name: 'remittances.admin.viewDetails' });
+      expect(cardButtons()).toHaveLength(0);
+    });
   });
 });

@@ -4,6 +4,7 @@
  * The database owns the lock, the transition matrix, the stock effect and the status history; this module only calls
  * the RPC and turns its documented errors into AppErrors:
  *   22023 invalid_transition -> CONFLICT (the row moved: another admin or the owner acted first)
+ *   22023 commission_pending_acceptance -> CONFLICT (reason commission_pending_acceptance: accept the new commission first)
  *   22023 invalid_argument   -> VALIDATION_FAILED (DETAIL names the field)
  *   P0001 stock_refused      -> the typed stock error (DETAIL carries the stock RPC answer)
  *   42501                    -> FORBIDDEN, P0002 -> NOT_FOUND
@@ -39,6 +40,12 @@ export const mapTransitionError = (error, { entity, id }) => {
       reason: 'invalid_transition',
       entityId: id,
       current: parseJson(error.details)
+    });
+  }
+  if (error?.code === '22023' && message.includes('commission_pending_acceptance')) {
+    return new AppError(`${entity} ${id} has a commission change pending acceptance`, ERROR_CODES.CONFLICT, 409, {
+      reason: 'commission_pending_acceptance',
+      entityId: id
     });
   }
   if (error?.code === '22023' && message.includes('invalid_argument')) {

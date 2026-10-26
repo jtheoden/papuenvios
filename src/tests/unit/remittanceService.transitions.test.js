@@ -71,6 +71,8 @@ vi.mock('@/lib/whatsappService', async (importOriginal) => ({
 }));
 vi.mock('@/lib/notificationSettingsService', () => ({ getFreshWhatsappRecipient: vi.fn() }));
 vi.mock('@/lib/orderDiscountService', () => ({ recordOfferUsage: vi.fn() }));
+const proposals = vi.hoisted(() => ({ getOpenProposals: vi.fn(async () => []) }));
+vi.mock('@/lib/commissionProposalService', () => ({ getOpenProposals: (...a) => proposals.getOpenProposals(...a) }));
 vi.mock('@/lib/currencyService', () => ({ getExchangeRate: vi.fn() }));
 
 import {
@@ -217,6 +219,32 @@ describe('uploadPaymentProof pre-check (the upload overwrites a deterministic pa
 
   it.each(['payment_pending', 'payment_rejected'])('a %s remittance uploads', async (status) => {
     state.selectRow = { ...ROW, status };
+    await uploadPaymentProof('rem-1', png, 'R', '', { payerPhone: '+1 305 555 0100' });
+    expect(state.uploads).toHaveLength(1);
+  });
+});
+
+describe('uploadPaymentProof refuses BEFORE uploading while a commission raise is pending acceptance', () => {
+  beforeEach(() => proposals.getOpenProposals.mockReset());
+
+  it('pending proposal -> CONFLICT/commission_pending_acceptance, nothing uploaded, no RPC', async () => {
+    proposals.getOpenProposals.mockResolvedValue([{ id: 'p1', remittance_id: 'rem-1', status: 'pending' }]);
+    await expect(uploadPaymentProof('rem-1', png, 'R', '', { payerPhone: '+1 305 555 0100' })).rejects.toMatchObject({
+      code: 'CONFLICT', context: { reason: 'commission_pending_acceptance' }
+    });
+    expect(proposals.getOpenProposals).toHaveBeenCalledWith(['rem-1']);
+    expect(state.uploads).toEqual([]);
+    expect(state.rpcCalls).toEqual([]);
+  });
+
+  it('an informed proposal does not block', async () => {
+    proposals.getOpenProposals.mockResolvedValue([{ id: 'p2', remittance_id: 'rem-1', status: 'informed' }]);
+    await uploadPaymentProof('rem-1', png, 'R', '', { payerPhone: '+1 305 555 0100' });
+    expect(state.uploads).toHaveLength(1);
+  });
+
+  it('an unusable proposals answer does not block the upload (the database guard still decides)', async () => {
+    proposals.getOpenProposals.mockResolvedValue(null); // unusable answer: the read must not block the payment
     await uploadPaymentProof('rem-1', png, 'R', '', { payerPhone: '+1 305 555 0100' });
     expect(state.uploads).toHaveLength(1);
   });
