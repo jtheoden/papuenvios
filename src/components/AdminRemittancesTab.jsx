@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { isOwnOperation } from '@/lib/selfDealing';
 import { useModal } from '@/contexts/ModalContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
@@ -50,7 +51,10 @@ import { REMITTANCE_DELIVERED_STATUSES } from '@/lib/dashboardMetrics';
 
 const AdminRemittancesTab = () => {
   const { t, language } = useLanguage();
-  const { isAdmin, isSuperAdmin } = useAuth();
+  const { isAdmin, isSuperAdmin, user } = useAuth();
+  const isOwn = (remittance) => isOwnOperation(remittance, user?.id);
+  // Separation of duties: the server refuses an admin adjusting his own remittance's commission; the UI says so first.
+  const commissionAdjustable = (remittance) => canAdjustCommission(remittance) && !isOwn(remittance);
   const { showModal } = useModal();
   const { visualSettings } = useBusiness();
 
@@ -665,7 +669,7 @@ const AdminRemittancesTab = () => {
   };
 
   const renderAdjustCommissionButton = (remittance) =>
-    canAdjustCommission(remittance) && (
+    commissionAdjustable(remittance) && (
       <button
         type="button"
         onClick={() => openCommissionFromCard(remittance)}
@@ -676,6 +680,20 @@ const AdminRemittancesTab = () => {
     );
 
   const renderActionButtons = (remittance) => {
+    const adminOnlyStatuses = [
+      REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED,
+      REMITTANCE_STATUS.PAYMENT_VALIDATED,
+      REMITTANCE_STATUS.PROCESSING,
+      REMITTANCE_STATUS.DELIVERED
+    ];
+    if (isOwn(remittance) && adminOnlyStatuses.includes(remittance.status)) {
+      return (
+        <div role="note" className="max-w-xs rounded-lg bg-amber-50 border border-amber-200 p-2 text-xs text-amber-900">
+          <span className="font-semibold">{t('common.ownOperation')}</span>
+          <p>{t('common.ownOperationReason')}</p>
+        </div>
+      );
+    }
     switch (remittance.status) {
       case REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED:
         return (
@@ -1196,19 +1214,21 @@ const AdminRemittancesTab = () => {
                     <div>
                       <button
                         type="button"
-                        onClick={() => canAdjustCommission(selectedRemittance) && setShowCommissionModal(true)}
-                        aria-disabled={!canAdjustCommission(selectedRemittance)}
+                        onClick={() => commissionAdjustable(selectedRemittance) && setShowCommissionModal(true)}
+                        aria-disabled={!commissionAdjustable(selectedRemittance)}
                         aria-describedby="commission-adjust-help"
                         className={`min-h-[44px] px-3 border border-gray-300 rounded-lg text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-600 ${
-                          canAdjustCommission(selectedRemittance) ? 'hover:bg-white' : 'opacity-60 cursor-not-allowed'
+                          commissionAdjustable(selectedRemittance) ? 'hover:bg-white' : 'opacity-60 cursor-not-allowed'
                         }`}
                       >
                         {t('remittances.admin.commissionOverride.adjustButton')}
                       </button>
                       <p id="commission-adjust-help" className="text-xs text-gray-700 mt-1">
-                        {canAdjustCommission(selectedRemittance)
+                        {commissionAdjustable(selectedRemittance)
                           ? ''
-                          : isCommissionFrozen(selectedRemittance)
+                          : isOwn(selectedRemittance)
+                            ? t('common.ownOperationReason')
+                            : isCommissionFrozen(selectedRemittance)
                             ? t('remittances.admin.commissionOverride.frozenAfterPayment')
                             : `${t('remittances.admin.commissionOverride.disabledReason')} ${t('remittances.admin.commissionOverride.currentStatus')}: ${t(remittanceStatusLabelKey(selectedRemittance.status))}`}
                       </p>

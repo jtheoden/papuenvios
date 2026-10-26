@@ -184,6 +184,17 @@ describe('CommissionOverrideModal', () => {
     );
   });
 
+  it('maps commission_self_adjust_not_allowed (42501) to the translated own-operation message', async () => {
+    setRemittanceCommission.mockRejectedValue(new Error('commission_self_adjust_not_allowed'));
+    setup();
+    typeCommission('5');
+    typeReason(REASON);
+    fireEvent.click(confirmButton());
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ description: 'common.statusSelfDealing', variant: 'destructive' }))
+    );
+  });
+
   it('closes with Escape and with Cancel', () => {
     const { onClose } = setup();
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });

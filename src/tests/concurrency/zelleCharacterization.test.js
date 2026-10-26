@@ -641,6 +641,7 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
         'guard_bizum_quote_immutable',
         'guard_orders_owner_update',
         'guard_status_via_rpc', // E8 (20261024120000): status columns only through the transition RPCs
+        'trg_orders_admin_self_dealing', // separation of duties (20261101100100); acts only for an admin acting on his own order
         'trigger_update_orders_updated_at'
       ]);
     });
@@ -669,7 +670,7 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
 
     it('remittances BEFORE UPDATE and AFTER UPDATE', async () => {
       // + money-columns guard (20261023110000), fires first (alphabetical order)
-      expect(await triggers('remittances', 'before', 'update')).toEqual(['guard_commission_acceptance', 'guard_remittance_money_columns', 'guard_remittance_owner_update', 'guard_status_via_rpc']); // + commission acceptance guard (20261028100200)
+      expect(await triggers('remittances', 'before', 'update')).toEqual(['guard_commission_acceptance', 'guard_remittance_money_columns', 'guard_remittance_owner_update', 'guard_status_via_rpc', 'trg_remittances_admin_self_dealing']); // + commission acceptance guard (20261028100200), separation of duties (20261101100200)
       expect(await triggers('remittances', 'after', 'update')).toEqual(['audit_financial_update', 'audit_remittance_status', 'courier_accrual_on_delivered', 'trg_refund_request_on_cancel', 'trg_refund_request_on_reopen']); // + financial audit trail (20261020100000), courier accrual on delivery (20261031110000), refunds queue (20261029100200)
     });
   });

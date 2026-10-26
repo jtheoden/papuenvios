@@ -2,6 +2,9 @@
   "common": {
     "success": "Éxito",
     "error": "Error",
+    "statusSelfDealing": "Esta operación es suya. Otro administrador debe realizar esta acción.",
+    "ownOperation": "Operación propia",
+    "ownOperationReason": "Es una operación suya: otro administrador debe validarla, procesarla o entregarla.",
     "statusNotAuthorized": "No tienes permiso para realizar esta acción.",
     "statusUserDisabled": "Tu cuenta está deshabilitada. Contacta a soporte.",
     "statusConflict": "El estado cambió mientras actuabas (otra persona ya lo procesó). Recarga la lista e inténtalo de nuevo.",

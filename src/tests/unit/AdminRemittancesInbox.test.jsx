@@ -388,3 +388,35 @@ describe('AdminRemittancesInbox', () => {
     expect(live.closest('[aria-live="polite"]')).toBeTruthy();
   });
 });
+
+describe('AdminRemittancesInbox - own operation (separation of duties)', () => {
+  const OWN = [
+    { ...base, id: 'o-val', user_id: 'admin-1', remittance_number: 'REM-OWN-PROOF', status: 'payment_proof_uploaded', amount_sent: 20, created_at: hoursAgo(5), payment_proof_url: 'u/own.png' },
+    { ...base, id: 'o-pend', user_id: 'admin-1', remittance_number: 'REM-OWN-PENDING', status: 'payment_pending', amount_sent: 10, created_at: hoursAgo(2) },
+    { ...base, id: 'x-val', user_id: 'customer-9', remittance_number: 'REM-OTHER-PROOF', status: 'payment_proof_uploaded', amount_sent: 30, created_at: hoursAgo(6), payment_proof_url: 'u/o.png' }
+  ];
+  const rowOf = (number) => screen.getAllByRole('listitem').find((li) => li.getAttribute('data-remittance-number') === number);
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('replaces validate / reject / adjust-commission of an own remittance with the reason', () => {
+    renderInbox({ remittances: OWN, currentUserId: 'admin-1' });
+    const own = within(rowOf('REM-OWN-PROOF'));
+    expect(own.queryByRole('button', { name: /adminInbox\.validate/ })).toBeNull();
+    expect(own.queryByRole('button', { name: /adminInbox\.reject/ })).toBeNull();
+    expect(own.getByText('common.ownOperation')).toBeTruthy();
+    expect(own.getByText('common.ownOperationReason')).toBeTruthy();
+    const other = within(rowOf('REM-OTHER-PROOF'));
+    expect(other.getByRole('button', { name: /adminInbox\.validate/ })).toBeTruthy();
+    expect(other.queryByText('common.ownOperation')).toBeNull();
+  });
+
+  it('degrades without currentUserId: everything is offered as before (the server refuses)', () => {
+    renderInbox({ remittances: OWN });
+    expect(within(rowOf('REM-OWN-PROOF')).getByRole('button', { name: /adminInbox\.validate/ })).toBeTruthy();
+  });
+});

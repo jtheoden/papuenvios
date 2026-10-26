@@ -2,6 +2,9 @@
   "common": {
     "success": "Success",
     "error": "Error",
+    "statusSelfDealing": "This operation is yours. Another administrator must perform this action.",
+    "ownOperation": "Own operation",
+    "ownOperationReason": "This is your own operation: another administrator must validate, process or deliver it.",
     "statusNotAuthorized": "You do not have permission to perform this action.",
     "statusUserDisabled": "Your account is disabled. Please contact support.",
     "statusConflict": "The status changed while you were acting (someone else already processed it). Reload the list and try again.",
