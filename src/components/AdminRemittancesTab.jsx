@@ -14,6 +14,9 @@ import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { calcTotalToPay } from '@/lib/remittanceCalculations';
 import { canAdjustCommission, isCommissionFrozen, remittanceStatusLabelKey } from '@/lib/commissionOverrideRules';
 import CommissionOverrideModal from '@/components/admin/CommissionOverrideModal';
+import CommissionProposalBadge from '@/components/admin/CommissionProposalBadge';
+import useCommissionProposals from '@/hooks/useCommissionProposals';
+import { isInformedCurrent } from '@/lib/commissionProposalRules';
 import DeliveryProofModal from '@/components/admin/modals/DeliveryProofModal';
 import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import {
@@ -55,6 +58,11 @@ const AdminRemittancesTab = () => {
 
   const [remittances, setRemittances] = useState([]);
   const [filteredRemittances, setFilteredRemittances] = useState([]);
+  // Proposals refetch by themselves when a row's updated_at moves (an adjustment or the customer's acceptance)
+  const { pending: pendingProposals, informed: informedProposals } = useCommissionProposals(remittances);
+  const proposalOf = (remittance) =>
+    pendingProposals[remittance.id] ||
+    (isInformedCurrent(remittance, informedProposals[remittance.id]) ? informedProposals[remittance.id] : null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -969,6 +977,7 @@ const AdminRemittancesTab = () => {
                 </div>
                 <div className="flex flex-wrap items-center gap-1 sm:gap-2">
                   {getStatusBadge(remittance.status)}
+                  {canAdjustCommission(remittance) && <CommissionProposalBadge proposal={proposalOf(remittance)} />}
                   {[REMITTANCE_STATUS.PAYMENT_VALIDATED, REMITTANCE_STATUS.PROCESSING].includes(remittance.status) && (
                     getAlertBadge(remittance)
                   )}
@@ -1131,6 +1140,7 @@ const AdminRemittancesTab = () => {
                   <div>
                     <p className="text-sm text-gray-500 uppercase tracking-wider">{t('common.status')}</p>
                     {getStatusBadge(selectedRemittance.status)}
+                    {canAdjustCommission(selectedRemittance) && <CommissionProposalBadge proposal={proposalOf(selectedRemittance)} />}
                   </div>
                   <div>
                     <p className="text-sm text-gray-500 uppercase tracking-wider">{t('common.type')}</p>

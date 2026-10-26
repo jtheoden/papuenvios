@@ -2,15 +2,30 @@ import React, { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
 import { setRemittanceCommission } from '@/lib/remittanceService';
+import { getOpenProposals } from '@/lib/commissionProposalService';
 import {
   REASON_MIN_LENGTH,
   REASON_MAX_LENGTH,
   validateCommissionOverride,
   calcCommissionOverride,
-  isLowerOnlyCommission,
 } from '@/lib/commissionOverrideRules';
 
 const KEY = 'remittances.admin.commissionOverride';
+
+/**
+ * Message after saving, from what the backend really did: only claim "the customer was notified / must accept" when a
+ * proposal exists (an older backend creates none). Any failure to read it falls back to the neutral message.
+ */
+const savedMessageKey = async (remittanceId, commission) => {
+  try {
+    const rows = await getOpenProposals([remittanceId]);
+    if (rows.some((p) => p.status === 'pending')) return `${KEY}.savedAwaitingCustomer`;
+    if (rows.some((p) => p.status === 'informed' && Number(p.new_commission) === commission)) return `${KEY}.savedCustomerInformed`;
+  } catch {
+    /* neutral message below */
+  }
+  return `${KEY}.saved`;
+};
 
 /**
  * Admin modal to set a different final commission on a remittance awaiting payment.
@@ -29,13 +44,7 @@ const CommissionOverrideModal = ({ remittance, override = null, loading = false,
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const lowerOnly = isLowerOnlyCommission(remittance);
-  const errors = validateCommissionOverride({
-    commission,
-    reason,
-    amountSent,
-    maxCommission: lowerOnly ? currentCommission : undefined,
-  });
+  const errors = validateCommissionOverride({ commission, reason, amountSent });
   const valid = Object.keys(errors).length === 0;
   const preview = errors.commission
     ? null
@@ -62,7 +71,7 @@ const CommissionOverrideModal = ({ remittance, override = null, loading = false,
     setSaving(true);
     try {
       const updated = await setRemittanceCommission(remittance.id, Number(commission), reason);
-      toast({ title: t('common.success'), description: t(`${KEY}.saved`) });
+      toast({ title: t('common.success'), description: t(await savedMessageKey(remittance.id, Number(commission))), duration: 8000 });
       onSaved(updated);
     } catch (error) {
       const description = /invalid_status/.test(error?.message || '')
@@ -90,11 +99,6 @@ const CommissionOverrideModal = ({ remittance, override = null, loading = false,
         </h2>
         <p className="text-sm font-medium text-gray-500 mb-2">{remittance.remittance_number}</p>
         <p className="text-sm text-gray-600 mb-4">{t(`${KEY}.modalIntro`)}</p>
-        {lowerOnly && (
-          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-4">
-            {t(`${KEY}.lowerOnlyHint`)}
-          </p>
-        )}
 
         <dl className="grid grid-cols-2 gap-3 text-sm mb-4">
           <div>
@@ -131,7 +135,7 @@ const CommissionOverrideModal = ({ remittance, override = null, loading = false,
             />
             {errors.commission && (
               <p id="commission-override-value-error" role="alert" className="text-xs text-red-600 mt-1">
-                {errors.commission === 'lowerOnly' ? t(`${KEY}.errorLowerOnly`) : t(`${KEY}.errorCommissionRange`)}
+                {t(`${KEY}.errorCommissionRange`)}
               </p>
             )}
           </div>

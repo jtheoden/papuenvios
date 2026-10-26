@@ -6,10 +6,12 @@
 
 import { supabase } from '@/lib/supabase';
 import { callTransitionRpc } from '@/lib/statusTransition';
+import { getOpenProposals } from '@/lib/commissionProposalService';
 import { isValidPayerPhone, normalizePayerPhone } from '@/lib/payerPhone';
 import { logActivity } from '@/lib/activityLogger';
 import { recordOfferUsage } from '@/lib/orderDiscountService';
 import {
+  AppError,
   handleError,
   logError,
   createValidationError,
@@ -1246,6 +1248,22 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
         { status: `Current status is ${remittance.status}` },
         'Payment proof can only be uploaded when remittance is pending payment or was rejected'
       );
+    }
+
+    // The upload below overwrites a deterministic path, so refuse BEFORE it while a commission raise awaits acceptance
+    // (the database guard would refuse the RPC afterwards, but the file would already be replaced). A failing read
+    // must not block the payment: the database guard still decides.
+    let hasPendingRaise = false;
+    try {
+      hasPendingRaise = (await getOpenProposals([remittanceId])).some((p) => p.status === 'pending');
+    } catch {
+      hasPendingRaise = false;
+    }
+    if (hasPendingRaise) {
+      throw new AppError('Commission change pending acceptance', ERROR_CODES.CONFLICT, 409, {
+        reason: 'commission_pending_acceptance',
+        entityId: remittanceId
+      });
     }
 
     const fileExt = file.name.split('.').pop();

@@ -363,13 +363,13 @@
         "errorCommissionRange": "La comisión debe estar entre 0 y el monto enviado (sin incluirlo), con hasta 2 decimales.",
         "errorReasonLength": "El motivo debe tener entre {min} y {max} caracteres.",
         "saveError": "No se pudo guardar el ajuste de comisión",
-        "errorInvalidStatus": "Esta remesa ya no admite ajustes: la comisión solo se puede cambiar antes de que empiece la entrega (una vez validado el pago, solo bajarla). Actualiza la lista.",
+        "errorInvalidStatus": "Esta remesa ya no admite ajustes: la comisión solo se puede cambiar mientras el pago está pendiente o rechazado, antes de que el cliente suba el comprobante. Actualiza la lista.",
         "frozenAfterPayment": "Comisión congelada tras el pago: ya no se puede ajustar.",
-        "disabledReason": "La comisión solo se puede ajustar antes de que empiece la entrega.",
+        "disabledReason": "La comisión solo se puede ajustar mientras el pago está pendiente o rechazado, antes de que el cliente suba el comprobante.",
         "currentStatus": "Estado actual",
-        "lowerOnlyHint": "El pago ya fue validado: solo se puede bajar la comisión.",
-        "errorLowerOnly": "Con el pago validado la comisión solo puede bajar (máximo la comisión actual).",
-        "saved": "Comisión ajustada correctamente"
+        "saved": "Comisión ajustada correctamente",
+        "savedAwaitingCustomer": "Comisión ajustada. El cliente fue notificado y deberá aceptarla antes de poder pagar.",
+        "savedCustomerInformed": "Comisión ajustada. El cliente fue notificado; no necesita aceptar."
       },
       "recipientInfoTitle": "Información del Destinatario",
       "recipientName": "Nombre:",
@@ -429,6 +429,11 @@
         "calculationUnavailable": "No se puede simular con estos valores (revise la tasa y la comisión).",
         "enterValidAmount": "Ingrese un monto de prueba válido",
         "mustSend": "Debe enviar"
+      },
+      "commissionProposal": {
+        "pending": "Esperando al cliente",
+        "pendingHelp": "El cliente debe aceptar la nueva comisión antes de poder subir el comprobante.",
+        "informed": "Cliente informado de la baja"
       }
     },
     "user": {
@@ -629,6 +634,36 @@
       "couponInvalid": "Cupón inválido o expirado",
       "offCommission": "de descuento en comisión",
       "enterAmountFirst": "Ingresa un monto primero"
+    },
+    "commissionChange": {
+      "title": "Cambió la comisión de su remesa {number}",
+      "intro": "La comisión pasó de {oldCommission} a {newCommission} {currency}. Usted paga lo mismo; cambia lo que recibe su destinatario.",
+      "listLabel": "Comparación antes y ahora",
+      "commission": "Comisión",
+      "recipientReceives": "Su destinatario recibe",
+      "before": "Antes",
+      "after": "Ahora",
+      "youPay": "Usted paga",
+      "unchanged": "Sin cambios",
+      "acceptHint": "Acepte la nueva comisión para poder enviar su comprobante de pago, o cancele la remesa.",
+      "accept": "Aceptar nueva comisión",
+      "accepting": "Aceptando...",
+      "decline": "Cancelar remesa",
+      "accepted": "Aceptó la nueva comisión. Ya puede subir su comprobante.",
+      "uploadBlocked": "Acepte la nueva comisión para poder subir el comprobante.",
+      "declinePendingMessage": "¿Cancelar la remesa {number}? Aún no se registró ningún pago.",
+      "declineTitle": "Cancelar remesa",
+      "informedTitle": "Bajamos la comisión de su remesa {number}",
+      "informedBody": "Su destinatario recibirá {amount} {currency}. No tiene que hacer nada.",
+      "dismiss": "Entendido",
+      "errors": {
+        "pendingAcceptance": "Antes de subir el comprobante debe aceptar la nueva comisión de esta remesa.",
+        "notOpen": "El ajuste cambió mientras lo revisaba. Le mostramos la propuesta actualizada.",
+        "stale": "La comisión cambió mientras la revisaba. Le mostramos el valor actualizado.",
+        "invalidTransition": "La remesa ya no está en un estado que permita aceptar la comisión. Actualizamos la lista.",
+        "notAuthorized": "No tiene permiso para responder a este ajuste.",
+        "generic": "No se pudo registrar su respuesta. Inténtelo de nuevo."
+      }
     }
   },
   "vendor": {

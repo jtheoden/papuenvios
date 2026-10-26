@@ -1,4 +1,8 @@
 import { isStatusConflictError, transitionMessage } from '@/lib/statusConflict';
+import { acceptCommission } from '@/lib/commissionProposalService';
+import { commissionErrorKey, isInformedCurrent } from '@/lib/commissionProposalRules';
+import useCommissionProposals from '@/hooks/useCommissionProposals';
+import CommissionChangeNotice from '@/components/CommissionChangeNotice';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -76,6 +80,19 @@ const MyRemittancesPage = ({ onNavigate }) => {
   const [dismissedRateAlerts, setDismissedRateAlerts] = useState(new Set());
   const [dismissedRateBanner, setDismissedRateBanner] = useState(false);
   const [recalculating, setRecalculating] = useState(null);
+
+  // Commission change proposals (raise: must be accepted before the proof; decrease: informative only)
+  const { pending: pendingProposals, informed: informedProposals, refresh: refreshProposals } =
+    useCommissionProposals(remittances);
+  const [acceptingId, setAcceptingId] = useState(null);
+  const [noticeErrors, setNoticeErrors] = useState({});
+  const [dismissedNotices, setDismissedNotices] = useState(() => {
+    try {
+      return new Set(JSON.parse(window.localStorage.getItem('dismissedCommissionNotices') || '[]'));
+    } catch {
+      return new Set();
+    }
+  });
 
   // Filtered remittances based on search and status filter
   const filteredRemittances = useMemo(() => {
@@ -342,6 +359,10 @@ const MyRemittancesPage = ({ onNavigate }) => {
   }, [selectedRemittance?.delivery_proof_url]);
 
   const handleUploadProof = (remittance) => {
+    if (pendingProposals[remittance.id]) {
+      toast({ title: t('common.error'), description: t('remittances.commissionChange.uploadBlocked'), variant: 'destructive' });
+      return;
+    }
     setSelectedRemittance(remittance);
     setShowUploadModal(true);
     // Auto-populate reference with remittance number for user convenience
@@ -551,6 +572,94 @@ const MyRemittancesPage = ({ onNavigate }) => {
         variant: 'destructive'
       });
     }
+  };
+
+  const dismissNotice = (proposalId) => {
+    const next = new Set(dismissedNotices).add(proposalId);
+    setDismissedNotices(next);
+    try {
+      window.localStorage.setItem('dismissedCommissionNotices', JSON.stringify([...next]));
+    } catch {
+      /* storage unavailable: the notice only stays dismissed for this view */
+    }
+  };
+
+  const handleAcceptCommission = async (remittance, proposal) => {
+    if (acceptingId) return;
+    setAcceptingId(remittance.id);
+    setNoticeErrors((errors) => ({ ...errors, [remittance.id]: null }));
+    try {
+      await acceptCommission(remittance.id, proposal.id);
+      toast({ title: t('common.success'), description: t('remittances.commissionChange.accepted') });
+    } catch (error) {
+      const reason = error?.context?.reason ?? null;
+      setNoticeErrors((errors) => ({ ...errors, [remittance.id]: t(commissionErrorKey(reason)) }));
+    } finally {
+      setAcceptingId(null);
+      // Whatever happened, show the real state (a re-adjusted proposal, a cancelled remittance, the accepted one).
+      await Promise.all([loadRemittances(), refreshProposals()]);
+    }
+  };
+
+  const handleDeclineCommission = async (remittance) => {
+    if (cancelInFlight.current) return;
+    cancelInFlight.current = true;
+    try {
+      const number = remittance.remittance_number;
+      // payment_rejected may already have real money in flight: same refund notice as a regular cancellation
+      const message = remittance.status === REMITTANCE_STATUS.PAYMENT_REJECTED
+        ? <CancelRefundMessage question={t('remittances.user.cancelRemittanceMessage', { number })} noteKey="remittances.user.cancelProofWarning" />
+        : t('remittances.commissionChange.declinePendingMessage', { number });
+      const confirmed = await showModal({
+        title: t('remittances.commissionChange.declineTitle'),
+        message,
+        confirmText: t('remittances.commissionChange.decline'),
+        cancelText: t('common.back'),
+        type: 'danger'
+      });
+      if (confirmed === false) return;
+      try {
+        await cancelRemittance(remittance.id, 'commission_declined');
+        toast({ title: t('common.success'), description: t('remittances.user.remittanceCancelled') });
+        await Promise.all([loadRemittances(), refreshProposals()]);
+      } catch (error) {
+        console.error('Error cancelling remittance:', error);
+        if (isStatusConflictError(error)) await loadRemittances();
+        toast({
+          title: t('common.error'),
+          description: transitionMessage(t, error, error?.message || t('common.error')),
+          variant: 'destructive'
+        });
+      }
+    } finally {
+      cancelInFlight.current = false;
+    }
+  };
+
+  const renderCommissionNotice = (remittance) => {
+    if (![REMITTANCE_STATUS.PAYMENT_PENDING, REMITTANCE_STATUS.PAYMENT_REJECTED].includes(remittance.status)) return null;
+    const proposal = pendingProposals[remittance.id];
+    if (proposal) {
+      return (
+        <CommissionChangeNotice
+          remittance={remittance}
+          proposal={proposal}
+          busy={acceptingId === remittance.id}
+          error={noticeErrors[remittance.id]}
+          onAccept={() => handleAcceptCommission(remittance, proposal)}
+          onDecline={() => handleDeclineCommission(remittance)}
+        />
+      );
+    }
+    const informed = informedProposals[remittance.id];
+    if (!informed || dismissedNotices.has(informed.id) || !isInformedCurrent(remittance, informed)) return null;
+    return (
+      <CommissionChangeNotice
+        remittance={remittance}
+        proposal={informed}
+        onDismiss={() => dismissNotice(informed.id)}
+      />
+    );
   };
 
   const getStatusIcon = (status) => {
@@ -857,6 +966,8 @@ const MyRemittancesPage = ({ onNavigate }) => {
                   );
                 })()}
 
+                {renderCommissionNotice(remittance)}
+
                 {/* Time Alert */}
                 {[REMITTANCE_STATUS.PAYMENT_VALIDATED, REMITTANCE_STATUS.PROCESSING].includes(remittance.status) && (
                   <div className="mb-4">
@@ -940,8 +1051,10 @@ const MyRemittancesPage = ({ onNavigate }) => {
                         <TooltipButton
                           tooltipText={t('remittances.user.uploadProof')}
                           onClick={() => handleUploadProof(remittance)}
-                          className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-                          title={t('remittances.user.uploadProof')}
+                          disabled={Boolean(pendingProposals[remittance.id])}
+                          className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                          title={pendingProposals[remittance.id] ? t('remittances.commissionChange.uploadBlocked') : t('remittances.user.uploadProof')}
+                          aria-describedby={pendingProposals[remittance.id] ? `commission-notice-${pendingProposals[remittance.id].id}` : undefined}
                         >
                           <Upload className="h-4 w-4" />
                           <span className="hidden sm:inline">{t('remittances.user.uploadProof')}</span>
@@ -953,8 +1066,10 @@ const MyRemittancesPage = ({ onNavigate }) => {
                       <TooltipButton
                         tooltipText={t('remittances.user.reUploadProof')}
                         onClick={() => handleUploadProof(remittance)}
-                        className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-                        title={t('remittances.user.reUploadProof')}
+                        disabled={Boolean(pendingProposals[remittance.id])}
+                        className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                        title={pendingProposals[remittance.id] ? t('remittances.commissionChange.uploadBlocked') : t('remittances.user.reUploadProof')}
+                        aria-describedby={pendingProposals[remittance.id] ? `commission-notice-${pendingProposals[remittance.id].id}` : undefined}
                       >
                         <RefreshCw className="h-4 w-4" />
                         <span className="hidden sm:inline">{t('remittances.user.reUploadProof')}</span>

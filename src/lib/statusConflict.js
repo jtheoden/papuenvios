@@ -15,6 +15,9 @@ const FORBIDDEN_REASON_KEYS = {
 
 const knownKey = (error) => {
   if (isStatusConflictError(error)) return 'common.statusConflict';
+  if (error?.code === ERROR_CODES.CONFLICT && error?.context?.reason === 'commission_pending_acceptance') {
+    return 'remittances.commissionChange.errors.pendingAcceptance';
+  }
   return error?.code === ERROR_CODES.FORBIDDEN ? FORBIDDEN_REASON_KEYS[error?.context?.reason] ?? null : null;
 };
 
