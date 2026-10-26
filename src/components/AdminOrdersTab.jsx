@@ -934,6 +934,8 @@ const AdminOrdersTab = () => {
             setSelectedOrder(null);
           }}
           onConfirm={handleConfirmDelivery}
+          courierKind="order"
+          courierOperationId={selectedOrder.id}
           t={t}
         />
       )}

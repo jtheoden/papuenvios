@@ -2100,6 +2100,8 @@ const UserPanel = ({ onNavigate }) => {
           ]}
           onClose={() => setShowDeliveryDialog(false)}
           onConfirm={handleMarkDelivered}
+          courierKind="order"
+          courierOperationId={selectedOrder.id}
           t={t}
         />
       )}

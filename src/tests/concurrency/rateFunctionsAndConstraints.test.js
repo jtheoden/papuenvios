@@ -436,7 +436,9 @@ describeDb('rate functions fix + exchange_rates constraints', () => {
         && f !== '20261023100000_remittance_quote_and_recalculate.sql'
         && f !== '20261023120000_remittance_commission_override.sql'
         // the money-columns guard only NAMES the RPC in its comments (it lets the SECURITY DEFINER RPCs through)
-        && f !== '20261023110000_remittance_money_columns_guard.sql');
+        && f !== '20261023110000_remittance_money_columns_guard.sql'
+        // courier accruals only READ the active USD->CUP exchange_rates row (CUP -> USD conversion); they redefine none of them
+        && f !== '20261031110000_delivery_assignments_and_accruals.sql');
       later.forEach((f) => {
         expect(readFileSync(`supabase/migrations/${f}`, 'utf8'), f)
           .not.toMatch(/exchange_rates|recalculate_remittance_at_current_rate|get_remittance_bank_accounts_admin/);

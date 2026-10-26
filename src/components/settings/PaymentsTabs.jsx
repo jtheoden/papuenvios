@@ -10,6 +10,7 @@
  *
  * @param {{
  *   ariaLabel: string,
+ *   param?: string (query parameter that mirrors the selected tab; default `paymentsTab`),
  *   tabs: Array<{id: string, label: string, badge?: {text: string, srText?: string}, render: () => React.ReactNode}>
  * }} props
  */
@@ -18,18 +19,18 @@ import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 export const PAYMENTS_TAB_PARAM = 'paymentsTab';
 
-const readTabFromUrl = () => {
+const readTabFromUrl = (param) => {
   try {
-    return new URLSearchParams(window.location.search).get(PAYMENTS_TAB_PARAM);
+    return new URLSearchParams(window.location.search).get(param);
   } catch {
     return null;
   }
 };
 
-const writeTabToUrl = (tab) => {
+const writeTabToUrl = (param, tab) => {
   try {
     const url = new URL(window.location.href);
-    url.searchParams.set(PAYMENTS_TAB_PARAM, tab);
+    url.searchParams.set(param, tab);
     window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
   } catch {
     // URL state is a convenience; the tabs keep working without it.
@@ -51,7 +52,7 @@ const TabBadge = ({ badge }) => {
   );
 };
 
-const PaymentsTabs = ({ ariaLabel, tabs }) => {
+const PaymentsTabs = ({ ariaLabel, tabs, param = PAYMENTS_TAB_PARAM }) => {
   const baseId = useId();
   const tabRefs = useRef({});
   const ids = tabs.map((tab) => tab.id);
@@ -59,7 +60,7 @@ const PaymentsTabs = ({ ariaLabel, tabs }) => {
 
   // The URL may name a tab that is not available yet (the catalog loads asynchronously): keep the
   // request and honour it as soon as the tab shows up.
-  const [selected, setSelected] = useState(() => readTabFromUrl() ?? firstId);
+  const [selected, setSelected] = useState(() => readTabFromUrl(param) ?? firstId);
   const [visited, setVisited] = useState(() => new Set());
   const seenRef = useRef(new Set());
 
@@ -80,9 +81,9 @@ const PaymentsTabs = ({ ariaLabel, tabs }) => {
 
   const selectTab = useCallback((id, { focus = false } = {}) => {
     setSelected(id);
-    writeTabToUrl(id);
+    writeTabToUrl(param, id);
     if (focus) tabRefs.current[id]?.focus();
-  }, []);
+  }, [param]);
 
   if (tabs.length === 0) return null;
   if (tabs.length === 1) return <>{tabs[0].render()}</>;

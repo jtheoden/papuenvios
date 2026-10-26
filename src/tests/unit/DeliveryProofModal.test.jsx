@@ -7,6 +7,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import DeliveryProofModal from '@/components/admin/modals/DeliveryProofModal';
 
+vi.mock('@/lib/courierService', () => ({ listDeliveryCouriers: vi.fn(async () => []), assignDeliveryCourier: vi.fn() }));
+
 const t = (key) => key;
 const K = 'adminOrders.deliveryModal.';
 const png = (name = 'p.png', size = 1000, type = 'image/png') => {

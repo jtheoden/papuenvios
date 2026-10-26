@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { X, Camera, RefreshCw, CheckCircle, Trash2 } from 'lucide-react';
 import { transitionMessage } from '@/lib/statusConflict';
+import { assignDeliveryCourier } from '@/lib/courierService';
+import DeliveryCourierSelect from '@/components/admin/DeliveryCourierSelect';
 
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const MAX_NOTES = 2000;
@@ -21,7 +23,9 @@ const FOCUSABLE = 'button:not([disabled]), textarea:not([disabled]), input:not([
  * @param {(payload: { file: File|null, notes: string }) => Promise<unknown>} onConfirm
  * @param {(key: string) => string} t
  */
-const DeliveryProofModal = ({ summary = [], notesEnabled = false, onClose, onConfirm, t }) => {
+const DeliveryProofModal = ({ summary = [], notesEnabled = false, onClose, onConfirm, t, courierKind, courierOperationId }) => {
+  const [courierId, setCourierId] = useState('');
+  const [assignedId, setAssignedId] = useState(''); // courier already recorded by an earlier attempt of this dialog
   const dialogRef = useRef(null);
   const titleRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -111,13 +115,20 @@ const DeliveryProofModal = ({ summary = [], notesEnabled = false, onClose, onCon
     setWorking(true);
     setWorkingText(t(photo ? `${K}uploading` : `${K}saving`));
     try {
+      // The courier must be recorded before the transition: the accrual trigger reads it when the status becomes delivered.
+      if (courierKind && courierOperationId && courierId) {
+        await assignDeliveryCourier(courierKind, courierOperationId, courierId);
+        setAssignedId(courierId);
+      }
       await onConfirm({ file: photo, notes: notes.trim() });
     } catch (error) {
       if (!mounted.current) return;
       const uploadFailed = Boolean(photo) && error?.stage === 'upload';
       setSubmitError({
         uploadFailed,
-        message: uploadFailed ? t(`${K}uploadFailed`) : transitionMessage(t, error, error?.message || t(`${K}saveFailed`))
+        message: uploadFailed
+          ? t(`${K}uploadFailed`)
+          : error?.i18nKey ? t(error.i18nKey) : transitionMessage(t, error, error?.message || t(`${K}saveFailed`))
       });
     } finally {
       if (mounted.current) setWorking(false);
@@ -251,6 +262,13 @@ const DeliveryProofModal = ({ summary = [], notesEnabled = false, onClose, onCon
                 className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+          )}
+
+          {courierKind && courierOperationId && (
+            <DeliveryCourierSelect value={courierId} onChange={setCourierId} disabled={working} t={t} />
+          )}
+          {courierKind && courierOperationId && !courierId && assignedId && (
+            <p role="status" className="text-xs text-amber-900 bg-amber-50 border border-amber-300 rounded-lg p-2">{t('couriers.delivery.clearedWarning')}</p>
           )}
 
           <p className="text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-3">

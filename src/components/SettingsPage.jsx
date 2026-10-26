@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { DollarSign, Bell, Save, Palette, Truck, CreditCard, ShieldAlert } from 'lucide-react';
+import { DollarSign, Bell, Save, Palette, Truck, CreditCard, ShieldAlert, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -17,6 +17,7 @@ import SettingsPageVisual from '@/components/settings/SettingsPageVisual';
 import SettingsPageContent from '@/components/settings/SettingsPageContent';
 import SettingsPaymentsTab from '@/components/settings/SettingsPaymentsTab';
 import SettingsSystemTab from '@/components/settings/SettingsSystemTab';
+import SettingsCouriersTab from '@/components/settings/couriers/SettingsCouriersTab';
 
 const SettingsPage = () => {
   const { t, language } = useLanguage();
@@ -368,6 +369,12 @@ const SettingsPage = () => {
       color: '#3b82f6'
     },
     {
+      id: 'mensajeria',
+      label: language === 'es' ? 'Mensajería' : 'Couriers',
+      icon: Users,
+      color: '#0891b2'
+    },
+    {
       id: 'contenido',
       label: language === 'es' ? 'Contenido' : 'Content',
       icon: Bell,
@@ -478,6 +485,13 @@ const SettingsPage = () => {
                 <SettingsPaymentsTab onGoToFinancial={() => setActiveTab('financiero')} />
               </motion.div>
             </>
+          )}
+
+          {/* MENSAJERIA TAB (admin y super_admin) */}
+          {activeTab === 'mensajeria' && (
+            <div className="glass-effect p-4 sm:p-8 rounded-2xl">
+              <SettingsCouriersTab />
+            </div>
           )}
 
           {/* CONTENIDO TAB */}
