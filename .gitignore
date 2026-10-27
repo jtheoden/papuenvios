@@ -9,6 +9,11 @@ node_modules/
 
 # Testing
 /coverage
+/test-results
+/playwright-report
+/playwright/.cache
+/playwright/.auth
+/.e2e-dist
 
 # Production
 /build

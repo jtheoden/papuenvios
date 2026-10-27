@@ -1,0 +1,90 @@
+name: E2E (Playwright, non-blocking)
+
+# Separate from ci.yml on purpose: NOT a required check (DEC-5). It builds a throwaway LOCAL Supabase
+# stack inside the runner (base schema + migration window, see .claude/docs/runbook_e2e-local.md) and
+# runs the role-based Playwright suite against it. No production URL, key or secret is used anywhere.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * *'
+  pull_request:
+    types: [labeled, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  # `labeled` events for labels other than `e2e` get a unique group, so they cannot cancel a run in progress.
+  group: e2e-${{ github.ref }}-${{ (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name != 'e2e') && github.run_id || 'main' }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    # On pull requests only when labelled `e2e`; always on manual / nightly runs.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'e2e')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - uses: supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51 # v1.6.0
+        with:
+          version: 2.67.1
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Start local Supabase stack
+        run: supabase start --workdir scripts/e2e-stack -x studio,imgproxy,vector,logflare,edge-runtime,mailpit,postgres-meta,supavisor,realtime
+
+      - name: Load base schema and replay the migration window
+        run: bash scripts/e2e-local.sh prepare
+
+      - name: Run Playwright
+        id: playwright
+        run: bash scripts/e2e-local.sh run
+
+      - name: Upload Playwright results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-results
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Stop stack
+        if: ${{ always() }}
+        run: supabase stop --workdir scripts/e2e-stack --no-backup
+
+      # continue-on-error makes a red job show as green: surface the real result in the run summary.
+      - name: Summary
+        if: ${{ always() }}
+        run: |
+          {
+            echo "## E2E (non-blocking)"
+            echo "- Job status: \`${{ job.status }}\`"
+            echo "- Playwright step: \`${{ steps.playwright.outcome }}\`"
+            if [ "${{ job.status }}" != "success" ]; then
+              echo ""
+              echo "**E2E FAILED** (the workflow is green only because the job is not required). See the uploaded artifact."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

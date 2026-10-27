@@ -15,6 +15,7 @@
     "probe:postgrest": "bash scripts/probe-postgrest-local.sh",
     "test:concurrency": "vitest run --config src/tests/concurrency/vitest.config.js",
     "test:e2e": "playwright test",
+    "test:e2e:local": "bash scripts/e2e-local.sh run",
     "test:e2e:ui": "playwright test --ui",
     "db:migrate": "node scripts/migrate.js up",
     "db:status": "node scripts/migrate.js status",
