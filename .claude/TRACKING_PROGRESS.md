@@ -381,3 +381,16 @@ Decisiones y verificaciones del dueño: revisar `default_spread_pct` (1.5 %) y l
 - i18n: namespaces `refundAudit` y `myRefund` (ES usted / EN) con test de paridad.
 - Pendiente de usted: aplicar la migracion en remoto (accion separada, requiere su "dale"), prueba visual en navegador a 320 px.
 - Revision R5 front: migracion PREPARADA, NO APLICADA `20261103100100_refund_dispute_states.sql` (RPC `admin_refund_dispute_states(uuid[])`, rollback incluido); el control de disputa es ahora un unico boton alternante segun el estado real y se oculta si la RPC no existe. Dialogo de purga con Radix AlertDialog (trampa de foco, foco inicial en Cancelar, Escape), 401/403 de la Edge Function -> mensaje "solo administradores", aviso "por vencer" se refresca tras la purga, imports estaticos de refundService, etiquetas de estado traducidas, monto con Intl y aviso de carga parcial.
+
+## RB-09 — Playwright role-based E2E (local stack + CI no bloqueante) — 2026-10-27
+
+- RB-09a: specs/helpers/config de roles incorporados; URL y credenciales QA solo por env; guard `assertLocalSupabaseUrl` (config + helper) con test unitario; 4 tests desactualizados reparados (+ 6 robustecidos); `scripts/e2e-local.sh` (`dump-base|prepare|run`), `npm run test:e2e:local`, runbook `.claude/docs/runbook_e2e-local.md`.
+- Stack dedicado `papuenvios-e2e-run` (API 56321 / DB 56322): el harness `e2e-supabase` (55321/55322) y su `postgres` NO se tocaron.
+- Resultado local: 56 passed, 7 skipped, 0 failed (1.7 min, 4 workers, build de produccion); vitest 3043/3044 (1 fallo de entorno: `@fontsource/inter` ausente en node_modules del checkout principal); eslint src OK; build OK (dist restaurado).
+- RB-09b: replay desde cero NO factible (>=60 de 135 migraciones fallan en stack limpio); alternativa viable: `supabase/e2e/base-public-schema.sql` (solo estructura, ~330 KB) + replay de ventana desde 20261014180000 (63 migraciones OK en ~1 min). `.github/workflows/e2e.yml` escrito (separado, `continue-on-error`, dispatch/nightly/label `e2e`); NO ejecutado en GitHub Actions.
+
+### RB-09 — seguimiento tras revision independiente (2026-10-27)
+- Corregido: server reuse (`reuseExistingServer:false` + chequeo del bundle), negativos de seguridad con espera positiva previa y `toHaveCount(0)`, skips por datos convertidos en fallos (la siembra ahora incluye monedas/tasa, stock, pago zelle y ofertas), contrato de `offers` anonimo (solo activas y vigentes, columnas conocidas, sin escritura), guard 55321/55322 global, concurrency del workflow + resumen de fallo, secretos fuera de argv.
+- Ticket pendiente (defecto a11y real de la app, NO corregido aqui): las pestanas de `SettingsPage` en mobile son solo icono y sin nombre accesible (`hidden xs:inline` sobre el label y sin `aria-label`).
+- `supabase/e2e/base-public-schema.sql` contiene emails ya versionados en migraciones (super_admin en `handle_new_user()`); es solo estructura, sin datos.
+- Bug latente de la app (ticket): `AdminOffersTab.jsx:405` hace `offer.code.toLowerCase()`; `offers.code` es NULLABLE en el esquema, y una oferta sin codigo tumba todo el Dashboard ("Something went wrong"). La siembra E2E asigna codigo para esquivarlo.
