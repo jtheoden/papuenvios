@@ -167,6 +167,7 @@ const SettingsPage = () => {
   };
 
   const handleRemoveCurrency = async (currencyId) => {
+    if (!isSuperAdmin) return; // exchange_rates is super_admin-only (DEC-10)
 
     const confirmMessage = language === 'es'
       ? '¿Está seguro de que desea eliminar esta moneda? Esto también eliminará sus tasas de cambio.'

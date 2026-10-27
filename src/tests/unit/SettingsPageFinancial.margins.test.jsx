@@ -14,6 +14,7 @@ vi.mock('@/lib/financialSettingsService', () => ({
   saveMarginSettings: (...args) => saveMarginSettingsMock(...args)
 }));
 
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ isSuperAdmin: true }) }));
 vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({ t: (key) => key, language: 'en' })
 }));

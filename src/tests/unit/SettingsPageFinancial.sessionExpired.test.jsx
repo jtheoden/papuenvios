@@ -12,6 +12,7 @@ vi.mock('@/components/ui/use-toast', () => ({
   toast: (...args) => toastMock(...args)
 }));
 vi.mock('@/lib/financialSettingsService', () => ({ saveMarginSettings: vi.fn() }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ isSuperAdmin: true }) }));
 vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({ t: (key) => key, language: 'en' })
 }));

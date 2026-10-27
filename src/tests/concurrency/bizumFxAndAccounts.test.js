@@ -14,7 +14,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dbSuiteSkipReason, connectAdmin, connectAs, connectAnon, endAll, fireTogether } from './db';
-import { loadActors } from './fixtures';
+import { loadActors, asRateWriter as rateWriter } from './fixtures';
 
 const skipReason = await dbSuiteSkipReason({
   functions: ['is_admin_user', 'is_super_admin', 'list_payment_methods_public'],
@@ -110,6 +110,8 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     return c;
   };
   const asAdmin = () => as(actors.adminId);
+  // DEC-10: only a super_admin writes exchange_rates; promoted per rate statement only (see fixtures.asRateWriter).
+  const asRateWriter = async () => rateWriter(admin, actors.adminId, await as(actors.adminId));
   const asCustomer = () => as(actors.customerId);
   const asService = () => as(actors.adminId, 'service_role');
   const asAnon = async () => {
@@ -736,7 +738,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     it('a phone typed in the settings flow or an account never reaches activity_logs', async () => {
       const phone = '+34600123456';
       const started = (await admin.query(`SELECT clock_timestamp() AS t`)).rows[0].t;
-      const a = await asAdmin();
+      const a = await asRateWriter();
       await a.query(
         `INSERT INTO public.bizum_accounts (account_name, holder_name, phone, per_operation_limit) VALUES ('pii', 'h', $1, 0)`,
         [phone]
@@ -773,7 +775,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     });
 
     it('reports the central rate: mid = exchange_rates.rate, spread = bizum_settings.default_spread_pct', async () => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       const row = await setCentralRate(a, 0.93);
       const s = await fxStatus(a);
       expect(s.id).toBe(row.id);
@@ -788,7 +790,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     });
 
     it('a modified default_spread_pct moves the live effective rate at once (0 and 10 are the extremes)', async () => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       await setCentralRate(a, 0.92);
       for (const [spread, effective] of [[0, 0.92], [2, 0.9384], [10, 1.012]]) {
         await patch(a, { default_spread_pct: spread });
@@ -799,7 +801,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     });
 
     it('editing the central row in place (what Financial Settings does) changes the live rate at once', async () => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       const row = await setCentralRate(a, 0.92);
       await a.query(`UPDATE public.exchange_rates SET rate = 0.95 WHERE id = $1`, [row.id]);
       const [now] = await currentFxRows();
@@ -813,7 +815,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     it.each([
       [0, 'ok'], [1, 'warn'], [3, 'warn'], [4, 'blocked'], [20, 'blocked']
     ])('default thresholds, measured on exchange_rates.effective_date: dated %s day(s) ago => %s', async (days, state) => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       await setCentralRate(a, 0.92);
       await backdateCentral(days);
       const s = await fxStatus(a);
@@ -828,7 +830,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     it.each([
       [0, 'ok'], [1, 'ok'], [2, 'warn'], [3, 'warn'], [4, 'blocked'], [30, 'blocked']
     ])('exact day boundaries with warn 48 h / block 96 h: dated %s day(s) ago => %s', async (days, state) => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       await patch(a, { fx_warn_hours: 48, fx_block_hours: 96 });
       await setCentralRate(a, 0.92);
       await backdateCentral(days);
@@ -838,7 +840,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     });
 
     it('re-saving today (effective_date = today) refreshes the age', async () => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       const row = await setCentralRate(a, 0.92);
       await backdateCentral(10);
       expect((await fxStatus(a)).state).toBe('blocked');
@@ -847,7 +849,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     });
 
     it('touching an old row does NOT refresh it: updated_at / created_at / is_active are not the age basis', async () => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       const row = await setCentralRate(a, 0.92);
       await backdateCentral(10);
       await touchCentral(row.id);
@@ -858,7 +860,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     });
 
     it('reactivating an old inactive row (toggle is_active) leaves it blocked or warn, never ok', async () => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       const oldRow = await setCentralRate(a, 0.92, { daysAgo: 10, active: false });
       expect((await fxStatus(a)).state).toBe('none');
       await a.query(`UPDATE public.exchange_rates SET is_active = true WHERE id = $1`, [oldRow.id]);
@@ -872,7 +874,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     });
 
     it('does not depend on an updated_at trigger: a row without any timestamp still ages by its effective date', async () => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       const row = await setCentralRate(a, 0.92);
       await ownerBypass(`UPDATE public.exchange_rates SET updated_at = NULL, created_at = NULL WHERE id = $1`, [row.id]);
       expect((await fxStatus(a)).state).toBe('ok');
@@ -881,7 +883,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     });
 
     it('a row dated tomorrow is treated as "now": age 0, ok, never negative', async () => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       await setCentralRate(a, 0.92, { daysAgo: -1 });
       const s = await fxStatus(a);
       expect(s.state).toBe('ok');
@@ -889,7 +891,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     });
 
     it('a row dated more than one day ahead is ignored (and never masks a valid older one)', async () => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       const far = await setCentralRate(a, 0.8, { daysAgo: -3 });
       expect((await fxStatus(a)).state).toBe('none');
       // At most one ACTIVE row per pair (exchange_rates_one_active_per_pair): the admin fixes the date in place,
@@ -900,20 +902,20 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     });
 
     it("tomorrow's date is accepted: a client in a timezone ahead of the server may stamp it", async () => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       const row = await setCentralRate(a, 0.92, { daysAgo: -1 });
       expect((await currentFxRows())[0].id).toBe(row.id);
     });
 
     it('an inactive pair is ignored: no usable rate', async () => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       await setCentralRate(a, 0.92, { active: false });
       expect((await fxStatus(a)).state).toBe('none');
       expect(await currentFxRows()).toHaveLength(0);
     });
 
     it('an inactive NEWER row does not mask the older active one', async () => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       const older = await setCentralRate(a, 0.92, { daysAgo: 1 });
       await setCentralRate(a, 0.8, { daysAgo: 0, active: false });
       const [row] = await currentFxRows();
@@ -922,7 +924,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     });
 
     it('a rate <= 0 is never used (rejected by a CHECK when the table has one, otherwise ignored)', async () => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       const valid = await setCentralRate(a, 0.92, { daysAgo: 1 });
       const checks = (await admin.query(
         `SELECT 1 FROM pg_constraint WHERE conrelid = 'public.exchange_rates'::regclass AND contype = 'c'
@@ -944,7 +946,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     });
 
     it('a second ACTIVE row for the pair is rejected, so the choice is never ambiguous; inactive history is ignored', async () => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       const only = await setCentralRate(a, 0.95, { daysAgo: 0 });
       await setCentralRate(a, 0.9, { daysAgo: 2, active: false });
       await setCentralRate(a, 0.91, { daysAgo: 3, active: false });
@@ -961,7 +963,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     });
 
     it('only the DIRECT USD->EUR pair counts: the inverse EUR->USD and other pairs give no rate', async () => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       const insertPair = (from, to, rate) =>
         a.query(`INSERT INTO public.exchange_rates (from_currency_id, to_currency_id, rate) VALUES ($1, $2, $3)`, [from, to, rate]);
       await insertPair(ids.eur, ids.usd, 1.087); // the inverse
@@ -971,20 +973,20 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     });
 
     it.each([0.4999, 1.5001, 92, 920])('a mid outside the 0.5..1.5 sanity band (%s) is blocked, so a typo cannot be quoted', async (mid) => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       await setCentralRate(a, mid);
       expect((await fxStatus(a)).state).toBe('blocked');
       expect(await currentFxRows()).toHaveLength(0);
     });
 
     it.each([0.5, 1.5])('the sanity band is inclusive: %s is usable', async (mid) => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       await setCentralRate(a, mid);
       expect(await currentFxRows()).toHaveLength(1);
     });
 
     it('_current_payment_fx exposes id, mid, spread and the effective rate of the central row', async () => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       const r = await setCentralRate(a, 0.92);
       const [row] = await currentFxRows();
       expect(row.id).toBe(r.id);
@@ -992,7 +994,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     });
 
     it('end to end with the design example: 100.00 USD at mid 0.92 and spread 1.5 % is 93.38 EUR', async () => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       await setCentralRate(a, 0.92);
       const { rows } = await admin.query(
         `SELECT public._bizum_amount(100.00, (SELECT effective_rate FROM public._current_payment_fx())) AS eur`
@@ -1001,7 +1003,7 @@ describeDb('Bizum S3 + S4: currency, settings, FX rates, accounts', () => {
     });
 
     it('access: a customer and anon cannot write exchange_rates, so they cannot move the Bizum rate', async () => {
-      const a = await asAdmin();
+      const a = await asRateWriter();
       const row = await setCentralRate(a, 0.92);
       const customer = await asCustomer();
       const anon = await asAnon();
