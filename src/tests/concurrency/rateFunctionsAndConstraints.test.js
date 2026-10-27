@@ -406,13 +406,19 @@ describeDb('rate functions fix + exchange_rates constraints', () => {
         await admin.query(`UPDATE public.exchange_rates SET is_active = true WHERE id = $1`, [old.id]);
       });
 
-      it('an admin through RLS (authenticated role) can still do the in-place edit', async () => {
+      it('a super_admin through RLS (authenticated role) can still do the in-place edit; a plain admin cannot (DEC-10)', async () => {
         await setRate(ids.usd, ids.cup, 790, { daysAgo: 3 });
+        const sql = `UPDATE public.exchange_rates SET rate = 795, effective_date = CURRENT_DATE
+            WHERE from_currency_id = $1 AND to_currency_id = $2 AND is_active = true RETURNING rate`;
         const c = await as(actors.adminId);
-        const res = await c.query(
-          `UPDATE public.exchange_rates SET rate = 795, effective_date = CURRENT_DATE
-            WHERE from_currency_id = $1 AND to_currency_id = $2 AND is_active = true RETURNING rate`, [ids.usd, ids.cup]);
-        expect(Number(res.rows[0].rate)).toBe(795);
+        try {
+          expect((await c.query(sql, [ids.usd, ids.cup])).rowCount).toBe(0);
+          await admin.query(`UPDATE public.user_profiles SET role = 'super_admin' WHERE id = $1`, [actors.adminId]);
+          const res = await c.query(sql, [ids.usd, ids.cup]);
+          expect(Number(res.rows[0].rate)).toBe(795);
+        } finally {
+          await admin.query(`UPDATE public.user_profiles SET role = 'admin' WHERE id = $1`, [actors.adminId]);
+        }
       });
     });
   });
@@ -438,7 +444,9 @@ describeDb('rate functions fix + exchange_rates constraints', () => {
         // the money-columns guard only NAMES the RPC in its comments (it lets the SECURITY DEFINER RPCs through)
         && f !== '20261023110000_remittance_money_columns_guard.sql'
         // courier accruals only READ the active USD->CUP exchange_rates row (CUP -> USD conversion); they redefine none of them
-        && f !== '20261031110000_delivery_assignments_and_accruals.sql');
+        && f !== '20261031110000_delivery_assignments_and_accruals.sql'
+        // DEC-10 only swaps the exchange_rates WRITE policy to is_super_admin(); it touches none of these functions
+        && f !== '20261103100200_exchange_rates_super_admin_write.sql');
       later.forEach((f) => {
         expect(readFileSync(`supabase/migrations/${f}`, 'utf8'), f)
           .not.toMatch(/exchange_rates|recalculate_remittance_at_current_rate|get_remittance_bank_accounts_admin/);

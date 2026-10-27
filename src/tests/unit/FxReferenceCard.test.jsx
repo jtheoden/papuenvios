@@ -143,6 +143,17 @@ describe('FxReferenceCard', () => {
     expect(screen.getByRole('button', { name: 'Use as rate' })).toBeDisabled();
   });
 
+  it('lockedBy disables "Use as rate" and points at the existing note without repeating any reason', async () => {
+    svc.fetch.mockResolvedValue(reference());
+    render(<FxReferenceCard onUse={vi.fn()} lockedBy="some-note" />);
+
+    const button = await screen.findByRole('button', { name: 'Use as rate' });
+    expect(button).toBeDisabled();
+    expect(button.getAttribute('aria-describedby')).toBe('some-note');
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(screen.queryByText(EN.settings.fxReference.useHint)).toBeNull();
+  });
+
   it('starts empty without auto load and queries on demand', async () => {
     svc.fetch.mockResolvedValue(reference());
     render(<FxReferenceCard onUse={vi.fn()} autoLoad={false} />);

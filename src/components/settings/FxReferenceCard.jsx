@@ -19,7 +19,8 @@ import { formatDateTime, formatDateTimeUtc, formatNumber } from '@/lib/numberFor
 
 const ERROR_CODES = ['network', 'timeout', 'invalid_payload', 'out_of_band'];
 
-const FxReferenceCard = ({ onUse, disabledReason = null, autoLoad = true }) => {
+// `lockedBy`: id of a visible note that already explains why the rate cannot be written (shown once, not repeated here).
+const FxReferenceCard = ({ onUse, disabledReason = null, lockedBy = null, autoLoad = true }) => {
   const { t, language } = useLanguage();
   const headingId = useId();
   const { reference, loading, errorCode, check } = useFxReference({ autoLoad });
@@ -30,7 +31,7 @@ const FxReferenceCard = ({ onUse, disabledReason = null, autoLoad = true }) => {
   const stale = freshness === 'stale';
   const ageHours = reference ? referenceAgeHours(reference, now) : null;
   const providerMoment = reference ? referenceProviderMoment(reference) : null;
-  const canUse = Boolean(reference) && !stale && !errorCode && !loading && !disabledReason;
+  const canUse = Boolean(reference) && !stale && !errorCode && !loading && !disabledReason && !lockedBy;
 
   const renderProviderLine = () => {
     if (reference.providerUpdatedAt) {
@@ -127,13 +128,16 @@ const FxReferenceCard = ({ onUse, disabledReason = null, autoLoad = true }) => {
               size="sm"
               className="min-h-[44px] px-3"
               disabled={!canUse}
+              {...(lockedBy ? { 'aria-disabled': true, 'aria-describedby': lockedBy } : {})}
               onClick={() => onUse({ rate: reference.rate })}
             >
               {t('settings.fxReference.use')}
             </Button>
-            <span className="text-xs text-gray-700">
-              {disabledReason || t('settings.fxReference.useHint')}
-            </span>
+            {!lockedBy && (
+              <span className="text-xs text-gray-700">
+                {disabledReason || t('settings.fxReference.useHint')}
+              </span>
+            )}
           </div>
         </div>
       )}

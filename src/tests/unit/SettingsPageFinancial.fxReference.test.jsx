@@ -14,6 +14,7 @@ const svc = vi.hoisted(() => ({
 
 vi.mock('@/components/ui/use-toast', () => ({ toast: (...args) => toastMock(...args) }));
 vi.mock('@/lib/financialSettingsService', () => ({ saveMarginSettings: vi.fn() }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ isSuperAdmin: true }) }));
 vi.mock('@/contexts/LanguageContext', async () => {
   const { makeRealT: build } = await import('./helpers/realTranslator');
   const t = build('en');
