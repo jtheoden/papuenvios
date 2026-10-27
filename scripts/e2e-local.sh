@@ -27,7 +27,7 @@ API_URL="${E2E_API_URL:-http://127.0.0.1:56321}"
 DB_HOST="${E2E_DB_HOST:-127.0.0.1}"
 DB_PORT="${E2E_DB_PORT:-56322}"
 DB_USER="${E2E_DB_USER:-postgres}"
-export PGPASSWORD="${E2E_DB_PASSWORD:-$DB_USER}" # local default: password == user name (Supabase CLI convention)
+export PGPASSWORD="${E2E_DB_PASSWORD:?E2E_DB_PASSWORD is required: password of the LOCAL disposable stack DB (see runbook)}"
 DB_NAME="postgres"                                # the database the dedicated stack's PostgREST/GoTrue serve
 HARNESS_DB_PORT=55322
 HARNESS_API_PORT=55321

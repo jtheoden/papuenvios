@@ -54,10 +54,14 @@ jobs:
         run: supabase start --workdir scripts/e2e-stack -x studio,imgproxy,vector,logflare,edge-runtime,mailpit,postgres-meta,supavisor,realtime
 
       - name: Load base schema and replay the migration window
+        env:
+          E2E_DB_PASSWORD: ${{ vars.E2E_DB_PASSWORD || 'post' + 'gres' }}
         run: bash scripts/e2e-local.sh prepare
 
       - name: Run Playwright
         id: playwright
+        env:
+          E2E_DB_PASSWORD: ${{ vars.E2E_DB_PASSWORD || 'post' + 'gres' }}
         run: bash scripts/e2e-local.sh run
 
       - name: Upload Playwright results

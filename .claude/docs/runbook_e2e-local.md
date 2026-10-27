@@ -22,6 +22,7 @@ asi que migrar `postgres` ahi esta prohibido. La solucion es un segundo stack, d
 ## Prerrequisitos
 
 - Docker, Supabase CLI (probado con 2.67.1), `psql`, `curl`, `openssl`, Node 22, `npm ci`, `npx playwright install chromium`.
+- `E2E_DB_PASSWORD` exportada: la contrasena de la BD del stack LOCAL desechable (el script ya no trae valor por defecto).
 - Puertos 56321/56322 libres. ~1.5 GB de RAM para el stack.
 - `supabase/e2e/base-public-schema.sql` (versionado; ver "Schema base").
 
