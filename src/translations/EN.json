@@ -809,7 +809,18 @@
       "sellPriceTooLowDesc": "Sell price cannot be less than product costs",
       "addProductsFirst": "Add products to the combo first",
       "userSavings": "Customer savings",
-      "individualTotal": "Individual purchase"
+      "individualTotal": "Individual purchase",
+      "priceWarningTitle": "This combo costs more than its products bought separately",
+      "priceWarningComboPrice": "Combo price",
+      "priceWarningIndividualTotal": "Products bought separately",
+      "priceWarningDifference": "The combo is more expensive by",
+      "priceWarningMaxMargin": "Use a margin of up to {value}% to avoid this.",
+      "priceWarningApply": "Apply {value}%",
+      "priceWarningNote": "This is only a warning: you can still save the combo.",
+      "confirmMoreExpensive": "This combo is more expensive than the sum of its products bought separately. Customers would pay {amount} more by buying the combo. Save anyway?",
+      "saveAnyway": "Save anyway",
+      "moreExpensiveBadge": "Above separate price",
+      "moreExpensiveBadgeDetail": "{amount} above the separate price"
     },
     "management": {
       "title": "General Management",
