@@ -1,5 +1,46 @@
 # PapuEnvios - Notas de Desarrollo
 
+## REGLAS NO NEGOCIABLES - LEER PRIMERO
+
+### Funcionalidades Críticas del Negocio
+
+**NUNCA SE PUEDEN ROMPER EN MAIN:**
+
+1. **Remesas** - Flujo completo: creación, cálculo de tasas, subida de comprobante, validación, entrega
+2. **Pedidos (Orders)** - Flujo completo: creación, pago, validación, despacho, entrega
+3. **Dashboard Admin** - Carga de métricas y estadísticas
+4. **Historial de Pagos Zelle** - Visualización y gestión
+
+### Antes de Merge a Main - OBLIGATORIO
+
+Antes de fusionar cualquier cambio a `main`, verificar manualmente:
+
+```bash
+# 1. Build sin errores
+npm run build
+
+# 2. Verificar en navegador (dev server o preview):
+npm run dev
+# O después del build:
+npm run preview
+```
+
+**Checklist de verificación manual (NO OPCIONAL):**
+
+- [ ] Dashboard carga sin errores (métricas visibles)
+- [ ] Crear nueva remesa funciona
+- [ ] Calculadora de remesas muestra tasas correctas
+- [ ] Lista de remesas carga correctamente
+- [ ] Lista de pedidos carga correctamente
+- [ ] Historial de pagos Zelle carga sin errores
+- [ ] Login/logout funciona
+
+### Ante cualquier duda
+
+Si no puedes verificar manualmente las funcionalidades críticas, **NO HAGAS MERGE A MAIN**. Informa al equipo y espera verificación.
+
+---
+
 ## Supabase Project Info
 
 - **Project Name**: papuenvios
