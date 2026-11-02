@@ -46,6 +46,7 @@ const SettingsZelleTab = () => {
     phone: '',
     account_holder: '',
     email: '',
+    contact_type: 'email', // 'email' or 'phone' - which contact is used for Zelle
     daily_limit: 0,
     monthly_limit: 0,
     security_limit: 0,
@@ -150,6 +151,7 @@ const SettingsZelleTab = () => {
       phone: '',
       account_holder: '',
       email: '',
+      contact_type: 'email',
       daily_limit: 0,
       monthly_limit: 0,
       security_limit: 0,
@@ -167,9 +169,10 @@ const SettingsZelleTab = () => {
     setSelectedAccount(account);
     setFormData({
       account_name: account.account_name,
-      phone: account.phone,
+      phone: account.phone || '',
       account_holder: account.account_holder,
       email: account.email || '',
+      contact_type: account.contact_type || (account.email ? 'email' : 'phone'),
       daily_limit: account.daily_limit,
       monthly_limit: account.monthly_limit,
       security_limit: account.security_limit,
@@ -183,12 +186,51 @@ const SettingsZelleTab = () => {
   };
 
   const handleSubmitForm = async () => {
-    if (!formData.account_name || !formData.phone || !formData.account_holder || !formData.email) {
+    // Validate required fields
+    if (!formData.account_name || !formData.account_holder) {
       toast({
         title: t('zelle.errorRequiredFields') || 'Required fields',
         description: language === 'es'
-          ? 'Por favor complete los campos requeridos'
-          : 'Please fill in all required fields',
+          ? 'Por favor complete el nombre de cuenta y titular'
+          : 'Please fill in account name and holder',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Validate at least one contact method
+    const hasEmail = formData.email && formData.email.trim() !== '';
+    const hasPhone = formData.phone && formData.phone.trim() !== '';
+
+    if (!hasEmail && !hasPhone) {
+      toast({
+        title: language === 'es' ? 'Contacto requerido' : 'Contact required',
+        description: language === 'es'
+          ? 'Debe proporcionar al menos un email o teléfono'
+          : 'You must provide at least an email or phone number',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Validate selected contact type has a value
+    if (formData.contact_type === 'email' && !hasEmail) {
+      toast({
+        title: language === 'es' ? 'Email requerido' : 'Email required',
+        description: language === 'es'
+          ? 'Seleccionó email como contacto Zelle pero no lo proporcionó'
+          : 'You selected email as Zelle contact but did not provide it',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (formData.contact_type === 'phone' && !hasPhone) {
+      toast({
+        title: language === 'es' ? 'Teléfono requerido' : 'Phone required',
+        description: language === 'es'
+          ? 'Seleccionó teléfono como contacto Zelle pero no lo proporcionó'
+          : 'You selected phone as Zelle contact but did not provide it',
         variant: 'destructive'
       });
       return;
@@ -458,16 +500,6 @@ const SettingsZelleTab = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1 truncate">{t('zelle.phoneNumber')} *</label>
-                  <input
-                    type="tel"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                    placeholder={t('zelle.phoneNumberPlaceholder') || 'Phone number'}
-                    className="input-style w-full"
-                  />
-                </div>
-                <div>
                   <label className="block text-sm font-medium mb-1 truncate">{t('zelle.holderName')} *</label>
                   <input
                     type="text"
@@ -477,14 +509,80 @@ const SettingsZelleTab = () => {
                     className="input-style w-full"
                   />
                 </div>
+
+                {/* Contact Type Selector */}
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium mb-2">
+                    {language === 'es' ? 'Contacto Zelle' : 'Zelle Contact'} *
+                  </label>
+                  <div className="flex gap-4 mb-3">
+                    <label className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 cursor-pointer transition-colors ${
+                      formData.contact_type === 'email'
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="contact_type"
+                        value="email"
+                        checked={formData.contact_type === 'email'}
+                        onChange={(e) => setFormData({...formData, contact_type: e.target.value})}
+                        className="sr-only"
+                      />
+                      <span className={`text-sm font-medium ${formData.contact_type === 'email' ? 'text-blue-700' : 'text-gray-600'}`}>
+                        📧 Email
+                      </span>
+                    </label>
+                    <label className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 cursor-pointer transition-colors ${
+                      formData.contact_type === 'phone'
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="contact_type"
+                        value="phone"
+                        checked={formData.contact_type === 'phone'}
+                        onChange={(e) => setFormData({...formData, contact_type: e.target.value})}
+                        className="sr-only"
+                      />
+                      <span className={`text-sm font-medium ${formData.contact_type === 'phone' ? 'text-blue-700' : 'text-gray-600'}`}>
+                        📱 {language === 'es' ? 'Teléfono' : 'Phone'}
+                      </span>
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {language === 'es'
+                      ? 'Seleccione el método de contacto que usará para recibir pagos Zelle'
+                      : 'Select the contact method you will use to receive Zelle payments'}
+                  </p>
+                </div>
+
+                {/* Email field - required if contact_type is email */}
                 <div>
-                  <label className="block text-sm font-medium mb-1 truncate">{t('common.email')} *</label>
+                  <label className="block text-sm font-medium mb-1 truncate">
+                    {t('common.email')} {formData.contact_type === 'email' && '*'}
+                  </label>
                   <input
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({...formData, email: e.target.value})}
                     placeholder={t('zelle.emailPlaceholder') || 'account@example.com'}
-                    className="input-style w-full"
+                    className={`input-style w-full ${formData.contact_type === 'email' ? 'ring-2 ring-blue-200' : ''}`}
+                  />
+                </div>
+
+                {/* Phone field - required if contact_type is phone */}
+                <div>
+                  <label className="block text-sm font-medium mb-1 truncate">
+                    {t('zelle.phoneNumber')} {formData.contact_type === 'phone' && '*'}
+                  </label>
+                  <input
+                    type="tel"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                    placeholder={t('zelle.phoneNumberPlaceholder') || 'Phone number'}
+                    className={`input-style w-full ${formData.contact_type === 'phone' ? 'ring-2 ring-blue-200' : ''}`}
                   />
                 </div>
                 <div>
