@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { DollarSign, Bell, Save, Palette, Truck, CreditCard } from 'lucide-react';
+import { DollarSign, Bell, Save, Palette, Truck, CreditCard, Store } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -16,6 +16,7 @@ import SettingsPageShipping from '@/components/settings/SettingsPageShipping';
 import SettingsPageVisual from '@/components/settings/SettingsPageVisual';
 import SettingsPageContent from '@/components/settings/SettingsPageContent';
 import SettingsZelleTab from '@/components/settings/SettingsZelleTab';
+import SettingsPageBusiness from '@/components/settings/SettingsPageBusiness';
 
 const SettingsPage = () => {
   const { t, language } = useLanguage();
@@ -435,6 +436,12 @@ const SettingsPage = () => {
       label: language === 'es' ? 'Contenido' : 'Content',
       icon: Bell,
       color: '#10b981'
+    },
+    {
+      id: 'negocio',
+      label: language === 'es' ? 'Negocio' : 'Business',
+      icon: Store,
+      color: '#6366f1'
     }
   ];
 
@@ -568,6 +575,13 @@ const SettingsPage = () => {
             <div className="mt-6 text-right"><Button onClick={handleNotificationSave} style={getPrimaryButtonStyle(visualSettings)}><Save className="mr-2 h-4 w-4" />{t('common.saveSettings')}</Button></div>
           </motion.div>
             </>
+          )}
+
+          {/* NEGOCIO TAB - Super Admin only: Business status and global pricing */}
+          {activeTab === 'negocio' && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+              <SettingsPageBusiness />
+            </motion.div>
           )}
         </div>
       </div>

@@ -22,6 +22,7 @@ import { calculateOrderTotal } from '@/lib/priceCalculationService';
 import { validateAndGetOffer, recordOfferUsage } from '@/lib/orderDiscountService';
 import { buildDiscountBreakdown } from '@/lib/discountDisplayService';
 import { logActivity } from '@/lib/activityLogger';
+import { getGlobalPricing, isBusinessOpen } from '@/lib/businessStatusService';
 import RecipientSelector from '@/components/RecipientSelector';
 import ZelleAccountSelector from '@/components/ZelleAccountSelector';
 import ZelleAccountAlert from '@/components/ZelleAccountAlert';
@@ -79,6 +80,10 @@ const CartPage = ({ onNavigate }) => {
   const [couponError, setCouponError] = useState('');
   const [validatingCoupon, setValidatingCoupon] = useState(false);
 
+  // Global pricing state (super_admin controlled price multiplier)
+  const [globalPriceMultiplier, setGlobalPriceMultiplier] = useState(1.0);
+  const [businessOpen, setBusinessOpen] = useState(true);
+
   // Calculate item price based on type (product or combo) - memoized with useCallback
   const getItemPrice = useCallback((item) => {
     if (!item) return 0;
@@ -114,11 +119,14 @@ const CartPage = ({ onNavigate }) => {
   }, [financialSettings, selectedCurrency, convertAmount]);
 
   // Calculate subtotal - memoized to avoid recalculation on every render
+  // Applies global price multiplier set by super_admin
   const subtotal = useMemo(() => {
-    return cart.reduce((acc, item) => {
+    const baseSubtotal = cart.reduce((acc, item) => {
       return acc + getItemPrice(item) * item.quantity;
     }, 0);
-  }, [cart, getItemPrice]);
+    // Apply global price multiplier (e.g., 1.1 = 10% increase)
+    return baseSubtotal * globalPriceMultiplier;
+  }, [cart, getItemPrice, globalPriceMultiplier]);
 
   // Calculate discount amount and final total (category + offers)
   const orderTotals = useMemo(() => calculateOrderTotal({
@@ -171,6 +179,25 @@ const CartPage = ({ onNavigate }) => {
       }
     }
   }, [isAuthenticated, cart.length, t]);
+
+  // Load global pricing and business status
+  useEffect(() => {
+    const loadGlobalPricing = async () => {
+      try {
+        const [pricing, open] = await Promise.all([
+          getGlobalPricing(),
+          isBusinessOpen()
+        ]);
+        if (pricing?.price_multiplier && pricing.applies_to_orders) {
+          setGlobalPriceMultiplier(pricing.price_multiplier);
+        }
+        setBusinessOpen(open);
+      } catch (error) {
+        console.warn('[CartPage] Failed to load global pricing:', error);
+      }
+    };
+    loadGlobalPricing();
+  }, []);
 
   // Load municipalities when province changes
   useEffect(() => {

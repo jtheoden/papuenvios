@@ -22,6 +22,7 @@ import UserPanel from '@/components/UserPanel';
 import UserManagement from '@/components/UserManagement';
 import AuthCallback from '@/components/AuthCallback';
 import Footer from '@/components/Footer';
+import BusinessClosedBanner from '@/components/BusinessClosedBanner';
 import { withProtectedRoute } from '@/components/withProtectedRoute';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { BusinessProvider, useBusiness } from '@/contexts/BusinessContext';
@@ -289,6 +290,9 @@ function App() {
                     >
                       {currentPage !== 'auth/callback' && (
                         <Header currentPage={currentPage} onNavigate={handleNavigate} />
+                      )}
+                      {currentPage !== 'auth/callback' && (
+                        <BusinessClosedBanner variant="banner" />
                       )}
                       <main className={currentPage !== 'auth/callback' ? 'pt-20' : ''}>
                         <AnimatePresence mode="wait">
