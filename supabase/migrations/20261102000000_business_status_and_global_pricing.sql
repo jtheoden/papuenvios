@@ -227,7 +227,7 @@ $$;
 -- ============================================================================
 GRANT EXECUTE ON FUNCTION public.is_business_open() TO authenticated, anon;
 GRANT EXECUTE ON FUNCTION public.get_global_price_multiplier() TO authenticated, anon;
-GRANT EXECUTE ON FUNCTION public.set_business_status(boolean, text, text, timestamptz) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.set_business_status(boolean, text, text, timestamptz, boolean) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.set_global_price_multiplier(numeric, boolean, boolean) TO authenticated;
 
 COMMIT;
