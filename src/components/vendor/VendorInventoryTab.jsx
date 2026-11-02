@@ -41,6 +41,7 @@ const VendorInventoryTab = ({
   const [productToDelete, setProductToDelete] = useState(null);
   const [convertedPreview, setConvertedPreview] = useState(null);
   const [isConverting, setIsConverting] = useState(false);
+  const [originalCurrencyId, setOriginalCurrencyId] = useState(null); // Track original currency when editing
 
   // Find base currency from currencies list
   const systemBaseCurrency = currencies.find(c => c.is_base);
@@ -114,12 +115,48 @@ const VendorInventoryTab = ({
     }
   };
 
-  const handleInputChange = (field, value) => {
+  const handleInputChange = useCallback(async (field, value) => {
+    // Special handling for currency changes - convert the price
+    if (field === 'base_currency_id' && productForm?.basePrice && originalCurrencyId && value !== originalCurrencyId) {
+      try {
+        const convertedPrice = await convertAmountAsync(
+          parseFloat(productForm.basePrice),
+          originalCurrencyId,
+          value
+        );
+        if (convertedPrice && !isNaN(convertedPrice)) {
+          setProductForm(prev => ({
+            ...prev,
+            base_currency_id: value,
+            basePrice: convertedPrice.toFixed(2)
+          }));
+          setOriginalCurrencyId(value); // Update original to new currency
+          const newCurrency = getCurrencyById(value);
+          toast({
+            title: language === 'es' ? 'Precio convertido' : 'Price converted',
+            description: language === 'es'
+              ? `Precio actualizado a ${newCurrency?.symbol || ''}${convertedPrice.toFixed(2)} ${newCurrency?.code || ''}`
+              : `Price updated to ${newCurrency?.symbol || ''}${convertedPrice.toFixed(2)} ${newCurrency?.code || ''}`
+          });
+          return;
+        }
+      } catch (error) {
+        console.warn('[handleInputChange] Currency conversion failed:', error);
+        toast({
+          title: language === 'es' ? 'Error de conversión' : 'Conversion error',
+          description: language === 'es'
+            ? 'No se pudo convertir el precio. Ingrese el valor manualmente.'
+            : 'Could not convert price. Please enter the value manually.',
+          variant: 'destructive'
+        });
+      }
+    }
     setProductForm(prev => ({ ...prev, [field]: value }));
-  };
+  }, [productForm?.basePrice, originalCurrencyId, convertAmountAsync, getCurrencyById, language]);
 
   const openNewProductForm = () => {
     console.log('[openNewProductForm] START - Opening new product form');
+    const defaultCurrencyId = baseCurrencyId || '';
     setProductForm({
       id: null,
       name_es: '',
@@ -127,19 +164,21 @@ const VendorInventoryTab = ({
       description_es: '',
       description_en: '',
       basePrice: '',
-      base_currency_id: baseCurrencyId || '',
+      base_currency_id: defaultCurrencyId,
       category: '',
       stock: '',
       min_stock_alert: '',
       expiryDate: '',
       image: ''
     });
+    setOriginalCurrencyId(defaultCurrencyId); // Set original currency for new products
     setProductImagePreview(null);
     console.log('[openNewProductForm] SUCCESS - Form initialized');
   };
 
   const openEditProductForm = (product) => {
     console.log('[openEditProductForm] START - Input:', { productId: product.id, productName: product.name_es || product.name });
+    const productCurrencyId = product.base_currency_id || baseCurrencyId || '';
     setProductForm({
       id: product.id,
       name_es: product.name_es || product.name || '',
@@ -148,7 +187,7 @@ const VendorInventoryTab = ({
       description_en: product.description_en || '',
       basePrice: product.base_price || product.basePrice || '',
       profitMargin: product.profit_margin || 40,
-      base_currency_id: product.base_currency_id || baseCurrencyId || '',
+      base_currency_id: productCurrencyId,
       category: product.category?.id || product.category_id || '',
       stock: product.stock || '',
       min_stock_alert: product.min_stock_alert || '',
@@ -156,6 +195,7 @@ const VendorInventoryTab = ({
       image: product.image_url || product.image_file || product.image || '',
       sku: product.sku || ''
     });
+    setOriginalCurrencyId(productCurrencyId); // Track original currency for conversion
     setProductImagePreview(product.image_url || product.image_file || product.image || null);
     console.log('[openEditProductForm] SUCCESS - Form populated for editing');
   };
