@@ -96,7 +96,8 @@ CREATE OR REPLACE FUNCTION public.set_business_status(
   p_is_open boolean,
   p_message_es text DEFAULT NULL,
   p_message_en text DEFAULT NULL,
-  p_expected_reopen_at timestamptz DEFAULT NULL
+  p_expected_reopen_at timestamptz DEFAULT NULL,
+  p_auto_reopen boolean DEFAULT false
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -121,6 +122,7 @@ BEGIN
   WHERE key = 'business_status';
 
   -- Build new status
+  -- auto_reopen is true only if closing AND a reopen time is set
   v_new_status := jsonb_build_object(
     'is_open', p_is_open,
     'closed_message_es', COALESCE(p_message_es, v_current_status->>'closed_message_es'),
@@ -128,7 +130,11 @@ BEGIN
     'closed_by', CASE WHEN p_is_open THEN NULL ELSE v_user_id::text END,
     'closed_at', CASE WHEN p_is_open THEN NULL ELSE now()::text END,
     'expected_reopen_at', CASE WHEN p_is_open THEN NULL ELSE p_expected_reopen_at::text END,
-    'auto_reopen', COALESCE((v_current_status->>'auto_reopen')::boolean, false)
+    'auto_reopen', CASE
+      WHEN p_is_open THEN false
+      WHEN p_expected_reopen_at IS NOT NULL THEN p_auto_reopen
+      ELSE false
+    END
   );
 
   -- Update the config

@@ -90,6 +90,7 @@ const SettingsPageBusiness = () => {
   const [closedMessageEs, setClosedMessageEs] = useState('');
   const [closedMessageEn, setClosedMessageEn] = useState('');
   const [expectedReopenAt, setExpectedReopenAt] = useState('');
+  const [autoReopen, setAutoReopen] = useState(true); // Auto-reopen when time is reached
 
   // Global pricing state
   const [globalPricing, setGlobalPricingState] = useState(null);
@@ -116,6 +117,7 @@ const SettingsPageBusiness = () => {
         setClosedMessageEs(status?.closed_message_es || '');
         setClosedMessageEn(status?.closed_message_en || '');
         setExpectedReopenAt(status?.expected_reopen_at || '');
+        setAutoReopen(status?.auto_reopen !== false);
 
         setGlobalPricingState(pricing);
         setPriceMultiplier(pricing?.price_multiplier || 1.0);
@@ -164,17 +166,33 @@ const SettingsPageBusiness = () => {
       await setBusinessStatus(newIsOpen, {
         messageEs: closedMessageEs,
         messageEn: closedMessageEn,
-        expectedReopenAt: expectedReopenAt ? new Date(expectedReopenAt) : null
+        expectedReopenAt: expectedReopenAt ? new Date(expectedReopenAt) : null,
+        autoReopen: autoReopen && !!expectedReopenAt // Only auto-reopen if time is set
       });
 
       setIsOpen(newIsOpen);
+
+      // Build description message
+      let description;
+      if (newIsOpen) {
+        description = language === 'es'
+          ? 'Los clientes pueden realizar pedidos nuevamente'
+          : 'Customers can place orders again';
+      } else if (expectedReopenAt && autoReopen) {
+        description = language === 'es'
+          ? `Reabrirá automáticamente el ${formatDate(expectedReopenAt)}`
+          : `Will auto-reopen on ${formatDate(expectedReopenAt)}`;
+      } else {
+        description = language === 'es'
+          ? 'Los clientes verán el mensaje de cierre'
+          : 'Customers will see the closed message';
+      }
+
       toast({
         title: newIsOpen
           ? (language === 'es' ? '¡Negocio Abierto!' : 'Business Open!')
           : (language === 'es' ? 'Negocio Cerrado' : 'Business Closed'),
-        description: newIsOpen
-          ? (language === 'es' ? 'Los clientes pueden realizar pedidos nuevamente' : 'Customers can place orders again')
-          : (language === 'es' ? 'Los clientes verán el mensaje de cierre' : 'Customers will see the closed message')
+        description
       });
     } catch (error) {
       console.error('Failed to update business status:', error);
@@ -355,17 +373,41 @@ const SettingsPageBusiness = () => {
           </div>
 
           {/* Expected Reopen */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+          <div className="space-y-3">
+            <label className="block text-sm font-medium text-gray-700 flex items-center gap-2">
               <Calendar className="w-4 h-4" />
-              {language === 'es' ? 'Reapertura esperada (opcional)' : 'Expected reopen (optional)'}
+              {language === 'es' ? 'Reapertura programada (opcional)' : 'Scheduled reopen (optional)'}
             </label>
-            <input
-              type="datetime-local"
-              value={expectedReopenAt}
-              onChange={(e) => setExpectedReopenAt(e.target.value)}
-              className="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+            <div className="flex flex-col sm:flex-row gap-4 items-start">
+              <input
+                type="datetime-local"
+                value={expectedReopenAt}
+                onChange={(e) => setExpectedReopenAt(e.target.value)}
+                className="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              {expectedReopenAt && (
+                <label className="flex items-center gap-2 cursor-pointer bg-green-50 px-4 py-2 rounded-lg border border-green-200">
+                  <input
+                    type="checkbox"
+                    checked={autoReopen}
+                    onChange={(e) => setAutoReopen(e.target.checked)}
+                    className="w-5 h-5 text-green-600 rounded focus:ring-green-500"
+                  />
+                  <span className="text-sm text-green-800 font-medium">
+                    {language === 'es' ? 'Reabrir automáticamente' : 'Auto-reopen'}
+                  </span>
+                </label>
+              )}
+            </div>
+            <p className="text-xs text-gray-500">
+              {expectedReopenAt && autoReopen
+                ? (language === 'es'
+                    ? '✓ El negocio reabrirá automáticamente en la fecha/hora indicada'
+                    : '✓ Business will automatically reopen at the specified date/time')
+                : (language === 'es'
+                    ? 'Si no se establece fecha o no activa auto-reabrir, deberá reabrir manualmente'
+                    : 'If no date set or auto-reopen disabled, you must reopen manually')}
+            </p>
           </div>
 
           {/* Save Messages Button */}

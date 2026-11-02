@@ -24,13 +24,28 @@ let globalPricingCacheTime = 0;
 
 /**
  * Get current business status
+ * Automatically reopens if expected_reopen_at has passed and auto_reopen is true
  * @returns {Promise<Object>} Business status object
  */
 export const getBusinessStatus = async () => {
   try {
     // Check cache first
     if (businessStatusCache && Date.now() - businessStatusCacheTime < CACHE_TTL) {
-      return businessStatusCache;
+      // Even with cache, check for auto-reopen
+      const status = businessStatusCache;
+      if (status && !status.is_open && status.auto_reopen && status.expected_reopen_at) {
+        const reopenTime = new Date(status.expected_reopen_at).getTime();
+        if (Date.now() >= reopenTime) {
+          // Time to auto-reopen - trigger it
+          await triggerAutoReopen();
+          // Clear cache to get fresh status
+          businessStatusCache = null;
+        } else {
+          return status;
+        }
+      } else {
+        return status;
+      }
     }
 
     const { data, error } = await supabase
@@ -48,13 +63,35 @@ export const getBusinessStatus = async () => {
           closed_message_en: 'We are temporarily closed.',
           closed_by: null,
           closed_at: null,
-          expected_reopen_at: null
+          expected_reopen_at: null,
+          auto_reopen: false
         };
       }
       throw parseSupabaseError(error);
     }
 
-    businessStatusCache = data?.value_json || { is_open: true };
+    const status = data?.value_json || { is_open: true };
+
+    // Check if we need to auto-reopen
+    if (!status.is_open && status.auto_reopen && status.expected_reopen_at) {
+      const reopenTime = new Date(status.expected_reopen_at).getTime();
+      if (Date.now() >= reopenTime) {
+        // Time to auto-reopen
+        await triggerAutoReopen();
+        // Fetch fresh status after reopen
+        const { data: freshData } = await supabase
+          .from('system_config')
+          .select('value_json')
+          .eq('key', 'business_status')
+          .single();
+
+        businessStatusCache = freshData?.value_json || { is_open: true };
+        businessStatusCacheTime = Date.now();
+        return businessStatusCache;
+      }
+    }
+
+    businessStatusCache = status;
     businessStatusCacheTime = Date.now();
 
     return businessStatusCache;
@@ -63,6 +100,38 @@ export const getBusinessStatus = async () => {
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getBusinessStatus' });
     logError(appError, { operation: 'getBusinessStatus' });
     throw appError;
+  }
+};
+
+/**
+ * Trigger automatic reopening of the business
+ * Called when expected_reopen_at time has passed
+ */
+const triggerAutoReopen = async () => {
+  try {
+    // Update directly without RPC (auto-reopen doesn't need super_admin check)
+    const { error } = await supabase
+      .from('system_config')
+      .update({
+        value_json: {
+          is_open: true,
+          closed_message_es: businessStatusCache?.closed_message_es || 'Estamos temporalmente cerrados.',
+          closed_message_en: businessStatusCache?.closed_message_en || 'We are temporarily closed.',
+          closed_by: null,
+          closed_at: null,
+          expected_reopen_at: null,
+          auto_reopen: false,
+          auto_reopened_at: new Date().toISOString()
+        },
+        updated_at: new Date().toISOString()
+      })
+      .eq('key', 'business_status');
+
+    if (error) {
+      logError(error, { operation: 'triggerAutoReopen' });
+    }
+  } catch (error) {
+    logError(error, { operation: 'triggerAutoReopen' });
   }
 };
 
@@ -88,15 +157,20 @@ export const isBusinessOpen = async () => {
  * @param {string} [options.messageEs] - Spanish closed message
  * @param {string} [options.messageEn] - English closed message
  * @param {Date} [options.expectedReopenAt] - Expected reopen time
+ * @param {boolean} [options.autoReopen] - Auto-reopen when expectedReopenAt is reached
  * @returns {Promise<Object>} Updated business status
  */
 export const setBusinessStatus = async (isOpen, options = {}) => {
   try {
+    // Determine auto_reopen: true if closing with a reopen time set
+    const autoReopen = !isOpen && options.expectedReopenAt ? (options.autoReopen !== false) : false;
+
     const { data, error } = await supabase.rpc('set_business_status', {
       p_is_open: isOpen,
       p_message_es: options.messageEs || null,
       p_message_en: options.messageEn || null,
-      p_expected_reopen_at: options.expectedReopenAt || null
+      p_expected_reopen_at: options.expectedReopenAt || null,
+      p_auto_reopen: autoReopen
     });
 
     if (error) {
