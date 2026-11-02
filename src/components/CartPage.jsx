@@ -22,7 +22,7 @@ import { calculateOrderTotal } from '@/lib/priceCalculationService';
 import { validateAndGetOffer, recordOfferUsage } from '@/lib/orderDiscountService';
 import { buildDiscountBreakdown } from '@/lib/discountDisplayService';
 import { logActivity } from '@/lib/activityLogger';
-import { getGlobalPricing, isBusinessOpen } from '@/lib/businessStatusService';
+import { getGlobalPricing, isBusinessOpen, subscribeToBusinessStatus } from '@/lib/businessStatusService';
 import RecipientSelector from '@/components/RecipientSelector';
 import ZelleAccountSelector from '@/components/ZelleAccountSelector';
 import ZelleAccountAlert from '@/components/ZelleAccountAlert';
@@ -180,7 +180,7 @@ const CartPage = ({ onNavigate }) => {
     }
   }, [isAuthenticated, cart.length, t]);
 
-  // Load global pricing and business status
+  // Load global pricing and business status with realtime updates
   useEffect(() => {
     const loadGlobalPricing = async () => {
       try {
@@ -197,6 +197,13 @@ const CartPage = ({ onNavigate }) => {
       }
     };
     loadGlobalPricing();
+
+    // Subscribe to business status changes (e.g., admin closes business while user is checking out)
+    const unsubscribe = subscribeToBusinessStatus((newStatus) => {
+      setBusinessOpen(newStatus?.is_open !== false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   // Load municipalities when province changes
@@ -659,6 +666,18 @@ const CartPage = ({ onNavigate }) => {
   };
 
   const handleConfirmPayment = async () => {
+    // Check if business is open before processing order
+    if (!businessOpen) {
+      toast({
+        title: language === 'es' ? 'Negocio Cerrado' : 'Business Closed',
+        description: language === 'es'
+          ? 'No podemos procesar pedidos en este momento. Por favor intenta más tarde.'
+          : 'We cannot process orders at this time. Please try again later.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     if (!paymentProof) {
       toast({
         title: language === 'es' ? 'Comprobante requerido' : 'Proof required',
@@ -987,6 +1006,25 @@ const CartPage = ({ onNavigate }) => {
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="glass-effect p-8 rounded-2xl">
           <h1 className="text-3xl font-bold mb-6" style={getHeadingStyle(visualSettings)}>{t('cart.payment.title')}</h1>
 
+          {/* Business Closed Warning */}
+          {!businessOpen && (
+            <div className="p-4 rounded-lg mb-6 bg-red-100 border-2 border-red-500 text-red-800">
+              <div className="flex items-center gap-2">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <h3 className="font-bold text-lg">
+                  {language === 'es' ? 'Negocio Temporalmente Cerrado' : 'Business Temporarily Closed'}
+                </h3>
+              </div>
+              <p className="mt-2 text-sm">
+                {language === 'es'
+                  ? 'No podemos procesar pedidos en este momento. Por favor vuelve más tarde.'
+                  : 'We cannot process orders at this time. Please come back later.'}
+              </p>
+            </div>
+          )}
+
           <div
             className="p-4 rounded-lg mb-6"
             style={getAlertStyle(visualSettings, 'info')}
@@ -1237,7 +1275,7 @@ const CartPage = ({ onNavigate }) => {
               className="flex-1"
               size="lg"
               style={getPrimaryButtonStyle(visualSettings)}
-              disabled={!paymentProof || uploadingProof || processingPayment}
+              disabled={!paymentProof || uploadingProof || processingPayment || !businessOpen}
             >
               {processingPayment ? (
                 language === 'es' ? 'Procesando...' : 'Processing...'
