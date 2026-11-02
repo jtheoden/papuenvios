@@ -56,10 +56,12 @@ VALUES (
     "base_currency": "USD",
     "show_market_rate_to_admin": true,
     "profit_margin_visible": true,
+    "min_profit_margin_percent": 5,
+    "warn_margin_threshold_percent": 10,
     "last_updated_by": null,
     "last_updated_at": null
   }'::jsonb,
-  'Order pricing configuration. Controls how orders and combos calculate prices using exchange rates.',
+  'Order pricing configuration. Controls how orders and combos calculate prices using exchange rates. Warns when profit margin falls below threshold.',
   false
 )
 ON CONFLICT (key) DO UPDATE SET
@@ -197,10 +199,89 @@ END;
 $$;
 
 -- ============================================================================
--- 10. GRANT PERMISSIONS
+-- 10. CREATE FUNCTION TO CHECK PROFIT MARGIN WARNINGS
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.check_rate_profit_warnings()
+RETURNS TABLE (
+  from_currency text,
+  to_currency text,
+  market_rate numeric,
+  public_rate numeric,
+  spread_percent numeric,
+  warning_level text,
+  warning_message text
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+DECLARE
+  v_min_margin numeric;
+  v_warn_threshold numeric;
+BEGIN
+  -- Only super_admin can see warnings
+  IF NOT is_super_admin() THEN
+    RETURN;
+  END IF;
+
+  -- Get thresholds from config
+  SELECT
+    COALESCE((value_json->>'min_profit_margin_percent')::numeric, 5),
+    COALESCE((value_json->>'warn_margin_threshold_percent')::numeric, 10)
+  INTO v_min_margin, v_warn_threshold
+  FROM system_config
+  WHERE key = 'order_pricing';
+
+  -- Return rates with warnings
+  RETURN QUERY
+  SELECT
+    fc.code as from_currency,
+    tc.code as to_currency,
+    er.market_rate,
+    er.rate as public_rate,
+    CASE
+      WHEN er.market_rate = 0 THEN 0
+      ELSE ROUND(((er.rate - er.market_rate) / er.market_rate) * 100, 2)
+    END as spread_percent,
+    CASE
+      WHEN er.rate < er.market_rate THEN 'critical'
+      WHEN er.rate = er.market_rate THEN 'danger'
+      WHEN ((er.rate - er.market_rate) / NULLIF(er.market_rate, 0)) * 100 < v_min_margin THEN 'danger'
+      WHEN ((er.rate - er.market_rate) / NULLIF(er.market_rate, 0)) * 100 < v_warn_threshold THEN 'warning'
+      ELSE 'ok'
+    END as warning_level,
+    CASE
+      WHEN er.rate < er.market_rate THEN 'LOSS: Public rate below market rate!'
+      WHEN er.rate = er.market_rate THEN 'No profit margin!'
+      WHEN ((er.rate - er.market_rate) / NULLIF(er.market_rate, 0)) * 100 < v_min_margin THEN 'Profit margin below minimum!'
+      WHEN ((er.rate - er.market_rate) / NULLIF(er.market_rate, 0)) * 100 < v_warn_threshold THEN 'Low profit margin'
+      ELSE NULL
+    END as warning_message
+  FROM exchange_rates er
+  JOIN currencies fc ON er.from_currency_id = fc.id
+  JOIN currencies tc ON er.to_currency_id = tc.id
+  WHERE er.is_active = true
+    AND (
+      er.rate <= er.market_rate
+      OR ((er.rate - er.market_rate) / NULLIF(er.market_rate, 0)) * 100 < v_warn_threshold
+    )
+  ORDER BY
+    CASE
+      WHEN er.rate < er.market_rate THEN 1
+      WHEN er.rate = er.market_rate THEN 2
+      ELSE 3
+    END,
+    spread_percent ASC;
+END;
+$$;
+
+-- ============================================================================
+-- 11. GRANT PERMISSIONS
 -- ============================================================================
 GRANT EXECUTE ON FUNCTION public.get_order_exchange_rate(text, text) TO authenticated, anon;
 GRANT EXECUTE ON FUNCTION public.get_market_exchange_rate(text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_rate_spread(text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.check_rate_profit_warnings() TO authenticated;
 
 COMMIT;
