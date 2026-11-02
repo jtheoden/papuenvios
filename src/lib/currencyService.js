@@ -655,6 +655,8 @@ export const getAllExchangeRates = async () => {
       .select(`
         id,
         rate,
+        market_rate,
+        rate_type,
         effective_date,
         is_active,
         from_currency_id,
@@ -703,12 +705,17 @@ export const saveExchangeRate = async (rateData) => {
       throw createValidationError({ rate: 'Rate must be a valid number' }, 'Invalid rate format');
     }
 
+    // market_rate defaults to rate if not provided
+    const publicRate = parseFloat(rateData.rate);
+    const marketRate = rateData.marketRate ? parseFloat(rateData.marketRate) : publicRate;
+
     const { data, error } = await supabase
       .from('exchange_rates')
       .upsert({
         from_currency_id: rateData.fromCurrencyId,
         to_currency_id: rateData.toCurrencyId,
-        rate: parseFloat(rateData.rate),
+        rate: publicRate,
+        market_rate: marketRate,
         effective_date: rateData.effectiveDate || new Date().toISOString().split('T')[0],
         is_active: true
       }, {
@@ -775,12 +782,13 @@ export const deleteExchangeRate = async (rateId) => {
  * Update exchange rate pair - updates both direct and inverse rate (ADMIN ONLY)
  * @param {string} fromCurrencyId - From currency UUID
  * @param {string} toCurrencyId - To currency UUID
- * @param {number} newRate - New exchange rate value (for direct rate, inverse is calculated)
+ * @param {number} newRate - New public exchange rate value (for direct rate, inverse is calculated)
  * @param {string} [effectiveDate] - Effective date (defaults to today)
+ * @param {number} [newMarketRate] - New market rate value (internal cost, optional)
  * @returns {Promise<{updatedCount: number}>} Number of rates updated
  * @throws {AppError} DB_ERROR on failure
  */
-export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRate, effectiveDate) => {
+export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRate, effectiveDate, newMarketRate) => {
   try {
     if (!fromCurrencyId || !toCurrencyId) {
       throw createValidationError({
@@ -794,13 +802,15 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
     }
 
     const rate = parseFloat(newRate);
+    const marketRate = newMarketRate ? parseFloat(newMarketRate) : rate;
     const inverseRate = 1 / rate;
+    const inverseMarketRate = 1 / marketRate;
     const effDate = effectiveDate || new Date().toISOString().split('T')[0];
 
     // Update direct rate (from→to)
     const { error: directError } = await supabase
       .from('exchange_rates')
-      .update({ rate: rate, effective_date: effDate })
+      .update({ rate: rate, market_rate: marketRate, effective_date: effDate })
       .eq('from_currency_id', fromCurrencyId)
       .eq('to_currency_id', toCurrencyId)
       .eq('is_active', true);
@@ -812,7 +822,7 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
     // Update inverse rate (to→from)
     const { error: inverseError } = await supabase
       .from('exchange_rates')
-      .update({ rate: inverseRate, effective_date: effDate })
+      .update({ rate: inverseRate, market_rate: inverseMarketRate, effective_date: effDate })
       .eq('from_currency_id', toCurrencyId)
       .eq('to_currency_id', fromCurrencyId)
       .eq('is_active', true);

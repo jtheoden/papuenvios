@@ -154,11 +154,12 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   const [exchangeRates, setExchangeRates] = useState([]);
   const [loadingRates2, setLoadingRates2] = useState(false);
   const [showAddRate, setShowAddRate] = useState(false);
-  const [editingRatePair, setEditingRatePair] = useState(null); // { fromCurrencyId, toCurrencyId, rate, effectiveDate }
+  const [editingRatePair, setEditingRatePair] = useState(null); // { fromCurrencyId, toCurrencyId, rate, marketRate, effectiveDate }
   const [newRate, setNewRate] = useState({
-    fromCurrencyId: '', toCurrencyId: '', rate: '',
+    fromCurrencyId: '', toCurrencyId: '', rate: '', marketRate: '',
     effectiveDate: new Date().toISOString().split('T')[0]
   });
+  const [profitWarnings, setProfitWarnings] = useState([]);
 
   // Check if exchange rate pair already exists (including inverse)
   const duplicateRateInfo = useMemo(() => {
@@ -224,7 +225,22 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
     loadCurrencies();
     loadOfficialRates();
     loadExchangeRates();
+    loadProfitWarnings();
   }, []);
+
+  // Load profit margin warnings
+  const loadProfitWarnings = async () => {
+    try {
+      const { data, error } = await supabase.rpc('check_rate_profit_warnings');
+      if (error) {
+        console.error('Error loading profit warnings:', error);
+        return;
+      }
+      setProfitWarnings(data || []);
+    } catch (error) {
+      console.error('Error loading profit warnings:', error);
+    }
+  };
 
   // ===== FINANCIAL HANDLERS =====
   const handleFinancialSave = () => {
@@ -414,6 +430,22 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       return;
     }
 
+    // Market rate is optional - defaults to public rate if not set
+    const marketRateValue = newRate.marketRate ? parseFloat(newRate.marketRate) : parseFloat(newRate.rate);
+    const publicRateValue = parseFloat(newRate.rate);
+
+    // Validate public rate >= market rate
+    if (publicRateValue < marketRateValue) {
+      toast({
+        title: t('common.error'),
+        description: language === 'es'
+          ? 'La tasa pública debe ser mayor o igual que la tasa de mercado'
+          : 'Public rate must be greater than or equal to market rate',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     if (newRate.fromCurrencyId === newRate.toCurrencyId) {
       toast({
         title: t('common.error'),
@@ -436,22 +468,32 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
     }
 
     try {
-      const result = await saveExchangeRate(newRate);
+      const rateData = {
+        ...newRate,
+        marketRate: marketRateValue.toString()
+      };
+      const result = await saveExchangeRate(rateData);
       if (result.error) throw result.error;
+
+      // Calculate inverse rates
+      const inversePublicRate = 1 / publicRateValue;
+      const inverseMarketRate = 1 / marketRateValue;
 
       const inverseRate = {
         fromCurrencyId: newRate.toCurrencyId,
         toCurrencyId: newRate.fromCurrencyId,
-        rate: (1 / parseFloat(newRate.rate)).toString(),
+        rate: inversePublicRate.toString(),
+        marketRate: inverseMarketRate.toString(),
         effectiveDate: newRate.effectiveDate
       };
       const inverseResult = await saveExchangeRate(inverseRate);
       if (inverseResult.error) throw inverseResult.error;
 
       await loadExchangeRates();
+      await loadProfitWarnings();
       setShowAddRate(false);
       setNewRate({
-        fromCurrencyId: '', toCurrencyId: '', rate: '',
+        fromCurrencyId: '', toCurrencyId: '', rate: '', marketRate: '',
         effectiveDate: new Date().toISOString().split('T')[0]
       });
 
@@ -528,6 +570,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       fromCurrencyId: pair.directRate.from_currency_id,
       toCurrencyId: pair.directRate.to_currency_id,
       rate: pair.directRate.rate,
+      marketRate: pair.directRate.market_rate || pair.directRate.rate,
       effectiveDate: pair.effectiveDate || new Date().toISOString().split('T')[0],
       fromCurrency: pair.fromCurrency,
       toCurrency: pair.toCurrency
@@ -546,16 +589,33 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       return;
     }
 
+    const marketRateValue = editingRatePair.marketRate ? parseFloat(editingRatePair.marketRate) : parseFloat(editingRatePair.rate);
+    const publicRateValue = parseFloat(editingRatePair.rate);
+
+    // Validate public rate >= market rate
+    if (publicRateValue < marketRateValue) {
+      toast({
+        title: t('common.error'),
+        description: language === 'es'
+          ? 'La tasa pública debe ser mayor o igual que la tasa de mercado'
+          : 'Public rate must be greater than or equal to market rate',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     try {
       const result = await updateExchangeRatePair(
         editingRatePair.fromCurrencyId,
         editingRatePair.toCurrencyId,
         editingRatePair.rate,
-        editingRatePair.effectiveDate
+        editingRatePair.effectiveDate,
+        marketRateValue.toString()
       );
       if (result.error) throw result.error;
 
       await loadExchangeRates();
+      await loadProfitWarnings();
       setEditingRatePair(null);
       toast({
         title: language === 'es' ? 'Par de tasas actualizado' : 'Rate pair updated',
@@ -877,23 +937,23 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
               <div className="text-sm text-blue-800">
                 {language === 'es' ? (
                   <>
-                    <strong>Ejemplo:</strong> Si 1 USD = 430 CUP, ingresa 430 como tasa.
-                    El sistema creará automáticamente la tasa inversa (1 CUP = 0.0023 USD).
+                    <strong>Tasas duales:</strong> La <span className="font-semibold text-amber-700">tasa de mercado</span> es el costo interno (lo que pagas).
+                    La <span className="font-semibold text-green-700">tasa pública</span> es lo que ven los clientes.
                     <br />
-                    <span className="text-blue-600 mt-1 block">Solo se permite una tasa por par de monedas.</span>
+                    <span className="text-blue-600 mt-1 block">La diferencia es tu margen de ganancia. Si la tasa de mercado queda vacía, se usa la tasa pública.</span>
                   </>
                 ) : (
                   <>
-                    <strong>Example:</strong> If 1 USD = 430 CUP, enter 430 as the rate.
-                    The system will automatically create the inverse rate (1 CUP = 0.0023 USD).
+                    <strong>Dual rates:</strong> The <span className="font-semibold text-amber-700">market rate</span> is your internal cost (what you pay).
+                    The <span className="font-semibold text-green-700">public rate</span> is what customers see.
                     <br />
-                    <span className="text-blue-600 mt-1 block">Only one rate per currency pair is allowed.</span>
+                    <span className="text-blue-600 mt-1 block">The difference is your profit margin. If market rate is empty, it uses the public rate.</span>
                   </>
                 )}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
               <div>
                 <label className="block text-sm font-medium mb-1">
                   {t('settings.financial.fromCurrency')}
@@ -926,19 +986,6 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">
-                  {t('settings.financial.rate')}
-                </label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  value={newRate.rate}
-                  onChange={e => setNewRate({ ...newRate, rate: e.target.value })}
-                  placeholder="1.0000"
-                  className="input-style w-full"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">
                   {t('settings.financial.effectiveDate')}
                 </label>
                 <input
@@ -947,6 +994,42 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                   onChange={e => setNewRate({ ...newRate, effectiveDate: e.target.value })}
                   className="input-style w-full"
                 />
+              </div>
+            </div>
+
+            {/* Dual rates: Market Rate and Public Rate */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-sm font-medium mb-1 text-amber-700">
+                  {language === 'es' ? 'Tasa de Mercado (Costo Interno)' : 'Market Rate (Internal Cost)'}
+                </label>
+                <input
+                  type="number"
+                  step="0.0001"
+                  value={newRate.marketRate}
+                  onChange={e => setNewRate({ ...newRate, marketRate: e.target.value })}
+                  placeholder={language === 'es' ? 'Opcional - Lo que pagas' : 'Optional - What you pay'}
+                  className="input-style w-full border-amber-300 focus:border-amber-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {language === 'es' ? 'Si está vacío, se usa la tasa pública' : 'If empty, uses public rate'}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-green-700">
+                  {language === 'es' ? 'Tasa Pública (Para Clientes)' : 'Public Rate (For Customers)'} *
+                </label>
+                <input
+                  type="number"
+                  step="0.0001"
+                  value={newRate.rate}
+                  onChange={e => setNewRate({ ...newRate, rate: e.target.value })}
+                  placeholder="1.0000"
+                  className="input-style w-full border-green-300 focus:border-green-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {language === 'es' ? 'Lo que ven los clientes' : 'What customers see'}
+                </p>
               </div>
             </div>
 
@@ -959,16 +1042,58 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="bg-green-50 border border-green-200 rounded p-2">
+                    <span className="text-xs text-green-600 block mb-1">{language === 'es' ? 'Tasa pública' : 'Public rate'}</span>
                     <span className="font-mono text-green-800">
                       1 {fromCurrency.code} = {parseFloat(newRate.rate).toFixed(4)} {toCurrency.code}
                     </span>
                   </div>
-                  <div className="bg-blue-50 border border-blue-200 rounded p-2">
-                    <span className="font-mono text-blue-800">
-                      1 {toCurrency.code} = {inverseRate?.toFixed(6)} {fromCurrency.code}
+                  {newRate.marketRate && (
+                    <div className="bg-amber-50 border border-amber-200 rounded p-2">
+                      <span className="text-xs text-amber-600 block mb-1">{language === 'es' ? 'Tasa de mercado' : 'Market rate'}</span>
+                      <span className="font-mono text-amber-800">
+                        1 {fromCurrency.code} = {parseFloat(newRate.marketRate).toFixed(4)} {toCurrency.code}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Profit margin calculation */}
+                {newRate.marketRate && parseFloat(newRate.marketRate) > 0 && (
+                  <div className={`mt-3 p-2 rounded ${
+                    parseFloat(newRate.rate) < parseFloat(newRate.marketRate)
+                      ? 'bg-red-100 border border-red-300'
+                      : parseFloat(newRate.rate) === parseFloat(newRate.marketRate)
+                        ? 'bg-yellow-100 border border-yellow-300'
+                        : 'bg-green-100 border border-green-300'
+                  }`}>
+                    <span className="text-sm font-medium">
+                      {language === 'es' ? 'Margen de ganancia: ' : 'Profit margin: '}
+                      <span className={`font-bold ${
+                        parseFloat(newRate.rate) < parseFloat(newRate.marketRate)
+                          ? 'text-red-700'
+                          : parseFloat(newRate.rate) === parseFloat(newRate.marketRate)
+                            ? 'text-yellow-700'
+                            : 'text-green-700'
+                      }`}>
+                        {(((parseFloat(newRate.rate) - parseFloat(newRate.marketRate)) / parseFloat(newRate.marketRate)) * 100).toFixed(2)}%
+                      </span>
                     </span>
-                    <span className="text-xs text-blue-600 ml-2">({language === 'es' ? 'inversa automática' : 'auto inverse'})</span>
+                    {parseFloat(newRate.rate) < parseFloat(newRate.marketRate) && (
+                      <span className="text-xs text-red-600 block mt-1">
+                        {language === 'es' ? '⚠️ PÉRDIDA: Tasa pública menor que tasa de mercado' : '⚠️ LOSS: Public rate is below market rate'}
+                      </span>
+                    )}
+                    {parseFloat(newRate.rate) === parseFloat(newRate.marketRate) && (
+                      <span className="text-xs text-yellow-600 block mt-1">
+                        {language === 'es' ? '⚠️ Sin margen de ganancia' : '⚠️ No profit margin'}
+                      </span>
+                    )}
                   </div>
+                )}
+
+                <div className="mt-3 text-xs text-gray-500">
+                  <span>{language === 'es' ? 'Tasa inversa automática: ' : 'Auto inverse rate: '}</span>
+                  <span className="font-mono">1 {toCurrency.code} = {inverseRate?.toFixed(6)} {fromCurrency.code}</span>
                 </div>
               </div>
             )}
@@ -1011,10 +1136,23 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
               </span>
             </h4>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
               <div>
-                <label className="block text-sm font-medium mb-1">
-                  {language === 'es' ? 'Nueva Tasa' : 'New Rate'} (1 {editingRatePair.fromCurrency?.code} = ? {editingRatePair.toCurrency?.code})
+                <label className="block text-sm font-medium mb-1 text-amber-700">
+                  {language === 'es' ? 'Tasa de Mercado (Costo)' : 'Market Rate (Cost)'}
+                </label>
+                <input
+                  type="number"
+                  step="0.0001"
+                  value={editingRatePair.marketRate}
+                  onChange={e => setEditingRatePair({ ...editingRatePair, marketRate: e.target.value })}
+                  placeholder="1.0000"
+                  className="input-style w-full border-amber-300"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-green-700">
+                  {language === 'es' ? 'Tasa Pública' : 'Public Rate'} (1 {editingRatePair.fromCurrency?.code} = ? {editingRatePair.toCurrency?.code})
                 </label>
                 <input
                   type="number"
@@ -1022,7 +1160,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                   value={editingRatePair.rate}
                   onChange={e => setEditingRatePair({ ...editingRatePair, rate: e.target.value })}
                   placeholder="1.0000"
-                  className="input-style w-full"
+                  className="input-style w-full border-green-300"
                 />
               </div>
               <div>
@@ -1038,24 +1176,45 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
               </div>
             </div>
 
-            {/* Preview of changes */}
+            {/* Preview of changes with profit margin */}
             {editingRatePair.rate && (
               <div className="bg-white border border-amber-200 rounded-lg p-3 mb-4">
                 <div className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
                   <ArrowRightLeft className="h-4 w-4 text-amber-600" />
                   {language === 'es' ? 'Vista previa de cambios:' : 'Preview of changes:'}
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="bg-green-50 border border-green-200 rounded p-2">
-                    <span className="font-mono text-green-800">
-                      1 {editingRatePair.fromCurrency?.code} = {parseFloat(editingRatePair.rate).toFixed(4)} {editingRatePair.toCurrency?.code}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="bg-amber-50 border border-amber-200 rounded p-2">
+                    <span className="text-xs text-amber-600 block mb-1">{language === 'es' ? 'Mercado' : 'Market'}</span>
+                    <span className="font-mono text-amber-800">
+                      {parseFloat(editingRatePair.marketRate || editingRatePair.rate).toFixed(4)}
                     </span>
                   </div>
-                  <div className="bg-blue-50 border border-blue-200 rounded p-2">
-                    <span className="font-mono text-blue-800">
+                  <div className="bg-green-50 border border-green-200 rounded p-2">
+                    <span className="text-xs text-green-600 block mb-1">{language === 'es' ? 'Pública' : 'Public'}</span>
+                    <span className="font-mono text-green-800">
+                      {parseFloat(editingRatePair.rate).toFixed(4)}
+                    </span>
+                  </div>
+                  {editingRatePair.marketRate && parseFloat(editingRatePair.marketRate) > 0 && (
+                    <div className={`rounded p-2 ${
+                      parseFloat(editingRatePair.rate) < parseFloat(editingRatePair.marketRate)
+                        ? 'bg-red-100 border border-red-300'
+                        : parseFloat(editingRatePair.rate) === parseFloat(editingRatePair.marketRate)
+                          ? 'bg-yellow-100 border border-yellow-300'
+                          : 'bg-blue-50 border border-blue-200'
+                    }`}>
+                      <span className="text-xs block mb-1">{language === 'es' ? 'Margen' : 'Margin'}</span>
+                      <span className="font-mono font-bold">
+                        {(((parseFloat(editingRatePair.rate) - parseFloat(editingRatePair.marketRate)) / parseFloat(editingRatePair.marketRate)) * 100).toFixed(2)}%
+                      </span>
+                    </div>
+                  )}
+                  <div className="bg-gray-50 border border-gray-200 rounded p-2">
+                    <span className="text-xs text-gray-600 block mb-1">{language === 'es' ? 'Inversa automática' : 'Auto inverse'}</span>
+                    <span className="font-mono text-gray-700 text-sm">
                       1 {editingRatePair.toCurrency?.code} = {(1 / parseFloat(editingRatePair.rate)).toFixed(6)} {editingRatePair.fromCurrency?.code}
                     </span>
-                    <span className="text-xs text-blue-600 ml-2">({language === 'es' ? 'inversa automática' : 'auto inverse'})</span>
                   </div>
                 </div>
               </div>
@@ -1077,6 +1236,47 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
               >
                 <span>{language === 'es' ? 'Cancelar' : 'Cancel'}</span>
               </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Profit Warnings Section */}
+        {profitWarnings.length > 0 && (
+          <div className="bg-red-50 border border-red-300 rounded-lg p-4 mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+              <h4 className="font-semibold text-red-800">
+                {language === 'es' ? 'Alertas de Margen de Ganancia' : 'Profit Margin Alerts'}
+              </h4>
+            </div>
+            <div className="space-y-2">
+              {profitWarnings.map((warning, idx) => (
+                <div
+                  key={idx}
+                  className={`p-2 rounded text-sm ${
+                    warning.warning_level === 'critical' ? 'bg-red-200 text-red-900' :
+                    warning.warning_level === 'danger' ? 'bg-orange-200 text-orange-900' :
+                    'bg-yellow-200 text-yellow-900'
+                  }`}
+                >
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="font-medium">
+                      {warning.from_currency} → {warning.to_currency}
+                    </span>
+                    <span className="font-mono text-xs">
+                      {language === 'es' ? 'Mercado' : 'Market'}: {Number(warning.market_rate).toFixed(4)} |
+                      {language === 'es' ? ' Público' : ' Public'}: {Number(warning.public_rate).toFixed(4)} |
+                      {language === 'es' ? ' Margen' : ' Margin'}: {warning.spread_percent}%
+                    </span>
+                  </div>
+                  <p className="text-xs mt-1 font-semibold">
+                    {warning.warning_level === 'critical' && '🔴 '}
+                    {warning.warning_level === 'danger' && '🟠 '}
+                    {warning.warning_level === 'warning' && '🟡 '}
+                    {warning.warning_message}
+                  </p>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -1106,34 +1306,78 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                       <span className="font-bold text-lg">{pair.toCurrency?.code}</span>
                     </div>
 
-                    {/* Direct rate */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <div className="bg-green-50 border border-green-200 rounded p-2">
-                        <span className="text-xs text-green-600 block mb-1">
-                          {language === 'es' ? 'Tasa directa' : 'Direct rate'}
+                    {/* Dual rates display */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                      {/* Market Rate (internal cost) */}
+                      <div className="bg-amber-50 border border-amber-200 rounded p-2">
+                        <span className="text-xs text-amber-600 block mb-1">
+                          {language === 'es' ? 'Tasa Mercado (Costo)' : 'Market Rate (Cost)'}
                         </span>
-                        <span className="font-mono text-green-800">
-                          1 {pair.fromCurrency?.code} = {Number(pair.directRate.rate).toFixed(4)} {pair.toCurrency?.code}
+                        <span className="font-mono text-amber-800">
+                          {pair.directRate.market_rate
+                            ? Number(pair.directRate.market_rate).toFixed(4)
+                            : Number(pair.directRate.rate).toFixed(4)
+                          }
                         </span>
                       </div>
 
+                      {/* Public Rate (customer facing) */}
+                      <div className="bg-green-50 border border-green-200 rounded p-2">
+                        <span className="text-xs text-green-600 block mb-1">
+                          {language === 'es' ? 'Tasa Pública' : 'Public Rate'}
+                        </span>
+                        <span className="font-mono text-green-800">
+                          {Number(pair.directRate.rate).toFixed(4)}
+                        </span>
+                      </div>
+
+                      {/* Profit Margin */}
+                      {pair.directRate.market_rate && (
+                        <div className={`rounded p-2 ${
+                          Number(pair.directRate.rate) < Number(pair.directRate.market_rate)
+                            ? 'bg-red-100 border border-red-300'
+                            : Number(pair.directRate.rate) === Number(pair.directRate.market_rate)
+                              ? 'bg-yellow-100 border border-yellow-300'
+                              : 'bg-blue-50 border border-blue-200'
+                        }`}>
+                          <span className={`text-xs block mb-1 ${
+                            Number(pair.directRate.rate) < Number(pair.directRate.market_rate)
+                              ? 'text-red-600'
+                              : Number(pair.directRate.rate) === Number(pair.directRate.market_rate)
+                                ? 'text-yellow-600'
+                                : 'text-blue-600'
+                          }`}>
+                            {language === 'es' ? 'Margen' : 'Margin'}
+                          </span>
+                          <span className={`font-mono font-bold ${
+                            Number(pair.directRate.rate) < Number(pair.directRate.market_rate)
+                              ? 'text-red-700'
+                              : Number(pair.directRate.rate) === Number(pair.directRate.market_rate)
+                                ? 'text-yellow-700'
+                                : 'text-blue-800'
+                          }`}>
+                            {(((Number(pair.directRate.rate) - Number(pair.directRate.market_rate)) / Number(pair.directRate.market_rate)) * 100).toFixed(2)}%
+                          </span>
+                        </div>
+                      )}
+
                       {/* Inverse rate */}
                       {pair.inverseRate ? (
-                        <div className="bg-blue-50 border border-blue-200 rounded p-2">
-                          <span className="text-xs text-blue-600 block mb-1">
-                            {language === 'es' ? 'Tasa inversa' : 'Inverse rate'}
+                        <div className="bg-gray-50 border border-gray-200 rounded p-2">
+                          <span className="text-xs text-gray-600 block mb-1">
+                            {language === 'es' ? 'Inversa' : 'Inverse'}
                           </span>
-                          <span className="font-mono text-blue-800">
+                          <span className="font-mono text-gray-700 text-sm">
                             1 {pair.toCurrency?.code} = {Number(pair.inverseRate.rate).toFixed(6)} {pair.fromCurrency?.code}
                           </span>
                         </div>
                       ) : (
-                        <div className="bg-amber-50 border border-amber-200 rounded p-2">
-                          <span className="text-xs text-amber-600 block mb-1">
-                            {language === 'es' ? 'Tasa inversa' : 'Inverse rate'}
+                        <div className="bg-gray-50 border border-gray-200 rounded p-2">
+                          <span className="text-xs text-gray-500 block mb-1">
+                            {language === 'es' ? 'Inversa' : 'Inverse'}
                           </span>
-                          <span className="text-amber-700 text-sm">
-                            {language === 'es' ? 'No configurada' : 'Not configured'}
+                          <span className="text-gray-400 text-sm">
+                            {language === 'es' ? 'No config.' : 'Not set'}
                           </span>
                         </div>
                       )}

@@ -1,10 +1,11 @@
 import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Edit, Save, AlertCircle, AlertTriangle, Box, Trash2, Eye, EyeOff, Loader2, Check, X } from 'lucide-react';
+import { Plus, Edit, Save, AlertCircle, AlertTriangle, Box, Trash2, Eye, EyeOff, Loader2, Check, X, DollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBusiness } from '@/contexts/BusinessContext';
+import { useCurrency } from '@/contexts/CurrencyContext';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { createCombo, updateCombo as updateComboDB, deleteCombo, setComboActiveState } from '@/lib/comboService';
@@ -31,11 +32,13 @@ const VendorCombosTab = ({
   const { t, language } = useLanguage();
   const { user } = useAuth();
   const { refreshCombos } = useBusiness();
+  const { convertAmountAsync, getCurrencyById } = useCurrency();
 
   const [comboForm, setComboForm] = useState(null);
   const [comboImagePreview, setComboImagePreview] = useState(null);
   const [processingComboId, setProcessingComboId] = useState(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState(null);
+  const [originalCurrencyId, setOriginalCurrencyId] = useState(null);
 
   // Refs for form focus and scroll
   const comboFormRef = useRef(null);
@@ -114,9 +117,11 @@ const VendorCombosTab = ({
       shipping: { type: 'paid', value: 0 },
       products: [],
       productQuantities: {},
-      image: ''
+      image: '',
+      base_currency_id: baseCurrencyId
     });
     setComboImagePreview(null);
+    setOriginalCurrencyId(baseCurrencyId);
     console.log('[openNewComboForm] SUCCESS - Form initialized');
     // Scroll to form and focus after state update
     scrollToFormAndFocus();
@@ -135,12 +140,15 @@ const VendorCombosTab = ({
     }
 
     console.log('[openEditComboForm] Parsed products:', { productCount: productIds.length, quantities: productQuantities });
+    const comboCurrencyId = combo.base_currency_id || baseCurrencyId;
     setComboForm({
       ...combo,
       products: productIds,
-      productQuantities: productQuantities
+      productQuantities: productQuantities,
+      base_currency_id: comboCurrencyId
     });
     setComboImagePreview(combo.image_url || combo.image || null);
+    setOriginalCurrencyId(comboCurrencyId);
     console.log('[openEditComboForm] SUCCESS - Form populated for editing');
     // Scroll to form and focus after state update
     scrollToFormAndFocus();
@@ -343,7 +351,8 @@ const VendorCombosTab = ({
         image: comboForm.image || '',
         productsWithQuantities: productsWithQuantities,
         profitMargin: parseFloat(comboForm.profitMargin || financialSettings.comboProfit),
-        slug: comboForm.name.toLowerCase().replace(/\s+/g, '-')
+        slug: comboForm.name.toLowerCase().replace(/\s+/g, '-'),
+        base_currency_id: comboForm.base_currency_id || baseCurrencyId
       };
 
       console.log('[handleComboSubmit] Combo data prepared:', { ...comboData, imageLength: comboData.image?.length || 0 });
@@ -375,6 +384,7 @@ const VendorCombosTab = ({
       await onCombosRefresh(true);
       setComboForm(null);
       setComboImagePreview(null);
+      setOriginalCurrencyId(null);
       console.log('[handleComboSubmit] Form reset and combos refreshed');
     } catch (error) {
       console.error('[handleComboSubmit] ERROR:', error);
@@ -477,6 +487,23 @@ const VendorCombosTab = ({
                 placeholder={`${t('vendor.combos.profitMargin')} (def: ${financialSettings.comboProfit}%)`}
                 className="w-full input-style mb-4"
               />
+
+              {/* Currency Selector */}
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <DollarSign className="inline h-4 w-4 mr-1" />
+                {language === 'es' ? 'Moneda del Combo' : 'Combo Currency'}
+              </label>
+              <select
+                value={comboForm.base_currency_id || ''}
+                onChange={e => setComboForm(prev => ({ ...prev, base_currency_id: e.target.value }))}
+                className="w-full input-style mb-4"
+              >
+                {currencies.map(currency => (
+                  <option key={currency.id} value={currency.id}>
+                    {currency.code} ({currency.symbol}) - {language === 'es' ? currency.name_es : currency.name_en}
+                  </option>
+                ))}
+              </select>
 
               {/* Image Preview */}
               {comboImagePreview && (
@@ -586,7 +613,7 @@ const VendorCombosTab = ({
 
           {/* Form Actions */}
           <div className="flex justify-end gap-4 mt-6">
-            <Button variant="outline" onClick={() => setComboForm(null)}>
+            <Button variant="outline" onClick={() => { setComboForm(null); setOriginalCurrencyId(null); }}>
               {t('common.cancel')}
             </Button>
             <Button onClick={handleComboSubmit} style={getPrimaryButtonStyle(visualSettings)}>

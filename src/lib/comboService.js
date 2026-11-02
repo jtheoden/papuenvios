@@ -146,18 +146,25 @@ export const createCombo = async (comboData) => {
     }
 
     // Create combo
+    const insertData = {
+      name_es: comboData.name,
+      name_en: comboData.name,
+      description_es: comboData.description || '',
+      description_en: comboData.description || '',
+      image_url: comboData.image || null,
+      base_total_price: baseTotalPrice,
+      profit_margin: parseFloat(comboData.profitMargin || DEFAULTS.COMBO_PROFIT_MARGIN),
+      is_active: true
+    };
+
+    // Include base_currency_id if provided
+    if (comboData.base_currency_id) {
+      insertData.base_currency_id = comboData.base_currency_id;
+    }
+
     const { data: combo, error: comboError } = await supabase
       .from('combo_products')
-      .insert([{
-        name_es: comboData.name,
-        name_en: comboData.name,
-        description_es: comboData.description || '',
-        description_en: comboData.description || '',
-        image_url: comboData.image || null,
-        base_total_price: baseTotalPrice,
-        profit_margin: parseFloat(comboData.profitMargin || DEFAULTS.COMBO_PROFIT_MARGIN),
-        is_active: true
-      }])
+      .insert([insertData])
       .select()
       .single();
 
@@ -245,6 +252,11 @@ export const updateCombo = async (comboId, comboData) => {
 
     if (baseTotalPrice !== undefined) {
       updateData.base_total_price = baseTotalPrice;
+    }
+
+    // Update base_currency_id if provided
+    if (comboData.base_currency_id) {
+      updateData.base_currency_id = comboData.base_currency_id;
     }
 
     const { data: combo, error: comboError } = await supabase
