@@ -13,6 +13,7 @@ import { checkComboStockIssues, computeComboPricing } from '@/lib/comboUtils';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { logActivity } from '@/lib/activityLogger';
 import { useRealtimeCombos } from '@/hooks/useRealtimeSubscription';
+import { getGlobalPricing } from '@/lib/businessStatusService';
 
 /**
  * Vendor Combos Tab Component
@@ -39,6 +40,7 @@ const VendorCombosTab = ({
   const [processingComboId, setProcessingComboId] = useState(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState(null);
   const [originalCurrencyId, setOriginalCurrencyId] = useState(null);
+  const [globalPricing, setGlobalPricing] = useState({ multiplier: 1.0, appliesToCombos: false });
 
   // Refs for form focus and scroll
   const comboFormRef = useRef(null);
@@ -76,6 +78,24 @@ const VendorCombosTab = ({
       }
     }
   });
+
+  // Load global pricing (multiplier) on mount
+  useEffect(() => {
+    const loadGlobalPricing = async () => {
+      try {
+        const pricing = await getGlobalPricing();
+        if (pricing) {
+          setGlobalPricing({
+            multiplier: pricing.price_multiplier || 1.0,
+            appliesToCombos: pricing.applies_to_combos === true
+          });
+        }
+      } catch (error) {
+        console.warn('[VendorCombosTab] Error loading global pricing:', error);
+      }
+    };
+    loadGlobalPricing();
+  }, []);
 
   const currencyCodeById = useMemo(() => {
     return (currencies || []).reduce((acc, currency) => {
@@ -592,21 +612,80 @@ const VendorCombosTab = ({
               </div>
             </div>
 
-            {/* Price Summary */}
+            {/* Price Summary - Enhanced with market rate and global multiplier */}
             <div className="md:col-span-2">
-              <div className="glass-effect p-4 rounded-lg text-sm">
-                <div className="flex justify-between mb-2">
-                  <span>{t('vendor.combos.basePrice')}:</span>
-                  <span className="font-semibold">
+              <div className="glass-effect p-4 rounded-lg text-sm space-y-3">
+                {/* Base Cost (Market) */}
+                <div className="flex justify-between">
+                  <span className="text-amber-700">
+                    {language === 'es' ? 'Costo Base (Mercado):' : 'Base Cost (Market):'}
+                  </span>
+                  <span className="font-semibold text-amber-700">
                     {currencySymbol}{getComboCalculatedPrices(comboForm).base} {currencyCode}
                   </span>
                 </div>
-                <div className="flex justify-between font-semibold">
-                  <span>{t('vendor.combos.finalPrice')}:</span>
-                  <span className="text-blue-600">
+
+                {/* Profit Margin */}
+                {(comboForm.profitMargin || financialSettings.comboProfit) > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span>
+                      {language === 'es' ? 'Ganancia' : 'Profit'} ({comboForm.profitMargin || financialSettings.comboProfit}%):
+                    </span>
+                    <span>
+                      +{currencySymbol}{(
+                        parseFloat(getComboCalculatedPrices(comboForm).base) *
+                        (parseFloat(comboForm.profitMargin || financialSettings.comboProfit) / 100)
+                      ).toFixed(2)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Price before global multiplier */}
+                <div className="flex justify-between border-t pt-2">
+                  <span>{language === 'es' ? 'Precio Base:' : 'Base Price:'}</span>
+                  <span className="font-semibold">
                     {currencySymbol}{getComboCalculatedPrices(comboForm).final} {currencyCode}
                   </span>
                 </div>
+
+                {/* Global Multiplier (if active for combos) */}
+                {globalPricing.appliesToCombos && globalPricing.multiplier !== 1.0 && (
+                  <div className="flex justify-between text-purple-600 bg-purple-50 p-2 rounded">
+                    <span className="flex items-center gap-1">
+                      <DollarSign className="h-3 w-3" />
+                      {language === 'es' ? 'Ajuste Global' : 'Global Adjustment'} (×{globalPricing.multiplier.toFixed(2)}):
+                    </span>
+                    <span className="font-semibold">
+                      {globalPricing.multiplier > 1 ? '+' : ''}
+                      {currencySymbol}{(
+                        parseFloat(getComboCalculatedPrices(comboForm).final) *
+                        (globalPricing.multiplier - 1)
+                      ).toFixed(2)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Final Customer Price */}
+                <div className="flex justify-between font-bold text-lg border-t pt-2">
+                  <span className="text-blue-600">
+                    {language === 'es' ? 'Precio Final Cliente:' : 'Final Customer Price:'}
+                  </span>
+                  <span className="text-blue-600">
+                    {currencySymbol}{(
+                      parseFloat(getComboCalculatedPrices(comboForm).final) *
+                      (globalPricing.appliesToCombos ? globalPricing.multiplier : 1)
+                    ).toFixed(2)} {currencyCode}
+                  </span>
+                </div>
+
+                {/* Info about global multiplier if not active */}
+                {(!globalPricing.appliesToCombos || globalPricing.multiplier === 1.0) && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    {language === 'es'
+                      ? 'Sin ajuste de precio global aplicado a combos.'
+                      : 'No global price adjustment applied to combos.'}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -761,13 +840,26 @@ const VendorCombosTab = ({
                   <p className="text-sm text-gray-600">
                     {totalItems} {language === 'es' ? 'elem.' : 'items'} ({c.products?.length || 0} {language === 'es' ? 'prod.' : 'prod.'})
                   </p>
-                  <div className="flex items-center gap-3">
-                    <p className={`text-xs ${isDeactivated ? 'text-gray-400 line-through' : 'text-gray-500'}`}>
-                      {currencySymbol}{prices.base}
-                    </p>
-                    <p className={`text-base font-bold ${isDeactivated ? 'text-gray-400 line-through' : 'text-green-600'}`}>
-                      {currencySymbol}{prices.final} {currencyCode}
-                    </p>
+                  <div className="flex flex-col items-end gap-1">
+                    <div className="flex items-center gap-2">
+                      <p className={`text-xs ${isDeactivated ? 'text-gray-400 line-through' : 'text-amber-600'}`}>
+                        {language === 'es' ? 'Costo:' : 'Cost:'} {currencySymbol}{prices.base}
+                      </p>
+                      <p className={`text-sm font-semibold ${isDeactivated ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
+                        {currencySymbol}{prices.final}
+                      </p>
+                    </div>
+                    {/* Show final price with global multiplier if active */}
+                    {globalPricing.appliesToCombos && globalPricing.multiplier !== 1.0 && (
+                      <p className={`text-base font-bold ${isDeactivated ? 'text-gray-400 line-through' : 'text-green-600'}`}>
+                        {language === 'es' ? 'Cliente:' : 'Customer:'} {currencySymbol}{(parseFloat(prices.final) * globalPricing.multiplier).toFixed(2)} {currencyCode}
+                      </p>
+                    )}
+                    {(!globalPricing.appliesToCombos || globalPricing.multiplier === 1.0) && (
+                      <p className={`text-base font-bold ${isDeactivated ? 'text-gray-400 line-through' : 'text-green-600'}`}>
+                        {currencySymbol}{prices.final} {currencyCode}
+                      </p>
+                    )}
                   </div>
                 </div>
 
