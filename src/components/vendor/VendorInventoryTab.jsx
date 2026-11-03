@@ -43,7 +43,7 @@ const VendorInventoryTab = ({
   const { convertAmountAsync, getCurrencyById } = useCurrency();
   const [productForm, setProductForm] = useState(null);
   const [productImagePreview, setProductImagePreview] = useState(null);
-  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [selectedProductId, setSelectedProductId] = useState(null);
   const [showProductDetails, setShowProductDetails] = useState(false);
   const [processingProductId, setProcessingProductId] = useState(null);
   const [deletingProductId, setDeletingProductId] = useState(null);
@@ -60,6 +60,7 @@ const VendorInventoryTab = ({
   }, [products]);
   const [convertedPreview, setConvertedPreview] = useState(null);
   const [isConverting, setIsConverting] = useState(false);
+  const [previewFailed, setPreviewFailed] = useState(false);
   const [filterName, setFilterName] = useState('');
   const [filterCategories, setFilterCategories] = useState([]);
   const [filterExpiry, setFilterExpiry] = useState('');
@@ -83,6 +84,7 @@ const VendorInventoryTab = ({
 
   // Calculate converted price preview when price or currency changes
   const updateConvertedPreview = useCallback(async (price, fromCurrencyId) => {
+    setPreviewFailed(false);
     if (!price || !fromCurrencyId || !systemBaseCurrencyId) {
       setConvertedPreview(null);
       return;
@@ -106,6 +108,7 @@ const VendorInventoryTab = ({
     } catch (error) {
       console.warn('[VendorInventoryTab] Conversion preview error:', error);
       setConvertedPreview(null);
+      setPreviewFailed(true);
     } finally {
       setIsConverting(false);
     }
@@ -292,7 +295,7 @@ const VendorInventoryTab = ({
   };
 
   const handleViewProductDetails = (product) => {
-    setSelectedProduct(product);
+    setSelectedProductId(product.id);
     setShowProductDetails(true);
   };
 
@@ -377,8 +380,14 @@ const VendorInventoryTab = ({
           );
           finalCurrencyId = systemBaseCurrencyId;
         } catch (convError) {
-          console.warn('[handleSubmitProduct] Conversion failed, using original:', convError);
-          // Fallback: keep original price and currency
+          // Never persist a number typed in one currency under another: abort and keep the form open
+          console.warn('[handleSubmitProduct] Conversion failed, save aborted:', convError);
+          toast({
+            title: t('common.error'),
+            description: t('vendor.inventory.conversionToBaseFailed'),
+            variant: 'destructive'
+          });
+          return;
         }
       }
 
@@ -595,7 +604,9 @@ const VendorInventoryTab = ({
       return price / inverseRate;
     }
 
-    return price; // Retornar precio original si no hay tasa disponible
+    // No rate: null so the UI shows an em dash, never an unconverted number under another symbol.
+    // shortcut: local rate map fetched once by VendorPage; upgrade with the unified rate system (RB-17)
+    return null;
   };
 
   // Productos con precios convertidos
@@ -616,9 +627,27 @@ const VendorInventoryTab = ({
       ...product,
       base_price: convertedBasePrice,
       final_price: convertedFinalPrice,
+      // Flag only real conversion failures: a price that was already missing keeps the old fallbacks
+      price_unavailable:
+        (product.base_price != null && convertedBasePrice === null) ||
+        (product.final_price != null && convertedFinalPrice === null),
       display_currency_id: selectedCurrency || baseCurrencyId
     };
   });
+
+  // Resolved by id at use time so a products refresh never leaves a stale snapshot
+  const selectedProduct = productsWithConvertedPrices.find(p => p.id === selectedProductId) || null;
+
+  const notifyProductGone = () =>
+    toast({ title: t('common.error'), description: t('vendor.inventory.productNotFound'), variant: 'destructive' });
+
+  // The product was deleted/refreshed away while its details were open: close and say so
+  useEffect(() => {
+    if (showProductDetails && selectedProductId && !selectedProduct) {
+      notifyProductGone();
+      setShowProductDetails(false);
+    }
+  }, [showProductDetails, selectedProductId, selectedProduct]);
 
   // Apply filters
   const filteredProducts = useMemo(() => {
@@ -669,7 +698,7 @@ const VendorInventoryTab = ({
         {/* Currency Selector */}
         <div className="flex items-center gap-2">
           <label className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap">
-            {language === 'es' ? 'Moneda:' : 'Currency:'}
+            {t('vendor.inventory.viewPricesIn')}
           </label>
           <select
             value={selectedCurrency ?? baseCurrencyId ?? ''}
@@ -794,6 +823,7 @@ const VendorInventoryTab = ({
               <input
                 type="number"
                 step="0.01"
+                data-testid="product-base-price-input"
                 value={productForm.basePrice}
                 onChange={e => handleBasePriceChange(e.target.value)}
                 placeholder="0.00"
@@ -811,6 +841,11 @@ const VendorInventoryTab = ({
                     </span>
                   </span>
                 </div>
+              )}
+              {previewFailed && !isConverting && (
+                <p role="status" className="mt-2 text-xs text-amber-700">
+                  {t('vendor.inventory.previewUnavailable')}
+                </p>
               )}
               {isConverting && !convertedPreview && (
                 <div className="mt-2 flex items-center gap-2 text-sm text-gray-500">
@@ -1314,8 +1349,8 @@ const VendorInventoryTab = ({
                   <ProductInfoItem label={t('vendor.addProduct.category')} value={selectedProduct.category ? (language === 'es' ? selectedProduct.category.name_es : selectedProduct.category.name_en) : 'Sin categoría'} />
                   <ProductInfoItem label={t('vendor.inventory.stock')} value={selectedProduct.stock || 0} />
                   <ProductInfoItem label={t('vendor.inventory.currency')} value={currencies.find(c => c.id === (selectedProduct.display_currency_id || selectedProduct.base_currency_id))?.code || 'USD'} />
-                  <ProductInfoItem label={t('vendor.inventory.basePrice')} value={`${currencies.find(c => c.id === (selectedProduct.display_currency_id || selectedProduct.base_currency_id))?.symbol || '$'}${Number(selectedProduct.base_price || 0).toFixed(2)}`} />
-                  <ProductInfoItem label={t('vendor.inventory.price')} value={`${currencies.find(c => c.id === (selectedProduct.display_currency_id || selectedProduct.base_currency_id))?.symbol || '$'}${Number(selectedProduct.final_price || 0).toFixed(2)}`} />
+                  <ProductInfoItem label={t('vendor.inventory.basePrice')} value={selectedProduct.price_unavailable ? '—' : `${currencies.find(c => c.id === (selectedProduct.display_currency_id || selectedProduct.base_currency_id))?.symbol || '$'}${Number(selectedProduct.base_price || 0).toFixed(2)}`} />
+                  <ProductInfoItem label={t('vendor.inventory.price')} value={selectedProduct.price_unavailable ? '—' : `${currencies.find(c => c.id === (selectedProduct.display_currency_id || selectedProduct.base_currency_id))?.symbol || '$'}${Number(selectedProduct.final_price || 0).toFixed(2)}`} />
                   <ProductInfoItem label={t('vendor.inventory.minStock')} value={selectedProduct.min_stock_alert || 10} />
                   <ProductInfoItem label={t('vendor.inventory.expiryDate')} value={selectedProduct.expiry_date ? new Date(selectedProduct.expiry_date).toLocaleDateString() : 'N/A'} />
                 </div>
@@ -1343,7 +1378,10 @@ const VendorInventoryTab = ({
                 <span className="hidden sm:inline">{t('common.cancel')}</span>
               </Button>
               <Button onClick={() => {
-                openEditProductForm(selectedProduct);
+                // Edit always seeds from the stored record, never from the display-converted row
+                const original = products.find(p => p.id === selectedProductId);
+                if (original) openEditProductForm(original);
+                else notifyProductGone();
                 setShowProductDetails(false);
               }} style={getPrimaryButtonStyle(visualSettings)} className="text-sm sm:text-base">
                 <Edit className="h-4 w-4 sm:mr-2" />
