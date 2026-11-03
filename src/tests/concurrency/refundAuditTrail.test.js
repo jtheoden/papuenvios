@@ -48,8 +48,17 @@ describeDb('refund audit trail, proof and retention', () => {
   };
   const call = async (client, fn, args = []) => {
     const placeholders = args.map((_, i) => `$${i + 1}`).join(', ');
-    const { rows } = await client.query(`SELECT * FROM public.${fn}(${placeholders})`, args);
-    return rows[0];
+    const sql = `SELECT * FROM public.${fn}(${placeholders})`;
+    if (fn !== 'admin_resolve_refund') return (await client.query(sql, args)).rows[0];
+    // v1 is closed to API roles (RB-02 migration). Its body and the guards behind it stay covered: run it as the function owner,
+    // keeping the session JWT claims (auth.uid()), then restore the API role. The closed door itself is tested in refundV1RevokeAndOrphans.
+    const { rows: [who] } = await client.query('SELECT current_user AS r');
+    await client.query('RESET ROLE');
+    try {
+      return (await client.query(sql, args)).rows[0];
+    } finally {
+      await client.query(`SET ROLE ${who.r}`);
+    }
   };
   const json = async (client, fn, args = []) => {
     const placeholders = args.map((_, i) => `$${i + 1}`).join(', ');
@@ -525,7 +534,7 @@ describeDb('refund audit trail, proof and retention', () => {
   });
 
   describe('admin_resolve_refund_v2', () => {
-    it('coexists with v1 (v1 untouched, still 5 arguments) and is authenticated-only SECURITY DEFINER', async () => {
+    it('coexists with v1 (still 5 arguments, SECURITY DEFINER); only v2 is executable by authenticated, neither by anon', async () => {
       const { rows } = await admin.query(
         `SELECT p.proname, pg_get_function_identity_arguments(p.oid) AS args, prosecdef,
                 has_function_privilege('anon', p.oid, 'EXECUTE') AS anon, has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth
@@ -533,7 +542,8 @@ describeDb('refund audit trail, proof and retention', () => {
       );
       expect(rows).toHaveLength(2);
       expect(rows[0].args).toBe('p_refund_id uuid, p_action text, p_reference text, p_refunded_at timestamp with time zone, p_reason text');
-      expect(rows.every((r) => r.prosecdef && !r.anon && r.auth)).toBe(true);
+      // rows are ordered by name: v1 first. RB-02 (20261103140000) revoked v1 from authenticated; v2 keeps it.
+      expect(rows.map((r) => [r.prosecdef, r.anon, r.auth])).toEqual([[true, false, false], [true, false, true]]);
     });
 
     it('refunded without a proof fails proof_required; not_applicable needs only a reason', async () => {
@@ -597,7 +607,7 @@ describeDb('refund audit trail, proof and retention', () => {
     });
   });
 
-  describe('the guard closes the v1 shortcut (proof and separation of duties hold without revoking v1)', () => {
+  describe('the guard closes the v1 shortcut even when v1 is run as its owner (defence in depth behind the RB-02 revoke)', () => {
     it('v1 "refunded" without a proof is refused and the row stays pending', async () => {
       const { refund } = await paidOrder();
       await openHold(refund.id);
