@@ -288,29 +288,15 @@ const VendorInventoryTab = ({
 
       console.log('[handleSubmitProduct] Category validated:', { categoryId: category.id, categoryName: category.name_es });
 
-      // Convert price to base currency if different
-      let normalizedPrice = parseFloat(productForm.basePrice);
-      let finalCurrencyId = productForm.base_currency_id;
+      // Keep the product in its selected currency (don't force convert to base)
+      const normalizedPrice = parseFloat(productForm.basePrice);
+      const finalCurrencyId = productForm.base_currency_id;
       const inputCurrency = getCurrencyById(productForm.base_currency_id);
 
-      if (productForm.base_currency_id !== systemBaseCurrencyId) {
-        console.log('[handleSubmitProduct] Converting price to base currency...');
-        try {
-          normalizedPrice = await convertAmountAsync(
-            parseFloat(productForm.basePrice),
-            productForm.base_currency_id,
-            systemBaseCurrencyId
-          );
-          finalCurrencyId = systemBaseCurrencyId;
-          console.log('[handleSubmitProduct] Price converted:', {
-            original: `${inputCurrency?.code} ${productForm.basePrice}`,
-            converted: `${systemBaseCurrency?.code} ${normalizedPrice.toFixed(2)}`
-          });
-        } catch (convError) {
-          console.warn('[handleSubmitProduct] Conversion failed, using original:', convError);
-          // Fallback: keep original price and currency
-        }
-      }
+      console.log('[handleSubmitProduct] Saving product in currency:', {
+        currency: inputCurrency?.code,
+        price: normalizedPrice
+      });
 
       const productData = {
         name_es: productForm.name_es,
