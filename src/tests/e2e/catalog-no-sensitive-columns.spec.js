@@ -60,7 +60,8 @@ test.describe('public catalog does not touch sensitive columns', () => {
       await page.goto(path);
       await page.waitForLoadState('networkidle');
 
-      expect(exchanges.length, 'the page must have queried PostgREST').toBeGreaterThan(0);
+      // networkidle can fire before the first lazy PostgREST call: poll instead of asserting once.
+      await expect.poll(() => exchanges.length, { message: 'the page must have queried PostgREST' }).toBeGreaterThan(0);
 
       for (const { url, body } of exchanges) {
         expect(requestedSensitiveFields(url), `request ${url}`).toEqual([]);

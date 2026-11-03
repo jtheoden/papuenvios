@@ -11,17 +11,6 @@ import {
 
 const ratesChangedListeners = new Set();
 
-// DEC-10: only a super_admin writes exchange_rates (RLS). A refusal is either a 42501 "row-level security"
-// error (INSERT/upsert) or a silent 0-row UPDATE/DELETE; neither may look like a saved change, nor like an expired session.
-const rateNotChangedError = (code = ERROR_CODES.FORBIDDEN, status = 403) => new AppError(
-  'Exchange rate not changed: it no longer exists or only a super_admin can change exchange rates.',
-  code,
-  status,
-  { requiredRole: 'super_admin' }
-);
-const isRlsViolation = (error) => error?.code === '42501' && /row-level security/i.test(error?.message || '');
-const parseRateWriteError = (error) => (isRlsViolation(error) ? rateNotChangedError() : parseSupabaseError(error));
-
 /**
  * Subscribe to exchange-rate writes so rate caches can invalidate themselves.
  * @param {function} listener
@@ -622,7 +611,7 @@ export const saveExchangeRate = async (rateData) => {
       .single();
 
     if (error) {
-      throw parseRateWriteError(error);
+      throw parseSupabaseError(error);
     }
 
     notifyRatesChanged();
@@ -655,17 +644,13 @@ export const deleteExchangeRate = async (rateId) => {
       throw createValidationError({ rateId: 'Rate ID required' }, 'Missing rate ID');
     }
 
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('exchange_rates')
       .update({ is_active: false })
-      .eq('id', rateId)
-      .select('id');
+      .eq('id', rateId);
 
     if (error) {
-      throw parseRateWriteError(error);
-    }
-    if (!data || data.length === 0) {
-      throw rateNotChangedError();
+      throw parseSupabaseError(error);
     }
 
     notifyRatesChanged();
@@ -747,12 +732,12 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
     );
 
     if (directError) {
-      throw parseRateWriteError(directError);
+      throw parseSupabaseError(directError);
     }
 
-    // Deactivated/deleted since loaded, or filtered by RLS (not a super_admin): never report a no-op as saved.
+    // The pair may have been deactivated or deleted since the admin loaded it: never report a no-op as saved.
     if (!directRows || directRows.length === 0) {
-      throw rateNotChangedError(ERROR_CODES.NOT_FOUND, 404);
+      throw createNotFoundError('Exchange rate pair');
     }
 
     // Update inverse rate (to→from)
@@ -761,7 +746,7 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
     );
 
     if (inverseError) {
-      throw parseRateWriteError(inverseError);
+      throw parseSupabaseError(inverseError);
     }
 
     notifyRatesChanged();
@@ -806,14 +791,11 @@ export const deleteExchangeRatePair = async (fromCurrencyId, toCurrencyId) => {
       .select('id');
 
     if (error) {
-      throw parseRateWriteError(error);
-    }
-    if (!data || data.length === 0) {
-      throw rateNotChangedError();
+      throw parseSupabaseError(error);
     }
 
     notifyRatesChanged();
-    return { deletedCount: data.length };
+    return { deletedCount: data?.length || 0 };
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, {
