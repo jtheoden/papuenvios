@@ -50,8 +50,17 @@ describeDb('refund queue (database layer)', () => {
   };
   const call = async (client, fn, args = []) => {
     const placeholders = args.map((_, i) => `$${i + 1}`).join(', ');
-    const { rows } = await client.query(`SELECT * FROM public.${fn}(${placeholders})`, args);
-    return rows[0];
+    const sql = `SELECT * FROM public.${fn}(${placeholders})`;
+    if (fn !== 'admin_resolve_refund') return (await client.query(sql, args)).rows[0];
+    // v1 is closed to API roles (RB-02 migration). Its body and the guards behind it stay covered: run it as the function owner,
+    // keeping the session JWT claims (auth.uid()), then restore the API role. The closed door itself is tested in refundV1RevokeAndOrphans.
+    const { rows: [who] } = await client.query('SELECT current_user AS r');
+    await client.query('RESET ROLE');
+    try {
+      return (await client.query(sql, args)).rows[0];
+    } finally {
+      await client.query(`SET ROLE ${who.r}`);
+    }
   };
   const refundsFor = async (id) =>
     (await admin.query(
@@ -220,7 +229,8 @@ describeDb('refund queue (database layer)', () => {
              FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = $1`,
           [fn]
         );
-        expect(rows, fn).toEqual([{ anon: false, auth: true, prosecdef: true }]);
+        // v1 admin_resolve_refund lost EXECUTE for authenticated in RB-02 (20261103140000): v2 is the only API entry.
+        expect(rows, fn).toEqual([{ anon: false, auth: fn !== 'admin_resolve_refund', prosecdef: true }]);
       }
       for (const fn of ['refund_request_on_cancel', 'refund_request_on_reopen']) {
         const { rows } = await admin.query(
@@ -706,6 +716,7 @@ describeDb('refund queue (database layer)', () => {
       const { id } = await openRefund();
       const a = await as(actors.adminId);
       const b = await as(actors.adminId);
+      await Promise.all([a.query('RESET ROLE'), b.query('RESET ROLE')]); // v1 runs as owner (see `call`); claims stay on the session
       const results = await fireTogether([
         { client: a, sql: 'public.admin_resolve_refund($1, $2, $3, NULL, NULL)', params: [id, 'refunded', 'REF-A'] },
         { client: b, sql: 'public.admin_resolve_refund($1, $2, $3, NULL, NULL)', params: [id, 'refunded', 'REF-B'] }
