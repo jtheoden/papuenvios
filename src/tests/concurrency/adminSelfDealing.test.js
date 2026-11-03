@@ -480,15 +480,13 @@ describeDb('admin self-dealing guard', () => {
       expect((await refundsOf(r)).map((x) => x.status)).toEqual(['pending']);
     });
 
-    it('KNOWN GAP (documented, NOT closed): an admin can still reassign user_id of an order through a direct UPDATE', async () => {
-      // The guards key on OLD.user_id, so moving the row to another owner first sidesteps them. Proposed mitigation (needs owner approval):
-      // BEFORE UPDATE OF user_id for current_user IN ('authenticated','anon'). See plan, "Brechas residuales aceptadas".
+    it('CLOSED by 20261103130000: an admin can no longer reassign user_id of an order through a direct UPDATE', async () => {
       const o = await seedO(actors.adminId, 'pending', 'proof_uploaded');
       const c = await as(actors.adminId);
-      const res = await c.query('UPDATE public.orders SET user_id = $2 WHERE id = $1', [o, actors.customerId]);
-      expect(res.rowCount).toBe(1);
-      // now the former owner is "another admin" for the guard: validation goes through
-      expect((await call(c, 'order_validate_payment', [o])).payment_status).toBe('validated');
+      await expect(c.query('UPDATE public.orders SET user_id = $2 WHERE id = $1', [o, actors.customerId]))
+        .rejects.toMatchObject({ code: '42501', message: 'orders_user_id_immutable' });
+      // still the admin's own order: self-dealing keeps blocking the validation
+      await expect(call(c, 'order_validate_payment', [o])).rejects.toMatchObject({ message: expect.stringMatching(/admin_self_dealing_not_allowed/) });
     });
   });
 });
