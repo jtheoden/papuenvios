@@ -298,6 +298,53 @@ export const useRealtimeZelleAccounts = ({ onUpdate, enabled = true }) => {
 };
 
 /**
+ * useRealtimeExchangeRates Hook
+ * Specialized hook for real-time exchange rate updates
+ * Triggers recalculation of prices across the platform when rates change
+ */
+export const useRealtimeExchangeRates = ({ onUpdate, enabled = true }) => {
+  return useRealtimeSubscription({
+    table: 'exchange_rates',
+    event: '*',
+    enabled,
+    onInsert: onUpdate,
+    onUpdate: onUpdate,
+    onDelete: onUpdate
+  });
+};
+
+/**
+ * useRealtimeCurrencies Hook
+ * Specialized hook for real-time currency updates
+ */
+export const useRealtimeCurrencies = ({ onUpdate, enabled = true }) => {
+  return useRealtimeSubscription({
+    table: 'currencies',
+    event: '*',
+    enabled,
+    onInsert: onUpdate,
+    onUpdate: onUpdate,
+    onDelete: onUpdate
+  });
+};
+
+/**
+ * useRealtimeAppSettings Hook
+ * Specialized hook for real-time app settings updates (global pricing, business status)
+ * Triggers recalculation when global multiplier or business status changes
+ */
+export const useRealtimeAppSettings = ({ onUpdate, enabled = true }) => {
+  return useRealtimeSubscription({
+    table: 'app_settings',
+    event: '*',
+    enabled,
+    onInsert: onUpdate,
+    onUpdate: onUpdate,
+    onDelete: onUpdate
+  });
+};
+
+/**
  * useUserAlerts Hook
  * Loads and manages user alerts from database with real-time updates.
  * Ensures ALL users receive persistent notifications even if offline when event occurred.

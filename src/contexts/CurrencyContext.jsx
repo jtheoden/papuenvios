@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getCurrenciesWithRates, getConversionRate } from '@/lib/currencyService';
+import { useRealtimeExchangeRates, useRealtimeCurrencies } from '@/hooks/useRealtimeSubscription';
 
 const CurrencyContext = createContext();
 
@@ -54,6 +55,41 @@ export const CurrencyProvider = ({ children }) => {
 
     loadCurrencies();
   }, []);
+
+  // Reload function for realtime updates
+  const reloadCurrencies = useCallback(async () => {
+    console.log('[CurrencyContext] Reloading currencies due to realtime update');
+    try {
+      const data = await getCurrenciesWithRates();
+      if (data && data.length > 0) {
+        setCurrencies(data);
+        // Clear exchange rate cache to force fresh conversions
+        exchangeRatesCacheRef.current.clear();
+        setCacheVersion(prev => prev + 1);
+        console.log('[CurrencyContext] Currencies reloaded, cache cleared');
+      }
+    } catch (error) {
+      console.error('[CurrencyContext] Error reloading currencies:', error);
+    }
+  }, []);
+
+  // Subscribe to exchange rate changes
+  useRealtimeExchangeRates({
+    enabled: true,
+    onUpdate: (payload) => {
+      console.log('[CurrencyContext] Exchange rate changed:', payload);
+      reloadCurrencies();
+    }
+  });
+
+  // Subscribe to currency changes
+  useRealtimeCurrencies({
+    enabled: true,
+    onUpdate: (payload) => {
+      console.log('[CurrencyContext] Currency changed:', payload);
+      reloadCurrencies();
+    }
+  });
 
   /**
    * Get conversion rate between two currencies

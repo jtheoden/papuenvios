@@ -22,7 +22,7 @@ import { calculateOrderTotal } from '@/lib/priceCalculationService';
 import { validateAndGetOffer, recordOfferUsage } from '@/lib/orderDiscountService';
 import { buildDiscountBreakdown } from '@/lib/discountDisplayService';
 import { logActivity } from '@/lib/activityLogger';
-import { getGlobalPricing, isBusinessOpen, subscribeToBusinessStatus } from '@/lib/businessStatusService';
+import { getGlobalPricing, isBusinessOpen, subscribeToBusinessStatus, subscribeToGlobalPricing } from '@/lib/businessStatusService';
 import RecipientSelector from '@/components/RecipientSelector';
 import ZelleAccountSelector from '@/components/ZelleAccountSelector';
 import ZelleAccountAlert from '@/components/ZelleAccountAlert';
@@ -199,11 +199,24 @@ const CartPage = ({ onNavigate }) => {
     loadGlobalPricing();
 
     // Subscribe to business status changes (e.g., admin closes business while user is checking out)
-    const unsubscribe = subscribeToBusinessStatus((newStatus) => {
+    const unsubscribeStatus = subscribeToBusinessStatus((newStatus) => {
       setBusinessOpen(newStatus?.is_open !== false);
     });
 
-    return () => unsubscribe();
+    // Subscribe to global pricing changes (e.g., admin changes price multiplier)
+    const unsubscribePricing = subscribeToGlobalPricing((newPricing) => {
+      console.log('[CartPage] Global pricing updated:', newPricing);
+      if (newPricing?.price_multiplier && newPricing.applies_to_orders) {
+        setGlobalPriceMultiplier(newPricing.price_multiplier);
+      } else {
+        setGlobalPriceMultiplier(1.0);
+      }
+    });
+
+    return () => {
+      unsubscribeStatus();
+      unsubscribePricing();
+    };
   }, []);
 
   // Load municipalities when province changes

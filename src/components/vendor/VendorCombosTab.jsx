@@ -12,7 +12,7 @@ import { createCombo, updateCombo as updateComboDB, deleteCombo, setComboActiveS
 import { checkComboStockIssues, computeComboPricing } from '@/lib/comboUtils';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { logActivity } from '@/lib/activityLogger';
-import { useRealtimeCombos } from '@/hooks/useRealtimeSubscription';
+import { useRealtimeCombos, useRealtimeAppSettings } from '@/hooks/useRealtimeSubscription';
 import { getGlobalPricing } from '@/lib/businessStatusService';
 
 /**
@@ -96,6 +96,25 @@ const VendorCombosTab = ({
     };
     loadGlobalPricing();
   }, []);
+
+  // Subscribe to app settings changes (global pricing updates in real-time)
+  useRealtimeAppSettings({
+    enabled: true,
+    onUpdate: async () => {
+      console.log('[VendorCombosTab] App settings changed, reloading global pricing');
+      try {
+        const pricing = await getGlobalPricing();
+        if (pricing) {
+          setGlobalPricing({
+            multiplier: pricing.price_multiplier || 1.0,
+            appliesToCombos: pricing.applies_to_combos === true
+          });
+        }
+      } catch (error) {
+        console.warn('[VendorCombosTab] Error reloading global pricing:', error);
+      }
+    }
+  });
 
   const currencyCodeById = useMemo(() => {
     return (currencies || []).reduce((acc, currency) => {
