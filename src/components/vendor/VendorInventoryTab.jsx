@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, Save, Edit, X, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -42,6 +42,19 @@ const VendorInventoryTab = ({
   const [convertedPreview, setConvertedPreview] = useState(null);
   const [isConverting, setIsConverting] = useState(false);
   const [originalCurrencyId, setOriginalCurrencyId] = useState(null); // Track original currency when editing
+
+  // Refs to avoid stale closure in handleInputChange
+  const productFormRef = useRef(null);
+  const originalCurrencyIdRef = useRef(null);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    productFormRef.current = productForm;
+  }, [productForm]);
+
+  useEffect(() => {
+    originalCurrencyIdRef.current = originalCurrencyId;
+  }, [originalCurrencyId]);
 
   // Find base currency from currencies list
   const systemBaseCurrency = currencies.find(c => c.is_base);
@@ -116,14 +129,24 @@ const VendorInventoryTab = ({
   };
 
   const handleInputChange = useCallback(async (field, value) => {
+    // Use refs to get current values (avoids stale closure)
+    const currentForm = productFormRef.current;
+    const currentOriginalCurrencyId = originalCurrencyIdRef.current;
+
     // Special handling for currency changes - convert the price
-    if (field === 'base_currency_id' && productForm?.basePrice && originalCurrencyId && value !== originalCurrencyId) {
+    if (field === 'base_currency_id' && currentForm?.basePrice && currentOriginalCurrencyId && value !== currentOriginalCurrencyId) {
+      console.log('[handleInputChange] Currency change detected:', {
+        from: currentOriginalCurrencyId,
+        to: value,
+        currentPrice: currentForm.basePrice
+      });
       try {
         const convertedPrice = await convertAmountAsync(
-          parseFloat(productForm.basePrice),
-          originalCurrencyId,
+          parseFloat(currentForm.basePrice),
+          currentOriginalCurrencyId,
           value
         );
+        console.log('[handleInputChange] Conversion result:', convertedPrice);
         if (convertedPrice && !isNaN(convertedPrice)) {
           setProductForm(prev => ({
             ...prev,
@@ -152,7 +175,7 @@ const VendorInventoryTab = ({
       }
     }
     setProductForm(prev => ({ ...prev, [field]: value }));
-  }, [productForm?.basePrice, originalCurrencyId, convertAmountAsync, getCurrencyById, language]);
+  }, [convertAmountAsync, getCurrencyById, language]);
 
   const openNewProductForm = () => {
     console.log('[openNewProductForm] START - Opening new product form');
