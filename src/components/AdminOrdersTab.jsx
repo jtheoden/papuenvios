@@ -55,6 +55,7 @@ import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import OrderActionButtons from '@/components/admin/OrderActionButtons';
 import { isOwnOperation } from '@/lib/selfDealing';
+import { getOrderTotalWarning } from '@/lib/orderTotalCoherence';
 import { getTableColumns, getModalColumns } from '@/components/admin/OrderTableConfig';
 import {
   OrderDetailsModal,
@@ -346,9 +347,11 @@ const AdminOrdersTab = () => {
   };
 
   const handleValidatePayment = async (order) => {
+    const totalWarning = getOrderTotalWarning(order);
     showConfirm(
       t('adminOrders.modals.validateTitle'),
-      t('adminOrders.messages.confirmValidate').replace('{orderNumber}', order.order_number),
+      t('adminOrders.messages.confirmValidate').replace('{orderNumber}', order.order_number)
+        + (totalWarning ? `\n\n${t(`adminOrders.totalWarning.${totalWarning}`)}` : ''),
       async () => {
         setActionLoading(order.id);
         try {

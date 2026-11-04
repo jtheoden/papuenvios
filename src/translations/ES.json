@@ -1739,6 +1739,11 @@
   "adminOrders": {
     "title": "Historial de Órdenes",
     "subtitle": "Gestión completa de todas las órdenes del sistema",
+    "totalWarning": {
+      "items_missing": "El pedido no tiene artículos registrados; verifique antes de validar el pago.",
+      "subtotal_mismatch": "El subtotal del pedido no coincide con la suma de sus artículos; verifique antes de validar el pago.",
+      "total_below_formula": "El total del pedido falta o es menor que subtotal más envío menos descuentos; verifique antes de validar el pago."
+    },
     "stats": {
       "total": "Total",
       "pending": "Pendientes",
