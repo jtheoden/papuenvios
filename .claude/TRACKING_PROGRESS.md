@@ -394,3 +394,12 @@ Decisiones y verificaciones del dueño: revisar `default_spread_pct` (1.5 %) y l
 - Ticket pendiente (defecto a11y real de la app, NO corregido aqui): las pestanas de `SettingsPage` en mobile son solo icono y sin nombre accesible (`hidden xs:inline` sobre el label y sin `aria-label`).
 - `supabase/e2e/base-public-schema.sql` contiene emails ya versionados en migraciones (super_admin en `handle_new_user()`); es solo estructura, sin datos.
 - Bug latente de la app (ticket): `AdminOffersTab.jsx:405` hace `offer.code.toLowerCase()`; `offers.code` es NULLABLE en el esquema, y una oferta sin codigo tumba todo el Dashboard ("Something went wrong"). La siembra E2E asigna codigo para esquivarlo.
+
+## Marca S1 — Header leyendo Ajustes visuales — 2026-11-04
+
+- `Header.jsx` ya no usa `primaryColor`/`secondaryColor` ni gradientes de marca: los colores salen de `visualSettings` (headerBg/Text, headerMenu*, navBarActive*, cartBadge*, focusRingColor, button*) resueltos por `src/lib/headerTheme.js` como CSS vars `--hdr-*` / `--brand-*` en la raíz del header, con fallback a la paleta si el valor no es HEX. Hover y foco por clases (`hover:bg-[color:var(--hdr-hover-bg)]`, `focus-visible:ring-brand-focus`), sin `onMouseEnter` ni estilos inline.
+- Pestaña activa: `aria-current="page"` + negrita + subrayado en escritorio, pastillas móviles y menú móvil; el fondo/texto vienen de `navBarActive*`. El degradado solo se conserva si `useHeaderGradient`/`useGradient` y `headerGradientColor` válido (filas guardadas hoy).
+- Topbar: wordmark de texto (logo configurado si existe); se retira el cuadro con icono genérico. Sin assets nuevos (logo oficial = S5).
+- Botón de idioma = variante `brand` (buttonBgColor/Text/Hover). Insignia del carrito = `cartBadge*`. Insignia admin de pendientes, `--role-banner-h` y RoleUnresolvedBanner intactos.
+- Tests: `Header.brandTheme.test.jsx` (21) + e2e `header-brand.spec.js` (11, Supabase mockeado, 320/768/1280 ES/EN). Vitest: 3402/3403 (solo `selfHostedFonts`, fallo de entorno conocido). Lint y build OK.
+- Hallazgo (fuera de S1): `tailwind-merge` descarta `bg-[color:...]` cuando va junto a `bg-[image:...]`; usar una sola `[background:var(...)]`. Desbordamiento horizontal de 12 px a 320 px en ES viene de `SECTION.py-20` de la Home (S2), no del header.
