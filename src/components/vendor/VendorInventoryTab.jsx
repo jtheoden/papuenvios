@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, Save, Edit, X, RefreshCw, Percent, DollarSign, Tag, Search, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -61,6 +61,13 @@ const VendorInventoryTab = ({
   const [convertedPreview, setConvertedPreview] = useState(null);
   const [isConverting, setIsConverting] = useState(false);
   const [previewFailed, setPreviewFailed] = useState(false);
+  // Last price the user can trust, in its own currency: currency switches re-convert from it so round trips stay exact
+  const priceAnchorRef = useRef(null);
+  const currencySwitchSeqRef = useRef(0);
+  const [currencyNote, setCurrencyNote] = useState(null);
+  const [isSwitchingCurrency, setIsSwitchingCurrency] = useState(false);
+  const switchingCurrencyRef = useRef(false);
+  const submittingRef = useRef(false);
   const [filterName, setFilterName] = useState('');
   const [filterCategories, setFilterCategories] = useState([]);
   const [filterExpiry, setFilterExpiry] = useState('');
@@ -74,6 +81,7 @@ const VendorInventoryTab = ({
   const formCurrency = getCurrencyById(productForm?.base_currency_id) || systemBaseCurrency;
   const formCurrencySymbol = formCurrency?.symbol || '$';
   const formCurrencyCode = formCurrency?.code || 'USD';
+  const listCurrencyCode = getCurrencyById(selectedCurrency ?? baseCurrencyId)?.code || systemBaseCurrency?.code || '';
 
   // Catalog units; a stored code outside the catalog stays selectable so saving never wipes it
   const unitOptions = useMemo(() => {
@@ -183,20 +191,90 @@ const VendorInventoryTab = ({
   };
 
   // Recalculate secondary profit fields when basePrice changes
-  const handleBasePriceChange = (value) => {
+  // Pure: the form with a new base price and its derived profit fields
+  const withBasePrice = (prev, value) => {
     const basePrice = parseFloat(value);
-    setProductForm(prev => {
-      const updated = { ...prev, basePrice: value };
-      const margin = parseFloat(prev.profitMargin);
-      if (!isNaN(margin) && basePrice > 0) {
-        updated.profitAmount = (basePrice * margin / 100).toFixed(2);
-        updated.sellPrice = (basePrice * (1 + margin / 100)).toFixed(2);
-      } else {
-        updated.profitAmount = '';
-        updated.sellPrice = '';
+    const updated = { ...prev, basePrice: value };
+    const margin = parseFloat(prev.profitMargin);
+    if (!isNaN(margin) && basePrice > 0) {
+      updated.profitAmount = (basePrice * margin / 100).toFixed(2);
+      updated.sellPrice = (basePrice * (1 + margin / 100)).toFixed(2);
+    } else {
+      updated.profitAmount = '';
+      updated.sellPrice = '';
+    }
+    return updated;
+  };
+
+  // Single reset point for the trusted price and any in-flight currency conversion:
+  // used by open, cancel and save so a late response can never touch another form.
+  const setSwitching = (value) => {
+    switchingCurrencyRef.current = value;
+    setIsSwitchingCurrency(value);
+  };
+
+  const resetPriceAnchor = (anchor = null) => {
+    currencySwitchSeqRef.current += 1;
+    setSwitching(false);
+    priceAnchorRef.current = anchor;
+    setCurrencyNote(null);
+  };
+
+  const closeProductForm = () => {
+    resetPriceAnchor(null);
+    setProductForm(null);
+  };
+
+  const handleBasePriceChange = (value) => {
+    const typed = parseFloat(value);
+    currencySwitchSeqRef.current += 1; // a typed figure beats any pending conversion
+    setSwitching(false);
+    // Editing only: a positive typed figure becomes the anchor (also after the field was emptied);
+    // creating has no original price, so the figure is simply read in the selected currency.
+    priceAnchorRef.current = productForm.id && typed > 0
+      ? { amount: typed, currencyId: productForm.base_currency_id }
+      : null;
+    // A missing-rate alert stays until the next currency switch, form open or close
+    setCurrencyNote(prev => (prev?.kind === 'missing' ? prev : null));
+    setProductForm(prev => withBasePrice(prev, value));
+  };
+
+  // Switching the currency of an already loaded price re-converts the figure so its value is preserved.
+  // The currency only changes together with the converted figure: if the conversion fails the
+  // previous currency stays, so a figure is never shown under a currency it was not converted to.
+  const handleCurrencyChange = async (nextCurrencyId) => {
+    const seq = ++currencySwitchSeqRef.current;
+    setSwitching(false); // supersedes any pending switch
+    setCurrencyNote(null);
+    const anchor = priceAnchorRef.current;
+    if (!anchor) {
+      // Create mode: no original price, the typed figure is read in the chosen currency
+      handleInputChange('base_currency_id', nextCurrencyId);
+      return;
+    }
+
+    const code = getCurrencyById(nextCurrencyId)?.code || '';
+    let converted = anchor.amount;
+    if (nextCurrencyId !== anchor.currencyId) {
+      setSwitching(true);
+      try {
+        converted = await convertAmountAsync(anchor.amount, anchor.currencyId, nextCurrencyId);
+      } catch (error) {
+        console.warn('[VendorInventoryTab] Currency switch conversion failed:', error);
+        converted = NaN;
       }
-      return updated;
-    });
+      if (seq !== currencySwitchSeqRef.current) return;
+      setSwitching(false);
+      converted = Math.round(converted * 100) / 100;
+      // A zero/negative/non-finite result (also after rounding) is a failed conversion, never a price
+      if (!Number.isFinite(converted) || converted <= 0) {
+        setCurrencyNote({ kind: 'missing', code });
+        return;
+      }
+    }
+
+    setProductForm(prev => ({ ...withBasePrice(prev, String(converted)), base_currency_id: nextCurrencyId }));
+    if (nextCurrencyId !== anchor.currencyId) setCurrencyNote({ kind: 'converted', code });
   };
 
   const defaultProfitMargin = resolveMarginInput(financialSettings?.productProfit, DEFAULTS.PRODUCT_PROFIT_MARGIN);
@@ -251,6 +329,7 @@ const VendorInventoryTab = ({
       profitAmount: '',
       sellPrice: ''
     });
+    resetPriceAnchor(null);
     setProductImagePreview(null);
   };
 
@@ -269,6 +348,7 @@ const VendorInventoryTab = ({
       product.category?.id || product.category_id
     );
     const base = parseFloat(product.base_price || product.basePrice || 0);
+    resetPriceAnchor(base > 0 ? { amount: base, currencyId: product.base_currency_id || baseCurrencyId || '' } : null);
     setProductForm({
       id: product.id,
       name_es: product.name_es || product.name || '',
@@ -335,7 +415,7 @@ const VendorInventoryTab = ({
     }
   };
 
-  const handleSubmitProduct = async () => {
+  const submitProduct = async () => {
 
     if (!productForm.name_es || !productForm.basePrice || !productForm.category) {
       toast({
@@ -444,7 +524,7 @@ const VendorInventoryTab = ({
       }
 
       await onProductsRefresh(true);
-      setProductForm(null);
+      closeProductForm();
       setProductImagePreview(null);
     } catch (error) {
       console.error('[handleSubmitProduct] ERROR:', error);
@@ -456,6 +536,17 @@ const VendorInventoryTab = ({
           : (isImageUploadError(error) ? t(getImageUploadMessageKey(error)) : error.message),
         variant: 'destructive'
       });
+    }
+  };
+
+  // Ignores clicks while a currency conversion or an earlier save is still in flight (no duplicate creates)
+  const handleSubmitProduct = async () => {
+    if (switchingCurrencyRef.current || submittingRef.current) return;
+    submittingRef.current = true;
+    try {
+      await submitProduct();
+    } finally {
+      submittingRef.current = false;
     }
   };
 
@@ -696,22 +787,33 @@ const VendorInventoryTab = ({
       {/* Header con selector de moneda y botón agregar */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4 sm:mb-6">
         {/* Currency Selector */}
-        <div className="flex items-center gap-2">
-          <label className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap">
-            {t('vendor.inventory.viewPricesIn')}
-          </label>
-          <select
-            value={selectedCurrency ?? baseCurrencyId ?? ''}
-            onChange={(e) => onSelectedCurrencyChange(e.target.value)}
-            className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+        {productForm ? (
+          // Same box height as the select so opening the form causes no layout shift
+          <p
+            data-testid="list-currency-cue"
+            className="flex items-center min-h-[34px] sm:min-h-[42px] text-xs sm:text-sm font-medium text-gray-700"
           >
-            {currencies.map(currency => (
-              <option key={currency.id} value={currency.id}>
-                {currency.code}
-              </option>
-            ))}
-          </select>
-        </div>
+            {t('vendor.inventory.listPricesCue', { code: listCurrencyCode })}
+          </p>
+        ) : (
+          <div className="flex items-center gap-2">
+            <label htmlFor="inventory-list-currency" className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap">
+              {t('vendor.inventory.viewPricesIn')}
+            </label>
+            <select
+              id="inventory-list-currency"
+              value={selectedCurrency ?? baseCurrencyId ?? ''}
+              onChange={(e) => onSelectedCurrencyChange(e.target.value)}
+              className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            >
+              {currencies.map(currency => (
+                <option key={currency.id} value={currency.id}>
+                  {currency.code}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <Button onClick={openNewProductForm} style={getPrimaryButtonStyle(visualSettings)} className="flex-shrink-0 h-9 sm:h-10 px-3 sm:px-4 text-sm">
           <Plus className="h-4 w-4 sm:mr-2" />
@@ -857,12 +959,14 @@ const VendorInventoryTab = ({
 
             {/* Currency */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {t('vendor.addProduct.currency')}
+              <label htmlFor="product-price-currency" className="block text-sm font-medium text-gray-700 mb-2">
+                {t('vendor.inventory.priceCurrencyLabel')}
               </label>
               <select
+                id="product-price-currency"
+                aria-describedby="product-price-currency-help"
                 value={productForm.base_currency_id}
-                onChange={e => handleInputChange('base_currency_id', e.target.value)}
+                onChange={e => handleCurrencyChange(e.target.value)}
                 className="w-full input-style"
               >
                 {currencies.map(c => (
@@ -871,6 +975,24 @@ const VendorInventoryTab = ({
                   </option>
                 ))}
               </select>
+              <p id="product-price-currency-help" className="mt-2 text-xs text-gray-500">
+                {t('vendor.inventory.priceCurrencyHelp', { base: systemBaseCurrency?.code || 'USD' })}
+              </p>
+              {isSwitchingCurrency && (
+                <p role="status" aria-busy="true" className="mt-2 text-xs text-gray-500">
+                  {t('vendor.inventory.priceConverting')}
+                </p>
+              )}
+              {currencyNote?.kind === 'converted' && (
+                <p role="status" className="mt-2 text-xs text-blue-700">
+                  {t('vendor.inventory.priceConvertedNote', { code: currencyNote.code })}
+                </p>
+              )}
+              {currencyNote?.kind === 'missing' && (
+                <p role="alert" className="mt-2 text-xs text-red-600">
+                  {t('vendor.inventory.priceRateMissing', { code: currencyNote.code })}
+                </p>
+              )}
             </div>
 
             {/* Profit Mode */}
@@ -1095,10 +1217,10 @@ const VendorInventoryTab = ({
             </div>
           </div>
           <div className="flex justify-end gap-4 mt-6">
-            <Button variant="outline" onClick={() => setProductForm(null)}>
+            <Button variant="outline" onClick={closeProductForm}>
               {t('common.cancel')}
             </Button>
-            <Button onClick={handleSubmitProduct} style={getPrimaryButtonStyle(visualSettings)}>
+            <Button onClick={handleSubmitProduct} disabled={isSwitchingCurrency} style={getPrimaryButtonStyle(visualSettings)}>
               <Save className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">{t('vendor.addProduct.save')}</span>
             </Button>
