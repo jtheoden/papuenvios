@@ -26,16 +26,16 @@ describe('getCartItemUnitPrice - existing behaviour (must not change)', () => {
     expect(getCartItemUnitPrice(null, ctx())).toBe(0);
   });
 
-  it('uses the displayed_price snapshot as-is when it is in the selected currency', () => {
+  it('uses the displayed_price snapshot as-is when it is in the base currency', () => {
     const item = { displayed_price: 12.5, displayed_currency_id: USD, base_price: 1, final_price: 99 };
     expect(getCartItemUnitPrice(item, ctx())).toBe(12.5);
   });
 
-  it('converts the displayed_price snapshot when it was taken in another currency', () => {
+  it('keeps a base-currency snapshot unchanged whatever currency is selected', () => {
     const c = ctx({ selectedCurrency: CUP });
     const item = { displayed_price: 2, displayed_currency_id: USD };
-    expect(getCartItemUnitPrice(item, c)).toBe(1540);
-    expect(c.convertAmount).toHaveBeenCalledWith(2, USD, CUP);
+    expect(getCartItemUnitPrice(item, c)).toBe(2);
+    expect(c.convertAmount).not.toHaveBeenCalled();
   });
 
   it('uses calculated_price_usd when there is no displayed snapshot', () => {
@@ -149,8 +149,8 @@ describe('getCartItemUnitPrice - cent rounding at source', () => {
   it('does not turn a non-numeric price into 0 (returns NaN so the cart can fail closed)', () => {
     expect(getCartItemUnitPrice({ displayed_price: 'x', displayed_currency_id: USD }, ctx())).toBeNaN();
     expect(getCartItemUnitPrice({ calculated_price_usd: 'x' }, ctx())).toBeNaN();
-    const c = ctx({ selectedCurrency: CUP, convertAmount: () => NaN });
-    expect(getCartItemUnitPrice({ displayed_price: 2, displayed_currency_id: USD }, c)).toBeNaN();
+    const c = ctx({ convertAmount: () => NaN });
+    expect(getCartItemUnitPrice({ displayed_price: 2, displayed_currency_id: CUP }, c)).toBeNaN();
   });
 
   it('rounds the displayed_price branch AFTER currency conversion', () => {
@@ -252,5 +252,49 @@ describe('withStoredComboPrice - combos added to the cart before the stored pric
 
   it('tolerates a missing catalog', () => {
     expect(getCartItemUnitPrice(withStoredComboPrice(stale, undefined), ctx())).toBeNaN();
+  });
+});
+
+describe('getCartItemUnitPrice - always base currency (one unit for the whole cart)', () => {
+  // Product of 10 USD with 1 USD = 770 CUP. The detail page stores the price shown in the
+  // selected currency: 7700 CUP. The catalog list stores no snapshot: 10 USD.
+  const detailItemInCup = { id: 'd', final_price: 10, base_currency_id: USD, displayed_price: 7700, displayed_currency_id: CUP, quantity: 1 };
+  const catalogItem = { id: 'c', final_price: 10, base_currency_id: USD, quantity: 1 };
+
+  it('converts a snapshot taken in another currency to the base currency, not to the selected one', () => {
+    const c = ctx({ selectedCurrency: CUP });
+    expect(getCartItemUnitPrice(detailItemInCup, c)).toBe(10);
+    expect(c.convertAmount).toHaveBeenCalledWith(7700, CUP, USD);
+  });
+
+  it('returns the same base price whichever currency is selected', () => {
+    [USD, CUP].forEach((selectedCurrency) => {
+      expect(getCartItemUnitPrice(detailItemInCup, ctx({ selectedCurrency }))).toBe(10);
+      expect(getCartItemUnitPrice(catalogItem, ctx({ selectedCurrency }))).toBe(10);
+    });
+  });
+
+  it('adds a detail-page line and a catalog line in the same unit (20 USD, not 7710)', () => {
+    const c = ctx({ selectedCurrency: CUP });
+    const { lines, subtotal, hasInvalidLines } = buildCartLines([detailItemInCup, catalogItem], (item) => getCartItemUnitPrice(item, c));
+    expect(lines.map((line) => line.unitPrice)).toEqual([10, 10]);
+    expect(subtotal).toBe(20);
+    expect(hasInvalidLines).toBe(false);
+  });
+
+  it('rounds the converted snapshot to cents', () => {
+    const item = { displayed_price: 1000, displayed_currency_id: CUP };
+    expect(getCartItemUnitPrice(item, ctx({ selectedCurrency: CUP }))).toBe(1.3);
+  });
+
+  it('fails closed (NaN) when the snapshot is in another currency and the base currency is unknown', () => {
+    const c = ctx({ selectedCurrency: CUP, baseCurrencyId: null });
+    expect(getCartItemUnitPrice(detailItemInCup, c)).toBeNaN();
+    expect(c.convertAmount).not.toHaveBeenCalled();
+  });
+
+  it('fails closed (NaN) when there is no rate to convert the snapshot', () => {
+    const c = ctx({ selectedCurrency: CUP, convertAmount: vi.fn(() => NaN) });
+    expect(getCartItemUnitPrice(detailItemInCup, c)).toBeNaN();
   });
 });

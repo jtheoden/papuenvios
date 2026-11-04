@@ -126,8 +126,8 @@ const CartPage = ({ onNavigate }) => {
 
   // Unit price of a cart item (product or combo). Logic lives in src/lib/cartPricing.js
   const getItemPrice = useCallback(
-    (item) => getCartItemUnitPrice(withStoredComboPrice(item, combos), { selectedCurrency, baseCurrencyId, convertAmount }),
-    [combos, selectedCurrency, baseCurrencyId, convertAmount]
+    (item) => getCartItemUnitPrice(withStoredComboPrice(item, combos), { baseCurrencyId, convertAmount }),
+    [combos, baseCurrencyId, convertAmount]
   );
 
   // Cent-exact lines and subtotal (sum of the already-rounded line totals). The same
@@ -413,7 +413,7 @@ const CartPage = ({ onNavigate }) => {
         discountedSubtotal,
         shippingCost,
         total: totalAmount,
-        currency: currencyCode,
+        currency: BASE_CURRENCY_CODE,
         userCategory,
         userCategoryDiscount,
         categoryDiscountAmount,
@@ -763,8 +763,9 @@ const CartPage = ({ onNavigate }) => {
         return;
       }
 
-      // Get currency object (selectedCurrency is already the UUID)
-      const currency = currencies.find(c => c.id === selectedCurrency);
+      // The order is always saved in the base currency: cart amounts are USD (selectedCurrency
+      // only drives the display conversion).
+      const currency = currencies.find(c => c.id === baseCurrencyId);
       if (!currency) {
         throw new Error('Currency not found');
       }
@@ -835,7 +836,7 @@ const CartPage = ({ onNavigate }) => {
       const orderInfo = {
         orderNumber: createdOrder.order_number,
         total: totalAmount,
-        currency: currency.code || 'USD',
+        currency: currency.code || BASE_CURRENCY_CODE,
         recipientName: recipientDetails.fullName,
         itemCount: cart.length,
         whatsappLoading: true
@@ -1217,14 +1218,14 @@ const CartPage = ({ onNavigate }) => {
             <div className="space-y-2 p-4 bg-gray-50 rounded-lg">
               <div className="flex justify-between text-sm">
                 <span>{t('cart.subtotal')}:</span>
-                <span>${subtotal.toFixed(2)}</span>
+                <span>{BASE_CURRENCY_SYMBOL}{subtotal.toFixed(2)} {BASE_CURRENCY_CODE}</span>
               </div>
               {discountBreakdown.category.amount > 0 && (
                 <div className="flex justify-between text-sm text-green-600">
                   <span>
                     {t('cart.payment.categoryDiscount')} ({userCategory} · {discountBreakdown.category.percent}%):
                   </span>
-                  <span>-{displayCurrencySymbol}{discountBreakdown.category.amount.toFixed(2)}</span>
+                  <span>-{BASE_CURRENCY_SYMBOL}{discountBreakdown.category.amount.toFixed(2)}</span>
                 </div>
               )}
               {discountBreakdown.offer.amount > 0 && appliedOffer && (
@@ -1232,25 +1233,25 @@ const CartPage = ({ onNavigate }) => {
                   <span>
                     {t('cart.payment.offerDiscount')} ({appliedOffer.code} · {appliedOffer.discount_type === 'percentage'
                       ? `${appliedOffer.discount_value}%`
-                      : `${displayCurrencySymbol}${appliedOffer.discount_value}`
+                      : `${BASE_CURRENCY_SYMBOL}${appliedOffer.discount_value}`
                     }):
                   </span>
-                  <span>-{displayCurrencySymbol}{discountBreakdown.offer.amount.toFixed(2)}</span>
+                  <span>-{BASE_CURRENCY_SYMBOL}{discountBreakdown.offer.amount.toFixed(2)}</span>
                 </div>
               )}
               {totalDiscountAmount > 0 && (
                 <div className="flex justify-between text-sm border-t pt-2 font-semibold text-green-700">
                   <span>{t('cart.payment.discountedSubtotal')}:</span>
-                  <span>${discountedSubtotal.toFixed(2)}</span>
+                  <span>{BASE_CURRENCY_SYMBOL}{discountedSubtotal.toFixed(2)} {BASE_CURRENCY_CODE}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm border-t pt-2">
                 <span>{t('cart.payment.shipping')}:</span>
-                <span>${shippingCost.toFixed(2)}</span>
+                <span>{BASE_CURRENCY_SYMBOL}{shippingCost.toFixed(2)} {BASE_CURRENCY_CODE}</span>
               </div>
               <div className="flex justify-between text-lg font-bold border-t pt-2">
                 <span>{t('cart.payment.amount')}:</span>
-                <span style={{ color: visualSettings.successColor || '#10b981' }}>${totalDisplay}</span>
+                <span style={{ color: visualSettings.successColor || '#10b981' }}>{BASE_CURRENCY_SYMBOL}{totalDisplay} {BASE_CURRENCY_CODE}</span>
               </div>
             </div>
 

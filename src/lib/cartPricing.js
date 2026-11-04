@@ -3,10 +3,11 @@
  *
  * Pure unit-price resolution for cart items, extracted from CartPage so it can be tested.
  *
- * The cart subtotal is treated as USD (base currency) downstream: CartPage converts it with
- * convertCurrency(subtotal, 'USD', currencyCode). Branches that return an amount already
- * expressed in another currency (displayed_price) convert it to the selected currency, as the
- * product detail page does.
+ * Every line is priced in the base currency (USD), whatever currency the visitor is browsing in:
+ * CartPage treats the subtotal as USD, converts it for display only (convertCurrency) and saves
+ * the order in the base currency. The displayed_price snapshot stored by the product detail page
+ * is in the currency selected when the item was added, so it is converted back to the base
+ * currency here; otherwise a CUP snapshot would be summed with USD lines and converted twice.
  */
 
 import { roundMoney, sumMoney } from '@/lib/moneyPure';
@@ -51,29 +52,30 @@ export const withStoredComboPrice = (item, catalogCombos = []) => {
 };
 
 /**
- * Resolve the unit price of one cart item.
+ * Resolve the unit price of one cart item, always in the base currency.
  *
  * @param {object} item - Cart item (product or combo, with optional price snapshot fields)
  * @param {object} context
- * @param {string|number|null} context.selectedCurrency - Currently selected currency id
  * @param {string|number|null} [context.baseCurrencyId] - Base (USD) currency id
  * @param {function} context.convertAmount - (amount, fromCurrencyId, toCurrencyId) => number
- * @returns {number} Unit price, or NaN when the item has no resolvable stored price. The cart
- *   flags NaN lines invalid and blocks checkout: a missing price is never charged as 0.
+ * @returns {number} Unit price in the base currency, or NaN when the item has no resolvable stored
+ *   price (or a snapshot that cannot be converted). The cart flags NaN lines invalid and blocks
+ *   checkout: a missing price is never charged as 0.
  */
-export const getCartItemUnitPrice = (item, { selectedCurrency, baseCurrencyId = null, convertAmount }) => {
+export const getCartItemUnitPrice = (item, { baseCurrencyId = null, convertAmount }) => {
   if (!item) return 0;
 
   // Every branch returns a cent-rounded unit price (after any currency conversion), so the
   // cart, the order payload and Postgres numeric(10,2) all see the same value.
 
-  // Price snapshot taken when the item was added (product detail page).
+  // Price snapshot taken when the item was added (product detail page), in the currency that
+  // was selected then. Legacy snapshots already stored in localStorage take this same path.
   if (item.displayed_price && item.displayed_currency_id) {
     const displayedPrice = parseFloat(item.displayed_price);
-    if (item.displayed_currency_id !== selectedCurrency) {
-      return roundPrice(convertAmount(displayedPrice, item.displayed_currency_id, selectedCurrency));
-    }
-    return roundPrice(displayedPrice);
+    if (item.displayed_currency_id === baseCurrencyId) return roundPrice(displayedPrice);
+    // Fail closed: without a known base currency the snapshot cannot be normalized.
+    if (!baseCurrencyId || typeof convertAmount !== 'function') return NaN;
+    return roundPrice(convertAmount(displayedPrice, item.displayed_currency_id, baseCurrencyId));
   }
 
   if (item.calculated_price_usd) {

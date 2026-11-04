@@ -280,3 +280,21 @@ describe('ConfirmationModal optional WhatsApp step', () => {
     expect(screen.getByRole('button', { name: /Ver Mis Pedidos/ }).style.backgroundColor).not.toBe('');
   });
 });
+
+describe('ConfirmationModal total', () => {
+  beforeEach(() => { mockLang.current = 'es'; });
+
+  it('formats the total with the real currency, no hardcoded dollar sign', () => {
+    render(<ConfirmationModal {...baseProps} total={7700} currency="CUP" />);
+
+    const total = screen.getByText(/7\.?700,00/);
+    expect(total).toHaveTextContent(/CUP/);
+    expect(total.textContent).not.toContain('$');
+  });
+
+  it('shows a USD total as USD', () => {
+    render(<ConfirmationModal {...baseProps} total={26} currency="USD" />);
+
+    expect(screen.getByText(/26,00/)).toHaveTextContent(/US\$|USD/);
+  });
+});
