@@ -26,7 +26,8 @@ export async function getPublications() {
 }
 
 /**
- * Get all publications (including inactive) for admin management
+ * Get all publications (including inactive) for admin management.
+ * Returns null (not []) when the read fails, so callers can tell "failed" from "empty".
  */
 export async function getAllPublications() {
   const { data, error } = await supabase
@@ -36,7 +37,7 @@ export async function getAllPublications() {
 
   if (error) {
     console.error('[PublicationService] getAllPublications error:', error);
-    return [];
+    return null;
   }
   return data || [];
 }
@@ -94,28 +95,33 @@ export async function updatePublication(id, data) {
 
   if (error) {
     console.error('[PublicationService] updatePublication error:', error);
-    return { success: false, error: error.message };
+    // PGRST116: the row no longer exists (e.g. another admin deleted it)
+    return { success: false, error: error.message, notFound: error.code === 'PGRST116' };
   }
   return { success: true, data: result };
 }
 
 /**
- * Delete a publication and its cover image
+ * Delete a publication and then its cover image (the image is kept if the row delete fails)
  */
 export async function deletePublication(id, coverImageUrl) {
-  // Delete cover image from storage if exists
-  if (coverImageUrl) {
-    await deletePublicationImage(coverImageUrl);
-  }
-
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('publications')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .select('id');
 
   if (error) {
     console.error('[PublicationService] deletePublication error:', error);
     return { success: false, error: error.message };
+  }
+  // RLS can filter the delete to 0 rows without an error: that is not a success
+  if (!data || data.length === 0) {
+    return { success: false, error: 'No rows deleted (not found or no permission)' };
+  }
+
+  if (coverImageUrl) {
+    await deletePublicationImage(coverImageUrl);
   }
   return { success: true };
 }
@@ -162,12 +168,15 @@ export async function deletePublicationImage(publicUrl) {
   if (!publicUrl) return;
 
   try {
-    // Extract path from public URL
-    let path = publicUrl;
-    const afterPublic = publicUrl.split('/object/public/publications/')[1];
-    if (afterPublic) {
-      path = decodeURIComponent(afterPublic);
+    const marker = '/object/public/publications/';
+    const { pathname } = new URL(publicUrl);
+    const idx = pathname.indexOf(marker);
+    if (idx === -1) {
+      // External or non-storage url: never call remove() with a full url
+      console.warn('[PublicationService] deleteImage skipped, not a publications storage url:', publicUrl);
+      return;
     }
+    const path = decodeURIComponent(pathname.slice(idx + marker.length));
 
     const { error } = await supabase.storage
       .from(BUCKET_NAME)
@@ -192,20 +201,32 @@ export async function saveAllPublications(publications, originalPublications) {
   // Find deleted publications
   const deletedIds = [...originalIds].filter(id => !currentIds.has(id));
 
+  const failedIds = [];
+  const failedTitles = [];
+  const missingIds = [];
+  const created = {};
+  let failedCount = 0;
+
   // Delete removed publications
   for (const id of deletedIds) {
     const original = originalPublications.find(p => p.id === id);
-    await deletePublication(id, original?.cover_image_url);
+    const result = await deletePublication(id, original?.cover_image_url);
+    if (!result.success) {
+      failedCount += 1;
+      failedIds.push(id);
+      failedTitles.push(original?.title_es || original?.title_en || '');
+    }
   }
 
   // Update or create publications
   for (let i = 0; i < publications.length; i++) {
     const pub = { ...publications[i], display_order: i };
     delete pub._isNew;
+    const localId = publications[i].id;
 
+    let result;
     if (pub.id && originalIds.has(pub.id)) {
-      // Update existing
-      await updatePublication(pub.id, {
+      result = await updatePublication(pub.id, {
         title_es: pub.title_es,
         title_en: pub.title_en,
         content_es: pub.content_es,
@@ -216,13 +237,66 @@ export async function saveAllPublications(publications, originalPublications) {
         is_active: pub.is_active,
         display_order: i
       });
+      // The replaced/removed cover is deleted only once the row update has succeeded
+      const oldCover = originalPublications.find(o => o.id === pub.id)?.cover_image_url;
+      if (result.success && oldCover && oldCover !== pub.cover_image_url) {
+        await deletePublicationImage(oldCover);
+      }
     } else {
-      // Create new
       const { id, ...newPub } = pub;
-      newPub.display_order = i;
-      await createPublication(newPub);
+      result = await createPublication(newPub);
+      if (result.success) created[localId] = result.data;
+    }
+
+    if (!result.success) {
+      failedCount += 1;
+      failedIds.push(localId);
+      failedTitles.push(pub.title_es || pub.title_en || '');
+      if (result.notFound) missingIds.push(localId);
     }
   }
 
-  return { success: true };
+  return failedCount
+    ? { success: false, failedCount, failedIds, failedTitles, missingIds, created }
+    : { success: true, failedCount: 0, failedIds, failedTitles, missingIds, created };
+}
+
+/**
+ * After a partial save: take the fresh DB rows and re-apply the local (unsaved) version of the rows
+ * that failed, so the user keeps what was typed. A failed local row that is not in the fresh read
+ * (never created, or deleted by someone else) is put back flagged _isNew so a retry creates it.
+ * Rows that were created come back from the DB with their real id, so a retry does not duplicate them.
+ */
+export function mergeAfterPartialSave(freshRows, localRows, result) {
+  const failed = new Set(result?.failedIds || []);
+  const localById = new Map(localRows.map(p => [p.id, p]));
+  const freshIds = new Set(freshRows.map(p => p.id));
+  const merged = freshRows.map(p => (failed.has(p.id) && localById.has(p.id) ? localById.get(p.id) : p));
+  const missing = localRows
+    .filter(p => failed.has(p.id) && !freshIds.has(p.id))
+    .map(p => (p._isNew ? p : { ...p, _isNew: true }));
+  return [...merged, ...missing];
+}
+
+/**
+ * Apply a save result to the local state without re-reading the server: created rows replace their
+ * temporary ones (real id, no _isNew), deleted originals are dropped and failed deletes come back.
+ * Returns the new list and the new "original" snapshot used to compute the next diff.
+ */
+export function applySaveResult(localRows, originalRows, result) {
+  const failed = new Set(result?.failedIds || []);
+  const created = result?.created || {};
+  const publications = localRows.map(p => created[p.id] || p);
+  const localIds = new Set(localRows.map(p => p.id));
+  const origById = new Map(originalRows.map(p => [p.id, p]));
+  const readded = originalRows.filter(o => !localIds.has(o.id) && failed.has(o.id));
+  const originals = [];
+  for (const p of publications) {
+    if (failed.has(p.id)) {
+      if (origById.has(p.id)) originals.push(origById.get(p.id));
+    } else if (!p._isNew) {
+      originals.push(p);
+    }
+  }
+  return { publications: [...publications, ...readded], originals: [...originals, ...readded] };
 }
