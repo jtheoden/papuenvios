@@ -9,6 +9,7 @@ import {
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { isOwnOperation } from '@/lib/selfDealing';
+import { formatMoney } from '@/lib/numberFormat';
 import { useModal } from '@/contexts/ModalContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
@@ -959,7 +960,7 @@ const AdminRemittancesTab = () => {
         />
         <StatCard
           label={t('remittances.admin.revenue')}
-          value={`$${stats.totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          value={formatMoney(stats.totalRevenue, { currency: 'USD', language })}
           icon={DollarSign}
           color="green"
           isAmount

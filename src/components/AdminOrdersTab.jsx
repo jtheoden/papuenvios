@@ -45,6 +45,7 @@ import {
   restockOrder
 } from '@/lib/orderService';
 import { isInsufficientStockError } from '@/lib/stockErrors';
+import { formatMoney } from '@/lib/numberFormat';
 import { isStatusConflictError, transitionErrorKey } from '@/lib/statusConflict';
 import { ORDER_STATUS, PAYMENT_STATUS, ITEM_TYPES } from '@/lib/constants';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -103,7 +104,7 @@ const getStatusIcon = (status, paymentStatus) => {
 const ORDERS_RELOAD_DEBOUNCE_MS = 500;
 
 const AdminOrdersTab = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user } = useAuth();
   const { visualSettings, refreshStock } = useBusiness();
 
@@ -636,13 +637,8 @@ const AdminOrdersTab = () => {
   };
 
   // Format currency
-  const formatCurrency = (amount, currencyCode = 'USD') => {
-    if (!amount) return '0.00';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currencyCode
-    }).format(amount);
-  };
+  const formatCurrency = (amount, currencyCode = 'USD') =>
+    formatMoney(amount, { currency: currencyCode, language });
 
   // Render order type icon
   const renderTypeIcon = (type) => {

@@ -6,6 +6,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { toast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/supabase';
+import { getActiveRatesMap } from '@/lib/currencyService';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import TabsResponsive from './TabsResponsive';
 import VendorCategoriesTab from './vendor/VendorCategoriesTab';
@@ -59,24 +60,7 @@ const VendorPage = () => {
         }
 
         // Load exchange rates
-        const { data: ratesData, error: ratesError } = await supabase
-          .from('exchange_rates')
-          .select('*')
-          .eq('is_active', true);
-
-        if (ratesError) {
-          console.error('[fetchCurrencies] ERROR fetching exchange rates:', ratesError);
-          console.error('[fetchCurrencies] Error details:', { message: ratesError?.message, code: ratesError?.code });
-          throw ratesError;
-        }
-
-        if (ratesData) {
-          const ratesMap = {};
-          ratesData.forEach(rate => {
-            ratesMap[`${rate.from_currency_id}-${rate.to_currency_id}`] = rate.rate;
-          });
-          setExchangeRates(ratesMap);
-        }
+        setExchangeRates(await getActiveRatesMap());
 
       } catch (error) {
         console.error('[fetchCurrencies] FATAL ERROR:', error);

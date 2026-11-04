@@ -1535,7 +1535,33 @@
         "appendOnly": "Las tasas registradas no se pueden modificar.",
         "managedCentrally": "La tasa USD → EUR se gestiona solo en Ajustes Financieros."
       },
-      "managedCentrally": "La tasa USD → EUR se gestiona solo en Ajustes Financieros (tasas de cambio). El margen y los umbrales de antigüedad se ajustan en los parámetros de Bizum."
+      "managedCentrally": "La tasa USD → EUR se gestiona solo en Ajustes Financieros (tasas de cambio). El margen y los umbrales de antigüedad se ajustan en los parámetros de Bizum.",
+      "generic": {
+        "title": "Tipo de cambio {from} → {to}",
+        "intro": "Tasa vigente de referencia {from} → {to}. Es la tasa central de Ajustes Financieros; aquí solo se consulta.",
+        "state": {
+          "none": "Sin tasa",
+          "ok": "Vigente",
+          "warn": "Antigua: actualice pronto",
+          "blocked": "Bloqueada: no utilizable"
+        },
+        "noneHelp": "No hay una tasa {from} → {to} activa. Cárguela en Ajustes Financieros (tasas de cambio).",
+        "warnHelp": "La tasa tiene {hours} h de antigüedad. Actualícela en Ajustes Financieros.",
+        "blockedHelp": "La tasa {from} → {to} es demasiado antigua para usarse. Actualícela en Ajustes Financieros.",
+        "ageNote": "Tasa de hace {hours} h. Si necesita otra, cárguela en Ajustes Financieros.",
+        "loadError": "No se pudo cargar la tasa {from} → {to}. Reintente; si el problema continúa, compruebe su conexión.",
+        "retry": "Reintentar",
+        "labels": {
+          "rate": "Tasa"
+        },
+        "managedCentrally": "Solo lectura: la tasa {from} → {to} se gestiona únicamente en Ajustes Financieros (tasas de cambio).",
+        "badge": {
+          "ok": "Tasa {from} → {to}: vigente",
+          "warn": "Tasa {from} → {to}: antigua",
+          "blocked": "Tasa {from} → {to}: bloqueada",
+          "none": "Tasa {from} → {to}: sin tasa"
+        }
+      }
     },
     "fxReference": {
       "title": "Referencia externa (informativa)",

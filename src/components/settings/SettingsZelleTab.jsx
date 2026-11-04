@@ -9,6 +9,7 @@ import { motion } from 'framer-motion';
 import { Plus, Trash2, Edit, Eye, RotateCcw, Loader, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatMoney } from '@/lib/numberFormat';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { toast } from '@/components/ui/use-toast';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
@@ -97,12 +98,7 @@ const SettingsZelleTab = () => {
     }
   };
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount || 0);
-  };
+  const formatCurrency = (amount) => formatMoney(amount, { currency: 'USD', language });
 
   // Get table columns with integrated actions
   const tableColumns = useMemo(() => {

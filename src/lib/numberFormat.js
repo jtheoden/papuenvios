@@ -2,6 +2,8 @@
  * Locale-aware formatting driven by the app language (never the browser default).
  */
 
+import { roundMoney, roundTo } from './moneyPure';
+
 const LOCALES = Object.freeze({ es: 'es-ES', en: 'en-US' });
 
 export const localeFor = (language) => LOCALES[language] ?? LOCALES.en;
@@ -20,9 +22,52 @@ export const formatDateTime = (value, language) => {
   return new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 };
 
+/** A calendar date (YYYY-MM-DD, e.g. effective_date) as written: UTC, so no time-zone day shift. */
+export const formatDateOnly = (value, language) => {
+  const date = new Date(value);
+  if (value === null || value === undefined || Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium', timeZone: 'UTC' }).format(date);
+};
+
 /** Same as formatDateTime but pinned to UTC, to contrast a provider's timestamp with the local time. */
 export const formatDateTimeUtc = (value, language) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(date);
+};
+
+/** Shown instead of "NaN" / "$0.00" when a value is unavailable. */
+export const UNAVAILABLE = '\u2014';
+
+const toFinite = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
+
+/**
+ * Money in the app language: always two decimals, rounded half-up through moneyPure.roundMoney (never
+ * toFixed). Unavailable input renders an em dash, not a misleading zero.
+ */
+export const formatMoney = (value, { currency = 'USD', language } = {}) => {
+  const number = toFinite(value);
+  if (number === null) return UNAVAILABLE;
+  const amount = roundMoney(number);
+  try {
+    return new Intl.NumberFormat(localeFor(language), {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount);
+  } catch {
+    // Intl rejects malformed currency codes; keep the amount readable instead of throwing in render.
+    return `${formatNumber(amount, language, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+  }
+};
+
+/** Exchange rate in the app language: up to six decimals (roundTo), em dash when unavailable. */
+export const formatRate = (value, language) => {
+  const number = toFinite(value);
+  return number === null ? UNAVAILABLE : formatNumber(roundTo(number, 6), language);
 };

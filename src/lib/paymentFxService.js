@@ -10,13 +10,9 @@
 
 import { supabase } from '@/lib/supabase';
 import { toBizumError } from '@/lib/bizumErrors';
+import { RATE_STATES } from '@/lib/rateAge';
 
-export const PAYMENT_FX_STATES = Object.freeze({
-  NONE: 'none',
-  OK: 'ok',
-  WARN: 'warn',
-  BLOCKED: 'blocked'
-});
+export const PAYMENT_FX_STATES = RATE_STATES;
 
 /**
  * Current central rate with its freshness state and the thresholds the server applied.
