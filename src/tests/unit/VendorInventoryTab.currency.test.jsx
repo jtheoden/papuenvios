@@ -100,7 +100,7 @@ describe('VendorInventoryTab currency handling (RB-20)', () => {
   beforeEach(() => {
     mocks.toast.mockClear();
     mocks.convertAmountAsync.mockReset();
-    mocks.convertAmountAsync.mockResolvedValue(0);
+    mocks.convertAmountAsync.mockResolvedValue(9000); // a positive converted price
     updateProduct.mockClear();
   });
 
@@ -178,28 +178,31 @@ describe('VendorInventoryTab currency handling (RB-20)', () => {
 
   describe('form conversion preview', () => {
     it('warns inline when the preview conversion fails', async () => {
-      mocks.convertAmountAsync.mockRejectedValue(new Error('no rate'));
       render(tab([makeProduct()], { selectedCurrency: 'usd' }));
       openDetails();
       pressEdit();
       fireEvent.change(screen.getByDisplayValue('USD (Base)'), { target: { value: 'cup' } });
+      await waitFor(() => expect(screen.getByDisplayValue('CUP')).toBeTruthy());
+      mocks.convertAmountAsync.mockRejectedValue(new Error('no rate'));
 
-      const note = await screen.findByRole('status', {}, { timeout: 2000 });
-      expect(note.textContent).toBe('vendor.inventory.previewUnavailable');
+      const note = await screen.findByText('vendor.inventory.previewUnavailable', {}, { timeout: 2000 });
+      expect(note.getAttribute('role')).toBe('status');
     });
   });
 
   describe('C: a failed conversion to base never saves', () => {
-    const editWithForeignCurrency = () => {
+    // The currency switch itself converts the loaded price; the save-time conversion is what fails/succeeds
+    const editWithForeignCurrency = async () => {
       render(tab([makeProduct()], { selectedCurrency: 'usd' }));
       openDetails();
       pressEdit();
       fireEvent.change(screen.getByDisplayValue('USD (Base)'), { target: { value: 'cup' } });
+      await waitFor(() => expect(screen.getByDisplayValue('CUP')).toBeTruthy());
     };
 
     it('does not call updateProduct, shows a destructive toast and keeps the form open', async () => {
+      await editWithForeignCurrency();
       mocks.convertAmountAsync.mockRejectedValue(new Error('no rate'));
-      editWithForeignCurrency();
 
       fireEvent.click(screen.getByText('vendor.addProduct.save').closest('button'));
 
@@ -214,7 +217,7 @@ describe('VendorInventoryTab currency handling (RB-20)', () => {
 
     it('happy path is unchanged: converts to base and stores the base currency', async () => {
       mocks.convertAmountAsync.mockResolvedValue(0.01);
-      editWithForeignCurrency();
+      await editWithForeignCurrency();
 
       fireEvent.click(screen.getByText('vendor.addProduct.save').closest('button'));
 
