@@ -17,6 +17,15 @@ export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/jpg', 'ima
 // Timeouts (milliseconds)
 export const TIMEOUTS = {
   PROFILE_FETCH: 5000,         // 5s - RLS now fixed, standard query time. Max 5s total auth requirement
+  // Per-attempt budget while the role is not resolved yet (first login, no cached
+  // role): mobile/lossy links (e.g. Cuba) routinely need >5s, and giving up early
+  // used to downgrade the person to a regular user. Background refreshes of an
+  // already resolved role keep the short PROFILE_FETCH budget.
+  PROFILE_FETCH_INITIAL: 12000,
+  // Total budget (from the first profile fetch) before protected routes stop showing the
+  // "verifying permissions" spinner and offer "Acceso restringido" + retry; background
+  // recovery keeps running and re-grants access if the profile arrives later.
+  ROLE_VERIFY_MAX: 15000,
   INIT_AUTH: 6000,             // 6s - global safety timeout (1s buffer for profile + cleanup)
   DEFAULT_QUERY: 10000,
   CAROUSEL_SLIDE: 5000,
@@ -26,6 +35,12 @@ export const TIMEOUTS = {
 export const RETRY_CONFIG = {
   PROFILE_FETCH_ATTEMPTS: 2,   // Max 2 attempts: 1st attempt + 1 retry (reduced from 3)
   PROFILE_FETCH_DELAY: 300,    // 300ms delay between retries (reduced from 1000ms)
+  // Background recovery while the role is unresolved/provisional: backoff steps,
+  // then a steady interval, capped so a permanently missing profile stops polling.
+  PROFILE_RECOVERY_DELAYS: [2000, 5000, 10000, 20000],
+  PROFILE_RECOVERY_INTERVAL: 30000,
+  PROFILE_RECOVERY_MAX_ATTEMPTS: 20,
+  ROLE_CACHE_MAX_AGE: 30 * 24 * 60 * 60 * 1000, // 30 days; the cache is a UI hint only
 };
 
 // Default Values

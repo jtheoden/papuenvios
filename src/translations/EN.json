@@ -1712,6 +1712,9 @@
     "paymentProofRequired": "Payment Proof Required",
     "paymentProofMessage": "To complete your request, you will need to upload a payment proof (screenshot or photo of the Zelle transfer).",
     "authenticating": "Authenticating...",
+    "roleUnresolved": "We could not verify your permissions; we keep trying.",
+    "roleRetry": "Retry",
+    "verifyingPermissions": "Verifying permissions",
     "loadingMessages": {
       "connecting": "Connecting with Google...",
       "validating": "Validating credentials...",
