@@ -1720,6 +1720,9 @@
     "paymentProofRequired": "Comprobante de Pago Requerido",
     "paymentProofMessage": "Para completar tu solicitud, deberás subir un comprobante de pago (captura de pantalla o foto de la transferencia Zelle).",
     "authenticating": "Autenticando...",
+    "roleUnresolved": "No pudimos verificar sus permisos; seguimos intentándolo.",
+    "roleRetry": "Reintentar",
+    "verifyingPermissions": "Verificando permisos",
     "loadingMessages": {
       "connecting": "Conectando con Google...",
       "validating": "Validando credenciales...",

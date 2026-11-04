@@ -12,6 +12,7 @@ import { getPendingRemittancesCount } from '@/lib/remittanceService';
 import { getRefundCounts, REFUNDS_CHANGED_EVENT } from '@/lib/refundService';
 import { useRealtimeOrders, useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import { semanticColors } from '@/lib/colorTokens';
+import RoleUnresolvedBanner from '@/components/RoleUnresolvedBanner';
 
 const Header = ({ currentPage, onNavigate }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -667,6 +668,7 @@ const Header = ({ currentPage, onNavigate }) => {
           )}
         </AnimatePresence>
       </div>
+      <RoleUnresolvedBanner />
     </motion.header>
   );
 };

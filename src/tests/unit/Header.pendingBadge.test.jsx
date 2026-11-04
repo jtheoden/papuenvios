@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 
-const state = { orders: 2, remittances: 1, refunds: { actionable: 0, overdue: 0 }, refundsFail: false, role: 'admin', handlers: {} };
+const state = { orders: 2, remittances: 1, refunds: { actionable: 0, overdue: 0 }, refundsFail: false, unresolved: false, role: 'admin', handlers: {} };
 
 vi.mock('@/lib/orderService', () => ({
   getPendingOrdersCount: vi.fn(async () => state.orders)
@@ -38,7 +38,10 @@ vi.mock('@/contexts/AuthContext', () => ({
     user: { id: 'u1', email: 'a@b.c' },
     isAdmin: true,
     userRole: state.role,
-    userCategory: 'regular'
+    userCategory: 'regular',
+    roleStatus: state.unresolved ? 'unresolved' : 'resolved',
+    roleFetchFailed: Boolean(state.unresolved),
+    retryRoleResolution: vi.fn()
   })
 }));
 vi.mock('@/components/ui/use-toast', () => ({ toast: vi.fn() }));
@@ -53,7 +56,16 @@ describe('Header pending badge', () => {
     state.refunds = { actionable: 0, overdue: 0 };
     state.refundsFail = false;
     state.role = 'admin';
+    state.unresolved = false;
     state.handlers = {};
+  });
+
+  it('renders the unresolved-role banner inside the fixed header so it follows its real height', () => {
+    state.unresolved = true;
+    render(<Header currentPage="home" onNavigate={() => {}} />);
+    const status = screen.getByRole('status');
+    expect(status.closest('header')).toBeTruthy();
+    expect(status.closest('header').className).toContain('fixed');
   });
 
   it('shows pending orders plus pending remittances on the avatar badge', async () => {

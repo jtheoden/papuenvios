@@ -269,7 +269,7 @@ function App() {
                       {currentPage !== 'auth/callback' && (
                         <Header currentPage={currentPage} onNavigate={handleNavigate} />
                       )}
-                      <main className={currentPage !== 'auth/callback' ? 'pt-20' : ''}>
+                      <main style={currentPage !== 'auth/callback' ? { paddingTop: 'calc(5rem + var(--role-banner-h, 0px))' } : undefined}>
                         <AnimatePresence mode="wait">
                           <motion.div
                             key={currentPage}

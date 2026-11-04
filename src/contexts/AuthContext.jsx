@@ -11,13 +11,24 @@ const AuthContext = createContext();
 
 // localStorage role cache helper functions
 const getRoleCacheKey = (userId) => `auth_role_${userId}`;
+// The cached role is a UI HINT only (shown as 'provisional'); the fresh profile
+// and server-side RLS are the authority. Entries expire after ROLE_CACHE_MAX_AGE.
 const getCachedRole = (userId) => {
   if (!userId) return null;
   try {
-    const cached = localStorage.getItem(getRoleCacheKey(userId));
-    return cached ? JSON.parse(cached) : null;
+    const cached = JSON.parse(localStorage.getItem(getRoleCacheKey(userId)));
+    const fresh = cached?.role && Date.now() - cached.ts <= RETRY_CONFIG.ROLE_CACHE_MAX_AGE;
+    return fresh ? cached : null;
   } catch (e) {
     return null;
+  }
+};
+const clearCachedRole = (userId) => {
+  if (!userId) return;
+  try {
+    localStorage.removeItem(getRoleCacheKey(userId));
+  } catch (e) {
+    // storage unavailable: nothing to clear
   }
 };
 const setCachedRole = (userId, role) => {
@@ -36,8 +47,19 @@ export const AuthProvider = ({ children }) => {
   const [isEnabled, setIsEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [hasLoggedSession, setHasLoggedSession] = useState(false);
+  // 'resolved' = role comes from a fresh profile (or there is nothing to resolve),
+  // 'provisional' = cached role shown as a hint, 'unresolved' = no role known yet
+  // (userRole stays null: never default to 'user' on a failed fetch).
+  const [roleStatus, setRoleStatus] = useState('resolved');
+  const [profileFailed, setProfileFailed] = useState(false);
+  const [roleRetryExhausted, setRoleRetryExhausted] = useState(false);
+  const [roleVerifyTimedOut, setRoleVerifyTimedOut] = useState(false);
 
   const mountedRef = useRef(true);
+  const updateSeqRef = useRef(0); // only the latest updateUserState call may apply its result
+  const sessionRef = useRef(null);
+  const resolvedUidRef = useRef(null);
+  const retryRef = useRef(null);
   const sessionCheckIntervalRef = useRef(null);
 
   // Check and refresh session to prevent auth loss
@@ -52,18 +74,14 @@ export const AuthProvider = ({ children }) => {
 
       if (!session) {
         console.warn('[Auth] Session lost - no active session detected');
-        setUser(null);
-        setUserRole(null);
-        setUserCategory(null);
+        resetAuthState();
         return false;
       }
 
       // Verify user still has proper permissions
       if (user && session.user.id !== user.id) {
         console.warn('[Auth] User ID mismatch - possible session corruption');
-        setUser(null);
-        setUserRole(null);
-        setUserCategory(null);
+        resetAuthState();
         return false;
       }
 
@@ -79,9 +97,7 @@ export const AuthProvider = ({ children }) => {
         if (refreshError) {
           console.error('[Auth] Token refresh failed:', refreshError.message);
           await supabase.auth.signOut();
-          setUser(null);
-          setUserRole(null);
-          setUserCategory(null);
+          resetAuthState();
           return false;
         }
 
@@ -99,79 +115,115 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Profile fetch with retry logic for better reliability
-  const fetchProfile = async (uid, attempt = 1) => {
+  const fetchProfile = async (uid, timeoutMs, attempt = 1) => {
+    let timer;
+    const retryOrNull = async () => {
+      if (attempt < RETRY_CONFIG.PROFILE_FETCH_ATTEMPTS) {
+        await new Promise(resolve => setTimeout(resolve, RETRY_CONFIG.PROFILE_FETCH_DELAY));
+        return fetchProfile(uid, timeoutMs, attempt + 1);
+      }
+      return null;
+    };
+
     try {
       const { data, error } = await Promise.race([
         supabase.from('user_profiles')
           .select('role, is_enabled, avatar_url, full_name, email')
           .eq('id', uid)
           .single(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Profile fetch timeout')), TIMEOUTS.PROFILE_FETCH)
-        )
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Profile fetch timeout')), timeoutMs);
+        })
       ]);
 
       if (error) {
         console.warn(`[Auth] Profile fetch error (attempt ${attempt}/${RETRY_CONFIG.PROFILE_FETCH_ATTEMPTS}):`, error);
-
-        // Retry if attempts remaining
-        if (attempt < RETRY_CONFIG.PROFILE_FETCH_ATTEMPTS) {
-          await new Promise(resolve => setTimeout(resolve, RETRY_CONFIG.PROFILE_FETCH_DELAY));
-          return fetchProfile(uid, attempt + 1);
-        }
-
-        return null;
+        return await retryOrNull();
       }
 
       return data;
     } catch (err) {
       console.warn(`[Auth] Profile fetch failed (attempt ${attempt}/${RETRY_CONFIG.PROFILE_FETCH_ATTEMPTS}):`, err.message);
-
-      // Retry if attempts remaining
-      if (attempt < RETRY_CONFIG.PROFILE_FETCH_ATTEMPTS) {
-        await new Promise(resolve => setTimeout(resolve, RETRY_CONFIG.PROFILE_FETCH_DELAY));
-        return fetchProfile(uid, attempt + 1);
-      }
-
-      return null;
+      return await retryOrNull();
+    } finally {
+      // Otherwise the losing timeout promise rejects later, unhandled.
+      clearTimeout(timer);
     }
+  };
+
+  const resetAuthState = () => {
+    updateSeqRef.current += 1; // invalidate any in-flight updateUserState
+    clearCachedRole(sessionRef.current?.user?.id);
+    sessionRef.current = null;
+    resolvedUidRef.current = null;
+    setUser(null);
+    setUserRole(null);
+    setUserCategory(null);
+    setIsEnabled(true);
+    setRoleStatus('resolved');
+    setProfileFailed(false);
+    setRoleRetryExhausted(false);
   };
 
   const updateUserState = async (session) => {
     if (!session?.user) {
       console.warn('[Auth] updateUserState called with invalid session');
-      setUser(null);
-      setUserRole(null);
-      setUserCategory(null);
-      setIsEnabled(true);
+      resetAuthState();
       return;
     }
 
+    const seq = ++updateSeqRef.current;
     const uid = session.user.id;
+    const isNewUid = sessionRef.current?.user?.id !== uid;
+    sessionRef.current = session;
+    const alreadyResolved = resolvedUidRef.current === uid;
 
-    // Fetch profile from database
-    const profile = await fetchProfile(uid);
+    if (!alreadyResolved) {
+      // Show the signed-in person right away with the cached role as a hint
+      // (or no role at all) while the profile loads; never default to 'user'.
+      const cachedRoleData = getCachedRole(uid);
+      setUser(prev => (prev?.id === uid ? prev : session.user));
+      setUserRole(cachedRoleData?.role ?? null);
+      if (isNewUid) {
+        // Only a different person resets the failure flags; recovery retries of the
+        // same uid must not hide the banner while their fetch is in flight.
+        setRoleStatus(cachedRoleData ? 'provisional' : 'unresolved');
+        setProfileFailed(false);
+        setRoleRetryExhausted(false);
+      }
+    }
+
+    // Fetch profile from database. Generous budget until the role is resolved;
+    // short for background refreshes of an already resolved role.
+    const profile = await fetchProfile(
+      uid,
+      alreadyResolved ? TIMEOUTS.PROFILE_FETCH : TIMEOUTS.PROFILE_FETCH_INITIAL
+    );
+
+    // A newer call (or sign-out/unmount) superseded this one: drop its result.
+    if (!mountedRef.current || seq !== updateSeqRef.current) return;
 
     if (!profile) {
-      // Profile doesn't exist or fetch failed - use cached role if available
-      console.warn('[Auth] Profile not found, attempting to use cached role as fallback');
-      const cachedRoleData = getCachedRole(uid);
-      const fallbackRole = cachedRoleData?.role || 'user';
-
-      setUser(session.user);
-      setUserRole(fallbackRole);
-      setUserCategory(null);
-      setIsEnabled(true);
+      // Fetch failed: keep whatever is known (resolved role, provisional hint or
+      // unresolved) and let the background recovery loop retry.
+      console.warn('[Auth] Profile not available; keeping current role state and retrying in background');
+      setProfileFailed(true);
       return;
     }
 
     // Check if account is disabled
     if (profile.is_enabled === false) {
       console.warn('[Auth] Account is disabled');
+      clearCachedRole(uid);
+      sessionRef.current = null;
+      resolvedUidRef.current = null;
       setUser(null);
       setUserRole(null);
       setUserCategory(null);
       setIsEnabled(false);
+      setRoleStatus('resolved');
+      setProfileFailed(false);
+      setRoleRetryExhausted(false);
       try {
         await supabase.auth.signOut();
         toast({
@@ -203,11 +255,15 @@ export const AuthProvider = ({ children }) => {
       profile
     };
 
+    resolvedUidRef.current = uid;
     setUser(mergedUser);
     setUserRole(profile.role || 'user');
     setIsEnabled(true);
+    setRoleStatus('resolved');
+    setProfileFailed(false);
+    setRoleRetryExhausted(false);
 
-    // Cache the role for future use in case of timeout
+    // Cache the role for future use (UI hint only)
     setCachedRole(uid, profile.role || 'user');
 
     // Non-blocking: Sync metadata from OAuth provider
@@ -292,10 +348,7 @@ export const AuthProvider = ({ children }) => {
       if (!mountedRef.current) return;
 
       if (event === 'SIGNED_OUT') {
-        setUser(null);
-        setUserRole(null);
-        setUserCategory(null);
-        setIsEnabled(true);
+        resetAuthState();
         return;
       }
 
@@ -310,9 +363,6 @@ export const AuthProvider = ({ children }) => {
       // and any other event supabase-js may emit during that window,
       // without needing to duplicate updateUserState here.
       if (initializing) return;
-
-      if (event === 'TOKEN_REFRESHED') {
-      }
 
       // Do NOT await updateUserState here: supabase-js's internal
       // _notifyAllSubscribers awaits this callback's returned promise as
@@ -393,15 +443,90 @@ export const AuthProvider = ({ children }) => {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      setUser(null);
-      setUserRole(null);
-      setUserCategory(null);
-      setIsEnabled(true);
+      resetAuthState();
     } catch (err) {
       console.error('[Auth] logout error', err);
       toast({ title: 'Error al cerrar sesión', description: err.message || String(err), variant: 'destructive' });
     }
   };
+
+  // Total budget for "verifying permissions": after it, protected routes stop spinning.
+  const roleResolved = roleStatus === 'resolved';
+  useEffect(() => {
+    if (roleResolved || !user?.id) {
+      setRoleVerifyTimedOut(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => setRoleVerifyTimedOut(true), TIMEOUTS.ROLE_VERIFY_MAX);
+    return () => clearTimeout(timer);
+  }, [user?.id, roleResolved]);
+
+  // One boolean so the loop (and its attempt budget) is not restarted when the second flag flips.
+  const recoveryActive = profileFailed || roleVerifyTimedOut;
+
+  // Background recovery once a profile fetch has failed while the role is
+  // unresolved/provisional: backoff, then a
+  // steady interval (capped), plus an immediate try on `online` and when the tab
+  // becomes visible. Stops as soon as the role resolves, on sign-out and unmount.
+  useEffect(() => {
+    if (roleStatus === 'resolved' || !recoveryActive || !user?.id) return undefined;
+
+    let cancelled = false;
+    let running = false;
+    let attempts = 0;
+    let timer = null;
+
+    const scheduleNext = () => {
+      clearTimeout(timer);
+      if (cancelled) return;
+      if (attempts >= RETRY_CONFIG.PROFILE_RECOVERY_MAX_ATTEMPTS) {
+        setRoleRetryExhausted(true);
+        return;
+      }
+      const delays = RETRY_CONFIG.PROFILE_RECOVERY_DELAYS;
+      const delay = delays[attempts] ?? RETRY_CONFIG.PROFILE_RECOVERY_INTERVAL;
+      attempts += 1;
+      timer = setTimeout(() => attempt(false), delay);
+    };
+
+    const attempt = async (resetBudget) => {
+      clearTimeout(timer);
+      if (resetBudget) {
+        attempts = 0;
+        setRoleRetryExhausted(false);
+      }
+      if (cancelled || running || !sessionRef.current) return;
+      running = true;
+      try {
+        await updateUserState(sessionRef.current);
+      } finally {
+        running = false;
+      }
+      // Resolved meanwhile (e.g. success on the last attempt): do not schedule or flag exhaustion.
+      if (cancelled || resolvedUidRef.current === sessionRef.current?.user?.id) return;
+      scheduleNext();
+    };
+
+    const onOnline = () => attempt(true);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') attempt(true);
+    };
+
+    retryRef.current = () => attempt(true);
+    window.addEventListener('online', onOnline);
+    document.addEventListener('visibilitychange', onVisibility);
+    // Before the first failure only the manual/online/visibility triggers are armed: a timer-driven
+    // retry would supersede the first fetch still in flight and delay the failure banner.
+    if (profileFailed) scheduleNext();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      retryRef.current = null;
+      window.removeEventListener('online', onOnline);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [user?.id, roleStatus, recoveryActive, profileFailed]);
 
   useEffect(() => {
     let isMounted = true;
@@ -438,7 +563,7 @@ export const AuthProvider = ({ children }) => {
   }, [user?.id, userRole]);
 
   useEffect(() => {
-    if (user && !hasLoggedSession) {
+    if (user && roleStatus === 'resolved' && !hasLoggedSession) {
       logActivity({
         action: 'login',
         entityType: 'user',
@@ -453,13 +578,13 @@ export const AuthProvider = ({ children }) => {
     if (!user && hasLoggedSession) {
       setHasLoggedSession(false);
     }
-  }, [hasLoggedSession, user]);
+  }, [hasLoggedSession, user, roleStatus]);
 
   useEffect(() => {
-    if (user?.id) {
+    if (user?.id && roleStatus === 'resolved') {
       flushQueuedActivityLogs();
     }
-  }, [user?.id]);
+  }, [user?.id, roleStatus]);
 
   const checkRole = (requiredRole) => {
     if (!requiredRole) return true;
@@ -480,6 +605,11 @@ export const AuthProvider = ({ children }) => {
     loading,
     isAuthenticated: !!user && isEnabled,
     userRole,
+    roleStatus,
+    roleRetryExhausted,
+    roleFetchFailed: profileFailed,
+    roleVerifyTimedOut,
+    retryRoleResolution: () => retryRef.current?.(),
     userCategory,
     isEnabled,
     isSuperAdmin: userRole === 'super_admin',
