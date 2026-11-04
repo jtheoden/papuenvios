@@ -18,12 +18,15 @@ import { buildHeaderTheme } from '@/lib/headerTheme';
 // Colours come from CSS variables set on the header root (see buildHeaderTheme). Hover and focus
 // are classes, so no inline style can override them.
 const ICON_FOCUS = 'focus-visible:ring-brand-focus';
-const NAV_BASE = `flex items-center space-x-2 motion-reduce:transition-none ${ICON_FOCUS}`;
+const NAV_BASE = `flex items-center space-x-2 motion-reduce:transition-none motion-reduce:active:scale-100 ${ICON_FOCUS}`;
+// shortcut: legacy wordmark gradient (see buildHeaderTheme), until S5 brings the official logo.
+const MARK_GRADIENT = 'bg-[linear-gradient(to_right,var(--hdr-mark-from),var(--hdr-mark-to))]';
 const NAV_IDLE = 'text-[color:var(--hdr-text)] hover:bg-[color:var(--hdr-hover-bg)] hover:text-[color:var(--hdr-hover-text)]';
 // The active state does not rely on colour alone: bold + underline (WCAG 1.4.1).
 const ACTIVE_CUE = 'font-semibold underline decoration-2 underline-offset-4';
 const NAV_ACTIVE = `${ACTIVE_CUE} [background:var(--hdr-active-background)] text-[color:var(--hdr-active-text)] hover:bg-[color:var(--hdr-active-bg)] hover:text-[color:var(--hdr-active-text)]`;
-const MENU_IDLE = 'text-[color:var(--hdr-menu-text)] hover:bg-[color:var(--hdr-hover-bg)] hover:text-[color:var(--hdr-hover-text)]';
+const PILL_IDLE = 'bg-[color:var(--hdr-pill-bg)] border-[color:var(--hdr-pill-border)] text-[color:var(--hdr-pill-text)] hover:bg-[color:var(--hdr-hover-bg)] hover:text-[color:var(--hdr-hover-text)]';
+const MENU_IDLE ='text-[color:var(--hdr-menu-text)] hover:bg-[color:var(--hdr-hover-bg)] hover:text-[color:var(--hdr-hover-text)]';
 const MENU_ACTIVE = `${ACTIVE_CUE} bg-[color:var(--hdr-menu-active-bg)] text-[color:var(--hdr-menu-active-text)] hover:bg-[color:var(--hdr-menu-active-bg)] hover:text-[color:var(--hdr-menu-active-text)]`;
 
 const NavButton = ({ active, current = active, menu = false, icon: Icon, label, className = '', children, ...props }) => {
@@ -83,8 +86,6 @@ const Header = ({ currentPage, onNavigate }) => {
     ...(!isAdmin ? [{ id: 'remittances', icon: DollarSign, label: t('nav.remittances') }] : []),
     { id: 'blog', icon: BookOpen, label: t('nav.blog') },
   ];
-
-  
 
   // Admin menu items (grouped)
   const adminMenuItems = [
@@ -177,16 +178,17 @@ const Header = ({ currentPage, onNavigate }) => {
     );
   };
 
-
   const toggleLanguage = () => setLanguage(language === 'es' ? 'en' : 'es');
   const adminIsActive = adminMenuItems.some((i) => currentPage === i.id);
+  const theme = buildHeaderTheme(visualSettings);
+  const legacyMark = Boolean(theme['--hdr-mark-from']);
 
   return (
     <motion.header
       initial={{ y: -100 }}
       animate={{ y: 0 }}
       className="fixed top-0 left-0 right-0 z-40 backdrop-blur-md shadow-sm"
-      style={buildHeaderTheme(visualSettings)}
+      style={theme}
     >
       <div className="container mx-auto px-2 sm:px-4">
         <div className="flex items-center justify-between h-14 sm:h-16 gap-1 sm:gap-2">
@@ -195,7 +197,7 @@ const Header = ({ currentPage, onNavigate }) => {
             className="flex items-center gap-1 sm:gap-2 cursor-pointer min-w-0 flex-shrink-0"
             onClick={() => handleNavClick('home')}
           >
-            {visualSettings.logo && (
+            {visualSettings.logo ? (
               <img
                 src={visualSettings.logo}
                 alt={visualSettings.companyName || 'Logo'}
@@ -205,9 +207,15 @@ const Header = ({ currentPage, onNavigate }) => {
                   width: 'auto'
                 }}
               />
+            ) : legacyMark && (
+              <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${MARK_GRADIENT}`}>
+                <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+              </div>
             )}
             {(visualSettings.showCompanyName !== false) && (
-              <span className="text-sm sm:text-xl font-bold truncate max-w-[100px] sm:max-w-none">
+              <span
+                className={`text-sm sm:text-xl font-bold truncate max-w-[100px] sm:max-w-none ${legacyMark ? `${MARK_GRADIENT} bg-clip-text text-transparent` : ''}`}
+              >
                 {visualSettings?.companyName || 'PapuEnvíos'}
               </span>
             )}
@@ -269,7 +277,7 @@ const Header = ({ currentPage, onNavigate }) => {
           <div className="flex items-center gap-0.5 sm:gap-2 flex-shrink-0">
             {/* Desktop language selector */}
             <Button
-              variant="brand"
+              variant="brand-outline"
               size="sm"
               onClick={toggleLanguage}
               className="hidden sm:flex items-center space-x-2"
@@ -284,7 +292,7 @@ const Header = ({ currentPage, onNavigate }) => {
                 variant="ghost"
                 size="icon"
                 onClick={toggleLanguage}
-                className="sm:hidden h-8 w-8 flex items-center justify-center text-[color:var(--hdr-text)] focus-visible:ring-brand-focus"
+                className="sm:hidden h-8 w-8 flex items-center justify-center text-[color:var(--hdr-globe)] focus-visible:ring-brand-focus"
                 title={language === 'es' ? 'Switch to English' : 'Cambiar a Español'}
               >
                 <Globe className="w-4 h-4" />
@@ -293,10 +301,11 @@ const Header = ({ currentPage, onNavigate }) => {
 
             {userRole !== 'admin' && userRole !== 'super_admin' && (
               <Button variant="ghost" size="icon" onClick={() => onNavigate('cart')} className={`h-8 w-8 sm:h-9 sm:w-9 ${ICON_FOCUS}`}>
+                <span className="sr-only">{t('nav.cart')}</span>
                 <div className="relative">
                   <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
                   {cart.length > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 bg-brand-badge text-brand-badge-foreground text-[10px] font-semibold rounded-full w-4 h-4 flex items-center justify-center">
+                    <span className="absolute -top-1.5 -right-1.5 bg-brand-badge text-brand-badge-foreground text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
                       {cart.reduce((acc, item) => acc + item.quantity, 0)}
                     </span>
                   )}
@@ -313,6 +322,7 @@ const Header = ({ currentPage, onNavigate }) => {
                   onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                   className={`relative h-8 w-8 sm:h-9 sm:w-9 ${ICON_FOCUS}`}
                 >
+                  <span className="sr-only">{t('nav.userMenu')}</span>
                   <div className="relative">
                     {renderCategoryIndicator()}
                     <UserAvatar user={user} />
@@ -398,6 +408,8 @@ const Header = ({ currentPage, onNavigate }) => {
               variant="ghost"
               size="icon"
               className={`md:hidden h-8 w-8 sm:h-9 sm:w-9 ${ICON_FOCUS}`}
+              aria-label={isMenuOpen ? t('nav.closeMenu') : t('nav.openMenu')}
+              aria-expanded={isMenuOpen}
               onClick={() => setIsMenuOpen(!isMenuOpen)}
             >
               {isMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -410,7 +422,7 @@ const Header = ({ currentPage, onNavigate }) => {
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="border-t border-[color:var(--hdr-border)] py-2 px-1"
+            className="border-t border-[color:var(--hdr-pills-divider)] py-2 px-1"
           >
             <div className="flex items-center justify-center gap-2">
               {quickNavItems.map((item) => {
@@ -424,7 +436,7 @@ const Header = ({ currentPage, onNavigate }) => {
                     className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-colors duration-200 min-w-[85px] justify-center shadow-sm border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus motion-reduce:transition-none ${
                       isActive
                         ? `border-transparent ${NAV_ACTIVE}`
-                        : `border-[color:var(--hdr-border)] ${NAV_IDLE}`
+                        : `border-[1.5px] ${PILL_IDLE}`
                     }`}
                   >
                     <item.icon className="w-4 h-4" />
@@ -443,7 +455,7 @@ const Header = ({ currentPage, onNavigate }) => {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="md:hidden border-t border-[color:var(--hdr-border)] py-4"
+              className="md:hidden border-t border-[color:var(--hdr-menu-divider)] py-4"
             >
               <div className="flex flex-col space-y-2">
                 {/* Public items */}
@@ -477,7 +489,7 @@ const Header = ({ currentPage, onNavigate }) => {
                   </>
                 )}
                 <Button
-                  variant="brand"
+                  variant="brand-outline"
                   size="sm"
                   onClick={toggleLanguage}
                   className="flex items-center space-x-2 justify-start"

@@ -58,6 +58,9 @@
     "dashboard": "Panel de Control",
     "settings": "Configuración",
     "cart": "Carrito",
+    "openMenu": "Abrir menú",
+    "closeMenu": "Cerrar menú",
+    "userMenu": "Menú de usuario",
     "userPanel": "Mi Panel",
     "userManagement": "Gestión de Usuarios",
     "blog": "Blog"

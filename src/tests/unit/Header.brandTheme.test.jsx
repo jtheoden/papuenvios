@@ -5,6 +5,27 @@ import { BRAND_PRESET, getContrastIssues } from '@/lib/brandPalette';
 import { DEFAULT_VISUAL_SETTINGS } from '@/lib/businessVisualSettingsService';
 import { contrastRatio } from '@/lib/contrast';
 
+// Row stored in production today (blue/violet, gradient on, no logo), merged over the code defaults
+// the same way loadVisualSettings does.
+const PROD_ROW = {
+  useGradient: true,
+  logo: '',
+  primaryColor: '#3499dc',
+  secondaryColor: '#9333ea',
+  headerGradientColor: '#9333ea',
+  gradientDirection: '320',
+  navBarActiveBgColor: '#2563eb',
+  navBarActiveTextColor: '#ffffff',
+  headerMenuActiveBgColor: '#eff6ff',
+  headerMenuActiveColor: '#2563eb',
+  buttonBgColor: '#2563eb',
+  buttonTextColor: '#ffffff',
+  buttonHoverBgColor: '#1d4ed8',
+  headerBgColor: '#ffffff',
+  headerTextColor: '#1f2937',
+};
+const PROD = { ...DEFAULT_VISUAL_SETTINGS, ...PROD_ROW };
+
 const POISON = { primaryColor: '#abcdef', secondaryColor: '#fedcba', accentColor: '#123456' };
 const POISON_RGB = ['rgb(171, 205, 239)', 'rgb(254, 220, 186)', 'rgb(18, 52, 86)'];
 
@@ -12,6 +33,8 @@ const state = vi.hoisted(() => ({
   settings: {},
   cart: [],
   role: 'user',
+  user: null,
+  category: null,
   setLanguage: vi.fn(),
 }));
 
@@ -34,10 +57,10 @@ vi.mock('@/contexts/BusinessContext', () => ({
 }));
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
-    user: null,
-    isAdmin: state.role === 'admin',
+    user: state.user,
+    isAdmin: state.role === 'admin' || state.role === 'super_admin',
     userRole: state.role,
-    userCategory: null,
+    userCategory: state.category,
     roleStatus: 'resolved',
     roleFetchFailed: false,
     retryRoleResolution: vi.fn(),
@@ -62,6 +85,8 @@ describe('Header brand theme (S1)', () => {
     state.settings = {};
     state.cart = [];
     state.role = 'user';
+    state.user = null;
+    state.category = null;
     state.setLanguage = vi.fn();
     window.innerWidth = 1280;
   });
@@ -94,7 +119,7 @@ describe('Header brand theme (S1)', () => {
 
     it('does not depend on primary/secondary/accent colours (poisoned settings)', () => {
       const { header } = mount({ ...BRAND_PRESET, ...POISON });
-      const html = header.outerHTML.toLowerCase();
+      const html = header.querySelector('nav').outerHTML.toLowerCase();
       Object.values(POISON).forEach((hex) => expect(html).not.toContain(hex));
       POISON_RGB.forEach((rgb) => expect(html).not.toContain(rgb));
     });
@@ -164,16 +189,42 @@ describe('Header brand theme (S1)', () => {
       expect(header.style.backgroundColor).toBe('rgb(255, 255, 255)');
       expect(cssVar('--hdr-text')).toBe('#171717');
       expect(cssVar('--hdr-active-bg')).toBe('#FFF1CC');
-      expect(cssVar('--brand-cart-badge-bg')).toBe('#FFA500');
+      expect(cssVar('--brand-cart-badge-bg')).toBe('#dc2626');
       expect(cssVar('--brand-focus-ring')).toBe('#171717');
     });
 
-    it('shows only the wordmark text when there is no logo (no icon tile, no gradient text)', () => {
-      const { header } = mount({ ...BRAND_PRESET, useGradient: true });
+    it('shows only the plain wordmark text with the brand preset (gradient off): no icon tile, no gradient text', () => {
+      const { header, cssVar } = mount(BRAND_PRESET);
       const mark = within(header).getByText('PapuEnvíos');
-      expect(mark.getAttribute('style')).toBeNull();
+      expect(hasClass(mark, 'bg-clip-text')).toBe(false);
       expect(header.querySelector('img')).toBeNull();
       expect(header.querySelector('.rounded-lg svg')).toBeNull();
+      expect(cssVar('--hdr-mark-from')).toBe('');
+    });
+
+    it('keeps the legacy look while useGradient is on and there is no logo (until S5): gradient tile + gradient name', () => {
+      const { header, cssVar } = mount(PROD);
+      const tile = header.querySelector('.rounded-lg');
+      expect(tile.querySelector('svg')).toBeTruthy();
+      expect(hasClass(tile, 'bg-[linear-gradient(to_right,var(--hdr-mark-from),var(--hdr-mark-to))]')).toBe(true);
+      const mark = within(header).getByText('PapuEnvios');
+      expect(hasClass(mark, 'bg-clip-text')).toBe(true);
+      expect(hasClass(mark, 'text-transparent')).toBe(true);
+      expect(hasClass(mark, 'bg-[linear-gradient(to_right,var(--hdr-mark-from),var(--hdr-mark-to))]')).toBe(true);
+      expect(cssVar('--hdr-mark-from')).toBe('#3499dc');
+      expect(cssVar('--hdr-mark-to')).toBe('#9333ea');
+    });
+
+    it('the gradient name stays with a configured logo, the icon tile does not', () => {
+      const { header } = mount({ ...PROD, logo: 'https://cdn.test/logo.png' });
+      expect(header.querySelector('.rounded-lg')).toBeNull();
+      expect(hasClass(within(header).getByText('PapuEnvios'), 'bg-clip-text')).toBe(true);
+    });
+
+    it('mark colours fall back when the secondary colour is not a HEX value', () => {
+      const { cssVar } = mount({ ...PROD, secondaryColor: 'nope' });
+      expect(cssVar('--hdr-mark-from')).toBe('#3499dc');
+      expect(cssVar('--hdr-mark-to')).toBe('#3499dc');
     });
 
     it('keeps the configured logo image', () => {
@@ -186,6 +237,14 @@ describe('Header brand theme (S1)', () => {
     it('is hidden with an empty cart', () => {
       const { header } = mount(BRAND_PRESET);
       expect(header.querySelector('.bg-brand-badge')).toBeNull();
+    });
+
+    it('keeps the legacy red badge with the shipped defaults (gold only through the preset)', () => {
+      state.cart = [{ quantity: 1 }];
+      const { cssVar } = mount(PROD);
+      expect(cssVar('--brand-cart-badge-bg')).toBe('#dc2626');
+      expect(cssVar('--brand-cart-badge-text')).toBe('#ffffff');
+      expect(contrastRatio('#ffffff', '#dc2626')).toBeGreaterThanOrEqual(4.5);
     });
 
     it('shows the item count with the cartBadge* colours', () => {
@@ -201,17 +260,25 @@ describe('Header brand theme (S1)', () => {
   });
 
   describe('language button', () => {
-    it('respects buttonBgColor / buttonTextColor / buttonHoverBgColor and toggles the language', () => {
-      const { header, cssVar } = mount({ ...BRAND_PRESET, buttonBgColor: '#ffa500', buttonTextColor: '#171717', buttonHoverBgColor: '#e59400' });
+    it('is a neutral brand-outline button driven by borderColor/headingColor/softAccentColor and toggles the language', () => {
+      const { header, cssVar } = mount({ ...BRAND_PRESET, borderColor: '#e8e0d2', headingColor: '#171717', softAccentColor: '#fff1cc' });
       const lang = within(header).getAllByRole('button', { name: /ES/ })[0];
-      expect(hasClass(lang, 'bg-brand')).toBe(true);
-      expect(hasClass(lang, 'hover:bg-brand-hover')).toBe(true);
+      ['border-brand-border', 'text-brand-ink', 'hover:bg-brand-soft', 'focus-visible:ring-brand-focus'].forEach((c) => expect(hasClass(lang, c)).toBe(true));
+      expect(hasClass(lang, 'bg-brand')).toBe(false);
       expect(lang.getAttribute('style')).toBeNull();
-      expect(cssVar('--brand-button-bg')).toBe('#ffa500');
-      expect(cssVar('--brand-button-text')).toBe('#171717');
-      expect(cssVar('--brand-button-hover-bg')).toBe('#e59400');
+      expect(cssVar('--brand-border')).toBe('#e8e0d2');
+      expect(cssVar('--brand-ink')).toBe('#171717');
+      expect(cssVar('--brand-soft-accent')).toBe('#fff1cc');
       fireEvent.click(lang);
       expect(state.setLanguage).toHaveBeenCalledWith('en');
+    });
+
+    it('with the production row it stays neutral (grey border, dark text): nothing blue', () => {
+      const { header, cssVar } = mount(PROD);
+      expect(cssVar('--brand-border')).toBe('#e5e7eb');
+      expect(cssVar('--brand-ink')).toBe('#1f2937');
+      const lang = within(header).getAllByRole('button', { name: /ES/ })[0];
+      expect(hasClass(lang, 'bg-brand')).toBe(false);
     });
   });
 
@@ -225,12 +292,12 @@ describe('Header brand theme (S1)', () => {
       expect(home.getAttribute('aria-current')).toBe('page');
       expect(products.getAttribute('aria-current')).toBeNull();
       expect(hasClass(home, 'underline')).toBe(true);
-      const html = header.outerHTML.toLowerCase();
+      const html = pills[0].parentElement.outerHTML.toLowerCase();
       Object.values(POISON).forEach((hex) => expect(html).not.toContain(hex));
       POISON_RGB.forEach((rgb) => expect(html).not.toContain(rgb));
     });
 
-    it('hamburger menu: active item has aria-current and the language button is a brand button', () => {
+    it('hamburger menu: active item has aria-current and the language button is a brand-outline button', () => {
       const { header } = mount({ ...BRAND_PRESET, ...POISON });
       fireEvent.click(within(header).getAllByRole('button').find((b) => b.className.includes('md:hidden')));
       const navs = screen.getAllByRole('navigation');
@@ -238,7 +305,8 @@ describe('Header brand theme (S1)', () => {
       expect(within(mobileNav).getByRole('button', { name: 'nav.home' }).getAttribute('aria-current')).toBe('page');
       expect(within(mobileNav).getByRole('button', { name: 'nav.products' }).getAttribute('aria-current')).toBeNull();
       const lang = within(mobileNav).getByRole('button', { name: /ES/ });
-      expect(hasClass(lang, 'bg-brand')).toBe(true);
+      expect(hasClass(lang, 'border-brand-border')).toBe(true);
+      expect(hasClass(lang, 'bg-brand')).toBe(false);
       expect(lang.getAttribute('style')).toBeNull();
       expect(mobileNav.outerHTML.toLowerCase()).not.toContain(POISON.primaryColor);
     });
@@ -253,6 +321,135 @@ describe('Header brand theme (S1)', () => {
       const item = within(header).getByRole('button', { name: 'nav.settings' });
       expect(item.getAttribute('aria-current')).toBe('page');
       expect(within(header).getByRole('button', { name: 'nav.dashboard' }).getAttribute('aria-current')).toBeNull();
+    });
+  });
+
+  describe('production row (blue/violet, gradient on) keeps its look', () => {
+    it('resolves the same colours the previous header painted', () => {
+      const { header, cssVar } = mount(PROD);
+      expect(header.style.backgroundColor).toBe('rgb(255, 255, 255)');
+      expect(header.style.color).toBe('rgb(31, 41, 55)');
+      expect(cssVar('--hdr-active-background')).toBe('linear-gradient(320deg, #2563eb, #9333ea)');
+      expect(cssVar('--hdr-active-text')).toBe('#ffffff');
+      expect(cssVar('--hdr-hover-bg')).toBe('#f3f4f6');
+      expect(cssVar('--hdr-hover-text')).toBe('#1f2937');
+      expect(cssVar('--hdr-menu-active-bg')).toBe('#eff6ff');
+      expect(cssVar('--hdr-menu-active-text')).toBe('#2563eb');
+      expect(cssVar('--brand-button-bg')).toBe('#2563eb');
+      expect(cssVar('--brand-button-hover-bg')).toBe('#1d4ed8');
+      expect(cssVar('--brand-button-text')).toBe('#ffffff');
+    });
+  });
+
+  describe('legacy mobile chrome (pills, globe, dividers) follows useGradient like the wordmark', () => {
+    it('production row: pills tinted with primaryColor, white divider in the menu, globe in primaryColor', () => {
+      const { cssVar } = mount(PROD);
+      expect(cssVar('--hdr-pill-bg')).toBe('#3499dc12');
+      expect(cssVar('--hdr-pill-border')).toBe('#3499dc30');
+      expect(cssVar('--hdr-pill-text')).toBe('#3499dc');
+      expect(cssVar('--hdr-pills-divider')).toBe('#3499dc20');
+      expect(cssVar('--hdr-menu-divider')).toBe('rgba(255, 255, 255, 0.2)');
+      expect(cssVar('--hdr-globe')).toBe('#3499dc');
+    });
+
+    it('brand preset: neutral pills (header text, brand border), no primary colour anywhere', () => {
+      const { cssVar } = mount({ ...BRAND_PRESET, ...POISON });
+      expect(cssVar('--hdr-pill-bg')).toBe('transparent');
+      expect(cssVar('--hdr-pill-border')).toBe('#E8E0D2');
+      expect(cssVar('--hdr-pill-text')).toBe('#171717');
+      expect(cssVar('--hdr-pills-divider')).toBe('#E8E0D2');
+      expect(cssVar('--hdr-menu-divider')).toBe('#E8E0D2');
+      expect(cssVar('--hdr-globe')).toBe('#171717');
+    });
+
+    it('the pills use those variables through classes', () => {
+      window.innerWidth = 500;
+      const { header } = mount(PROD);
+      const [home, products] = header.querySelectorAll('button.rounded-full');
+      ['bg-[color:var(--hdr-pill-bg)]', 'border-[color:var(--hdr-pill-border)]', 'text-[color:var(--hdr-pill-text)]'].forEach((c) => expect(hasClass(products, c)).toBe(true));
+      expect(hasClass(home, 'underline')).toBe(true);
+      expect(home.getAttribute('aria-current')).toBe('page');
+    });
+  });
+
+  describe('invalid colour pairs fall back together', () => {
+    it.each([
+      ['active', { navBarActiveBgColor: 'nope', navBarActiveTextColor: '#ffffff' }, { '--hdr-active-bg': '#FFF1CC', '--hdr-active-text': '#171717' }],
+      ['hover', { headerMenuHoverBgColor: 'nope', headerMenuHoverTextColor: '#ffffff' }, { '--hdr-hover-bg': '#FFF1CC', '--hdr-hover-text': '#171717' }],
+      ['menu', { headerMenuBgColor: 'nope', headerMenuTextColor: '#ffffff' }, { '--hdr-menu-bg': '#ffffff', '--hdr-menu-text': '#171717' }],
+      ['menu active', { headerMenuActiveBgColor: '', headerMenuActiveColor: '#ffffff' }, { '--hdr-menu-active-bg': '#FFF1CC', '--hdr-menu-active-text': '#171717' }],
+      ['cart badge', { cartBadgeBgColor: 'nope', cartBadgeTextColor: '#ffffff' }, { '--brand-cart-badge-bg': '#dc2626', '--brand-cart-badge-text': '#ffffff' }],
+      ['button', { buttonBgColor: 'nope', buttonTextColor: '#ffffff' }, { '--brand-button-bg': '#FFA500', '--brand-button-text': '#171717' }],
+    ])('%s: a bad background never keeps a white text chosen for another background', (_name, bad, expected) => {
+      const { cssVar } = mount({ ...BRAND_PRESET, ...bad });
+      Object.entries(expected).forEach(([name, value]) => expect(cssVar(name).toLowerCase()).toBe(value.toLowerCase()));
+    });
+
+    it('the header surface pair falls back together too', () => {
+      const { header } = mount({ ...BRAND_PRESET, headerBgColor: 'nope', headerTextColor: '#ffffff' });
+      expect(header.style.backgroundColor).toBe('rgb(255, 255, 255)');
+      expect(header.style.color).toBe('rgb(23, 23, 23)');
+    });
+  });
+
+  describe('gradient direction', () => {
+    it.each([['abc', 135], ['', 135], [undefined, 135], ['0', 0], ['320', 320], [90, 90]])('%s -> %sdeg', (value, deg) => {
+      const { cssVar } = mount({ ...PROD, gradientDirection: value });
+      expect(cssVar('--hdr-active-background')).toBe(`linear-gradient(${deg}deg, #2563eb, #9333ea)`);
+    });
+  });
+
+  describe('signed-in users and roles', () => {
+    it('the regular-category indicator keeps reading primaryColor (legacy, not part of the brand surfaces)', () => {
+      state.user = { id: 'u1', email: 'a@b.c' };
+      state.category = { category_name: 'regular' };
+      const { header } = mount({ ...BRAND_PRESET, ...POISON });
+      const badge = header.querySelector('[title^="users.categories.current"]');
+      expect(badge).toBeTruthy();
+      expect(badge.style.borderColor).toBe('rgb(171, 205, 239)');
+      expect(header.querySelector('nav').outerHTML.toLowerCase()).not.toContain('rgb(171, 205, 239)');
+    });
+
+    it('super_admin: admin dropdown reachable, no cart button, current admin page marked', () => {
+      state.role = 'super_admin';
+      state.user = { id: 'u1', email: 'a@b.c' };
+      state.category = { category_name: 'vip' };
+      const { header } = mount(PROD, { currentPage: 'dashboard' });
+      expect(within(header).queryByRole('button', { name: /nav\.cart/ })).toBeNull();
+      fireEvent.click(within(header).getByRole('button', { name: /Admin/ }));
+      expect(within(header).getByRole('button', { name: 'nav.dashboard' }).getAttribute('aria-current')).toBe('page');
+      expect(header.querySelector('[title^="users.categories.current"]')).toBeTruthy();
+    });
+  });
+
+  describe('accessible names', () => {
+    it('hamburger: aria-label and aria-expanded follow the open state', () => {
+      const { header } = mount(BRAND_PRESET);
+      const burger = within(header).getByRole('button', { name: 'nav.openMenu' });
+      expect(burger.getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(burger);
+      const open = within(header).getByRole('button', { name: 'nav.closeMenu' });
+      expect(open.getAttribute('aria-expanded')).toBe('true');
+    });
+
+    it('cart keeps its count in the accessible name', () => {
+      state.cart = [{ quantity: 2 }];
+      const { header } = mount(BRAND_PRESET);
+      expect(within(header).getByRole('button', { name: /nav\.cart/ }).textContent).toContain('2');
+    });
+
+    it('avatar button is named', () => {
+      state.user = { id: 'u1', email: 'a@b.c' };
+      const { header } = mount(BRAND_PRESET);
+      expect(within(header).getByRole('button', { name: /nav\.userMenu/ })).toBeTruthy();
+    });
+  });
+
+  describe('motion', () => {
+    it('nav buttons do not scale on press when reduced motion is requested', () => {
+      const { header } = mount(BRAND_PRESET);
+      const products = within(header).getAllByRole('button', { name: 'nav.products' })[0];
+      expect(hasClass(products, 'motion-reduce:active:scale-100')).toBe(true);
     });
   });
 
