@@ -50,6 +50,9 @@ const HEADLINE_PERIODS = [
   { key: 'yearly', titleKey: 'dashboard.yearlyBreakdown', Icon: TrendingUp, border: 'border-purple-500', iconBg: 'bg-purple-100', iconColor: 'text-purple-600', netColor: 'text-purple-600' }
 ];
 
+// Period columns of the courier card (same keys as its header cells); labels the stacked mobile layout.
+const COURIER_PERIOD_KEYS = ['dailyBreakdown', 'monthlyBreakdown', 'yearlyBreakdown'];
+
 const DashboardPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { products, combos, financialSettings, visualSettings } = useBusiness();
@@ -912,8 +915,9 @@ const DashboardPage = ({ onNavigate }) => {
                         {courier.status === 'ok' && (
                           <>
                             <div className="overflow-x-auto">
-                              <table className="w-full table-fixed text-sm">
-                                <thead>
+                              {/* Below sm each row stacks (label, then one "period + amount" line per column) so amounts never collide in narrow cells. */}
+                              <table role="table" className="block w-full text-sm sm:table sm:table-fixed">
+                                <thead role="rowgroup" className="hidden sm:table-header-group">
                                   <tr className="border-b text-left">
                                     <th scope="col" className="w-2/5 pb-2"><span className="sr-only">{t('dashboard.courier.title')}</span></th>
                                     <th scope="col" className="pb-2 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">{t('dashboard.dailyBreakdown')}</th>
@@ -921,7 +925,7 @@ const DashboardPage = ({ onNavigate }) => {
                                     <th scope="col" className="pb-2 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">{t('dashboard.yearlyBreakdown')}</th>
                                   </tr>
                                 </thead>
-                                <tbody>
+                                <tbody role="rowgroup" className="block sm:table-row-group">
                                   {[
                                     { key: 'collected', label: t('dashboard.courier.collected'), values: [stats.dailyShippingCost, stats.monthlyShippingCost, stats.yearlyShippingCost], money: true },
                                     { key: 'collectedCompared', label: t('dashboard.courier.collectedCompared'), values: [courier.totals.dailyCourierCollected, courier.totals.monthlyCourierCollected, courier.totals.yearlyCourierCollected], money: true },
@@ -943,10 +947,12 @@ const DashboardPage = ({ onNavigate }) => {
                                       alert: true
                                     }
                                   ].filter((row) => !row.alert || row.values.some((v) => v > 0)).map((row) => (
-                                    <tr key={row.key} className={`border-b border-gray-100 ${row.alert ? 'bg-amber-50' : ''}`}>
-                                      <th scope="row" className={`py-1.5 pr-2 text-left text-xs break-words ${row.alert ? 'font-semibold text-amber-800' : row.strong ? 'font-bold text-gray-900' : 'font-normal text-gray-600'}`}>{row.label}</th>
+                                    <tr key={row.key} role="row" className={`block border-b border-gray-100 py-1.5 sm:table-row sm:py-0 ${row.alert ? 'bg-amber-50' : ''}`}>
+                                      <th scope="row" role="rowheader" className={`block pb-1 text-left text-xs break-words sm:table-cell sm:py-1.5 sm:pr-2 ${row.alert ? 'font-semibold text-amber-800' : row.strong ? 'font-bold text-gray-900' : 'font-normal text-gray-600'}`}>{row.label}</th>
                                       {row.values.map((value, i) => (
-                                        <td key={i} className={`py-1.5 text-right ${row.strong ? 'font-bold' : 'font-medium'} ${row.alert ? 'text-amber-800' : row.money ? 'text-orange-700' : 'text-gray-600'}`}>
+                                        <td key={i} role="cell" className={`flex flex-wrap items-baseline justify-end gap-x-3 py-0.5 text-right sm:table-cell sm:py-1.5 ${row.strong ? 'font-bold' : 'font-medium'} ${row.alert ? 'text-amber-800' : row.money ? 'text-orange-700' : 'text-gray-600'}`}>
+                                          {/* Period label for the stacked layout; display:none from sm up (the column header takes over), so it is read once. */}
+                                          <span className="mr-auto text-left text-xs font-semibold uppercase tracking-wide text-gray-600 sm:hidden">{t(`dashboard.${COURIER_PERIOD_KEYS[i]}`)}</span>
                                           {row.money ? formatUsd(value) : value}
                                         </td>
                                       ))}

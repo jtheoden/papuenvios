@@ -176,6 +176,43 @@ describe('DashboardPage courier cost card', () => {
     expect(within(card).queryByText('dashboard.courier.missingRow')).toBeNull();
   });
 
+  // Class-name pin only (jsdom has no layout): below sm every cell must stack and carry its period label, so amounts
+  // never share a 20%-wide table-fixed cell at 320 px. The real layout check is the Playwright run documented in the PR.
+  it('stacks rows on mobile with a period label per amount cell', async () => {
+    tables.errors = {};
+    tables.data = {
+      ...base(),
+      orders: [order('a', 'completed', hoursAgo(1), '10')],
+      order_courier_costs: [{ order_id: 'a', amount_usd: '6.50' }]
+    };
+    render(<DashboardPage onNavigate={() => {}} />);
+    const card = await screen.findByTestId('courier-cost-card');
+    await waitFor(() => within(card).getByText('dashboard.courier.cost'));
+    const table = card.querySelector('table');
+    expect(table.className).toMatch(/\bblock\b/);
+    expect(table.className).toMatch(/sm:table-fixed/);
+    const row = within(card).getByText('dashboard.courier.cost').closest('tr');
+    expect(row.className).toMatch(/\bblock\b/);
+    const cells = [...row.querySelectorAll('td')];
+    cells.forEach((c) => expect(c.className).toMatch(/\bflex-wrap\b/));
+    // Semantics survive display:block: explicit roles, and each cell names its period once (hidden from sm up).
+    expect(table).toHaveAttribute('role', 'table');
+    expect(row).toHaveAttribute('role', 'row');
+    expect(row.querySelector('th')).toHaveAttribute('role', 'rowheader');
+    ['dashboard.dailyBreakdown', 'dashboard.monthlyBreakdown', 'dashboard.yearlyBreakdown'].forEach((label, i) => {
+      expect(cells[i]).toHaveAttribute('role', 'cell');
+      const span = cells[i].querySelector('span');
+      expect(span).toHaveTextContent(label);
+      expect(span.className).toMatch(/\bsm:hidden\b/);
+    });
+    // Row-header classes must be well-formed (a missing space once glued sm:pr-2 to the weight class) and keep weight.
+    const th = (key) => within(card).getByText(key).closest('th');
+    expect(th('dashboard.courier.difference').className).toMatch(/(^|\s)sm:pr-2(\s|$)/);
+    expect(th('dashboard.courier.difference').className).toMatch(/(^|\s)font-bold(\s|$)/);
+    expect(th('dashboard.courier.cost').className).toMatch(/(^|\s)font-normal(\s|$)/);
+    expect(th('dashboard.courier.cost').className).not.toMatch(/sm:pr-2\S/);
+  });
+
   it('shows an unavailable alert, not zeros, when the courier costs cannot be read', async () => {
     tables.data = {
       ...base(),
