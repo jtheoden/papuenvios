@@ -50,6 +50,23 @@ module.exports = {
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))',
 				},
+				// Brand colours come from the Visual settings (applyVisualSettingsToDOM sets the
+				// --brand-* variables); the HEX is only the fallback while they are unset.
+				// Limit: `var()` colours do not support the alpha modifier, so `bg-brand/50` emits
+				// nothing. Use the solid class, or an arbitrary value such as `bg-[#FFA500]/50`.
+				brand: {
+					DEFAULT: 'var(--brand-button-bg, #FFA500)',
+					hover: 'var(--brand-button-hover-bg, #E59400)',
+					foreground: 'var(--brand-button-text, #171717)',
+					ink: 'var(--brand-ink, #171717)',
+					muted: 'var(--brand-muted-text, #605B52)',
+					soft: 'var(--brand-soft-accent, #FFF1CC)',
+					border: 'var(--brand-border, #E8E0D2)',
+					focus: 'var(--brand-focus-ring, #171717)',
+					badge: 'var(--brand-cart-badge-bg, #FFA500)',
+					'badge-foreground': 'var(--brand-cart-badge-text, #171717)',
+					dot: 'var(--brand-dot-active, #FFA500)',
+				},
 			},
 			borderRadius: {
 				lg: 'var(--radius)',

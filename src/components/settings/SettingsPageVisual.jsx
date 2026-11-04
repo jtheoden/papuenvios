@@ -9,6 +9,7 @@ import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { isImageUploadError, getImageUploadMessageKey } from '@/lib/imageStorage';
 import { DEFAULT_VISUAL_SETTINGS, clearVisualSettingsCache, saveVisualSettings, applyVisualSettingsToDOM } from '@/lib/businessVisualSettingsService';
+import { BRAND_PRESET, pickNewKeys, getContrastIssues } from '@/lib/brandPalette';
 import {
   getCarouselSlides, createCarouselSlide, updateCarouselSlide,
   hardDeleteCarouselSlide, toggleCarouselSlideActive
@@ -21,6 +22,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
   const isUserEditing = useRef(false); // Track if user is actively editing
   const originalSettings = useRef(null); // Store original settings for cancel functionality
   const [hasChanges, setHasChanges] = useState(false); // Track if there are unsaved changes
+  const [presetUndo, setPresetUndo] = useState(null); // Form state before the brand preset, null when not applied
 
   const [appearance, setAppearance] = useState({
     companyName: visualSettings.companyName || 'PapuEnvíos',
@@ -91,7 +93,9 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     // Carousel
     carouselEnabled: visualSettings.carouselEnabled !== undefined ? visualSettings.carouselEnabled : true,
     carouselAutoplaySpeed: visualSettings.carouselAutoplaySpeed || 5000,
-    carouselTransitionSpeed: visualSettings.carouselTransitionSpeed || 1000
+    carouselTransitionSpeed: visualSettings.carouselTransitionSpeed || 1000,
+    // Brand refresh keys
+    ...pickNewKeys(visualSettings)
   });
   const [logoPreview, setLogoPreview] = useState(visualSettings.logo || '');
   const [faviconPreview, setFaviconPreview] = useState(visualSettings.favicon || '');
@@ -186,7 +190,8 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       // Carousel
       carouselEnabled: visualSettings.carouselEnabled !== undefined ? visualSettings.carouselEnabled : true,
       carouselAutoplaySpeed: visualSettings.carouselAutoplaySpeed || 5000,
-      carouselTransitionSpeed: visualSettings.carouselTransitionSpeed || 1000
+      carouselTransitionSpeed: visualSettings.carouselTransitionSpeed || 1000,
+      ...pickNewKeys(visualSettings)
     };
     setAppearance(newAppearance);
     setLogoPreview(visualSettings.logo || '');
@@ -209,6 +214,28 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     // Reset editing flag after a delay
     setTimeout(() => { isUserEditing.current = false; }, 1000);
   }, [appearance, visualSettings, setVisualSettings, livePreview]);
+
+  // Brand preset: fills the FORM only. Live preview goes off because updateAppearance would
+  // otherwise persist the whole form (through setVisualSettings) on the next edit.
+  const handleApplyBrandPreset = () => {
+    setPresetUndo({ appearance, livePreview });
+    setAppearance(prev => ({ ...prev, ...BRAND_PRESET }));
+    setLivePreview(false);
+    setHasChanges(true);
+    // Same guard as updateAppearance: an external visualSettings refresh must not wipe the preset.
+    isUserEditing.current = true;
+    setTimeout(() => { isUserEditing.current = false; }, 1000);
+  };
+
+  const handleUndoBrandPreset = () => {
+    if (!presetUndo) return;
+    setAppearance(presetUndo.appearance);
+    setLivePreview(presetUndo.livePreview);
+    setPresetUndo(null);
+    setHasChanges(true);
+  };
+
+  const contrastIssues = getContrastIssues(appearance);
 
   // ===== APPEARANCE HANDLERS =====
   const handleLogoUpload = async (e) => {
@@ -297,6 +324,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     // Update original settings reference after successful save
     originalSettings.current = { ...newSettings };
     setHasChanges(false);
+    setPresetUndo(null);
     toast({
       title: t('settings.saveSuccess'),
       description: t('settings.visual.changesSaved')
@@ -345,6 +373,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       // 7. Update originalSettings reference
       originalSettings.current = { ...DEFAULT_VISUAL_SETTINGS };
       setHasChanges(false);
+      setPresetUndo(null);
 
       toast({
         title: t('settings.visual.changesDiscarded'),
@@ -606,6 +635,39 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
             </span>
           </div>
         )}
+
+        {/* Brand preset + contrast warning */}
+        <div className="mb-6 p-4 rounded-xl border border-amber-200 bg-amber-50/60">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="button" variant="outline" onClick={handleApplyBrandPreset} className="h-9 px-3">
+              <Palette className="h-4 w-4 mr-2" />
+              {t('settings.visual.brand.applyPreset')}
+            </Button>
+            {presetUndo && (
+              <Button type="button" variant="ghost" onClick={handleUndoBrandPreset} className="h-9 px-3">
+                {t('settings.visual.brand.undoPreset')}
+              </Button>
+            )}
+          </div>
+          <p className="text-xs text-gray-600 mt-2">{t('settings.visual.brand.applyPresetHint')}</p>
+          {presetUndo && (
+            <p data-testid="brand-preset-applied" role="status" className="text-sm text-green-700 mt-2">
+              {t('settings.visual.brand.applied')}
+            </p>
+          )}
+          <div data-testid="brand-contrast-warning" role="status" className={contrastIssues.length ? 'mt-3 text-sm text-amber-800' : undefined}>
+            {contrastIssues.length > 0 && (
+              <>
+                <p className="font-medium">{t('settings.visual.brand.contrastWarning')}</p>
+                <ul className="list-disc pl-5 mt-1">
+                  {contrastIssues.map(({ id, ratio }) => (
+                    <li key={id}>{`${t(`settings.visual.brand.pair.${id}`)}: ${ratio.toFixed(2)}:1`}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        </div>
 
         {/* Logo & Favicon Upload */}
         <div className="grid md:grid-cols-2 gap-6 mb-8">
@@ -1217,6 +1279,32 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
                 <span className="text-xs" style={{ color: appearance.footerTextColor }}>{appearance.companyName || 'PapuEnvíos'}</span>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* SECTION 9: Brand & accents (cart badge, carousel dot, ...)  */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        <div className="mb-8 p-4 bg-gray-50/50 rounded-xl border border-gray-100">
+          <h3 className="text-lg font-semibold mb-1 text-gray-800">
+            {t('settings.visual.brand.sectionTitle')}
+          </h3>
+          <p className="text-xs text-gray-500 mb-4">{t('settings.visual.brand.sectionHint')}</p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { key: 'cartBadgeBgColor', label: t('settings.visual.brand.cartBadgeBg') },
+              { key: 'cartBadgeTextColor', label: t('settings.visual.brand.cartBadgeText') },
+              { key: 'carouselDotActiveColor', label: t('settings.visual.brand.carouselDotActive') },
+              { key: 'borderColor', label: t('settings.visual.brand.border') },
+              { key: 'mutedTextColor', label: t('settings.visual.brand.mutedText') },
+              { key: 'softAccentColor', label: t('settings.visual.brand.softAccent') },
+              { key: 'focusRingColor', label: t('settings.visual.brand.focusRing') }
+            ].map(({ key, label }) => (
+              <div key={key}>
+                <label htmlFor={`visual-${key}`} className="block text-xs font-medium mb-1.5 text-gray-600">{label}</label>
+                <input id={`visual-${key}`} type="color" value={appearance[key]} onChange={e => updateAppearance(key, e.target.value)} className="w-full h-9 rounded-lg cursor-pointer border border-gray-300" />
+              </div>
+            ))}
           </div>
         </div>
 
