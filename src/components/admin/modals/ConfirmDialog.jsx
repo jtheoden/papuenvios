@@ -69,7 +69,7 @@ const ConfirmDialog = ({ show, title, message, onConfirm, onCancel, t }) => {
         </div>
 
         <div className="p-6">
-          <p className="text-gray-700 text-base">{message}</p>
+          <p className="text-gray-700 text-base whitespace-pre-line">{message}</p>
         </div>
 
         <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 rounded-b-lg">

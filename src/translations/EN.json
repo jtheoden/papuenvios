@@ -1731,6 +1731,11 @@
   "adminOrders": {
     "title": "Orders History",
     "subtitle": "Complete management of all system orders",
+    "totalWarning": {
+      "items_missing": "The order has no recorded items; verify before validating the payment.",
+      "subtotal_mismatch": "The order subtotal does not match the sum of its items; verify before validating the payment.",
+      "total_below_formula": "The order total is missing or lower than subtotal plus shipping minus discounts; verify before validating the payment."
+    },
     "stats": {
       "total": "Total",
       "pending": "Pending",

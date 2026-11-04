@@ -11,6 +11,7 @@ import { isValidPayerPhone, normalizePayerPhone, PAYER_PHONE_MAX_LENGTH } from '
 import { isInsufficientStockError } from '@/lib/stockErrors';
 import { isStatusConflictError, transitionErrorKey, transitionMessage } from '@/lib/statusConflict';
 import { isOwnOperation } from '@/lib/selfDealing';
+import { getOrderTotalWarning } from '@/lib/orderTotalCoherence';
 
 const OWN_REASON_ID = 'own-operation-reason';
 import { getUserOrders, getOrderById, getAllOrders, getPendingOrdersCount, validatePayment, rejectPayment, cancelOrderByUser, uploadPaymentProof, markOrderAsDispatched, markOrderAsDelivered, completeOrder, reopenOrder, ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderService';
@@ -1908,6 +1909,12 @@ const UserPanel = ({ onNavigate }) => {
                       <div id={OWN_REASON_ID} role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                         <span className="font-semibold">{t('common.ownOperation')}. </span>
                         {t('common.ownOperationReason')}
+                      </div>
+                    )}
+
+                    {isAdminRole && ['pending', 'proof_uploaded'].includes(selectedOrder.payment_status) && getOrderTotalWarning(selectedOrder) && (
+                      <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                        {t(`adminOrders.totalWarning.${getOrderTotalWarning(selectedOrder)}`)}
                       </div>
                     )}
 
