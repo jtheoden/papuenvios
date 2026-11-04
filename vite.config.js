@@ -2,6 +2,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
+// Unit tests render local-time dates (Intl without timeZone); pin the zone so snapshots do not depend on the machine/CI.
+process.env.TZ = 'UTC';
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
