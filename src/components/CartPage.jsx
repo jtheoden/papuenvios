@@ -60,7 +60,7 @@ const CartPage = ({ onNavigate }) => {
   const { cart, updateCartQuantity, removeFromCart, clearCart, combos, zelleAccounts, visualSettings, businessInfo, notificationSettings, refreshStock } = useBusiness();
   const { isAuthenticated, user } = useAuth();
   const { ensureAccepted } = useLegalAcceptance();
-  const { selectedCurrency, setSelectedCurrency, currencies, currencyCode, currencySymbol, convertAmount } = useCurrency();
+  const { selectedCurrency, setSelectedCurrency, currencies, currencyCode, currencySymbol, convertAmount, loading: currenciesLoading } = useCurrency();
   const { showModal } = useModal();
   const { methods: paymentMethods, refresh: refreshPaymentMethods, isMethodEnabled } = usePaymentMethods();
   // Fails open: stays false until the status is known (the DB trigger is the real guard)
@@ -134,6 +134,12 @@ const CartPage = ({ onNavigate }) => {
   // lines feed the cart UI, the confirmation modal and the order payload.
   const cartLines = useMemo(() => buildCartLines(cart, getItemPrice), [cart, getItemPrice]);
   const subtotal = cartLines.subtotal;
+
+  // Lines are base-currency amounts: until the currencies load (or if they never do) nothing can be
+  // priced, which is not the same as an invalid line. Checkout stays blocked in both cases.
+  const currencyUnavailable = !currenciesLoading && !baseCurrencyId;
+  const pricingPending = Boolean(currenciesLoading) || !baseCurrencyId;
+  const showInvalidItems = cartLines.hasInvalidLines && !pricingPending;
 
   // Calculate discount amount and final total (category + offers)
   const orderTotals = useMemo(() => calculateOrderTotal({
@@ -355,6 +361,15 @@ const CartPage = ({ onNavigate }) => {
 
   // Fail closed: a line with a non-numeric price or quantity must never reach an order
   const notifyInvalidCart = () => {
+    if (currencyUnavailable) {
+      toast({
+        title: t('common.error'),
+        description: t('cart.currencyUnavailable'),
+        variant: 'destructive'
+      });
+      return true;
+    }
+    if (pricingPending) return true;
     if (!cartLines.hasInvalidLines) return false;
     toast({
       title: t('common.error'),
@@ -480,9 +495,8 @@ const CartPage = ({ onNavigate }) => {
           ? 'Este cupón aún no está vigente'
           : 'This coupon is not active yet';
       case 'MIN_AMOUNT':
-        return language === 'es'
-          ? `Compra mínima requerida: ${displayCurrencySymbol}${requiredAmount?.toFixed(2)}. Tu subtotal actual: ${displayCurrencySymbol}${currentAmount?.toFixed(2)}`
-          : `Minimum purchase required: ${displayCurrencySymbol}${requiredAmount?.toFixed(2)}. Your current subtotal: ${displayCurrencySymbol}${currentAmount?.toFixed(2)}`;
+        // Kept as data and formatted at render: the amounts are USD and the text follows the language.
+        return { code: 'MIN_AMOUNT', requiredAmount, currentAmount };
       case 'GLOBAL_LIMIT':
         return language === 'es'
           ? 'Este cupón ya alcanzó su límite de usos'
@@ -499,6 +513,14 @@ const CartPage = ({ onNavigate }) => {
         return validation.reason || t('cart.coupon.invalid');
     }
   };
+
+  const formatBaseAmount = (amount) => `${BASE_CURRENCY_SYMBOL}${Number(amount).toFixed(2)} ${BASE_CURRENCY_CODE}`;
+
+  const couponErrorText = couponError && typeof couponError === 'object'
+    ? (language === 'es'
+      ? `Compra mínima requerida: ${formatBaseAmount(couponError.requiredAmount)}. Tu subtotal actual: ${formatBaseAmount(couponError.currentAmount)}`
+      : `Minimum purchase required: ${formatBaseAmount(couponError.requiredAmount)}. Your current subtotal: ${formatBaseAmount(couponError.currentAmount)}`)
+    : couponError;
 
   // Apply coupon code
   const handleApplyCoupon = async () => {
@@ -704,7 +726,7 @@ const CartPage = ({ onNavigate }) => {
     if (showingBaseAmounts) return;
     if (notifyPaymentBlocker()) return;
 
-    const summaryText = `${t('cart.payment.recipientLabel')}: ${recipientDetails.fullName}\nTotal: ${displayCurrencySymbol}${displayValues.total.toFixed(2)} ${displayCurrencyCode}\n${t('cart.payment.productsLabel')}: ${t('cart.payment.itemCount', { count: cart.length })}`;
+    const summaryText = `${t('cart.payment.recipientLabel')}: ${recipientDetails.fullName}\nTotal: ${BASE_CURRENCY_SYMBOL}${totalAmount.toFixed(2)} ${BASE_CURRENCY_CODE}\n${t('cart.payment.productsLabel')}: ${t('cart.payment.itemCount', { count: cart.length })}`;
 
     const confirmed = await showModal({
       type: 'confirm',
@@ -1091,7 +1113,7 @@ const CartPage = ({ onNavigate }) => {
               <p className="text-2xl font-bold text-green-600">
                 {shippingCost === 0
                   ? (language === 'es' ? '¡Envío Gratis!' : 'Free Shipping!')
-                  : `$${shippingCost.toFixed(2)}`
+                  : <>{`$${shippingCost.toFixed(2)}`} <span className="text-base font-semibold">{BASE_CURRENCY_CODE}</span></>
                 }
               </p>
             </motion.div>
@@ -1183,8 +1205,8 @@ const CartPage = ({ onNavigate }) => {
                     {validatingCoupon ? t('cart.payment.validating') : t('cart.payment.apply')}
                   </Button>
                 </div>
-                {couponError && (
-                  <p className="text-sm text-red-600 font-medium">{couponError}</p>
+                {couponErrorText && (
+                  <p className="text-sm text-red-600 font-medium">{couponErrorText}</p>
                 )}
               </div>
             ) : (
@@ -1233,7 +1255,7 @@ const CartPage = ({ onNavigate }) => {
                   <span>
                     {t('cart.payment.offerDiscount')} ({appliedOffer.code} · {appliedOffer.discount_type === 'percentage'
                       ? `${appliedOffer.discount_value}%`
-                      : `${BASE_CURRENCY_SYMBOL}${appliedOffer.discount_value}`
+                      : `${BASE_CURRENCY_SYMBOL}${appliedOffer.discount_value} ${BASE_CURRENCY_CODE}`
                     }):
                   </span>
                   <span>-{BASE_CURRENCY_SYMBOL}{discountBreakdown.offer.amount.toFixed(2)}</span>
@@ -1608,12 +1630,12 @@ const CartPage = ({ onNavigate }) => {
                       </p>
                       {discountBreakdown.category.amount > 0 && (
                         <p className="text-xs text-green-800">
-                          {language === 'es' ? 'Categoría' : 'Category'}: {userCategory} ({discountBreakdown.category.percent}% · -{displayCurrencySymbol}{discountBreakdown.category.amount.toFixed(2)})
+                          {language === 'es' ? 'Categoría' : 'Category'}: {userCategory} ({discountBreakdown.category.percent}% · -{displayCurrencySymbol}{displayValues.categoryDiscount.toFixed(2)})
                         </p>
                       )}
                       {discountBreakdown.offer.amount > 0 && appliedOffer && (
                         <p className="text-xs text-green-800">
-                          {language === 'es' ? 'Oferta' : 'Offer'}: {appliedOffer.code} ({appliedOffer.discount_type === 'percentage' ? `${appliedOffer.discount_value}%` : `${displayCurrencySymbol}${appliedOffer.discount_value}`} · -{displayCurrencySymbol}{discountBreakdown.offer.amount.toFixed(2)})
+                          {language === 'es' ? 'Oferta' : 'Offer'}: {appliedOffer.code} ({appliedOffer.discount_type === 'percentage' ? `${appliedOffer.discount_value}%` : `${displayCurrencySymbol}${(appliedOffer.discount_value * exchangeRateForDisplay).toFixed(2)}`} · -{displayCurrencySymbol}{displayValues.offerDiscount.toFixed(2)})
                         </p>
                       )}
                     </div>
@@ -1685,11 +1707,15 @@ const CartPage = ({ onNavigate }) => {
                   </p>
                 )}
 
-                {cartLines.hasInvalidLines && (
+                {currencyUnavailable && (
+                  <p role="alert" className="text-sm text-amber-700 font-medium">{t('cart.currencyUnavailable')}</p>
+                )}
+
+                {showInvalidItems && (
                   <p role="alert" className="text-sm text-red-600 font-medium">{t('cart.invalidItems')}</p>
                 )}
 
-                <Button onClick={handleCheckout} className="w-full" size="lg" style={getPrimaryButtonStyle(visualSettings)} disabled={zelleOrdersBlocked || cartLines.hasInvalidLines || showingBaseAmounts}>
+                <Button onClick={handleCheckout} className="w-full" size="lg" style={getPrimaryButtonStyle(visualSettings)} disabled={zelleOrdersBlocked || cartLines.hasInvalidLines || pricingPending || showingBaseAmounts}>
                   {t('cart.checkout')}
                 </Button>
                 <Button onClick={handleClearCart} variant="outline" className="w-full">

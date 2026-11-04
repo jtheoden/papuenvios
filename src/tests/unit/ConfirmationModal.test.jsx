@@ -283,18 +283,34 @@ describe('ConfirmationModal optional WhatsApp step', () => {
 
 describe('ConfirmationModal total', () => {
   beforeEach(() => { mockLang.current = 'es'; });
+  const plain = (node) => node.textContent.replace(/\u00a0/g, ' ');
 
-  it('formats the total with the real currency, no hardcoded dollar sign', () => {
+  it('shows the real currency code, no hardcoded dollar sign (ES, CUP)', () => {
     render(<ConfirmationModal {...baseProps} total={7700} currency="CUP" />);
 
-    const total = screen.getByText(/7\.?700,00/);
-    expect(total).toHaveTextContent(/CUP/);
-    expect(total.textContent).not.toContain('$');
+    expect(screen.getByText('7700,00 CUP')).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('$');
   });
 
-  it('shows a USD total as USD', () => {
+  it('shows a USD total with the USD code, not US$ (ES)', () => {
     render(<ConfirmationModal {...baseProps} total={26} currency="USD" />);
 
-    expect(screen.getByText(/26,00/)).toHaveTextContent(/US\$|USD/);
+    expect(screen.getByText('26,00 USD')).toBeInTheDocument();
+  });
+
+  it('shows a USD total with the USD code (EN)', () => {
+    mockLang.current = 'en';
+    render(<ConfirmationModal {...baseProps} total={26} currency="USD" />);
+
+    expect(plain(screen.getByText(/26\.00/))).toBe('USD 26.00');
+  });
+
+  it('formats a numeric-string total and never prints a raw or NaN value for a bad one', () => {
+    const { rerender } = render(<ConfirmationModal {...baseProps} total="26.5" currency="USD" />);
+    expect(screen.getByText('26,50 USD')).toBeInTheDocument();
+
+    rerender(<ConfirmationModal {...baseProps} total="abc" currency="USD" />);
+    expect(screen.queryByText(/abc|NaN/)).toBeNull();
+    expect(screen.getByText('\u2014')).toBeInTheDocument();
   });
 });

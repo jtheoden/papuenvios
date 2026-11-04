@@ -12,6 +12,13 @@ const state = {
 const USD = 'usd-id';
 const CUP = 'cup-id';
 const RATE = 770; // 1 USD = 770 CUP
+
+// Mutable currency context (selected currency, loading flag, loaded currencies).
+const cur = { selected: CUP, loading: false, currencies: [] };
+const ALL_CURRENCIES = [{ id: USD, code: 'USD', is_base: true }, { id: CUP, code: 'CUP', is_base: false }];
+const SYMBOLS = { [USD]: '$', [CUP]: '₱' };
+const CODES = { [USD]: 'USD', [CUP]: 'CUP' };
+const showModal = vi.fn();
 const VALID_PHONE = '+13055551234';
 
 let nextId = 1;
@@ -32,7 +39,7 @@ const liveZones = () => [
 
 // ─── Context mocks ───────────────────────────────────────────────────────────
 vi.mock('@/contexts/LanguageContext', () => ({
-  useLanguage: () => ({ t: (key) => key, language: 'es' }),
+  useLanguage: () => ({ t: (key, params) => (params?.summary ? `${key}|${params.summary}` : key), language: 'es' }),
 }));
 
 vi.mock('@/contexts/BusinessContext', () => ({
@@ -55,11 +62,12 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 vi.mock('@/contexts/CurrencyContext', () => ({
   useCurrency: () => ({
-    selectedCurrency: CUP,
+    selectedCurrency: cur.selected,
     setSelectedCurrency: vi.fn(),
-    currencies: [{ id: USD, code: 'USD', is_base: true }, { id: CUP, code: 'CUP', is_base: false }],
-    currencyCode: 'CUP',
-    currencySymbol: '₱',
+    currencies: cur.currencies,
+    loading: cur.loading,
+    currencyCode: CODES[cur.selected] ?? 'USD',
+    currencySymbol: SYMBOLS[cur.selected] ?? '$',
     convertAmount: (amount, from, to) => {
       if (from === to) return amount;
       if (from === CUP && to === USD) return amount / RATE;
@@ -70,7 +78,7 @@ vi.mock('@/contexts/CurrencyContext', () => ({
 }));
 
 vi.mock('@/contexts/ModalContext', () => ({
-  useModal: () => ({ showModal: vi.fn().mockResolvedValue(true) }),
+  useModal: () => ({ showModal }),
 }));
 
 vi.mock('@/hooks/useUserDiscounts', () => ({
@@ -164,6 +172,7 @@ vi.mock('@/components/shared/ZelleAccountDisplay', () => ({ default: () => null 
 
 import CartPage from '@/components/CartPage';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
+import { validateAndGetOffer } from '@/lib/orderDiscountService';
 
 const confirmButton = () => screen.getByRole('button', { name: 'cart.payment.confirm' });
 
@@ -206,6 +215,8 @@ describe('CartPage - one currency unit with a non-base currency selected (1 USD 
     state.zones = liveZones();
     state.discountPercent = 0;
     state.cart = [detailItem, catalogItem];
+    Object.assign(cur, { selected: CUP, loading: false, currencies: ALL_CURRENCIES });
+    showModal.mockResolvedValue(true);
     createOrder.mockResolvedValue({ id: 'o1', order_number: 'ORD-1', payment_status: 'pending' });
     uploadPaymentProof.mockResolvedValue('https://files/proof.png');
   });
@@ -235,5 +246,83 @@ describe('CartPage - one currency unit with a non-base currency selected (1 USD 
     expect(screen.getAllByText('$20.00 USD').length).toBeGreaterThan(0);
     expect(screen.getAllByText('$26.00 USD').length).toBeGreaterThan(0);
     expect(await screen.findByTestId('confirmation-modal')).toHaveTextContent('26 USD');
+  });
+
+  it('shows the pre-payment confirmation total in USD, like the step it follows', async () => {
+    await submitOrder();
+
+    const confirm = showModal.mock.calls.map(([options]) => options.message).find((m) => m?.includes('|'));
+    expect(confirm).toContain('Total: $26.00 USD');
+    expect(confirm).not.toContain('₱');
+  });
+
+  it('shows the shipping cost with its USD label before payment', async () => {
+    state.pick = { province: 'Camagüey', municipality: 'Guáimaro' };
+    render(<CartPage onNavigate={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'cart.checkout' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'pick-recipient' }));
+
+    expect(await screen.findByText('$6.00')).toHaveTextContent('$6.00 USD');
+  });
+
+  it('shows the active-discount box in the selected currency (10% of 20 USD -> 1540 CUP)', async () => {
+    state.discountPercent = 10;
+    render(<CartPage onNavigate={vi.fn()} />);
+
+    const category = await screen.findByText(/^Categoría:/);
+    expect(category).toHaveTextContent('-₱1540.00');
+    expect(category).not.toHaveTextContent('-₱2.00');
+  });
+
+  it('formats the minimum-purchase coupon error in USD and not with the selected currency symbol', async () => {
+    validateAndGetOffer.mockResolvedValue({ valid: false, errorCode: 'MIN_AMOUNT', requiredAmount: 50, currentAmount: 20 });
+    await reachPaymentStep();
+    fireEvent.change(screen.getByPlaceholderText('cart.payment.enterCouponCode'), { target: { value: 'big' } });
+    fireEvent.click(screen.getByRole('button', { name: 'cart.payment.apply' }));
+
+    const error = await screen.findByText(/Compra mínima requerida/);
+    expect(error).toHaveTextContent('$50.00 USD');
+    expect(error).toHaveTextContent('$20.00 USD');
+    expect(error).not.toHaveTextContent('₱');
+  });
+});
+
+describe('CartPage - production rates and loading window', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    state.zones = liveZones();
+    state.discountPercent = 0;
+    Object.assign(cur, { selected: CUP, loading: false, currencies: ALL_CURRENCIES });
+    showModal.mockResolvedValue(true);
+    createOrder.mockResolvedValue({ id: 'o1', order_number: 'ORD-1', payment_status: 'pending' });
+    uploadPaymentProof.mockResolvedValue('https://files/proof.png');
+  });
+
+  it('does not flash the invalid-items alert while currencies are loading, and keeps checkout disabled', async () => {
+    state.cart = [{ id: 'u', name: 'Usd', displayed_price: 10, displayed_currency_id: USD, quantity: 1 }];
+    Object.assign(cur, { selected: undefined, loading: true, currencies: [] });
+    render(<CartPage onNavigate={vi.fn()} />);
+
+    expect(await screen.findByRole('button', { name: 'cart.checkout' })).toBeDisabled();
+    expect(screen.queryByText('cart.invalidItems')).toBeNull();
+    expect(screen.queryByText('cart.currencyUnavailable')).toBeNull();
+  });
+
+  it('after a failed load shows the currency-unavailable notice, not the misleading invalid-items one', async () => {
+    state.cart = [{ id: 'u', name: 'Usd', displayed_price: 10, displayed_currency_id: USD, quantity: 1 }];
+    Object.assign(cur, { selected: undefined, loading: false, currencies: [] });
+    render(<CartPage onNavigate={vi.fn()} />);
+
+    expect(await screen.findByText('cart.currencyUnavailable')).toBeInTheDocument();
+    expect(screen.queryByText('cart.invalidItems')).toBeNull();
+    expect(screen.getByRole('button', { name: 'cart.checkout' })).toBeDisabled();
+  });
+
+  it('keeps showing the invalid-items alert for a genuinely invalid line once currencies are loaded', async () => {
+    state.cart = [{ id: 'x', name: 'Bad', displayed_price: 'x', displayed_currency_id: USD, quantity: 1 }];
+    render(<CartPage onNavigate={vi.fn()} />);
+
+    expect(await screen.findByText('cart.invalidItems')).toBeInTheDocument();
+    expect(screen.queryByText('cart.currencyUnavailable')).toBeNull();
   });
 });

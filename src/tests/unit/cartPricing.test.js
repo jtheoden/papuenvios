@@ -257,14 +257,17 @@ describe('withStoredComboPrice - combos added to the cart before the stored pric
 
 describe('getCartItemUnitPrice - always base currency (one unit for the whole cart)', () => {
   // Product of 10 USD with 1 USD = 770 CUP. The detail page stores the price shown in the
-  // selected currency: 7700 CUP. The catalog list stores no snapshot: 10 USD.
+  // selected currency (7700 CUP) next to the catalog fields (...currentItem), so final_price travels
+  // with the snapshot. The catalog list stores no snapshot: 10 USD.
   const detailItemInCup = { id: 'd', final_price: 10, base_currency_id: USD, displayed_price: 7700, displayed_currency_id: CUP, quantity: 1 };
   const catalogItem = { id: 'c', final_price: 10, base_currency_id: USD, quantity: 1 };
+  // Old cart entry: only the snapshot, no catalog price to pivot on.
+  const legacySnapshotInCup = { id: 'l', displayed_price: 7700, displayed_currency_id: CUP, quantity: 1 };
 
-  it('converts a snapshot taken in another currency to the base currency, not to the selected one', () => {
+  it('prices a non-base snapshot from the item base price: no reconversion, no rate needed', () => {
     const c = ctx({ selectedCurrency: CUP });
     expect(getCartItemUnitPrice(detailItemInCup, c)).toBe(10);
-    expect(c.convertAmount).toHaveBeenCalledWith(7700, CUP, USD);
+    expect(c.convertAmount).not.toHaveBeenCalled();
   });
 
   it('returns the same base price whichever currency is selected', () => {
@@ -282,19 +285,53 @@ describe('getCartItemUnitPrice - always base currency (one unit for the whole ca
     expect(hasInvalidLines).toBe(false);
   });
 
-  it('rounds the converted snapshot to cents', () => {
-    const item = { displayed_price: 1000, displayed_currency_id: CUP };
-    expect(getCartItemUnitPrice(item, ctx({ selectedCurrency: CUP }))).toBe(1.3);
+  it('prices a combo snapshot from its stored base price', () => {
+    const combo = { id: 'k', products: ['a'], finalPrice: 10, displayed_price: 7700, displayed_currency_id: CUP };
+    expect(getCartItemUnitPrice(combo, ctx({ selectedCurrency: CUP }))).toBe(10);
   });
 
-  it('fails closed (NaN) when the snapshot is in another currency and the base currency is unknown', () => {
-    const c = ctx({ selectedCurrency: CUP, baseCurrencyId: null });
-    expect(getCartItemUnitPrice(detailItemInCup, c)).toBeNaN();
+  describe('production rates: USD->CUP 915 but CUP->USD 1/900 (inconsistent pair)', () => {
+    const inconsistent = () =>
+      vi.fn((amount, from, to) => {
+        if (from === to) return amount;
+        if (from === USD && to === CUP) return amount * 915;
+        if (from === CUP && to === USD) return amount / 900;
+        return NaN; // any other pair (e.g. EUR) is not cached
+      });
+
+    it('10 USD added in CUP (9150 CUP) is still exactly 10.00 USD, not 10.17', () => {
+      const item = { final_price: 10, base_currency_id: USD, displayed_price: 9150, displayed_currency_id: CUP };
+      expect(getCartItemUnitPrice(item, ctx({ convertAmount: inconsistent() }))).toBe(10);
+    });
+
+    it('stays valid with a third currency selected (CUP<->USD never cached)', () => {
+      const item = { final_price: 10, base_currency_id: USD, displayed_price: 9150, displayed_currency_id: CUP };
+      const c = ctx({ selectedCurrency: 'eur-id', convertAmount: vi.fn(() => NaN) });
+      expect(getCartItemUnitPrice(item, c)).toBe(10);
+    });
+
+    it('legacy snapshot without catalog price is undone with the forward rate (9150 / 915 = 10.00)', () => {
+      const c = ctx({ convertAmount: inconsistent() });
+      expect(getCartItemUnitPrice({ displayed_price: 9150, displayed_currency_id: CUP }, c)).toBe(10);
+    });
+  });
+
+  it('legacy snapshot: rounds to cents', () => {
+    expect(getCartItemUnitPrice({ displayed_price: 1000, displayed_currency_id: CUP }, ctx())).toBe(1.3);
+  });
+
+  it('legacy snapshot fails closed (NaN) when the base currency is unknown', () => {
+    const c = ctx({ baseCurrencyId: null });
+    expect(getCartItemUnitPrice(legacySnapshotInCup, c)).toBeNaN();
     expect(c.convertAmount).not.toHaveBeenCalled();
   });
 
-  it('fails closed (NaN) when there is no rate to convert the snapshot', () => {
-    const c = ctx({ selectedCurrency: CUP, convertAmount: vi.fn(() => NaN) });
-    expect(getCartItemUnitPrice(detailItemInCup, c)).toBeNaN();
+  it('legacy snapshot fails closed (NaN) when there is no rate', () => {
+    expect(getCartItemUnitPrice(legacySnapshotInCup, ctx({ convertAmount: vi.fn(() => NaN) }))).toBeNaN();
+  });
+
+  it('fails closed (NaN) for a product in a non-base currency while the base currency is unknown', () => {
+    const item = { final_price: 1000, base_currency_id: CUP };
+    expect(getCartItemUnitPrice(item, ctx({ baseCurrencyId: null }))).toBeNaN();
   });
 });

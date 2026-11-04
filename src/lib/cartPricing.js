@@ -28,13 +28,27 @@ const getCatalogProductPrice = (item, { baseCurrencyId, convertAmount }) => {
 
   let price = finalPrice;
   const productCurrencyId = item.base_currency_id;
-  if (productCurrencyId && baseCurrencyId && productCurrencyId !== baseCurrencyId && typeof convertAmount === 'function') {
+  if (productCurrencyId && productCurrencyId !== baseCurrencyId) {
+    // Fail closed: a price in another currency cannot be normalized without a base currency and a rate.
+    if (!baseCurrencyId || typeof convertAmount !== 'function') return null;
     const converted = convertAmount(finalPrice, productCurrencyId, baseCurrencyId);
     if (!Number.isFinite(converted)) return null;
     price = converted;
   }
 
   return roundMoney(price);
+};
+
+/**
+ * Stored catalog price of a cart item in the base currency, or null when it cannot be resolved.
+ * Combos are stored in the base currency (no currency column); products in their own currency.
+ */
+const getStoredBasePrice = (item, context) => {
+  if (item.products) {
+    const comboPrice = resolveComboPrice(item);
+    return comboPrice === null ? null : roundPrice(comboPrice);
+  }
+  return getCatalogProductPrice(item, context);
 };
 
 /**
@@ -69,28 +83,32 @@ export const getCartItemUnitPrice = (item, { baseCurrencyId = null, convertAmoun
   // cart, the order payload and Postgres numeric(10,2) all see the same value.
 
   // Price snapshot taken when the item was added (product detail page), in the currency that
-  // was selected then. Legacy snapshots already stored in localStorage take this same path.
+  // was selected then. It is the catalog price converted to that currency (no offers or
+  // discounts, see getDisplayPrice), so the item's own base price is the source of truth:
+  // reconverting the snapshot would drift with inconsistent rate pairs (USD->CUP 915 vs
+  // CUP->USD 1/900 gives 10.17 for a 10 USD item) and fails with a third currency selected.
   if (item.displayed_price && item.displayed_currency_id) {
     const displayedPrice = parseFloat(item.displayed_price);
+    // Already in the base currency: exactly what the visitor saw.
     if (item.displayed_currency_id === baseCurrencyId) return roundPrice(displayedPrice);
-    // Fail closed: without a known base currency the snapshot cannot be normalized.
+
+    const storedBasePrice = getStoredBasePrice(item, { baseCurrencyId, convertAmount });
+    if (storedBasePrice !== null) return storedBasePrice;
+
+    // Old entries without a catalog price: undo the conversion with the forward base->snapshot
+    // rate (the one that produced the snapshot). Fail closed without base currency or rate.
     if (!baseCurrencyId || typeof convertAmount !== 'function') return NaN;
-    return roundPrice(convertAmount(displayedPrice, item.displayed_currency_id, baseCurrencyId));
+    const rate = convertAmount(1, baseCurrencyId, item.displayed_currency_id);
+    return Number.isFinite(rate) && rate > 0 ? roundPrice(displayedPrice / rate) : NaN;
   }
 
   if (item.calculated_price_usd) {
     return roundPrice(parseFloat(item.calculated_price_usd));
   }
 
-  // Combo added from the catalog list: its stored final price, in the base currency.
-  if (item.products) {
-    const comboPrice = resolveComboPrice(item);
-    return comboPrice === null ? NaN : roundPrice(comboPrice);
-  }
-
-  // Product added from the catalog list: charge exactly what the catalog displays.
-  const catalogPrice = getCatalogProductPrice(item, { baseCurrencyId, convertAmount });
-  return catalogPrice === null ? NaN : catalogPrice;
+  // Item added from the catalog list: charge exactly what the catalog displays.
+  const storedBasePrice = getStoredBasePrice(item, { baseCurrencyId, convertAmount });
+  return storedBasePrice === null ? NaN : storedBasePrice;
 };
 
 /**

@@ -223,7 +223,7 @@ const ConfirmationModal = ({
                 <div className="p-3 bg-gray-50 rounded-lg">
                   <p className="text-xs text-gray-500 mb-0.5">{t.totalLabel}</p>
                   <p className="text-sm font-bold text-gray-900">
-                    {typeof total === 'number' ? formatMoney(total, { currency: currency || 'USD', language }) : `${total} ${currency}`}
+                    {formatMoney(total, { currency: currency || 'USD', language, currencyDisplay: 'code' })}
                   </p>
                 </div>
                 {!isRemittance && itemCount && (
