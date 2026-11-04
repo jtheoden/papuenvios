@@ -1133,6 +1133,30 @@
       "active": "Active"
     },
     "visual": {
+      "brand": {
+        "applyPreset": "Apply PapuEnvíos palette",
+        "applyPresetHint": "Fills the form with the brand colors. Nothing is saved until you press \"Save Customization\", as long as live preview stays off.",
+        "applied": "PapuEnvíos palette applied to the form. Live preview was turned off and nothing has been saved yet; press \"Save Customization\" to confirm.",
+        "undoPreset": "Restore previous values",
+        "sectionTitle": "Brand and accents",
+        "sectionHint": "Colors for the cart badge, the active carousel dot, borders, secondary text, soft accent and focus ring.",
+        "cartBadgeBg": "Cart badge background",
+        "cartBadgeText": "Cart badge text",
+        "carouselDotActive": "Active carousel dot",
+        "border": "Borders and separators",
+        "mutedText": "Secondary text",
+        "softAccent": "Soft accent (notices and tags)",
+        "focusRing": "Keyboard focus ring",
+        "contrastWarning": "These color pairs do not reach the recommended minimum contrast (4.5:1) and may be hard to read. You can still save.",
+        "pair": {
+          "header": "Top bar text and background",
+          "navActive": "Active navigation bar item",
+          "menuActive": "Active dropdown menu item",
+          "tab": "Active tab",
+          "button": "Primary button text and background",
+          "cartBadge": "Cart badge"
+        }
+      },
       "title": "Visual Settings",
       "logo": "Site Logo",
       "favicon": "Favicon",

@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { NEW_KEY_DEFAULTS, BRAND_CSS_VARS, isHexColor } from '@/lib/brandPalette';
 
 const LOCAL_CACHE_KEY = 'business_visual_settings_cache';
 const CACHE_DURATION = 60 * 1000; // 1 minute cache
@@ -134,7 +135,9 @@ export const DEFAULT_VISUAL_SETTINGS = {
   // Carousel settings
   carouselEnabled: true,
   carouselAutoplaySpeed: 5000,
-  carouselTransitionSpeed: 1000
+  carouselTransitionSpeed: 1000,
+  // Brand refresh keys (additive; see brandPalette.js)
+  ...NEW_KEY_DEFAULTS
 };
 
 /**
@@ -325,6 +328,13 @@ export function applyVisualSettingsToDOM(settings) {
         ? `0 2px 4px ${settings.textShadowColor || '#00000030'}`
         : 'none'
     );
+
+    // Brand variables for the Tailwind `brand-*` colours. Invalid values are removed so the
+    // Tailwind fallback (brand HEX) applies; nothing user-supplied reaches the stylesheet unchecked.
+    for (const [key, cssVar] of Object.entries(BRAND_CSS_VARS)) {
+      if (isHexColor(settings[key])) root.style.setProperty(cssVar, settings[key]);
+      else root.style.removeProperty(cssVar);
+    }
 
     // Apply page background to body
     document.body.style.backgroundColor = settings.pageBgColor || '#f9fafb';

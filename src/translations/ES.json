@@ -1141,6 +1141,30 @@
       "active": "Activa"
     },
     "visual": {
+      "brand": {
+        "applyPreset": "Aplicar paleta PapuEnvíos",
+        "applyPresetHint": "Rellena el formulario con los colores de la marca. No se guarda nada hasta que presione \"Guardar Personalización\", siempre que la vista previa en vivo siga apagada.",
+        "applied": "Paleta PapuEnvíos aplicada al formulario. La vista previa en vivo se desactivó y nada se ha guardado todavía; presione \"Guardar Personalización\" para confirmar.",
+        "undoPreset": "Restaurar valores anteriores",
+        "sectionTitle": "Marca y acentos",
+        "sectionHint": "Colores de la insignia del carrito, el punto activo del carrusel, bordes, texto secundario, acento suave y anillo de foco.",
+        "cartBadgeBg": "Fondo de la insignia del carrito",
+        "cartBadgeText": "Texto de la insignia del carrito",
+        "carouselDotActive": "Punto activo del carrusel",
+        "border": "Bordes y separadores",
+        "mutedText": "Texto secundario",
+        "softAccent": "Acento suave (avisos y etiquetas)",
+        "focusRing": "Anillo de foco del teclado",
+        "contrastWarning": "Estos pares de colores no alcanzan el contraste mínimo recomendado (4.5:1) y podrían ser difíciles de leer. Puede guardar igualmente.",
+        "pair": {
+          "header": "Texto y fondo de la barra superior",
+          "navActive": "Elemento activo de la barra de navegación",
+          "menuActive": "Elemento activo del menú desplegable",
+          "tab": "Pestaña activa",
+          "button": "Texto y fondo del botón principal",
+          "cartBadge": "Insignia del carrito"
+        }
+      },
       "title": "Ajustes Visuales",
       "logo": "Logo del Sitio",
       "favicon": "Favicon",
