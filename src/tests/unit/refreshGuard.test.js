@@ -28,6 +28,10 @@ describe('refreshGuard — fetch wrapper for the Supabase refresh endpoint', () 
     expect(isRefreshRequest({ url: REFRESH_URL })).toBe(true);
     expect(isRefreshRequest('https://x.supabase.co/auth/v1/token?grant_type=password')).toBe(false);
     expect(isRefreshRequest('https://x.supabase.co/rest/v1/user_profiles')).toBe(false);
+    // Same words in a different place are not the refresh endpoint.
+    expect(isRefreshRequest('https://x.supabase.co/rest/v1/notes?q=/auth/v1/token&grant_type=refresh_token')).toBe(false);
+    expect(isRefreshRequest('https://x.supabase.co/auth/v1/token_info?grant_type=refresh_token')).toBe(false);
+    expect(isRefreshRequest('not a url')).toBe(false);
   });
 
   it('passes every other request through untouched, even while blocked', async () => {
@@ -135,8 +139,9 @@ describe('refreshGuard — fetch wrapper for the Supabase refresh endpoint', () 
   it('shares the cooldown across reloads/tabs through localStorage and ignores a tampered far-future value', async () => {
     const guarded = createRefreshGuardFetch(vi.fn().mockResolvedValue(res(429)));
     await guarded(REFRESH_URL).catch(() => {});
-    const persisted = Number(localStorage.getItem('papuenvios-refresh-block'));
-    expect(persisted).toBeGreaterThan(Date.now());
+    const persisted = JSON.parse(localStorage.getItem('papuenvios-refresh-block'));
+    expect(persisted.until).toBeGreaterThan(Date.now());
+    expect(persisted.failures).toBe(1);
 
     // New page load: module state is gone, storage still says "blocked".
     const base = vi.fn().mockResolvedValue(res(200));
@@ -145,9 +150,81 @@ describe('refreshGuard — fetch wrapper for the Supabase refresh endpoint', () 
     await expect(createRefreshGuardFetch(base)(REFRESH_URL)).rejects.toThrow(TypeError);
     expect(base).not.toHaveBeenCalled();
 
-    localStorage.setItem('papuenvios-refresh-block', String(Date.now() + 10 * 24 * 3600 * 1000));
+    localStorage.setItem('papuenvios-refresh-block', JSON.stringify({ until: Date.now() + 10 * 24 * 3600 * 1000, failures: 3 }));
     resetRefreshGuard({ keepStorage: true });
     expect(getRefreshBlockRemainingMs()).toBeLessThanOrEqual(REFRESH_RATE_LIMIT_MAX_MS);
+  });
+
+  it.each([
+    ['0', 'never hammers: floor at the base cooldown'],
+    ['-5', 'negative: floor at the base cooldown'],
+    ['abc', 'garbage: normal backoff']
+  ])('Retry-After %s -> %s', async (value) => {
+    const guarded = createRefreshGuardFetch(vi.fn().mockResolvedValue(res(429, { 'Retry-After': value })));
+    await guarded(REFRESH_URL).catch(() => {});
+    const remaining = getRefreshBlockRemainingMs();
+    expect(remaining).toBeGreaterThanOrEqual(REFRESH_RATE_LIMIT_BASE_MS);
+    expect(remaining).toBeLessThanOrEqual(REFRESH_RATE_LIMIT_BASE_MS * 1.2 + 1);
+  });
+
+  it('a huge Retry-After (24 h) cannot block refreshes for hours: capped', async () => {
+    const guarded = createRefreshGuardFetch(vi.fn().mockResolvedValue(res(429, { 'Retry-After': '86400' })));
+    await guarded(REFRESH_URL).catch(() => {});
+    expect(getRefreshBlockRemainingMs()).toBeLessThanOrEqual(REFRESH_RATE_LIMIT_MAX_MS * 1.2 + 1);
+    expect(getRefreshBlockRemainingMs()).toBeGreaterThanOrEqual(REFRESH_RATE_LIMIT_MAX_MS);
+  });
+
+  it.each([408, 500, 501, 505, 520, 522])('a %i on refresh is a temporary failure: cooldown + retryable error, not a pass-through', async (status) => {
+    const base = vi.fn().mockResolvedValue(res(status));
+    const guarded = createRefreshGuardFetch(base);
+    await expect(guarded(REFRESH_URL)).rejects.toThrow(TypeError);
+    expect(isRefreshBlocked()).toBe(true);
+    await expect(guarded(REFRESH_URL)).rejects.toThrow(TypeError);
+    expect(base).toHaveBeenCalledTimes(1);
+  });
+
+  it('the failure backoff keeps growing across reloads (failures are persisted with the cooldown)', async () => {
+    const guarded = createRefreshGuardFetch(vi.fn().mockResolvedValue(res(429)));
+    await guarded(REFRESH_URL).catch(() => {});
+    vi.advanceTimersByTime(getRefreshBlockRemainingMs() + 1);
+    await guarded(REFRESH_URL).catch(() => {});
+    vi.advanceTimersByTime(getRefreshBlockRemainingMs() + 1);
+
+    resetRefreshGuard({ keepStorage: true }); // reload
+    await createRefreshGuardFetch(vi.fn().mockResolvedValue(res(429)))(REFRESH_URL).catch(() => {});
+
+    expect(getRefreshBlockRemainingMs()).toBeGreaterThanOrEqual(REFRESH_RATE_LIMIT_BASE_MS * 4); // third failure
+  });
+
+  it('keeps reading a legacy numeric value', () => {
+    localStorage.setItem('papuenvios-refresh-block', String(Date.now() + 20_000));
+    resetRefreshGuard({ keepStorage: true });
+    expect(getRefreshBlockRemainingMs()).toBeGreaterThan(19_000);
+  });
+
+  it('follows another tab: a cooldown written there blocks here, and clearing it there unblocks here', () => {
+    const seen = [];
+    const off = subscribeRefreshBlock((blocked) => seen.push(blocked));
+    const until = Date.now() + 60_000;
+
+    localStorage.setItem('papuenvios-refresh-block', JSON.stringify({ until, failures: 1 }));
+    window.dispatchEvent(new StorageEvent('storage', { key: 'papuenvios-refresh-block', newValue: JSON.stringify({ until, failures: 1 }) }));
+    expect(isRefreshBlocked()).toBe(true);
+
+    localStorage.removeItem('papuenvios-refresh-block');
+    window.dispatchEvent(new StorageEvent('storage', { key: 'papuenvios-refresh-block', newValue: null }));
+    expect(isRefreshBlocked()).toBe(false);
+    off();
+
+    expect(seen).toEqual([true, false]);
+  });
+
+  it('ignores storage events for other keys', () => {
+    const listener = vi.fn();
+    const off = subscribeRefreshBlock(listener);
+    window.dispatchEvent(new StorageEvent('storage', { key: 'something-else', newValue: 'x' }));
+    off();
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it('works when storage is unavailable', async () => {

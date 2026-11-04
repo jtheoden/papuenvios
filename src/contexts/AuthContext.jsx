@@ -14,9 +14,19 @@ const AuthContext = createContext();
 const SESSION_RECOVERY_DELAYS = [5000, 15000, 30000, 60000];
 const SESSION_RECOVERY_JITTER = 0.2;
 const isRetryableAuthError = (error) => error?.name === 'AuthRetryableFetchError';
-// auth-js refreshes a token this close to its expiry, so a session with less left is not "back to normal".
+// auth-js refreshes a token this close to its expiry (EXPIRY_MARGIN_MS = AUTO_REFRESH_TICK_THRESHOLD (3)
+// x AUTO_REFRESH_TICK_DURATION_MS (30 s) in @supabase/auth-js/src/lib/constants.ts), so a session with
+// less left is not "back to normal".
 const SESSION_HEALTHY_MIN_LEFT_MS = 90_000;
 const hasLifeLeft = (session) => (session?.expires_at ?? 0) * 1000 - Date.now() > SESSION_HEALTHY_MIN_LEFT_MS;
+
+const readStoredSession = () => {
+  try {
+    return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY));
+  } catch (e) {
+    return null;
+  }
+};
 
 const clearStoredSession = () => {
   try {
@@ -27,17 +37,22 @@ const clearStoredSession = () => {
   }
 };
 
-// While the refresh is blocked auth-js cannot load the expired session: signOut() would stall for
-// the whole retry loop and then fail WITHOUT removing it. Sign out locally instead (the refresh
-// token is not revoked server-side; it dies with its own expiry).
+// While the refresh is blocked AND the stored token has expired, auth-js cannot load the session:
+// signOut() would stall for the whole retry loop and then fail WITHOUT removing it. Only then sign
+// out locally. Otherwise the normal signOut() runs (it revokes the session on the server).
+// LIMIT: a local sign-out clears this browser only. The refresh token is NOT revoked server-side, so
+// that session stays valid on the server until it is signed out from somewhere else.
+// Returns { error, local }.
 const signOutSafely = async () => {
-  if (!isRefreshBlocked()) {
+  const blockedAndExpired = isRefreshBlocked() && !hasLifeLeft(readStoredSession());
+  if (!blockedAndExpired) {
     const { error } = await supabase.auth.signOut();
-    if (!error || !isRetryableAuthError(error)) return error;
+    if (!error) return { error: null, local: false };
+    if (!isRetryableAuthError(error)) return { error, local: false };
   }
   clearStoredSession();
   clearRefreshBlock();
-  return null;
+  return { error: null, local: true };
 };
 
 // localStorage role cache helper functions
@@ -398,7 +413,7 @@ export const AuthProvider = ({ children }) => {
         clearRefreshBlock(); // nothing left to refresh: do not carry the cooldown into the next session
         resetAuthState();
         setSessionRecovering(false);
-        setSessionExpired(expired);
+        setSessionExpired((previous) => expired || previous); // the storage handler may have flagged it first
         return;
       }
 
@@ -435,7 +450,20 @@ export const AuthProvider = ({ children }) => {
     });
     // A reload during the cooldown (or a 429 that landed before this effect subscribed): auth-js is
     // still retrying locally for a long while, so say "reconnecting" instead of "sign in".
-    if (isRefreshBlocked()) setSessionRecovering(true);
+    // Only if there is a session to recover: a visitor must not inherit another person's cooldown.
+    if (isRefreshBlocked() && localStorage.getItem(AUTH_STORAGE_KEY)) setSessionRecovering(true);
+
+    // Another tab emptied the stored session (sign-out, or the local fallback that emits no event).
+    const onStorage = (event) => {
+      if (event.key !== AUTH_STORAGE_KEY && event.key !== null) return;
+      if (event.newValue !== null) return;
+      if (!mountedRef.current) return;
+      const expired = Boolean(sessionRef.current);
+      resetAuthState();
+      setSessionRecovering(false);
+      setSessionExpired((previous) => expired || previous);
+    };
+    window.addEventListener('storage', onStorage);
 
     initialize();
 
@@ -443,6 +471,7 @@ export const AuthProvider = ({ children }) => {
       mountedRef.current = false;
       clearTimeout(globalTimer);
       unsubscribeRefreshBlock();
+      window.removeEventListener('storage', onStorage);
       if (listener?.subscription) {
         listener.subscription.unsubscribe();
       }
@@ -460,6 +489,7 @@ export const AuthProvider = ({ children }) => {
 
       if (data?.session) {
         markSessionHealthy();
+        clearRefreshBlock(); // a fresh sign-in starts clean
         await updateUserState(data.session);
         return true;
       }
@@ -480,6 +510,7 @@ export const AuthProvider = ({ children }) => {
     try {
       explicitSignOutRef.current = true;
       await signOutSafely();
+      explicitSignOutRef.current = false; // SIGNED_OUT (if any) was delivered before signOut resolved
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: `${window.location.origin}/auth/callback`, queryParams: { access_type: 'offline', prompt: 'consent' } }
@@ -495,9 +526,15 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       explicitSignOutRef.current = true;
-      const error = await signOutSafely();
+      const { error, local } = await signOutSafely();
       if (error) throw error;
       resetAuthState();
+      if (local) {
+        toast({
+          title: 'Sesión cerrada en este dispositivo',
+          description: 'No pudimos contactar al servidor. Su sesión se cerró aquí; si usa un equipo compartido, cierre sesión también desde otro dispositivo.'
+        });
+      }
       markSessionHealthy();
       explicitSignOutRef.current = false; // SIGNED_OUT was already delivered; do not mask a later expiry
     } catch (err) {

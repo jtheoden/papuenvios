@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import { TO_PROCESS_STATUSES, getAdminWorkRemittances } from '@/lib/remittanceService';
+import { skipWhileRefreshBlocked } from '@/lib/refreshGuard';
 
 const POLL_INTERVAL_MS = 30000;
 
@@ -67,7 +68,7 @@ export const usePendingRemittances = ({ enabled = true } = {}) => {
   useEffect(() => {
     if (!enabled) return undefined;
     reload();
-    const interval = setInterval(reload, POLL_INTERVAL_MS);
+    const interval = setInterval(skipWhileRefreshBlocked(reload), POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [enabled, reload]);
 

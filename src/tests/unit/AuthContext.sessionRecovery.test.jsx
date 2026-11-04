@@ -17,6 +17,8 @@ vi.mock('@/lib/supabase', () => ({
     auth: {
       getSession: vi.fn(),
       refreshSession: vi.fn(),
+      signInWithPassword: vi.fn(),
+      signInWithOAuth: vi.fn().mockResolvedValue({ data: { url: null }, error: null }),
       onAuthStateChange: vi.fn((cb) => {
         authStateCallback = cb;
         return { data: { subscription: { unsubscribe: vi.fn() } } };
@@ -38,6 +40,7 @@ vi.mock('@/lib/activityLogger', () => ({
 }));
 
 import { supabase } from '@/lib/supabase';
+import { toast } from '@/components/ui/use-toast';
 import { flushQueuedActivityLogs } from '@/lib/activityLogger';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import RoleUnresolvedBanner from '@/components/RoleUnresolvedBanner';
@@ -62,13 +65,15 @@ const rateLimitTheRefresh = async () => {
 };
 
 const Probe = () => {
-  const { userRole, roleStatus, user, sessionStatus, logout, checkAndRefreshSession } = useAuth();
+  const { userRole, roleStatus, user, sessionStatus, logout, login, signInWithGoogle, checkAndRefreshSession } = useAuth();
   return (
     <div>
       <div data-testid="probe">{`${userRole}|${roleStatus}|${user ? 'user' : 'anon'}`}</div>
       <div data-testid="session">{sessionStatus}</div>
       <RoleUnresolvedBanner />
       <button onClick={logout}>logout</button>
+      <button onClick={signInWithGoogle}>google</button>
+      <button onClick={() => login('a@b.c', 'x')}>login</button>
       <button onClick={checkAndRefreshSession}>check-session</button>
     </div>
   );
@@ -93,7 +98,9 @@ describe('AuthProvider — refresh rate limit (429) and session recovery', () =>
     flushQueuedActivityLogs.mockClear();
     supabase.auth.getSession.mockReset();
     supabase.auth.getSession.mockResolvedValue({ data: { session: SESSION }, error: null });
-    supabase.auth.signOut.mockClear();
+    supabase.auth.signOut.mockReset();
+    supabase.auth.signOut.mockResolvedValue({ error: null });
+    toast.mockClear();
     supabase.auth.refreshSession.mockReset();
   });
   afterEach(() => {
@@ -179,6 +186,7 @@ describe('AuthProvider — refresh rate limit (429) and session recovery', () =>
   });
 
   it('a reload during the cooldown shows "reconnecting" while auth-js is still retrying, not the generic sign-in box', async () => {
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ refresh_token: 'r', expires_at: 1 }));
     await rateLimitTheRefresh(); // cooldown persisted by the previous page
     resetRefreshGuard({ keepStorage: true }); // fresh page load: in-memory state gone, storage kept
     expect(isRefreshBlocked()).toBe(true);
@@ -255,6 +263,150 @@ describe('AuthProvider — refresh rate limit (429) and session recovery', () =>
     await advance(0);
 
     expect(sessionStatus()).toBe('reconnecting');
+  });
+
+  it('a visitor with no stored session is never told "reconnecting" because of a persisted cooldown', async () => {
+    await rateLimitTheRefresh();
+    resetRefreshGuard({ keepStorage: true });
+    expect(isRefreshBlocked()).toBe(true);
+    supabase.auth.getSession.mockReset();
+    supabase.auth.getSession.mockResolvedValue({ data: { session: null }, error: null });
+
+    await mountApp();
+
+    expect(probe()).toBe('null|resolved|anon');
+    expect(sessionStatus()).toBe('ok');
+  });
+
+  it('logout with a blocked refresh but a token that still has life left uses the normal signOut (it works and revokes the session)', async () => {
+    singleMock.mockResolvedValue(profile('admin'));
+    await mountApp();
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3000 }));
+    await rateLimitTheRefresh();
+
+    await act(async () => { fireEvent.click(screen.getByText('logout')); });
+
+    expect(supabase.auth.signOut).toHaveBeenCalledTimes(1);
+    expect(probe()).toBe('null|resolved|anon');
+  });
+
+  it('a local sign-out tells the person it only closed this device', async () => {
+    singleMock.mockResolvedValue(profile('admin'));
+    await mountApp();
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ refresh_token: 'r', expires_at: 1 }));
+    await rateLimitTheRefresh();
+
+    await act(async () => { fireEvent.click(screen.getByText('logout')); });
+
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: expect.stringMatching(/este dispositivo/i) }));
+  });
+
+  it('a failed normal signOut shows the error toast and keeps the person signed in', async () => {
+    singleMock.mockResolvedValue(profile('admin'));
+    await mountApp();
+    supabase.auth.signOut.mockResolvedValueOnce({ error: Object.assign(new Error('boom'), { name: 'AuthApiError', status: 500 }) });
+
+    await act(async () => { fireEvent.click(screen.getByText('logout')); });
+
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' }));
+    expect(probe()).toBe('admin|resolved|user');
+  });
+
+  it('a successful login clears a lingering cooldown', async () => {
+    singleMock.mockResolvedValue(profile('admin'));
+    supabase.auth.signInWithPassword.mockResolvedValue({ data: { session: SESSION }, error: null });
+    await mountApp();
+    await rateLimitTheRefresh();
+    expect(isRefreshBlocked()).toBe(true);
+
+    await act(async () => { fireEvent.click(screen.getByText('login')); });
+
+    expect(isRefreshBlocked()).toBe(false);
+    expect(sessionStatus()).toBe('ok');
+  });
+
+  it('another tab signing out (auth storage emptied) signs this tab out too', async () => {
+    singleMock.mockResolvedValue(profile('admin'));
+    await mountApp();
+
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent('storage', { key: AUTH_STORAGE_KEY, newValue: null, oldValue: '{"x":1}' }));
+    });
+
+    expect(probe()).toBe('null|resolved|anon');
+    expect(sessionStatus()).toBe('expired');
+  });
+
+  it('ignores storage events that do not empty the auth key', async () => {
+    singleMock.mockResolvedValue(profile('admin'));
+    await mountApp();
+
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent('storage', { key: AUTH_STORAGE_KEY, newValue: '{"x":2}' }));
+      window.dispatchEvent(new StorageEvent('storage', { key: 'other', newValue: null }));
+    });
+
+    expect(probe()).toBe('admin|resolved|user');
+  });
+
+  it('stops listening to storage events when unmounted', async () => {
+    singleMock.mockResolvedValue(profile('admin'));
+    const spy = vi.spyOn(window, 'removeEventListener');
+    await mountApp();
+    cleanup();
+    expect(spy.mock.calls.some(([type]) => type === 'storage')).toBe(true);
+  });
+
+  it('explicit logout is not reported as expired even when observed between SIGNED_OUT and signOut returning', async () => {
+    singleMock.mockResolvedValue(profile('admin'));
+    let finish;
+    supabase.auth.signOut.mockImplementationOnce(() => new Promise((resolve) => { finish = () => resolve({ error: null }); }));
+    await mountApp();
+
+    await act(async () => { fireEvent.click(screen.getByText('logout')); });
+    await act(async () => { await authStateCallback('SIGNED_OUT', null); }); // auth-js emits it before signOut() resolves
+
+    expect(probe()).toBe('null|resolved|anon');
+    expect(sessionStatus()).toBe('ok'); // would be "expired" if the explicit flag were ignored
+
+    await act(async () => { finish(); });
+    expect(sessionStatus()).toBe('ok');
+  });
+
+  it('reconnecting caused by a network error on init (no cooldown) ends with a SIGNED_OUT: recovery stops', async () => {
+    supabase.auth.getSession.mockResolvedValueOnce({ data: { session: null }, error: retryableError });
+    await mountApp();
+    expect(sessionStatus()).toBe('reconnecting');
+    expect(isRefreshBlocked()).toBe(false);
+
+    await act(async () => { authStateCallback('SIGNED_OUT', null); });
+    const calls = supabase.auth.getSession.mock.calls.length;
+    await advance(120_000);
+
+    expect(sessionStatus()).toBe('ok');
+    expect(supabase.auth.getSession.mock.calls.length).toBe(calls); // loop is gone
+  });
+
+  it('recovery that finds no session and no error stops reconnecting', async () => {
+    supabase.auth.getSession.mockResolvedValueOnce({ data: { session: null }, error: retryableError });
+    await mountApp();
+    expect(sessionStatus()).toBe('reconnecting');
+
+    supabase.auth.getSession.mockResolvedValue({ data: { session: null }, error: null });
+    await advance(6000);
+
+    expect(sessionStatus()).toBe('ok');
+    expect(probe()).toBe('null|resolved|anon');
+  });
+
+  it('a Google sign-in whose signOut emits no event does not leave the explicit flag stuck: a later real expiry is still reported', async () => {
+    singleMock.mockResolvedValue(profile('admin'));
+    await mountApp();
+    await act(async () => { fireEvent.click(screen.getByText('google')); }); // signOut mock resolves without emitting SIGNED_OUT
+
+    await act(async () => { authStateCallback('SIGNED_OUT', null); });
+
+    expect(sessionStatus()).toBe('expired');
   });
 
   it('a SIGNED_OUT that the person did not ask for is reported as expired', async () => {

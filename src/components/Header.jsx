@@ -13,6 +13,7 @@ import { getRefundCounts, REFUNDS_CHANGED_EVENT } from '@/lib/refundService';
 import { useRealtimeOrders, useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import { semanticColors } from '@/lib/colorTokens';
 import RoleUnresolvedBanner from '@/components/RoleUnresolvedBanner';
+import { isRefreshBlocked } from '@/lib/refreshGuard';
 
 const Header = ({ currentPage, onNavigate }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -88,7 +89,9 @@ const Header = ({ currentPage, onNavigate }) => {
 
   // Pending work for admins: orders + remittances + refunds that can be paid today (past the 48 h hold).
   // A failing source counts as 0 without hiding the others.
+  // While the token refresh is blocked the requests would go out anonymous and read as 0: keep the last badge.
   const loadPendingCount = useCallback(async () => {
+    if (isRefreshBlocked()) return;
     const [orders, remittances, refunds] = await Promise.all([
       getPendingOrdersCount().catch((error) => {
         console.error('Error loading pending orders:', error);

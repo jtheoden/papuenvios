@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listRefunds } from '@/lib/refundService';
+import { skipWhileRefreshBlocked } from '@/lib/refreshGuard';
 import { summarizeRefunds, withQueueState } from '@/lib/refundRules';
 
 const POLL_INTERVAL_MS = 30000;
@@ -68,7 +69,7 @@ export const useRefundQueue = ({ enabled = true } = {}) => {
   useEffect(() => {
     if (!enabled) return undefined;
     reload();
-    const interval = setInterval(reload, POLL_INTERVAL_MS);
+    const interval = setInterval(skipWhileRefreshBlocked(reload), POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [enabled, reload]);
 
