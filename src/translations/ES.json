@@ -1335,7 +1335,12 @@
       "pubVideoUrl": "URL del video (YouTube/Vimeo)",
       "pubCategory": "Categoría",
       "pubSaved": "Publicaciones guardadas",
-      "pubRemoved": "Publicación eliminada"
+      "pubRemoved": "Publicación eliminada",
+      "pubSaveFailed": "No se pudieron guardar {n} publicación(es). Revise el formulario e intente nuevamente.",
+      "pubSaveFailedList": "Afectadas: {titles}.",
+      "pubMissingOnServer": "No se encontraron o no tiene permiso para modificar estas publicaciones: {titles}. Se conservaron en el formulario.",
+      "pubLoadFailed": "No se pudo actualizar la lista de publicaciones. Se conservaron los datos del formulario.",
+      "pubUntitled": "(sin título)"
     },
     "saveSuccess": "Ajustes guardados exitosamente",
     "bizum": {

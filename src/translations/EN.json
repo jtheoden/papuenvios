@@ -1327,7 +1327,12 @@
       "pubVideoUrl": "Video URL (YouTube/Vimeo)",
       "pubCategory": "Category",
       "pubSaved": "Publications saved",
-      "pubRemoved": "Publication removed"
+      "pubRemoved": "Publication removed",
+      "pubSaveFailed": "Could not save {n} publication(s). Please review the form and try again.",
+      "pubSaveFailedList": "Affected: {titles}.",
+      "pubMissingOnServer": "These publications were not found or you do not have permission to modify them: {titles}. They were kept in the form.",
+      "pubLoadFailed": "Could not refresh the publications list. Your form data was kept.",
+      "pubUntitled": "(untitled)"
     },
     "saveSuccess": "Settings saved successfully",
     "bizum": {
