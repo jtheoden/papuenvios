@@ -8,6 +8,7 @@ import {
   AppError,
   ERROR_CODES
 } from './errorHandler';
+import { rateAgeHours } from './rateAge';
 
 const ratesChangedListeners = new Set();
 
@@ -567,6 +568,82 @@ export const getAllExchangeRates = async () => {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getAllExchangeRates' });
     logError(appError, { operation: 'getAllExchangeRates' });
+    throw appError;
+  }
+};
+
+/**
+ * Active rate of a directed pair by currency CODE, for display (single read source for the UI).
+ * Fail closed: no active row or an unusable stored rate -> null, never 0. A failed read throws, so the
+ * caller can tell "no rate" from "could not load" and offer a retry.
+ *
+ * @param {string} fromCode - e.g. 'USD'
+ * @param {string} toCode - e.g. 'CUP'
+ * @param {{now?: Date}} [options] now is injectable for tests
+ * @returns {Promise<{rate: number, effective_date: string, updated_at: string|null, ageHours: number|null}|null>}
+ * @throws {AppError} DB_ERROR if the query fails
+ */
+export const getActiveRate = async (fromCode, toCode, { now = new Date() } = {}) => {
+  if (!fromCode || !toCode) return null;
+  try {
+    const { data, error } = await supabase
+      .from('exchange_rates')
+      .select('rate, effective_date, updated_at, from_currency:from_currency_id!inner(code), to_currency:to_currency_id!inner(code)')
+      .eq('is_active', true)
+      .eq('from_currency.code', String(fromCode).toUpperCase())
+      .eq('to_currency.code', String(toCode).toUpperCase())
+      .order('effective_date', { ascending: false })
+      .order('updated_at', { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    const rate = Number(data?.rate);
+    if (!data || !Number.isFinite(rate) || rate <= 0) return null;
+
+    return {
+      rate,
+      effective_date: data.effective_date,
+      updated_at: data.updated_at ?? null,
+      ageHours: rateAgeHours(data.effective_date, now)
+    };
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getActiveRate', from: fromCode, to: toCode });
+    logError(appError, { operation: 'getActiveRate', from: fromCode, to: toCode });
+    throw appError;
+  }
+};
+
+/**
+ * All active rates as a `${fromCurrencyId}-${toCurrencyId}` -> rate map (one query, for screens that
+ * convert many prices, e.g. the vendor catalog).
+ * @returns {Promise<Object<string, number>>}
+ * @throws {AppError} DB_ERROR if the query fails
+ */
+export const getActiveRatesMap = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('exchange_rates')
+      .select('from_currency_id, to_currency_id, rate')
+      .eq('is_active', true);
+
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    const map = {};
+    (data || []).forEach((r) => {
+      map[`${r.from_currency_id}-${r.to_currency_id}`] = r.rate;
+    });
+    return map;
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getActiveRatesMap' });
+    logError(appError, { operation: 'getActiveRatesMap' });
     throw appError;
   }
 };

@@ -1527,7 +1527,33 @@
         "appendOnly": "Recorded rates cannot be modified.",
         "managedCentrally": "The USD → EUR rate is managed only in Financial Settings."
       },
-      "managedCentrally": "The USD → EUR rate is managed only in Financial Settings (exchange rates). The spread and the age thresholds are set in the Bizum parameters."
+      "managedCentrally": "The USD → EUR rate is managed only in Financial Settings (exchange rates). The spread and the age thresholds are set in the Bizum parameters.",
+      "generic": {
+        "title": "{from} → {to} exchange rate",
+        "intro": "Current reference rate {from} → {to}. It is the central rate from Financial Settings; it is view-only here.",
+        "state": {
+          "none": "No rate",
+          "ok": "Current",
+          "warn": "Old: update soon",
+          "blocked": "Blocked: not usable"
+        },
+        "noneHelp": "There is no active {from} → {to} rate. Load one in Financial Settings (exchange rates).",
+        "warnHelp": "The rate is {hours} h old. Update it in Financial Settings.",
+        "blockedHelp": "The {from} → {to} rate is too old to be used. Update it in Financial Settings.",
+        "ageNote": "Rate from {hours} h ago. If you need a different one, load it in Financial Settings.",
+        "loadError": "The {from} → {to} rate could not be loaded. Try again; if the problem continues, check your connection.",
+        "retry": "Try again",
+        "labels": {
+          "rate": "Rate"
+        },
+        "managedCentrally": "View-only: the {from} → {to} rate is managed only in Financial Settings (exchange rates).",
+        "badge": {
+          "ok": "{from} → {to} rate: current",
+          "warn": "{from} → {to} rate: old",
+          "blocked": "{from} → {to} rate: blocked",
+          "none": "{from} → {to} rate: no rate"
+        }
+      }
     },
     "fxReference": {
       "title": "External reference (informational)",
