@@ -1186,7 +1186,11 @@
           "menuActive": "Active dropdown menu item",
           "tab": "Active tab",
           "button": "Primary button text and background",
-          "cartBadge": "Cart badge"
+          "cartBadge": "Cart badge",
+          "footerText": "Footer text",
+          "footerLink": "Footer links",
+          "footerLinkHover": "Footer link on hover",
+          "footerBrand": "Company name in the footer"
         }
       },
       "title": "Visual Settings",

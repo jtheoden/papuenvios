@@ -1194,7 +1194,11 @@
           "menuActive": "Elemento activo del menú desplegable",
           "tab": "Pestaña activa",
           "button": "Texto y fondo del botón principal",
-          "cartBadge": "Insignia del carrito"
+          "cartBadge": "Insignia del carrito",
+          "footerText": "Texto del pie de página",
+          "footerLink": "Enlaces del pie de página",
+          "footerLinkHover": "Enlace del pie de página al pasar el cursor",
+          "footerBrand": "Nombre de la empresa en el pie de página"
         }
       },
       "title": "Ajustes Visuales",

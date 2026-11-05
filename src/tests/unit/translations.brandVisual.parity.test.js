@@ -14,6 +14,7 @@ const REQUIRED = [
   'cartBadgeBg', 'cartBadgeText', 'carouselDotActive', 'border', 'mutedText', 'softAccent', 'focusRing',
   'contrastWarning',
   'pair.header', 'pair.navActive', 'pair.menuActive', 'pair.tab', 'pair.button', 'pair.cartBadge',
+  'pair.footerText', 'pair.footerLink', 'pair.footerLinkHover', 'pair.footerBrand',
 ];
 
 describe('settings.visual.brand translations', () => {
