@@ -57,21 +57,35 @@ const zonedMidnight = (formatter, year, month, day) => {
   return new Date(guess - zoneOffsetMs(formatter, first));
 };
 
+const businessTimeFormatter = (timeZone) => new Intl.DateTimeFormat('en-US', {
+  timeZone,
+  hourCycle: 'h23',
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: 'numeric',
+  second: 'numeric'
+});
+
+/** Start and end instants of the current calendar month in the business time zone. */
+export const getBusinessMonthRange = (now = new Date(), timeZone = BUSINESS_TIME_ZONE) => {
+  const formatter = businessTimeFormatter(timeZone);
+  const today = wallClock(formatter, now.getTime());
+  const nextMonth = today.month === 12 ? 1 : today.month + 1;
+  const nextYear = today.month === 12 ? today.year + 1 : today.year;
+  return {
+    from: zonedMidnight(formatter, today.year, today.month, 1).toISOString(),
+    to: zonedMidnight(formatter, nextYear, nextMonth, 1).toISOString()
+  };
+};
+
 /**
  * Start instants of the current calendar day, month and year in the business time zone.
  * Every window runs from its start up to "now".
  */
 export const getBusinessWindows = (now = new Date(), timeZone = BUSINESS_TIME_ZONE) => {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hourCycle: 'h23',
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: 'numeric',
-    second: 'numeric'
-  });
+  const formatter = businessTimeFormatter(timeZone);
   const today = wallClock(formatter, now.getTime());
   return {
     daily: zonedMidnight(formatter, today.year, today.month, today.day),
