@@ -133,11 +133,35 @@ describe('CLI', () => {
     expect(fs.readFileSync(file(), 'utf8')).toContain('bg-blue-600');
   });
 
-  it('--check exits 1 while rules still apply and 0 once migrated', () => {
+  it('--check exits 1 while some rule still applies, 0 when none does, and never writes', () => {
     expect(run('--check').status).toBe(1);
-    expect(run().status).toBe(0);
-    expect(fs.readFileSync(file(), 'utf8')).toBe('<b className="bg-theme-accent text-purple-600" />');
+    expect(fs.readFileSync(file(), 'utf8')).toBe('<b className="bg-blue-600 text-purple-600" />');
+    fs.writeFileSync(file(), '<b className="text-purple-600" />');
     expect(run('--check').status).toBe(0);
+  });
+
+  describe.each([['no flag', []], ['--write', ['--write']]])('write mode (%s) is disabled until the known limitations are fixed', (_label, args) => {
+    it('fails with a clear message listing the limitations and writes nothing', () => {
+      const result = run(...args);
+      expect(result.status).toBe(2);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toContain('write mode is disabled');
+      // multi-line status maps are exempted per line only
+      for (const where of ['AdminRemittancesTab.jsx:608-621', 'UserTableConfig.jsx:187-189', 'ProgressBar.jsx:28-30', 'CategoryBadge.jsx:24']) expect(result.stderr).toContain(where);
+      // text-white next to bg-theme-accent is not paired with on-accent
+      expect(result.stderr).toContain('text-white');
+      expect(result.stderr).toContain('text-theme-on-accent');
+      expect(result.stderr).toContain('1.97:1');
+      expect(fs.readFileSync(file(), 'utf8')).toBe('<b className="bg-blue-600 text-purple-600" />');
+    });
+
+    it('also refuses together with --files', () => {
+      expect(run(...args, '--files', 'src/components/A.jsx').status).toBe(2);
+    });
+  });
+
+  it('--write is refused even when combined with --dry-run', () => {
+    expect(run('--write', '--dry-run').status).toBe(2);
   });
 
   it('--files limits the run to the given files', () => {

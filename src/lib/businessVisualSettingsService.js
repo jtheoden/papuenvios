@@ -141,14 +141,15 @@ export const DEFAULT_VISUAL_SETTINGS = {
 };
 
 /**
- * Get cached settings from localStorage
+ * Get cached settings from localStorage. `ignoreTtl` is for load failures: a stale look beats flipping to the code
+ * defaults (the inline script in index.html also ignores the TTL).
  */
-function getCachedSettings() {
+function getCachedSettings(ignoreTtl = false) {
   try {
     const cached = localStorage.getItem(LOCAL_CACHE_KEY);
     if (cached) {
       const { data, timestamp } = JSON.parse(cached);
-      if (Date.now() - timestamp < CACHE_DURATION) {
+      if (data && (ignoreTtl || Date.now() - timestamp < CACHE_DURATION)) {
         return data;
       }
     }
@@ -156,6 +157,22 @@ function getCachedSettings() {
     console.warn('[BusinessVisualSettings] Cache read error:', err);
   }
   return null;
+}
+
+// Last settings that really came from the database/cache/an admin save, for failed reloads in the same session.
+let lastGoodSettings = null;
+// Code defaults handed out because a load FAILED (nothing better known): applyVisualSettingsToDOM must not let them
+// pick the look, since the defaults are classic and the stored (production) row is the brand.
+const unverifiedSettings = new WeakSet();
+
+/** What to use when the settings request fails: last good settings, else the stale cache, else unverified defaults. */
+function settingsAfterFailure() {
+  if (lastGoodSettings) return lastGoodSettings;
+  const stale = getCachedSettings(true);
+  if (stale) return { ...DEFAULT_VISUAL_SETTINGS, ...stale };
+  const fallback = { ...DEFAULT_VISUAL_SETTINGS };
+  unverifiedSettings.add(fallback);
+  return fallback;
 }
 
 /**
@@ -193,7 +210,8 @@ export async function loadVisualSettings() {
     // Check cache first
     const cached = getCachedSettings();
     if (cached) {
-      return { ...DEFAULT_VISUAL_SETTINGS, ...cached };
+      lastGoodSettings = { ...DEFAULT_VISUAL_SETTINGS, ...cached };
+      return lastGoodSettings;
     }
 
     const { data, error } = await supabase
@@ -208,15 +226,16 @@ export async function loadVisualSettings() {
         return DEFAULT_VISUAL_SETTINGS;
       }
       console.error('[BusinessVisualSettings] Load error:', error);
-      return DEFAULT_VISUAL_SETTINGS;
+      return settingsAfterFailure();
     }
 
     const settings = { ...DEFAULT_VISUAL_SETTINGS, ...(data?.settings || {}) };
     setCachedSettings(settings);
+    lastGoodSettings = settings;
     return settings;
   } catch (err) {
     console.error('[BusinessVisualSettings] Load exception:', err);
-    return DEFAULT_VISUAL_SETTINGS;
+    return settingsAfterFailure();
   }
 }
 
@@ -262,6 +281,7 @@ export async function saveVisualSettings(settings) {
     clearVisualSettingsCache();
     // Re-cache with new settings
     setCachedSettings(settings);
+    lastGoodSettings = settings;
 
     return { success: true };
   } catch (err) {
@@ -278,7 +298,8 @@ export function applyVisualSettingsToDOM(settings) {
   try {
     // First on purpose: it switches the --t-* tokens, so nothing below may keep it from running. The try/catch is
     // the guard for environments without a document.
-    document.documentElement.dataset.theme = resolveLookId(settings);
+    // Defaults handed out after a failed load do not pick the look: keep what the inline script / cache set.
+    if (!unverifiedSettings.has(settings)) document.documentElement.dataset.theme = resolveLookId(settings);
 
     // Update document title
     if (settings.siteTitle) {

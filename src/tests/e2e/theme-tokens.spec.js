@@ -34,13 +34,14 @@ const CLASSIC_GRADIENT = 'linear-gradient(to right bottom, rgb(248, 250, 252), r
 const IVORY = 'rgb(250, 247, 240)';
 const json = (route, body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
-const mockSupabase = async (page, settings, { gate } = {}) => {
+const mockSupabase = async (page, settings, { gate, fail } = {}) => {
   await page.route(/\/(rest|auth|functions|storage)\/v1\//, async (route) => {
     const request = route.request();
     const url = request.url();
     const wantsObject = (request.headers().accept || '').includes('pgrst.object');
     if (url.includes('/rest/v1/business_visual_settings')) {
       if (gate) await gate;
+      if (fail) return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'boom', details: null, hint: null }) });
       return json(route, wantsObject ? { settings } : [{ settings }]);
     }
     if (url.includes('/auth/v1/')) return route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ message: 'not authenticated' }) });
@@ -183,6 +184,37 @@ test.describe('brand links', () => {
   test('classic keeps links as they are today (no underline added)', async ({ page }) => {
     await open(page, '/products', CLASSIC_ROW);
     expect(await underlineOf(page)).toEqual({ link: 'none', strong: 'none', none: 'none' });
+  });
+});
+
+// A FAILED settings request must not flip the look: the code defaults are classic, the stored production row is the brand.
+test.describe('settings request fails', () => {
+  const openFailing = async (page, cached) => {
+    await mockSupabase(page, null, { fail: true });
+    if (cached) await page.addInitScript((data) => localStorage.setItem('business_visual_settings_cache', JSON.stringify({ data, timestamp: 0 })), cached);
+    const failed = page.waitForResponse((r) => r.url().includes('/rest/v1/business_visual_settings'));
+    await page.goto('/products');
+    await failed;
+    await page.waitForTimeout(1000); // the service has handled the error and the context has applied what it returned
+  };
+
+  test('brand look from an expired cache: data-theme stays papuenvios and the page stays flat ivory', async ({ page }) => {
+    await openFailing(page, BRAND_PRESET);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'papuenvios');
+    await expect(page.locator('body')).toHaveCSS('background-image', 'none');
+    await expect(page.locator('body')).toHaveCSS('background-color', IVORY);
+  });
+
+  test('classic look from an expired cache stays classic, exactly as before', async ({ page }) => {
+    await openFailing(page, CLASSIC_ROW);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
+    await expect(page.locator('body')).toHaveCSS('background-image', CLASSIC_GRADIENT);
+  });
+
+  test('no cache at all: the first-paint brand look is kept, never flipped to classic', async ({ page }) => {
+    await openFailing(page, null);
+    await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'classic');
+    await expect(page.locator('body')).toHaveCSS('background-image', 'none');
   });
 });
 

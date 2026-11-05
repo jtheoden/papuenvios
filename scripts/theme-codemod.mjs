@@ -6,7 +6,7 @@
  *
  *   node scripts/theme-codemod.mjs --dry-run                 report counts per file and rule, write nothing
  *   node scripts/theme-codemod.mjs --check                   dry run that exits 1 while some rule still applies
- *   node scripts/theme-codemod.mjs                           rewrite every non-exempt file under src
+ *   node scripts/theme-codemod.mjs --write                   rewrite files: DISABLED for now (see WRITE_LIMITATIONS)
  *   node scripts/theme-codemod.mjs --files src/a.jsx src/b.jsx   limit the run to these files
  *
  * Also imported by src/tests/unit/themeCompliance.test.js, which uses the same counter and exemptions for its ratchet.
@@ -116,10 +116,17 @@ export const listSourceFiles = (dir = 'src', cwd = process.cwd()) => {
   return walk(dir).sort();
 };
 
+/** Why write mode is off. Remove the guard in `main` only once both are fixed and tested. */
+export const WRITE_LIMITATIONS = [
+  'Status maps are exempted per LINE only. Multi-line order/remittance status maps are not detected and would be rewritten (e.g. AdminRemittancesTab.jsx:608-621, UserTableConfig.jsx:187-189, ProgressBar.jsx:28-30, CategoryBadge.jsx:24).',
+  '`text-white` next to `bg-theme-accent` is not paired with `text-theme-on-accent` (about 40 lines): white text on the brand gold is 1.97:1, below AA.',
+];
+
 const parseArgs = (argv) => {
-  const options = { dryRun: false, check: false, files: null };
+  const options = { dryRun: false, check: false, write: false, files: null };
   for (let i = 0; i < argv.length; i += 1) {
-    if (argv[i] === '--dry-run') options.dryRun = true;
+    if (argv[i] === '--write') options.write = true;
+    else if (argv[i] === '--dry-run') options.dryRun = true;
     else if (argv[i] === '--check') options.check = true;
     else if (argv[i] === '--files') {
       options.files = [];
@@ -133,9 +140,13 @@ const total = (map) => Object.values(map).reduce((sum, n) => sum + n, 0);
 
 export const main = (argv, cwd = process.cwd()) => {
   const options = parseArgs(argv);
+  if (options.write || (!options.dryRun && !options.check)) {
+    console.error(`theme-codemod: write mode is disabled until the known limitations are fixed:\n${WRITE_LIMITATIONS.map((text, i) => `  ${i + 1}. ${text}`).join('\n')}\nUse --dry-run or --check.`);
+    return 2;
+  }
   const candidates = (options.files ?? listSourceFiles('src', cwd)).map((file) => file.split(path.sep).join('/'));
   const files = candidates.filter((file) => !isExempt(file));
-  const write = !options.dryRun && !options.check;
+  const write = false; // write mode is refused above; kept so the report wording and the guard removal stay local
 
   const perArea = {};
   const unmappedTotal = {};
