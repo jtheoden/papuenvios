@@ -111,9 +111,10 @@ module.exports = {
 				'accordion-down': 'accordion-down 0.2s ease-out',
 				'accordion-up': 'accordion-up 0.2s ease-out',
 				skeleton: 'skeleton-pulse 1.6s ease-in-out infinite',
-				'fade-in': 'fade-in var(--motion-duration) var(--motion-ease) both',
+				'fade-in': 'fade-in var(--motion-duration) var(--motion-ease) backwards',
+				// `backwards`, not `both`: once finished the item's own opacity/hover transform apply again.
 				// Stagger: set --stagger-index (capped by the caller) on each item.
-				enter: 'enter-up var(--motion-duration-slow) var(--motion-ease) calc(var(--stagger-index, 0) * var(--motion-stagger)) both',
+				enter: 'enter-up var(--motion-duration-slow) var(--motion-ease) calc(var(--stagger-index, 0) * var(--motion-stagger)) backwards',
 			},
 			transitionDuration: {
 				motion: 'var(--motion-duration)',

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, MotionConfig } from 'framer-motion';
 import { Search, Filter, ShoppingCart, Plus, Package, Upload, X, ChevronLeft, ChevronRight, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -17,19 +17,56 @@ import { useUserDiscounts } from '@/hooks/useUserDiscounts';
 import { buildDiscountBreakdown } from '@/lib/discountDisplayService';
 import { getProductPriceInCurrency, getComboPriceInCurrency } from '@/lib/publicPricing';
 import CatalogLoadError from '@/components/CatalogLoadError';
+import LoadingState, { SkeletonBox } from '@/components/ui/LoadingState';
 
 // Breakdown returned for an item whose stored price is missing: nothing to show, nothing discounted.
 const UNPRICED_BREAKDOWN = { original: null, discount: '0.00', final: null, hasDiscount: false, percent: 0 };
 
+// Entrance stagger: only the first cards animate, so a long catalog never waits on its own animation.
+const STAGGERED_CARDS = 6;
+const staggerClass = (index) => (index < STAGGERED_CARDS ? 'motion-safe:animate-enter' : '');
+const staggerStyle = (index) => (index < STAGGERED_CARDS ? { '--stagger-index': index } : undefined);
+
+// Same footprint as the real combo row and product grid, so the data replaces it without a layout jump.
+const CatalogSkeleton = () => (
+  <>
+    <SkeletonBox className="mb-4 h-8 w-48" />
+    <div className="mb-12 flex gap-6 overflow-hidden pb-4">
+      {Array.from({ length: 4 }, (_, i) => (
+        <div key={i} className="glass-effect w-[300px] flex-shrink-0 overflow-hidden rounded-2xl">
+          <SkeletonBox className="aspect-square w-full rounded-none" />
+          <div className="space-y-3 p-4">
+            <SkeletonBox className="h-6 w-3/4" />
+            <SkeletonBox className="h-4 w-1/2" />
+            <SkeletonBox className="h-8 w-1/3" />
+            <SkeletonBox className="h-10 w-full" />
+          </div>
+        </div>
+      ))}
+    </div>
+    <SkeletonBox className="mb-4 h-8 w-40" />
+    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {Array.from({ length: 8 }, (_, i) => (
+        <div key={i} className="glass-effect overflow-hidden rounded-2xl">
+          <SkeletonBox className="aspect-square w-full rounded-none" />
+          <div className="space-y-3 p-6">
+            <SkeletonBox className="h-6 w-3/4" />
+            <SkeletonBox className="h-7 w-1/3" />
+            <SkeletonBox className="h-10 w-full" />
+          </div>
+        </div>
+      ))}
+    </div>
+  </>
+);
+
 const ProductsPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { user, isAdmin } = useAuth();
-  const { products, combos, categories, addToCart, refreshProducts, visualSettings, catalogError } = useBusiness();
+  const { products, combos, categories, addToCart, refreshProducts, visualSettings, catalogError, loading } = useBusiness();
   const { selectedCurrency, setSelectedCurrency, currencySymbol, currencyCode, convertAmount, currencyMap } = useCurrency();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [filteredProducts, setFilteredProducts] = useState([]);
-  const [filteredCombos, setFilteredCombos] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -133,33 +170,26 @@ const ProductsPage = ({ onNavigate }) => {
     }
   }, [t, refreshProducts]);
 
-  useEffect(() => {
-    // Filter products - Show all products (including zero stock with visual indicator)
-    let filtered = products;
+  // Derived in render (not in an effect): an effect leaves the lists empty for one painted frame
+  // after the data arrives, which flashed the "no products" state.
+  const filteredProducts = useMemo(() => {
+    // Show all products (including zero stock with visual indicator)
+    const term = searchTerm.toLowerCase();
+    return products.filter(product =>
+      (!searchTerm
+        || (product.name_es || product.name || '').toLowerCase().includes(term)
+        || (product.name_en || '').toLowerCase().includes(term))
+      && (selectedCategory === 'all'
+        || product.category?.id === selectedCategory || product.category_id === selectedCategory)
+    );
+  }, [products, searchTerm, selectedCategory]);
 
-    if (searchTerm) {
-      filtered = filtered.filter(product =>
-        (product.name_es || product.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (product.name_en || '').toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    if (selectedCategory !== 'all') {
-      filtered = filtered.filter(product => product.category?.id === selectedCategory || product.category_id === selectedCategory);
-    }
-
-    setFilteredProducts(filtered);
-
-    // Filter combos - show all combos (inactive ones will be displayed as disabled)
-    let filteredC = combos || [];
-
-    if (searchTerm) {
-      filteredC = filteredC.filter(combo =>
-        combo.name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-    setFilteredCombos(filteredC);
-  }, [products, combos, searchTerm, selectedCategory, isAdmin]);
+  // Show all combos (inactive ones are displayed as disabled)
+  const filteredCombos = useMemo(() => (
+    searchTerm
+      ? (combos || []).filter(combo => combo.name.toLowerCase().includes(searchTerm.toLowerCase()))
+      : (combos || [])
+  ), [combos, searchTerm]);
 
   const handleAddToCart = (product) => {
     addToCart(product);
@@ -277,6 +307,8 @@ const ProductsPage = ({ onNavigate }) => {
   }, [getProductPrice, userCategoryDiscount]);
 
   return (
+    // reducedMotion="user": the framer entrances below drop their movement under prefers-reduced-motion
+    <MotionConfig reducedMotion="user">
     <div className="min-h-screen py-8 px-4">
       <div className="container mx-auto">
         <motion.div
@@ -339,6 +371,8 @@ const ProductsPage = ({ onNavigate }) => {
           </div>
         </motion.div>
 
+        {/* Error: the error state replaces the skeleton instead of leaving it forever */}
+        <LoadingState loading={loading && !catalogError} skeleton={<CatalogSkeleton />}>
         {/* Display Combos First (if any) */}
         {filteredCombos.length > 0 && (
           <>
@@ -417,13 +451,10 @@ const ProductsPage = ({ onNavigate }) => {
                 const savingsData = calculateSavings();
 
                 return (
-                  <motion.div
+                  <div
                     key={`combo-${combo.id}`}
-                    initial={{ opacity: 0, y: 30 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    className={`glass-effect rounded-2xl overflow-hidden group border-2 border-purple-200 cursor-pointer flex-shrink-0 ${isComboInactive ? 'opacity-60' : 'hover-lift'}`}
-                    style={{ width: '300px' }}
+                    className={`glass-effect rounded-2xl overflow-hidden group border-2 border-purple-200 cursor-pointer flex-shrink-0 ${isComboInactive ? 'opacity-60' : 'hover-lift'} ${staggerClass(index)}`}
+                    style={{ width: '300px', ...staggerStyle(index) }}
                     onClick={() => onNavigate('product-detail', { itemId: combo.id, itemType: 'combo' })}
                   >
                     <div className="aspect-square bg-gradient-to-br from-purple-100 to-pink-100 relative">
@@ -528,7 +559,7 @@ const ProductsPage = ({ onNavigate }) => {
                       </Button>
                     )}
                   </div>
-                </motion.div>
+                </div>
                 );
               })}
             </div>
@@ -553,12 +584,10 @@ const ProductsPage = ({ onNavigate }) => {
             const productUnpriced = productDisplayPrice === null;
 
             return (
-            <motion.div
+            <div
               key={product.id}
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
-              className={`glass-effect rounded-2xl overflow-hidden group cursor-pointer ${isOutOfStock ? 'opacity-60' : 'hover-lift'}`}
+              className={`glass-effect rounded-2xl overflow-hidden group cursor-pointer ${isOutOfStock ? 'opacity-60' : 'hover-lift'} ${staggerClass(index)}`}
+              style={staggerStyle(index)}
               onClick={() => onNavigate('product-detail', { itemId: product.id, itemType: 'product' })}
             >
               <div className="aspect-square bg-gradient-to-br from-gray-100 to-gray-200 relative group">
@@ -720,7 +749,7 @@ const ProductsPage = ({ onNavigate }) => {
                   </Button>
                 )}
               </div>
-            </motion.div>
+            </div>
           );
           })}
         </div>
@@ -738,8 +767,10 @@ const ProductsPage = ({ onNavigate }) => {
             <p className="text-gray-500">{t('products.noProductsDesc')}</p>
           </motion.div>
         )}
+        </LoadingState>
       </div>
     </div>
+    </MotionConfig>
   );
 };
 
