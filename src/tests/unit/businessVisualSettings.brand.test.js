@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const singleMock = vi.fn();
 vi.mock('@/lib/supabase', () => ({
+  withTimeout: (promise) => promise,
   supabase: {
     from: () => ({ select: () => ({ limit: () => ({ single: singleMock }) }) }),
   },

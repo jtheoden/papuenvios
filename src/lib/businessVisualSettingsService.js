@@ -3,11 +3,14 @@
  * Handles persistence of visual settings to/from Supabase database
  */
 
-import { supabase } from '@/lib/supabase';
+import { supabase, withTimeout } from '@/lib/supabase';
 import { NEW_KEY_DEFAULTS, BRAND_CSS_VARS, isHexColor } from '@/lib/brandPalette';
 import { LOCAL_CACHE_KEY } from '@/lib/constants';
+import { readStoredVisualSettings } from '@/lib/loadingTheme';
 
 const CACHE_DURATION = 60 * 1000; // 1 minute cache
+// Startup waits for these settings (StartupGate), after auth's own cap: a hung query must not block the app.
+export const VISUAL_SETTINGS_TIMEOUT_MS = 3500;
 
 // Default settings - used when no DB record exists or on error
 export const DEFAULT_VISUAL_SETTINGS = {
@@ -196,11 +199,11 @@ export async function loadVisualSettings() {
       return { ...DEFAULT_VISUAL_SETTINGS, ...cached };
     }
 
-    const { data, error } = await supabase
-      .from('business_visual_settings')
-      .select('settings')
-      .limit(1)
-      .single();
+    const { data, error } = await withTimeout(
+      supabase.from('business_visual_settings').select('settings').limit(1).single(),
+      VISUAL_SETTINGS_TIMEOUT_MS,
+      'business_visual_settings'
+    );
 
     if (error) {
       // If table doesn't exist or no rows, return defaults
@@ -216,7 +219,8 @@ export async function loadVisualSettings() {
     return settings;
   } catch (err) {
     console.error('[BusinessVisualSettings] Load exception:', err);
-    return DEFAULT_VISUAL_SETTINGS;
+    // Timeout or network failure: last look the user saw (stale cache) beats the defaults.
+    return { ...DEFAULT_VISUAL_SETTINGS, ...(readStoredVisualSettings() || {}) };
   }
 }
 
