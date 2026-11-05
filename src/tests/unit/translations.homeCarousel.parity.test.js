@@ -7,7 +7,7 @@ import EN from '@/translations/EN.json';
 const flatten = (obj, prefix = '') =>
   Object.entries(obj).flatMap(([k, v]) => (v && typeof v === 'object' ? flatten(v, `${prefix}${k}.`) : [[`${prefix}${k}`, v]]));
 
-const CAROUSEL_KEYS = ['label', 'previous', 'next', 'pause', 'play', 'goTo'];
+const CAROUSEL_KEYS = ['label', 'roleDescription', 'slide', 'slideOf', 'previous', 'next', 'pause', 'play', 'goTo'];
 
 describe('home.hero.* and home.carousel.* translations', () => {
   it('have the same keys in ES and EN, all non-empty', () => {

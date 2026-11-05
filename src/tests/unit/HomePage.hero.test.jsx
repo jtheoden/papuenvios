@@ -4,6 +4,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 import ES from '@/translations/ES.json';
 import EN from '@/translations/EN.json';
 import { PROD, PRESET, SLIDES } from './homeTestKit';
+import { contrastRatio } from '@/lib/contrast';
 
 // Spec (S2a/S2b) for the Home hero. Acceptance criteria:
 //  1. Exactly one h1, from i18n (home.hero.title), outside the carousel and never re-mounted by slide changes.
@@ -53,7 +54,7 @@ import SkeletonCard from '@/components/ui/SkeletonCard';
 const mount = async ({ settings = PROD, slides = SLIDES, language = 'es', isAdmin = false, onNavigate = vi.fn() } = {}) => {
   Object.assign(state, { settings, slides, language, isAdmin });
   const view = render(<HomePage onNavigate={onNavigate} />);
-  if (slides.length > 0 && settings.carouselEnabled !== false) await screen.findByTestId('hero-carousel');
+  if (slides.some((slide) => slide.image_url || slide.image_file) && settings.carouselEnabled !== false) await screen.findByTestId('hero-carousel');
   else await screen.findByRole('button', { name: translate('home.hero.cta.products') });
   return view;
 };
@@ -275,9 +276,9 @@ describe('carousel dots', () => {
     expect(bare(first)).not.toBe(bare(second));
   });
 
-  it('production row: the default brand dot colour (the key does not exist in the stored row)', async () => {
+  it('production row (legacy look): the active dot uses primaryColor, never the brand gold', async () => {
     await mount({ settings: PROD });
-    expect(paint(dots()[0])).toBe('rgb(255, 165, 0)');
+    expect(paint(dots()[0])).toBe('rgb(52, 153, 220)');
   });
 });
 
@@ -298,5 +299,54 @@ describe('page background belongs to the Home, not to the body', () => {
   it('production row (legacy default #f9fafb): the Home root stays transparent so the stylesheet gradient shows', async () => {
     const { container } = await mount({ settings: PROD });
     expect(container.firstElementChild.style.backgroundColor).toBe('');
+  });
+});
+
+describe('legacy (production row) hero: readable title and no brand gold before the preset', () => {
+  it('the new h1 is solid heading ink with AA contrast on the page colour (not gradient text)', async () => {
+    const { container } = await mount({ settings: PROD });
+    const h1 = container.querySelector('h1');
+    expect(h1.style.color).toBe('rgb(31, 41, 55)');
+    expect(h1.style.backgroundClip).not.toBe('text');
+    expect(h1.getAttribute('style')).not.toContain('linear-gradient');
+    expect(contrastRatio('#1f2937', PROD.pageBgColor)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('the h2 of the sections keep the stored gradient (only the new h1 changes)', async () => {
+    const { container } = await mount({ settings: PROD });
+    const h2s = [...container.querySelectorAll('h2')].filter((h) => !h.closest('[data-testid="hero-card"]'));
+    expect(h2s.length).toBeGreaterThan(2);
+    for (const h2 of h2s) expect(h2.getAttribute('style')).toContain('linear-gradient');
+  });
+
+  it('no gold anywhere in the hero: soft accent is an accent tint, hover of the outline button is not gold', async () => {
+    const { container } = await mount({ settings: PROD });
+    const hero = screen.getByTestId('home-hero');
+    const html = (hero.innerHTML + container.firstElementChild.getAttribute('style')).toLowerCase();
+    for (const gold of ['rgb(255, 165, 0)', 'rgb(255, 241, 204)', '#ffa500', '#fff1cc', '#e59400']) expect(html).not.toContain(gold);
+    const softVar = container.firstElementChild.style.getPropertyValue('--brand-soft-accent');
+    expect(softVar.toLowerCase()).toBe('#9333ea20');
+    // muted text keeps the legacy grey
+    expect(within(hero).getByText(ES.home.hero.subtitle).style.color).toBe('rgb(75, 85, 99)');
+  });
+
+  it('the brand preset keeps the gold (dot, soft accent, muted warm grey)', async () => {
+    const { container } = await mount({ settings: PRESET });
+    expect(paint(dots()[0])).toBe('rgb(255, 165, 0)');
+    expect(container.firstElementChild.style.getPropertyValue('--brand-soft-accent')).toBe('#FFF1CC');
+    expect(within(screen.getByTestId('home-hero')).getByText(ES.home.hero.subtitle).style.color).toBe('rgb(96, 91, 82)');
+  });
+});
+
+describe('mobile top padding and unusable slides', () => {
+  it('the hero has a local top padding on mobile so the h1 clears the fixed header', async () => {
+    await mount();
+    expect(screen.getByTestId('home-hero').className.split(/\s+/)).toContain('pt-12');
+  });
+
+  it('slides without any image do not create a carousel', async () => {
+    const { container } = await mount({ slides: [{ id: 'x', title_es: 'a', title_en: 'a' }] });
+    expect(screen.queryByTestId('hero-carousel')).toBeNull();
+    expect(container.querySelectorAll('h1')).toHaveLength(1);
   });
 });

@@ -207,13 +207,16 @@ for (const width of [320, 768, 1280]) {
 test.describe('colours follow the Visual settings', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
-  test('production row: blue/violet gradient CTA, gradient page, gold dot', async ({ page }) => {
+  test('production row: blue/violet gradient CTA, gradient page, primary-colour dot, no gold', async ({ page }) => {
     await open(page, { settings: PROD_ROW });
     const cta = page.locator('[data-testid="home-hero"] button').first();
     await expect(cta).toHaveCSS('background-image', /linear-gradient\(.*rgb\(52, 153, 220\).*rgb\(147, 51, 234\)/);
     await expect(cta).toHaveCSS('color', 'rgb(255, 255, 255)');
     await expect(page.locator('body')).toHaveCSS('background-image', /linear-gradient/);
-    await expect(page.locator('[data-testid="hero-carousel"] button[aria-current="true"]')).toHaveCSS('background-color', 'rgb(255, 165, 0)');
+    await expect(page.locator('[data-testid="hero-carousel"] button[aria-current="true"]')).toHaveCSS('background-color', 'rgb(52, 153, 220)');
+    // the new h1 is readable solid ink in the legacy look (the gradient title failed AA)
+    await expect(page.locator('h1')).toHaveCSS('color', 'rgb(31, 41, 55)');
+    await expect(page.locator('h1')).toHaveCSS('background-image', 'none');
     // the legacy default #f9fafb is not painted by the Home root: the body gradient shows
     await expect(page.locator('[data-testid="home-page"]')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   });
@@ -264,7 +267,7 @@ test.describe('colours follow the Visual settings', () => {
 
 test.describe('carousel controls', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
-  const FAST = { ...BRAND_PRESET, carouselAutoplaySpeed: 1000, carouselTransitionSpeed: 200 };
+  const FAST = { ...BRAND_PRESET, carouselAutoplaySpeed: 2000, carouselTransitionSpeed: 200 };
 
   test('every dot, arrow and the pause button is at least 24x24 CSS px', async ({ page }) => {
     await open(page, { settings: FAST });
@@ -287,11 +290,11 @@ test.describe('carousel controls', () => {
   test('autoplay advances, and the pause button stops it', async ({ page }) => {
     await open(page, { settings: FAST });
     await page.mouse.move(5, 5);
-    await expect.poll(() => activeDotIndex(page), { timeout: 4000 }).toBeGreaterThan(0);
+    await expect.poll(() => activeDotIndex(page), { timeout: 6000 }).toBeGreaterThan(0);
     await page.getByRole('button', { name: /Pausar|Pause/ }).click();
     await page.mouse.move(5, 5);
     const frozen = await activeDotIndex(page);
-    await page.waitForTimeout(2500);
+    await page.waitForTimeout(3000);
     expect(await activeDotIndex(page)).toBe(frozen);
     await expect(page.getByRole('button', { name: /Reanudar|Resume/ })).toBeVisible();
   });
@@ -300,8 +303,35 @@ test.describe('carousel controls', () => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await open(page, { settings: FAST });
     await page.mouse.move(5, 5);
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(3500);
     expect(await activeDotIndex(page)).toBe(0);
     await expect(page.getByRole('button', { name: /Reanudar|Resume/ })).toBeVisible();
   });
 });
+
+test.describe('explicit resume with the real pointer and keyboard focus on the carousel', () => {
+  test.use({ viewport: { width: 1280, height: 900 } });
+
+  test('Reanudar keeps playing although the mouse is still over the buttons and focus is inside', async ({ page }) => {
+    await open(page, { settings: { ...BRAND_PRESET, carouselAutoplaySpeed: 2000, carouselTransitionSpeed: 200 } });
+    await page.getByRole('button', { name: /Pausar|Pause/ }).click();
+    await page.getByRole('button', { name: /Reanudar|Resume/ }).click(); // mouse stays over it, focus stays on it
+    const start = await activeDotIndex(page);
+    await expect.poll(() => activeDotIndex(page), { timeout: 6000 }).not.toBe(start);
+    await expect(page.getByRole('button', { name: /Pausar|Pause/ })).toBeVisible();
+  });
+});
+
+// Mobile header is taller than the 5rem the page reserves for it: the h1 needs its own clearance (>= 16px).
+for (const width of [320, 360, 640]) {
+  test.describe(`h1 clears the fixed header at ${width}px`, () => {
+    test.use({ viewport: { width, height: 800 } });
+
+    test('h1.top is at least 16px below the header', async ({ page }) => {
+      await open(page, { settings: BRAND_PRESET });
+      const header = await box(page.locator('header').first());
+      const h1 = await box(page.locator('[data-testid="home-hero"] h1'));
+      expect(h1.y).toBeGreaterThanOrEqual(header.bottom + 16 - 0.5);
+    });
+  });
+}

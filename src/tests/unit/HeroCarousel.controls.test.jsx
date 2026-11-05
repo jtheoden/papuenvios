@@ -80,8 +80,24 @@ describe('autoplay', () => {
   });
 
   it('uses the configured speed', () => {
-    mount({ carouselAutoplaySpeed: 1200 });
-    tick(1200);
+    mount({ carouselAutoplaySpeed: 2500 });
+    tick(2499);
+    expect(activeAlt()).toBe(SLIDES[0].title_es);
+    tick(1);
+    expect(activeAlt()).toBe(SLIDES[1].title_es);
+  });
+
+  it('clamps a too-fast speed to 2000 ms and falls back to 5000 ms for garbage', () => {
+    const fast = mount({ carouselAutoplaySpeed: 500 });
+    tick(1999);
+    expect(activeAlt()).toBe(SLIDES[0].title_es);
+    tick(1);
+    expect(activeAlt()).toBe(SLIDES[1].title_es);
+    fast.unmount();
+    mount({ carouselAutoplaySpeed: 'abc' });
+    tick(4999);
+    expect(activeAlt()).toBe(SLIDES[0].title_es);
+    tick(1);
     expect(activeAlt()).toBe(SLIDES[1].title_es);
   });
 
@@ -210,5 +226,89 @@ describe('semantics', () => {
     const next = screen.getByRole('button', { name: names(ES).next });
     const svg = next.querySelector('svg');
     expect(svg?.getAttribute('aria-hidden')).toBe('true');
+  });
+});
+
+describe('explicit resume', () => {
+  it('Reanudar really resumes while the pointer and the keyboard focus are still on the carousel', () => {
+    mount();
+    const region = screen.getByTestId('hero-carousel');
+    fireEvent.mouseEnter(region);
+    const pause = screen.getByRole('button', { name: names(ES).pause });
+    act(() => pause.focus());
+    fireEvent.click(pause); // pointer over, focus inside, user pauses
+    tick(30000);
+    expect(activeAlt()).toBe(SLIDES[0].title_es);
+    const play = screen.getByRole('button', { name: names(ES).play });
+    act(() => play.focus());
+    fireEvent.click(play); // still hovering and focused
+    expect(screen.getByRole('button', { name: names(ES).pause })).toBeTruthy();
+    expect(screen.getByTestId('hero-carousel-frame').getAttribute('aria-live')).toBe('off');
+    tick(5000);
+    expect(activeAlt()).toBe(SLIDES[1].title_es);
+  });
+
+  it('the override ends with the next mouse leave / blur: hovering again pauses again', () => {
+    mount();
+    const region = screen.getByTestId('hero-carousel');
+    fireEvent.mouseEnter(region);
+    fireEvent.click(screen.getByRole('button', { name: names(ES).pause }));
+    fireEvent.click(screen.getByRole('button', { name: names(ES).play }));
+    fireEvent.mouseLeave(region);
+    tick(5000);
+    expect(activeAlt()).toBe(SLIDES[1].title_es);
+    fireEvent.mouseEnter(region);
+    tick(20000);
+    expect(activeAlt()).toBe(SLIDES[1].title_es);
+  });
+});
+
+describe('slides without a usable image', () => {
+  const BROKEN = { id: 'broken', title_es: 'Sin imagen', title_en: 'No image' };
+
+  it('are filtered out: no dot, never shown', () => {
+    mount({}, [SLIDES[0], BROKEN, SLIDES[1]]);
+    expect(screen.getAllByRole('button', { name: new RegExp(ES.home.carousel.goTo.replace('{count}', '\\d')) })).toHaveLength(2);
+    tick(5000);
+    expect(activeAlt()).toBe(SLIDES[1].title_es);
+  });
+
+  it('an image that fails to load is skipped (dot removed, next slide shown)', () => {
+    mount();
+    fireEvent.error(screen.getByTestId('hero-slide-image'));
+    expect(screen.getAllByRole('button', { name: new RegExp(ES.home.carousel.goTo.replace('{count}', '\\d')) })).toHaveLength(2);
+    expect(activeAlt()).toBe(SLIDES[1].title_es);
+    tick(5000);
+    expect(activeAlt()).toBe(SLIDES[2].title_es);
+  });
+
+  it('renders nothing when no slide has an image', () => {
+    const { container } = mount({}, [BROKEN]);
+    expect(container.firstChild).toBeNull();
+  });
+});
+
+describe('translated semantics', () => {
+  it('region and slide announce a translated role description and "N de M"', () => {
+    mount();
+    const region = screen.getByTestId('hero-carousel');
+    expect(region.getAttribute('aria-roledescription')).toBe(ES.home.carousel.roleDescription);
+    const slide = screen.getByTestId('hero-slide-image').closest('[role="group"]');
+    expect(slide).toBeTruthy();
+    expect(slide.getAttribute('aria-roledescription')).toBe(ES.home.carousel.slide);
+    expect(slide.getAttribute('aria-label')).toBe(ES.home.carousel.slideOf.replace('{count}', '1').replace('{total}', String(SLIDES.length)));
+  });
+
+  it('is translated in English', () => {
+    state.language = 'en';
+    mount();
+    expect(screen.getByTestId('hero-carousel').getAttribute('aria-roledescription')).toBe(EN.home.carousel.roleDescription);
+    const slide = screen.getByTestId('hero-slide-image').closest('[role="group"]');
+    expect(slide.getAttribute('aria-label')).toBe(EN.home.carousel.slideOf.replace('{count}', '1').replace('{total}', String(SLIDES.length)));
+  });
+
+  it('uses an empty alt (decorative) when the slide has no title', () => {
+    mount({}, [{ id: 'a', image_url: 'https://cdn.example.test/a.png' }, SLIDES[1]]);
+    expect(screen.getByTestId('hero-slide-image').getAttribute('alt')).toBe('');
   });
 });
