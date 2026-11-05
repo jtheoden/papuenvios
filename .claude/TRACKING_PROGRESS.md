@@ -457,6 +457,12 @@ Decisiones y verificaciones del dueño: revisar `default_spread_pct` (1.5 %) y l
 - Pantalla de carga: región viva montada vacía y rellenada tras el montaje (los lectores anuncian cambios), `motion-reduce` también en las pistas rotativas, `px-4` en la raíz (margen mínimo en 320 px). `LOCAL_CACHE_KEY` vive en `src/lib/constants.js` (loadingTheme ya no arrastra supabase); test que ata el escritor (`loadVisualSettings`) con el lector.
 - Declarado: (a) anillo de foco `focus-visible:ring-2` + `outline-none` en los enlaces del footer = mejora de a11y (main solo tenía el outline del navegador); (b) la clave antigua `visualSettings` de localStorage (navegadores previos a 2026) deja de leerse: el aspecto se unifica con la caché real; la clave antigua NO se borra.
 
+### Temas por defecto seleccionables classic / papuenvios (2026-11-05)
+- Clave nueva opcional `activeTheme` (`classic` por defecto si falta) y `classicSnapshot` en `business_visual_settings.settings` (jsonb: sin migracion). La fila de produccion no cambia hasta que un super_admin elija `papuenvios` y pulse Guardar.
+- `src/lib/visualThemes.js`: `selectTheme(form, id)` aplica el preset sobre el formulario; classic -> papuenvios guarda en `classicSnapshot` los valores previos de las claves del preset y papuenvios -> classic los restaura (reversible). No toca primario/secundario, logo, textos ni carrusel. Los resolvers (header/footer/loading/styleUtils) siguen leyendo VALORES, no el nombre del tema.
+- Ajustes > Visual: el boton "Aplicar paleta PapuEnvios" pasa a un `radiogroup` (nombre, descripcion, muestras, texto "En uso"). Solo rellena el formulario, apaga y bloquea la vista previa en vivo mientras la eleccion no este guardada. Solo `isSuperAdmin` (prop `canChangeTheme`); la restriccion es de UI, RLS sigue permitiendo escribir a `admin`.
+- Tests: `visualThemes.test.js`, `visualThemes.parity.test.js` (fila de produccion `src/tests/fixtures/prodVisualRow.js` y preset), `SettingsPageVisual.themeSelector.test.jsx`, paridad ES/EN. Plan: `.claude/docs/plan_visual_theme_selector.md`.
+
 ## Auditoría financiera — Fase 2 (cliente) — 2026-11-05
 
 Rama `fix/financial-client-hardening`. Especificación y criterios: `.claude/docs/plan_financial_client_hardening.md`. Sin BD ni migraciones.

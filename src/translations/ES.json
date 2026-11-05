@@ -1267,10 +1267,31 @@
     },
     "visual": {
       "brand": {
-        "applyPreset": "Aplicar paleta PapuEnvíos",
-        "applyPresetHint": "Rellena el formulario con los colores de la marca. No se guarda nada hasta que presione \"Guardar Personalización\", siempre que la vista previa en vivo siga apagada.",
-        "applied": "Paleta PapuEnvíos aplicada al formulario. La vista previa en vivo se desactivó y nada se ha guardado todavía; presione \"Guardar Personalización\" para confirmar.",
-        "undoPreset": "Restaurar valores anteriores",
+        "theme": {
+          "title": "Tema por defecto del sitio",
+          "hint": "Elija el aspecto con el que se muestra el sitio a todos los usuarios. El cambio se previsualiza en el formulario y no se aplica hasta que presione \"Guardar Personalización\".",
+          "classic": {
+            "name": "Clásico (azul y morado)",
+            "description": "El aspecto original: botones azules, acentos morados, degradados y fondo gris claro."
+          },
+          "papuenvios": {
+            "name": "PapuEnvíos (dorado y marfil)",
+            "description": "La paleta de la marca: botones dorados, texto carbón, fondo marfil y bordes beige, sin degradados."
+          },
+          "inUse": "En uso",
+          "changes": "Al elegir un tema se reemplazan los colores de cabecera, menús, pestañas, botones, pie de página, fondo, insignia del carrito y bordes. Los colores de ese grupo que haya editado a mano se pierden; solo se recuerdan los valores de Clásico para poder volver a ellos. No cambian el logo, los textos, los colores primario y secundario, ni el carrusel.",
+          "restricted": "Solo un super administrador puede cambiar el tema por defecto.",
+          "customized": "Algunos colores del formulario difieren del tema elegido porque se editaron a mano. Si cambia de tema, esas ediciones se reemplazarán.",
+          "pending": "Tema aplicado al formulario. La vista previa en vivo se desactivó y nada se ha guardado todavía; presione \"Guardar Personalización\" para confirmar."
+        },
+        "reset": {
+          "title": "¿Restablecer el tema de fábrica?",
+          "description": "Los colores, degradados y sombras volverán a los valores por defecto del código (aspecto Clásico) y se perderán sus personalizaciones de color, incluidas las ya guardadas. El cambio se guarda de inmediato y no se puede deshacer. No se modifican el logo, el favicon, los textos, las tarjetas de inicio ni el carrusel.",
+          "confirm": "Restablecer y guardar",
+          "cancel": "Cancelar",
+          "error": "No se pudo restablecer el tema"
+        },
+        "undoPreset": "Deshacer elección de tema",
         "sectionTitle": "Marca y acentos",
         "sectionHint": "Colores de la insignia del carrito, el punto activo del carrusel, bordes, texto secundario, acento suave y anillo de foco.",
         "cartBadgeBg": "Fondo de la insignia del carrito",
@@ -1393,7 +1414,7 @@
       "changesSaved": "Los cambios visuales se han guardado y sincronizado",
       "changesDiscarded": "Tema restaurado",
       "settingsRestored": "Se restauró la configuración visual a valores de fábrica",
-      "restoreTheme": "Restaurar Tema",
+      "restoreTheme": "Restablecer tema de fábrica",
       "showCompanyName": "Mostrar nombre de empresa en header",
       "logoMaxHeight": "Tamaño del logo en header",
       "headerPreview": "Vista previa del Header",

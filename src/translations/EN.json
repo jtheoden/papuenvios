@@ -1259,10 +1259,31 @@
     },
     "visual": {
       "brand": {
-        "applyPreset": "Apply PapuEnvíos palette",
-        "applyPresetHint": "Fills the form with the brand colors. Nothing is saved until you press \"Save Customization\", as long as live preview stays off.",
-        "applied": "PapuEnvíos palette applied to the form. Live preview was turned off and nothing has been saved yet; press \"Save Customization\" to confirm.",
-        "undoPreset": "Restore previous values",
+        "theme": {
+          "title": "Default site theme",
+          "hint": "Choose the look every user sees on the site. The change is previewed in the form and is not applied until you press \"Save Customization\".",
+          "classic": {
+            "name": "Classic (blue and violet)",
+            "description": "The original look: blue buttons, violet accents, gradients and a light grey background."
+          },
+          "papuenvios": {
+            "name": "PapuEnvíos (gold and ivory)",
+            "description": "The brand palette: gold buttons, charcoal text, ivory background and beige borders, no gradients."
+          },
+          "inUse": "In use",
+          "changes": "Choosing a theme replaces the colors of the header, menus, tabs, buttons, footer, background, cart badge and borders. Any colors in that group you edited by hand are lost; only the Classic values are remembered so you can go back to them. The logo, texts, primary and secondary colors and the carousel are not changed.",
+          "restricted": "Only a super admin can change the default theme.",
+          "customized": "Some colors in the form differ from the selected theme because they were edited by hand. If you switch themes, those edits will be replaced.",
+          "pending": "Theme applied to the form. Live preview was turned off and nothing has been saved yet; press \"Save Customization\" to confirm."
+        },
+        "reset": {
+          "title": "Reset to the factory theme?",
+          "description": "Colors, gradients and shadows will go back to the code defaults (Classic look) and your color customizations will be lost, including the ones already saved. The change is saved immediately and cannot be undone. The logo, favicon, texts, home cards and carousel are not changed.",
+          "confirm": "Reset and save",
+          "cancel": "Cancel",
+          "error": "The theme could not be reset"
+        },
+        "undoPreset": "Undo theme choice",
         "sectionTitle": "Brand and accents",
         "sectionHint": "Colors for the cart badge, the active carousel dot, borders, secondary text, soft accent and focus ring.",
         "cartBadgeBg": "Cart badge background",
@@ -1385,7 +1406,7 @@
       "changesSaved": "Visual changes have been saved and synchronized",
       "changesDiscarded": "Theme restored",
       "settingsRestored": "Visual settings have been reset to factory defaults",
-      "restoreTheme": "Restore Theme",
+      "restoreTheme": "Reset to factory theme",
       "showCompanyName": "Show company name in header",
       "logoMaxHeight": "Logo size in header",
       "headerPreview": "Header Preview",

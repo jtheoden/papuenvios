@@ -471,6 +471,7 @@ const SettingsPage = () => {
               setLocalVisual={setLocalVisual}
               visualSettings={visualSettings}
               setVisualSettings={setVisualSettings}
+              canChangeTheme={isSuperAdmin}
             />
           )}
 
