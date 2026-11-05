@@ -3,7 +3,8 @@
 // Fetch layer for Supabase REST calls (/rest/v1 only; auth, storage, functions and realtime pass untouched). Composed
 // with the refresh guard in supabase.js. Why: on the Free plan (5 GB egress) every repeated read costs headers + JSON.
 //  1. In-flight dedupe: identical reads (same method, URL, body, Range/Prefer/Accept and user) share one request.
-//     Requests with their own abort signal never share.
+//     Requests with their own abort signal never share. A request older than JOIN_MAX_AGE_MS is not joined (a stalled
+//     connection must not freeze every later read), and a read without its own signal is aborted after READ_TIMEOUT_MS.
 //  2. An allowlist of exact reads (CACHED_READS: select AND filters) is cached for API_CACHE_TTL_MS in memory and localStorage
 //     (public data), so other tabs and reloads reuse them. Every other read, including those that price an operation,
 //     goes to the network.
@@ -60,6 +61,8 @@ const REST_PREFIX = '/rest/v1/';
 const MAX_STORED_BODY = 64 * 1024;
 const MAX_STORED_ENTRIES = 200;
 const NULL_BODY_STATUS = new Set([101, 204, 205, 304]);
+export const JOIN_MAX_AGE_MS = 15_000;
+export const READ_TIMEOUT_MS = 30_000;
 
 const writeListeners = new Set();
 const remoteChangeHandlers = new Set();
@@ -172,7 +175,7 @@ export const createRequestBudgetFetch = (
 ) => {
   if (!enabled) return baseFetch;
 
-  const inFlight = new Map(); // key -> Promise<snapshot>
+  const inFlight = new Map(); // key -> { at, promise: Promise<snapshot> }
   const ttlCache = new Map(); // key -> { at, snap } (rate tables)
   const lastAnswer = new Map(); // key -> { at, snap } (any read; the guardrail's fallback)
   const hits = new Map(); // budgetKey -> timestamps
@@ -276,11 +279,14 @@ export const createRequestBudgetFetch = (
       return baseFetch(input, init);
     }
 
-    let pending = inFlight.get(req.key);
+    const joinable = inFlight.get(req.key);
+    let pending = joinable && Date.now() - joinable.at < JOIN_MAX_AGE_MS ? joinable.promise : null;
     if (!pending) {
       countNetworkRequest();
       const startedAt = generation;
-      pending = baseFetch(input, init)
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), READ_TIMEOUT_MS);
+      pending = baseFetch(input, { ...init, signal: controller.signal })
         .then((response) => snapshotOf(response, req.method))
         .then((snap) => {
           const storable = snap.status >= 200 && snap.status < 300 && (snap.body?.length ?? 0) <= MAX_STORED_BODY;
@@ -294,9 +300,10 @@ export const createRequestBudgetFetch = (
           return snap;
         })
         .finally(() => {
-          if (inFlight.get(req.key) === pending) inFlight.delete(req.key);
+          clearTimeout(timer);
+          if (inFlight.get(req.key)?.promise === pending) inFlight.delete(req.key);
         });
-      inFlight.set(req.key, pending);
+      inFlight.set(req.key, { at: Date.now(), promise: pending });
     }
     return responseOf(await pending);
   };

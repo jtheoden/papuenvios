@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Real supabase client + real services over a scripted network. Each test re-imports the modules so it starts with
 // an empty in-memory cache (what a page reload does); localStorage is kept or cleared on purpose.
-const net = { rate: 400, orders: 'v1', pendingOrders: null, pending: 2, latencyMs: 0, calls: [] };
+const net = { rate: 400, orders: 'v1', pendingOrders: null, pending: 2, latencyMs: 0, hangOnce: null, calls: [] };
 
 const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
@@ -11,6 +11,13 @@ const scriptedFetch = async (input, init = {}) => {
   const method = (init.method || 'GET').toUpperCase();
   const path = url.pathname;
   net.calls.push(`${method} ${path}${url.search}`);
+  if (net.hangOnce === path) {
+    // A request that never answers (like a stalled mobile connection); only an abort settles it, as with real fetch.
+    net.hangOnce = null;
+    return new Promise((_, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')));
+    });
+  }
   const accept = new Headers(init.headers).get('accept') || '';
   const one = (rows) => (accept.includes('vnd.pgrst.object') ? rows[0] ?? null : rows);
   if (path === '/rest/v1/rpc/get_pending_orders_count') return json(net.pending);
@@ -55,6 +62,7 @@ describe('requestBudget with the real Supabase client', () => {
     net.pendingOrders = null;
     net.pending = 2;
     net.latencyMs = 0;
+    net.hangOnce = null;
     net.calls = [];
   });
   afterEach(() => {
@@ -137,6 +145,24 @@ describe('requestBudget with the real Supabase client', () => {
     vi.setSystemTime(Date.now() + 11_000); // > 60 s since the last real request
     expect(await pendingOrders(supabase)).toBe(9);
     expect(network('POST /rest/v1/rpc/get_pending_orders_count')).toBe(before + 1);
+  });
+
+  it('R8: a hung read does not freeze the next ones; the hung request times out and settles', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    const { svc } = await load();
+    net.hangOnce = '/rest/v1/exchange_rates';
+    const settle = (p) => p.then((value) => ({ value }), (error) => ({ error }));
+    const first = settle(svc.getConversionRate('usd', 'cup'));
+    await vi.advanceTimersByTimeAsync(20);
+    const joined = settle(svc.getConversionRate('usd', 'cup')); // 20 ms later: legitimately shares the request
+    expect(network('GET /rest/v1/exchange_rates')).toBe(1);
+    await vi.advanceTimersByTimeAsync(16_000);
+    // The shared request is too old to join: the next read reaches the network and gets the rate.
+    expect(await svc.getConversionRate('usd', 'cup')).toBe(400);
+    expect(network('GET /rest/v1/exchange_rates')).toBe(2);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect((await first).error).toBeTruthy();
+    expect((await joined).error).toBeTruthy();
   });
 
   it('a realtime change makes the next identical read go to the network even over budget', async () => {
