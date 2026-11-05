@@ -413,3 +413,15 @@ Decisiones y verificaciones del dueño: revisar `default_spread_pct` (1.5 %) y l
 - Variables `--brand-*` del header se MANTIENEN: `SettingsContext` solo aplica `applyVisualSettingsToDOM` tras cargar, así que sin ellas habría un parpadeo al dorado de Tailwind antes de la carga (comportamiento no idéntico).
 - E2E ampliado: fila de prod a 320/768/1280 ES/EN, y caso admin (sesión simulada + 2 insignias) a 768/1280. Comparación visual contra el Header de origin/main con la fila de prod: igual salvo pestaña activa en negrita/subrayada, botón de idioma neutro, insignia roja `#dc2626`.
 - Fuera de alcance (backlog): truncado de pastillas a 320 px, ZelleAccountAlert, dropdown de usuario fijo, acento de `companyName` (S5).
+
+## Auditoría financiera — Fase 2 (cliente) — 2026-11-05
+
+Rama `fix/financial-client-hardening`. Especificación y criterios: `.claude/docs/plan_financial_client_hardening.md`. Sin BD ni migraciones.
+- A1 `getRemittanceExchangeRate` falla cerrado (`EXCHANGE_RATE_UNAVAILABLE`), sin `|| 1`; `SendRemittancePage` avisa y bloquea el tipo sin tasa. Precedencia sin cambios (tasa del tipo > central).
+- A3 `getBusinessMonthRange` (America/New_York) en `getMarginSummary` y en el fallback de Zelle.
+- A5 `saveExchangeRatePair` / restauración en `updateExchangeRatePair` / UUID en `deleteExchangeRatePair`; confirmación >5 % para cualquier par. Atomicidad real = RPC (Fase 3).
+- A6 `CurrencyContext`, `convertWithRates` (combos) y guarda de moneda base en `createCombo/updateCombo`.
+- A7 alerta de cambio de tasa con `calcForward` (`remittanceRateChange.js`). A9 `calcCommissionFromRates` redondeado a 2 decimales + tasa de entrega efectiva.
+- Modo solo lectura de tasas para admin no super (perdido en el revert #144) y campos de tasa/comisión + "nuevo tipo" solo super_admin en `RemittanceTypesConfig`.
+- Diferido: A2, A4, A8, A10 (redondeo), A11, banda dura USD→CUP, fórmulas de remesa, guards BD.
+
