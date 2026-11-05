@@ -52,7 +52,6 @@ const isCachedRead = (table, url) => (CACHED_READS[table] || []).some((expected)
 const GUARDED_READS = new Set([
   'POST /rest/v1/rpc/get_pending_orders_count',
   'POST /rest/v1/rpc/admin_refund_counts',
-  'POST /rest/v1/rpc/admin_list_refunds',
   'HEAD /rest/v1/remittances',
   'HEAD /rest/v1/site_visits'
 ]);
