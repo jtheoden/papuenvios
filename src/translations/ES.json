@@ -158,7 +158,7 @@
   },
   "products": {
     "title": "Catálogo de Productos",
-    "subtitle": "Descubre productos y combos para enviar a Cuba con precios competitivos",
+    "subtitle": "Productos y combos para enviar a Cuba.",
     "preview": "Vista previa",
     "searchPlaceholder": "Buscar productos...",
     "specialCombos": "Combos Especiales",
@@ -220,7 +220,7 @@
   },
   "remittances": {
     "title": "Remesas a Cuba",
-    "subtitle": "Envíe dinero a Cuba desde Estados Unidos. Pague con Zelle y le confirmamos cada paso de la entrega.",
+    "subtitle": "Envíe dinero a Cuba desde Estados Unidos. Puede seguir el estado y ver el comprobante de entrega en Mis remesas.",
     "calculator": "Calculadora de Remesas",
     "amount": "Cantidad a Enviar (USD)",
     "country": "País de Destino",
@@ -245,8 +245,8 @@
         "description": "Entrega estimada, no garantizada; el plazo depende de la zona."
       },
       "tracking": {
-        "title": "Aviso en cada paso",
-        "description": "Le avisamos en cada paso y le enviamos la confirmación de entrega."
+        "title": "Seguimiento en Mis remesas",
+        "description": "Puede seguir el estado y ver el comprobante de entrega en Mis remesas."
       }
     },
     "step1": {
@@ -490,7 +490,7 @@
       "trackYourRemittances": "Consulte el estado de sus envíos de dinero",
       "trackRemittances": "Consulte el estado de sus envíos de dinero",
       "noRemittances": "No tiene remesas registradas",
-      "noRemittancesDesc": "Envíe su primera remesa. Pague con Zelle y le confirmamos cada paso de la entrega.",
+      "noRemittancesDesc": "Envíe su primera remesa. Puede seguir el estado y ver el comprobante de entrega en Mis remesas.",
       "remittanceNumber": "Número de Remesa",
       "amountSent": "Enviado",
       "toDeliver": "A Entregar",
@@ -616,7 +616,7 @@
       "importantNote": "Importante",
       "proofNote": "Su remesa será procesada una vez validemos el comprobante de pago. Recibirá una notificación cuando esto ocurra.",
       "pageTitle": "Enviar Remesa",
-      "pageSubtitle": "Pague con Zelle y le confirmamos cada paso de la entrega.",
+      "pageSubtitle": "Pague con Zelle. Puede seguir el estado y ver el comprobante de entrega en Mis remesas.",
       "selectTypeRequired": "Seleccione el tipo de remesa *",
       "rate": "Tasa",
       "calculating": "Calculando...",

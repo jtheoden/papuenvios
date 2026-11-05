@@ -158,7 +158,7 @@
   },
   "products": {
     "title": "Product Catalog",
-    "subtitle": "Discover products and combos to send to Cuba at competitive prices",
+    "subtitle": "Products and combos to send to Cuba.",
     "preview": "Preview",
     "searchPlaceholder": "Search products...",
     "specialCombos": "Special Combos",
@@ -220,7 +220,7 @@
   },
   "remittances": {
     "title": "Remittances to Cuba",
-    "subtitle": "Send money to Cuba from the United States. Pay with Zelle and we confirm every step of the delivery.",
+    "subtitle": "Send money to Cuba from the United States. You can follow the status and see the delivery receipt in My remittances.",
     "calculator": "Remittance Calculator",
     "amount": "Amount to Send (USD)",
     "country": "Destination Country",
@@ -245,8 +245,8 @@
         "description": "Estimated delivery, not guaranteed; timing depends on the area."
       },
       "tracking": {
-        "title": "Updates at every step",
-        "description": "We notify you at every step and send you the delivery confirmation."
+        "title": "Tracking in My remittances",
+        "description": "You can follow the status and see the delivery receipt in My remittances."
       }
     },
     "step1": {
@@ -490,7 +490,7 @@
       "trackYourRemittances": "Track the status of your money transfers",
       "trackRemittances": "Track the status of your money transfers",
       "noRemittances": "You have no registered remittances",
-      "noRemittancesDesc": "Send your first remittance. Pay with Zelle and we confirm every step of the delivery.",
+      "noRemittancesDesc": "Send your first remittance. You can follow the status and see the delivery receipt in My remittances.",
       "remittanceNumber": "Remittance Number",
       "amountSent": "Sent",
       "toDeliver": "To Deliver",
@@ -608,7 +608,7 @@
       "importantNote": "Important",
       "proofNote": "Your remittance will be processed once we validate the payment proof. You will receive a notification when this happens.",
       "pageTitle": "Send Remittance",
-      "pageSubtitle": "Pay with Zelle and we confirm every step of the delivery.",
+      "pageSubtitle": "Pay with Zelle. You can follow the status and see the delivery receipt in My remittances.",
       "selectTypeRequired": "Select remittance type *",
       "rate": "Rate",
       "calculating": "Calculating...",
