@@ -9,6 +9,7 @@ import {
   ERROR_CODES
 } from './errorHandler';
 import { rateAgeHours } from './rateAge';
+import { subscribeApiWrites } from './requestBudget';
 
 const ratesChangedListeners = new Set();
 
@@ -49,6 +50,12 @@ const notifyRatesChanged = () => {
     }
   });
 };
+
+// Any write to rates or currencies through the client (including the Settings save paths that update the table
+// directly) invalidates the rate caches.
+subscribeApiWrites((path) => {
+  if (/^\/rest\/v1\/(exchange_rates|currencies)\b/.test(path)) notifyRatesChanged();
+});
 
 /**
  * Currency Service - Manages currency CRUD operations and rate conversions
@@ -319,42 +326,29 @@ export const getConversionRate = async (fromCurrencyId, toCurrencyId) => {
       }, 'Missing currency IDs');
     }
 
-    // 1. Try to get defined rate
-    const { data: rateData, error: rateError } = await supabase
+    // One query for every pair (same URL -> deduped and cached by requestBudget): the latest active row of each pair.
+    const { data: rows, error: rateError } = await supabase
       .from('exchange_rates')
-      .select('rate')
-      .eq('from_currency_id', fromCurrencyId)
-      .eq('to_currency_id', toCurrencyId)
+      .select('from_currency_id, to_currency_id, rate, effective_date')
       .eq('is_active', true)
-      .order('effective_date', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .order('effective_date', { ascending: false });
 
     if (rateError) {
       throw parseSupabaseError(rateError);
     }
 
-    if (rateData && rateData.rate) {
-      return parseFloat(rateData.rate);
+    const latestRate = (from, to) => (rows || []).find((r) => r.from_currency_id === from && r.to_currency_id === to)?.rate;
+
+    // 1. Defined rate
+    const direct = latestRate(fromCurrencyId, toCurrencyId);
+    if (direct) {
+      return parseFloat(direct);
     }
 
-    // 2. Fallback: Try inverse rate
-    const { data: inverseRateData, error: invError } = await supabase
-      .from('exchange_rates')
-      .select('rate')
-      .eq('from_currency_id', toCurrencyId)
-      .eq('to_currency_id', fromCurrencyId)
-      .eq('is_active', true)
-      .order('effective_date', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (invError) {
-      throw parseSupabaseError(invError);
-    }
-
-    if (inverseRateData && inverseRateData.rate) {
-      return 1 / parseFloat(inverseRateData.rate);
+    // 2. Fallback: inverse rate
+    const inverse = latestRate(toCurrencyId, fromCurrencyId);
+    if (inverse) {
+      return 1 / parseFloat(inverse);
     }
 
     // 3. No active pair: fail closed, never invent a rate

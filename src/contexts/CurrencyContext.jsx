@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getCurrenciesWithRates, getConversionRate, subscribeRatesChanged } from '@/lib/currencyService';
 import { logError } from '@/lib/errorHandler';
+import { useVisiblePolling, refreshPoll } from '@/lib/visiblePolling';
 import { UNAVAILABLE } from '@/lib/numberFormat';
 
 // Cached rates expire so a stale rate is never shown indefinitely; they are refreshed in the background.
@@ -35,8 +36,6 @@ export const CurrencyProvider = ({ children }) => {
   const [conversionLoading, setConversionLoading] = useState(false);
   // True when the last attempt to load a rate failed (rates cannot be trusted for display)
   const [ratesUnavailable, setRatesUnavailable] = useState(false);
-  // Bumped when rates are saved elsewhere so the preload runs again
-  const [ratesEpoch, setRatesEpoch] = useState(0);
 
   // Load currencies on mount (only active currencies with exchange rates)
   useEffect(() => {
@@ -64,9 +63,12 @@ export const CurrencyProvider = ({ children }) => {
     loadCurrencies();
   }, []);
 
+  // True while the background refresh runs: an expired rate (tab hidden longer than the TTL) stays on screen until the
+  // refresh answers, exactly as when the old timer kept running in background tabs. A failed refresh drops it.
+  const refreshingRef = useRef(false);
   const readCachedRate = (cacheKey) => {
     const entry = exchangeRatesCacheRef.current.get(cacheKey);
-    return entry && entry.expiresAt > Date.now() ? entry.rate : null;
+    return entry && (entry.expiresAt > Date.now() || refreshingRef.current) ? entry.rate : null;
   };
 
   /**
@@ -246,28 +248,34 @@ export const CurrencyProvider = ({ children }) => {
     return `${symbol}${formatted} ${code}`;
   }, [selectedCurrency, getSymbol, getCode, formatCurrency]);
 
-  // Drop cached rates whenever rates are saved elsewhere (Settings → Financial)
+  // Precache conversion rates when the selected currency changes and refresh them before the TTL expires, only while the
+  // tab is visible (visiblePolling; coming back refreshes at once). Every pair reads the same cached request
+  // (currencyService + requestBudget), so a refresh costs at most one request.
+  // MUST be after getConversionRateWithCache is defined to avoid TDZ error
+  const ratesPollKey = `currency:rates:${selectedCurrency}`;
+  const preloadConversionRates = async () => {
+    refreshingRef.current = true;
+    try {
+      await Promise.all(
+        currencies
+          .filter(currency => currency.id !== selectedCurrency)
+          .map(currency => getConversionRateWithCache(currency.id, selectedCurrency, { force: true }))
+      );
+    } finally {
+      refreshingRef.current = false;
+    }
+  };
+  useVisiblePolling(ratesPollKey, preloadConversionRates, {
+    enabled: Boolean(selectedCurrency) && currencies.length > 0,
+    intervalMs: RATE_TTL_MS / 2
+  });
+
+  // Drop cached rates whenever rates are saved elsewhere (Settings → Financial) and load them again
   useEffect(() => subscribeRatesChanged(() => {
     exchangeRatesCacheRef.current.clear();
     setCacheVersion(prev => prev + 1);
-    setRatesEpoch(prev => prev + 1);
-  }), []);
-
-  // Precache conversion rates when selected currency changes and refresh them before the TTL expires.
-  // MUST be after getConversionRateWithCache is defined to avoid TDZ error
-  useEffect(() => {
-    if (!selectedCurrency || currencies.length === 0) return undefined;
-
-    const preloadConversionRates = (force) => Promise.all(
-      currencies
-        .filter(currency => currency.id !== selectedCurrency)
-        .map(currency => getConversionRateWithCache(currency.id, selectedCurrency, { force }))
-    );
-
-    preloadConversionRates(false);
-    const refreshTimer = setInterval(() => preloadConversionRates(true), RATE_TTL_MS / 2);
-    return () => clearInterval(refreshTimer);
-  }, [selectedCurrency, currencies, getConversionRateWithCache, ratesEpoch]);
+    refreshPoll(ratesPollKey);
+  }), [ratesPollKey]);
 
   // Create currency map for quick access
   const currencyMap = useMemo(() => {
