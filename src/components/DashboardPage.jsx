@@ -45,6 +45,8 @@ const settleCosts = (promise) =>
     .then((costs) => ({ data: [...costs.values()], error: null }))
     .catch((error) => ({ data: null, error }));
 
+const DASHBOARD_POLL_MS = 5 * 60 * 1000;
+
 const HEADLINE_PERIODS = [
   { key: 'daily', titleKey: 'dashboard.dailyBreakdown', Icon: Clock, border: 'border-emerald-500', iconBg: 'bg-emerald-100', iconColor: 'text-emerald-600', netColor: 'text-emerald-600' },
   { key: 'monthly', titleKey: 'dashboard.monthlyBreakdown', Icon: Calendar, border: 'border-blue-500', iconBg: 'bg-blue-100', iconColor: 'text-blue-600', netColor: 'text-blue-600' },
@@ -314,13 +316,20 @@ const DashboardPage = ({ onNavigate }) => {
       fetchStats();
       fetchVisitStats();
 
-      // Poll every 30 seconds (site_visits is not in the realtime publication)
-      const statsInterval = setInterval(skipWhileRefreshBlocked(() => {
+      // Orders/remittances already refresh via realtime; the poll is a safety net and the only source for
+      // site_visits (not in the realtime publication). 30 s here cost ~3.5 GB of egress in 10 days.
+      const refresh = skipWhileRefreshBlocked(() => {
         fetchStats();
         fetchVisitStats();
-      }), 30000);
+      });
+      const statsInterval = setInterval(refresh, DASHBOARD_POLL_MS);
+      // Coming back to the tab refreshes at once instead of waiting up to 5 min.
+      document.addEventListener('visibilitychange', refresh);
 
-      return () => clearInterval(statsInterval);
+      return () => {
+        clearInterval(statsInterval);
+        document.removeEventListener('visibilitychange', refresh);
+      };
     }
   }, [user, isAdmin, isSuperAdmin, fetchStats, fetchVisitStats]);
 
