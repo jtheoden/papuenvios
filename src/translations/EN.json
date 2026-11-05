@@ -3041,7 +3041,8 @@
       "required": "Fill in the required fields.",
       "coverageGap": "The ranges of this scope leave values without a rule. Review the gaps and confirm if you want to save anyway.",
       "mixedCurrency": "The ranges of this scope already use another currency. Use the same currency or define another scope.",
-      "decimals": "Amounts accept at most 2 decimals; the percentage, 3; CUP per USD, 4."
+      "decimals": "Amounts accept at most 2 decimals; the percentage, 3; CUP per USD, 4.",
+      "amountMax": "Amounts cannot exceed 9999999999.99."
     },
     "validation": {
       "required": "This field is required.",
@@ -3051,7 +3052,8 @@
       "percentRange": "The percentage must be between 0 and 100.",
       "tierOrder": "The maximum amount must be greater than the minimum.",
       "windowOrder": "The end of the validity must be after its start.",
-      "money": "Enter an amount greater than or equal to zero with up to 2 decimals (for example 100.50)."
+      "money": "Enter an amount greater than or equal to zero with up to 2 decimals (for example 100.50).",
+      "moneyMax": "The amount cannot exceed 9999999999.99."
     },
     "margin": {
       "ok": "Margin ok",

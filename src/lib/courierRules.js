@@ -21,13 +21,25 @@ const num = (v) => (isNum(v) ? Number(v) : null);
 // Money in integer cents (ranges and fixed amounts are compared exactly, never as floats)
 // ---------------------------------------------------------------------------------------------------------------------
 const MONEY = /^\d+(\.\d{1,2})?$/;
-/** '100.01' -> 10001; anything that is not a non-negative amount with at most 2 decimals -> null. */
-export const toCents = (value) => {
+/** Largest numeric(12,2) value, the same cap the RPC enforces (9999999999.99). */
+export const MAX_MONEY_CENTS = 999999999999;
+const parseCents = (value) => {
   if (value === null || value === undefined) return null;
   const text = typeof value === 'number' ? String(value) : String(value).trim();
   if (!MONEY.test(text)) return null;
   const [units, decimals = ''] = text.split('.');
   return Number(units) * 100 + Number(decimals.padEnd(2, '0'));
+};
+/** '100.01' -> 10001; anything that is not a non-negative amount with at most 2 decimals, or is above the cap -> null. */
+export const toCents = (value) => {
+  const cents = parseCents(value);
+  return cents !== null && cents <= MAX_MONEY_CENTS ? cents : null;
+};
+/** Validation key of a money field: null when valid, 'moneyMax' above the cap, else 'money'. */
+const moneyError = (value) => {
+  const cents = parseCents(value);
+  if (cents === null) return 'money';
+  return cents > MAX_MONEY_CENTS ? 'moneyMax' : null;
 };
 export const centsToText = (cents) => `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
 const centsOrNull = (v) => (v === null || v === undefined || v === '' ? null : toCents(v));
@@ -221,7 +233,7 @@ export const validateRuleForm = (form = {}) => {
     if (!isNum(form[field]) || Number(form[field]) < 0) errors[field] = 'nonNegative';
   };
   if (form.method === 'fixed_cup') nonNegative('fixedCup');
-  if (form.method === 'fixed_amount' && toCents(form.fixedAmount) === null) errors.fixedAmount = 'money';
+  if (form.method === 'fixed_amount' && moneyError(form.fixedAmount)) errors.fixedAmount = moneyError(form.fixedAmount);
   if (form.method === 'per_usd_delivered') nonNegative('cupPerUsd');
   if (form.method === 'percent_of_base') {
     if (!isNum(form.percent) || Number(form.percent) < 0 || Number(form.percent) > 100) errors.percent = 'percentRange';
@@ -230,8 +242,8 @@ export const validateRuleForm = (form = {}) => {
   const op = form.rangeOp ?? 'none';
   if (!RANGE_OPERATORS.includes(op)) errors.rangeOp = 'invalid';
   const { from, to } = rangeFromForm({ ...form, rangeOp: op });
-  if ((op === 'gt' || op === 'between') && from === null) errors.rangeX = 'money';
-  if ((op === 'lte' || op === 'between') && to === null) errors.rangeY = 'money';
+  if ((op === 'gt' || op === 'between') && from === null) errors.rangeX = moneyError(form.rangeX);
+  if ((op === 'lte' || op === 'between') && to === null) errors.rangeY = moneyError(form.rangeY);
   if (op === 'between' && from !== null && to !== null && to <= from) errors.rangeY = 'tierOrder';
   if (form.validFrom && form.validTo && new Date(form.validTo) <= new Date(form.validFrom)) errors.validTo = 'windowOrder';
   return errors;
@@ -274,6 +286,7 @@ export const courierErrorKey = (error) => {
     if (message.includes('coverage_gap')) return 'couriers.errors.coverageGap';
     if (message.includes('mixed_currency_scope')) return 'couriers.errors.mixedCurrency';
     if (/at most \d+ decimals/.test(message)) return 'couriers.errors.decimals';
+    if (message.includes('at most 9999999999.99')) return 'couriers.errors.amountMax';
     if (message.includes('cannot be in the past')) return 'couriers.errors.pastDate';
     if (message.includes('every accrual must be')) return 'couriers.errors.notPayable';
     if (message.includes('unknown amount can be recalculated')) return 'couriers.errors.notRecalculable';

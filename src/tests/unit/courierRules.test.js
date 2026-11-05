@@ -91,6 +91,9 @@ describe('validateRuleForm / buildRuleArgs', () => {
     expect(validateRuleForm({ ...f, fixedAmount: '1.005' })).toHaveProperty('fixedAmount', 'money');
     expect(validateRuleForm({ ...f, fixedAmount: '-1' })).toHaveProperty('fixedAmount', 'money');
     expect(validateRuleForm({ ...f, currency: 'EUR' })).toHaveProperty('currency');
+    expect(validateRuleForm({ ...f, fixedAmount: '10000000000' })).toHaveProperty('fixedAmount', 'moneyMax');
+    expect(validateRuleForm({ ...f, fixedAmount: '9999999999.99' })).toEqual({});
+    expect(validateRuleForm({ ...f, rangeOp: 'gt', rangeX: '10000000000.00' })).toHaveProperty('rangeX', 'moneyMax');
   });
   it('percent of the nominal USD is allowed for orders; delivered_cup and per-USD stay remittance-only', () => {
     expect(validateRuleForm({ ...ok, method: 'percent_of_base', fixedCup: '', percent: '2', base: 'nominal_usd', appliesTo: 'order' })).toEqual({});
@@ -139,6 +142,9 @@ describe('cents helpers (never floats)', () => {
     expect(toCents('100.01')).toBe(10001);
     expect(toCents(100.01)).toBe(10001);
     for (const bad of ['', ' ', '100.005', '-1', '1e3', '1,5', 'abc', '.5', '5.', null, undefined]) expect(toCents(bad), String(bad)).toBeNull();
+    // same maximum as the server / numeric(12,2)
+    expect(toCents('9999999999.99')).toBe(999999999999);
+    expect(toCents('10000000000')).toBeNull();
     expect(centsToText(10001)).toBe('100.01');
     expect(centsToText(5)).toBe('0.05');
   });
@@ -257,6 +263,8 @@ describe('courierErrorKey: typed RPC errors', () => {
     expect(key({ code: '22023', message: 'mixed_currency_scope: the ranges of this scope already use another currency' })).toBe('couriers.errors.mixedCurrency');
     expect(key({ code: '22023', message: 'invalid_argument: amounts accept at most 2 decimals' })).toBe('couriers.errors.decimals');
     expect(key({ code: '22023', message: 'invalid_argument: percent accepts at most 3 decimals and cup_per_usd at most 4 decimals' })).toBe('couriers.errors.decimals');
+    expect(key({ code: '22023', message: 'invalid_argument: amounts accept at most 9999999999.99' })).toBe('couriers.errors.amountMax');
+    expect(key({ code: '22023', message: 'invalid_argument: NaN is not a valid amount, rate or percentage' })).toBe('couriers.errors.invalid');
     expect(key({ code: '22023', message: 'something else' })).toBe('couriers.errors.invalid');
     expect(key({ code: '55P03' })).toBe('couriers.errors.generic');
     expect(key(null)).toBe('couriers.errors.generic');
