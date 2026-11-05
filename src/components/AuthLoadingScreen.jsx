@@ -1,25 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useMemo } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { buildLoadingTheme, readStoredVisualSettings } from '@/lib/loadingTheme';
 
 const AuthLoadingScreen = ({ loadingMessage }) => {
   const { t } = useLanguage();
+  const reduceMotion = useReducedMotion();
   const defaultMessage = loadingMessage || t('auth.authenticating');
-  // Load visual settings from localStorage
-  const [visualSettings, setVisualSettings] = useState(null);
+  // Rendered by AuthProvider, outside BusinessProvider: colours come from the settings the app cached.
+  const theme = useMemo(() => buildLoadingTheme(readStoredVisualSettings()), []);
   const [displayMessage, setDisplayMessage] = useState(defaultMessage);
   const [dotCount, setDotCount] = useState(0);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('visualSettings');
-      if (stored) {
-        setVisualSettings(JSON.parse(stored));
-      }
-    } catch (error) {
-      console.error('Error loading visual settings:', error);
-    }
-  }, []);
 
   // Animate loading dots
   useEffect(() => {
@@ -35,16 +26,6 @@ const AuthLoadingScreen = ({ loadingMessage }) => {
     setDisplayMessage(defaultMessage + dots);
   }, [dotCount, defaultMessage]);
 
-  // Use stored settings or defaults
-  const primaryColor = visualSettings?.primaryColor || '#2563eb';
-  const secondaryColor = visualSettings?.secondaryColor || '#9333ea';
-  const useGradient = visualSettings?.useGradient !== undefined ? visualSettings.useGradient : true;
-  const pageBgColor = visualSettings?.pageBgColor || '#f9fafb';
-
-  const backgroundStyle = useGradient
-    ? { background: `linear-gradient(to right, ${primaryColor}, ${secondaryColor})` }
-    : { backgroundColor: pageBgColor };
-
   const messages = [
     t('auth.loadingMessages.connecting'),
     t('auth.loadingMessages.validating'),
@@ -55,11 +36,16 @@ const AuthLoadingScreen = ({ loadingMessage }) => {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center"
-      style={backgroundStyle}
+      role="status"
+      aria-live="polite"
+      className="min-h-screen flex items-center justify-center px-4 [background:var(--ld-bg)]"
+      style={theme}
     >
+      {/* Static text for assistive tech: the animated dots and rotating hints below are hidden from it. */}
+      <span className="sr-only">{defaultMessage}</span>
       <motion.div
-        initial={{ opacity: 0, scale: 0.5 }}
+        aria-hidden="true"
+        initial={reduceMotion ? false : { opacity: 0, scale: 0.5 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{
           duration: 0.3,
@@ -71,24 +57,15 @@ const AuthLoadingScreen = ({ loadingMessage }) => {
             restDelta: 0.001
           }
         }}
-        className="p-8 rounded-2xl shadow-xl max-w-md"
-        style={{
-          backgroundColor: visualSettings?.cardBgColor || '#ffffff'
-        }}
+        className="p-8 rounded-2xl shadow-xl max-w-md bg-[color:var(--ld-card-bg)]"
       >
         <div className="flex flex-col items-center space-y-6">
           {/* Spinner */}
-          <div
-            className="w-16 h-16 border-4 border-t-transparent rounded-full animate-spin"
-            style={{ borderColor: `${primaryColor} transparent transparent transparent` }}
-          />
+          <div className="w-16 h-16 border-4 border-transparent border-t-[color:var(--ld-accent)] rounded-full animate-spin motion-reduce:animate-none" />
 
           {/* Main message */}
           <div className="text-center">
-            <p
-              className="font-medium text-lg mb-4"
-              style={{ color: visualSettings?.textPrimaryColor || '#4b5563' }}
-            >
+            <p className="font-medium text-lg mb-4 text-[color:var(--ld-text)]">
               {displayMessage}
             </p>
 
@@ -99,10 +76,7 @@ const AuthLoadingScreen = ({ loadingMessage }) => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
             >
-              <p
-                className="text-sm"
-                style={{ color: visualSettings?.textSecondaryColor || '#9ca3af' }}
-              >
+              <p className="text-sm text-[color:var(--ld-muted)]">
                 {messages[Math.floor(Date.now() / 2000) % messages.length]}
               </p>
             </motion.div>
@@ -111,11 +85,10 @@ const AuthLoadingScreen = ({ loadingMessage }) => {
           {/* Progress bar */}
           <div className="w-full h-1 bg-gray-200 rounded-full overflow-hidden">
             <motion.div
-              className="h-full rounded-full"
-              style={{ backgroundColor: primaryColor }}
-              initial={{ width: '0%' }}
+              className="h-full rounded-full bg-[color:var(--ld-accent)]"
+              initial={{ width: reduceMotion ? '100%' : '0%' }}
               animate={{ width: '100%' }}
-              transition={{
+              transition={reduceMotion ? { duration: 0 } : {
                 duration: 3,
                 ease: 'easeInOut',
                 repeat: Infinity,

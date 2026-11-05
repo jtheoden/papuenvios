@@ -143,3 +143,23 @@ describe('BRAND_CSS_VARS', () => {
     }
   });
 });
+
+describe('getContrastIssues: footer pairs (S4)', () => {
+  const base = { ...DEFAULT_VISUAL_SETTINGS };
+
+  it('flags footer text and footer link colours that do not reach 4.5:1 on the footer background', () => {
+    const issues = getContrastIssues({
+      ...base,
+      footerBgColor: '#ffffff',
+      footerTextColor: '#cccccc',
+      footerLinkColor: '#dddddd',
+    });
+    expect(issues.map((i) => i.id).sort()).toEqual(['footerLink', 'footerText']);
+  });
+
+  it('accepts the preset footer (warm grey text and charcoal links on white)', () => {
+    expect(getContrastIssues({ ...base, ...BRAND_PRESET }).map((i) => i.id)).not.toContain('footerText');
+    expect(getContrastIssues({ ...base, ...BRAND_PRESET }).map((i) => i.id)).not.toContain('footerLink');
+  });
+});
+

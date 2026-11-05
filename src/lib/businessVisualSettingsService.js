@@ -6,7 +6,7 @@
 import { supabase } from '@/lib/supabase';
 import { NEW_KEY_DEFAULTS, BRAND_CSS_VARS, isHexColor } from '@/lib/brandPalette';
 
-const LOCAL_CACHE_KEY = 'business_visual_settings_cache';
+export const LOCAL_CACHE_KEY = 'business_visual_settings_cache';
 const CACHE_DURATION = 60 * 1000; // 1 minute cache
 
 // Default settings - used when no DB record exists or on error

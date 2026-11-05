@@ -112,6 +112,18 @@ export const BRAND_CSS_VARS = {
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 export const isHexColor = (value) => typeof value === 'string' && HEX.test(value);
 
+/** First value that is a HEX colour, so nothing unchecked reaches a style attribute. */
+export const hex = (...candidates) => candidates.find(isHexColor);
+
+/**
+ * A text/background pair: if either colour is not a valid HEX, BOTH fall back, so a good text colour
+ * chosen for one background is never left on top of the fallback of the other one.
+ */
+export const pair = (fg, bg, fgFallback, bgFallback) => (isHexColor(fg) && isHexColor(bg) ? [fg, bg] : [fgFallback, bgFallback]);
+
+/** #rgb -> #rrggbb, so an alpha suffix stays a valid 8-digit colour. Expects a valid HEX. */
+export const toLongHex = (value) => (value.length === 4 ? `#${[...value.slice(1)].map((c) => c + c).join('')}` : value);
+
 export const MIN_TEXT_CONTRAST = 4.5;
 
 /** [id, text key, background key] - the pairs the Visual settings screen checks. */
@@ -122,6 +134,8 @@ const CONTRAST_PAIRS = [
   ['tab', 'tabActiveColor', 'tabActiveBgColor'],
   ['button', 'buttonTextColor', 'buttonBgColor'],
   ['cartBadge', 'cartBadgeTextColor', 'cartBadgeBgColor'],
+  ['footerText', 'footerTextColor', 'footerBgColor'],
+  ['footerLink', 'footerLinkColor', 'footerBgColor'],
 ];
 
 /** Text/background pairs below WCAG AA (4.5:1). Pairs with a non-HEX value are skipped. */
