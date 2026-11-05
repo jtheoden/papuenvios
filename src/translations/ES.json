@@ -80,7 +80,7 @@
         },
         "remittances": {
           "title": "Remesas a Cuba",
-          "description": "Envíe dinero a Cuba desde Estados Unidos o España.",
+          "description": "Envíe dinero a Cuba desde Estados Unidos.",
           "cta": "Enviar remesa"
         }
       }
@@ -105,7 +105,7 @@
       },
       "remittances": {
         "title": "Remesas a Cuba",
-        "description": "Envía dinero a Cuba desde USA y España de forma rápida y segura"
+        "description": "Envía dinero a Cuba desde Estados Unidos de forma rápida y segura"
       },
       "analytics": {
         "title": "Panel de Ganancias",

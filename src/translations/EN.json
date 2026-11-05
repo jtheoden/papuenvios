@@ -80,7 +80,7 @@
         },
         "remittances": {
           "title": "Remittances to Cuba",
-          "description": "Send money to Cuba from the United States or Spain.",
+          "description": "Send money to Cuba from the United States.",
           "cta": "Send remittance"
         }
       }
@@ -105,7 +105,7 @@
       },
       "remittances": {
         "title": "Remittances to Cuba",
-        "description": "Send money to Cuba from USA and Spain quickly and securely"
+        "description": "Send money to Cuba from the United States quickly and securely"
       },
       "analytics": {
         "title": "Profit Dashboard",
