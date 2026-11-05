@@ -3,11 +3,57 @@ import React, { createContext, useContext, useEffect, useState, useRef } from 'r
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/components/ui/use-toast';
 import AuthLoadingScreen from '@/components/AuthLoadingScreen';
-import { TIMEOUTS, RETRY_CONFIG } from '@/lib/constants';
+import { TIMEOUTS, RETRY_CONFIG, AUTH_STORAGE_KEY } from '@/lib/constants';
 import { getUserCategory } from '@/lib/userCategorizationService';
 import { flushQueuedActivityLogs, logActivity } from '@/lib/activityLogger';
+import { clearRefreshBlock, getRefreshBlockRemainingMs, isRefreshBlocked, subscribeRefreshBlock } from '@/lib/refreshGuard';
 
 const AuthContext = createContext();
+
+// Waits between session-recovery attempts (the refresh guard's cooldown, when longer, wins).
+const SESSION_RECOVERY_DELAYS = [5000, 15000, 30000, 60000];
+const SESSION_RECOVERY_JITTER = 0.2;
+const isRetryableAuthError = (error) => error?.name === 'AuthRetryableFetchError';
+// auth-js refreshes a token this close to its expiry (EXPIRY_MARGIN_MS = AUTO_REFRESH_TICK_THRESHOLD (3)
+// x AUTO_REFRESH_TICK_DURATION_MS (30 s) in @supabase/auth-js/src/lib/constants.ts), so a session with
+// less left is not "back to normal".
+const SESSION_HEALTHY_MIN_LEFT_MS = 90_000;
+const hasLifeLeft = (session) => (session?.expires_at ?? 0) * 1000 - Date.now() > SESSION_HEALTHY_MIN_LEFT_MS;
+
+const readStoredSession = () => {
+  try {
+    return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY));
+  } catch (e) {
+    return null;
+  }
+};
+
+const clearStoredSession = () => {
+  try {
+    [AUTH_STORAGE_KEY, `${AUTH_STORAGE_KEY}-user`, `${AUTH_STORAGE_KEY}-code-verifier`]
+      .forEach((key) => localStorage.removeItem(key));
+  } catch (e) {
+    // storage unavailable: nothing persisted to clear
+  }
+};
+
+// While the refresh is blocked AND the stored token has expired, auth-js cannot load the session:
+// signOut() would stall for the whole retry loop and then fail WITHOUT removing it. Only then sign
+// out locally. Otherwise the normal signOut() runs (it revokes the session on the server).
+// LIMIT: a local sign-out clears this browser only. The refresh token is NOT revoked server-side, so
+// that session stays valid on the server until it is signed out from somewhere else.
+// Returns { error, local }.
+const signOutSafely = async () => {
+  const blockedAndExpired = isRefreshBlocked() && !hasLifeLeft(readStoredSession());
+  if (!blockedAndExpired) {
+    const { error } = await supabase.auth.signOut();
+    if (!error) return { error: null, local: false };
+    if (!isRetryableAuthError(error)) return { error, local: false };
+  }
+  clearStoredSession();
+  clearRefreshBlock();
+  return { error: null, local: true };
+};
 
 // localStorage role cache helper functions
 const getRoleCacheKey = (userId) => `auth_role_${userId}`;
@@ -54,13 +100,22 @@ export const AuthProvider = ({ children }) => {
   const [profileFailed, setProfileFailed] = useState(false);
   const [roleRetryExhausted, setRoleRetryExhausted] = useState(false);
   const [roleVerifyTimedOut, setRoleVerifyTimedOut] = useState(false);
+  // The refresh token could not be renewed for now (rate limit / network): the session is kept
+  // and renewed in the background. Different from `sessionExpired`: the session really ended.
+  const [sessionRecovering, setSessionRecovering] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   const mountedRef = useRef(true);
   const updateSeqRef = useRef(0); // only the latest updateUserState call may apply its result
   const sessionRef = useRef(null);
   const resolvedUidRef = useRef(null);
   const retryRef = useRef(null);
-  const sessionCheckIntervalRef = useRef(null);
+  const explicitSignOutRef = useRef(false); // SIGNED_OUT that the person asked for is not an expiry
+
+  const markSessionHealthy = () => {
+    setSessionRecovering(false);
+    setSessionExpired(false);
+  };
 
   // Check and refresh session to prevent auth loss
   const checkAndRefreshSession = async () => {
@@ -74,6 +129,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!session) {
         console.warn('[Auth] Session lost - no active session detected');
+        setSessionExpired(Boolean(sessionRef.current));
         resetAuthState();
         return false;
       }
@@ -95,9 +151,9 @@ export const AuthProvider = ({ children }) => {
         const { data, error: refreshError } = await supabase.auth.refreshSession();
 
         if (refreshError) {
+          // No sign-out here: auth-js already ends the session (SIGNED_OUT) when the refresh
+          // token is really invalid; a rate limit or network failure must keep it.
           console.error('[Auth] Token refresh failed:', refreshError.message);
-          await supabase.auth.signOut();
-          resetAuthState();
           return false;
         }
 
@@ -324,11 +380,15 @@ export const AuthProvider = ({ children }) => {
 
         if (error) {
           console.error('[Auth] getSession error:', error);
+          // Refresh blocked/unreachable: the stored session is intact, so say "reconnecting"
+          // and let the recovery loop renew it instead of showing a signed-out screen.
+          if (isRetryableAuthError(error)) setSessionRecovering(true);
           setLoading(false);
           return;
         }
 
         if (session) {
+          markSessionHealthy();
           await updateUserState(session);
         }
       } catch (err) {
@@ -348,7 +408,12 @@ export const AuthProvider = ({ children }) => {
       if (!mountedRef.current) return;
 
       if (event === 'SIGNED_OUT') {
+        const expired = Boolean(sessionRef.current) && !explicitSignOutRef.current;
+        explicitSignOutRef.current = false;
+        clearRefreshBlock(); // nothing left to refresh: do not carry the cooldown into the next session
         resetAuthState();
+        setSessionRecovering(false);
+        setSessionExpired((previous) => expired || previous); // the storage handler may have flagged it first
         return;
       }
 
@@ -373,25 +438,40 @@ export const AuthProvider = ({ children }) => {
       // which blocks on getSession(). Firing it without awaiting lets this
       // callback's promise resolve immediately, breaking the deadlock.
       if (session) {
+        // A session about to expire proves nothing yet; one with life left means we are back.
+        if (hasLifeLeft(session)) markSessionHealthy();
         updateUserState(session);
       }
     });
 
-    // Set up periodic session check (every 5 minutes)
-    sessionCheckIntervalRef.current = setInterval(() => {
-      if (mountedRef.current && user) {
-        checkAndRefreshSession();
-      }
-    }, 5 * 60 * 1000); // 5 minutes
+    // The refresh guard says "rate limited": keep the session, show "reconnecting".
+    const unsubscribeRefreshBlock = subscribeRefreshBlock((blocked) => {
+      if (mountedRef.current) setSessionRecovering(blocked);
+    });
+    // A reload during the cooldown (or a 429 that landed before this effect subscribed): auth-js is
+    // still retrying locally for a long while, so say "reconnecting" instead of "sign in".
+    // Only if there is a session to recover: a visitor must not inherit another person's cooldown.
+    if (isRefreshBlocked() && localStorage.getItem(AUTH_STORAGE_KEY)) setSessionRecovering(true);
+
+    // Another tab emptied the stored session (sign-out, or the local fallback that emits no event).
+    const onStorage = (event) => {
+      if (event.key !== AUTH_STORAGE_KEY && event.key !== null) return;
+      if (event.newValue !== null) return;
+      if (!mountedRef.current) return;
+      const expired = Boolean(sessionRef.current);
+      resetAuthState();
+      setSessionRecovering(false);
+      setSessionExpired((previous) => expired || previous);
+    };
+    window.addEventListener('storage', onStorage);
 
     initialize();
 
     return () => {
       mountedRef.current = false;
       clearTimeout(globalTimer);
-      if (sessionCheckIntervalRef.current) {
-        clearInterval(sessionCheckIntervalRef.current);
-      }
+      unsubscribeRefreshBlock();
+      window.removeEventListener('storage', onStorage);
       if (listener?.subscription) {
         listener.subscription.unsubscribe();
       }
@@ -408,6 +488,8 @@ export const AuthProvider = ({ children }) => {
       if (error) throw error;
 
       if (data?.session) {
+        markSessionHealthy();
+        clearRefreshBlock(); // a fresh sign-in starts clean
         await updateUserState(data.session);
         return true;
       }
@@ -426,7 +508,9 @@ export const AuthProvider = ({ children }) => {
 
   const signInWithGoogle = async () => {
     try {
-      await supabase.auth.signOut();
+      explicitSignOutRef.current = true;
+      await signOutSafely();
+      explicitSignOutRef.current = false; // SIGNED_OUT (if any) was delivered before signOut resolved
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: `${window.location.origin}/auth/callback`, queryParams: { access_type: 'offline', prompt: 'consent' } }
@@ -441,10 +525,20 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
+      explicitSignOutRef.current = true;
+      const { error, local } = await signOutSafely();
       if (error) throw error;
       resetAuthState();
+      if (local) {
+        toast({
+          title: 'Sesión cerrada en este dispositivo',
+          description: 'No pudimos contactar al servidor. Su sesión se cerró aquí; si usa un equipo compartido, cierre sesión también desde otro dispositivo.'
+        });
+      }
+      markSessionHealthy();
+      explicitSignOutRef.current = false; // SIGNED_OUT was already delivered; do not mask a later expiry
     } catch (err) {
+      explicitSignOutRef.current = false;
       console.error('[Auth] logout error', err);
       toast({ title: 'Error al cerrar sesión', description: err.message || String(err), variant: 'destructive' });
     }
@@ -469,7 +563,9 @@ export const AuthProvider = ({ children }) => {
   // steady interval (capped), plus an immediate try on `online` and when the tab
   // becomes visible. Stops as soon as the role resolves, on sign-out and unmount.
   useEffect(() => {
-    if (roleStatus === 'resolved' || !recoveryActive || !user?.id) return undefined;
+    // While the session itself is being renewed every profile fetch would go out without a
+    // valid token; the role loop restarts (fresh budget) once the session is back.
+    if (roleStatus === 'resolved' || !recoveryActive || !user?.id || sessionRecovering) return undefined;
 
     let cancelled = false;
     let running = false;
@@ -526,7 +622,71 @@ export const AuthProvider = ({ children }) => {
       window.removeEventListener('online', onOnline);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [user?.id, roleStatus, recoveryActive, profileFailed]);
+  }, [user?.id, roleStatus, recoveryActive, profileFailed, sessionRecovering]);
+
+  // Renews the session in the background while the refresh is blocked/unreachable: one attempt per
+  // step (never inside the guard's cooldown), backoff with jitter, plus an immediate try when the
+  // connection or the tab comes back. Stops by itself as soon as a session is returned.
+  useEffect(() => {
+    if (!sessionRecovering) return undefined;
+
+    let cancelled = false;
+    let running = false;
+    let attempts = 0;
+    let timer = null;
+
+    const schedule = () => {
+      clearTimeout(timer);
+      if (cancelled) return;
+      const step = SESSION_RECOVERY_DELAYS[Math.min(attempts, SESSION_RECOVERY_DELAYS.length - 1)];
+      attempts += 1;
+      const wait = Math.max(step, getRefreshBlockRemainingMs());
+      timer = setTimeout(attempt, wait * (1 + Math.random() * SESSION_RECOVERY_JITTER));
+    };
+
+    const attempt = async () => {
+      clearTimeout(timer);
+      if (cancelled || running) return;
+      if (isRefreshBlocked()) {
+        schedule();
+        return;
+      }
+      running = true;
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (cancelled) return;
+        if (data?.session) {
+          // auth-js already notified listeners (TOKEN_REFRESHED); hydrate only if that did not.
+          if (sessionRef.current?.user?.id !== data.session.user?.id) updateUserState(data.session);
+          markSessionHealthy();
+          return;
+        }
+        if (!error) {
+          setSessionRecovering(false); // nothing left to recover (signed out elsewhere)
+          return;
+        }
+      } catch (err) {
+        console.warn('[Auth] Session recovery attempt failed:', err?.message);
+      } finally {
+        running = false;
+      }
+      schedule();
+    };
+
+    const onOnline = () => { if (!isRefreshBlocked()) attempt(); };
+    const onVisibility = () => { if (document.visibilityState === 'visible' && !isRefreshBlocked()) attempt(); };
+
+    window.addEventListener('online', onOnline);
+    document.addEventListener('visibilitychange', onVisibility);
+    schedule();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      window.removeEventListener('online', onOnline);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [sessionRecovering]);
 
   useEffect(() => {
     let isMounted = true;
@@ -581,10 +741,10 @@ export const AuthProvider = ({ children }) => {
   }, [hasLoggedSession, user, roleStatus]);
 
   useEffect(() => {
-    if (user?.id && roleStatus === 'resolved') {
+    if (user?.id && roleStatus === 'resolved' && !sessionRecovering) {
       flushQueuedActivityLogs();
     }
-  }, [user?.id, roleStatus]);
+  }, [user?.id, roleStatus, sessionRecovering]);
 
   const checkRole = (requiredRole) => {
     if (!requiredRole) return true;
@@ -612,6 +772,8 @@ export const AuthProvider = ({ children }) => {
     retryRoleResolution: () => retryRef.current?.(),
     userCategory,
     isEnabled,
+    // 'reconnecting' = session kept, being renewed; 'expired' = it ended without a sign-out request
+    sessionStatus: sessionRecovering ? 'reconnecting' : (sessionExpired && !user ? 'expired' : 'ok'),
     isSuperAdmin: userRole === 'super_admin',
     isAdmin: userRole === 'admin' || userRole === 'super_admin',
     checkRole,

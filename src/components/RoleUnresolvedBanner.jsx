@@ -6,9 +6,11 @@ import { useLanguage } from '@/contexts/LanguageContext';
 // follows the header's real height (quick-nav row, open mobile menu) and never overlaps it.
 const RoleUnresolvedBanner = () => {
   const { t } = useLanguage();
-  const { user, roleStatus, roleFetchFailed, retryRoleResolution } = useAuth();
+  const { user, roleStatus, roleFetchFailed, retryRoleResolution, sessionStatus } = useAuth();
 
-  const visible = Boolean(user) && roleFetchFailed && roleStatus !== 'resolved';
+  // Reconnecting (token refresh blocked) explains the role failure and heals by itself: no button.
+  const reconnecting = sessionStatus === 'reconnecting';
+  const visible = Boolean(user) && (reconnecting || (roleFetchFailed && roleStatus !== 'resolved'));
   const ref = useRef(null);
 
   // Publish the banner height so <main> (padded for the fixed header) can make room for it.
@@ -34,14 +36,16 @@ const RoleUnresolvedBanner = () => {
       role="status"
       className="flex flex-wrap items-center justify-between gap-2 border-t border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
     >
-      <span>{t('auth.roleUnresolved')}</span>
-      <button
-        type="button"
-        onClick={retryRoleResolution}
-        className="rounded-md bg-amber-900 px-3 py-1.5 font-medium text-white hover:bg-amber-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-900 focus-visible:ring-offset-2"
-      >
-        {t('auth.roleRetry')}
-      </button>
+      <span>{t(reconnecting ? 'auth.sessionReconnecting' : 'auth.roleUnresolved')}</span>
+      {!reconnecting && (
+        <button
+          type="button"
+          onClick={retryRoleResolution}
+          className="rounded-md bg-amber-900 px-3 py-1.5 font-medium text-white hover:bg-amber-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-900 focus-visible:ring-offset-2"
+        >
+          {t('auth.roleRetry')}
+        </button>
+      )}
     </div>
   );
 };

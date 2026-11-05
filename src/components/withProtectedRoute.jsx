@@ -9,7 +9,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
  */
 export const withProtectedRoute = (WrappedComponent, requiredRole) => {
   const ProtectedWrapper = (props) => {
-    let user, authLoading, checkRole, userRole, roleStatus, roleRetryExhausted, roleFetchFailed, roleVerifyTimedOut, retryRoleResolution;
+    let user, authLoading, checkRole, userRole, roleStatus, roleRetryExhausted, roleFetchFailed, roleVerifyTimedOut, retryRoleResolution, sessionStatus;
     const { t } = useLanguage();
 
     try {
@@ -23,6 +23,7 @@ export const withProtectedRoute = (WrappedComponent, requiredRole) => {
       roleFetchFailed = auth.roleFetchFailed;
       roleVerifyTimedOut = auth.roleVerifyTimedOut;
       retryRoleResolution = auth.retryRoleResolution;
+      sessionStatus = auth.sessionStatus;
     } catch (error) {
       // During hot module replacement, AuthContext might not be available yet
       if (import.meta.env.DEV) {
@@ -36,13 +37,30 @@ export const withProtectedRoute = (WrappedComponent, requiredRole) => {
       return <AuthLoadingScreen />;
     }
 
-    // Check if user is authenticated
+    // No signed-in user. Say WHY when we know: the session ended ('expired') or it is being
+    // renewed after a temporary failure ('reconnecting', recovers by itself); the plain
+    // message is only for people who never signed in.
     if (!user) {
+      const copy = {
+        expired: { title: t('auth.sessionExpiredTitle'), body: t('auth.sessionExpiredBody') },
+        reconnecting: { title: t('auth.sessionReconnectingTitle'), body: t('auth.sessionReconnectingBody') }
+      }[sessionStatus] || {
+        title: 'Autenticación requerida',
+        body: 'Debes iniciar sesión para acceder a esta página.'
+      };
+
       return (
         <div className="min-h-screen flex items-center justify-center p-6">
           <div className="glass-effect p-8 rounded-2xl text-center max-w-lg">
-            <h2 className="text-2xl font-bold mb-2">Autenticación requerida</h2>
-            <p className="text-gray-600">Debes iniciar sesión para acceder a esta página.</p>
+            <h2 className="text-2xl font-bold mb-2">{copy.title}</h2>
+            <p className="text-gray-600">{copy.body}</p>
+            <button
+              type="button"
+              onClick={() => props.onNavigate?.('login')}
+              className="mt-4 rounded-md bg-gray-900 px-4 py-2 font-medium text-white"
+            >
+              {t('auth.signInAgain')}
+            </button>
           </div>
         </div>
       );

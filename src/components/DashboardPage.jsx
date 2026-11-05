@@ -37,6 +37,7 @@ import RemittanceTypesConfig from './RemittanceTypesConfig';
 import ZellePaymentHistoryTab from './admin/ZellePaymentHistoryTab';
 import ActivityLogTab from './ActivityLogTab';
 import { fetchAllRows } from '@/lib/fetchAllRows';
+import { skipWhileRefreshBlocked } from '@/lib/refreshGuard';
 
 // Cost reads settle to { data, error } so one missing RPC does not blank the whole dashboard.
 const settleCosts = (promise) =>
@@ -314,10 +315,10 @@ const DashboardPage = ({ onNavigate }) => {
       fetchVisitStats();
 
       // Poll every 30 seconds (site_visits is not in the realtime publication)
-      const statsInterval = setInterval(() => {
+      const statsInterval = setInterval(skipWhileRefreshBlocked(() => {
         fetchStats();
         fetchVisitStats();
-      }, 30000);
+      }), 30000);
 
       return () => clearInterval(statsInterval);
     }

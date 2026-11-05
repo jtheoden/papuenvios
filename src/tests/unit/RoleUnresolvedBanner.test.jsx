@@ -26,6 +26,23 @@ describe('RoleUnresolvedBanner', () => {
   });
 });
 
+describe('RoleUnresolvedBanner — session reconnecting', () => {
+  it('tells a signed-in person the session is being reconnected automatically (no retry button, role is untouched)', () => {
+    auth.current = { user: { id: 'u' }, roleStatus: 'resolved', roleFetchFailed: false, sessionStatus: 'reconnecting' };
+    render(<RoleUnresolvedBanner />);
+    expect(screen.getByRole('status').textContent).toContain('auth.sessionReconnecting');
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('reconnecting wins over a stale role-failure message', () => {
+    auth.current = { user: { id: 'u' }, roleStatus: 'unresolved', roleFetchFailed: true, sessionStatus: 'reconnecting', retryRoleResolution: vi.fn() };
+    render(<RoleUnresolvedBanner />);
+    const text = screen.getByRole('status').textContent;
+    expect(text).toContain('auth.sessionReconnecting');
+    expect(text).not.toContain('auth.roleUnresolved');
+  });
+});
+
 describe('RoleUnresolvedBanner pushes the page content down', () => {
   it('publishes its height in --role-banner-h and resets it on unmount', async () => {
     let observerCallback = null;

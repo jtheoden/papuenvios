@@ -7,6 +7,7 @@ import React, { useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAsyncResource } from '@/hooks/useAsyncResource';
 import { listCouriers } from '@/lib/courierService';
+import { skipWhileRefreshBlocked } from '@/lib/refreshGuard';
 import PaymentsTabs from '@/components/settings/PaymentsTabs';
 import { Btn, Notice, errorText } from './courierUi';
 import CouriersPanel from './CouriersPanel';
@@ -26,7 +27,7 @@ const SettingsCouriersTab = () => {
   const { reload } = probe;
   useEffect(() => {
     if (!unavailable) return undefined;
-    const timer = setInterval(reload, RETRY_MS);
+    const timer = setInterval(skipWhileRefreshBlocked(reload), RETRY_MS);
     return () => clearInterval(timer);
   }, [unavailable, reload]);
 

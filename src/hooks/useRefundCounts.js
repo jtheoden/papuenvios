@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getRefundCounts } from '@/lib/refundService';
+import { skipWhileRefreshBlocked } from '@/lib/refreshGuard';
 
 const REFRESH_MS = 60000;
 
@@ -23,7 +24,7 @@ export const useRefundCounts = ({ enabled = true } = {}) => {
       }
     };
     load();
-    const interval = setInterval(load, REFRESH_MS);
+    const interval = setInterval(skipWhileRefreshBlocked(load), REFRESH_MS);
     return () => {
       cancelled = true;
       clearInterval(interval);

@@ -1757,6 +1757,12 @@
     "authenticating": "Autenticando...",
     "roleUnresolved": "No pudimos verificar sus permisos; seguimos intentándolo.",
     "roleRetry": "Reintentar",
+    "sessionReconnecting": "Estamos reconectando su sesión; se recuperará automáticamente.",
+    "sessionReconnectingTitle": "Reconectando su sesión",
+    "sessionReconnectingBody": "No pudimos renovar su sesión por ahora. Su sesión sigue guardada y la recuperaremos automáticamente; no necesita hacer nada. Si lo prefiere, puede iniciar sesión de nuevo.",
+    "sessionExpiredTitle": "Su sesión expiró",
+    "sessionExpiredBody": "Su sesión expiró o se cerró. Inicie sesión de nuevo para continuar.",
+    "signInAgain": "Iniciar sesión de nuevo",
     "verifyingPermissions": "Verificando permisos",
     "loadingMessages": {
       "connecting": "Conectando con Google...",
