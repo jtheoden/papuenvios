@@ -12,6 +12,7 @@ import { countOldPalette, listSourceFiles } from '../../../scripts/theme-codemod
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 
 const { applyVisualSettingsToDOM, DEFAULT_VISUAL_SETTINGS } = await import('@/lib/businessVisualSettingsService');
+const { resolveThemeId } = await import('@/lib/visualThemes');
 
 const ROOT = process.cwd();
 const indexCss = fs.readFileSync(path.join(ROOT, 'src/index.css'), 'utf8'); // not `?raw`: vitest serves CSS imports empty
@@ -99,19 +100,41 @@ describe('theme tokens (index.css)', () => {
 
 describe('resolveLookId / data-theme per settings row', () => {
   const classicRow = { ...DEFAULT_VISUAL_SETTINGS, useGradient: true };
+  // The current production row: every BRAND_PRESET key saved with the old button, no `activeTheme`.
   const brandRow = { ...DEFAULT_VISUAL_SETTINGS, ...BRAND_PRESET };
+  // Classic look where only the global gradient was unchecked: still classic for the selector, so also for data-theme.
+  const classicNoGradient = { ...DEFAULT_VISUAL_SETTINGS, useGradient: false };
+  const ROWS = {
+    classicRow,
+    brandRow,
+    classicNoGradient,
+    brandMarkedClassic: { ...brandRow, activeTheme: 'classic' },
+    classicMarkedBrand: { ...classicRow, activeTheme: 'papuenvios' },
+    brandInvalidMarker: { ...brandRow, activeTheme: '<img src=x>' },
+    brandUpperCase: { ...DEFAULT_VISUAL_SETTINGS, ...Object.fromEntries(Object.entries(BRAND_PRESET).map(([k, v]) => [k, typeof v === 'string' ? v.toUpperCase() : v])) },
+    brandMissingOneKey: (({ footerLinkHoverColor, ...rest }) => ({ ...DEFAULT_VISUAL_SETTINGS, ...rest, footerLinkHoverColor: '#123456' }))(brandRow),
+    empty: {},
+  };
 
-  it('maps useGradient to the look', () => {
+  it('resolves the same look as the Settings > Visual selector (resolveThemeId) for every row', () => {
+    for (const [name, row] of Object.entries(ROWS)) expect(resolveLookId(row), name).toBe(resolveThemeId(row));
+  });
+
+  it('maps the rows to the look', () => {
     expect(resolveLookId(classicRow)).toBe('classic');
+    expect(resolveLookId(classicNoGradient)).toBe('classic');
     expect(resolveLookId(brandRow)).toBe('papuenvios');
     expect(resolveLookId(BRAND_PRESET)).toBe('papuenvios');
     expect(resolveLookId(DEFAULT_VISUAL_SETTINGS)).toBe('classic');
+    expect(resolveLookId(ROWS.brandMarkedClassic)).toBe('classic');
+    expect(resolveLookId(ROWS.classicMarkedBrand)).toBe('papuenvios');
+    expect(resolveLookId(ROWS.brandInvalidMarker)).toBe('papuenvios');
   });
 
-  it('falls back to the brand look when there is nothing to read', () => {
-    expect(resolveLookId()).toBe('papuenvios');
-    expect(resolveLookId(null)).toBe('papuenvios');
-    expect(resolveLookId({})).toBe('papuenvios');
+  it('falls back to classic (the selector default) when there is nothing to read', () => {
+    expect(resolveLookId()).toBe('classic');
+    expect(resolveLookId(null)).toBe('classic');
+    expect(resolveLookId({})).toBe('classic');
   });
 
   describe('applyVisualSettingsToDOM', () => {
@@ -127,6 +150,38 @@ describe('resolveLookId / data-theme per settings row', () => {
       expect(document.documentElement.dataset.theme).toBe('papuenvios');
       applyVisualSettingsToDOM(classicRow);
       expect(document.documentElement.dataset.theme).toBe('classic');
+    });
+
+    it('writes data-theme from activeTheme and keeps classic when only useGradient is off', () => {
+      applyVisualSettingsToDOM(classicNoGradient);
+      expect(document.documentElement.dataset.theme).toBe('classic');
+      applyVisualSettingsToDOM(ROWS.classicMarkedBrand);
+      expect(document.documentElement.dataset.theme).toBe('papuenvios');
+      applyVisualSettingsToDOM(ROWS.brandMarkedClassic);
+      expect(document.documentElement.dataset.theme).toBe('classic');
+    });
+  });
+
+  describe('inline first-paint script (index.html) agrees with resolveLookId', () => {
+    const script = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8').match(/<script>([\s\S]*?)<\/script>/)?.[1];
+    const runWith = (data) => {
+      document.documentElement.removeAttribute('data-theme');
+      localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify({ data, timestamp: 0 }));
+      new Function(script)();
+      return document.documentElement.getAttribute('data-theme');
+    };
+
+    it('picks the same look for every row (activeTheme first, then the full brand preset)', () => {
+      for (const [name, row] of Object.entries(ROWS)) expect(runWith(row), name).toBe(resolveLookId(row));
+    });
+
+    it('embeds exactly BRAND_PRESET (same keys, same values)', () => {
+      expect(JSON.parse(script.match(/var P = (\{[^\n]*\});/)[1])).toEqual(BRAND_PRESET);
+    });
+
+    it('only ever writes one of the two constant look ids', () => {
+      expect(runWith({ activeTheme: '"><script>' })).toBe('classic');
+      expect(runWith({ ...BRAND_PRESET, activeTheme: 'evil' })).toBe('papuenvios');
     });
   });
 });
@@ -147,9 +202,10 @@ describe('inline first-paint script (index.html)', () => {
     expect(script).toContain(LOCAL_CACHE_KEY);
   });
 
-  it('sets the look from data.useGradient and ignores how old the cache is', () => {
+  it('sets the look from the cached data and ignores how old the cache is', () => {
     expect(run(JSON.stringify({ data: { useGradient: true }, timestamp: 0 }))).toBe('classic');
-    expect(run(JSON.stringify({ data: { useGradient: false }, timestamp: Date.now() }))).toBe('papuenvios');
+    expect(run(JSON.stringify({ data: BRAND_PRESET, timestamp: 0 }))).toBe('papuenvios');
+    expect(run(JSON.stringify({ data: { activeTheme: 'papuenvios' }, timestamp: Date.now() }))).toBe('papuenvios');
   });
 
   it('leaves the attribute alone (brand default) without a usable cache and never throws', () => {

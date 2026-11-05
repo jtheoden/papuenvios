@@ -15,7 +15,10 @@ const BRAND_PRESET = {
   headerBgColor: '#FFFFFF', headerTextColor: '#171717', headerMenuBgColor: '#FFFFFF', headerMenuTextColor: '#171717',
   headerMenuHoverBgColor: '#FAF7F0', headerMenuHoverTextColor: '#171717', headerMenuActiveBgColor: '#FFF1CC',
   headerMenuActiveColor: '#171717', navBarActiveBgColor: '#FFF1CC', navBarActiveTextColor: '#171717',
-  headingColor: '#171717', useHeadingGradient: false, buttonBgColor: '#FFA500', buttonTextColor: '#171717',
+  headingColor: '#171717', useHeadingGradient: false, tabActiveColor: '#171717', tabActiveBgColor: '#FFF1CC',
+  tabInactiveColor: '#605B52', tabInactiveBgColor: '#FFFFFF', tabHoverColor: '#171717', tabHoverBgColor: '#FAF7F0',
+  footerBgColor: '#FFFFFF', footerTextColor: '#605B52', footerLinkColor: '#171717', footerLinkHoverColor: '#605B52',
+  buttonBgColor: '#FFA500', buttonTextColor: '#171717',
   buttonHoverBgColor: '#E59400', useButtonGradient: false, cartBadgeBgColor: '#FFA500', cartBadgeTextColor: '#171717',
   carouselDotActiveColor: '#FFA500', borderColor: '#E8E0D2', mutedTextColor: '#605B52', softAccentColor: '#FFF1CC',
   focusRingColor: '#171717',
@@ -229,6 +232,21 @@ test.describe('first paint', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
     await expect(page.locator('body')).toHaveCSS('background-image', CLASSIC_GRADIENT);
     release();
+  });
+
+  test('a cached activeTheme wins over the values at first paint and after the settings load', async ({ page }) => {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const marked = { ...BRAND_PRESET, activeTheme: 'classic' };
+    await mockSupabase(page, marked, { gate });
+    await page.addInitScript((data) => localStorage.setItem('business_visual_settings_cache', JSON.stringify({ data, timestamp: 0 })), marked);
+    await page.goto('/products', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
+    const loaded = page.waitForResponse((r) => r.url().includes('/rest/v1/business_visual_settings'));
+    release();
+    await loaded;
+    await page.waitForFunction(() => document.documentElement.style.getPropertyValue('--gradient-direction') !== '');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
   });
 
   test('without any cache the first paint is the brand look', async ({ page }) => {
