@@ -17,12 +17,17 @@ import { logError } from '@/lib/errorHandler';
 
 export const API_CACHE_STORAGE_KEY = 'papuenvios-api-cache';
 export const API_CACHE_TTL_MS = 5 * 60_000;
-// Only DISPLAY reads are cached: the one read of all active rates (getConversionRate / CurrencyContext) and currency
-// lists. Single-pair reads (getExchangeRate at remittance confirmation, getActiveRate, convertCurrency) always go to the
-// network: a rate changed on another device must never price an operation from a cache.
-const BULK_RATES_SELECT = 'from_currency_id,to_currency_id,rate,effective_date';
-const isCachedRead = (table, url) =>
-  table === 'currencies' || (table === 'exchange_rates' && url.searchParams.get('select') === BULK_RATES_SELECT);
+// Only an explicit allowlist of DISPLAY selects is cached (table -> select as PostgREST receives it, no spaces):
+//  - exchange_rates: all active rates at once (getConversionRate -> CurrencyContext) and the pair list that decides
+//    which currencies the selector shows (getCurrenciesWithRates);
+//  - currencies: the Dashboard's base-currency label.
+// Everything else goes to the network, in particular the reads that price an operation (getExchangeRate at remittance
+// confirmation and convertCurrency in the cart, getActiveRate) and v_effective_courier_cost.
+const CACHED_SELECTS = {
+  exchange_rates: new Set(['from_currency_id,to_currency_id,rate,effective_date', 'from_currency_id,to_currency_id']),
+  currencies: new Set(['id,code,symbol,is_base'])
+};
+const isCachedRead = (table, url) => Boolean(CACHED_SELECTS[table]?.has(url.searchParams.get('select')));
 const READ_RPC = /^(get|list|has|admin_list)_|^(admin_refund_counts|admin_courier_report|orders_with_consumed_stock|select_available_zelle_account)$/;
 const REST_PREFIX = '/rest/v1/';
 const MAX_STORED_BODY = 64 * 1024;

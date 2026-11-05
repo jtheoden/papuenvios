@@ -69,14 +69,13 @@ describe('requestBudget fetch', () => {
     expect(await body(await f(url))).toBe(2);
   });
 
-  it('never caches the rate reads that price an operation (single pair at confirmation, payment FX card)', async () => {
+  it('caches only the allow-listed display selects: other reads of the same tables stay live', async () => {
     const base = makeBase();
     const f = createRequestBudgetFetch(base);
-    const pair = `${BASE}/exchange_rates?select=rate&from_currency_id=eq.usd&to_currency_id=eq.cup&is_active=eq.true`;
-    await f(pair);
-    await f(pair);
-    await f(`${BASE}/v_effective_courier_cost?select=*`);
-    await f(`${BASE}/v_effective_courier_cost?select=*`);
+    await f(`${BASE}/currencies?select=*`);
+    await f(`${BASE}/currencies?select=*`);
+    await f(`${BASE}/currencies?select=id%2Ccode&code=in.%28USD%2CCUP%29`);
+    await f(`${BASE}/currencies?select=id%2Ccode&code=in.%28USD%2CCUP%29`);
     expect(base).toHaveBeenCalledTimes(4);
   });
 
@@ -98,7 +97,7 @@ describe('requestBudget fetch', () => {
 
   it('rate cache survives a reload through localStorage and a write anywhere clears it (own action never stale)', async () => {
     const base = makeBase();
-    const url = `${BASE}/currencies?select=*`;
+    const url = `${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base`;
     await createRequestBudgetFetch(base)(url);
     const reloaded = createRequestBudgetFetch(base);
     expect(await body(await reloaded(url))).toBe(1);
@@ -112,7 +111,7 @@ describe('requestBudget fetch', () => {
   it('another tab writing (storage event) drops this tab\'s cache', async () => {
     const base = makeBase();
     const f = createRequestBudgetFetch(base);
-    const url = `${BASE}/currencies?select=*`;
+    const url = `${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base`;
     await f(url);
     window.dispatchEvent(new StorageEvent('storage', { key: API_CACHE_STORAGE_KEY, newValue: null }));
     await f(url);
@@ -126,7 +125,7 @@ describe('requestBudget fetch', () => {
       return Promise.resolve(json({ n: 'new' }));
     });
     const f = createRequestBudgetFetch(base);
-    const url = `${BASE}/currencies?select=*`;
+    const url = `${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base`;
     const pending = f(url);
     await f(`${BASE}/currencies?id=eq.1`, { method: 'PATCH', body: '{}' });
     release();
@@ -190,7 +189,7 @@ describe('requestBudget fetch', () => {
     it('can be switched off by flag: every request passes through untouched', async () => {
       const base = makeBase();
       const f = createRequestBudgetFetch(base, { enabled: false });
-      await Promise.all([f(`${BASE}/currencies?select=*`), f(`${BASE}/currencies?select=*`)]);
+      await Promise.all([f(`${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base`), f(`${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base`)]);
       expect(base).toHaveBeenCalledTimes(2);
     });
   });

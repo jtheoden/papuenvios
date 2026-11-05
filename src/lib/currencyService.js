@@ -371,6 +371,24 @@ export const getConversionRate = async (fromCurrencyId, toCurrencyId) => {
   }
 };
 
+/** Latest active rate of a directed pair read from the server (never cached), or null. */
+const readActivePairRate = async (fromCurrencyId, toCurrencyId) => {
+  const { data, error } = await supabase
+    .from('exchange_rates')
+    .select('rate')
+    .eq('from_currency_id', fromCurrencyId)
+    .eq('to_currency_id', toCurrencyId)
+    .eq('is_active', true)
+    .order('effective_date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw parseSupabaseError(error);
+  }
+  return data?.rate ? parseFloat(data.rate) : null;
+};
+
 /**
  * Convert price from one currency to another
  * General, reusable conversion utility across entire system
@@ -501,7 +519,18 @@ export const getExchangeRate = async (fromCurrencyCode, toCurrencyCode) => {
     const fromCurrency = currencies.find(c => c.code === fromCurrencyCode);
     const toCurrency = currencies.find(c => c.code === toCurrencyCode);
 
-    return await getConversionRate(fromCurrency.id, toCurrency.id);
+    // Prices an operation (remittance confirmation, cart): its own pair reads, never the cached all-rates read.
+    const direct = await readActivePairRate(fromCurrency.id, toCurrency.id);
+    if (direct) return direct;
+    const inverse = await readActivePairRate(toCurrency.id, fromCurrency.id);
+    if (inverse) return 1 / inverse;
+
+    throw new AppError(
+      'No active exchange rate for this currency pair',
+      ERROR_CODES.SERVICE_UNAVAILABLE,
+      503,
+      { from: fromCurrencyCode, to: toCurrencyCode }
+    );
 
   } catch (error) {
     if (error.code) throw error;
