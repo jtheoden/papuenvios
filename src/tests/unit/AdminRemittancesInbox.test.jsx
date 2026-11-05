@@ -200,8 +200,38 @@ describe('AdminRemittancesInbox', () => {
     const row = screen.getAllByRole('listitem').find((li) => li.getAttribute('data-remittance-number') === 'REM-PENDING-OLD');
     fireEvent.click(within(row).getByRole('button', { name: 'adminInbox.cancelRemittance' }));
     await waitFor(() => expect(adminCancelRemittance).toHaveBeenCalledWith('p-old', 'never paid'));
-    expect(showModal).toHaveBeenCalledWith(expect.objectContaining({ input: true, required: true, type: 'danger' }));
+    expect(showModal).toHaveBeenCalledWith(expect.objectContaining({
+      input: true, required: true, type: 'danger', maxLength: 500,
+      inputLabel: 'remittances.admin.cancelReason', message: 'remittances.admin.confirmCancelMessage'
+    }));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
+  it('a refused cancel (customer uploaded the proof meanwhile) shows the readable message and refreshes the list', async () => {
+    showModal.mockResolvedValue('never paid');
+    adminCancelRemittance.mockRejectedValueOnce(
+      Object.assign(new Error('Remittance p-old changed state'), { code: 'CONFLICT', context: { reason: 'invalid_transition' } })
+    );
+    const { onChanged } = renderInbox();
+    fireEvent.click(screen.getByRole('button', { name: /adminInbox.filter.awaitingCustomer/ }));
+    const row = screen.getAllByRole('listitem').find((li) => li.getAttribute('data-remittance-number') === 'REM-PENDING-OLD');
+    fireEvent.click(within(row).getByRole('button', { name: 'adminInbox.cancelRemittance' }));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive', description: 'common.statusConflict' }))
+    );
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
+  it('a raw server error is never shown as is', async () => {
+    showModal.mockResolvedValue('never paid');
+    adminCancelRemittance.mockRejectedValueOnce(new Error('PGRST raw internals'));
+    renderInbox();
+    fireEvent.click(screen.getByRole('button', { name: /adminInbox.filter.awaitingCustomer/ }));
+    const row = screen.getAllByRole('listitem').find((li) => li.getAttribute('data-remittance-number') === 'REM-PENDING-OLD');
+    fireEvent.click(within(row).getByRole('button', { name: 'adminInbox.cancelRemittance' }));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive', description: 'remittances.admin.cancelFailed' }))
+    );
   });
 
   it('does not cancel when the admin dismisses the reason modal', async () => {

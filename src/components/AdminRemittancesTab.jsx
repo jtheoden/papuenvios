@@ -1,4 +1,4 @@
-import { transitionMessage } from '@/lib/statusConflict';
+import { adminCancelMessage, transitionMessage } from '@/lib/statusConflict';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -473,12 +473,13 @@ const AdminRemittancesTab = () => {
       title: t('remittances.admin.cancelRemittance'),
       message: t('remittances.admin.confirmCancelMessage', { number: remittance.remittance_number }),
       input: true,
-      inputLabel: t('remittances.admin.cancelReason') + ' *',
+      inputLabel: t('remittances.admin.cancelReason'),
       inputPlaceholder: t('remittances.admin.cancelReasonPlaceholder'),
       confirmText: t('remittances.admin.cancelRemittance'),
       cancelText: t('common.cancel'),
       type: 'danger',
-      required: true
+      required: true,
+      maxLength: 500
     });
 
     if (!reason) return;
@@ -489,15 +490,16 @@ const AdminRemittancesTab = () => {
         title: t('common.success'),
         description: t('remittances.admin.remittanceCancelled')
       });
-      await loadRemittances();
       setSelectedRemittance(null);
     } catch (error) {
       toast({
         title: t('common.error'),
-        description: transitionMessage(t, error, error?.message || t('remittances.admin.cancelFailed')),
+        description: adminCancelMessage(t, error),
         variant: 'destructive'
       });
     }
+    // Refresh on failure too: a refusal usually means the remittance moved (e.g. the customer uploaded the proof).
+    await loadRemittances();
   };
 
   const handleStartProcessing = async (remittance) => {

@@ -550,3 +550,9 @@ Rama `fix/admin-cancel-pending-remittance` (desde `origin/main` 30f8f5da). Sin P
 - Colaterales verificados en BD local: sin `refund_requests` desde payment_pending; límites Zelle orientativos excluyen `cancelled` por cálculo; el guard de self-dealing permite cancelar. Sin aviso al cliente (igual que la cancelación del dueño hoy).
 - Decisión abierta para el dueño: `payment_rejected` (4 en prod, con comprobante) NO se abre a cancelación admin.
 - Orden de despliegue: aplicar la migración ANTES del front (sin ella el botón responde 404/PGRST202).
+
+### Ajustes tras revisión independiente (2026-11-05)
+- Modal: aviso «Verifica en la cuenta Zelle que no se haya recibido el pago antes de cancelar» (sin comprobante ≠ sin pago; no se crea refund_request). `showModal` acepta `maxLength` (textarea a 500) y la etiqueta del motivo ya no lleva doble asterisco.
+- Errores: `adminCancelMessage` (statusConflict.js) traduce invalid_transition → `common.statusConflict`, invalid_argument → `cancelReasonInvalid`, PGRST202 → `cancelUnavailable`, resto → `cancelFailed`; nunca el mensaje crudo. Ambas vistas recargan la lista también tras un fallo.
+- Tests de BD: carrera A (submit_proof con el lock retenido; admin_cancel espera y recibe invalid_transition), carrera B (submit_proof tras cancelar), admin cancelando su propia remesa pendiente, motivo de 500 caracteres, restauración del rol original del fixture.
+- Seguimiento (NO hecho, a decidir): aviso al cliente cuando un admin cancela su remesa, y mostrar en `RemittanceTimeline` quién canceló (admin vs cliente) y el motivo.

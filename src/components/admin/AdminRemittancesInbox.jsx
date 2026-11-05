@@ -1,4 +1,4 @@
-import { transitionMessage } from '@/lib/statusConflict';
+import { adminCancelMessage, transitionMessage } from '@/lib/statusConflict';
 import React, { useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle, Clock, FileText, Loader2, Percent, Truck, XCircle } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -204,20 +204,26 @@ const AdminRemittancesInbox = ({
       title: t('adminInbox.cancelRemittance'),
       message: t('remittances.admin.confirmCancelMessage', { number: remittance.remittance_number }),
       input: true,
-      inputLabel: `${t('remittances.admin.cancelReason')} *`,
+      inputLabel: t('remittances.admin.cancelReason'),
       inputPlaceholder: t('remittances.admin.cancelReasonPlaceholder'),
       confirmText: t('adminInbox.cancelRemittance'),
       cancelText: t('common.cancel'),
       type: 'danger',
-      required: true
+      required: true,
+      maxLength: 500
     });
     if (!reason) return;
-    await runAction(
-      remittance,
-      () => adminCancelRemittance(remittance.id, reason),
-      'remittances.admin.remittanceCancelled',
-      'remittances.admin.cancelFailed'
-    );
+    setBusyId(remittance.id);
+    try {
+      await adminCancelRemittance(remittance.id, reason);
+      toast({ title: t('common.success'), description: t('remittances.admin.remittanceCancelled') });
+    } catch (err) {
+      toast({ title: t('common.error'), description: adminCancelMessage(t, err), variant: 'destructive' });
+    } finally {
+      setBusyId(null);
+    }
+    // Refresh on failure too: a refusal usually means the remittance moved (e.g. the customer uploaded the proof).
+    if (onChanged) await onChanged();
   };
 
   const handleStartProcessing = async (remittance) => {

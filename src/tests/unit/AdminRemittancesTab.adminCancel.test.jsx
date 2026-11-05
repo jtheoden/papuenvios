@@ -83,7 +83,10 @@ describe('AdminRemittancesTab - admin cancel of a pending remittance', () => {
     render(<AdminRemittancesTab />);
     fireEvent.click(await screen.findByRole('button', { name: CANCEL }));
     await waitFor(() => expect(adminCancelRemittance).toHaveBeenCalledWith('p1', 'never paid'));
-    expect(showModal).toHaveBeenCalledWith(expect.objectContaining({ input: true, required: true, type: 'danger' }));
+    expect(showModal).toHaveBeenCalledWith(expect.objectContaining({
+      input: true, required: true, type: 'danger', maxLength: 500,
+      inputLabel: 'remittances.admin.cancelReason', message: 'remittances.admin.confirmCancelMessage'
+    }));
     await waitFor(() => expect(getAllRemittances).toHaveBeenCalledTimes(2));
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ description: 'remittances.admin.remittanceCancelled' }));
   });
@@ -96,12 +99,27 @@ describe('AdminRemittancesTab - admin cancel of a pending remittance', () => {
     expect(adminCancelRemittance).not.toHaveBeenCalled();
   });
 
-  it('shows a destructive toast when the server refuses', async () => {
+  it('a raw server error is never shown as is', async () => {
     showModal.mockResolvedValue('never paid');
     adminCancelRemittance.mockRejectedValueOnce(new Error('boom'));
     render(<AdminRemittancesTab />);
     fireEvent.click(await screen.findByRole('button', { name: CANCEL }));
-    await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' })));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive', description: 'remittances.admin.cancelFailed' }))
+    );
+  });
+
+  it('a refused cancel (status changed meanwhile) shows the readable message and reloads the list', async () => {
+    showModal.mockResolvedValue('never paid');
+    adminCancelRemittance.mockRejectedValueOnce(
+      Object.assign(new Error('Remittance p1 changed state'), { code: 'CONFLICT', context: { reason: 'invalid_transition' } })
+    );
+    render(<AdminRemittancesTab />);
+    fireEvent.click(await screen.findByRole('button', { name: CANCEL }));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive', description: 'common.statusConflict' }))
+    );
+    await waitFor(() => expect(getAllRemittances).toHaveBeenCalledTimes(2));
   });
 
   it.each(['payment_proof_uploaded', 'payment_validated', 'payment_rejected', 'processing', 'delivered', 'completed', 'cancelled'])(
