@@ -2864,13 +2864,13 @@
     "title": "Privacidad y analítica",
     "short": "Medimos visitas solo si usted acepta.",
     "moreInfo": "Más información",
-    "description": "Usamos almacenamiento local estrictamente necesario para que el sitio funcione (por ejemplo, tu sesión). Solo si lo aceptas, registraremos las páginas que visitas con fines estadísticos: página, origen, navegador, un identificador de sesión y, si iniciaste sesión, tu identificador de usuario.",
+    "description": "Usamos almacenamiento local estrictamente necesario para que el sitio funcione (por ejemplo, su sesión). Solo si usted lo acepta, registraremos las páginas que visita con fines estadísticos: página, origen, navegador, un identificador de sesión y, si inició sesión, su identificador de usuario.",
     "accept": "Aceptar",
     "reject": "Rechazar",
     "privacyLink": "Política de Privacidad",
     "statusOn": "Estado actual: analítica activada.",
     "statusOff": "Estado actual: analítica desactivada.",
-    "gpcNote": "Detectamos la señal Global Privacy Control de tu navegador y la respetamos: la analítica permanece desactivada. Puedes activarla aquí de forma expresa.",
+    "gpcNote": "Detectamos la señal Global Privacy Control de su navegador y la respetamos: la analítica permanece desactivada. Puede activarla aquí de forma expresa.",
     "preferencesLink": "Preferencias de cookies"
   },
   "couriers": {
