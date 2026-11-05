@@ -45,4 +45,15 @@ describe('ResponsiveTableWrapper loading state', () => {
     expect(screen.getByText('tables.noData')).toBeInTheDocument();
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
+
+  it('marks the visible rows busy and dimmed (opacity only, motion-safe) during a refresh, and clears it after', () => {
+    const { rerender } = render(table({ data: rows, isLoading: true }));
+    const region = screen.getAllByText('Alpha')[0].closest('[aria-busy]');
+    expect(region).toHaveAttribute('aria-busy', 'true');
+    expect(region).toHaveClass('opacity-60');
+    expect(region.className).toContain('motion-safe:transition-opacity');
+
+    rerender(table({ data: rows, isLoading: false }));
+    expect(screen.getAllByText('Alpha')[0].closest('[aria-busy]')).toBeNull();
+  });
 });

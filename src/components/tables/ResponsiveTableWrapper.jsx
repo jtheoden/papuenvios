@@ -106,7 +106,7 @@ const ResponsiveTableWrapper = ({
 
   // Skeleton only while nothing is on screen yet: a refresh keeps the current rows visible.
   return (
-    <LoadingState loading={isLoading && isEmpty} skeleton={<TableSkeleton />}>
+    <LoadingState loading={isLoading && isEmpty} refreshing={isLoading && !isEmpty} skeleton={<TableSkeleton />}>
     {isEmpty ? (
       <div className="text-center py-12" style={{ color: semanticColors.neutral[500] }}>
         <p className="text-sm sm:text-base">{t('tables.noData') || 'No data available'}</p>

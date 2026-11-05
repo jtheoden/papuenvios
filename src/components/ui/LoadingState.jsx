@@ -16,9 +16,9 @@ export const SkeletonBox = ({ className }) => (
  * Loading gate for network-loaded lists. While `loading`, it renders `skeleton` (invisible for the first
  * SHOW_DELAY_MS so it already reserves the space, then faded in with a visible "loading" label) and never
  * `children`, so an empty state cannot show before the data arrives. Pass `loading={false}` on error so the
- * view's error state replaces the skeleton.
+ * view's error state replaces the skeleton. `refreshing` marks content that stays on screen during a reload.
  */
-const LoadingState = ({ loading, skeleton, label, className, contentClassName, children }) => {
+const LoadingState = ({ loading, skeleton, label, className, contentClassName, refreshing = false, children }) => {
   const { t } = useLanguage();
   const [phase, setPhase] = useState(loading ? 'waiting' : 'done');
   const [paused, setPaused] = useState(false);
@@ -81,7 +81,15 @@ const LoadingState = ({ loading, skeleton, label, className, contentClassName, c
   // layout class the children need from their container (e.g. `space-y-3`) as contentClassName.
   if (showContent) {
     return (
-      <div className={cn(contentClassName, wasShown.current && 'motion-safe:animate-fade-in') || undefined}>
+      <div
+        aria-busy={refreshing || undefined}
+        className={cn(
+          contentClassName,
+          wasShown.current && 'motion-safe:animate-fade-in',
+          // A reload with content on screen: dim it in place (opacity only, no layout shift).
+          refreshing && 'opacity-60 motion-safe:transition-opacity motion-safe:duration-motion'
+        ) || undefined}
+      >
         {children}
       </div>
     );
