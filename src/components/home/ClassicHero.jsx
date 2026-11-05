@@ -5,6 +5,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { buildHomeTheme } from '@/lib/homeTheme';
 import { cn } from '@/lib/utils';
 import StackedSlides from '@/components/home/StackedSlides';
+import { DOT_GAP, DOT_HIT_AREA } from '@/components/home/heroControls';
 import { useHeroSlides, slideKey, slideTexts } from '@/components/home/useHeroSlides';
 
 const overlayRing =
@@ -17,7 +18,7 @@ const arrowClass = cn(
 const textShadow = '[text-shadow:0_1px_3px_rgba(0,0,0,0.6)]';
 
 /**
- * `classic` composition: the original full-bleed cover. The poster covers the section under a bg-black/50 veil and
+ * `classic` composition: the original full-bleed cover. The poster covers the section under a bg-black/60 veil (the original /50 gave 3.95:1 for white text on a white poster; /60 gives 5.7:1) and
  * the slide text sits over it, with translucent arrows at the sides. Unlike the original, the page title is the one
  * stable h1 (the slide title is an h2) and the carousel keeps its accessibility: visible pause button, pauses on
  * hover / focus / hidden tab, prefers-reduced-motion, 2 s minimum and dots as buttons.
@@ -50,20 +51,19 @@ const ClassicHero = ({ slides, loading, visualSettings, onNavigate }) => {
             role="group"
             aria-roledescription={t('home.carousel.slide')}
             aria-label={t('home.carousel.slideOf', { count: current + 1, total: count })}
-            aria-live={running ? 'off' : 'polite'}
             className="absolute inset-0"
           >
             <img
               key={slideKey(slide, current)}
               data-testid="hero-slide-image"
               src={slide.image_url || slide.image_file}
-              alt={slideTexts(slide, language).title}
+              alt="" // the slide title is the visible h2 over the image
               fetchpriority={carousel.isFirst(slide) ? 'high' : undefined}
               onError={() => carousel.markFailed(slide)}
               className="absolute inset-0 h-full w-full object-cover animate-in fade-in motion-reduce:animate-none"
               style={{ animationDuration: `${transitionMs}ms` }}
             />
-            <div data-testid="hero-veil" aria-hidden="true" className="absolute inset-0 bg-black/50" />
+            <div data-testid="hero-veil" aria-hidden="true" className="absolute inset-0 bg-black/60" />
           </div>
         )}
 
@@ -72,6 +72,7 @@ const ClassicHero = ({ slides, loading, visualSettings, onNavigate }) => {
           {slide && (
             <StackedSlides
               testId="hero-slide-text"
+              live={running ? 'off' : 'polite'}
               className="mb-6 max-w-2xl"
               items={usable}
               current={current}
@@ -110,7 +111,7 @@ const ClassicHero = ({ slides, loading, visualSettings, onNavigate }) => {
               <button
                 type="button"
                 className={cn(
-                  'inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-black/40 text-white transition-colors hover:bg-black/60 motion-reduce:transition-none',
+                  'inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/70 bg-black/40 text-white transition-colors hover:bg-black/60 motion-reduce:transition-none',
                   overlayRing
                 )}
                 aria-label={userPaused ? t('home.carousel.play') : t('home.carousel.pause')}
@@ -118,7 +119,7 @@ const ClassicHero = ({ slides, loading, visualSettings, onNavigate }) => {
               >
                 {userPaused ? <Play className="h-4 w-4" aria-hidden="true" /> : <Pause className="h-4 w-4" aria-hidden="true" />}
               </button>
-              <div className="flex flex-wrap items-center justify-center gap-1.5">
+              <div className={cn('flex flex-wrap items-center justify-center', DOT_GAP)}>
                 {usable.map((item, i) => {
                   const active = i === current;
                   return (
@@ -130,6 +131,7 @@ const ClassicHero = ({ slides, loading, visualSettings, onNavigate }) => {
                       onClick={() => carousel.select(i)}
                       className={cn(
                         'h-6 rounded-full border-2 border-white transition-all motion-reduce:transition-none',
+                        DOT_HIT_AREA,
                         overlayRing,
                         active ? 'w-8 bg-white' : 'w-6 bg-white/40'
                       )}

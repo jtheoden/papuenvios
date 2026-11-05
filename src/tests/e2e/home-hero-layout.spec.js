@@ -7,7 +7,8 @@ import path from 'node:path';
 // Spec: no horizontal overflow from 320 to 414 in both; classic is a full-bleed cover whose h1, controls and
 // arrows never collide; spaced aligns cards and carousel, frames the poster with its real ratio, shows arrows over the
 // sides from md, and captions only when they exist; neither moves the page when the image or a slide loads
-// (layout shift observed with delayed responses so it cannot pass vacuously); the pause button works from the
+// (layout shift observed with delayed responses so it cannot pass vacuously; the spaced frame is sized once from every
+// poster and then never changes); controls have 44px touch targets; classic text reads AA over a white poster; the pause button works from the
 // keyboard and stays paused; an unknown heroLayout renders spaced.
 
 const SHOTS_DIR = process.env.HOME_SHOTS_DIR;
@@ -82,15 +83,21 @@ const observeShifts = (page) => page.addInitScript(() => {
 });
 const shiftsSince = (page, mark) => page.evaluate((m) => window.__shifts.filter((s) => s.relevant && s.at > m).reduce((sum, s) => sum + s.value, 0), mark);
 
-const open = async (page, { heroLayout, settings = PRESET_ROW, language = 'es', captions = true, sizes = SIZES, slidesDelay = 0, imageDelay = 0, waitImage = true } = {}) => {
+const open = async (page, { heroLayout, settings = PRESET_ROW, language = 'es', captions = true, sizes = SIZES, slidesDelay = 0, imageDelay = 0, waitImage = true, shape } = {}) => {
   const row = heroLayout === undefined ? settings : { ...settings, heroLayout };
   await mockSupabase(page, { settings: row, captions, sizes, slidesDelay, imageDelay });
   await observeShifts(page);
   await page.addInitScript((lang) => localStorage.setItem('preferredLanguage', lang), language);
+  // a previous visit: the skeleton follows what the carousel looked like then (see heroShape.js)
+  if (shape) await page.addInitScript((value) => localStorage.setItem('hero-carousel-shape', JSON.stringify(value)), shape);
   await page.goto('/');
   if (!waitImage) return;
   await expect(page.locator('[data-testid="hero-carousel"]')).toBeVisible({ timeout: 20000 });
   await expect(page.locator('[data-testid="hero-slide-image"]')).toHaveJSProperty('complete', true, { timeout: 15000 });
+  // spaced sizes its frame once from every poster; classic has no frame to wait for
+  if (await page.locator('[data-testid="hero-carousel-frame"]').count()) {
+    await expect(page.locator('[data-testid="hero-carousel-frame"]')).toHaveAttribute('data-frame-ready', 'true', { timeout: 15000 });
+  }
 };
 
 const box = async (locator) => {
@@ -158,7 +165,7 @@ test.describe('classic composition', () => {
         expect(hero.height).toBeGreaterThanOrEqual(Math.min(480, 800 * (width >= 768 ? 0.8 : 0.6)) - 1);
         await expect(page.locator('[data-testid="hero-slide-image"]')).toHaveCSS('object-fit', 'cover');
         await expect(page.locator('[data-testid="hero-slide-image"]')).toHaveAttribute('fetchpriority', 'high');
-        await expect(page.locator('[data-testid="hero-veil"]')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0.5)');
+        await expect(page.locator('[data-testid="hero-veil"]')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0.6)');
         await expect(page.locator('[data-testid="hero-card"]')).toHaveCount(0);
 
         const header = await box(page.locator('header').first());
@@ -183,6 +190,17 @@ test.describe('classic composition', () => {
 
   test.describe('text', () => {
     test.use({ viewport: { width: 1280, height: 800 } });
+
+    test('white text reads at least 4.5:1 over the veil in the worst case, a pure white poster (title, subtitle)', async ({ page }) => {
+      await open(page, { heroLayout: 'classic' });
+      const alpha = await page.locator('[data-testid="hero-veil"]').evaluate((el) => Number(getComputedStyle(el).backgroundColor.match(/[\d.]+/g)[3]));
+      const worst = Math.round(255 * (1 - alpha));
+      const background = `rgb(${worst}, ${worst}, ${worst})`;
+      for (const locator of [page.locator('[data-testid="home-hero"] h1'), page.getByRole('heading', { level: 2, name: 'Anuncio 1' }), page.locator('[data-testid="hero-slide-text"] p').first()]) {
+        const color = await locator.evaluate((el) => getComputedStyle(el).color);
+        expect(ratio(color, background), color).toBeGreaterThanOrEqual(4.5);
+      }
+    });
 
     test('page title is the only h1; the slide title is an h2 and changes with the slide; the CTA goes to products', async ({ page }) => {
       await open(page, { heroLayout: 'classic' });
@@ -221,10 +239,9 @@ test.describe('spaced composition', () => {
         const arrows = [page.getByRole('button', { name: /Anuncio anterior/ }), page.getByRole('button', { name: /Anuncio siguiente/ })];
         for (const arrow of arrows) {
           const b = await box(arrow);
-          expect(b.width).toBeGreaterThanOrEqual(40 - 0.5);
-          expect(b.height).toBeGreaterThanOrEqual(40 - 0.5);
+          expect(b.width).toBeGreaterThanOrEqual(44 - 0.5);
+          expect(b.height).toBeGreaterThanOrEqual(44 - 0.5);
           if (width >= 768) {
-            expect(b.width).toBeGreaterThanOrEqual(44 - 0.5);
             // overlaid on the poster, at its sides, vertically centred
             expect(b.x).toBeGreaterThanOrEqual(frame.x - 0.5);
             expect(b.right).toBeLessThanOrEqual(frame.right + 0.5);
@@ -238,6 +255,8 @@ test.describe('spaced composition', () => {
         }
         const pause = await box(page.getByRole('button', { name: /Pausar/ }));
         expect(pause.y).toBeGreaterThanOrEqual(frame.bottom);
+        expect(pause.width).toBeGreaterThanOrEqual(44 - 0.5);
+        expect(pause.height).toBeGreaterThanOrEqual(44 - 0.5);
         const dot = await box(page.getByRole('button', { name: /Ir al anuncio 1/ }));
         expect(dot.y).toBeGreaterThanOrEqual(frame.bottom);
         await expect(page.locator('[data-testid="home-hero"] .bg-black\\/50')).toHaveCount(0);
@@ -273,6 +292,37 @@ test.describe('spaced composition', () => {
       await expect(page.locator('[data-testid="hero-slide-caption"]')).toHaveCount(0);
     });
   });
+});
+
+test.describe('touch targets', () => {
+  for (const heroLayout of LAYOUTS) {
+    test.describe(`${heroLayout} at 390px`, () => {
+      test.use({ viewport: { width: 390, height: 900 } });
+
+      test('pause, arrows and dots offer at least 44x44 CSS px to the finger (dots through an invisible ::before)', async ({ page }) => {
+        await open(page, { heroLayout });
+        for (const name of [/Pausar/, /Anuncio anterior/, /Anuncio siguiente/]) {
+          const b = await box(page.getByRole('button', { name }));
+          expect(b.width, String(name)).toBeGreaterThanOrEqual(44 - 0.5);
+          expect(b.height, String(name)).toBeGreaterThanOrEqual(44 - 0.5);
+        }
+        const dots = page.getByRole('button', { name: /Ir al anuncio/ });
+        const areas = [];
+        for (const dot of await dots.all()) {
+          const area = await dot.evaluate((el) => {
+            const own = el.getBoundingClientRect();
+            const hit = getComputedStyle(el, '::before');
+            return { x: own.x - 10, width: parseFloat(hit.width), height: parseFloat(hit.height) };
+          });
+          expect(area.width).toBeGreaterThanOrEqual(44);
+          expect(area.height).toBeGreaterThanOrEqual(44);
+          areas.push(area);
+        }
+        // neighbouring touch areas never overlap
+        for (let i = 1; i < areas.length; i += 1) expect(areas[i].x).toBeGreaterThanOrEqual(areas[i - 1].x + areas[i - 1].width - 0.5);
+      });
+    });
+  }
 });
 
 test.describe('unknown heroLayout values render spaced in the browser', () => {
@@ -313,11 +363,26 @@ test.describe('layout shift', () => {
     expect(await shiftsSince(page, mark)).toBeGreaterThan(0.001);
   });
 
-  test('spaced: the skeleton and the loaded carousel have the same height (slides delayed 2 s, no captions)', async ({ page }) => {
-    await open(page, { heroLayout: 'spaced', captions: false, slidesDelay: 2000, waitImage: false });
+  for (const width of [390, 1280]) {
+    test(`spaced at ${width}px: the skeleton and the loaded carousel have the same height with captions (first visit, no hint)`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 2400 });
+      await open(page, { heroLayout: 'spaced', captions: true, slidesDelay: 2000, waitImage: false });
+      await expect(page.locator('[data-testid="hero-carousel-skeleton"]')).toBeVisible({ timeout: 20000 });
+      await expect(page.locator('[data-testid="hero-caption-placeholder"]')).toBeVisible();
+      await expect(page.locator('[data-testid="hero-controls-placeholder"]')).toBeVisible();
+      const skeleton = await heroHeight(page);
+      await expect(page.locator('[data-testid="hero-carousel-frame"]')).toHaveAttribute('data-frame-ready', 'true', { timeout: 15000 });
+      await page.waitForTimeout(300);
+      expect(Math.abs((await heroHeight(page)) - skeleton)).toBeLessThanOrEqual(1);
+    });
+  }
+
+  test('spaced: with the shape of a previous visit (no captions) the skeleton has the same height as the loaded carousel', async ({ page }) => {
+    await open(page, { heroLayout: 'spaced', captions: false, slidesDelay: 2000, waitImage: false, shape: { caption: false, multiple: true } });
     await expect(page.locator('[data-testid="hero-carousel-skeleton"]')).toBeVisible({ timeout: 20000 });
+    await expect(page.locator('[data-testid="hero-caption-placeholder"]')).toHaveCount(0);
     const skeleton = await heroHeight(page);
-    await expect(page.locator('[data-testid="hero-slide-image"]')).toHaveJSProperty('complete', true, { timeout: 15000 });
+    await expect(page.locator('[data-testid="hero-carousel-frame"]')).toHaveAttribute('data-frame-ready', 'true', { timeout: 15000 });
     await page.waitForTimeout(300);
     expect(Math.abs((await heroHeight(page)) - skeleton)).toBeLessThanOrEqual(1);
   });
@@ -331,24 +396,22 @@ test.describe('layout shift', () => {
     expect(Math.abs((await heroHeight(page)) - loading)).toBeLessThanOrEqual(1);
   });
 
-  test('spaced: posters of different ratios never shrink the frame; after one pass the page height is constant', async ({ page }) => {
-    await open(page, { heroLayout: 'spaced', captions: false, sizes: [[1520, 400], [1000, 500], [1520, 400]] });
-    const dots = page.getByRole('button', { name: /Ir al anuncio/ });
+  test('spaced: posters of different ratios size the frame once; after the first paint of content nothing shifts (autoplay through every slide)', async ({ page }) => {
+    await open(page, { heroLayout: 'spaced', captions: false, sizes: [[1520, 400], [1000, 500], [1520, 400]], settings: { ...PRESET_ROW, carouselAutoplaySpeed: 2000, carouselTransitionSpeed: 100 }, shape: { caption: false, multiple: true } });
     await page.mouse.move(5, 5);
-    await page.getByRole('button', { name: /Pausar/ }).click(); // keep autoplay out of the way
-    for (const index of [1, 2, 0]) {
-      await dots.nth(index).click();
-      await expect(page.locator('[data-testid="hero-slide-image"]')).toHaveJSProperty('complete', true);
+    const frameBox = await box(page.locator('[data-testid="hero-carousel-frame"]'));
+    expect(Math.abs(frameBox.width / frameBox.height - 2)).toBeLessThan(0.05); // the tallest of all, from the first paint
+    const mark = await page.evaluate(() => performance.now());
+    const settled = await heroHeight(page);
+    const seen = new Set();
+    const until = Date.now() + 8000; // more than a full cycle of 3 slides at 2 s
+    while (Date.now() < until) {
+      seen.add(await activeDot(page));
+      expect(Math.abs((await heroHeight(page)) - settled)).toBeLessThanOrEqual(1);
       await page.waitForTimeout(250);
     }
-    const settled = await heroHeight(page);
-    const frame = await box(page.locator('[data-testid="hero-carousel-frame"]'));
-    expect(Math.abs(frame.width / frame.height - 2)).toBeLessThan(0.05); // the tallest ratio seen (2:1)
-    for (const index of [1, 2, 0, 2, 1]) {
-      await dots.nth(index).click();
-      await page.waitForTimeout(200);
-      expect(Math.abs((await heroHeight(page)) - settled)).toBeLessThanOrEqual(1);
-    }
+    expect([...seen].sort()).toEqual([0, 1, 2]);
+    expect(await shiftsSince(page, mark)).toBeLessThan(0.001);
   });
 
   test('spaced: captions of different length do not change the height across slides', async ({ page }) => {

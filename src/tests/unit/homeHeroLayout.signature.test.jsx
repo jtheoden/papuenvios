@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import fs from 'node:fs';
 import path from 'node:path';
 import ES from '@/translations/ES.json';
@@ -9,12 +9,14 @@ import { PRESET, layoutSignature } from './homeTestKit';
 // Spec (hero layout S2/S3): the structure of [data-testid=home-hero] is pinned by a fixture, like
 // homeProdColorSignature.json pins the colours. The first `spaced` entry was generated from main's HomePage before
 // the hero was extracted into HomeHero (S2, no visual change: the extraction commit passed against it). S3 then
-// regenerated `spaced` once, on purpose, for the agreed improvements (shared width, card frame, caption, arrows,
-// gap-6 md:gap-8) and added `classic`. Do not regenerate either to make a test pass.
+// regenerated `spaced` on purpose for the agreed improvements (shared width, card frame, caption, arrows,
+// gap-6 md:gap-8), added `classic`, and regenerated all of them once more after the review (44px targets, dot
+// touch areas, preloaded frame ratio, empty alt, /60 veil) adding `spacedWide`. The row used is the brand preset
+// (what production stores today) without the heroLayout key. Do not regenerate them to make a test pass.
 
 const FIXTURE = path.resolve(__dirname, '__fixtures__/homeHeroLayoutSignature.json');
 
-const state = vi.hoisted(() => ({ settings: {} }));
+const state = vi.hoisted(() => ({ settings: {}, wide: false }));
 
 const translate = (key, params = {}) => {
   const value = key.split('.').reduce((acc, k) => (acc ? acc[k] : undefined), ES);
@@ -44,6 +46,25 @@ vi.mock('@/hooks/useRealtimeSubscription', () => ({
   useRealtimeSubscription: vi.fn(),
   useRealtimeCarouselSlides: vi.fn(),
 }));
+// jsdom neither loads images nor evaluates media queries: posters answer at once with the real 3.8:1 size, and
+// `wide` decides whether the viewport counts as md (arrows over the poster) or not.
+class AnsweringImage {
+  set src(value) {
+    this.srcValue = value;
+    Object.assign(this, { naturalWidth: 1520, naturalHeight: 400 });
+    queueMicrotask(() => this.onload?.());
+  }
+  get src() { return this.srcValue; }
+}
+vi.stubGlobal('Image', AnsweringImage);
+window.matchMedia = (query) => ({
+  matches: /min-width:\s*768px/.test(query) && state.wide,
+  media: query,
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  addListener: () => {}, // framer-motion still calls the legacy API
+  removeListener: () => {},
+});
 vi.stubGlobal('IntersectionObserver', class { observe() {} unobserve() {} disconnect() {} });
 
 import HomePage from '@/components/HomePage';
@@ -53,10 +74,12 @@ const withoutHeroLayout = (settings) => {
   return rest;
 };
 
-const heroSignature = async (settings) => {
+const heroSignature = async (settings, { wide = false } = {}) => {
   state.settings = settings;
+  state.wide = wide;
   const { unmount } = render(<HomePage onNavigate={vi.fn()} />);
   await screen.findByTestId('hero-carousel');
+  if (!screen.queryByTestId('hero-veil')) await waitFor(() => expect(screen.getByTestId('hero-carousel-frame').getAttribute('data-frame-ready')).toBe('true'));
   const signature = layoutSignature(screen.getByTestId('home-hero'));
   unmount();
   return signature;
@@ -67,6 +90,10 @@ const fixture = () => JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
 describe('hero structure signature', () => {
   it('the row stored in production (brand preset, no heroLayout key) keeps exactly the structure of today', async () => {
     expect(await heroSignature(withoutHeroLayout(PRESET))).toEqual(fixture().spaced);
+  });
+
+  it('spaced at md and above (arrows over the poster) has its own pinned structure', async () => {
+    expect(await heroSignature(withoutHeroLayout(PRESET), { wide: true })).toEqual(fixture().spacedWide);
   });
 
   it('classic keeps its own structure (full-bleed cover with the controls over the image)', async () => {

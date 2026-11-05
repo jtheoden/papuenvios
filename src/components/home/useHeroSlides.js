@@ -35,6 +35,61 @@ const useDocumentHidden = () => {
   return hidden;
 };
 
+// Panoramic ratio of the skeleton and fallback of the frame; the real banners are wide.
+export const DEFAULT_POSTER_RATIO = 3.8;
+const MIN_FRAME_RATIO = 1; // never taller than a square, whatever a poster reports
+const MAX_FRAME_RATIO = 6;
+const PRELOAD_TIMEOUT_MS = 3000;
+
+/**
+ * Frame ratio of the spaced carousel, computed ONCE per mount: every poster is preloaded (`new Image()`) and the
+ * tallest ratio wins (lowest width/height, clamped), so every poster fits and no later slide change or load can
+ * resize the frame. `ratio` is null while the posters are being measured (the caller shows a skeleton). If any
+ * poster fails, has no intrinsic size, or does not answer within 3 s, the frame falls back to 3.8:1 and does not
+ * wait any longer. Posters that differ from the frame are letterboxed by object-contain.
+ */
+export const useFrameRatio = (urls) => {
+  const [ratio, setRatio] = useState(null);
+  const key = urls.join('\n');
+  const settled = ratio !== null;
+
+  useEffect(() => {
+    if (settled || urls.length === 0) return undefined;
+    const known = [];
+    let waiting = urls.length;
+    let done = false;
+    const finish = (fallback) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      setRatio(fallback || known.length < urls.length ? DEFAULT_POSTER_RATIO : Math.min(...known));
+    };
+    const timer = setTimeout(() => finish(true), PRELOAD_TIMEOUT_MS);
+    const probes = urls.map((url, i) => {
+      const probe = new Image();
+      probe.onload = () => {
+        if (probe.naturalWidth > 0 && probe.naturalHeight > 0) {
+          known.push(Math.min(MAX_FRAME_RATIO, Math.max(MIN_FRAME_RATIO, probe.naturalWidth / probe.naturalHeight)));
+        }
+        waiting -= 1;
+        if (waiting === 0) finish(false);
+      };
+      probe.onerror = () => finish(true);
+      if (i === 0) probe.fetchPriority = 'high'; // the first poster is the LCP candidate
+      probe.src = url;
+      return probe;
+    });
+    return () => {
+      done = true;
+      clearTimeout(timer);
+      probes.forEach((probe) => { probe.onload = null; probe.onerror = null; });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` stands for the url list
+  }, [key, settled]);
+
+  return ratio;
+};
+
 const clean = (value) => (typeof value === 'string' ? value.trim() : '');
 
 /** Title and subtitle of a slide in the given language; empty strings when it has none. */

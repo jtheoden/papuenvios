@@ -8,10 +8,10 @@ import { PRESET, PROD, SLIDES } from './homeTestKit';
 
 // Spec (hero layout S3): two compositions of the Home hero chosen by `heroLayout`.
 //  spaced  the separated block: title, cards and a card-framed carousel that shares one max width with the cards,
-//          p-2 md:p-3 padding, frame ratio taken from the loaded poster (3.8:1 skeleton before, tallest ratio seen
-//          afterwards, never shrinking), arrows over the sides from md and pause + dots below, slide title and
+//          p-2 md:p-3 padding, frame ratio computed ONCE from the size of every poster (preloaded; 3.8:1 skeleton
+//          until then and fallback when one fails or times out) and never changed afterwards, arrows over the sides from md and pause + dots below, slide title and
 //          subtitle as a caption under the poster only when they exist.
-//  classic the original full-bleed cover (cover image, bg-black/50 veil, slide text over it, "Ver Productos" CTA,
+//  classic the original full-bleed cover (cover image, bg-black/60 veil (AA for white text on a white poster), slide text over it, "Ver Productos" CTA,
 //          translucent arrows) keeping the accessibility of the carousel: one stable h1 (the slide title is an h2),
 //          visible pause, pauses on hover/focus/hidden tab, reduced motion, 2 s minimum, dots as buttons.
 // The stored value is never trusted: anything other than 'classic' renders spaced.
@@ -51,11 +51,21 @@ const mount = ({ layout, slides = CAPTIONED, loading = false, settings = PRESET,
   return { onNavigate, ...render(<HomeHero slides={slides} loading={loading} visualSettings={visualSettings} onNavigate={onNavigate} />) };
 };
 
-const loadPoster = (img, naturalWidth, naturalHeight) => {
-  Object.defineProperty(img, 'naturalWidth', { configurable: true, value: naturalWidth });
-  Object.defineProperty(img, 'naturalHeight', { configurable: true, value: naturalHeight });
-  fireEvent.load(img);
-};
+// The carousel preloads every poster with `new Image()` to size the frame once; jsdom never loads images, so the
+// tests answer for each one.
+const preloaded = [];
+class FakeImage {
+  constructor() { preloaded.push(this); }
+  set src(value) { this.srcValue = value; }
+  get src() { return this.srcValue; }
+}
+const answer = (url, naturalWidth, naturalHeight) => act(() => {
+  const img = preloaded.find((candidate) => candidate.src === url);
+  Object.assign(img, { naturalWidth, naturalHeight });
+  img.onload?.();
+});
+const fail = (url) => act(() => { preloaded.find((candidate) => candidate.src === url).onerror?.(); });
+const URLS = CAPTIONED.map((slide) => slide.image_url);
 
 // jsdom serialises inline colours as rgb(r, g, b); contrastRatio takes hex
 const toHex = (css) => `#${css.match(/\d+/g).slice(0, 3).map((n) => Number(n).toString(16).padStart(2, '0')).join('')}`;
@@ -65,11 +75,15 @@ const tick = (ms) => act(() => { vi.advanceTimersByTime(ms); });
 const names = (dict) => dict.home.carousel;
 
 beforeEach(() => {
+  preloaded.length = 0;
+  vi.stubGlobal('Image', FakeImage);
+  localStorage.clear();
   Object.assign(state, { language: 'es', reduce: false, wide: false });
   window.matchMedia = matchMediaStub;
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   vi.useRealTimers();
   vi.restoreAllMocks();
   delete window.matchMedia;
@@ -228,43 +242,99 @@ describe('spaced composition', () => {
     expect(card.contains(screen.getByTestId('hero-carousel-frame'))).toBe(true);
   });
 
-  it('does not veil or cover the poster, and the alt is the slide title', () => {
+  it('does not veil or cover the poster, and its alt is empty because the title is already the visible caption', () => {
     mount({ layout: 'spaced' });
     expect(poster().className).toContain('object-contain');
-    expect(poster().getAttribute('alt')).toBe(CAPTIONED[0].title_es);
-    expect(document.querySelector('.bg-black\\/50')).toBeNull();
+    expect(poster().getAttribute('alt')).toBe('');
+    expect(within(screen.getByTestId('hero-slide-caption')).getByText(CAPTIONED[0].title_es)).toBeTruthy();
+    expect(document.querySelector('.bg-black\\/50, .bg-black\\/60')).toBeNull();
+  });
+
+  it('announces a manual change of slide through the caption, a polite live region while paused', () => {
+    mount({ layout: 'spaced' });
+    const caption = screen.getByTestId('hero-slide-caption');
+    expect(caption.getAttribute('aria-live')).toBe('off');
+    fireEvent.click(screen.getByRole('button', { name: names(ES).pause }));
+    expect(caption.getAttribute('aria-live')).toBe('polite');
   });
 
   describe('frame ratio', () => {
+    const frame = () => screen.getByTestId('hero-carousel-frame');
     // jsdom drops aspect-ratio from inline styles, so the same value is exposed as data-frame-ratio
-    const ratio = () => screen.getByTestId('hero-carousel-frame').getAttribute('data-frame-ratio');
+    const ratio = () => Number(frame().getAttribute('data-frame-ratio'));
+    const ready = () => frame().getAttribute('data-frame-ready');
 
-    it('starts as a 3.8:1 skeleton, takes the ratio of the loaded poster and ignores a zero-sized load', () => {
+    it('preloads every poster and shows a 3.8:1 skeleton (poster hidden) until all of them have answered', () => {
       mount({ layout: 'spaced' });
-      expect(Number(ratio())).toBeCloseTo(3.8, 5);
-      loadPoster(poster(), 0, 0);
-      expect(Number(ratio())).toBeCloseTo(3.8, 5);
-      loadPoster(poster(), 1000, 500);
-      expect(Number(ratio())).toBeCloseTo(2, 5);
+      expect(preloaded.map((img) => img.src).sort()).toEqual([...URLS].sort());
+      expect(ready()).toBe('false');
+      expect(ratio()).toBeCloseTo(3.8, 5);
+      expect(screen.getByTestId('hero-frame-skeleton')).toBeTruthy();
+      expect(poster().className).toContain('invisible');
+      answer(URLS[0], 1000, 500);
+      answer(URLS[1], 1000, 500);
+      expect(ready()).toBe('false');
+      answer(URLS[2], 1000, 500);
+      expect(ready()).toBe('true');
+      expect(ratio()).toBeCloseTo(2, 5);
+      expect(screen.queryByTestId('hero-frame-skeleton')).toBeNull();
+      expect(poster().className).not.toContain('invisible');
     });
 
-    it('reserves the tallest ratio seen and never shrinks, so changing slides does not move the page', () => {
+    it('is computed once from the tallest poster of all, not the visible one', () => {
       mount({ layout: 'spaced' });
-      loadPoster(poster(), 1000, 500); // 2:1
-      fireEvent.click(screen.getByRole('button', { name: names(ES).next }));
-      loadPoster(poster(), 2000, 500); // 4:1, wider: the frame keeps the taller 2:1
-      expect(Number(ratio())).toBeCloseTo(2, 5);
-      fireEvent.click(screen.getByRole('button', { name: names(ES).next }));
-      loadPoster(poster(), 1000, 800); // 1.25:1, taller: the frame grows once
-      expect(Number(ratio())).toBeCloseTo(1.25, 5);
-      fireEvent.click(screen.getByRole('button', { name: names(ES).next }));
-      expect(Number(ratio())).toBeCloseTo(1.25, 5);
+      answer(URLS[0], 2000, 500); // 4:1
+      answer(URLS[1], 1000, 800); // 1.25:1, the tallest
+      answer(URLS[2], 1520, 400);
+      expect(ratio()).toBeCloseTo(1.25, 5);
     });
 
     it('clamps absurd ratios', () => {
       mount({ layout: 'spaced' });
-      loadPoster(poster(), 100, 1000);
-      expect(Number(ratio())).toBe(1);
+      URLS.forEach((url) => answer(url, 100, 1000));
+      expect(ratio()).toBe(1);
+    });
+
+    it('never changes once ready: not on slide changes, not on the visible poster loading, not on late answers', () => {
+      mount({ layout: 'spaced' });
+      URLS.forEach((url) => answer(url, 1000, 500));
+      expect(ratio()).toBeCloseTo(2, 5);
+      fireEvent.click(screen.getByRole('button', { name: names(ES).next }));
+      Object.defineProperty(poster(), 'naturalWidth', { configurable: true, value: 1000 });
+      Object.defineProperty(poster(), 'naturalHeight', { configurable: true, value: 1000 });
+      fireEvent.load(poster());
+      answer(URLS[0], 1000, 1000);
+      fireEvent.click(screen.getByRole('button', { name: names(ES).next }));
+      expect(ratio()).toBeCloseTo(2, 5);
+      expect(ready()).toBe('true');
+    });
+
+    it('falls back to 3.8:1 when a poster fails to load, and does not wait for the rest', () => {
+      mount({ layout: 'spaced' });
+      answer(URLS[0], 1000, 500);
+      fail(URLS[1]);
+      expect(ready()).toBe('true');
+      expect(ratio()).toBeCloseTo(3.8, 5);
+    });
+
+    it('falls back to 3.8:1 after the timeout when a poster never answers', () => {
+      vi.useFakeTimers();
+      mount({ layout: 'spaced' });
+      answer(URLS[0], 1000, 500);
+      tick(2999);
+      expect(ready()).toBe('false');
+      tick(1);
+      expect(ready()).toBe('true');
+      expect(ratio()).toBeCloseTo(3.8, 5);
+    });
+
+    it('treats a poster without intrinsic size as a failure (3.8:1)', () => {
+      mount({ layout: 'spaced' });
+      answer(URLS[0], 0, 0);
+      answer(URLS[1], 1000, 500);
+      answer(URLS[2], 1000, 500);
+      expect(ready()).toBe('true');
+      expect(ratio()).toBeCloseTo(3.8, 5);
     });
   });
 
@@ -337,7 +407,7 @@ describe('spaced composition', () => {
         const arrow = screen.getByRole('button', { name });
         expect(frameWrapper.contains(arrow), name).toBe(true);
         const classes = arrow.className.split(/\s+/);
-        expect(classes).toEqual(expect.arrayContaining(['absolute', 'rounded-full', 'h-10', 'w-10', 'md:h-11', 'md:w-11']));
+        expect(classes).toEqual(expect.arrayContaining(['absolute', 'rounded-full', 'h-11', 'w-11']));
         expect(classes.some((c) => c.startsWith('focus-visible:ring'))).toBe(true);
         expect(arrow.style.backgroundColor).not.toBe('');
         expect(arrow.style.backgroundColor).not.toMatch(/rgba|transparent/);
@@ -348,6 +418,16 @@ describe('spaced composition', () => {
       expect(pause.parentElement.contains(screen.getAllByRole('button', { name: /Ir al anuncio/ })[0])).toBe(false);
     });
 
+    it('pause and the below-md arrows are at least 44px; dots keep a 44px touch area through padding', () => {
+      mount({ layout: 'spaced' });
+      for (const name of [names(ES).pause, names(ES).previous, names(ES).next]) {
+        expect(screen.getByRole('button', { name }).className.split(/\s+/), name).toEqual(expect.arrayContaining(['h-11', 'w-11']));
+      }
+      for (const dot of screen.getAllByRole('button', { name: /Ir al anuncio/ })) {
+        expect(dot.className.split(/\s+/)).toEqual(expect.arrayContaining(['relative', 'before:absolute', 'before:-inset-3']));
+      }
+    });
+
     it('the active dot is wider than the others and is exposed with aria-current', () => {
       mount({ layout: 'spaced' });
       const [first, second] = screen.getAllByRole('button', { name: /Ir al anuncio/ });
@@ -356,27 +436,64 @@ describe('spaced composition', () => {
     });
   });
 
-  it('the loading state reserves the card, the 3.8:1 frame and the controls row (no layout shift when the slides land)', () => {
-    mount({ layout: 'spaced', slides: [], loading: true });
-    const skeleton = screen.getByTestId('hero-carousel-skeleton');
-    expect(skeleton.querySelector('[class*="p-2"][class*="md:p-3"]')).toBeTruthy();
-    expect(Number(skeleton.querySelector('[data-frame-ratio]').getAttribute('data-frame-ratio'))).toBeCloseTo(3.8, 5);
-    expect(skeleton.querySelector('[data-testid="hero-controls-placeholder"]')).toBeTruthy();
+  describe('loading skeleton', () => {
+    const skeleton = () => screen.getByTestId('hero-carousel-skeleton');
+
+    it('reserves the card, the 3.8:1 frame, the caption and the controls row when nothing is known', () => {
+      mount({ layout: 'spaced', slides: [], loading: true });
+      expect(skeleton().querySelector('[class*="p-2"][class*="md:p-3"]')).toBeTruthy();
+      expect(Number(skeleton().querySelector('[data-frame-ratio]').getAttribute('data-frame-ratio'))).toBeCloseTo(3.8, 5);
+      expect(within(skeleton()).getByTestId('hero-caption-placeholder')).toBeTruthy();
+      expect(within(skeleton()).getByTestId('hero-controls-placeholder').className).toContain('min-h-[2.75rem]');
+    });
+
+    it('the caption placeholder is as tall as a one-line title plus a one-line subtitle', () => {
+      mount({ layout: 'spaced', slides: [], loading: true });
+      expect(within(skeleton()).getByTestId('hero-caption-placeholder').className.split(/\s+/)).toEqual(expect.arrayContaining(['min-h-[3.75rem]', 'md:min-h-[4.25rem]']));
+    });
+
+    it('the carousel remembers its shape for the next visit and the skeleton follows it', () => {
+      const first = mount({ layout: 'spaced', slides: BARE.slice(0, 1) });
+      expect(JSON.parse(localStorage.getItem('hero-carousel-shape'))).toEqual({ caption: false, multiple: false });
+      first.unmount();
+      const second = mount({ layout: 'spaced', slides: [], loading: true });
+      expect(within(skeleton()).queryByTestId('hero-caption-placeholder')).toBeNull();
+      expect(within(skeleton()).queryByTestId('hero-controls-placeholder')).toBeNull();
+      second.unmount();
+      mount({ layout: 'spaced' });
+      expect(JSON.parse(localStorage.getItem('hero-carousel-shape'))).toEqual({ caption: true, multiple: true });
+    });
+
+    it('survives unreadable or hostile stored values', () => {
+      for (const value of ['not json', '{"caption":"no"}', 'null', '[]']) {
+        localStorage.setItem('hero-carousel-shape', value);
+        const { unmount } = mount({ layout: 'spaced', slides: [], loading: true });
+        expect(within(skeleton()).getByTestId('hero-caption-placeholder')).toBeTruthy();
+        unmount();
+      }
+    });
   });
 });
 
 describe('classic composition', () => {
-  it('is the original cover: cover image, bg-black/50 veil, 60vh / 80vh', () => {
+  it('is the original cover: cover image, bg-black/60 veil, 60vh / 80vh', () => {
     mount({ layout: 'classic' });
     const hero = screen.getByTestId('home-hero');
     expect(hero.className.split(/\s+/)).toEqual(expect.arrayContaining(['relative', 'w-full', 'overflow-hidden', 'h-[60vh]', 'md:h-[80vh]']));
     expect(poster().className.split(/\s+/)).toEqual(expect.arrayContaining(['absolute', 'inset-0', 'h-full', 'w-full', 'object-cover']));
     expect(poster().className).not.toContain('object-contain');
     const veil = screen.getByTestId('hero-veil');
-    expect(veil.className.split(/\s+/)).toEqual(expect.arrayContaining(['absolute', 'inset-0', 'bg-black/50']));
+    expect(veil.className.split(/\s+/)).toEqual(expect.arrayContaining(['absolute', 'inset-0', 'bg-black/60']));
     expect(veil.getAttribute('aria-hidden')).toBe('true');
     expect(screen.queryByTestId('hero-carousel-card')).toBeNull();
     expect(screen.queryByTestId('hero-slide-caption')).toBeNull();
+  });
+
+  it('white text over the veil reads at least 4.5:1 in the worst case, a pure white poster', () => {
+    mount({ layout: 'classic' });
+    const alpha = Number(screen.getByTestId('hero-veil').className.match(/bg-black\/(\d+)/)[1]) / 100;
+    const worst = Math.round(255 * (1 - alpha)).toString(16).padStart(2, '0');
+    expect(contrastRatio('#ffffff', `#${worst}${worst}${worst}`)).toBeGreaterThanOrEqual(4.5);
   });
 
   it('puts the page title as the only h1 and the slide title as an h2 over the image, with the slide subtitle', () => {
@@ -430,12 +547,23 @@ describe('classic composition', () => {
     expect(pause.className.split(/\s+/).some((c) => c.startsWith('focus-visible:ring'))).toBe(true);
   });
 
-  it('uses the slide title as alt, so the polite live region announces a manual change of slide', () => {
+  it('uses an empty alt because the slide title is visible text; the text block is the polite live region while paused', () => {
     mount({ layout: 'classic' });
-    expect(poster().getAttribute('alt')).toBe(CAPTIONED[0].title_es);
-    expect(poster().closest('[aria-live]').getAttribute('aria-live')).toBe('off'); // playing
+    expect(poster().getAttribute('alt')).toBe('');
+    const text = screen.getByTestId('hero-slide-text');
+    expect(text.getAttribute('aria-live')).toBe('off'); // playing
     fireEvent.click(screen.getByRole('button', { name: names(ES).pause }));
-    expect(poster().closest('[aria-live]').getAttribute('aria-live')).toBe('polite');
+    expect(text.getAttribute('aria-live')).toBe('polite');
+  });
+
+  it('pause and arrows are at least 44px; dots keep a 44px touch area through padding', () => {
+    mount({ layout: 'classic' });
+    for (const name of [names(ES).pause, names(ES).previous, names(ES).next]) {
+      expect(screen.getByRole('button', { name }).className.split(/\s+/), name).toEqual(expect.arrayContaining(['h-11', 'w-11']));
+    }
+    for (const dot of screen.getAllByRole('button', { name: /Ir al anuncio/ })) {
+      expect(dot.className.split(/\s+/)).toEqual(expect.arrayContaining(['relative', 'before:absolute', 'before:-inset-3']));
+    }
   });
 
   it('shows the h1 and the CTA over a dark fallback while loading, with the same height, and never a carousel', () => {
