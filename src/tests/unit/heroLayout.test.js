@@ -10,15 +10,15 @@ import { DEFAULT_VISUAL_SETTINGS, loadVisualSettings } from '@/lib/businessVisua
 import { BRAND_PRESET } from '@/lib/brandPalette';
 import { LOCAL_CACHE_KEY } from '@/lib/constants';
 
-// Spec (hero layout S1): a closed enumeration. Anything that is not exactly 'classic' or 'spaced' resolves to
+// Spec (hero layout S1): a closed enumeration. Anything that is not exactly 'cover' or 'spaced' resolves to
 // 'spaced' (what production shows today), and the stored value is never echoed back.
 describe('resolveHeroLayout', () => {
   it('is a closed enumeration whose default is spaced', () => {
-    expect(HERO_LAYOUTS).toEqual(['classic', 'spaced']);
+    expect(HERO_LAYOUTS).toEqual(['cover', 'spaced']);
     expect(DEFAULT_HERO_LAYOUT).toBe('spaced');
   });
 
-  it.each(['classic', 'spaced'])('accepts %s', (layout) => {
+  it.each(['cover', 'spaced'])('accepts %s', (layout) => {
     expect(resolveHeroLayout({ heroLayout: layout })).toBe(layout);
   });
 
@@ -28,11 +28,12 @@ describe('resolveHeroLayout', () => {
     ['null', { heroLayout: null }],
     ['number', { heroLayout: 1 }],
     ['boolean', { heroLayout: true }],
-    ['object with toString', { heroLayout: { toString: () => 'classic' } }],
-    ['array', { heroLayout: ['classic'] }],
+    ['object with toString', { heroLayout: { toString: () => 'cover' } }],
+    ['array', { heroLayout: ['cover'] }],
     ['empty string', { heroLayout: '' }],
+    ['the old name of cover (renamed to avoid confusion with activeTheme classic)', { heroLayout: 'classic' }],
     ['uppercase', { heroLayout: 'SPACED' }],
-    ['padded', { heroLayout: ' classic ' }],
+    ['padded', { heroLayout: ' cover ' }],
     ['markup', { heroLayout: '<script>alert(1)</script>' }],
     ['prototype key', { heroLayout: '__proto__' }],
   ])('falls back to spaced for %s', (_label, settings) => {
@@ -42,13 +43,13 @@ describe('resolveHeroLayout', () => {
   it('survives a missing or non-object settings value', () => {
     expect(resolveHeroLayout()).toBe('spaced');
     expect(resolveHeroLayout(null)).toBe('spaced');
-    expect(resolveHeroLayout('classic')).toBe('spaced');
+    expect(resolveHeroLayout('cover')).toBe('spaced');
   });
 });
 
 // heroLayout is an opt-in choice of the super admin. It must NOT be a default: every setVisualSettings / save /
 // "restablecer" spreads DEFAULT_VISUAL_SETTINGS, so a default would be written to the row (and overwrite a stored
-// 'classic'). The absence of the key already resolves to 'spaced'.
+// 'cover'). The absence of the key already resolves to 'spaced'.
 describe('heroLayout in the visual settings', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -76,8 +77,8 @@ describe('heroLayout in the visual settings', () => {
   });
 
   it('a stored choice survives the merge with the defaults', async () => {
-    singleMock.mockResolvedValue({ data: { settings: { heroLayout: 'classic' } }, error: null });
-    expect(resolveHeroLayout(await loadVisualSettings())).toBe('classic');
+    singleMock.mockResolvedValue({ data: { settings: { heroLayout: 'cover' } }, error: null });
+    expect(resolveHeroLayout(await loadVisualSettings())).toBe('cover');
   });
 
   it('with no row at all the defaults resolve to spaced', async () => {

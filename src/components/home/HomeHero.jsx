@@ -6,7 +6,7 @@ import { getHeadingStyle } from '@/lib/styleUtils';
 import { buildHomeTheme } from '@/lib/homeTheme';
 import { resolveHeroLayout } from '@/lib/heroLayout';
 import HeroCarousel, { HeroCarouselSkeleton } from '@/components/home/HeroCarousel';
-import ClassicHero from '@/components/home/ClassicHero';
+import CoverHero from '@/components/home/CoverHero';
 
 // One width for the cards and the carousel, so the two blocks line up
 const CONTENT_WIDTH = 'max-w-5xl';
@@ -31,9 +31,9 @@ const HomeHero = ({ slides, loading, visualSettings, onNavigate }) => {
   const hasCarousel = carouselEnabled && (loading || usableSlides.length > 0);
 
   // The stored value is only compared against the closed list, never used as a class. Without slides to cover
-  // the section there is nothing for `classic` to show, so it falls back to the spaced block.
-  if (hasCarousel && resolveHeroLayout(visualSettings) === 'classic') {
-    return <ClassicHero slides={usableSlides} loading={loading} visualSettings={visualSettings} onNavigate={onNavigate} />;
+  // the section there is nothing for `cover` to show, so it falls back to the spaced block.
+  if (hasCarousel && resolveHeroLayout(visualSettings) === 'cover') {
+    return <CoverHero slides={usableSlides} loading={loading} visualSettings={visualSettings} onNavigate={onNavigate} />;
   }
 
   return (

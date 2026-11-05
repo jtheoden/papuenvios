@@ -127,7 +127,7 @@
     "            button.before:-inset-3.before:absolute.before:content-[''].border-2.focus-visible:outline-none.focus-visible:ring-2.focus-visible:ring-brand-focus.focus-visible:ring-offset-2.h-6.motion-reduce:transition-none.relative.rounded-full.transition-all.w-6 [aria-label=Ir al anuncio 2]",
     "            button.before:-inset-3.before:absolute.before:content-[''].border-2.focus-visible:outline-none.focus-visible:ring-2.focus-visible:ring-brand-focus.focus-visible:ring-offset-2.h-6.motion-reduce:transition-none.relative.rounded-full.transition-all.w-6 [aria-label=Ir al anuncio 3]"
   ],
-  "classic": [
+  "cover": [
     "section.h-[60vh].md:h-[80vh].min-h-[30rem].overflow-hidden.relative.w-full [data-testid=home-hero]",
     "  div.h-full.relative.w-full [aria-label=Carrusel de anuncios aria-roledescription=carrusel data-testid=hero-carousel role=region]",
     "    div.absolute.inset-0 [aria-label=1 de 3 aria-roledescription=diapositiva role=group]",

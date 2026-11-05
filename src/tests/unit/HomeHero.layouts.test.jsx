@@ -11,10 +11,10 @@ import { PRESET, PROD, SLIDES } from './homeTestKit';
 //          p-2 md:p-3 padding, frame ratio computed ONCE from the size of every poster (preloaded; 3.8:1 skeleton
 //          until then and fallback when one fails or times out) and never changed afterwards, arrows over the sides from md and pause + dots below, slide title and
 //          subtitle as a caption under the poster only when they exist.
-//  classic the original full-bleed cover (cover image, bg-black/60 veil (AA for white text on a white poster), slide text over it, "Ver Productos" CTA,
+//  cover the original full-bleed cover (cover image, bg-black/60 veil (AA for white text on a white poster), slide text over it, "Ver Productos" CTA,
 //          translucent arrows) keeping the accessibility of the carousel: one stable h1 (the slide title is an h2),
 //          visible pause, pauses on hover/focus/hidden tab, reduced motion, 2 s minimum, dots as buttons.
-// The stored value is never trusted: anything other than 'classic' renders spaced.
+// The stored value is never trusted: anything other than 'cover' renders spaced.
 
 const state = vi.hoisted(() => ({ language: 'es', reduce: false, wide: false }));
 
@@ -90,8 +90,8 @@ afterEach(() => {
 });
 
 describe('layout resolution', () => {
-  it('renders spaced when the key is missing or is not exactly "classic"', () => {
-    for (const heroLayout of [undefined, 'spaced', 'CLASSIC', ' classic', null, 3, '<img onerror=x>']) {
+  it('renders spaced when the key is missing or is not exactly "cover"', () => {
+    for (const heroLayout of [undefined, 'spaced', 'COVER', 'classic', ' cover', null, 3, '<img onerror=x>']) {
       const { unmount } = mount({ settings: { ...PRESET, heroLayout } });
       expect(screen.getAllByTestId('hero-card'), String(heroLayout)).toHaveLength(2);
       expect(screen.queryByTestId('hero-veil'), String(heroLayout)).toBeNull();
@@ -99,15 +99,15 @@ describe('layout resolution', () => {
     }
   });
 
-  it('renders classic only for "classic"', () => {
-    mount({ layout: 'classic' });
+  it('renders cover only for "cover"', () => {
+    mount({ layout: 'cover' });
     expect(screen.getByTestId('hero-veil')).toBeTruthy();
     expect(screen.queryByTestId('hero-card')).toBeNull();
   });
 
-  it('classic falls back to spaced without usable slides or with the carousel disabled', () => {
+  it('cover falls back to spaced without usable slides or with the carousel disabled', () => {
     for (const props of [{ slides: [] }, { slides: [{ id: 'x', image_url: '', image_file: null, title_es: 'a' }] }, { settings: { ...PRESET, carouselEnabled: false } }]) {
-      const { unmount } = mount({ layout: 'classic', ...props });
+      const { unmount } = mount({ layout: 'cover', ...props });
       expect(screen.getAllByTestId('hero-card')).toHaveLength(2);
       expect(screen.queryByTestId('hero-veil')).toBeNull();
       expect(screen.queryByTestId('hero-carousel')).toBeNull();
@@ -117,13 +117,13 @@ describe('layout resolution', () => {
   });
 });
 
-describe.each(['spaced', 'classic'])('%s: shared guarantees', (layout) => {
+describe.each(['spaced', 'cover'])('%s: shared guarantees', (layout) => {
   it('has exactly one h1, the page title, outside the carousel and stable across slides', () => {
     mount({ layout });
     const h1s = document.querySelectorAll('h1');
     expect(h1s).toHaveLength(1);
     expect(h1s[0].textContent).toBe(ES.home.hero.title);
-    expect(screen.getByTestId('hero-carousel').contains(h1s[0])).toBe(layout === 'classic' ? true : false);
+    expect(screen.getByTestId('hero-carousel').contains(h1s[0])).toBe(layout === 'cover' ? true : false);
     fireEvent.click(screen.getByRole('button', { name: names(ES).next }));
     expect(document.querySelector('h1')).toBe(h1s[0]);
     expect(document.querySelectorAll('h1')).toHaveLength(1);
@@ -475,9 +475,9 @@ describe('spaced composition', () => {
   });
 });
 
-describe('classic composition', () => {
+describe('cover composition', () => {
   it('is the original cover: cover image, bg-black/60 veil, 60vh / 80vh', () => {
-    mount({ layout: 'classic' });
+    mount({ layout: 'cover' });
     const hero = screen.getByTestId('home-hero');
     expect(hero.className.split(/\s+/)).toEqual(expect.arrayContaining(['relative', 'w-full', 'overflow-hidden', 'h-[60vh]', 'md:h-[80vh]']));
     expect(poster().className.split(/\s+/)).toEqual(expect.arrayContaining(['absolute', 'inset-0', 'h-full', 'w-full', 'object-cover']));
@@ -490,14 +490,14 @@ describe('classic composition', () => {
   });
 
   it('white text over the veil reads at least 4.5:1 in the worst case, a pure white poster', () => {
-    mount({ layout: 'classic' });
+    mount({ layout: 'cover' });
     const alpha = Number(screen.getByTestId('hero-veil').className.match(/bg-black\/(\d+)/)[1]) / 100;
     const worst = Math.round(255 * (1 - alpha)).toString(16).padStart(2, '0');
     expect(contrastRatio('#ffffff', `#${worst}${worst}${worst}`)).toBeGreaterThanOrEqual(4.5);
   });
 
   it('puts the page title as the only h1 and the slide title as an h2 over the image, with the slide subtitle', () => {
-    mount({ layout: 'classic' });
+    mount({ layout: 'cover' });
     const hero = screen.getByTestId('home-hero');
     expect(within(hero).getAllByRole('heading', { level: 1 })).toHaveLength(1);
     const h2 = within(hero).getByRole('heading', { level: 2 });
@@ -510,26 +510,26 @@ describe('classic composition', () => {
   });
 
   it('shows no slide heading for a slide without title, and no empty heading in the tree', () => {
-    mount({ layout: 'classic', slides: BARE });
+    mount({ layout: 'cover', slides: BARE });
     expect(within(screen.getByTestId('home-hero')).queryByRole('heading', { level: 2 })).toBeNull();
     expect(document.querySelectorAll('h1')).toHaveLength(1);
   });
 
   it('keeps the height of the text block constant across slides (stacked in one grid cell)', () => {
-    mount({ layout: 'classic' });
+    mount({ layout: 'cover' });
     const stack = screen.getByTestId('hero-slide-text');
     expect(stack.className).toContain('grid');
     expect([...stack.children].map((cell) => cell.className.includes('invisible'))).toEqual([false, true, true]);
   });
 
   it('has the CTA "Ver Productos" (ES) / its EN copy', () => {
-    mount({ layout: 'classic' });
+    mount({ layout: 'cover' });
     expect(screen.getByRole('button', { name: 'Ver Productos' })).toBeTruthy();
     expect(ES.home.hero.cta.products).toBe('Ver Productos');
   });
 
   it('uses translucent arrows over the image, at least 40px, with a visible focus ring, named for assistive tech', () => {
-    mount({ layout: 'classic' });
+    mount({ layout: 'cover' });
     for (const name of [names(ES).previous, names(ES).next]) {
       const arrow = screen.getByRole('button', { name });
       const classes = arrow.className.split(/\s+/);
@@ -540,7 +540,7 @@ describe('classic composition', () => {
   });
 
   it('puts the pause button and the dots over the bottom of the image', () => {
-    mount({ layout: 'classic' });
+    mount({ layout: 'cover' });
     const pause = screen.getByRole('button', { name: names(ES).pause });
     expect(screen.getByTestId('hero-carousel').contains(pause)).toBe(true);
     expect(pause.parentElement.className).toContain('absolute');
@@ -548,7 +548,7 @@ describe('classic composition', () => {
   });
 
   it('uses an empty alt because the slide title is visible text; the text block is the polite live region while paused', () => {
-    mount({ layout: 'classic' });
+    mount({ layout: 'cover' });
     expect(poster().getAttribute('alt')).toBe('');
     const text = screen.getByTestId('hero-slide-text');
     expect(text.getAttribute('aria-live')).toBe('off'); // playing
@@ -557,7 +557,7 @@ describe('classic composition', () => {
   });
 
   it('pause and arrows are at least 44px; dots keep a 44px touch area through padding', () => {
-    mount({ layout: 'classic' });
+    mount({ layout: 'cover' });
     for (const name of [names(ES).pause, names(ES).previous, names(ES).next]) {
       expect(screen.getByRole('button', { name }).className.split(/\s+/), name).toEqual(expect.arrayContaining(['h-11', 'w-11']));
     }
@@ -567,7 +567,7 @@ describe('classic composition', () => {
   });
 
   it('shows the h1 and the CTA over a dark fallback while loading, with the same height, and never a carousel', () => {
-    mount({ layout: 'classic', slides: [], loading: true });
+    mount({ layout: 'cover', slides: [], loading: true });
     const hero = screen.getByTestId('home-hero');
     expect(hero.className.split(/\s+/)).toEqual(expect.arrayContaining(['h-[60vh]', 'md:h-[80vh]']));
     expect(within(hero).getByRole('heading', { level: 1 }).textContent).toBe(ES.home.hero.title);
@@ -576,7 +576,7 @@ describe('classic composition', () => {
   });
 
   it('keeps the h1 and the CTA when every image fails to load', () => {
-    mount({ layout: 'classic', slides: CAPTIONED.slice(0, 2) });
+    mount({ layout: 'cover', slides: CAPTIONED.slice(0, 2) });
     fireEvent.error(poster());
     fireEvent.error(poster());
     const hero = screen.getByTestId('home-hero');
@@ -587,7 +587,7 @@ describe('classic composition', () => {
 
   it('translates the region and the slide announcement', () => {
     state.language = 'en';
-    mount({ layout: 'classic' });
+    mount({ layout: 'cover' });
     expect(screen.getByRole('region', { name: EN.home.carousel.label })).toBeTruthy();
     const group = screen.getByRole('group', { name: EN.home.carousel.slideOf.replace('{count}', '1').replace('{total}', '3') });
     expect(group.getAttribute('aria-roledescription')).toBe(EN.home.carousel.slide);

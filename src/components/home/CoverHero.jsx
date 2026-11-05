@@ -18,14 +18,14 @@ const arrowClass = cn(
 const textShadow = '[text-shadow:0_1px_3px_rgba(0,0,0,0.6)]';
 
 /**
- * `classic` composition: the original full-bleed cover. The poster covers the section under a bg-black/60 veil (the original /50 gave 3.95:1 for white text on a white poster; /60 gives 5.7:1) and
+ * `cover` composition: the original full-bleed cover. The poster covers the section under a bg-black/60 veil (the original /50 gave 3.95:1 for white text on a white poster; /60 gives 5.7:1) and
  * the slide text sits over it, with translucent arrows at the sides. Unlike the original, the page title is the one
  * stable h1 (the slide title is an h2) and the carousel keeps its accessibility: visible pause button, pauses on
  * hover / focus / hidden tab, prefers-reduced-motion, 2 s minimum and dots as buttons.
  * While the slides load, or if none can be shown, the same box keeps the h1 and the CTA over a dark background so
  * the page never loses its heading and the height does not change.
  */
-const ClassicHero = ({ slides, loading, visualSettings, onNavigate }) => {
+const CoverHero = ({ slides, loading, visualSettings, onNavigate }) => {
   const { t, language } = useLanguage();
   const theme = buildHomeTheme(visualSettings);
   const carousel = useHeroSlides(loading ? [] : slides, visualSettings);
@@ -147,4 +147,4 @@ const ClassicHero = ({ slides, loading, visualSettings, onNavigate }) => {
   );
 };
 
-export default ClassicHero;
+export default CoverHero;

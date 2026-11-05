@@ -10,7 +10,7 @@ import { PRESET, layoutSignature } from './homeTestKit';
 // homeProdColorSignature.json pins the colours. The first `spaced` entry was generated from main's HomePage before
 // the hero was extracted into HomeHero (S2, no visual change: the extraction commit passed against it). S3 then
 // regenerated `spaced` on purpose for the agreed improvements (shared width, card frame, caption, arrows,
-// gap-6 md:gap-8), added `classic`, and regenerated all of them once more after the review (44px targets, dot
+// gap-6 md:gap-8), added `cover`, and regenerated all of them once more after the review (44px targets, dot
 // touch areas, preloaded frame ratio, empty alt, /60 veil) adding `spacedWide`. The row used is the brand preset
 // (what production stores today) without the heroLayout key. Do not regenerate them to make a test pass.
 
@@ -96,8 +96,8 @@ describe('hero structure signature', () => {
     expect(await heroSignature(withoutHeroLayout(PRESET), { wide: true })).toEqual(fixture().spacedWide);
   });
 
-  it('classic keeps its own structure (full-bleed cover with the controls over the image)', async () => {
-    expect(await heroSignature({ ...PRESET, heroLayout: 'classic' })).toEqual(fixture().classic);
+  it('cover keeps its own structure (full-bleed cover with the controls over the image)', async () => {
+    expect(await heroSignature({ ...PRESET, heroLayout: 'cover' })).toEqual(fixture().cover);
   });
 
   it('an explicit spaced, or a value that is not listed, gives the same structure as a missing key', async () => {

@@ -2,13 +2,13 @@ import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 
-// Home hero compositions (heroLayout = 'spaced' | 'classic'). Supabase is fully mocked with page.route: no network,
+// Home hero compositions (heroLayout = 'spaced' | 'cover'). Supabase is fully mocked with page.route: no network,
 // no real data. Set HOME_SHOTS_DIR to also save screenshots (evidence only, never a gate).
-// Spec: no horizontal overflow from 320 to 414 in both; classic is a full-bleed cover whose h1, controls and
+// Spec: no horizontal overflow from 320 to 414 in both; cover is a full-bleed cover whose h1, controls and
 // arrows never collide; spaced aligns cards and carousel, frames the poster with its real ratio, shows arrows over the
 // sides from md, and captions only when they exist; neither moves the page when the image or a slide loads
 // (layout shift observed with delayed responses so it cannot pass vacuously; the spaced frame is sized once from every
-// poster and then never changes); controls have 44px touch targets; classic text reads AA over a white poster; the pause button works from the
+// poster and then never changes); controls have 44px touch targets; cover text reads AA over a white poster; the pause button works from the
 // keyboard and stays paused; an unknown heroLayout renders spaced.
 
 const SHOTS_DIR = process.env.HOME_SHOTS_DIR;
@@ -94,7 +94,7 @@ const open = async (page, { heroLayout, settings = PRESET_ROW, language = 'es', 
   if (!waitImage) return;
   await expect(page.locator('[data-testid="hero-carousel"]')).toBeVisible({ timeout: 20000 });
   await expect(page.locator('[data-testid="hero-slide-image"]')).toHaveJSProperty('complete', true, { timeout: 15000 });
-  // spaced sizes its frame once from every poster; classic has no frame to wait for
+  // spaced sizes its frame once from every poster; cover has no frame to wait for
   if (await page.locator('[data-testid="hero-carousel-frame"]').count()) {
     await expect(page.locator('[data-testid="hero-carousel-frame"]')).toHaveAttribute('data-frame-ready', 'true', { timeout: 15000 });
   }
@@ -119,7 +119,7 @@ const shot = async (page, name) => {
   await page.locator('[data-testid="home-hero"]').screenshot({ path: path.join(SHOTS_DIR, name) });
 };
 
-const LAYOUTS = ['spaced', 'classic'];
+const LAYOUTS = ['spaced', 'cover'];
 
 for (const heroLayout of LAYOUTS) {
   for (const width of [320, 360, 390, 414, 768, 1280]) {
@@ -152,13 +152,13 @@ for (const heroLayout of LAYOUTS) {
   });
 }
 
-test.describe('classic composition', () => {
+test.describe('cover composition', () => {
   for (const width of [320, 390, 768, 1280]) {
     test.describe(`at ${width}px`, () => {
       test.use({ viewport: { width, height: 800 } });
 
       test('is a full-bleed cover with the veil, and h1, controls and arrows do not collide or hide under the header', async ({ page }) => {
-        await open(page, { heroLayout: 'classic' });
+        await open(page, { heroLayout: 'cover' });
         const hero = await box(page.locator('[data-testid="home-hero"]'));
         expect(Math.abs(hero.x)).toBeLessThan(1);
         expect(Math.abs(hero.width - width)).toBeLessThan(1);
@@ -192,7 +192,7 @@ test.describe('classic composition', () => {
     test.use({ viewport: { width: 1280, height: 800 } });
 
     test('white text reads at least 4.5:1 over the veil in the worst case, a pure white poster (title, subtitle)', async ({ page }) => {
-      await open(page, { heroLayout: 'classic' });
+      await open(page, { heroLayout: 'cover' });
       const alpha = await page.locator('[data-testid="hero-veil"]').evaluate((el) => Number(getComputedStyle(el).backgroundColor.match(/[\d.]+/g)[3]));
       const worst = Math.round(255 * (1 - alpha));
       const background = `rgb(${worst}, ${worst}, ${worst})`;
@@ -203,7 +203,7 @@ test.describe('classic composition', () => {
     });
 
     test('page title is the only h1; the slide title is an h2 and changes with the slide; the CTA goes to products', async ({ page }) => {
-      await open(page, { heroLayout: 'classic' });
+      await open(page, { heroLayout: 'cover' });
       await expect(page.locator('h1')).toHaveCount(1);
       const h1 = await page.locator('h1').elementHandle();
       await expect(page.getByRole('heading', { level: 2, name: 'Anuncio 1' })).toBeVisible();
@@ -327,7 +327,7 @@ test.describe('touch targets', () => {
 
 test.describe('unknown heroLayout values render spaced in the browser', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
-  for (const heroLayout of ['<script>alert(1)</script>', 'CLASSIC', 7, null]) {
+  for (const heroLayout of ['<script>alert(1)</script>', 'COVER', 'classic', 7, null]) {
     test(`heroLayout ${JSON.stringify(heroLayout)}`, async ({ page }) => {
       await open(page, { heroLayout });
       await expect(page.locator('[data-testid="hero-card"]')).toHaveCount(2);
@@ -387,8 +387,8 @@ test.describe('layout shift', () => {
     expect(Math.abs((await heroHeight(page)) - skeleton)).toBeLessThanOrEqual(1);
   });
 
-  test('classic: loading and loaded states are the same height (slides delayed 2 s)', async ({ page }) => {
-    await open(page, { heroLayout: 'classic', slidesDelay: 2000, waitImage: false });
+  test('cover: loading and loaded states are the same height (slides delayed 2 s)', async ({ page }) => {
+    await open(page, { heroLayout: 'cover', slidesDelay: 2000, waitImage: false });
     await expect(page.locator('[data-testid="home-hero"]')).toBeVisible({ timeout: 20000 });
     await expect(page.locator('[data-testid="hero-slide-image"]')).toHaveCount(0);
     const loading = await heroHeight(page);

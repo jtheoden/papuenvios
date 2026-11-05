@@ -1,7 +1,8 @@
 // Home hero composition, stored as `heroLayout` in business_visual_settings.settings (jsonb).
 //   spaced  the separated block (title, cards, framed carousel). It is what production shows, hence the default.
-//   classic the original full-bleed cover with the slide text over the image.
-export const HERO_LAYOUTS = ['classic', 'spaced'];
+//   cover   the original full-bleed cover with the slide text over the image (not called `classic`, to avoid
+//           confusion with the `classic` activeTheme).
+export const HERO_LAYOUTS = ['cover', 'spaced'];
 export const DEFAULT_HERO_LAYOUT = 'spaced';
 
 /**
