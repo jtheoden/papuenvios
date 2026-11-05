@@ -413,3 +413,15 @@ Decisiones y verificaciones del dueño: revisar `default_spread_pct` (1.5 %) y l
 - Variables `--brand-*` del header se MANTIENEN: `SettingsContext` solo aplica `applyVisualSettingsToDOM` tras cargar, así que sin ellas habría un parpadeo al dorado de Tailwind antes de la carga (comportamiento no idéntico).
 - E2E ampliado: fila de prod a 320/768/1280 ES/EN, y caso admin (sesión simulada + 2 insignias) a 768/1280. Comparación visual contra el Header de origin/main con la fila de prod: igual salvo pestaña activa en negrita/subrayada, botón de idioma neutro, insignia roja `#dc2626`.
 - Fuera de alcance (backlog): truncado de pastillas a 320 px, ZelleAccountAlert, dropdown de usuario fijo, acento de `companyName` (S5).
+
+## Auditoría financiera F3 — endurecimiento de BD (migraciones PREPARADAS, NO aplicadas) — 2026-11-05
+
+- Rama `feat/financial-db-hardening`. Runbook con orden, comprobaciones, rollback y decisiones F4/F5: `.claude/docs/runbook_financial-db-hardening-f3.md`.
+- (1) `20261103124844_exchange_rates_super_admin_write.sql` recuperada con la versión de prod (ya aplicada; no-op). #144 había revertido TODO #143: migración, tests de concurrencia (restaurados aquí) y front (`currencyService`, `SettingsPageFinancial`, `FxReferenceCard` + tests unitarios; NO restaurados: F2).
+- (2) `20261104160000`: trigger `guard_remittance_types_pricing` (ALWAYS): solo super_admin crea tipos o cambia `exchange_rate`, `commission_percentage` o `commission_fixed`; trigger `updated_at`. Los intentos rechazados no se pueden auditar porque el RAISE revierte la transacción.
+- (3) `20261104160100`: `exchange_rate_history` append-only (INSERT y cambios de tasa, `market_rate`, comisión o `is_active`), sin backfill; el rollback conserva la tabla.
+- (4) `20261104160200`: VALIDATE de `exchange_rates_distinct_currencies_chk` (0/21 filas lo violan en prod).
+- (5) `20261104160300`: REVOKE EXECUTE de `get_order_exchange_rate`/`get_market_exchange_rate` a PUBLIC y anon. Solo existen en prod, así que la migración va protegida con `to_regprocedure`.
+- (6) `20261104160400`: `get_my_role()` devuelve 'user' si la cuenta no está habilitada (22 policies la usan).
+- Tests: `exchangeRatesSuperAdminWrite.test.js` y `financialDbHardeningF3.test.js` (rojo → verde, rollback e idempotencia contra el estado vivo). `financialAuditLog.test.js` y `rateFunctionsAndConstraints.test.js` se ajustaron al nuevo contrato.
+- Deriva repo↔prod nueva: `exchange_rates.market_rate`, `rate_type`, el CHECK `rate_higher_than_market` y las funciones `get_*_exchange_rate` solo existen en prod.
