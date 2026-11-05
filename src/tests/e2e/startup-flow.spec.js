@@ -142,7 +142,9 @@ const staticSplash = async (page) => {
   });
 };
 
-test.beforeEach(async ({ page, baseURL }) => {
+test.beforeEach(async ({ page, baseURL }, testInfo) => {
+  // Desktop project only (the full local suite also runs mobile-chrome): (i) emulates the phone itself.
+  test.skip(testInfo.project.name !== 'chromium', 'startup acceptance runs in the chromium project');
   page.__external = await guardNetwork(page, new URL(baseURL).origin);
 });
 // Third-party assets (e.g. the dicebear avatar fallback) are aborted too and only listed; a hosted Supabase is a failure.
@@ -171,8 +173,10 @@ test.describe('(a) cold load without cache, brand settings', () => {
     await appReady(page);
     await expect(page.locator('main h1').first()).toBeVisible();
     const s = await state(page);
-    expect(s.firstPhase, 'first painted frame is the static splash').toBe('splash');
+    // Soft: report every broken guarantee in one run (also when this runs against older code).
+    expect.soft(s.firstPhase, 'first painted frame is the static splash').toBe('splash');
     expect(s.psGoneAt).not.toBeNull();
+    expect.soft(s.headerAt - s.psGoneAt, 'React mount -> header (main waited a fixed 2.5 s here)').toBeLessThan(2500);
     expect(s.samples.filter((x) => CLASSIC_STOPS.test(x.bg)), 'no blue/violet frame').toEqual([]);
     expect(distinct(covered(s).map((x) => x.bg)), 'splash/loading frames').toEqual([IVORY]);
     expect(distinct(s.samples.filter((x) => x.phase === 'app').map((x) => x.bg)), 'body once the app is up').toEqual([IVORY]);
@@ -348,9 +352,9 @@ test.describe('(i) Slow 3G on a phone', () => {
     const s = await state(page);
     const mountToHeader = Math.round(s.headerAt - s.psGoneAt);
     testInfo.annotations.push({ type: 'slow3g', description: `psGoneAt=${Math.round(s.psGoneAt)} headerAt=${Math.round(s.headerAt)} mountToHeader=${mountToHeader}` });
-    expect(s.firstPhase, 'the splash is the first frame, while the bundle downloads').toBe('splash');
+    expect.soft(s.firstPhase, 'the splash is the first frame, while the bundle downloads').toBe('splash');
     // main started a fixed 2.5 s timer when React mounted: its header always came >= 2500 ms after the first commit.
-    expect(mountToHeader).toBeLessThan(2500);
-    expect(s.samples.filter((x) => CLASSIC_STOPS.test(x.bg))).toEqual([]);
+    expect.soft(mountToHeader, 'React mount -> header').toBeLessThan(2500);
+    expect.soft(s.samples.filter((x) => CLASSIC_STOPS.test(x.bg))).toEqual([]);
   });
 });
