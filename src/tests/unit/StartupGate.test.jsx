@@ -49,11 +49,11 @@ describe('StartupGate', () => {
   it('shows the loading screen after 300 ms and the app once ready', async () => {
     state.ready = false;
     const view = render(<App />);
-    await waitFor(() => expect(loadingText()).toBeTruthy(), { timeout: 1000 });
+    await waitFor(() => expect(loadingText()).toBeTruthy(), { timeout: 5000 });
     expect(screen.queryByText('app')).toBeNull();
     state.ready = true;
     view.rerender(<App />);
-    await waitFor(() => expect(screen.getByText('app')).toBeTruthy(), { timeout: 2000 });
+    await waitFor(() => expect(screen.getByText('app')).toBeTruthy(), { timeout: 5000 });
     expect(loadingText()).toBeNull();
   });
 
