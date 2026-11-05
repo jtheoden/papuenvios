@@ -112,3 +112,40 @@ test('first visit, no cache, slow settings: ivory from the static splash through
   expect([...new Set(covered.map((s) => s.bg))]).toEqual([IVORY]);
   expect([...new Set(samples.filter((s) => s.phase === 'app').map((s) => s.bg))]).toEqual([IVORY]);
 });
+
+// The static splash alone (the app bundle is blocked): its look follows the data-theme the inline script picks from the cache.
+const openStaticSplash = async (page, cachedData) => {
+  await page.route(/\/src\/main\.jsx/, (route) => route.abort());
+  await page.addInitScript(({ data }) => {
+    localStorage.clear();
+    if (data) localStorage.setItem('business_visual_settings_cache', JSON.stringify({ data, timestamp: 0 }));
+  }, { data: cachedData });
+  await page.goto('/');
+  return page.evaluate(() => {
+    const splash = getComputedStyle(document.getElementById('ps'));
+    return {
+      theme: document.documentElement.dataset.theme ?? null,
+      backgroundImage: splash.backgroundImage,
+      backgroundColor: splash.backgroundColor,
+      fill: getComputedStyle(document.querySelector('#ps text')).fill,
+    };
+  });
+};
+
+for (const [label, data] of [['activeTheme classic', { activeTheme: 'classic' }], ['a gradient (pre-selector) row', { useGradient: true }]]) {
+  test(`static splash with ${label} cached: the classic loading gradient and a white wordmark`, async ({ page }) => {
+    const splash = await openStaticSplash(page, data);
+    expect(splash.theme).toBe('classic');
+    expect(splash.backgroundImage).toMatch(/linear-gradient\(to right, rgb\(37, 99, 235\), rgb\(147, 51, 234\)\)/);
+    expect(splash.fill).toBe('rgb(255, 255, 255)');
+  });
+}
+
+for (const [label, data] of [['no cache', null], ['activeTheme papuenvios', { activeTheme: 'papuenvios' }]]) {
+  test(`static splash with ${label}: ivory and the charcoal wordmark`, async ({ page }) => {
+    const splash = await openStaticSplash(page, data);
+    expect(splash.backgroundImage).toBe('none');
+    expect(splash.backgroundColor).toBe(IVORY);
+    expect(splash.fill).toBe('rgb(23, 23, 23)');
+  });
+}
