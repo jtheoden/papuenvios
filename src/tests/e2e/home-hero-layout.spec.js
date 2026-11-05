@@ -436,16 +436,19 @@ test.describe('layout shift', () => {
       await page.setViewportSize({ width, height: 2400 });
       await open(page, { heroLayout: 'cover', captions: 'short', slidesDelay: 2000, waitImage: false });
       await expect(page.locator('[data-testid="hero-text-placeholder"]')).toBeAttached({ timeout: 20000 });
-      const cta = page.getByRole('button', { name: 'Ver Productos' });
-      const h1Before = await box(page.locator('[data-testid="home-hero"] h1'));
-      const ctaBefore = await box(cta);
+      // offsets inside the section: the page itself may still be sliding in (a transform), which is not layout
+      const offsets = () => page.evaluate(() => {
+        const top = document.querySelector('[data-testid="home-hero"]').getBoundingClientRect().y;
+        const at = (selector) => document.querySelector(selector).getBoundingClientRect().y - top;
+        return { h1: at('[data-testid="home-hero"] h1'), cta: at('[data-testid="home-hero"] button') };
+      });
+      const before = await offsets();
       const mark = await page.evaluate(() => performance.now());
       await expect(page.locator('[data-testid="hero-slide-image"]')).toHaveJSProperty('complete', true, { timeout: 15000 });
       await page.waitForTimeout(600);
-      const h1After = await box(page.locator('[data-testid="home-hero"] h1'));
-      const ctaAfter = await box(cta);
-      expect(Math.abs(h1After.y - h1Before.y)).toBeLessThanOrEqual(1);
-      expect(Math.abs(ctaAfter.y - ctaBefore.y)).toBeLessThanOrEqual(1);
+      const after = await offsets();
+      expect(Math.abs(after.h1 - before.h1)).toBeLessThanOrEqual(1);
+      expect(Math.abs(after.cta - before.cta)).toBeLessThanOrEqual(1);
       expect(await shiftsSince(page, mark)).toBeLessThan(0.001);
     });
   }
@@ -455,10 +458,11 @@ test.describe('layout shift', () => {
     await open(page, { heroLayout: 'cover', captions: true, slidesDelay: 2000, waitImage: false });
     await expect(page.locator('[data-testid="hero-text-placeholder"]')).toBeAttached({ timeout: 20000 });
     const mark = await page.evaluate(() => performance.now());
-    const ctaBefore = await box(page.getByRole('button', { name: 'Ver Productos' }));
+    const ctaOffset = () => page.evaluate(() => document.querySelector('[data-testid="home-hero"] button').getBoundingClientRect().y - document.querySelector('[data-testid="home-hero"]').getBoundingClientRect().y);
+    const ctaBefore = { y: await ctaOffset() };
     await expect(page.locator('[data-testid="hero-slide-image"]')).toHaveJSProperty('complete', true, { timeout: 15000 });
     await page.waitForTimeout(600);
-    const ctaAfter = await box(page.getByRole('button', { name: 'Ver Productos' }));
+    const ctaAfter = { y: await ctaOffset() };
     const shift = await shiftsSince(page, mark);
     test.info().annotations.push({ type: 'cover-320-long-texts', description: `cta moved ${Math.round(ctaAfter.y - ctaBefore.y)}px, layout-shift ${shift.toFixed(4)}` });
     expect(shift).toBeLessThan(0.15);

@@ -9,6 +9,7 @@ import { resolveHeroLayout, HERO_LAYOUTS, DEFAULT_HERO_LAYOUT } from '@/lib/hero
 import { DEFAULT_VISUAL_SETTINGS, loadVisualSettings } from '@/lib/businessVisualSettingsService';
 import { BRAND_PRESET } from '@/lib/brandPalette';
 import { LOCAL_CACHE_KEY } from '@/lib/constants';
+import { restoreThemeDefaults, selectTheme } from '@/lib/visualThemes';
 
 // Spec (hero layout S1): a closed enumeration. Anything that is not exactly 'cover' or 'spaced' resolves to
 // 'spaced' (what production shows today), and the stored value is never echoed back.
@@ -84,5 +85,15 @@ describe('heroLayout in the visual settings', () => {
   it('with no row at all the defaults resolve to spaced', async () => {
     singleMock.mockResolvedValue({ data: null, error: { code: 'PGRST116' } });
     expect(resolveHeroLayout(await loadVisualSettings())).toBe('spaced');
+  });
+
+  it('"Restore theme" keeps the stored choice: it only resets keys that are defaults', () => {
+    expect(restoreThemeDefaults({ heroLayout: 'cover' }).heroLayout).toBe('cover');
+    expect(restoreThemeDefaults({ heroLayout: 'cover' })).toMatchObject({ activeTheme: 'classic' });
+    expect(restoreThemeDefaults({})).not.toHaveProperty('heroLayout');
+  });
+
+  it('switching theme keeps the stored choice too', () => {
+    expect(selectTheme({ ...DEFAULT_VISUAL_SETTINGS, heroLayout: 'cover' }, 'papuenvios').heroLayout).toBe('cover');
   });
 });
