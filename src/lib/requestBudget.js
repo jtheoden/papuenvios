@@ -8,8 +8,8 @@
 //  2. An allowlist of exact reads (CACHED_READS: select AND filters) is cached for API_CACHE_TTL_MS in memory and localStorage
 //     (public data), so other tabs and reloads reuse them. Every other read, including those that price an operation,
 //     goes to the network.
-//  3. Budget guardrail, only for the polling counters in GUARDED_READS: once `maxPerMinute` requests of the same
-//     method+path really reached the network in the sliding minute, a read is served from the last IDENTICAL answer
+//  3. Budget guardrail, only for the polling counters in GUARDED_READS (exact parameters): once `maxPerMinute`
+//     requests of the same method+path really reached the network in the sliding minute, a read is served from the last IDENTICAL answer
 //     (never another query's body) only if that answer is younger than the window, with ONE logError per episode.
 //     Joined and served reads do not count. Every other read always goes through.
 //  4. Writes (POST/PATCH/PUT/DELETE, mutating RPCs) are never delayed or dropped. When one lands, every cached answer
@@ -42,20 +42,29 @@ const CACHED_READS = {
   ],
   currencies: [{ select: 'id,code,symbol,is_base', is_active: 'eq.true', order: 'code.asc' }]
 };
-const isCachedRead = (table, url) => (CACHED_READS[table] || []).some((expected) => {
+// Exact match of the query parameters: same keys, each once, each value equal (string) or matching (RegExp).
+const matchesExactly = (expectedList, url) => (expectedList || []).some((expected) => {
   const keys = [...new Set(url.searchParams.keys())];
-  return keys.length === Object.keys(expected).length
-    && keys.every((key) => url.searchParams.getAll(key).length === 1 && url.searchParams.get(key) === expected[key]);
+  return keys.length === Object.keys(expected).length && keys.every((key) => {
+    const want = expected[key];
+    const value = url.searchParams.get(key);
+    return url.searchParams.getAll(key).length === 1 && want !== undefined
+      && (want instanceof RegExp ? want.test(value) : value === want);
+  });
 });
-// The guardrail only ever answers these polling counters from memory (method + REST path). Any other read, and in
-// particular anything about money, prices or stock (rates, currencies, costs, Zelle accounts, FX status...), always
-// reaches the network.
-const GUARDED_READS = new Set([
-  'POST /rest/v1/rpc/get_pending_orders_count',
-  'POST /rest/v1/rpc/admin_refund_counts',
-  'HEAD /rest/v1/remittances',
-  'HEAD /rest/v1/site_visits'
-]);
+const isCachedRead = (table, url) => matchesExactly(CACHED_READS[table], url);
+// The guardrail only ever answers these polling counters from memory (method + REST path + exact parameters, as
+// CACHED_READS). Any other read, and in particular anything about money, prices or stock (rates, currencies, costs,
+// Zelle accounts, FX status...) or another count on the same table (getInteractionCount,
+// getPendingRemittancesCountByType), always reaches the network.
+const GUARDED_READS = {
+  'POST /rest/v1/rpc/get_pending_orders_count': [{}],
+  'POST /rest/v1/rpc/admin_refund_counts': [{}],
+  // getPendingRemittancesCount (admin badge): status in (the to-process statuses)
+  'HEAD /rest/v1/remittances': [{ select: 'id', status: /^in\.\(/ }],
+  // DashboardPage visit counters: total and since a date
+  'HEAD /rest/v1/site_visits': [{ select: 'visit_time' }, { select: 'visit_time', visit_time: /^gte\./ }]
+};
 const READ_RPC = /^(get|list|has|admin_list)_|^(admin_refund_counts|admin_courier_report|orders_with_consumed_stock|select_available_zelle_account)$/;
 const REST_PREFIX = '/rest/v1/';
 const MAX_STORED_BODY = 64 * 1024;
@@ -137,7 +146,8 @@ const describe = (input, init) => {
     headers.get('range') || '', headers.get('prefer') || '', headers.get('accept') || '',
     identityOf(headers.get('authorization'))
   ].join('|');
-  return { path, method, isRead, table, key, budgetKey: `${method} ${path}`, cached: isCachedRead(table, url) };
+  const budgetKey = `${method} ${path}`;
+  return { path, method, isRead, table, key, budgetKey, cached: isCachedRead(table, url), guarded: matchesExactly(GUARDED_READS[budgetKey], url) };
 };
 
 const snapshotOf = async (response, method) => ({
@@ -155,6 +165,12 @@ const readPersisted = () => {
   } catch {
     return {};
   }
+};
+
+// A stored time in the future (clock moved back) is never fresh.
+const isYounger = (at, maxAgeMs) => {
+  const age = Date.now() - at;
+  return age >= 0 && age < maxAgeMs;
 };
 
 const envEnabled = () => {
@@ -183,7 +199,7 @@ export const createRequestBudgetFetch = (
   let generation = 0;
 
   Object.entries(readPersisted()).forEach(([key, entry]) => {
-    if (entry && Date.now() - entry.at < cacheTtlMs) ttlCache.set(key, entry);
+    if (entry && isYounger(entry.at, cacheTtlMs)) ttlCache.set(key, entry);
   });
 
   const persist = () => {
@@ -254,13 +270,13 @@ export const createRequestBudgetFetch = (
     }
 
     const cached = ttlCache.get(req.key);
-    if (cached && Date.now() - cached.at < cacheTtlMs) return responseOf(cached.snap);
+    if (cached && isYounger(cached.at, cacheTtlMs)) return responseOf(cached.snap);
 
-    const guarded = GUARDED_READS.has(req.budgetKey);
+    const { guarded } = req;
     const recent = guarded ? recentHits(req.budgetKey) : null;
     const last = guarded ? lastAnswer.get(req.key) : null;
     // Over budget: the identical answer is served only while it is younger than the window itself.
-    if (guarded && recent.length >= maxPerMinute && last && Date.now() - last.at < windowMs) {
+    if (guarded && recent.length >= maxPerMinute && last && isYounger(last.at, windowMs)) {
       if (!flagged.has(req.budgetKey)) {
         flagged.add(req.budgetKey);
         logError(new Error(`Request budget exceeded: ${req.budgetKey} (> ${maxPerMinute}/min), serving the last answer`), {
@@ -280,7 +296,7 @@ export const createRequestBudgetFetch = (
     }
 
     const joinable = inFlight.get(req.key);
-    let pending = joinable && Date.now() - joinable.at < JOIN_MAX_AGE_MS ? joinable.promise : null;
+    let pending = joinable && isYounger(joinable.at, JOIN_MAX_AGE_MS) ? joinable.promise : null;
     if (!pending) {
       countNetworkRequest();
       const startedAt = generation;

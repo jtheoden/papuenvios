@@ -116,8 +116,9 @@ describe('requestBudget with the real Supabase client', () => {
     expect((await lateResult).data[0].v).toBe('after');
   });
 
+  // Same shape as the admin badge count (getPendingRemittancesCount): select id + status in (...)
   const countRemittances = (supabase, status = 'payment_proof_uploaded') =>
-    supabase.from('remittances').select('id', { count: 'exact', head: true }).eq('status', status).then((r) => r.count);
+    supabase.from('remittances').select('id', { count: 'exact', head: true }).in('status', [status]).then((r) => r.count);
   const pendingOrders = (supabase) => supabase.rpc('get_pending_orders_count').then((r) => r.data);
   const network = (prefix) => net.calls.filter((c) => c.startsWith(prefix)).length;
 
@@ -163,6 +164,26 @@ describe('requestBudget with the real Supabase client', () => {
     await vi.advanceTimersByTimeAsync(30_000);
     expect((await first).error).toBeTruthy();
     expect((await joined).error).toBeTruthy();
+  });
+
+  it('the guardrail matches exact parameters: another HEAD count on the same table always reaches the network', async () => {
+    const { supabase } = await load();
+    // getInteractionCount shape: user_id + status filters, not the badge count
+    const interactions = () => supabase.from('remittances').select('id', { count: 'exact', head: true })
+      .eq('user_id', 'u1').eq('status', 'completed').then((r) => r.count);
+    for (let i = 0; i < 40; i += 1) await interactions();
+    net.pending = 6;
+    expect(await interactions()).toBe(6);
+    expect(network('HEAD /rest/v1/remittances')).toBe(41);
+  });
+
+  it('a stored answer dated in the future (clock moved back) is never served', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const { svc } = await load();
+    expect(await svc.getConversionRate('usd', 'cup')).toBe(400);
+    vi.setSystemTime(Date.now() - 60 * 60_000);
+    net.rate = 500;
+    expect(await svc.getConversionRate('usd', 'cup')).toBe(500);
   });
 
   it('a realtime change makes the next identical read go to the network even over budget', async () => {
