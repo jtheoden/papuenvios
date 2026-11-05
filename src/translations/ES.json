@@ -3045,7 +3045,8 @@
       "added": "Tipo de pago suscrito.",
       "removed": "Suscripción quitada. Las entregas ya realizadas no cambian.",
       "gapWarning": "Con esta suscripción, los rangos de este mensajero dejan valores sin regla (costo desconocido):",
-      "acceptGaps": "Entiendo que esos valores quedarán sin regla y deseo suscribir igualmente."
+      "acceptGaps": "Entiendo que esos valores quedarán sin regla y deseo suscribir igualmente.",
+      "inert": "Sin versión vigente (no se aplica)"
     },
     "errors": {
       "generic": "No se pudo completar la operación. Inténtelo de nuevo.",
@@ -3067,7 +3068,8 @@
       "ownedByOther": "Ese tipo de pago pertenece a otro mensajero.",
       "noActiveVersion": "Ese tipo de pago no existe o no tiene una versión vigente.",
       "subscribedElsewhere": "Ese tipo de pago está suscrito por otro mensajero. Quite esa suscripción antes de asignarlo a un mensajero concreto.",
-      "courierInactive": "El mensajero no existe o está inactivo."
+      "courierInactive": "El mensajero no existe o está inactivo.",
+      "staleSubscriptions": "Este código desactivado aún tiene suscripciones activas. Quítelas antes de volver a crearlo."
     },
     "validation": {
       "required": "Este campo es obligatorio.",

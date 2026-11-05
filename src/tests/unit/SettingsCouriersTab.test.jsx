@@ -317,6 +317,17 @@ describe('subscribed payment types per courier (phase B)', () => {
     expect(await within(section).findByText('couriers.subscriptions.removed')).toBeTruthy();
   });
 
+  it('a subscription whose type has no current version is shown as inert (code only, never the old name)', async () => {
+    svc.unsubscribeCourier.mockResolvedValue(1);
+    const section = await open({ subs: [{ id: 's1', courier_id: 'c1', payment_type_code: 'old' }] });
+    const row = within(section).getByTestId('subscription-row');
+    expect(row.textContent).toContain('couriers.subscriptions.inert');
+    expect(row.textContent).toContain('old');
+    expect(row.textContent).not.toContain('OLD');
+    fireEvent.click(within(section).getByRole('button', { name: 'couriers.subscriptions.remove old' }));
+    await waitFor(() => expect(svc.unsubscribeCourier).toHaveBeenCalledWith('c1', 'old'));
+  });
+
   it('a coverage_gap refusal shows the gaps in a live region; confirming resends with acceptGaps', async () => {
     svc.subscribeCourier
       .mockRejectedValueOnce(Object.assign(new Error('coverage_gap: x'), { i18nKey: 'couriers.errors.coverageGap', gaps: [{ kind: 'remittance', from: 10000, to: null }] }))

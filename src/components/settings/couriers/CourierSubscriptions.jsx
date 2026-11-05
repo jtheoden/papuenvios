@@ -25,7 +25,8 @@ const CourierSubscriptions = ({ courier, subscriptions, types, onChanged }) => {
   const byCode = new Map(current.map((r) => [r.code, r]));
   const subscribed = new Set(subscriptions.map((s) => s.payment_type_code));
   const offered = [...byCode.values()].filter((r) => !subscribed.has(r.code)).sort((a, b) => a.code.localeCompare(b.code));
-  const nameOf = (c) => byCode.get(c)?.name ?? types.find((r) => r.code === c)?.name ?? c;
+  // a subscription whose type has no current version applies nothing: shown as inert, never under the old name
+  const nameOf = (c) => byCode.get(c)?.name ?? c;
   const currencyOf = (c) => byCode.get(c)?.currency ?? 'USD';
 
   const choose = (e) => {
@@ -76,7 +77,11 @@ const CourierSubscriptions = ({ courier, subscriptions, types, onChanged }) => {
         <ul className="space-y-1">
           {subscriptions.map((s) => (
             <li key={s.id} className="flex flex-wrap items-center justify-between gap-2" data-testid="subscription-row">
-              <span className="text-sm">{nameOf(s.payment_type_code)} <span className="text-xs text-gray-600">({s.payment_type_code})</span></span>
+              {byCode.has(s.payment_type_code) ? (
+                <span className="text-sm">{nameOf(s.payment_type_code)} <span className="text-xs text-gray-600">({s.payment_type_code})</span></span>
+              ) : (
+                <span className="text-sm text-gray-700">{t('couriers.subscriptions.inert')} <span className="text-xs">({s.payment_type_code})</span></span>
+              )}
               <Btn
                 onClick={() => run(() => unsubscribeCourier(courier.id, s.payment_type_code), 'couriers.subscriptions.removed')}
                 disabled={busy}

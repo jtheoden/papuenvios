@@ -17,7 +17,10 @@
 --        A general type keeps applying to the couriers NOT subscribed to it, exactly as today.
 --      - _courier_rule_coverage: a courier scope also counts the general rules that courier is subscribed to.
 --      - admin_set_messenger_payment_type_v2: a new version of a subscribed code (or a new own rule of a subscriber)
---        re-runs the effective-set check of every courier it reaches; a subscribed code cannot move to another courier.
+--        re-runs the effective-set check of every courier it reaches; a subscribed code cannot move to another courier;
+--        a deactivated code cannot be recreated while active subscriptions to it remain.
+--      - admin_deactivate_messenger_payment_type (M1 body, identical to the live production body): deactivating a code
+--        CLOSES its active subscriptions (audited, listing the couriers), so a recreated code never revives them.
 -- HISTORY: the cost is frozen at delivery (courier_accruals). Unsubscribing before the delivery changes the rule used;
 --   after the delivery nothing is touched.
 -- PLATFORM RESET: execute_platform_reset keeps couriers and messenger_payment_types (configuration); subscriptions are
@@ -386,6 +389,15 @@ BEGIN
     RAISE EXCEPTION 'invalid_argument: a new version must start after the latest version of this code' USING ERRCODE = '22023';
   END IF;
 
+  -- phase B: a code recreated from scratch (every version deactivated) must not inherit live subscriptions silently.
+  IF v_version > 0 AND v_last IS NULL AND EXISTS (
+    SELECT 1 FROM public.courier_payment_type_subscriptions s WHERE s.is_active AND s.payment_type_code = v_code
+  ) THEN
+    RAISE EXCEPTION 'invalid_argument: this deactivated code still has active subscriptions; unsubscribe them before recreating it'
+      USING ERRCODE = '22023', DETAIL = (SELECT jsonb_build_object('code', v_code, 'couriers', jsonb_agg(s.courier_id ORDER BY s.courier_id))::text
+                                          FROM public.courier_payment_type_subscriptions s WHERE s.is_active AND s.payment_type_code = v_code);
+  END IF;
+
   -- phase B: a subscribed type cannot become the own rule of a courier that is not its subscriber.
   IF p_courier_id IS NOT NULL AND EXISTS (
     SELECT 1 FROM public.courier_payment_type_subscriptions s
@@ -595,6 +607,58 @@ BEGIN
   RETURN v_n;
 END;
 $function$;
+
+-- ---------------------------------------------------------------------------
+-- 7. Deactivating a payment type also closes its subscriptions (M1 body = live production body, diff minimal)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.admin_deactivate_messenger_payment_type(p_code text)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_code text := btrim(COALESCE(p_code, ''));
+  v_row  record;
+  v_n    integer := 0;
+  v_sub  record;
+  v_ids  uuid[] := '{}';
+  v_who  uuid[] := '{}';
+BEGIN
+  PERFORM public._courier_require_admin();
+  PERFORM pg_advisory_xact_lock(hashtext('courier_rules'));
+  IF NOT EXISTS (SELECT 1 FROM public.messenger_payment_types WHERE code = v_code) THEN
+    RAISE EXCEPTION 'invalid_argument: unknown payment type code' USING ERRCODE = '22023';
+  END IF;
+  FOR v_row IN
+    UPDATE public.messenger_payment_types SET is_active = false WHERE code = v_code AND is_active RETURNING id
+  LOOP
+    v_n := v_n + 1;
+    v_ids := v_ids || v_row.id;
+    PERFORM public._courier_audit('messenger_payment_types', v_row.id, 'is_active', 'true', 'false', 'UPDATE');
+  END LOOP;
+
+  -- phase B: a deactivated code keeps no live subscription (it would revive with courier precedence if recreated)
+  FOR v_sub IN
+    UPDATE public.courier_payment_type_subscriptions
+       SET is_active = false, deactivated_by = auth.uid(), deactivated_at = now()
+     WHERE payment_type_code = v_code AND is_active
+    RETURNING id, courier_id
+  LOOP
+    v_who := v_who || v_sub.courier_id;
+    PERFORM public._courier_audit('courier_payment_type_subscriptions', v_sub.id, 'is_active', 'true', 'false', 'UPDATE');
+  END LOOP;
+  IF cardinality(v_who) > 0 THEN
+    PERFORM public._courier_audit('messenger_payment_types',
+      (SELECT id FROM public.messenger_payment_types WHERE code = v_code ORDER BY version DESC LIMIT 1),
+      'subscriptions_closed', NULL,
+      jsonb_build_object('code', v_code, 'couriers', to_jsonb(v_who))::text, 'UPDATE');
+  END IF;
+  RETURN v_n;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.admin_deactivate_messenger_payment_type(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_deactivate_messenger_payment_type(text) TO authenticated;
 
 REVOKE ALL ON FUNCTION public.admin_subscribe_courier_payment_type(uuid, text, boolean) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_subscribe_courier_payment_type(uuid, text, boolean) TO authenticated;

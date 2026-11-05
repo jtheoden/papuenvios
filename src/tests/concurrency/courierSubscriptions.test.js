@@ -25,7 +25,12 @@ const fnBlock = (sql, name) => {
   const end = sql.indexOf('$function$;', start);
   return sql.slice(start, end + '$function$;'.length);
 };
-const REPLACED = ['_courier_rule_resolve_v2', '_courier_rule_coverage', 'admin_set_messenger_payment_type_v2'];
+// function -> migration whose body B starts from (the rollback restores that body verbatim)
+const SOURCES = {
+  _courier_rule_resolve_v2: 'a', _courier_rule_coverage: 'a', admin_set_messenger_payment_type_v2: 'a',
+  admin_deactivate_messenger_payment_type: 'm1'
+};
+const REPLACED = Object.keys(SOURCES);
 const TABLE = 'courier_payment_type_subscriptions';
 
 describe('phase B migration hygiene (static)', () => {
@@ -59,7 +64,7 @@ describe('phase B migration hygiene (static)', () => {
     }
   });
 
-  it('replaces only the three phase A functions it must, and never the accrual / transitions / platform reset', () => {
+  it('replaces only the phase A / M1 functions it must, and never the transitions / platform reset', () => {
     const replaced = [...code.matchAll(/CREATE OR REPLACE FUNCTION public\.(\w+)\(/g)].map((m) => m[1]);
     const allowed = [...REPLACED, 'courier_payment_type_subscriptions_guard', '_courier_effective_conflict',
       'admin_subscribe_courier_payment_type', 'admin_unsubscribe_courier_payment_type'];
@@ -71,10 +76,10 @@ describe('phase B migration hygiene (static)', () => {
   });
 
   it('the rollback restores the phase A bodies of the replaced functions verbatim', () => {
-    const a = readSql(MIGRATIONS.a);
     for (const f of REPLACED) {
+      const source = readSql(MIGRATIONS[SOURCES[f]]);
       expect(fnBlock(down, f), f).not.toBeNull();
-      expect(fnBlock(down, f), f).toBe(fnBlock(a, f));
+      expect(fnBlock(down, f), f).toBe(fnBlock(source, f));
     }
     expect(down).toMatch(/app\.confirm_courier_rollback/);
     expect(down).toMatch(/^BEGIN;/m);
@@ -232,6 +237,52 @@ describeDb('phase B: courier subscriptions to payment types (local Postgres)', (
       // its own code is accepted (redundant but harmless)
       await kit.subscribe(c, courier, 'mine');
       expect((await subs()).map((r) => r.payment_type_code)).toEqual(['mine']);
+    });
+  });
+
+  describe('deactivating a subscribed code (no inert subscription that revives)', () => {
+    it('closes every active subscription, audits the affected couriers; recreating the code revives nothing', async () => {
+      const c = await adminClient();
+      const zone = await kit.seedZone();
+      const x = await kit.makeCourier();
+      const y = await kit.makeCourier();
+      const gid = await kit.setRule(c, { code: 'g', fixed_cup: 300 });
+      const sx = await kit.subscribe(c, x, 'g');
+      const sy = await kit.subscribe(c, y, 'g');
+      expect(await kit.call(c, 'admin_deactivate_messenger_payment_type', ['g'])).toEqual([{ admin_deactivate_messenger_payment_type: 1 }]);
+      expect(await resolve2('remittance', { courier: x })).toEqual({ code: null, reason: 'no_rule' });
+      const rows = await subs();
+      expect(rows.map((r) => [r.id, r.is_active, r.deactivated_by])).toEqual(
+        expect.arrayContaining([[sx, false, actors.adminId], [sy, false, actors.adminId]]));
+      expect(rows.every((r) => r.deactivated_at)).toBe(true);
+      const closed = (await admin.query(
+        `SELECT row_id FROM public.financial_audit_log WHERE table_name = $1 AND column_name = 'is_active' AND new_value = 'false' AND row_id = ANY($2)`,
+        [TABLE, [sx, sy]])).rows;
+      expect(closed.map((r) => r.row_id).sort()).toEqual([sx, sy].sort());
+      const summary = (await admin.query(
+        `SELECT new_value FROM public.financial_audit_log WHERE table_name = 'messenger_payment_types' AND column_name = 'subscriptions_closed' AND row_id = $1`,
+        [gid])).rows;
+      expect(summary).toHaveLength(1);
+      const s = JSON.parse(summary[0].new_value);
+      expect(s).toMatchObject({ code: 'g' });
+      expect(s.couriers.sort()).toEqual([x, y].sort());
+      // recreated from scratch: a general rule again for everybody, never with courier precedence for x
+      await kit.setRule(c, { code: 'zone', zone_id: zone });
+      await kit.setRule(c, { code: 'g', fixed_cup: 999 });
+      expect((await resolve2('remittance', { courier: x, zone })).code).toBe('zone');
+      expect((await subs()).filter((r) => r.is_active)).toEqual([]);
+    });
+
+    it('set_v2 refuses to recreate a deactivated code while active subscriptions to it remain (state left by older code)', async () => {
+      const c = await adminClient();
+      const x = await kit.makeCourier();
+      await kit.setRule(c, { code: 'g' });
+      await kit.subscribe(c, x, 'g');
+      await admin.query(`UPDATE public.messenger_payment_types SET is_active = false WHERE code = 'g'`); // as M1 used to leave it
+      const e = await failure(kit.setRule(c, { code: 'g' }));
+      expect(e.code).toBe('22023');
+      expect(e.message).toMatch(/active subscriptions/);
+      expect(e.detail).toContain(x);
     });
   });
 

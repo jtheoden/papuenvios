@@ -291,6 +291,7 @@ export const courierErrorKey = (error) => {
     if (message.includes('no active version')) return 'couriers.errors.noActiveVersion';
     if (message.includes('subscribed by another courier')) return 'couriers.errors.subscribedElsewhere';
     if (message.includes('courier not found or inactive')) return 'couriers.errors.courierInactive';
+    if (message.includes('still has active subscriptions')) return 'couriers.errors.staleSubscriptions';
     if (message.includes('cannot be in the past')) return 'couriers.errors.pastDate';
     if (message.includes('every accrual must be')) return 'couriers.errors.notPayable';
     if (message.includes('unknown amount can be recalculated')) return 'couriers.errors.notRecalculable';

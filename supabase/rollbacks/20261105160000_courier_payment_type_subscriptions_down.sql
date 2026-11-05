@@ -1,6 +1,6 @@
 -- ROLLBACK of 20261105160000_courier_payment_type_subscriptions.sql (phase B). Run it BEFORE the phase A rollback.
 -- Restores the phase A bodies of _courier_rule_resolve_v2, _courier_rule_coverage and admin_set_messenger_payment_type_v2
--- verbatim, then drops the subscribe / unsubscribe RPCs, _courier_effective_conflict, the table, its trigger and guard.
+-- and the M1 body of admin_deactivate_messenger_payment_type verbatim, then drops the subscribe / unsubscribe RPCs, _courier_effective_conflict, the table, its trigger and guard.
 -- GUARD: aborts (55000) while courier_payment_type_subscriptions has rows (active or closed), because they would be lost.
 --   MANDATORY first: export them (COPY public.courier_payment_type_subscriptions TO ...). Then confirm in the same session:
 --   SET app.confirm_courier_rollback = 'yes';
@@ -343,6 +343,35 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.admin_set_messenger_payment_type_v2(text, text, text, text, numeric, numeric, numeric, text, uuid, uuid, uuid, numeric, numeric, timestamptz, timestamptz, text, numeric, boolean) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_set_messenger_payment_type_v2(text, text, text, text, numeric, numeric, numeric, text, uuid, uuid, uuid, numeric, numeric, timestamptz, timestamptz, text, numeric, boolean) TO authenticated;
+
+-- M1 body, verbatim (20261031100000_couriers_and_payment_types.sql; identical to the live production body)
+CREATE OR REPLACE FUNCTION public.admin_deactivate_messenger_payment_type(p_code text)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_code text := btrim(COALESCE(p_code, ''));
+  v_row  record;
+  v_n    integer := 0;
+BEGIN
+  PERFORM public._courier_require_admin();
+  PERFORM pg_advisory_xact_lock(hashtext('courier_rules'));
+  IF NOT EXISTS (SELECT 1 FROM public.messenger_payment_types WHERE code = v_code) THEN
+    RAISE EXCEPTION 'invalid_argument: unknown payment type code' USING ERRCODE = '22023';
+  END IF;
+  FOR v_row IN
+    UPDATE public.messenger_payment_types SET is_active = false WHERE code = v_code AND is_active RETURNING id
+  LOOP
+    v_n := v_n + 1;
+    PERFORM public._courier_audit('messenger_payment_types', v_row.id, 'is_active', 'true', 'false', 'UPDATE');
+  END LOOP;
+  RETURN v_n;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.admin_deactivate_messenger_payment_type(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_deactivate_messenger_payment_type(text) TO authenticated;
 
 DROP FUNCTION IF EXISTS public._courier_effective_conflict(uuid);
 DROP TABLE IF EXISTS public.courier_payment_type_subscriptions;   -- also drops its trigger, policy and indexes

@@ -3037,7 +3037,8 @@
       "added": "Payment type subscribed.",
       "removed": "Subscription removed. Deliveries already made do not change.",
       "gapWarning": "With this subscription, the ranges of this courier leave values without a rule (unknown cost):",
-      "acceptGaps": "I understand those values will have no rule and want to subscribe anyway."
+      "acceptGaps": "I understand those values will have no rule and want to subscribe anyway.",
+      "inert": "No current version (not applied)"
     },
     "errors": {
       "generic": "The operation could not be completed. Please try again.",
@@ -3059,7 +3060,8 @@
       "ownedByOther": "That payment type belongs to another courier.",
       "noActiveVersion": "That payment type does not exist or has no current version.",
       "subscribedElsewhere": "That payment type is subscribed by another courier. Remove that subscription before assigning it to a specific courier.",
-      "courierInactive": "The courier does not exist or is inactive."
+      "courierInactive": "The courier does not exist or is inactive.",
+      "staleSubscriptions": "This deactivated code still has active subscriptions. Remove them before recreating it."
     },
     "validation": {
       "required": "This field is required.",
