@@ -2854,8 +2854,10 @@
   },
   "cookieConsent": {
     "title": "Privacy and analytics",
+    "short": "We only measure visits if you accept.",
+    "moreInfo": "More information",
     "description": "We use strictly necessary local storage to make the site work (for example, your session). Only if you accept will we record the pages you visit for statistics: page, referrer, browser, a session identifier and, if you are signed in, your user identifier.",
-    "accept": "Accept analytics",
+    "accept": "Accept",
     "reject": "Reject",
     "privacyLink": "Privacy Policy",
     "statusOn": "Current status: analytics enabled.",

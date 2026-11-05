@@ -48,7 +48,25 @@ describe('ConsentBanner', () => {
     const accept = within(region).getByRole('button', { name: ES.cookieConsent.accept });
     const reject = within(region).getByRole('button', { name: ES.cookieConsent.reject });
     expect(accept.className).toBe(reject.className);
-    expect(within(region).getByRole('link', { name: ES.cookieConsent.privacyLink })).toHaveAttribute('href', '/privacy');
+    expect(within(region).getByText(ES.cookieConsent.short)).toBeInTheDocument();
+  });
+
+  it('keeps the long text and the privacy link behind an accessible "more information" toggle', () => {
+    render(<ConsentBanner onNavigate={vi.fn()} />);
+    const region = screen.getByRole('region', { name: ES.cookieConsent.title });
+    const toggle = within(region).getByRole('button', { name: ES.cookieConsent.moreInfo });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(within(region).queryByText(ES.cookieConsent.description, { exact: false })).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const details = document.getElementById(toggle.getAttribute('aria-controls'));
+    expect(region.contains(details)).toBe(true);
+    expect(within(details).getByText(ES.cookieConsent.description, { exact: false })).toBeInTheDocument();
+    expect(within(details).getByRole('link', { name: ES.cookieConsent.privacyLink })).toHaveAttribute('href', '/privacy');
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('writes nothing to storage while it is merely displayed', () => {
@@ -170,6 +188,17 @@ describe('ConsentBanner focus restore and layout', () => {
     const region = screen.getByRole('region');
     expect(region.className).toMatch(/\bz-40\b/);
     expect(region.className).not.toMatch(/z-\[60\]/);
+  });
+
+  it('re-measures the reserved space when "more information" is expanded', () => {
+    const height = { value: 100 };
+    const spy = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(() => height.value);
+    render(<ConsentBanner onNavigate={vi.fn()} />);
+    expect(document.body.style.paddingBottom).toBe('100px');
+    height.value = 260;
+    fireEvent.click(screen.getByRole('button', { name: ES.cookieConsent.moreInfo }));
+    expect(document.body.style.paddingBottom).toBe('260px');
+    spy.mockRestore();
   });
 
   it('reserves bottom space equal to its height while visible and releases it afterwards', () => {

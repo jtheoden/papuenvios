@@ -2862,8 +2862,10 @@
   },
   "cookieConsent": {
     "title": "Privacidad y analítica",
+    "short": "Medimos visitas solo si usted acepta.",
+    "moreInfo": "Más información",
     "description": "Usamos almacenamiento local estrictamente necesario para que el sitio funcione (por ejemplo, tu sesión). Solo si lo aceptas, registraremos las páginas que visitas con fines estadísticos: página, origen, navegador, un identificador de sesión y, si iniciaste sesión, tu identificador de usuario.",
-    "accept": "Aceptar analítica",
+    "accept": "Aceptar",
     "reject": "Rechazar",
     "privacyLink": "Política de Privacidad",
     "statusOn": "Estado actual: analítica activada.",
