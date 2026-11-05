@@ -11,6 +11,7 @@ const pair = (fg, bg, fgFallback, bgFallback) => (isHexColor(fg) && isHexColor(b
 // Legacy blue/violet fallbacks, kept only for the stored-gradient CTA so the production look does not move.
 const LEGACY_FROM = '#2563eb';
 const LEGACY_TO = '#9333ea';
+const LEGACY_PAGE_BG = '#f9fafb';
 
 /**
  * Home colours resolved from the Visual settings.
@@ -48,6 +49,9 @@ export const buildHomeTheme = (s = {}) => {
     border,
     softAccent,
     dotActive,
+    // The Home root paints pageBgColor (ivory with the preset). The legacy default #f9fafb of production is not
+    // painted, so the stylesheet gradient keeps showing. shortcut: an admin who really wants #f9fafb gets the gradient.
+    pageBg: isHexColor(s.pageBgColor) && s.pageBgColor.toLowerCase() !== LEGACY_PAGE_BG ? s.pageBgColor : undefined,
     cardBg: hex(s.cardBgColor, white),
     muted: hex(s.mutedTextColor, warmGray),
     vars: {

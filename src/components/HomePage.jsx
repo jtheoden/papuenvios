@@ -274,23 +274,30 @@ const HomePage = ({ onNavigate }) => {
   const { legacy } = theme;
   const hasCarousel = carouselEnabled && (carouselLoading || carouselSlides.length > 0);
 
+  // Hero cards (mockup): both use routes that already exist. "Combos" has no page of its own yet (S6/ND-4), so it opens products.
+  const heroCards = [
+    { key: 'combos', icon: Package, route: 'products', variant: 'brand' },
+    { key: 'remittances', icon: DollarSign, route: 'remittances', variant: 'brand-outline' }
+  ];
+
   return (
-    <div className="min-h-screen" style={theme.vars}>
-      {/* ND-1 (owner's literal text): text left, carousel right from lg, stacked below. The "mockup" alternative
-          (centered title + full-width carousel) is these three class strings: grid, text column, carousel column. */}
+    <div
+      data-testid="home-page"
+      className="min-h-screen"
+      // the shadow paints the same colour over the 1rem gap between the 4rem header and the 5rem top padding of <main>
+      style={theme.pageBg ? { ...theme.vars, backgroundColor: theme.pageBg, boxShadow: `0 -1rem 0 0 ${theme.pageBg}` } : theme.vars}
+    >
+      {/* Layout = option A (mockup): centered title block, two cards, full-width carousel below; stacked on mobile. */}
       <section data-testid="home-hero" className="px-4 py-8 sm:py-12 lg:py-16">
-        <div className="container mx-auto grid gap-8 lg:grid-cols-12 lg:items-center">
-          <div className={`text-center ${hasCarousel ? 'lg:col-span-5 lg:text-left' : 'lg:col-span-12'}`}>
+        <div className="container mx-auto flex flex-col items-center gap-8 text-center">
+          <div className="w-full max-w-3xl">
             <h1
               className="mb-4 break-words text-3xl font-bold sm:text-4xl lg:text-5xl"
               style={getHeadingStyle(visualSettings)}
             >
               {t('home.hero.title')}
             </h1>
-            <p
-              className={`mb-8 text-lg md:text-xl ${hasCarousel ? 'lg:mx-0' : ''} mx-auto max-w-2xl`}
-              style={{ color: theme.muted }}
-            >
+            <p className="mx-auto mb-8 max-w-2xl text-lg md:text-xl" style={{ color: theme.muted }}>
               {t('home.hero.subtitle')}
             </p>
             <Button
@@ -305,8 +312,35 @@ const HomePage = ({ onNavigate }) => {
             </Button>
           </div>
 
+          <div className="grid w-full max-w-4xl gap-4 md:grid-cols-2">
+            {heroCards.map(({ key, icon: Icon, route, variant }) => (
+              <div
+                key={key}
+                data-testid="hero-card"
+                className="flex flex-col items-center gap-3 rounded-2xl border p-6"
+                style={{ backgroundColor: theme.cardBg, borderColor: theme.border }}
+              >
+                <span
+                  className="flex h-12 w-12 items-center justify-center rounded-xl"
+                  style={{ backgroundColor: theme.softAccent, color: theme.ink }}
+                >
+                  <Icon className="h-6 w-6" aria-hidden="true" />
+                </span>
+                <h2 className="break-words text-xl font-semibold" style={{ color: theme.ink }}>
+                  {t(`home.hero.cards.${key}.title`)}
+                </h2>
+                <p className="flex-1" style={{ color: theme.muted }}>
+                  {t(`home.hero.cards.${key}.description`)}
+                </p>
+                <Button variant={variant} className="min-h-[44px] w-full sm:w-auto" onClick={() => onNavigate(route)}>
+                  {t(`home.hero.cards.${key}.cta`)}
+                </Button>
+              </div>
+            ))}
+          </div>
+
           {hasCarousel && (
-            <div className="lg:col-span-7">
+            <div className="mx-auto w-full max-w-5xl">
               {carouselLoading ? (
                 <SkeletonCard variant="carousel" />
               ) : (

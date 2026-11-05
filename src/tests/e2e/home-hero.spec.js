@@ -234,6 +234,8 @@ test.describe('colours follow the Visual settings', () => {
     await cta.hover();
     await expect(cta).toHaveCSS('background-color', 'rgb(229, 148, 0)');
     await expect(page.locator('[data-testid="home-page"]')).toHaveCSS('background-color', 'rgb(250, 247, 240)');
+    // no strip of the body gradient between the header and the ivory Home
+    await expect(page.locator('[data-testid="home-page"]')).toHaveCSS('box-shadow', /rgb\(250, 247, 240\) 0px -16px/);
     await expect(page.locator('[data-testid="hero-carousel"] button[aria-current="true"]')).toHaveCSS('background-color', 'rgb(255, 165, 0)');
     await expect(page.locator('h1')).toHaveCSS('color', 'rgb(23, 23, 23)');
     for (const h2 of await page.locator('h2').all()) await expect(h2).toHaveCSS('color', 'rgb(23, 23, 23)');

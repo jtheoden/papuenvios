@@ -423,3 +423,9 @@ Decisiones y verificaciones del dueño: revisar `default_spread_pct` (1.5 %) y l
 - Desborde 12 px a 320 px ES: `h2` `text-4xl` ("Funcionalidades") -> `text-2xl sm:text-4xl break-words`.
 - Seguimiento (no incluido): sombras de tarjeta/texto (`useCardShadow` por defecto true y la fila no la trae: conectarlas cambiaría producción), `mutedTextColor`/`cardBgColor` en las secciones existentes (cambiaría el gris actual), colores de `RegulatoryNotice` (S4/ND-A).
 - Codex no estuvo disponible (todos los modelos rechazados por la cuenta ChatGPT); implementado directamente.
+
+### Marca S2 — corrección: layout de la maqueta (ND-1 = opción A) y marfil solo en la Home — 2026-11-05
+- ND-1 ya estaba decidida por el dueño (addendum del plan, línea 332): título centrado, DOS tarjetas ("Combos de comida", "Remesas a Cuba") y carrusel a ancho completo debajo; móvil apilado. Reemplaza el layout izquierda/derecha del bloque anterior. Orden en el DOM: h1, subtítulo, CTA "Ver Productos", tarjetas (grid `md:grid-cols-2`), carrusel (`max-w-5xl` centrado, 16:9).
+- Tarjetas con claves nuevas `home.hero.cards.{combos,remittances}.{title,description,cta}` (ES en "usted"). Colores desde `cardBgColor`/`borderColor`/`headingColor`/`mutedTextColor`/`softAccentColor` (`homeTheme.js`); botón combos `brand`, remesa `brand-outline`. Rutas existentes: combos -> `products` (no hay página de combos; pendiente S6/ND-4), remesa -> `remittances`. Sin claims ("excelentes tasas") hasta ND-11.
+- Pendiente de S6: texto definitivo de la maqueta, ruta propia de combos, y decidir si "Ver Productos" sigue (hoy redundante con "Ver combos").
+- Marfil (ND-5): revertida la modificación del body en `applyVisualSettingsToDOM`; el degradado de `index.css` queda intacto en todo el sitio. La raíz de la Home (`data-testid="home-page"`) pinta `pageBgColor` salvo el legacy `#f9fafb` de producción. Test e2e: con el preset, el Blog conserva el degradado y ningún elemento marfil.
