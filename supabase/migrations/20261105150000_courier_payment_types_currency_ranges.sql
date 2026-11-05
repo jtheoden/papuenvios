@@ -127,7 +127,8 @@ BEGIN
       RETURN;
     END IF;
     v_seen := true;
-    CONTINUE WHEN p_amount IS NULL; -- no value: a tramo cannot match (same as v1)
+    -- no value: a tramo cannot match (same as v1); NaN sorts above every number and would match "más de X"
+    CONTINUE WHEN p_amount IS NULL OR p_amount = 'NaN'::numeric;
     v_val := CASE
       WHEN p_amount_currency = v_m.currency THEN p_amount
       WHEN p_fx IS NULL OR p_fx <= 0 THEN NULL
@@ -289,6 +290,11 @@ BEGIN
   ELSE
     RAISE EXCEPTION 'invalid_argument: unknown operation kind' USING ERRCODE = '22023';
   END IF;
+
+  -- a NaN operation value passes the `> 0` CHECKs: treat it as unknown (no tramo, no percent base, no margin)
+  v_sent := NULLIF(v_sent, 'NaN'::numeric);
+  v_deliver := NULLIF(v_deliver, 'NaN'::numeric);
+  v_tier := NULLIF(v_tier, 'NaN'::numeric);
 
   -- the active USD->CUP row, read live (no cache, no fail-open helper)
   SELECT er.rate INTO v_live_fx
