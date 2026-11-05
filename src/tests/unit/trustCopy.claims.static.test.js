@@ -18,6 +18,8 @@ const FORBIDDEN = [
   /remesas est[aá]n protegidas/i,
   /remittances are protected/i,
   /24\s*-\s*72/,
+  /pr[oó]ximas horas/i,
+  /in the next hours/i,
 ];
 
 // Owned by the pending HomePage/Hero work (another branch): only "España" was removed there.

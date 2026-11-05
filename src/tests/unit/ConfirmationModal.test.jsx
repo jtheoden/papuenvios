@@ -107,7 +107,7 @@ describe('ConfirmationModal pending-proof variant', () => {
     expect(items[1]).toHaveTextContent('Sube tu comprobante de pago desde Mis Remesas');
     expect(screen.queryByText('Verificaremos tu comprobante de pago')).not.toBeInTheDocument();
     expect(items[2]).toHaveTextContent('Procesaremos tu remesa cuando validemos el pago');
-    expect(screen.queryByText('Procesaremos tu remesa en las próximas horas')).not.toBeInTheDocument();
+    expect(screen.queryByText('Procesaremos su remesa y le avisaremos de cada paso.')).not.toBeInTheDocument();
   });
 
   it('stacks above other z-50 modals', () => {
@@ -125,7 +125,7 @@ describe('ConfirmationModal pending-proof variant', () => {
     expect(screen.getByText('Tu remesa ha sido registrada exitosamente')).toBeInTheDocument();
     expect(screen.getByTestId('confirmation-whatsapp-link')).toHaveTextContent('Enviar comprobante por WhatsApp');
     expect(screen.getByText('Verificaremos tu comprobante de pago')).toBeInTheDocument();
-    expect(screen.getByText('Procesaremos tu remesa en las próximas horas')).toBeInTheDocument();
+    expect(screen.getByText('Procesaremos su remesa y le avisaremos de cada paso.')).toBeInTheDocument();
   });
 
   it('ignores proofPending for product orders', () => {

@@ -49,7 +49,7 @@ const ConfirmationModal = ({
       stepWhatsapp: 'Opcional: envíanos el comprobante por WhatsApp con el botón de abajo para acelerar la verificación',
       step1: 'Verificaremos tu comprobante de pago',
       step2: isRemittance
-        ? 'Procesaremos tu remesa en las próximas horas'
+        ? 'Procesaremos su remesa y le avisaremos de cada paso.'
         : 'Prepararemos tu pedido para envío',
       step3: 'Te notificaremos cuando esté en camino',
       estimatedLabel: 'Tiempo estimado de entrega',
@@ -78,7 +78,7 @@ const ConfirmationModal = ({
       stepWhatsapp: 'Optional: send us the payment proof via WhatsApp using the button below to speed up verification',
       step1: 'We will verify your payment proof',
       step2: isRemittance
-        ? 'We will process your remittance in the next hours'
+        ? 'We will process your remittance and keep you updated at every step.'
         : 'We will prepare your order for shipping',
       step3: 'We will notify you when it\'s on the way',
       estimatedLabel: 'Estimated delivery time',
