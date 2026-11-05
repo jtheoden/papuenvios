@@ -113,4 +113,29 @@ describe('LoadingState', () => {
     advance(SHOW_DELAY_MS);
     expect(screen.getByText('Loading offers')).toBeInTheDocument();
   });
+
+  it('renders the same content DOM on a fast and on a slow load (only the fade class differs)', () => {
+    const list = (loading) => (
+      <LoadingState loading={loading} skeleton={skeleton} contentClassName="space-y-3">
+        <p>one</p>
+        <p>two</p>
+      </LoadingState>
+    );
+    const fast = render(list(true));
+    fast.rerender(list(false));
+    const fastHtml = fast.container.innerHTML;
+    fast.unmount();
+
+    const slow = render(list(true));
+    advance(SHOW_DELAY_MS + MIN_VISIBLE_MS);
+    slow.rerender(list(false));
+    advance(MIN_VISIBLE_MS);
+    const slowHtml = slow.container.innerHTML;
+
+    expect(slowHtml).toContain('motion-safe:animate-fade-in');
+    expect(slowHtml.replace(' motion-safe:animate-fade-in', '')).toBe(fastHtml);
+    // Siblings stay direct children of the spaced container in both cases.
+    expect(screen.getByText('one').parentElement).toHaveClass('space-y-3');
+    expect(screen.getByText('two').parentElement).toBe(screen.getByText('one').parentElement);
+  });
 });

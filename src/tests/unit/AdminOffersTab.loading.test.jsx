@@ -76,4 +76,15 @@ describe('AdminOffersTab loading state', () => {
     await resolve({ data: null, error: { message: 'boom' } });
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
+
+  it('keeps the offer cards spaced (direct children of space-y-3) after a slow load', async () => {
+    const resolve = pending();
+    render(<AdminOffersTab />);
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    await resolve.rows([OFFER, { ...OFFER, id: 'o-2', code: 'PAPU20' }]);
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    const card = (code) => screen.getAllByText(code).find(el => el.tagName === 'CODE').closest('.border-l-4');
+    expect(card('PAPU10').parentElement).toHaveClass('space-y-3');
+    expect(card('PAPU20').parentElement).toBe(card('PAPU10').parentElement);
+  });
 });

@@ -859,7 +859,7 @@ const AdminOffersTab = () => {
 
       {/* Offers List */}
       <div className="space-y-3">
-        <LoadingState loading={loading && Boolean(user) && offers.length === 0} skeleton={<OffersSkeleton />}>
+        <LoadingState loading={loading && Boolean(user) && offers.length === 0} skeleton={<OffersSkeleton />} contentClassName="space-y-3">
         {filteredOffers.length === 0 ? (
           <div className="text-center py-8 bg-gray-50 rounded-lg">
             <AlertCircle className="h-8 w-8 text-gray-400 mx-auto mb-2" />

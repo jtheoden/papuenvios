@@ -18,7 +18,7 @@ export const SkeletonBox = ({ className }) => (
  * `children`, so an empty state cannot show before the data arrives. Pass `loading={false}` on error so the
  * view's error state replaces the skeleton.
  */
-const LoadingState = ({ loading, skeleton, label, className, children }) => {
+const LoadingState = ({ loading, skeleton, label, className, contentClassName, children }) => {
   const { t } = useLanguage();
   const [phase, setPhase] = useState(loading ? 'waiting' : 'done');
   const [paused, setPaused] = useState(false);
@@ -77,8 +77,14 @@ const LoadingState = ({ loading, skeleton, label, className, children }) => {
     };
   }, [showContent]);
 
+  // Always the same wrapper, so the content DOM does not depend on how fast the network was: pass the
+  // layout class the children need from their container (e.g. `space-y-3`) as contentClassName.
   if (showContent) {
-    return wasShown.current ? <div className="motion-safe:animate-fade-in">{children}</div> : children;
+    return (
+      <div className={cn(contentClassName, wasShown.current && 'motion-safe:animate-fade-in') || undefined}>
+        {children}
+      </div>
+    );
   }
 
   const visible = phase === 'visible';
