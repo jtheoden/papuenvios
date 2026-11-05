@@ -15,7 +15,12 @@
 --      accrual (no cache, never get_order_exchange_rate / get_market_exchange_rate: they fail open with 1.0). Fail CLOSED:
 --      a tiered candidate that needs a missing rate stops the resolution with reason 'no_fx' (never a lower-precedence rule).
 --   3. _courier_rule_resolve_v2(): same precedence as v1 (courier > zone > type > tramo > general), returns (rule_id, reason)
---      with reason no_rule / no_tier_match / no_fx. v1 is kept untouched (rollback).
+--      with reason no_rule / no_tier_match / no_fx. v1 is kept untouched (rollback). DIFFERS FROM v1 on purpose when a
+--      tiered candidate needs a rate that is missing (value in another currency, no active USD->CUP row): v1 skipped the
+--      tramo and fell to a lower-precedence rule; v2 stops with 'no_fx' (fail closed).
+--   Guards (review): NaN is refused in every numeric parameter and by messenger_payment_types_no_nan_chk (it passes
+--      `>= 0`); amounts above 9999999999.99, percent beyond 3 decimals and cup_per_usd beyond 4 are 22023; an accrual
+--      that would overflow numeric(12,2) is kept with amount NULL and reason 'amount_out_of_range'; a NaN rate is "no rate".
 --   4. _courier_compute_accrual (same signature): orders take the subtotal as value and as percent base; fixed USD is converted
 --      at the live rate in force at delivery (amount_usd = the fixed figure, fx_used = that rate); reasons no_fx / no_tier_match
 --      are frozen in rule_snapshot. The delivery is NEVER blocked (the trigger is not touched).

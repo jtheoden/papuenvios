@@ -554,3 +554,12 @@ Rama `feat/courier-payment-types-ranges` (desde `origin/main` 30f8f5da). Sin PR,
 - DESPLIEGUE: aplicar la migración y desplegar el front JUNTOS (el front nuevo llama a v2 y lee `currency`/`fixed_amount`; el viejo llama a v1, que queda revocada). Pendiente «dale» del dueño para aplicar en remoto.
 - Fuera de esta rama: suscripciones (fase B).
 - Verificación: eslint src limpio; vitest unit 365 archivos / 4386 tests verdes; suite BD local completa (BD propia `papuenvios_test_courier_ranges`, borrada al final) 51 archivos / 1766 verdes + 1 skip preexistente; e2e simulado `courier-payment-type-ranges.spec.js` 2/2 (`playwright.theme.config.js`); build a directorio temporal OK, `dist/` sin tocar.
+
+### Mensajería fase A — correcciones tras revisión independiente (2026-11-05)
+- 🔴 NaN: `'NaN'::numeric` pasaba los CHECK `>= 0`. La RPC v2 lo rechaza (22023) en `amount_from/to`, `fixed_amount`, `fixed_cup`, `cup_per_usd`, `percent`; nuevo `messenger_payment_types_no_nan_chk`; una tasa NaN se trata como ausente (`no_fx`). El devengo nunca contiene NaN.
+- 🟡 Desbordamiento: un monto que no cabe en `numeric(12,2)` deja el devengo con monto NULL y motivo `amount_out_of_range` (antes el trigger se tragaba el 22003 y la entrega quedaba sin devengo). La RPC rechaza importes > 9999999999.99 (22023).
+- 🟡 Vigencias: `analyzeRuleConflicts` usa las mismas reglas que la RPC (solape/moneda por intersección de ventanas; huecos solo con reglas que cubren toda la ventana); fecha ilegible → decide el servidor.
+- 🟢 `percent` > 3 decimales y `cup_per_usd` > 4 rechazados (22023), sin redondeo silencioso.
+- 🟢 `toCents` con el mismo tope que el servidor (`validation.moneyMax`, `errors.amountMax`); en el formulario los avisos dentro de un contenedor `aria-live` no llevan `role` propio (`Notice announce={false}`). Mismo patrón doble en CouriersPanel, MarginThresholdsCard, PayablePanel y PaymentTypesPanel: no tocado (fuera del hallazgo).
+- Cabecera de la migración: documenta que v2 difiere de v1 a propósito (moneda sin tasa → `no_fx`, sin caer a menor precedencia).
+- Verificación: eslint src limpio; BD local propia `papuenvios_test_codex_fixa` (recreada desde cero con la migración editada, borrada al final) 51 archivos / 1771 verdes + 1 skip preexistente; build a directorio temporal OK, `dist/` sin tocar; vitest unit completo 365 archivos / 4388 verdes; e2e simulado 2/2.
