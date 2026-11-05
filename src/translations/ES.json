@@ -3046,7 +3046,9 @@
       "removed": "Suscripción quitada. Las entregas ya realizadas no cambian.",
       "gapWarning": "Con esta suscripción, los rangos de este mensajero dejan valores sin regla (costo desconocido):",
       "acceptGaps": "Entiendo que esos valores quedarán sin regla y deseo suscribir igualmente.",
-      "inert": "Sin versión vigente (no se aplica)"
+      "inert": "Sin versión vigente (no se aplica)",
+      "confirmRemove": "¿Quitar la suscripción a «{name}»? Solo afecta a entregas futuras: las ya entregadas conservan su costo.",
+      "confirmRemoveYes": "Sí, quitar"
     },
     "errors": {
       "generic": "No se pudo completar la operación. Inténtelo de nuevo.",

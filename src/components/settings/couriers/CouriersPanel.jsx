@@ -98,7 +98,7 @@ const CouriersPanel = ({ couriers, onChanged }) => {
                   courier={c}
                   subscriptions={subs.data.items.filter((s) => s.courier_id === c.id)}
                   types={types.data.items}
-                  onChanged={subs.reload}
+                  onChanged={() => Promise.all([subs.reload(), types.reload()])}
                 />
               )}
             </li>

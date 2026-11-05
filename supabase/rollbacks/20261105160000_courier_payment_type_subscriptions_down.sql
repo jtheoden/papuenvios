@@ -1,5 +1,6 @@
 -- ROLLBACK of 20261105160000_courier_payment_type_subscriptions.sql (phase B). Run it BEFORE the phase A rollback.
--- Restores the phase A bodies of _courier_rule_resolve_v2, _courier_rule_coverage and admin_set_messenger_payment_type_v2
+-- Restores the phase A bodies of _courier_rule_resolve_v2, _courier_rule_coverage, admin_set_messenger_payment_type_v2,
+-- _courier_compute_accrual
 -- and the M1 body of admin_deactivate_messenger_payment_type verbatim, then drops the subscribe / unsubscribe RPCs, _courier_effective_conflict, the table, its trigger and guard.
 -- GUARD: aborts (55000) when phase A is no longer applied (messenger_payment_types.currency missing), and
 --   while courier_payment_type_subscriptions has rows (active or closed), because they would be lost.
@@ -350,6 +351,178 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.admin_set_messenger_payment_type_v2(text, text, text, text, numeric, numeric, numeric, text, uuid, uuid, uuid, numeric, numeric, timestamptz, timestamptz, text, numeric, boolean) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_set_messenger_payment_type_v2(text, text, text, text, numeric, numeric, numeric, text, uuid, uuid, uuid, numeric, numeric, timestamptz, timestamptz, text, numeric, boolean) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public._courier_compute_accrual(
+  p_kind       text,
+  p_op_id      uuid,
+  p_courier_id uuid,
+  p_source     text
+)
+RETURNS TABLE (
+  rule_id uuid, amount_cup numeric, fx_used numeric, amount_usd numeric, rule_snapshot jsonb,
+  margin_usd numeric, margin_pct numeric, margin_status text
+)
+LANGUAGE plpgsql
+STABLE
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_sent     numeric;
+  v_deliver  numeric;
+  v_rate     numeric;
+  v_cur_sent text;
+  v_cur_del  text;
+  v_comm     numeric;
+  v_dcost    numeric;
+  v_zone     uuid;
+  v_type     uuid;
+  v_tier     numeric;
+  v_est      numeric;
+  v_rule     public.messenger_payment_types%ROWTYPE;
+  v_rule_id  uuid;
+  v_cup      numeric;
+  v_fx       numeric;
+  v_live_fx  numeric;
+  v_fx_src   text := 'none';
+  v_usd      numeric;
+  v_reason   text;
+  v_income   numeric;
+  v_cost     numeric;
+  v_warn     numeric;
+  v_crit     numeric;
+  v_m        record;
+BEGIN
+  IF p_kind = 'remittance' THEN
+    SELECT r.amount_sent, r.amount_to_deliver, r.exchange_rate, r.currency_sent, r.currency_delivered,
+           r.commission_total, r.delivery_cost, r.shipping_zone_id, r.remittance_type_id
+      INTO v_sent, v_deliver, v_rate, v_cur_sent, v_cur_del, v_comm, v_dcost, v_zone, v_type
+      FROM public.remittances r WHERE r.id = p_op_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'operation_not_found' USING ERRCODE = 'P0002';
+    END IF;
+    v_tier := CASE WHEN v_cur_sent = 'USD' THEN v_sent END;
+    -- the frozen rate of the remittance is a USD->CUP rate only when it was sent in USD and delivered in CUP
+    IF v_cur_sent = 'USD' AND v_cur_del = 'CUP' AND v_rate > 0 THEN
+      v_fx := v_rate;
+      v_fx_src := 'remittance';
+    END IF;
+    SELECT c.amount_usd INTO v_est FROM public.remittance_courier_costs c WHERE c.remittance_id = p_op_id;
+  ELSIF p_kind = 'order' THEN
+    -- phase A: the order value (range and percent base) is the subtotal, in the order currency (USD)
+    SELECT CASE WHEN cur.code = 'USD' THEN o.subtotal END, o.shipping_zone_id, o.subtotal, cur.code
+      INTO v_tier, v_zone, v_sent, v_cur_sent
+      FROM public.orders o LEFT JOIN public.currencies cur ON cur.id = o.currency_id WHERE o.id = p_op_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'operation_not_found' USING ERRCODE = 'P0002';
+    END IF;
+    SELECT c.amount_usd INTO v_est FROM public.order_courier_costs c WHERE c.order_id = p_op_id;
+  ELSE
+    RAISE EXCEPTION 'invalid_argument: unknown operation kind' USING ERRCODE = '22023';
+  END IF;
+
+  -- a NaN operation value passes the `> 0` CHECKs: treat it as unknown (no tramo, no percent base, no margin)
+  v_sent := NULLIF(v_sent, 'NaN'::numeric);
+  v_deliver := NULLIF(v_deliver, 'NaN'::numeric);
+  v_tier := NULLIF(v_tier, 'NaN'::numeric);
+
+  -- the active USD->CUP row, read live (no cache, no fail-open helper); prefers rate_type 'general', ties broken by id
+  SELECT er.rate INTO v_live_fx
+    FROM public.exchange_rates er
+    JOIN public.currencies f ON f.id = er.from_currency_id AND f.code = 'USD'
+    JOIN public.currencies t ON t.id = er.to_currency_id AND t.code = 'CUP'
+   WHERE er.is_active
+   ORDER BY (er.rate_type = 'general') DESC NULLS LAST, er.effective_date DESC, er.id LIMIT 1;
+  -- a NaN rate passes `rate > 0`: treat it as missing (never multiply an accrual by NaN)
+  -- (fx_used numeric(15,6) cannot overflow: its sources are exchange_rates.rate (15,6) and remittances.exchange_rate (12,4))
+  v_live_fx := NULLIF(v_live_fx, 'NaN'::numeric);
+  v_fx := NULLIF(v_fx, 'NaN'::numeric);
+  IF v_fx IS NULL AND v_live_fx IS NOT NULL THEN
+    v_fx := v_live_fx;
+    v_fx_src := 'exchange_rates';
+  END IF;
+
+  SELECT r.rule_id, r.reason INTO v_rule_id, v_reason
+    FROM public._courier_rule_resolve_v2(p_kind, p_courier_id, v_zone, v_type, v_sent, v_cur_sent, v_live_fx, now()) r;
+  SELECT m.* INTO v_rule FROM public.messenger_payment_types m WHERE m.id = v_rule_id;
+  IF NOT FOUND THEN
+    v_reason := COALESCE(v_reason, 'no_rule');
+  ELSE
+    v_cup := CASE v_rule.method
+      WHEN 'fixed_cup' THEN v_rule.fixed_cup
+      WHEN 'fixed_amount' THEN CASE v_rule.currency
+          WHEN 'CUP' THEN v_rule.fixed_amount
+          WHEN 'USD' THEN CASE WHEN v_live_fx IS NOT NULL THEN round(v_rule.fixed_amount * v_live_fx, 2) END
+        END
+      WHEN 'per_usd_delivered' THEN round(v_rule.cup_per_usd * CASE v_rule.base
+          WHEN 'nominal_usd'   THEN CASE WHEN v_cur_sent = 'USD' THEN v_sent END
+          WHEN 'delivered_cup' THEN CASE WHEN v_cur_sent = 'USD' AND v_cur_del = 'CUP' AND v_rate > 0 THEN round(v_deliver / v_rate, 2) END
+        END, 2)
+      WHEN 'percent_of_base' THEN CASE v_rule.base
+          WHEN 'nominal_usd'   THEN CASE WHEN v_cur_sent = 'USD' AND v_fx IS NOT NULL THEN round(round(v_rule.percent / 100 * v_sent, 2) * v_fx, 2) END
+          WHEN 'delivered_cup' THEN CASE WHEN v_cur_del = 'CUP' THEN round(v_rule.percent / 100 * v_deliver, 2) END
+        END
+    END;
+    IF v_cup IS NULL THEN
+      v_reason := CASE
+        WHEN v_rule.method = 'fixed_amount' AND v_rule.currency = 'USD' AND v_live_fx IS NULL THEN 'no_fx'
+        WHEN v_rule.method = 'percent_of_base' AND v_rule.base = 'nominal_usd' AND v_cur_sent = 'USD' AND v_fx IS NULL THEN 'no_fx'
+        ELSE 'no_amount_basis' END;
+    END IF;
+  END IF;
+
+  IF v_cup IS NOT NULL AND v_rule.method = 'fixed_amount' AND v_rule.currency = 'USD' THEN
+    -- converted at the live rate: that is the rate used, and the USD figure is the fixed one
+    v_fx := v_live_fx;
+    v_fx_src := 'exchange_rates';
+    v_usd := v_rule.fixed_amount;
+  ELSIF v_cup IS NOT NULL AND v_fx IS NOT NULL THEN
+    v_usd := round(v_cup / v_fx, 2);
+  END IF;
+
+  -- courier_accruals.amount_cup / amount_usd are numeric(12,2): an overflow would make the (non-blocking) trigger swallow
+  -- the error and leave NO accrual. Keep the row, with an unknown amount and a reason.
+  IF abs(v_cup) >= 1e10 OR abs(v_usd) >= 1e10 OR v_cup = 'NaN'::numeric OR v_usd = 'NaN'::numeric THEN
+    v_cup := NULL;
+    v_usd := NULL;
+    v_reason := 'amount_out_of_range';
+  END IF;
+
+  -- Margin: remittances only (the order profit is not stored in SQL). Cost = this accrual, else the legacy estimate.
+  IF p_kind = 'remittance' THEN
+    v_income := v_comm + v_dcost;
+  END IF;
+  v_cost := COALESCE(v_usd, v_est);
+  SELECT s.warning_pct, s.critical_pct INTO v_warn, v_crit FROM public.courier_margin_settings s WHERE s.kind = p_kind;
+  SELECT * INTO v_m FROM public._operation_margin(v_tier, v_income, v_cost, v_warn, v_crit);
+  -- margin_usd numeric(12,2) / margin_pct numeric(10,4): a margin they cannot store is unknown, the accrual is still written
+  IF v_m.margin_usd = 'NaN'::numeric OR abs(v_m.margin_usd) >= 1e10 THEN
+    v_m.margin_usd := NULL;
+    v_m.margin_pct := NULL;
+    v_m.status := 'unknown';
+  ELSIF v_m.margin_pct = 'NaN'::numeric OR abs(v_m.margin_pct) >= 1e6 THEN
+    v_m.margin_pct := NULL;
+    v_m.status := 'unknown';
+  END IF;
+
+  RETURN QUERY SELECT
+    v_rule.id, v_cup, v_fx, v_usd,
+    jsonb_strip_nulls(jsonb_build_object(
+      'source', p_source, 'reason', v_reason, 'method', v_rule.method, 'fx_source', v_fx_src,
+      'cost_estimated', (v_usd IS NULL AND v_est IS NOT NULL),
+      'rule', CASE WHEN v_rule.id IS NULL THEN NULL ELSE jsonb_build_object(
+        'code', v_rule.code, 'version', v_rule.version, 'name', v_rule.name, 'applies_to', v_rule.applies_to,
+        'method', v_rule.method, 'fixed_cup', v_rule.fixed_cup, 'cup_per_usd', v_rule.cup_per_usd, 'percent', v_rule.percent,
+        'base', v_rule.base, 'courier_id', v_rule.courier_id, 'zone_id', v_rule.shipping_zone_id,
+        'type_id', v_rule.remittance_type_id, 'amount_from', v_rule.amount_from, 'amount_to', v_rule.amount_to,
+        'currency', v_rule.currency, 'fixed_amount', v_rule.fixed_amount) END,
+      'inputs', jsonb_build_object(
+        'amount_sent', v_sent, 'amount_to_deliver', v_deliver, 'rate', v_rate, 'currency_sent', v_cur_sent,
+        'currency_delivered', v_cur_del, 'tier_amount', v_tier, 'commission_total', v_comm, 'delivery_cost', v_dcost,
+        'zone_id', v_zone, 'type_id', v_type, 'estimate_usd', v_est, 'live_fx', v_live_fx))),
+    v_m.margin_usd, v_m.margin_pct, v_m.status;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public._courier_compute_accrual(text, uuid, uuid, text) FROM PUBLIC, anon, authenticated, service_role;
 
 -- M1 body, verbatim (20261031100000_couriers_and_payment_types.sql; identical to the live production body)
 CREATE OR REPLACE FUNCTION public.admin_deactivate_messenger_payment_type(p_code text)

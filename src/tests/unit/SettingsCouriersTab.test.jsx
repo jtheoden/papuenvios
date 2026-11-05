@@ -289,18 +289,19 @@ describe('subscribed payment types per courier (phase B)', () => {
     return screen.findByRole('region', { name: 'couriers.subscriptions.title Ana' });
   };
 
-  it('offers only the current types usable by this courier (general or its own) and subscribes to the chosen one', async () => {
+  it('offers only the current GENERAL types (never its own nor another courier\'s) and subscribes to the chosen one', async () => {
     svc.subscribeCourier.mockResolvedValue('s1');
     const section = await open();
     expect(within(section).getByText('couriers.subscriptions.empty')).toBeTruthy();
     const select = within(section).getByLabelText('couriers.subscriptions.type');
     const codes = [...select.querySelectorAll('option')].map((o) => o.value).filter(Boolean);
-    expect(codes).toEqual(['g', 'low', 'mine']);
+    expect(codes).toEqual(['g', 'low']);
     fireEvent.change(select, { target: { value: 'g' } });
     fireEvent.click(within(section).getByRole('button', { name: 'couriers.subscriptions.add' }));
     await waitFor(() => expect(svc.subscribeCourier).toHaveBeenCalledWith('c1', 'g', { acceptGaps: false }));
     expect(await within(section).findByText('couriers.subscriptions.added')).toBeTruthy();
     expect(svc.listSubscriptions).toHaveBeenCalledTimes(2); // reloaded after the change
+    await waitFor(() => expect(svc.listPaymentTypes).toHaveBeenCalledTimes(2)); // and the types too
   });
 
   it('lists the active subscriptions (not offered again) and removes one', async () => {
@@ -311,8 +312,16 @@ describe('subscribed payment types per courier (phase B)', () => {
     expect(items[0].textContent).toContain('G');
     expect(items[0].textContent).toContain('g');
     const codes = [...within(section).getByLabelText('couriers.subscriptions.type').querySelectorAll('option')].map((o) => o.value).filter(Boolean);
-    expect(codes).toEqual(['low', 'mine']);
+    expect(codes).toEqual(['low']);
     fireEvent.click(within(section).getByRole('button', { name: 'couriers.subscriptions.remove G' }));
+    // asks first: nothing is sent until the removal is confirmed; cancelling keeps it
+    const confirm = await within(section).findByRole('alertdialog');
+    expect(confirm.textContent).toContain('couriers.subscriptions.confirmRemove');
+    expect(svc.unsubscribeCourier).not.toHaveBeenCalled();
+    fireEvent.click(within(confirm).getByRole('button', { name: 'couriers.common.cancel' }));
+    expect(within(section).queryByRole('alertdialog')).toBeNull();
+    fireEvent.click(within(section).getByRole('button', { name: 'couriers.subscriptions.remove G' }));
+    fireEvent.click(within(await within(section).findByRole('alertdialog')).getByRole('button', { name: 'couriers.subscriptions.confirmRemoveYes' }));
     await waitFor(() => expect(svc.unsubscribeCourier).toHaveBeenCalledWith('c1', 'g'));
     expect(await within(section).findByText('couriers.subscriptions.removed')).toBeTruthy();
   });
@@ -325,6 +334,7 @@ describe('subscribed payment types per courier (phase B)', () => {
     expect(row.textContent).toContain('old');
     expect(row.textContent).not.toContain('OLD');
     fireEvent.click(within(section).getByRole('button', { name: 'couriers.subscriptions.remove old' }));
+    fireEvent.click(within(await within(section).findByRole('alertdialog')).getByRole('button', { name: 'couriers.subscriptions.confirmRemoveYes' }));
     await waitFor(() => expect(svc.unsubscribeCourier).toHaveBeenCalledWith('c1', 'old'));
   });
 

@@ -84,6 +84,7 @@ test.describe('courier subscriptions', () => {
     await expect(section.getByTestId('subscription-row')).toContainText('Tramo bajo');
 
     await section.getByRole('button', { name: 'Quitar Tramo bajo' }).click();
+    await section.getByRole('alertdialog').getByRole('button', { name: 'Sí, quitar' }).click();
     await expect(section.getByText('Suscripción quitada. Las entregas ya realizadas no cambian.')).toBeVisible();
     expect(state.calls[2]).toEqual(['unsubscribe', { p_courier_id: COURIER.id, p_code: 'low' }]);
     await expect(section.getByTestId('subscription-row')).toHaveCount(0);

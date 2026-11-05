@@ -27,7 +27,7 @@ const fnBlock = (sql, name) => {
 };
 // function -> migration whose body B starts from (the rollback restores that body verbatim)
 const SOURCES = {
-  _courier_rule_resolve_v2: 'a', _courier_rule_coverage: 'a', admin_set_messenger_payment_type_v2: 'a',
+  _courier_rule_resolve_v2: 'a', _courier_rule_coverage: 'a', admin_set_messenger_payment_type_v2: 'a', _courier_compute_accrual: 'a',
   admin_deactivate_messenger_payment_type: 'm1'
 };
 const REPLACED = Object.keys(SOURCES);
@@ -70,7 +70,7 @@ describe('phase B migration hygiene (static)', () => {
       'admin_subscribe_courier_payment_type', 'admin_unsubscribe_courier_payment_type', '_courier_subscriber_gaps'];
     for (const f of replaced) expect(allowed).toContain(f);
     for (const f of REPLACED) expect(replaced).toContain(f);
-    expect(code).not.toMatch(/execute_platform_reset|_courier_compute_accrual|_(order|remittance)_transition/);
+    expect(code).not.toMatch(/execute_platform_reset|_(order|remittance)_transition/);
     const bodies = code.match(/\$function\$[\s\S]*?\$function\$/g) ?? [];
     for (const b of bodies) expect(b).not.toMatch(/\bEXECUTE\b/i);
   });
@@ -502,6 +502,7 @@ describeDb('phase B: courier subscriptions to payment types (local Postgres)', (
       const [a1] = await kit.accruals(first);
       expect(a1).toMatchObject({ amount_cup: '300.00', courier_id: x });
       expect(a1.rule_snapshot.rule.code).toBe('sub');
+      expect(a1.rule_snapshot.via_subscription).toBe(true);
 
       const pending = await deliver(); // assigned, not yet delivered
       await kit.unsubscribe(c, x, 'sub');
@@ -510,6 +511,7 @@ describeDb('phase B: courier subscriptions to payment types (local Postgres)', (
       const [a2] = await kit.accruals(pending);
       expect(a2).toMatchObject({ amount_cup: '100.00' });
       expect(a2.rule_snapshot.rule.code).toBe('zone');
+      expect(a2.rule_snapshot).not.toHaveProperty('via_subscription');
     });
   });
 

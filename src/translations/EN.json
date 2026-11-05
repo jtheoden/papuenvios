@@ -3038,7 +3038,9 @@
       "removed": "Subscription removed. Deliveries already made do not change.",
       "gapWarning": "With this subscription, the ranges of this courier leave values without a rule (unknown cost):",
       "acceptGaps": "I understand those values will have no rule and want to subscribe anyway.",
-      "inert": "No current version (not applied)"
+      "inert": "No current version (not applied)",
+      "confirmRemove": "Remove the subscription to \"{name}\"? It only affects future deliveries: delivered ones keep their cost.",
+      "confirmRemoveYes": "Yes, remove"
     },
     "errors": {
       "generic": "The operation could not be completed. Please try again.",

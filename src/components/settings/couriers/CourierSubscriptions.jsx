@@ -19,12 +19,14 @@ const CourierSubscriptions = ({ courier, subscriptions, types, onChanged }) => {
   const [message, setMessage] = useState(null);
   const [gaps, setGaps] = useState(null); // gaps of the last refusal, for `code`
   const [acceptGaps, setAcceptGaps] = useState(false);
+  const [confirming, setConfirming] = useState(null); // code whose removal awaits confirmation
 
   const now = Date.now();
   const current = types.filter((r) => isCurrent(r, now) && (r.courier_id === null || r.courier_id === courier.id));
   const byCode = new Map(current.map((r) => [r.code, r]));
   const subscribed = new Set(subscriptions.map((s) => s.payment_type_code));
-  const offered = [...byCode.values()].filter((r) => !subscribed.has(r.code)).sort((a, b) => a.code.localeCompare(b.code));
+  // only general types are offered: an own type of this courier already applies to it with courier precedence
+  const offered = [...byCode.values()].filter((r) => r.courier_id === null && !subscribed.has(r.code)).sort((a, b) => a.code.localeCompare(b.code));
   // a subscription whose type has no current version applies nothing: shown as inert, never under the old name
   const nameOf = (c) => byCode.get(c)?.name ?? c;
   const currencyOf = (c) => byCode.get(c)?.currency ?? 'USD';
@@ -43,6 +45,7 @@ const CourierSubscriptions = ({ courier, subscriptions, types, onChanged }) => {
       setGaps(null);
       setAcceptGaps(false);
       setCode('');
+      setConfirming(null);
       await onChanged();
     } catch (error) {
       if (error?.gaps?.length) {
@@ -69,7 +72,7 @@ const CourierSubscriptions = ({ courier, subscriptions, types, onChanged }) => {
     <section className="w-full space-y-2 border-t border-gray-200 pt-2" aria-label={`${t('couriers.subscriptions.title')} ${courier.name}`}>
       <h4 className="text-sm font-semibold">{t('couriers.subscriptions.title')}</h4>
       <p className="text-xs text-gray-600">{t('couriers.subscriptions.intro')}</p>
-      <div aria-live="polite">{message && <Notice tone={message.tone}>{message.text}</Notice>}</div>
+      <div aria-live="polite">{message && <Notice tone={message.tone} announce={false}>{message.text}</Notice>}</div>
 
       {subscriptions.length === 0 ? (
         <p className="text-sm text-gray-700">{t('couriers.subscriptions.empty')}</p>
@@ -83,12 +86,24 @@ const CourierSubscriptions = ({ courier, subscriptions, types, onChanged }) => {
                 <span className="text-sm text-gray-700">{t('couriers.subscriptions.inert')} <span className="text-xs">({s.payment_type_code})</span></span>
               )}
               <Btn
-                onClick={() => run(() => unsubscribeCourier(courier.id, s.payment_type_code), 'couriers.subscriptions.removed')}
+                onClick={() => setConfirming(s.payment_type_code)}
                 disabled={busy}
                 aria-label={`${t('couriers.subscriptions.remove')} ${nameOf(s.payment_type_code)}`}
               >
                 {t('couriers.subscriptions.remove')}
               </Btn>
+              {confirming === s.payment_type_code && (
+                <div role="alertdialog" aria-label={t('couriers.subscriptions.remove')} className="w-full space-y-2 rounded-lg border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900">
+                  <p>{t('couriers.subscriptions.confirmRemove', { name: nameOf(s.payment_type_code) })}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Btn tone="danger" disabled={busy}
+                      onClick={() => run(() => unsubscribeCourier(courier.id, s.payment_type_code), 'couriers.subscriptions.removed')}>
+                      {t('couriers.subscriptions.confirmRemoveYes')}
+                    </Btn>
+                    <Btn onClick={() => setConfirming(null)} disabled={busy}>{t('couriers.common.cancel')}</Btn>
+                  </div>
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -112,7 +127,7 @@ const CourierSubscriptions = ({ courier, subscriptions, types, onChanged }) => {
           <div aria-live="polite">
             {gaps?.length > 0 && (
               <div className="space-y-2" data-testid="subscription-gap-warning">
-                <Notice tone="warn">
+                <Notice tone="warn" announce={false}>
                   <p>{t('couriers.subscriptions.gapWarning')}</p>
                   <ul className="list-disc pl-5">
                     {gaps.map((g) => (
