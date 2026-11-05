@@ -174,6 +174,23 @@ describe('AuthProvider — slow / failing profile fetch', () => {
     expect(probe()).toBe('admin|resolved|user');
   });
 
+  it('a SIGNED_IN on focus more than 5 min after the last read re-reads the profile (a demotion is seen)', async () => {
+    singleMock.mockResolvedValueOnce(profile('admin'));
+    await mountApp();
+    expect(probe()).toBe('admin|resolved|user');
+
+    singleMock.mockClear();
+    singleMock.mockResolvedValue(profile('user'));
+    await advance(5 * 60_000 + 1_000);
+    await act(async () => { authStateCallback('TOKEN_REFRESHED', SESSION); }); // never re-reads
+    expect(singleMock).not.toHaveBeenCalled();
+
+    await act(async () => { authStateCallback('SIGNED_IN', SESSION); });
+    await advance(0);
+    expect(singleMock).toHaveBeenCalledTimes(1);
+    expect(probe()).toBe('user|resolved|user');
+  });
+
   it('(d) retries immediately on "online" and when the tab becomes visible', async () => {
     singleMock.mockResolvedValue({ data: null, error: { message: 'boom' } });
     await mountApp();
