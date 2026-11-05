@@ -107,7 +107,9 @@ const VendorInventoryTab = ({
 
     setIsConverting(true);
     try {
-      const converted = await convertAmountAsync(parseFloat(price), fromCurrencyId, systemBaseCurrencyId);
+      // Same live rate as the save: the preview is the amount that will be stored
+      const converted = parseFloat(price) * await getLiveConversionRate(fromCurrencyId, systemBaseCurrencyId);
+      if (!Number.isFinite(converted)) throw new Error('No valid exchange rate available');
       const baseCurrencyInfo = getCurrencyById(systemBaseCurrencyId);
       setConvertedPreview({
         amount: converted,
@@ -121,7 +123,7 @@ const VendorInventoryTab = ({
     } finally {
       setIsConverting(false);
     }
-  }, [convertAmountAsync, getCurrencyById, systemBaseCurrencyId]);
+  }, [getCurrencyById, systemBaseCurrencyId]);
 
   // Trigger conversion preview when form price or currency changes
   useEffect(() => {

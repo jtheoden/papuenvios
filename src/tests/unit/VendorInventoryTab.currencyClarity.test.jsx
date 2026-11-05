@@ -235,6 +235,16 @@ describe('VendorInventoryTab form currency clarity', () => {
       expect(innerSelect().value).toBe('usd');
     });
 
+    it('the base-currency preview uses the same live rate as the save', async () => {
+      mocks.convertAmountAsync.mockImplementation(async (amount) => amount / 1000); // stale display rate
+      openCreate();
+      switchTo('cup');
+      fireEvent.change(priceInput(), { target: { value: '9000' } });
+
+      expect(await screen.findByText(/≈\s*\$10\.00 USD/)).toBeTruthy();
+      expect(liveRate).toHaveBeenCalledWith('cup', 'usd');
+    });
+
     // Create vs edit: only an edit has an original price to anchor to; in create the typed figure is
     // authoritative and is simply read in whichever currency is selected.
     it('does not re-convert in create mode', () => {

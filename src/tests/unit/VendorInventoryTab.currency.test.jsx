@@ -104,6 +104,7 @@ describe('VendorInventoryTab currency handling (RB-20)', () => {
     mocks.toast.mockClear();
     mocks.convertAmountAsync.mockReset();
     mocks.convertAmountAsync.mockResolvedValue(9000); // a positive converted price
+    liveRate.mockReset().mockResolvedValue(1);
     updateProduct.mockClear();
   });
 
@@ -186,7 +187,7 @@ describe('VendorInventoryTab currency handling (RB-20)', () => {
       pressEdit();
       fireEvent.change(screen.getByDisplayValue('USD (Base)'), { target: { value: 'cup' } });
       await waitFor(() => expect(screen.getByDisplayValue('CUP')).toBeTruthy());
-      mocks.convertAmountAsync.mockRejectedValue(new Error('no rate'));
+      liveRate.mockRejectedValue(new Error('no rate')); // the preview reads the live rate, like the save
 
       const note = await screen.findByText('vendor.inventory.previewUnavailable', {}, { timeout: 2000 });
       expect(note.getAttribute('role')).toBe('status');
@@ -205,7 +206,7 @@ describe('VendorInventoryTab currency handling (RB-20)', () => {
 
     it('does not call updateProduct, shows a destructive toast and keeps the form open', async () => {
       await editWithForeignCurrency();
-      liveRate.mockRejectedValueOnce(new Error('no rate'));
+      liveRate.mockRejectedValue(new Error('no rate'));
 
       fireEvent.click(screen.getByText('vendor.addProduct.save').closest('button'));
 
@@ -230,7 +231,7 @@ describe('VendorInventoryTab currency handling (RB-20)', () => {
 
     it('the saved base price uses the rate read live (cup -> usd), never the cached display rate', async () => {
       mocks.convertAmountAsync.mockResolvedValue(9000); // display conversion when switching the form to CUP
-      liveRate.mockResolvedValueOnce(1 / 900);
+      liveRate.mockResolvedValue(1 / 900);
       await editWithForeignCurrency();
 
       fireEvent.click(screen.getByText('vendor.addProduct.save').closest('button'));
