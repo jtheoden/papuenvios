@@ -176,4 +176,9 @@ describe('SettingsPageVisual - contrast warning', () => {
     fireEvent.change(screen.getByLabelText(NEW_CONTROLS.cartBadgeTextColor), { target: { value: '#ff9999' } });
     expect(within(warning()).getByText(new RegExp(`${P}pair\\.cartBadge`))).toBeInTheDocument();
   });
+
+  it('warns about footer text that is too faint, naming the footer pair', () => {
+    setup({ footerBgColor: '#ffffff', footerTextColor: '#cccccc' });
+    expect(within(warning()).getByText(new RegExp(`${P}pair\\.footerText`))).toBeInTheDocument();
+  });
 });

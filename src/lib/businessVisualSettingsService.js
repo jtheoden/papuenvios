@@ -5,8 +5,8 @@
 
 import { supabase } from '@/lib/supabase';
 import { NEW_KEY_DEFAULTS, BRAND_CSS_VARS, isHexColor } from '@/lib/brandPalette';
+import { LOCAL_CACHE_KEY } from '@/lib/constants';
 
-const LOCAL_CACHE_KEY = 'business_visual_settings_cache';
 const CACHE_DURATION = 60 * 1000; // 1 minute cache
 
 // Default settings - used when no DB record exists or on error
@@ -336,7 +336,8 @@ export function applyVisualSettingsToDOM(settings) {
       else root.style.removeProperty(cssVar);
     }
 
-    // Apply page background to body
+    // Apply page background to body. It sits under the stylesheet gradient (index.css), which stays: the brand ivory
+    // is painted by the Home root only (see homeTheme.js), so other pages keep their look.
     document.body.style.backgroundColor = settings.pageBgColor || '#f9fafb';
 
   } catch (err) {

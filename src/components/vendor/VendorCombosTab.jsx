@@ -10,7 +10,7 @@ import { validateAndProcessImage } from '@/lib/imageUtils';
 import { resolveMarginInput } from '@/lib/marginResolver';
 import { isImageUploadError, getImageUploadMessageKey } from '@/lib/imageStorage';
 import { createCombo, updateCombo as updateComboDB, deleteCombo, setComboActiveState } from '@/lib/comboService';
-import { checkComboStockIssues, computeComboPricing } from '@/lib/comboUtils';
+import { checkComboStockIssues, computeComboPricing, convertWithRates } from '@/lib/comboUtils';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { logActivity } from '@/lib/activityLogger';
 import { hasAdminComboFields } from '@/lib/adminCatalogColumns';
@@ -91,15 +91,7 @@ const VendorCombosTab = ({
   const selectedCurrencyCode = currencyCodeById[selectedCurrency] || baseCurrencyCode;
 
   const convertPrice = useCallback((amount, fromCurrencyId, toCurrencyId) => {
-    if (!amount || !fromCurrencyId || !toCurrencyId || fromCurrencyId === toCurrencyId) return amount;
-
-    const direct = exchangeRates?.[`${fromCurrencyId}-${toCurrencyId}`];
-    if (direct) return amount * direct;
-
-    const inverse = exchangeRates?.[`${toCurrencyId}-${fromCurrencyId}`];
-    if (inverse) return amount / inverse;
-
-    return amount;
+    return convertWithRates(amount, fromCurrencyId, toCurrencyId, exchangeRates);
   }, [exchangeRates]);
 
   const openNewComboForm = () => {
@@ -155,13 +147,14 @@ const VendorCombosTab = ({
   // Compute combo base price from selected products (in base currency)
   const comboBasePrice = useMemo(() => {
     if (!comboForm?.products?.length) return 0;
-    return comboForm.products.reduce((total, productId) => {
+    const total = comboForm.products.reduce((sum, productId) => {
       const product = products.find(p => p.id === productId);
-      if (!product) return total;
+      if (!product) return sum;
       const qty = comboForm.productQuantities[productId] || 1;
       const priceInBase = convertPrice(product.base_price, product.base_currency_id, baseCurrencyId);
-      return total + (priceInBase * qty);
+      return sum + (priceInBase * qty);
     }, 0);
+    return Number.isFinite(total) ? total : 0;
   }, [comboForm?.products, comboForm?.productQuantities, products, baseCurrencyId, convertPrice]);
 
   // Cross-calculate profit fields when any one changes
@@ -200,7 +193,7 @@ const VendorCombosTab = ({
 
   // Recalculate profit amount and sell price when comboBasePrice changes (products added/removed)
   useEffect(() => {
-    if (!comboForm || comboBasePrice <= 0) return;
+    if (!comboForm || !(comboBasePrice > 0)) return;
     const margin = parseFloat(comboForm.profitMargin);
     if (isNaN(margin)) return;
     const amount = (comboBasePrice * margin / 100).toFixed(2);
@@ -422,7 +415,7 @@ const VendorCombosTab = ({
       console.error('[handleComboSubmit] Error details:', { message: error?.message, code: error?.code, stack: error?.stack });
       toast({
         title: 'Error',
-        description: isImageUploadError(error) ? t(getImageUploadMessageKey(error)) : error.message,
+        description: isImageUploadError(error) ? t(getImageUploadMessageKey(error)) : (error?.i18nKey ? t(error.i18nKey) : error.message),
         variant: 'destructive'
       });
     } finally {
@@ -443,8 +436,8 @@ const VendorCombosTab = ({
     });
 
     return {
-      base: prices.basePrice.toFixed(2),
-      final: prices.finalPrice.toFixed(2)
+      base: Number.isFinite(prices.basePrice) ? prices.basePrice.toFixed(2) : '—',
+      final: Number.isFinite(prices.finalPrice) ? prices.finalPrice.toFixed(2) : '—'
     };
   };
 
@@ -520,7 +513,7 @@ const VendorCombosTab = ({
                     key={mode.id}
                     type="button"
                     onClick={() => {
-                      if (comboBasePrice <= 0 && mode.id !== 'percentage') {
+                      if (!(comboBasePrice > 0) && mode.id !== 'percentage') {
                         toast({ title: t('vendor.combos.addProductsFirst'), variant: 'destructive' });
                         return;
                       }
@@ -678,13 +671,14 @@ const VendorCombosTab = ({
 
                 // Calculate user savings: sum of actual individual product final prices vs combo price
                 const displayCurrencyId = selectedCurrency || baseCurrencyId;
-                const individualTotal = hasProducts ? comboForm.products.reduce((sum, productId) => {
+                const calculatedIndividualTotal = hasProducts ? comboForm.products.reduce((sum, productId) => {
                   const product = products.find(p => p.id === productId);
                   if (!product) return sum;
                   const qty = comboForm.productQuantities[productId] || 1;
                   const finalInDisplay = convertPrice(parseFloat(product.final_price || product.base_price || 0), product.base_currency_id, displayCurrencyId);
                   return sum + (finalInDisplay * qty);
                 }, 0) : 0;
+                const individualTotal = Number.isFinite(calculatedIndividualTotal) ? calculatedIndividualTotal : 0;
                 const savings = individualTotal - finalNum;
                 const savingsPercent = individualTotal > 0 ? ((savings / individualTotal) * 100) : 0;
 

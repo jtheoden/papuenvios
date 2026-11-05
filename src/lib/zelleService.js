@@ -15,6 +15,7 @@ import {
   parseSupabaseError
 } from '@/lib/errorHandler';
 import { createZelleDeactivationAlerts } from '@/lib/userAlertService';
+import { getBusinessWindows } from '@/lib/dashboardMetrics';
 
 // ============================================================================
 // ZELLE STATUS CONSTANTS
@@ -556,9 +557,13 @@ export const getZelleAccountUsageSummary = async () => {
       }, {});
     }
     // Fall through to the legacy history-based aggregation.
+    if (computedError) {
+      logError(parseSupabaseError(computedError), {
+        operation: 'getZelleAccountUsageSummary - computed usage RPC (falling back to history)'
+      });
+    }
     const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const { daily: startOfDay, monthly: startOfMonth } = getBusinessWindows(now);
 
     const { data, error } = await supabase
       .from('zelle_transaction_history')

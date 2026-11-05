@@ -71,7 +71,30 @@
       "subtitle": "Send products and money to Cuba quickly, safely and reliably",
       "cta": {
         "products": "View Products"
+      },
+      "cards": {
+        "combos": {
+          "title": "Food combos",
+          "description": "Put together a food combo and send it to your family in Cuba.",
+          "cta": "View combos"
+        },
+        "remittances": {
+          "title": "Remittances to Cuba",
+          "description": "Send money to Cuba from the United States or Spain.",
+          "cta": "Send remittance"
+        }
       }
+    },
+    "carousel": {
+      "label": "Announcements carousel",
+      "roleDescription": "carousel",
+      "slide": "slide",
+      "slideOf": "{count} of {total}",
+      "previous": "Previous announcement",
+      "next": "Next announcement",
+      "pause": "Pause carousel",
+      "play": "Resume carousel",
+      "goTo": "Go to announcement {count}"
     },
     "features": {
       "title": "Key Features",
@@ -411,7 +434,9 @@
       "deliveryRateHint": "What the recipient receives per unit sent",
       "marketRate": "Market Rate",
       "marketRateHint": "Actual market exchange rate",
+      "rateFieldsSuperAdminOnly": "Only a super admin can create remittance types or change their rate and commission. You can edit the remaining fields.",
       "calculatedCommission": "Calculated commission",
+      "effectiveDeliveryRate": "Effective delivery rate",
       "marginPerUnit": "Margin per unit",
       "deliveryRateTooHigh": "Delivery rate cannot exceed the market rate",
       "advancedCommission": "Additional fixed commission (Advanced)",
@@ -520,8 +545,6 @@
       "rateChangedBannerPendingHint": "Pending remittances can be updated to the new rate.",
       "rateChangedBannerLockedHint": "In-progress remittances are locked at the original rate.",
       "rateChangedFrom": "Rate changed",
-      "newAmountWouldBe": "New amount to deliver",
-      "was": "was",
       "updateToNewRate": "Update to new rate",
       "keepCurrentRate": "Keep current rate",
       "rateLockedNote": "Your remittance is locked at the rate at time of creation",
@@ -570,6 +593,7 @@
       "pageSubtitle": "Send money quickly and securely",
       "selectTypeRequired": "Select remittance type *",
       "rate": "Rate",
+      "rateUnavailable": "The exchange rate for this remittance type is not available right now. Please try again later or contact support.",
       "calculating": "Calculating...",
       "continue": "Continue",
       "back": "Back",
@@ -821,6 +845,7 @@
       "sellPriceTooLow": "Invalid sell price",
       "sellPriceTooLowDesc": "Sell price cannot be less than product costs",
       "addProductsFirst": "Add products to the combo first",
+      "componentCurrencyMismatch": "All products in a combo must be priced in the base currency. Remove or replace the products in another currency.",
       "userSavings": "Customer savings",
       "individualTotal": "Individual purchase"
     },
@@ -1099,6 +1124,11 @@
       "baseCurrency": "Base Currency",
       "base": "Base",
       "exchangeRates": "Exchange Rates",
+      "ratesSuperAdminOnly": "Only a super admin can create, edit or delete exchange rates. You can view them but not change them.",
+      "currencyDeleteSuperAdminOnly": "Deleting a currency also deactivates its exchange rates, and only a super admin can do that.",
+      "ratePairPartial": "The rate pair was only partly saved and may be inconsistent. The list was reloaded: review both rates and try again.",
+      "ratePairIncomplete": "The inverse rate is missing or inactive, so the pair was not changed (the direct rate was restored). Delete the pair and create it again.",
+      "rateNotFound": "This exchange rate no longer exists or was already changed. The list was reloaded.",
       "newRate": "New Rate",
       "addNewExchangeRate": "Add New Exchange Rate",
       "fromCurrency": "From Currency",
@@ -1128,6 +1158,7 @@
       "rateUpdatedAt": "Last updated: {date}",
       "rateChangeConfirmTitle": "Confirm large rate change",
       "rateChangeConfirmMessage": "The USD to EUR rate changes from {previous} to {next} ({percent}%). Bizum quotes use this rate; make sure the new value is correct.",
+      "rateChangeConfirmMessageGeneric": "The {from} to {to} rate changes from {previous} to {next} ({percent}%). Make sure the new value is correct.",
       "rateChangeConfirmAction": "Save anyway",
       "pairNotAllowed": "Only active currencies can be used in a rate, except an inactive EUR as the target of a USD rate."
     },
@@ -1163,7 +1194,11 @@
           "menuActive": "Active dropdown menu item",
           "tab": "Active tab",
           "button": "Primary button text and background",
-          "cartBadge": "Cart badge"
+          "cartBadge": "Cart badge",
+          "footerText": "Footer text",
+          "footerLink": "Footer links",
+          "footerLinkHover": "Footer link on hover",
+          "footerBrand": "Company name in the footer"
         }
       },
       "title": "Visual Settings",
