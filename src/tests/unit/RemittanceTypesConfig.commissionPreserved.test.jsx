@@ -1,7 +1,8 @@
 /**
  * A9 regression: opening a type for edit must never rewrite its stored commission_percentage.
- * remittance_types.commission_percentage is numeric(20,10); only a change of the market or delivery rate by the
- * super_admin recomputes it (rounded to 2 decimals, A9). Editing anything else keeps the stored value exactly.
+ * remittance_types.commission_percentage is numeric(20,10); only a REAL change of the market or delivery rate by the
+ * super_admin recomputes it (at the column scale). Editing anything else, or typing a rate and going back to the
+ * loaded value, keeps the stored value exactly and does not count as a rate change.
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -152,18 +153,19 @@ describe('super_admin changing the delivery rate', () => {
     svc.types = [typeFor(LIVE_ROWS[0])];
   });
 
-  it('stores the A9 commission (2 decimals) and shows the effective delivery rate it produces', async () => {
+  it('stores the recomputed commission (column scale), shows 2 decimals and the delivery rate it produces', async () => {
     render(<RemittanceTypesConfig />);
     const { delivery } = await openEdit();
     fireEvent.change(delivery, { target: { value: '890' } });
 
-    // (1 - 890 / 915) * 100 = 2.7322404...% -> 2.73
+    // (1 - 890 / 915) * 100 = 2.7322404372...% -> shown as 2.73%
     await waitFor(() => expect(screen.getByText('2.73%')).toBeInTheDocument());
-    expect(screen.getByTestId('effective-delivery-rate')).toHaveTextContent('890.02');
+    expect(screen.getByTestId('effective-delivery-rate')).toHaveTextContent('890.00');
 
     const payload = await save();
-    expect(payload.commission_percentage).toBe(2.73);
+    expect(payload.commission_percentage).toBe(2.7322404372);
     expect(payload.exchange_rate).toBe(915);
+    expect(svc.pending).toHaveBeenCalledWith('t1');
   });
 
   it('recomputes the commission when the market rate changes', async () => {
@@ -171,10 +173,55 @@ describe('super_admin changing the delivery rate', () => {
     const { market } = await openEdit();
     fireEvent.change(market, { target: { value: '920' } });
 
-    // delivery stays at the derived 895.00 -> (1 - 895 / 920) * 100 = 2.7173913...% -> 2.72
+    // delivery stays at the derived 895.00 -> (1 - 895 / 920) * 100 = 2.7173913043% -> shown as 2.72%
     await waitFor(() => expect(screen.getByText('2.72%')).toBeInTheDocument());
     const payload = await save();
-    expect(payload.commission_percentage).toBe(2.72);
+    expect(payload.commission_percentage).toBe(2.7173913043);
     expect(payload.exchange_rate).toBe(920);
+  });
+});
+
+describe('super_admin typing a rate and going back to the loaded value', () => {
+  beforeEach(() => {
+    svc.types = [typeFor(LIVE_ROWS[0])];
+  });
+
+  it.each([
+    ['delivery rate 895.00 -> 896 -> 895.00', 'delivery', ['896', '895.00']],
+    ['delivery rate 895.00 -> 896 -> 895 (same number, other text)', 'delivery', ['896', '895']],
+    ['market rate 915 -> 916 -> 915', 'market', ['916', '915']]
+  ])('%s keeps the exact commission, shows the real effective rate and is not a rate change', async (_name, field, values) => {
+    render(<RemittanceTypesConfig />);
+    const inputs = await openEdit();
+    values.forEach((value) => fireEvent.change(inputs[field], { target: { value } }));
+
+    await waitFor(() => expect(screen.getByTestId('effective-delivery-rate')).toHaveTextContent('895.00'));
+    const payload = await save();
+    expect(payload.commission_percentage).toBe(2.1857923497);
+    expect(payload.exchange_rate).toBe(915);
+    expect(svc.pending).not.toHaveBeenCalled();
+  });
+
+  it('a real change in one field plus the revert of the other still recomputes', async () => {
+    render(<RemittanceTypesConfig />);
+    const { market, delivery } = await openEdit();
+    fireEvent.change(market, { target: { value: '916' } });
+    fireEvent.change(delivery, { target: { value: '895.00' } });
+    const payload = await save();
+    expect(payload.exchange_rate).toBe(916);
+    expect(payload.commission_percentage).toBe(2.2925764192); // (1 - 895 / 916) * 100
+    expect(svc.pending).toHaveBeenCalledWith('t1');
+  });
+});
+
+describe('the rate-change warning detects any commission difference', () => {
+  it('asks about pending remittances when the commission differs by less than a hundredth', async () => {
+    svc.types = [typeFor({ rate: 915, commission: 2.1857923497 })];
+    render(<RemittanceTypesConfig />);
+    const { delivery } = await openEdit();
+    // 895.00 -> 894.99: the commission moves by ~0.0011 points, below the old 0.01 threshold
+    fireEvent.change(delivery, { target: { value: '894.99' } });
+    await save();
+    expect(svc.pending).toHaveBeenCalledWith('t1');
   });
 });

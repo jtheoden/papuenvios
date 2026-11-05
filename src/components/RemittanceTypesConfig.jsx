@@ -57,15 +57,23 @@ const RemittanceTypesConfig = () => {
     loadCurrencies();
   }, []);
 
+  // Rates as loaded by handleEdit (null when creating): typing a rate and going back to it is not a change.
+  const [loadedRates, setLoadedRates] = useState(null);
+
   // commission_percentage is derived ONLY when the user types a market or delivery rate. Doing it in an effect
-  // would also fire when handleEdit loads the form and overwrite the stored full-precision value
-  // (remittance_types.commission_percentage is numeric(20,10)) with a 2-decimal one.
+  // would also fire when handleEdit loads the form and overwrite the stored value. If both rates are back to the
+  // loaded ones the stored commission is restored as is (the displayed delivery rate is rounded to the cent, so
+  // recomputing from it would drift).
   const handleRateChange = (field, value) => {
     setFormData(prev => {
       const next = { ...prev, [field]: value };
       const marketRate = parseFloat(next.exchange_rate);
       const deliveryRate = parseFloat(next.delivery_rate);
-      if (marketRate > 0 && deliveryRate > 0) {
+      if (loadedRates
+        && marketRate === parseFloat(loadedRates.exchange_rate)
+        && deliveryRate === parseFloat(loadedRates.delivery_rate)) {
+        next.commission_percentage = String(editingType.commission_percentage || 0);
+      } else if (marketRate > 0 && deliveryRate > 0) {
         next.commission_percentage = calcCommissionFromRates(marketRate, deliveryRate).toString();
       }
       return next;
@@ -135,6 +143,7 @@ const RemittanceTypesConfig = () => {
   const handleCreate = () => {
     if (!isSuperAdmin) return;
     setEditingType(null);
+    setLoadedRates(null);
     // Set defaults based on available currencies
     const defaultOrigin = currencies.find(c => c.code === 'USD') || currencies[0];
     const defaultDelivery = currencies.find(c => c.code === 'CUP') || currencies[0];
@@ -168,12 +177,14 @@ const RemittanceTypesConfig = () => {
     const rate = type.exchange_rate || 0;
     const pct = type.commission_percentage || 0;
     const derivedDeliveryRate = effectiveDeliveryRate(rate, pct);
+    const loadedDeliveryRate = derivedDeliveryRate > 0 ? derivedDeliveryRate.toFixed(2) : '';
+    setLoadedRates({ exchange_rate: type.exchange_rate.toString(), delivery_rate: loadedDeliveryRate });
     setFormData({
       name: type.name,
       currency_code: type.currency_code,
       delivery_currency: type.delivery_currency,
       exchange_rate: type.exchange_rate.toString(),
-      delivery_rate: derivedDeliveryRate > 0 ? derivedDeliveryRate.toFixed(2) : '',
+      delivery_rate: loadedDeliveryRate,
       commission_percentage: (type.commission_percentage || 0).toString(),
       commission_fixed: (type.commission_fixed || 0).toString(),
       min_amount: type.min_amount.toString(),
@@ -274,7 +285,7 @@ const RemittanceTypesConfig = () => {
         const newCommPct = parseFloat(formData.commission_percentage) || 0;
 
         const rateChanged = Math.abs(oldRate - newRate) > 0.0001 ||
-                            Math.abs(oldCommPct - newCommPct) > 0.01;
+                            Math.abs(oldCommPct - newCommPct) > 1e-10;
 
         if (isSuperAdmin && rateChanged) {
           const pendingCount = await getPendingRemittancesCountByType(editingType.id);
@@ -545,7 +556,7 @@ const RemittanceTypesConfig = () => {
                     <Info className="h-4 w-4 text-blue-500 flex-shrink-0" />
                     <span className="text-sm text-blue-700 font-medium">{t('remittances.admin.calculatedCommission')}:</span>
                     <span className="text-sm font-bold text-blue-800">
-                      {parseFloat(formData.commission_percentage || 0)}%
+                      {Number((parseFloat(formData.commission_percentage) || 0).toFixed(2))}%
                     </span>
                   </div>
                   <div className="flex items-center gap-2">

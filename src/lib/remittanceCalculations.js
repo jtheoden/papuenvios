@@ -23,11 +23,14 @@ import { roundMoney, roundTo, ceilMoney } from './moneyPure';
 const MAX_REVERSE_STEPS = 100;
 const CENT = 0.01;
 
+// remittance_types.commission_percentage is numeric(20,10): rounding coarser than that makes a type saved unchanged drift.
+const COMMISSION_PCT_SCALE = 10;
+
 export function calcCommissionFromRates(marketRate, deliveryRate) {
   if (!Number.isFinite(marketRate) || marketRate <= 0) return 0;
   if (!Number.isFinite(deliveryRate) || deliveryRate <= 0) return 100;
   if (deliveryRate >= marketRate) return 0;
-  return roundTo((1 - deliveryRate / marketRate) * 100, 2);
+  return roundTo((1 - deliveryRate / marketRate) * 100, COMMISSION_PCT_SCALE);
 }
 
 export const effectiveDeliveryRate = (marketRate, commissionPct) =>

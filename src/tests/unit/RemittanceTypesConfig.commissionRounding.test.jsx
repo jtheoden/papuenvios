@@ -1,6 +1,6 @@
 /**
- * A9 - the commission percentage derived from market/delivery rates is rounded to the stored scale (2 decimals)
- * and the admin sees the delivery rate that will really apply.
+ * A9 - the commission percentage derived from market/delivery rates is stored at the scale of its column
+ * (numeric(20,10)); the admin sees it at 2 decimals and the delivery rate that will really apply.
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -40,16 +40,16 @@ describe('RemittanceTypesConfig commission derived from rates', () => {
     svc.types = [];
   });
 
-  it('shows the rounded percentage and the effective delivery rate it produces', async () => {
+  it('shows the percentage at 2 decimals, saves it at full column precision, and shows the delivery rate it produces', async () => {
     render(<RemittanceTypesConfig />);
     const { market, delivery } = await openForm();
     fireEvent.change(market, { target: { value: '520' } });
     fireEvent.change(delivery, { target: { value: '500' } });
 
-    // 3.846153...% is rounded to 2 decimals (A9): the UI shows what will be saved, not the raw float
+    // 3.8461538462% is shown as 3.85% but the effective delivery rate uses the full value: 500.00 as typed
     await waitFor(() => expect(screen.getByText('3.85%')).toBeInTheDocument());
     expect(screen.getByText('remittances.admin.effectiveDeliveryRate:')).toBeInTheDocument();
-    expect(screen.getByTestId('effective-delivery-rate')).toHaveTextContent('499.98');
+    expect(screen.getByTestId('effective-delivery-rate')).toHaveTextContent('500.00');
   });
 
   it('shows an exact percentage unchanged and an effective rate equal to the typed one', async () => {
