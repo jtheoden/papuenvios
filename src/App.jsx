@@ -38,6 +38,7 @@ import { LegalAcceptanceProvider } from '@/contexts/LegalAcceptanceContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { trackPageVisit } from '@/lib/analyticsService';
+import { useDelayedSplash } from '@/hooks/useDelayedSplash';
 import { normalizePath, resolvePageFromPathname, pageToPath, shouldShowFooterNotice } from '@/lib/routes';
 
 // Lightweight fallback for lazy-loaded routes (admin area) — a full LoadingScreen
@@ -96,6 +97,17 @@ function DynamicVisualSettings() {
   );
 }
 
+// Auth readiness is already gated by AuthProvider (AuthLoadingScreen); this only waits for the visual settings.
+function StartupGate({ children }) {
+  const { visualSettingsLoaded } = useBusiness();
+  const showSplash = useDelayedSplash(visualSettingsLoaded);
+  return (
+    <AnimatePresence mode="wait">
+      {showSplash ? <LoadingScreen key="loading" /> : visualSettingsLoaded ? children : null}
+    </AnimatePresence>
+  );
+}
+
 const PageAnalyticsTracker = ({ currentPage }) => {
   const { user } = useAuth();
 
@@ -108,7 +120,6 @@ const PageAnalyticsTracker = ({ currentPage }) => {
 };
 
 function App() {
-  const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState('home');
   const [detailParams, setDetailParams] = useState({ itemId: null, itemType: null });
 
@@ -149,10 +160,6 @@ function App() {
       setDetailParams(params);
     }
 
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 2500);
-
     const handlePopState = (event) => {
       const newPath = event?.state?.path || window.location.pathname;
       const { page, params } = resolvePageFromPath(newPath);
@@ -166,7 +173,6 @@ function App() {
     window.addEventListener('popstate', handlePopState);
 
     return () => {
-      clearTimeout(timer);
       window.removeEventListener('popstate', handlePopState);
     };
   }, []);
@@ -255,10 +261,7 @@ function App() {
                   <DynamicVisualSettings />
                   <PageAnalyticsTracker currentPage={currentPage} />
 
-                <AnimatePresence mode="wait">
-                  {isLoading ? (
-                    <LoadingScreen key="loading" />
-                  ) : (
+                <StartupGate>
                     <motion.div
                       key="main"
                       initial={{ opacity: 0 }}
@@ -286,8 +289,7 @@ function App() {
                       </main>
                       {currentPage !== 'auth/callback' && <Footer onNavigate={handleNavigate} showNotice={shouldShowFooterNotice(currentPage)} />}
                     </motion.div>
-                  )}
-                </AnimatePresence>
+                </StartupGate>
 
                 <ConsentBanner suppressed={!shouldShowFooterNotice(currentPage)} onNavigate={handleNavigate} />
                 <Toaster />

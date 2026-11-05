@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion, MotionConfig, useReducedMotion } from 'framer-motion';
 import { ShoppingBag, DollarSign, Globe } from 'lucide-react';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -7,12 +7,16 @@ import { useLanguage } from '@/contexts/LanguageContext';
 const LoadingScreen = () => {
   const { visualSettings } = useBusiness();
   const { t } = useLanguage();
+  const reduceMotion = useReducedMotion();
+  // Reduced motion: no entry/exit fade; MotionConfig also stops the looping transform animations below.
+  const enter = (from) => (reduceMotion ? false : from);
 
   return (
+    <MotionConfig reducedMotion="user">
     <motion.div
-      initial={{ opacity: 0 }}
+      initial={enter({ opacity: 0 })}
       animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      exit={{ opacity: 0, transition: { duration: reduceMotion ? 0 : 0.2 } }}
       className="fixed inset-0 flex items-center justify-center z-50"
       style={{
         background: visualSettings.useGradient
@@ -22,7 +26,7 @@ const LoadingScreen = () => {
     >
       <div className="text-center">
         <motion.div
-          initial={{ scale: 0 }}
+          initial={enter({ scale: 0 })}
           animate={{ scale: 1 }}
           transition={{ duration: 0.5, delay: 0.2 }}
           className="mb-8"
@@ -34,11 +38,11 @@ const LoadingScreen = () => {
               className="w-24 h-24 mx-auto mb-4 relative"
             >
               <div className="absolute inset-0 rounded-full border-4 border-white/20"></div>
-              <div className="absolute inset-0 rounded-full border-4 border-white border-t-transparent animate-spin"></div>
+              <div className="absolute inset-0 rounded-full border-4 border-white border-t-transparent animate-spin motion-reduce:animate-none"></div>
             </motion.div>
             
             <motion.div
-              initial={{ y: 20, opacity: 0 }}
+              initial={enter({ y: 20, opacity: 0 })}
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 0.5 }}
               className="flex justify-center space-x-4 mb-6"
@@ -66,7 +70,7 @@ const LoadingScreen = () => {
         </motion.div>
 
         <motion.h1
-          initial={{ y: 30, opacity: 0 }}
+          initial={enter({ y: 30, opacity: 0 })}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.7 }}
           className="text-4xl font-bold text-white mb-4"
@@ -75,7 +79,7 @@ const LoadingScreen = () => {
         </motion.h1>
 
         <motion.p
-          initial={{ y: 20, opacity: 0 }}
+          initial={enter({ y: 20, opacity: 0 })}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.9 }}
           className="text-xl text-white/80 mb-8"
@@ -84,7 +88,7 @@ const LoadingScreen = () => {
         </motion.p>
 
         <motion.div
-          initial={{ scaleX: 0 }}
+          initial={enter({ scaleX: 0 })}
           animate={{ scaleX: 1 }}
           transition={{ duration: 2, delay: 1 }}
           className="w-64 h-2 rounded-full mx-auto overflow-hidden"
@@ -106,6 +110,7 @@ const LoadingScreen = () => {
         </motion.div>
       </div>
     </motion.div>
+    </MotionConfig>
   );
 };
 
