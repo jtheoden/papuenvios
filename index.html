@@ -29,6 +29,9 @@
 		<style>
 			#ps{position:fixed;inset:0;display:flex;flex-direction:column;gap:16px;align-items:center;justify-content:center;background:#FAF7F0;color:#171717;font:16px system-ui,sans-serif}
 			#ps svg{width:min(240px,70vw);height:auto}
+			/* data-theme comes from the inline script above: classic matches AuthLoadingScreen's classic backdrop (buildLoadingTheme). */
+			[data-theme="classic"] #ps{background:linear-gradient(to right, #2563eb, #9333ea);color:#fff}
+			[data-theme="classic"] #ps text{fill:#fff}
 			#ps .ps-arrow{animation:ps-nudge 1.2s ease-in-out infinite alternate}
 			@keyframes ps-nudge{to{transform:translateX(4px)}}
 			@media (prefers-reduced-motion: reduce){#ps .ps-arrow{animation:none}}
