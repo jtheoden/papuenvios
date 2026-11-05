@@ -341,7 +341,7 @@ describe('legacy (production row) hero: readable title and no brand gold before 
 describe('mobile top padding and unusable slides', () => {
   it('the hero has a local top padding on mobile so the h1 clears the fixed header', async () => {
     await mount();
-    expect(screen.getByTestId('home-hero').className.split(/\s+/)).toContain('pt-12');
+    expect(screen.getByTestId('home-hero').className.split(/\s+/)).toContain('pt-[4.5rem]');
   });
 
   it('slides without any image do not create a carousel', async () => {

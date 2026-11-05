@@ -87,6 +87,9 @@
     },
     "carousel": {
       "label": "Carrusel de anuncios",
+      "roleDescription": "carrusel",
+      "slide": "diapositiva",
+      "slideOf": "{count} de {total}",
       "previous": "Anuncio anterior",
       "next": "Anuncio siguiente",
       "pause": "Pausar carrusel",

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { buildHomeTheme } from '@/lib/homeTheme';
@@ -6,7 +6,11 @@ import { cn } from '@/lib/utils';
 
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
 const DEFAULT_AUTOPLAY_MS = 5000;
+const MIN_AUTOPLAY_MS = 2000; // WCAG 2.2.2 / readability: never flip faster than this, whatever the stored setting
 const DEFAULT_TRANSITION_MS = 1000;
+
+// stable identity of a slide for the failed-image set and React keys
+const slideKey = (item, i) => item.id ?? `${i}:${item.image_url || item.image_file}`;
 
 const prefersReducedMotion = () => typeof window.matchMedia === 'function' && window.matchMedia(REDUCED_MOTION).matches;
 
@@ -37,7 +41,9 @@ const controlClass =
 
 /**
  * Hero carousel. WCAG 2.2.2: it pauses on hover, on focus inside, when the tab is hidden and with the pause
- * button; with prefers-reduced-motion it starts paused. The user's own pause is never undone automatically.
+ * button; with prefers-reduced-motion it starts paused. The user's own pause is never undone automatically, and an
+ * explicit "resume" wins over hover/focus until the pointer and the focus have both left the carousel.
+ * Slides without an image, or whose image fails to load, are skipped.
  */
 const HeroCarousel = ({ slides, visualSettings }) => {
   const { t, language } = useLanguage();
@@ -48,18 +54,28 @@ const HeroCarousel = ({ slides, visualSettings }) => {
   const [userPaused, setUserPaused] = useState(reducedMotion);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [holdIgnored, setHoldIgnored] = useState(false);
+  const [failed, setFailed] = useState(() => new Set());
 
-  const count = slides.length;
+  const usable = useMemo(
+    () => slides.filter((item, i) => (item.image_url || item.image_file) && !failed.has(slideKey(item, i))),
+    [slides, failed]
+  );
+  const count = usable.length;
   const multiple = count > 1;
   const current = Math.min(index, Math.max(count - 1, 0));
-  const slide = slides[current];
-  const speed = visualSettings.carouselAutoplaySpeed || DEFAULT_AUTOPLAY_MS;
+  const slide = usable[current];
+  const speed = Math.max(MIN_AUTOPLAY_MS, Number(visualSettings.carouselAutoplaySpeed) || DEFAULT_AUTOPLAY_MS);
   const transitionMs = visualSettings.carouselTransitionSpeed || DEFAULT_TRANSITION_MS;
-  const running = multiple && !userPaused && !hovered && !focused && !hidden;
+  const running = multiple && !userPaused && (holdIgnored || (!hovered && !focused)) && !hidden;
 
   useEffect(() => {
     if (reducedMotion) setUserPaused(true);
   }, [reducedMotion]);
+
+  useEffect(() => {
+    if (!hovered && !focused) setHoldIgnored(false);
+  }, [hovered, focused]);
 
   useEffect(() => {
     if (!running) return undefined;
@@ -70,6 +86,10 @@ const HeroCarousel = ({ slides, visualSettings }) => {
   if (!slide) return null;
 
   const go = (delta) => setIndex((current + delta + count) % count);
+  const togglePause = () => {
+    setHoldIgnored(userPaused); // resuming ignores hover/focus until both are gone
+    setUserPaused(!userPaused);
+  };
   const title = language === 'es' ? slide.title_es : slide.title_en;
   const controlStyle = { borderColor: theme.border, backgroundColor: theme.cardBg, color: theme.ink };
 
@@ -77,7 +97,7 @@ const HeroCarousel = ({ slides, visualSettings }) => {
     <div
       data-testid="hero-carousel"
       role="region"
-      aria-roledescription="carousel"
+      aria-roledescription={t('home.carousel.roleDescription')}
       aria-label={t('home.carousel.label')}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -92,14 +112,22 @@ const HeroCarousel = ({ slides, visualSettings }) => {
         className="relative aspect-video w-full overflow-hidden rounded-xl border"
         style={{ borderColor: theme.border, backgroundColor: theme.cardBg }}
       >
-        <img
-          key={current}
-          data-testid="hero-slide-image"
-          src={slide.image_url || slide.image_file}
-          alt={title || t('home.hero.title')}
-          className="h-full w-full object-contain animate-in fade-in motion-reduce:animate-none"
-          style={{ animationDuration: `${transitionMs}ms` }}
-        />
+        <div
+          role="group"
+          aria-roledescription={t('home.carousel.slide')}
+          aria-label={t('home.carousel.slideOf', { count: current + 1, total: count })}
+          className="h-full w-full"
+        >
+          <img
+            key={slideKey(slide, current)}
+            data-testid="hero-slide-image"
+            src={slide.image_url || slide.image_file}
+            alt={title || ''}
+            onError={() => setFailed((prev) => new Set(prev).add(slideKey(slide, slides.indexOf(slide))))}
+            className="h-full w-full object-contain animate-in fade-in motion-reduce:animate-none"
+            style={{ animationDuration: `${transitionMs}ms` }}
+          />
+        </div>
       </div>
 
       {multiple && (
@@ -110,7 +138,7 @@ const HeroCarousel = ({ slides, visualSettings }) => {
               className={controlClass}
               style={controlStyle}
               aria-label={userPaused ? t('home.carousel.play') : t('home.carousel.pause')}
-              onClick={() => setUserPaused((paused) => !paused)}
+              onClick={togglePause}
             >
               {userPaused ? <Play className="h-4 w-4" aria-hidden="true" /> : <Pause className="h-4 w-4" aria-hidden="true" />}
             </button>
@@ -122,11 +150,11 @@ const HeroCarousel = ({ slides, visualSettings }) => {
             </button>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-1.5">
-            {slides.map((item, i) => {
+            {usable.map((item, i) => {
               const active = i === current;
               return (
                 <button
-                  key={item.id ?? i}
+                  key={slideKey(item, i)}
                   type="button"
                   aria-label={t('home.carousel.goTo', { count: i + 1 })}
                   aria-current={active ? 'true' : undefined}

@@ -87,6 +87,9 @@
     },
     "carousel": {
       "label": "Announcements carousel",
+      "roleDescription": "carousel",
+      "slide": "slide",
+      "slideOf": "{count} of {total}",
       "previous": "Previous announcement",
       "next": "Next announcement",
       "pause": "Pause carousel",

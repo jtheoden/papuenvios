@@ -272,7 +272,9 @@ const HomePage = ({ onNavigate }) => {
   const carouselEnabled = visualSettings.carouselEnabled !== false;
   const theme = buildHomeTheme(visualSettings);
   const { legacy } = theme;
-  const hasCarousel = carouselEnabled && (carouselLoading || carouselSlides.length > 0);
+  // slides without an image cannot be shown (the admin may leave the URL empty)
+  const usableSlides = carouselSlides.filter((slide) => slide.image_url || slide.image_file);
+  const hasCarousel = carouselEnabled && (carouselLoading || usableSlides.length > 0);
 
   // Hero cards (mockup): both use routes that already exist. "Combos" has no page of its own yet (S6/ND-4), so it opens products.
   const heroCards = [
@@ -288,12 +290,13 @@ const HomePage = ({ onNavigate }) => {
       style={theme.pageBg ? { ...theme.vars, backgroundColor: theme.pageBg, boxShadow: `0 -1rem 0 0 ${theme.pageBg}` } : theme.vars}
     >
       {/* Layout = option A (mockup): centered title block, two cards, full-width carousel below; stacked on mobile. */}
-      <section data-testid="home-hero" className="px-4 py-8 sm:py-12 lg:py-16">
+      <section data-testid="home-hero" className="px-4 pb-8 pt-[4.5rem] sm:pb-12 md:pt-12 lg:py-16">
         <div className="container mx-auto flex flex-col items-center gap-8 text-center">
           <div className="w-full max-w-3xl">
             <h1
               className="mb-4 break-words text-3xl font-bold sm:text-4xl lg:text-5xl"
-              style={getHeadingStyle(visualSettings)}
+              // legacy look: solid ink, because the stored gradient fails AA contrast on the page colour (2.98:1)
+              style={legacy ? { color: theme.ink } : getHeadingStyle(visualSettings)}
             >
               {t('home.hero.title')}
             </h1>
@@ -344,7 +347,7 @@ const HomePage = ({ onNavigate }) => {
               {carouselLoading ? (
                 <SkeletonCard variant="carousel" />
               ) : (
-                <HeroCarousel slides={carouselSlides} visualSettings={visualSettings} />
+                <HeroCarousel slides={usableSlides} visualSettings={visualSettings} />
               )}
             </div>
           )}
