@@ -22,6 +22,7 @@ import { ZELLE_STATUS, ZELLE_TRANSACTION_TYPES, upsertZelleTransactionStatus } f
 import { isInsufficientStockError, stockRefusalToError } from './stockErrors';
 import { roundMoney } from './moneyPure';
 import { PAYMENT_PROOF_MIME_EXT, validatePaymentProofFile } from './paymentProofService';
+import { optimizeImage, IMAGE_PRESETS } from './imageOptimizer';
 
 export { isInsufficientStockError };
 
@@ -886,12 +887,14 @@ export const uploadPaymentProof = async (file, orderId, userId, paymentReference
       throw createValidationError({ file: fileError }, 'Invalid payment proof file');
     }
 
-    const fileExt = PAYMENT_PROOF_MIME_EXT[file.type];
+    // Resized (<= 1600 px) and re-encoded once here; the original is kept when that fails or is not lighter.
+    const proof = await optimizeImage(file, IMAGE_PRESETS.proof);
+    const fileExt = PAYMENT_PROOF_MIME_EXT[proof.type];
     const filePath = `payment-proofs/payment-proof-${orderId}-${Date.now()}.${fileExt}`;
 
     const { error: uploadError } = await supabase.storage
       .from('order-documents')
-      .upload(filePath, file, {
+      .upload(filePath, proof, {
         cacheControl: '3600',
         upsert: false
       });
@@ -1021,10 +1024,12 @@ export const markOrderAsDelivered = async (orderId, proofFile = null, adminId) =
         throw appError;
       }
 
-      fileName = `${user.id}/${orderId}/delivery-proof-${Date.now()}.jpg`;
+      const proof = await optimizeImage(proofFile, IMAGE_PRESETS.proof);
+      const ext = proof.type === 'image/webp' ? 'webp' : 'jpg'; // historical name: .jpg for anything not re-encoded
+      fileName = `${user.id}/${orderId}/delivery-proof-${Date.now()}.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from('order-delivery-proofs')
-        .upload(fileName, proofFile, {
+        .upload(fileName, proof, {
           cacheControl: '3600',
           upsert: false
         });

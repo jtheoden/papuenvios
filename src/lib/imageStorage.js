@@ -13,9 +13,10 @@ import {
   isDataUri,
   dataUriToBlob,
   buildImagePath,
-  fitWithin,
-  encodeWithinLimit
+  encodeWithinLimit,
+  MAX_IMAGE_DIMENSION
 } from './imageStoragePure';
+import { loadBitmap, drawScaled, optimizeImage, IMAGE_PRESETS } from './imageOptimizer';
 
 export const IMAGE_UPLOAD_ERROR_CODE = 'IMAGE_UPLOAD_FAILED';
 
@@ -41,16 +42,9 @@ export const getImageUploadMessageKey = (error) => {
   return 'images.uploadFailed';
 };
 
-const loadBitmap = async (blob) => {
-  if (typeof createImageBitmap === 'function') return createImageBitmap(blob);
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
-    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
-    img.src = url;
-  });
-};
+// product-images rejects image/webp (bucket allowed_mime_types). Flip to 'image/webp' only after the
+// migration 20261105100000_product_images_allow_webp.sql is applied to production.
+export const PRODUCT_IMAGES_FORMAT = 'image/jpeg';
 
 /**
  * Resize (longest side <= 1200px) and encode as JPEG (~0.82), lowering the
@@ -59,22 +53,16 @@ const loadBitmap = async (blob) => {
  */
 export const resizeToJpeg = async (blob) => {
   const bitmap = await loadBitmap(blob);
-  const { width, height } = fitWithin(bitmap.width, bitmap.height);
-
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  // JPEG has no alpha: paint white under transparent PNGs
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, width, height);
-  ctx.drawImage(bitmap, 0, 0, width, height);
-  if (typeof bitmap.close === 'function') bitmap.close();
-
-  return encodeWithinLimit(
-    (quality) => new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
-  );
+  return encodeWithinLimit(drawScaled(bitmap, { maxSide: MAX_IMAGE_DIMENSION, format: 'image/jpeg' }));
 };
+
+/** WebP variant (same 1200 px catalog preset); falls back to JPEG when the browser cannot encode WebP. */
+export const resizeToWebp = async (blob) => {
+  const optimized = await optimizeImage(blob, IMAGE_PRESETS.catalog);
+  return optimized.type === 'image/webp' ? optimized : resizeToJpeg(blob);
+};
+
+const resizeForProductImages = (blob) => (PRODUCT_IMAGES_FORMAT === 'image/webp' ? resizeToWebp(blob) : resizeToJpeg(blob));
 
 /**
  * @param {string|Blob|null|undefined} value data URI / File / Blob / existing URL / empty
@@ -84,7 +72,7 @@ export const resizeToJpeg = async (blob) => {
  */
 export const resolveImageUrl = async (
   value,
-  { folder, id, resize = resizeToJpeg, upload = uploadProductImage } = {}
+  { folder, id, resize = resizeForProductImages, upload = uploadProductImage } = {}
 ) => {
   const isBlob = typeof Blob !== 'undefined' && value instanceof Blob;
   if (!isBlob && !isDataUri(value)) {
@@ -104,7 +92,7 @@ export const resolveImageUrl = async (
   if (!resized) throw uploadError('too_large');
 
   try {
-    const path = buildImagePath(folder, id);
+    const path = buildImagePath(folder, id, { ext: resized.type === 'image/webp' ? 'webp' : 'jpg' });
     const { publicUrl } = await upload(resized, path);
     if (!publicUrl) throw new Error('Storage returned no public URL');
     return publicUrl;

@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { LONG_CACHE_CONTROL } from './imageOptimizer';
 
 const BUCKET_NAME = 'product-images';
 
@@ -41,7 +42,7 @@ export const uploadProductImage = async (file, fileName) => {
     const { error: uploadError } = await supabase.storage
       .from(BUCKET_NAME)
       .upload(normalizedName, file, {
-        cacheControl: '3600',
+        cacheControl: LONG_CACHE_CONTROL, // callers always pass a unique name (timestamp + random)
         upsert: true,
         contentType: file.type || 'image/jpeg'
       });

@@ -6,7 +6,8 @@ import {
   resolveImageUrl,
   resizeToJpeg,
   isImageUploadError,
-  IMAGE_UPLOAD_ERROR_CODE
+  IMAGE_UPLOAD_ERROR_CODE,
+  PRODUCT_IMAGES_FORMAT
 } from '@/lib/imageStorage';
 import { MAX_IMAGE_BYTES } from '@/lib/imageStoragePure';
 
@@ -34,6 +35,16 @@ describe('resolveImageUrl', () => {
     expect(path).toMatch(/^products\/p1\/\d+-[a-z0-9]+\.jpg$/);
     expect(url).toBe(`https://cdn.test/${path}`);
     expect(url.startsWith('data:')).toBe(false);
+  });
+
+  it('names the object .webp when the resizer produced WebP', async () => {
+    resize.mockResolvedValue(new Blob([new Uint8Array(4)], { type: 'image/webp' }));
+    await resolveImageUrl(PNG_1PX, { folder: 'carousel', id: 's1', resize, upload });
+    expect(upload.mock.calls[0][1]).toMatch(/^carousel\/s1\/\d+-[a-z0-9]+\.webp$/);
+  });
+
+  it('keeps JPEG for product-images until its bucket accepts image/webp (migration pending)', () => {
+    expect(PRODUCT_IMAGES_FORMAT).toBe('image/jpeg');
   });
 
   it('uploads a new File/Blob as well', async () => {

@@ -37,10 +37,10 @@ export const dataUriToBlob = (value) => {
 const safeSegment = (segment) =>
   String(segment).replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'x';
 
-/** e.g. products/<id>/<timestamp>-<rand>.jpg */
-export const buildImagePath = (folder, id, { now = Date.now(), random = Math.random } = {}) => {
+/** e.g. products/<id>/<timestamp>-<rand>.jpg (unique per upload: safe for a 1-year cache) */
+export const buildImagePath = (folder, id, { now = Date.now(), random = Math.random, ext = 'jpg' } = {}) => {
   const rand = random().toString(36).slice(2, 8).padEnd(4, '0');
-  return `${safeSegment(folder)}/${safeSegment(id)}/${now}-${rand}.jpg`;
+  return `${safeSegment(folder)}/${safeSegment(id)}/${now}-${rand}.${ext === 'webp' ? 'webp' : 'jpg'}`;
 };
 
 /** Scale down (never up) so the longest side is at most `max`. */

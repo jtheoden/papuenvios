@@ -4,7 +4,8 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import { processImage } from '@/lib/imageUtils';
+import { validateImage } from '@/lib/imageUtils';
+import { optimizeImage, withExtension, IMAGE_PRESETS, LONG_CACHE_CONTROL } from '@/lib/imageOptimizer';
 
 const BUCKET_NAME = 'publications';
 
@@ -132,20 +133,20 @@ export async function deletePublication(id, coverImageUrl) {
  */
 export async function uploadPublicationImage(file) {
   try {
-    // Process image (resize + compress)
-    const processed = await processImage(file, 'publication');
-    if (!processed.success) {
-      throw new Error('Image processing failed');
-    }
+    const validation = validateImage(file, 'publication');
+    if (!validation.valid) throw new Error(validation.errors.join('\n'));
 
-    const fileName = `cover_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.jpg`;
+    // Resize + WebP (GIFs keep their animation and are uploaded as they are)
+    const optimized = await optimizeImage(file, IMAGE_PRESETS.catalog);
+    const ext = withExtension('', optimized.type).split('.').pop();
+    const fileName = `cover_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
       .from(BUCKET_NAME)
-      .upload(fileName, processed.blob, {
-        cacheControl: '3600',
+      .upload(fileName, optimized, {
+        cacheControl: LONG_CACHE_CONTROL, // unique name per upload
         upsert: false,
-        contentType: 'image/jpeg'
+        contentType: optimized.type
       });
 
     if (uploadError) throw uploadError;

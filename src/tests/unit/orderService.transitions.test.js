@@ -50,7 +50,7 @@ vi.mock('@/lib/supabase', () => ({
     storage: {
       from: (bucket) => ({
         upload: async (path, file, opts) => {
-          state.uploads.push({ bucket, path, opts });
+          state.uploads.push({ bucket, path, opts, file });
           return { error: state.uploadError };
         }
       })
@@ -71,9 +71,13 @@ vi.mock('@/lib/zelleService', () => ({
   upsertZelleTransactionStatus: (...a) => zelleUpsert(...a)
 }));
 vi.mock('@/lib/paymentProofService', () => ({
-  PAYMENT_PROOF_MIME_EXT: { 'image/png': 'png', 'image/jpeg': 'jpg' },
+  PAYMENT_PROOF_MIME_EXT: { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' },
   validatePaymentProofFile: () => null
 }));
+
+const optimizer = vi.hoisted(() => ({ optimizeImage: vi.fn(async (f) => f) }));
+vi.mock('@/lib/imageOptimizer', async (importOriginal) => ({ ...(await importOriginal()), optimizeImage: (...a) => optimizer.optimizeImage(...a) }));
+const webp = () => new File([new Uint8Array(3)], 'opt.webp', { type: 'image/webp' });
 
 import {
   validatePayment,
@@ -104,6 +108,21 @@ beforeEach(() => {
 });
 
 const lastRpc = () => state.rpcCalls[state.rpcCalls.length - 1];
+
+describe('proof images are optimized before upload (egress)', () => {
+  it('uploadPaymentProof and markOrderAsDelivered upload the optimized proof with its .webp extension', async () => {
+    optimizer.optimizeImage.mockResolvedValueOnce(webp());
+    await uploadPaymentProof(png, 'ord-1', 'user-1', 'REF', { payerPhone: '+1 305 555 0100' });
+    expect(optimizer.optimizeImage.mock.calls[0][1]).toEqual({ maxSide: 1600, quality: 0.85 });
+    expect(state.uploads[0].file.type).toBe('image/webp');
+    expect(state.uploads[0].path).toMatch(/\.webp$/);
+
+    optimizer.optimizeImage.mockResolvedValueOnce(webp());
+    await markOrderAsDelivered('ord-1', png, 'admin-1');
+    expect(state.uploads[1].file.type).toBe('image/webp');
+    expect(state.uploads[1].path).toMatch(/delivery-proof-\d+\.webp$/);
+  });
+});
 
 describe('each function calls its RPC', () => {
   it('validatePayment -> order_validate_payment, then syncs Zelle from the returned row', async () => {

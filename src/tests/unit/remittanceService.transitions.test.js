@@ -40,8 +40,9 @@ vi.mock('@/lib/supabase', () => ({
     auth: { getUser: async () => ({ data: { user: { id: 'u1', email: 'u@x.test' } }, error: null }) },
     storage: {
       from: (bucket) => ({
-        upload: async (path, _file, options) => {
+        upload: async (path, file, options) => {
           state.uploads.push({ bucket, path, upsert: Boolean(options?.upsert) });
+          state.files.push(file);
           return { error: state.uploadError };
         }
       })
@@ -74,6 +75,9 @@ vi.mock('@/lib/orderDiscountService', () => ({ recordOfferUsage: vi.fn() }));
 const proposals = vi.hoisted(() => ({ getOpenProposals: vi.fn(async () => []) }));
 vi.mock('@/lib/commissionProposalService', () => ({ getOpenProposals: (...a) => proposals.getOpenProposals(...a) }));
 vi.mock('@/lib/currencyService', () => ({ getExchangeRate: vi.fn() }));
+const optimizer = vi.hoisted(() => ({ optimizeImage: vi.fn(async (f) => f) }));
+vi.mock('@/lib/imageOptimizer', async (importOriginal) => ({ ...(await importOriginal()), optimizeImage: (...a) => optimizer.optimizeImage(...a) }));
+const webp = () => new File([new Uint8Array(3)], 'opt.webp', { type: 'image/webp' });
 
 import {
   uploadPaymentProof,
@@ -89,10 +93,25 @@ const png = { name: 'p.png', type: 'image/png', size: 10 };
 const lastRpc = () => state.rpcCalls[state.rpcCalls.length - 1];
 
 beforeEach(() => {
-  Object.assign(state, { rpcResults: {}, rpcCalls: [], directWrites: [], uploads: [], uploadError: null, selectRow: null });
+  Object.assign(state, { rpcResults: {}, rpcCalls: [], directWrites: [], uploads: [], files: [], uploadError: null, selectRow: null });
   zelleUpsert.mockClear();
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'info').mockImplementation(() => {});
+});
+
+describe('proof images are optimized before upload (egress)', () => {
+  it('uploadPaymentProof and confirmDelivery upload the optimized proof (proof preset) with its .webp extension', async () => {
+    optimizer.optimizeImage.mockResolvedValueOnce(webp());
+    await uploadPaymentProof('rem-1', png, 'REF', '', { payerPhone: '+1 305 555 0100' });
+    expect(optimizer.optimizeImage.mock.calls[0][1]).toEqual({ maxSide: 1600, quality: 0.85 });
+    expect(state.files[0].type).toBe('image/webp');
+    expect(state.uploads[0].path).toMatch(/\.webp$/);
+
+    optimizer.optimizeImage.mockResolvedValueOnce(webp());
+    await confirmDelivery('rem-1', png, '');
+    expect(state.files[1].type).toBe('image/webp');
+    expect(state.uploads[1].path).toMatch(/_delivery_proof_\d+\.webp$/);
+  });
 });
 
 describe('each function calls its RPC', () => {

@@ -672,9 +672,10 @@ const CartPage = ({ onNavigate }) => {
         throw new Error(result.error || 'Error processing image');
       }
 
-      // Set preview and file
+      // processImage validates and builds the preview; the ORIGINAL is kept because uploadPaymentProof
+      // re-encodes it once (<= 1600 px): a second lossy pass on a payment proof would hurt legibility.
       setPaymentProofPreview(result.base64);
-      setPaymentProof(result.blob);
+      setPaymentProof(file);
 
       toast({
         title: language === 'es' ? '✅ Comprobante cargado' : '✅ Proof uploaded',

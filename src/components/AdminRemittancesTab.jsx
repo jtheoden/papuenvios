@@ -50,6 +50,7 @@ import RecipientLocation from './RecipientLocation';
 import OperationRefundSection from '@/components/refunds/OperationRefundSection';
 import { formatRecipientLocation } from '@/lib/recipientInfo';
 import { REMITTANCE_DELIVERED_STATUSES } from '@/lib/dashboardMetrics';
+import { optimizeImage, IMAGE_PRESETS } from '@/lib/imageOptimizer';
 
 const AdminRemittancesTab = () => {
   const { t, language } = useLanguage();
@@ -507,13 +508,14 @@ const AdminRemittancesTab = () => {
     try {
       // Upload file to Supabase Storage
       const { supabase } = await import('@/lib/supabase');
-      const fileExt = file.name.split('.').pop();
+      const proof = await optimizeImage(file, IMAGE_PRESETS.proof); // PDFs and non-images go as they are
+      const fileExt = proof.name.split('.').pop();
       // File path structure: {user_id}/{remittance_id}_delivery_proof.{ext}
       const filePath = `${remittance.user_id}/${remittance.id}_delivery_proof.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('remittance-delivery-proofs')
-        .upload(filePath, file, { upsert: true });
+        .upload(filePath, proof, { upsert: true });
 
       if (uploadError) throw uploadError;
 

@@ -33,6 +33,7 @@ import {
   ZELLE_TRANSACTION_TYPES
 } from '@/lib/zelleService';
 import { getExchangeRate as getCurrencyExchangeRate } from '@/lib/currencyService';
+import { optimizeImage, IMAGE_PRESETS } from '@/lib/imageOptimizer';
 import { calcForward, calcReverse, calcTotalToPay } from '@/lib/remittanceCalculations';
 import { roundMoney } from '@/lib/moneyPure';
 import { validateCommissionOverride } from '@/lib/commissionOverrideRules';
@@ -1272,12 +1273,14 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
       });
     }
 
-    const fileExt = file.name.split('.').pop();
+    // Images resized (<= 1600 px) and re-encoded; PDFs and anything that would not get lighter go as they are.
+    const proof = await optimizeImage(file, IMAGE_PRESETS.proof);
+    const fileExt = proof.name.split('.').pop();
     const filePath = `${user.id}/${remittance.remittance_number}.${fileExt}`;
 
     const { error: uploadError } = await supabase.storage
       .from('remittance-proofs')
-      .upload(filePath, file, { upsert: true });
+      .upload(filePath, proof, { upsert: true });
 
     if (uploadError) {
       const appError = parseSupabaseError(uploadError);
@@ -1839,11 +1842,12 @@ export const confirmDelivery = async (remittanceId, proofFile = null, notes = ''
       }
       // Unique per attempt: the bucket's UPDATE policy is owner-only, so a retry (maybe by another admin) must never overwrite.
       // Owner folder first, shape accepted by the RPC (no '..', no leading '/', no backslash).
-      proofPath = `${remittance.user_id}/${remittance.id}_delivery_proof_${Date.now()}.${proofExtension(proofFile)}`;
+      const proof = await optimizeImage(proofFile, IMAGE_PRESETS.proof);
+      proofPath = `${remittance.user_id}/${remittance.id}_delivery_proof_${Date.now()}.${proofExtension(proof)}`;
 
       const { error: uploadError } = await supabase.storage
         .from('remittance-delivery-proofs')
-        .upload(proofPath, proofFile, { upsert: false });
+        .upload(proofPath, proof, { upsert: false });
 
       if (uploadError) {
         const appError = parseSupabaseError(uploadError);
