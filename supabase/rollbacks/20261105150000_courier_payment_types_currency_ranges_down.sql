@@ -2,8 +2,10 @@
 -- It restores the M2 body of _courier_compute_accrual verbatim, re-grants EXECUTE on admin_set_messenger_payment_type (v1) to
 -- authenticated, drops _courier_rule_resolve_v2, _courier_rule_coverage and admin_set_messenger_payment_type_v2, restores the
 -- M1 CHECKs and drops the columns currency / fixed_amount.
+-- GUARD: aborts (55000) while phase B is applied (courier_payment_type_subscriptions exists: its down file goes first).
 -- GUARD: aborts (55000) while any rule depends on phase A (method fixed_amount, currency CUP, percent_of_base on orders):
 --   rows are append-only and such rules cannot be represented by M1. Export them and decide first.
+-- exchange_rates.rate_type is NOT dropped: production had it before phase A (phase A only reconciles the repo chain).
 -- Accruals already written keep their frozen rule_snapshot (reasons no_fx / no_tier_match stay as history).
 -- DEPLOY: roll the frontend back to the v1 client together with this file.
 BEGIN;
@@ -12,6 +14,10 @@ SET LOCAL lock_timeout = '5s';
 
 DO $$
 BEGIN
+  IF to_regclass('public.courier_payment_type_subscriptions') IS NOT NULL THEN
+    RAISE EXCEPTION 'courier phase B is applied (courier_payment_type_subscriptions exists): run the phase B down file first'
+      USING ERRCODE = '55000';
+  END IF;
   IF EXISTS (SELECT 1 FROM public.messenger_payment_types
               WHERE method = 'fixed_amount' OR currency = 'CUP' OR (method = 'percent_of_base' AND applies_to <> 'remittance')) THEN
     RAISE EXCEPTION 'messenger_payment_types has phase A rules (fixed_amount, CUP currency or percent on orders): they cannot be represented after this rollback'

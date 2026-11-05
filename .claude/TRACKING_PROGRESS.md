@@ -564,6 +564,13 @@ Rama `feat/courier-payment-types-ranges` (desde `origin/main` 30f8f5da). Sin PR,
 - Cabecera de la migración: documenta que v2 difiere de v1 a propósito (moneda sin tasa → `no_fx`, sin caer a menor precedencia).
 - Verificación: eslint src limpio; BD local propia `papuenvios_test_codex_fixa` (recreada desde cero con la migración editada, borrada al final) 51 archivos / 1771 verdes + 1 skip preexistente; build a directorio temporal OK, `dist/` sin tocar; vitest unit completo 365 archivos / 4388 verdes; e2e simulado 2/2.
 
+### Mensajería fase A — segunda ronda de revisión (2026-11-05)
+- 🔴 Margen desbordado: con una regla fija de 2.000.000 USD el `margin_pct` (numeric(10,4)) desbordaba, el trigger se tragaba el 22003 y la entrega quedaba SIN devengo. Ahora un margen que no cabe (`|pct| >= 1e6` o NaN; `|margin_usd| >= 1e10` o NaN) queda NULL con estado `unknown` y el devengo se escribe siempre. Revisadas las demás columnas: `amount_cup`/`amount_usd` ya cubiertas (`amount_out_of_range`); `fx_used` numeric(15,6) no puede desbordar (sus fuentes son `exchange_rates.rate` (15,6) y `remittances.exchange_rate` (12,4)). Tests remesa+pedido con fixed_amount, fixed_cup y percent.
+- 🟡 Valor de operación NaN: el resolver ya no empareja «más de X» con NaN (`CONTINUE WHEN ... = 'NaN'`); `_courier_compute_accrual` trata `amount_sent`/`amount_to_deliver`/valor del tramo NaN como desconocido. Test remesa (entregada) y pedido (cálculo directo en transacción revertida: el CHECK de identidad de totales impide un subtotal NaN).
+- 🟡 Tasa en vivo: `ORDER BY (rate_type = 'general') DESC NULLS LAST, effective_date DESC, id` (preferencia con respaldo, no exclusión; sin mapeo por tipo). `exchange_rates.rate_type` existe en prod pero no en la cadena del repo (la añade `20261102110000_dual_exchange_rates_for_orders.sql`, rama sin mergear): la migración A la añade `IF NOT EXISTS` con la misma definición (no-op en prod) y el rollback NO la borra. En prod los índices únicos solo permiten una fila activa USD→CUP: el desempate es defensivo.
+- 🟡 Rollback A: aborta con 55000 si `courier_payment_type_subscriptions` existe (primero el down de la fase B).
+- Verificación: eslint src limpio; vitest unit 365 archivos / 4388 verdes; BD local propia `papuenvios_test_codex_fixb` (recreada desde cero) 51 archivos / 1777 verdes + 1 skip preexistente, borrada al final; e2e simulado 2/2; build a directorio temporal OK, `dist/` sin tocar.
+
 ## Mensajería: suscripción de mensajeros a tipos de pago (fase B) — 2026-11-05
 
 Rama `feat/courier-subscriptions` (desde `origin/feat/courier-payment-types-ranges`, fase A sin PR). Sin PR, sin merge, migración NO aplicada en remoto (solo SELECTs de lectura: prod tiene M1–M3, no tiene fase A; 0 reglas, 2 mensajeros, 16 accruals).

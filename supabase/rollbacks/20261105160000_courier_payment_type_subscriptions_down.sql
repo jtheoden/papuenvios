@@ -65,7 +65,8 @@ BEGIN
       RETURN;
     END IF;
     v_seen := true;
-    CONTINUE WHEN p_amount IS NULL; -- no value: a tramo cannot match (same as v1)
+    -- no value: a tramo cannot match (same as v1); NaN sorts above every number and would match "más de X"
+    CONTINUE WHEN p_amount IS NULL OR p_amount = 'NaN'::numeric;
     v_val := CASE
       WHEN p_amount_currency = v_m.currency THEN p_amount
       WHEN p_fx IS NULL OR p_fx <= 0 THEN NULL

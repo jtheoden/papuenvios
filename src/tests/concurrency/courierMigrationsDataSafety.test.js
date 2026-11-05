@@ -46,7 +46,7 @@ describe('static: additive only', () => {
     // the only existing tables that gain objects are orders / remittances, and only the two non-blocking triggers
     expect(sql).not.toMatch(/ALTER TABLE public\.(orders|remittances|order_items|financial_audit_log)\b/i);
   });
-  it('phase A only alters messenger_payment_types: ADD COLUMN IF NOT EXISTS and named CHECKs, no DROP of data objects', () => {
+  it('phase A only alters messenger_payment_types (+ the production-drift exchange_rates.rate_type): ADD COLUMN IF NOT EXISTS and named CHECKs, no DROP of data objects', () => {
     const sql = readSql(MIGRATIONS.a).replace(/--.*$/gm, '');
     expect(sql).toMatch(/^BEGIN;/m);
     expect(sql).toMatch(/SET LOCAL lock_timeout = '5s'/);
@@ -55,7 +55,12 @@ describe('static: additive only', () => {
     expect(sql).not.toMatch(/DROP\s+(TABLE|COLUMN|FUNCTION|VIEW|TRIGGER|POLICY)\b/i);
     const topLevel = sql.replace(/\$function\$[\s\S]*?\$function\$/g, '');
     expect(topLevel).not.toMatch(/^\s*(DELETE\s+FROM|UPDATE\s|INSERT\s+INTO)/im);
-    for (const m of sql.matchAll(/ALTER TABLE\s+(?:ONLY\s+)?public\.(\w+)/gi)) expect(m[1]).toBe('messenger_payment_types');
+    const alters = [...sql.matchAll(/ALTER TABLE\s+(?:ONLY\s+)?public\.(\w+)\s+([^;]*);/gi)];
+    for (const m of alters.filter((a) => a[1] !== 'messenger_payment_types')) {
+      expect(m[1]).toBe('exchange_rates');
+      expect(m[2]).toMatch(/^ADD COLUMN IF NOT EXISTS rate_type text DEFAULT 'general' CHECK \(rate_type IN \('general', 'orders', 'remittances'\)\)$/);
+    }
+    expect(alters.filter((a) => a[1] === 'exchange_rates')).toHaveLength(1);
     for (const m of sql.matchAll(/DROP CONSTRAINT IF EXISTS (\w+)/gi)) expect(m[1]).toMatch(/^messenger_payment_types_\w+_chk$|^messenger_payment_types_method_check$/);
     for (const m of sql.matchAll(/ADD COLUMN (\w+ )?(\w+)/gi)) expect(m[1]).toBe('IF ');
     expect(sql).not.toMatch(/CREATE FUNCTION/);
@@ -164,6 +169,8 @@ describeDb('data safety on realistic rows (local Postgres)', () => {
       await admin.query(strip(readSql(ROLLBACKS.a)));
       const cols = (await admin.query(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name = 'messenger_payment_types' AND column_name IN ('currency','fixed_amount')`)).rows[0].n;
       expect(cols).toBe(0);
+      // production had exchange_rates.rate_type before phase A: the rollback must never drop it
+      expect((await admin.query(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'exchange_rates' AND column_name = 'rate_type'`)).rows[0].n).toBe(1);
       expect((await admin.query(`SELECT to_regprocedure('public._courier_rule_resolve_v2(text,uuid,uuid,uuid,numeric,text,numeric,timestamptz)') IS NULL AS g`)).rows[0].g).toBe(true);
       expect((await admin.query(`SELECT has_function_privilege('authenticated', 'public.admin_set_messenger_payment_type(text,text,text,text,numeric,numeric,numeric,text,uuid,uuid,uuid,numeric,numeric,timestamptz,timestamptz)', 'EXECUTE') AS g`)).rows[0].g).toBe(true);
       await admin.query(strip(readSql(MIGRATIONS.a)));
@@ -173,6 +180,18 @@ describeDb('data safety on realistic rows (local Postgres)', () => {
     }
     expect(during).toEqual(before);
     expect(await fingerprint()).toEqual(before);
+  });
+
+  it('the phase A rollback refuses to run while phase B is applied (its down file goes first)', async () => {
+    await admin.query('BEGIN');
+    try {
+      await admin.query('CREATE TABLE public.courier_payment_type_subscriptions (id int)');
+      const e = await admin.query(strip(readSql(ROLLBACKS.a))).then(() => null, (err) => err);
+      expect(e?.code).toBe('55000');
+      expect(e?.message).toMatch(/phase B/);
+    } finally {
+      await admin.query('ROLLBACK');
+    }
   });
 
   it('the phase A rollback refuses to run once a rule depends on it (fixed_amount, CUP currency, percent on orders)', async () => {

@@ -455,6 +455,78 @@ describeDb('M2: assignments, accruals, effective cost (local Postgres)', () => {
       expect(o.rule_snapshot.reason).toBe('amount_out_of_range');
     });
 
+    it.each([
+      ['fixed_amount', { method: 'fixed_amount', fixed_cup: null, fixed_amount: 2000000, applies_to: 'both' }, {}],
+      ['fixed_cup', { method: 'fixed_cup', fixed_cup: 1620000000, applies_to: 'both' }, {}],
+      ['percent', { method: 'percent_of_base', fixed_cup: null, percent: 10, base: 'nominal_usd', applies_to: 'both' },
+        { amount: 0.01, commission: 0, deliveryCost: 20000 }]
+    ])('a margin that does not fit numeric(10,4) is stored as unknown, the accrual is ALWAYS written (%s)', async (_m, rule, remOpts) => {
+      await kit.seedUsdCupRate(810);
+      await kit.setRule(await adminClient(), rule);
+      const a = await deliverRem(remOpts);
+      expect(a).toMatchObject({ margin_pct: null, margin_status: 'unknown', status: 'calculated' });
+      expect(a.rule_id).not.toBeNull();
+      const o = await deliverOrd();
+      expect(o.margin_status).toBe('unknown');
+    });
+
+    it('a NaN operation value never matches an open tramo nor pays a percent: the accrual amount is unknown', async () => {
+      await kit.seedUsdCupRate(810);
+      const c = await adminClient();
+      await kit.setRule(c, { code: 'over100', applies_to: 'both', fixed_cup: 300, amount_from: 100 });
+      const a = await deliverRem({ amount: 'NaN' });
+      expect(a).toMatchObject({ amount_cup: null, amount_usd: null, rule_id: null, margin_status: 'unknown' });
+      expect(a.rule_snapshot.reason).toBe('no_tier_match');
+      // orders_money_total_identity_chk refuses a NaN subtotal: compute on it inside a rolled-back transaction
+      const oid = await kit.seedDispatchedOrder();
+      await admin.query('BEGIN');
+      try {
+        await admin.query('ALTER TABLE public.orders DROP CONSTRAINT orders_money_total_identity_chk');
+        await admin.query(`UPDATE public.orders SET subtotal = 'NaN' WHERE id = $1`, [oid]);
+        const [o] = (await admin.query(`SELECT * FROM public._courier_compute_accrual('order', $1, NULL, 'test')`, [oid])).rows;
+        expect(o).toMatchObject({ amount_cup: null, rule_id: null });
+        expect(o.rule_snapshot.reason).toBe('no_tier_match');
+      } finally {
+        await admin.query('ROLLBACK');
+      }
+      await kit.call(c, 'admin_deactivate_messenger_payment_type', ['over100']);
+      await kit.setRule(c, { code: 'pct', method: 'percent_of_base', fixed_cup: null, percent: 10, base: 'nominal_usd' });
+      const p = await deliverRem({ amount: 'NaN' });
+      expect(p).toMatchObject({ amount_cup: null, amount_usd: null });
+      const { rows } = await admin.query(`SELECT count(*)::int AS n FROM public.courier_accruals
+        WHERE amount_cup = 'NaN' OR amount_usd = 'NaN' OR margin_usd = 'NaN' OR margin_pct = 'NaN'`);
+      expect(rows[0].n).toBe(0);
+    });
+
+    it('the live rate prefers rate_type general and breaks ties by id (deterministic even with two active rows)', async () => {
+      // production allows one active USD->CUP row (two unique indexes); drop them inside a rolled-back transaction and
+      // compute directly on this connection (a delivery on another connection would wait on the index lock)
+      await kit.setRule(await adminClient(), fixed({ fixed_amount: 1 }));
+      const id = await rem();
+      const cur = (await admin.query(`SELECT (SELECT id FROM public.currencies WHERE code='USD') AS usd, (SELECT id FROM public.currencies WHERE code='CUP') AS cup`)).rows[0];
+      const fx = async (rows) => {
+        await admin.query('BEGIN');
+        try {
+          await admin.query('DROP INDEX public.exchange_rates_one_active_per_pair');
+          await admin.query('ALTER TABLE public.exchange_rates DROP CONSTRAINT unique_currency_pair_date');
+          await admin.query('UPDATE public.exchange_rates SET is_active = false WHERE from_currency_id = $1 AND to_currency_id = $2', [cur.usd, cur.cup]);
+          for (const [rid, type, rate] of rows) {
+            await admin.query(
+              `INSERT INTO public.exchange_rates (id, from_currency_id, to_currency_id, rate, is_active, effective_date, rate_type)
+               VALUES ($1,$2,$3,$4,true,CURRENT_DATE,$5)`, [rid, cur.usd, cur.cup, rate, type]);
+          }
+          return (await admin.query(`SELECT fx_used FROM public._courier_compute_accrual('remittance', $1, NULL, 'test')`, [id])).rows[0].fx_used;
+        } finally {
+          await admin.query('ROLLBACK');
+        }
+      };
+      const lo = '00000000-0000-4000-8000-000000000001';
+      const hi = 'ffffffff-ffff-4fff-bfff-ffffffffffff';
+      expect(Number(await fx([[lo, 'orders', 900], [hi, 'general', 830]]))).toBe(830);
+      expect(Number(await fx([[hi, 'general', 840], [lo, 'general', 830]]))).toBe(830);
+      expect(Number(await fx([[lo, 'general', 830], [hi, 'general', 840]]))).toBe(830);
+    });
+
     it('no rule at all keeps reason no_rule (the 16 production accruals use it)', async () => {
       const a = await deliverRem();
       expect(a.rule_snapshot.reason).toBe('no_rule');
