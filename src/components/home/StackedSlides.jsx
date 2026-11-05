@@ -7,8 +7,8 @@ import { cn } from '@/lib/utils';
  * Inactive items stay laid out but invisible and hidden from assistive tech. `live` makes the container an
  * aria-live region ('off' | 'polite') so a manual change of slide is announced.
  */
-const StackedSlides = ({ items, current, render, testId, className, live }) => (
-  <div data-testid={testId} aria-live={live} className={cn('grid', className)}>
+const StackedSlides = ({ items, current, render, testId, className, live, containerRef }) => (
+  <div ref={containerRef} data-testid={testId} aria-live={live} className={cn('grid', className)}>
     {items.map((item, i) => (
       <div
         key={item.id ?? i}

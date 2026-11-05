@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { buildHomeTheme } from '@/lib/homeTheme';
@@ -16,10 +16,13 @@ const controlClass = cn(
 );
 const arrowClass = cn(controlClass, 'absolute top-1/2 z-10 -translate-y-1/2 shadow-md');
 
-// Reserved by the skeleton so swapping it for the carousel does not move the page:
-// the controls row (h-11 buttons) and a caption block of a one-line title + a one-line subtitle
-// (16px padding + 24px + 20px on mobile, 16px + 28px + 24px from md).
-const CONTROLS_ROW = 'mt-3 min-h-[2.75rem]';
+// Reserved by the skeleton so swapping it for the carousel does not move the page: the controls row (h-11 buttons)
+// and, when the previous visit did not measure the caption block at this width, an estimate of a one-line title + a
+// one-line subtitle (16px padding + 24px + 20px on mobile, 16px + 28px + 24px from md).
+// Below sm the controls are two rows (pause + arrows, then the dots: 44px + 8px + 24px) instead of wrapping when
+// the width happens to run out, so the height never depends on it; from sm they are one row of 44px.
+const CONTROLS_ROW = 'mt-3';
+const CONTROLS_PLACEHOLDER_HEIGHT = 'min-h-[4.75rem] sm:min-h-[2.75rem]';
 const CAPTION_MIN_HEIGHT = 'min-h-[3.75rem] md:min-h-[4.25rem]';
 
 const cardStyle = (theme) => ({ borderColor: theme.border, backgroundColor: theme.cardBg });
@@ -30,7 +33,7 @@ const cardStyle = (theme) => ({ borderColor: theme.border, backgroundColor: them
  */
 export const HeroCarouselSkeleton = ({ visualSettings }) => {
   const theme = buildHomeTheme(visualSettings);
-  const { caption, multiple } = readHeroShape();
+  const { caption, multiple, captionHeight } = readHeroShape();
   return (
     <div data-testid="hero-carousel-skeleton" aria-hidden="true">
       <div className="rounded-2xl border p-2 md:p-3" style={cardStyle(theme)}>
@@ -39,9 +42,15 @@ export const HeroCarouselSkeleton = ({ visualSettings }) => {
           data-frame-ratio={DEFAULT_POSTER_RATIO}
           style={{ aspectRatio: DEFAULT_POSTER_RATIO }}
         />
-        {caption && <div data-testid="hero-caption-placeholder" className={cn('px-2 pb-1 pt-3', CAPTION_MIN_HEIGHT)} />}
+        {caption && (
+          <div
+            data-testid="hero-caption-placeholder"
+            className={cn('px-2 pb-1 pt-3', CAPTION_MIN_HEIGHT)}
+            style={captionHeight ? { minHeight: captionHeight } : undefined}
+          />
+        )}
       </div>
-      {multiple && <div data-testid="hero-controls-placeholder" className={CONTROLS_ROW} />}
+      {multiple && <div data-testid="hero-controls-placeholder" className={cn(CONTROLS_ROW, CONTROLS_PLACEHOLDER_HEIGHT)} />}
     </div>
   );
 };
@@ -67,9 +76,20 @@ const HeroCarousel = ({ slides, visualSettings }) => {
     return texts.title || texts.subtitle;
   });
 
+  // Remember the shape for the next visit. Written when the carousel appears and when the caption block changes size
+  // (viewport, language); never on a slide change, which leaves its height untouched.
+  const captionRef = useRef(null);
+  const hasSlide = Boolean(slide);
   useEffect(() => {
-    if (slide) saveHeroShape({ caption: hasCaption, multiple });
-  }, [slide, hasCaption, multiple]);
+    if (!hasSlide) return undefined;
+    const remember = () => saveHeroShape({ caption: hasCaption, multiple, captionHeight: captionRef.current?.offsetHeight });
+    remember();
+    const node = captionRef.current;
+    if (!node || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(remember);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasSlide, hasCaption, multiple]);
 
   if (!slide) return null;
 
@@ -129,6 +149,9 @@ const HeroCarousel = ({ slides, visualSettings }) => {
                 style={{ animationDuration: `${transitionMs}ms` }}
               />
             </div>
+            {multiple && (
+              <span className="sr-only">{t('home.carousel.slideStatus', { count: current + 1, total: count })}</span>
+            )}
             {!ready && (
               <div
                 data-testid="hero-frame-skeleton"
@@ -143,6 +166,7 @@ const HeroCarousel = ({ slides, visualSettings }) => {
         {hasCaption && (
           <StackedSlides
             testId="hero-slide-caption"
+            containerRef={captionRef}
             live={live}
             className="px-2 pb-1 pt-3 text-center"
             items={usable}
@@ -161,7 +185,7 @@ const HeroCarousel = ({ slides, visualSettings }) => {
       </div>
 
       {multiple && (
-        <div className={cn(CONTROLS_ROW, 'flex flex-wrap items-center justify-center gap-x-4 gap-y-2')}>
+        <div className={cn(CONTROLS_ROW, 'flex flex-col items-center justify-center gap-y-2 sm:flex-row sm:flex-wrap sm:gap-x-4')}>
           <div className="flex items-center gap-1.5">
             <button
               type="button"

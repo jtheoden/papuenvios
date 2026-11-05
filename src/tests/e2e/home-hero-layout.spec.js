@@ -30,18 +30,36 @@ const PROD_ROW = {
 
 const poster = (n, w, h) => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect width="${w}" height="${h}" fill="#${['1d4ed8', '0f766e', '9a3412'][n]}"/><text x="40" y="${h / 2}" font-size="${h / 4}" fill="#fff" font-family="sans-serif">Poster ${n + 1}</text></svg>`;
 const SIZES = [[1520, 400], [1520, 400], [1520, 400]];
+// captions: false = no texts; 'short' = one-line title and subtitle on every slide; true = texts of really different
+// length (slide 1 short, slide 2 long enough to take 2-3 lines on a phone, slide 3 title only).
+const TEXTS = {
+  short: (n) => ({ title_es: `Anuncio ${n + 1}`, title_en: `Announcement ${n + 1}`, subtitle_es: 'Entrega en 7 días a toda Cuba', subtitle_en: 'Delivery in 7 days all over Cuba' }),
+  varied: [
+    () => ({ title_es: 'Anuncio 1', title_en: 'Announcement 1', subtitle_es: 'Entrega en 7 días a toda Cuba', subtitle_en: 'Delivery in 7 days all over Cuba' }),
+    () => ({
+      title_es: 'Anuncio 2: envíos garantizados a toda Cuba con entrega en siete días hábiles',
+      title_en: 'Announcement 2: guaranteed shipping all over Cuba with delivery within seven business days',
+      subtitle_es: 'Entrega puerta a puerta en La Habana y en el resto de las provincias, con seguimiento por WhatsApp',
+      subtitle_en: 'Door-to-door delivery in Havana and in every other province, with tracking through WhatsApp',
+    }),
+    () => ({ title_es: 'Anuncio 3', title_en: 'Announcement 3', subtitle_es: '', subtitle_en: '' }),
+  ],
+};
+const textsFor = (captions, n) => {
+  if (!captions) return { title_es: '', title_en: '', subtitle_es: '', subtitle_en: '' };
+  return captions === 'short' ? TEXTS.short(n) : TEXTS.varied[n]();
+};
 const slidesFor = (captions) => [0, 1, 2].map((n) => ({
   id: `s${n + 1}`, is_active: true, display_order: n, image_url: `https://cdn.example.test/poster-${n + 1}.svg`,
-  title_es: captions ? `Anuncio ${n + 1}` : '', title_en: captions ? `Announcement ${n + 1}` : '',
-  subtitle_es: captions ? 'Entrega en 7 días a toda Cuba' : '', subtitle_en: captions ? 'Delivery in 7 days all over Cuba' : '',
+  ...textsFor(captions, n),
 }));
 const json = (route, body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const mockSupabase = async (page, { settings, captions, sizes, slidesDelay, imageDelay }) => {
+const mockSupabase = async (page, { settings, captions, sizes, knobs }) => {
   await page.route('https://cdn.example.test/**', async (route) => {
     const n = Number(route.request().url().match(/poster-(\d)/)?.[1] ?? 1) - 1;
-    if (imageDelay) await sleep(imageDelay);
+    if (knobs.imageDelay) await sleep(knobs.imageDelay);
     return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: poster(n, ...sizes[n]) });
   });
   await page.route(/\/(rest|auth|functions|storage)\/v1\//, async (route) => {
@@ -54,7 +72,7 @@ const mockSupabase = async (page, { settings, captions, sizes, slidesDelay, imag
     }
     if (url.includes('/auth/v1/')) return route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ message: 'not authenticated' }) });
     if (url.includes('/rest/v1/carousel_slides')) {
-      if (slidesDelay) await sleep(slidesDelay);
+      if (knobs.slidesDelay) await sleep(knobs.slidesDelay);
       return json(route, slidesFor(captions));
     }
     if (url.includes('/rest/v1/offers')) return json(route, []);
@@ -84,20 +102,24 @@ const observeShifts = (page) => page.addInitScript(() => {
 const shiftsSince = (page, mark) => page.evaluate((m) => window.__shifts.filter((s) => s.relevant && s.at > m).reduce((sum, s) => sum + s.value, 0), mark);
 
 const open = async (page, { heroLayout, settings = PRESET_ROW, language = 'es', captions = true, sizes = SIZES, slidesDelay = 0, imageDelay = 0, waitImage = true, shape } = {}) => {
-  const row = heroLayout === undefined ? settings : { ...settings, heroLayout };
-  await mockSupabase(page, { settings: row, captions, sizes, slidesDelay, imageDelay });
+  // The rotation re-mounts the <img> (key per slide): a measurement taken at that instant finds it detached (probed:
+  // boundingBox() returned null in 2 of 112 calls). Geometry tests therefore do not rotate unless they ask for it.
+  const row = { carouselAutoplaySpeed: 600000, ...settings, ...(heroLayout === undefined ? {} : { heroLayout }) };
+  const knobs = { slidesDelay, imageDelay }; // read by the handlers on every request, so a test can change them before a reload
+  await mockSupabase(page, { settings: row, captions, sizes, knobs });
   await observeShifts(page);
   await page.addInitScript((lang) => localStorage.setItem('preferredLanguage', lang), language);
   // a previous visit: the skeleton follows what the carousel looked like then (see heroShape.js)
   if (shape) await page.addInitScript((value) => localStorage.setItem('hero-carousel-shape', JSON.stringify(value)), shape);
   await page.goto('/');
-  if (!waitImage) return;
+  if (!waitImage) return knobs;
   await expect(page.locator('[data-testid="hero-carousel"]')).toBeVisible({ timeout: 20000 });
   await expect(page.locator('[data-testid="hero-slide-image"]')).toHaveJSProperty('complete', true, { timeout: 15000 });
   // spaced sizes its frame once from every poster; cover has no frame to wait for
   if (await page.locator('[data-testid="hero-carousel-frame"]').count()) {
     await expect(page.locator('[data-testid="hero-carousel-frame"]')).toHaveAttribute('data-frame-ready', 'true', { timeout: 15000 });
   }
+  return knobs;
 };
 
 const box = async (locator) => {
@@ -364,9 +386,9 @@ test.describe('layout shift', () => {
   });
 
   for (const width of [390, 1280]) {
-    test(`spaced at ${width}px: the skeleton and the loaded carousel have the same height with captions (first visit, no hint)`, async ({ page }) => {
+    test(`spaced at ${width}px: first visit (no hint) with one-line captions, the skeleton and the loaded carousel have the same height`, async ({ page }) => {
       await page.setViewportSize({ width, height: 2400 });
-      await open(page, { heroLayout: 'spaced', captions: true, slidesDelay: 2000, waitImage: false });
+      await open(page, { heroLayout: 'spaced', captions: 'short', slidesDelay: 2000, waitImage: false });
       await expect(page.locator('[data-testid="hero-carousel-skeleton"]')).toBeVisible({ timeout: 20000 });
       await expect(page.locator('[data-testid="hero-caption-placeholder"]')).toBeVisible();
       await expect(page.locator('[data-testid="hero-controls-placeholder"]')).toBeVisible();
@@ -374,6 +396,27 @@ test.describe('layout shift', () => {
       await expect(page.locator('[data-testid="hero-carousel-frame"]')).toHaveAttribute('data-frame-ready', 'true', { timeout: 15000 });
       await page.waitForTimeout(300);
       expect(Math.abs((await heroHeight(page)) - skeleton)).toBeLessThanOrEqual(1);
+    });
+  }
+
+  // The estimate cannot know how many lines the texts take; the measured height of the previous visit can.
+  for (const width of [320, 390, 1280]) {
+    test(`spaced at ${width}px: a returning visit with long, uneven captions reserves the measured height exactly (real hint, no seeding)`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 2400 });
+      const knobs = await open(page, { heroLayout: 'spaced', captions: true });
+      await page.waitForFunction(() => JSON.parse(localStorage.getItem('hero-carousel-shape') || '{}').captionHeight > 0);
+      const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('hero-carousel-shape')));
+      expect(stored.width).toBe(width);
+      const loaded = await heroHeight(page);
+      knobs.slidesDelay = 2000;
+      await page.reload();
+      await expect(page.locator('[data-testid="hero-carousel-skeleton"]')).toBeVisible({ timeout: 20000 });
+      const placeholder = await box(page.locator('[data-testid="hero-caption-placeholder"]'));
+      expect(Math.abs(placeholder.height - stored.captionHeight)).toBeLessThanOrEqual(1);
+      expect(Math.abs((await heroHeight(page)) - loaded)).toBeLessThanOrEqual(1);
+      await expect(page.locator('[data-testid="hero-carousel-frame"]')).toHaveAttribute('data-frame-ready', 'true', { timeout: 15000 });
+      await page.waitForTimeout(300);
+      expect(Math.abs((await heroHeight(page)) - loaded)).toBeLessThanOrEqual(1);
     });
   }
 
@@ -385,6 +428,40 @@ test.describe('layout shift', () => {
     await expect(page.locator('[data-testid="hero-carousel-frame"]')).toHaveAttribute('data-frame-ready', 'true', { timeout: 15000 });
     await page.waitForTimeout(300);
     expect(Math.abs((await heroHeight(page)) - skeleton)).toBeLessThanOrEqual(1);
+  });
+
+  // cover: the h1 and the CTA used to be pushed apart when the slide text was inserted between them
+  for (const width of [390, 1280]) {
+    test(`cover at ${width}px: the slide text arriving moves neither the h1 nor the CTA (one-line texts)`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 2400 });
+      await open(page, { heroLayout: 'cover', captions: 'short', slidesDelay: 2000, waitImage: false });
+      await expect(page.locator('[data-testid="hero-text-placeholder"]')).toBeAttached({ timeout: 20000 });
+      const cta = page.getByRole('button', { name: 'Ver Productos' });
+      const h1Before = await box(page.locator('[data-testid="home-hero"] h1'));
+      const ctaBefore = await box(cta);
+      const mark = await page.evaluate(() => performance.now());
+      await expect(page.locator('[data-testid="hero-slide-image"]')).toHaveJSProperty('complete', true, { timeout: 15000 });
+      await page.waitForTimeout(600);
+      const h1After = await box(page.locator('[data-testid="home-hero"] h1'));
+      const ctaAfter = await box(cta);
+      expect(Math.abs(h1After.y - h1Before.y)).toBeLessThanOrEqual(1);
+      expect(Math.abs(ctaAfter.y - ctaBefore.y)).toBeLessThanOrEqual(1);
+      expect(await shiftsSince(page, mark)).toBeLessThan(0.001);
+    });
+  }
+
+  test('cover at 320px: known limit, long texts that wrap shift the CTA once (measured and reported, bounded)', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 2400 });
+    await open(page, { heroLayout: 'cover', captions: true, slidesDelay: 2000, waitImage: false });
+    await expect(page.locator('[data-testid="hero-text-placeholder"]')).toBeAttached({ timeout: 20000 });
+    const mark = await page.evaluate(() => performance.now());
+    const ctaBefore = await box(page.getByRole('button', { name: 'Ver Productos' }));
+    await expect(page.locator('[data-testid="hero-slide-image"]')).toHaveJSProperty('complete', true, { timeout: 15000 });
+    await page.waitForTimeout(600);
+    const ctaAfter = await box(page.getByRole('button', { name: 'Ver Productos' }));
+    const shift = await shiftsSince(page, mark);
+    test.info().annotations.push({ type: 'cover-320-long-texts', description: `cta moved ${Math.round(ctaAfter.y - ctaBefore.y)}px, layout-shift ${shift.toFixed(4)}` });
+    expect(shift).toBeLessThan(0.15);
   });
 
   test('cover: loading and loaded states are the same height (slides delayed 2 s)', async ({ page }) => {
@@ -414,16 +491,22 @@ test.describe('layout shift', () => {
     expect(await shiftsSince(page, mark)).toBeLessThan(0.001);
   });
 
-  test('spaced: captions of different length do not change the height across slides', async ({ page }) => {
-    await open(page, { heroLayout: 'spaced' });
-    await page.getByRole('button', { name: /Pausar/ }).click();
-    const settled = await heroHeight(page);
-    for (const index of [1, 2, 0]) {
-      await page.getByRole('button', { name: /Ir al anuncio/ }).nth(index).click();
-      await page.waitForTimeout(200);
-      expect(Math.abs((await heroHeight(page)) - settled)).toBeLessThanOrEqual(1);
-    }
-  });
+  for (const width of [320, 1280]) {
+    test(`spaced at ${width}px: captions of really different length do not change the height across slides`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 2400 });
+      await open(page, { heroLayout: 'spaced' });
+      await page.getByRole('button', { name: /Pausar/ }).click();
+      const settled = await heroHeight(page);
+      for (const index of [1, 2, 0, 1]) {
+        await page.getByRole('button', { name: /Ir al anuncio/ }).nth(index).click();
+        await page.waitForTimeout(200);
+        expect(Math.abs((await heroHeight(page)) - settled)).toBeLessThanOrEqual(1);
+      }
+      // the texts really are uneven: on a phone the long slide takes clearly more lines than the title-only one
+      const heights = await page.locator('[data-testid="hero-slide-caption"] > div').evaluateAll((cells) => cells.map((cell) => [...cell.children].reduce((sum, child) => sum + child.offsetHeight, 0)));
+      if (width < 768) expect(Math.max(...heights)).toBeGreaterThan(Math.min(...heights) + 20);
+    });
+  }
 });
 
 test.describe('keyboard: the pause button really pauses', () => {

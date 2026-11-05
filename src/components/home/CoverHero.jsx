@@ -43,9 +43,9 @@ const CoverHero = ({ slides, loading, visualSettings, onNavigate }) => {
   return (
     <section
       data-testid="home-hero"
-      className={cn('relative h-[60vh] min-h-[30rem] w-full overflow-hidden md:h-[80vh]', !slide && 'bg-neutral-900')}
+      className={cn('relative grid min-h-[max(60vh,30rem)] w-full overflow-hidden md:min-h-[80vh]', !slide && 'bg-neutral-900')}
     >
-      <div data-testid="hero-carousel" className="relative h-full w-full" {...region}>
+      <div data-testid="hero-carousel" className="relative w-full" {...region}>
         {slide && (
           <div
             role="group"
@@ -67,8 +67,10 @@ const CoverHero = ({ slides, loading, visualSettings, onNavigate }) => {
           </div>
         )}
 
-        <div className={cn('relative z-10 flex h-full flex-col items-center justify-center px-14 pb-16 pt-4 text-center text-white md:px-20', textShadow)}>
+        <div className={cn('relative z-10 flex h-full flex-col items-center justify-center px-14 pb-16 pt-[4.5rem] text-center text-white md:px-20 md:pt-4', textShadow)}>
           <h1 className="mb-4 break-words text-3xl font-bold sm:text-4xl md:text-5xl lg:text-6xl">{t('home.hero.title')}</h1>
+          {/* the text block is not known yet: keep its room so the h1 and the CTA do not move when it arrives */}
+          {loading && <div data-testid="hero-text-placeholder" aria-hidden="true" className="invisible mb-6 min-h-[4rem] max-w-2xl md:min-h-[4.5rem]" />}
           {slide && (
             <StackedSlides
               testId="hero-slide-text"
@@ -91,7 +93,7 @@ const CoverHero = ({ slides, loading, visualSettings, onNavigate }) => {
             size="lg"
             variant={theme.ctaStyle ? undefined : 'brand'}
             onClick={() => onNavigate('products')}
-            className={cn('min-h-[44px] w-full px-8 py-3 text-lg [text-shadow:none] sm:w-auto', !slide && 'mt-4')}
+            className={cn('min-h-[44px] w-full px-8 py-3 text-lg [text-shadow:none] sm:w-auto', !slide && !loading && 'mt-4')}
             style={theme.ctaStyle}
           >
             <ShoppingBag className="mr-2 h-5 w-5" aria-hidden="true" />

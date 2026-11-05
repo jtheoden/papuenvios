@@ -447,6 +447,16 @@ describe('spaced composition', () => {
       expect(within(skeleton()).getByTestId('hero-controls-placeholder').className).toContain('min-h-[2.75rem]');
     });
 
+    it('stacks the controls in two rows below sm (deterministic height) and the skeleton reserves both heights', () => {
+      mount({ layout: 'spaced' });
+      const row = screen.getByRole('button', { name: names(ES).pause }).parentElement.parentElement;
+      expect(row.className.split(/\s+/)).toEqual(expect.arrayContaining(['flex-col', 'sm:flex-row', 'sm:flex-wrap']));
+      expect(row.className.split(/\s+/)).not.toContain('flex-wrap'); // wrapping depends on the width of the texts: not deterministic
+      document.body.innerHTML = '';
+      mount({ layout: 'spaced', slides: [], loading: true });
+      expect(within(skeleton()).getByTestId('hero-controls-placeholder').className.split(/\s+/)).toEqual(expect.arrayContaining(['min-h-[4.75rem]', 'sm:min-h-[2.75rem]']));
+    });
+
     it('the caption placeholder is as tall as a one-line title plus a one-line subtitle', () => {
       mount({ layout: 'spaced', slides: [], loading: true });
       expect(within(skeleton()).getByTestId('hero-caption-placeholder').className.split(/\s+/)).toEqual(expect.arrayContaining(['min-h-[3.75rem]', 'md:min-h-[4.25rem]']));
@@ -454,14 +464,14 @@ describe('spaced composition', () => {
 
     it('the carousel remembers its shape for the next visit and the skeleton follows it', () => {
       const first = mount({ layout: 'spaced', slides: BARE.slice(0, 1) });
-      expect(JSON.parse(localStorage.getItem('hero-carousel-shape'))).toEqual({ caption: false, multiple: false });
+      expect(JSON.parse(localStorage.getItem('hero-carousel-shape'))).toMatchObject({ caption: false, multiple: false });
       first.unmount();
       const second = mount({ layout: 'spaced', slides: [], loading: true });
       expect(within(skeleton()).queryByTestId('hero-caption-placeholder')).toBeNull();
       expect(within(skeleton()).queryByTestId('hero-controls-placeholder')).toBeNull();
       second.unmount();
       mount({ layout: 'spaced' });
-      expect(JSON.parse(localStorage.getItem('hero-carousel-shape'))).toEqual({ caption: true, multiple: true });
+      expect(JSON.parse(localStorage.getItem('hero-carousel-shape'))).toMatchObject({ caption: true, multiple: true });
     });
 
     it('survives unreadable or hostile stored values', () => {
@@ -476,10 +486,13 @@ describe('spaced composition', () => {
 });
 
 describe('cover composition', () => {
-  it('is the original cover: cover image, bg-black/60 veil, 60vh / 80vh', () => {
+  it('is the original cover: cover image, bg-black/60 veil, at least 60vh / 80vh and growing with its text', () => {
     mount({ layout: 'cover' });
     const hero = screen.getByTestId('home-hero');
-    expect(hero.className.split(/\s+/)).toEqual(expect.arrayContaining(['relative', 'w-full', 'overflow-hidden', 'h-[60vh]', 'md:h-[80vh]']));
+    expect(hero.className.split(/\s+/)).toEqual(expect.arrayContaining(['relative', 'grid', 'w-full', 'overflow-hidden', 'min-h-[max(60vh,30rem)]', 'md:min-h-[80vh]']));
+    expect(hero.className).not.toMatch(/(^|\s)(md:)?h-\[/); // a fixed height would clip long texts at 320px
+    // below md the content clears the fixed header, which is taller than the 5rem the page reserves for it
+    expect(screen.getByTestId('hero-carousel').querySelector('h1').parentElement.className.split(/\s+/)).toEqual(expect.arrayContaining(['pt-[4.5rem]', 'md:pt-4']));
     expect(poster().className.split(/\s+/)).toEqual(expect.arrayContaining(['absolute', 'inset-0', 'h-full', 'w-full', 'object-cover']));
     expect(poster().className).not.toContain('object-contain');
     const veil = screen.getByTestId('hero-veil');
@@ -569,7 +582,7 @@ describe('cover composition', () => {
   it('shows the h1 and the CTA over a dark fallback while loading, with the same height, and never a carousel', () => {
     mount({ layout: 'cover', slides: [], loading: true });
     const hero = screen.getByTestId('home-hero');
-    expect(hero.className.split(/\s+/)).toEqual(expect.arrayContaining(['h-[60vh]', 'md:h-[80vh]']));
+    expect(hero.className.split(/\s+/)).toEqual(expect.arrayContaining(['min-h-[max(60vh,30rem)]', 'md:min-h-[80vh]']));
     expect(within(hero).getByRole('heading', { level: 1 }).textContent).toBe(ES.home.hero.title);
     expect(within(hero).getByRole('button', { name: ES.home.hero.cta.products })).toBeTruthy();
     expect(screen.queryByTestId('hero-slide-image')).toBeNull();
@@ -592,5 +605,91 @@ describe('cover composition', () => {
     const group = screen.getByRole('group', { name: EN.home.carousel.slideOf.replace('{count}', '1').replace('{total}', '3') });
     expect(group.getAttribute('aria-roledescription')).toBe(EN.home.carousel.slide);
     expect(within(screen.getByTestId('home-hero')).getByRole('heading', { level: 2 }).textContent).toBe('Shipping all over Cuba');
+  });
+});
+
+describe('spaced: slide status for assistive tech', () => {
+  it('has an sr-only "Anuncio X de Y" inside the aria-live region of the frame, updated with the slide', () => {
+    mount({ layout: 'spaced' });
+    const status = within(screen.getByTestId('hero-carousel-frame')).getByText('Anuncio 1 de 3');
+    expect(status.className.split(/\s+/)).toContain('sr-only');
+    expect(status.closest('[aria-live]')).toBe(screen.getByTestId('hero-carousel-frame'));
+    fireEvent.click(screen.getByRole('button', { name: names(ES).next }));
+    expect(within(screen.getByTestId('hero-carousel-frame')).getByText('Anuncio 2 de 3')).toBeTruthy();
+    expect(within(screen.getByTestId('hero-carousel-frame')).queryByText('Anuncio 1 de 3')).toBeNull();
+  });
+
+  it('is translated in English', () => {
+    state.language = 'en';
+    mount({ layout: 'spaced' });
+    expect(within(screen.getByTestId('hero-carousel-frame')).getByText('Announcement 1 of 3')).toBeTruthy();
+  });
+});
+
+describe('spaced: the remembered shape', () => {
+  const stored = () => JSON.parse(localStorage.getItem('hero-carousel-shape'));
+
+  it('is written once when the carousel appears, not on every slide change', () => {
+    const write = vi.spyOn(Storage.prototype, 'setItem');
+    mount({ layout: 'spaced' });
+    const writes = () => write.mock.calls.filter(([key]) => key === 'hero-carousel-shape').length;
+    expect(writes()).toBe(1);
+    fireEvent.click(screen.getByRole('button', { name: names(ES).next }));
+    fireEvent.click(screen.getByRole('button', { name: names(ES).next }));
+    expect(writes()).toBe(1);
+  });
+
+  it('records the measured height of the caption block and the viewport width it was measured at', () => {
+    const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function measure() {
+      return this.getAttribute('data-testid') === 'hero-slide-caption' ? 96 : 0;
+    });
+    mount({ layout: 'spaced' });
+    expect(stored()).toEqual({ caption: true, multiple: true, captionHeight: 96, width: window.innerWidth });
+    height.mockRestore();
+  });
+
+  it('the skeleton reserves exactly the measured height when the viewport has the same width', () => {
+    localStorage.setItem('hero-carousel-shape', JSON.stringify({ caption: true, multiple: true, captionHeight: 120, width: window.innerWidth }));
+    mount({ layout: 'spaced', slides: [], loading: true });
+    expect(screen.getByTestId('hero-caption-placeholder').style.minHeight).toBe('120px');
+  });
+
+  it('falls back to the one-line estimate when it was measured at another width, or the value is not a sane number', () => {
+    for (const shape of [
+      { caption: true, multiple: true, captionHeight: 120, width: window.innerWidth + 1 },
+      { caption: true, multiple: true, captionHeight: -5, width: window.innerWidth },
+      { caption: true, multiple: true, captionHeight: '120', width: window.innerWidth },
+      { caption: true, multiple: true, captionHeight: 99999, width: window.innerWidth },
+    ]) {
+      localStorage.setItem('hero-carousel-shape', JSON.stringify(shape));
+      const { unmount } = mount({ layout: 'spaced', slides: [], loading: true });
+      expect(screen.getByTestId('hero-caption-placeholder').style.minHeight, JSON.stringify(shape)).toBe('');
+      unmount();
+    }
+  });
+});
+
+describe('cover: the text block is reserved while the slides load', () => {
+  it('shows an invisible placeholder between the h1 and the CTA, gone when the slides land', () => {
+    const loading = mount({ layout: 'cover', slides: [], loading: true });
+    const hero = screen.getByTestId('home-hero');
+    const placeholder = within(hero).getByTestId('hero-text-placeholder');
+    expect(placeholder.getAttribute('aria-hidden')).toBe('true');
+    const h1 = hero.querySelector('h1');
+    const cta = within(hero).getByRole('button', { name: ES.home.hero.cta.products });
+    expect(h1.compareDocumentPosition(placeholder) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(placeholder.compareDocumentPosition(cta) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(placeholder.className.split(/\s+/)).toEqual(expect.arrayContaining(['min-h-[4rem]', 'md:min-h-[4.5rem]']));
+    loading.unmount();
+    mount({ layout: 'cover' });
+    expect(screen.queryByTestId('hero-text-placeholder')).toBeNull();
+    expect(screen.getByTestId('hero-slide-text')).toBeTruthy();
+  });
+
+  it('is not shown when every image failed (nothing is coming): only the h1 and the CTA', () => {
+    mount({ layout: 'cover', slides: CAPTIONED.slice(0, 1) });
+    fireEvent.error(poster());
+    expect(screen.queryByTestId('hero-text-placeholder')).toBeNull();
+    expect(screen.queryByTestId('hero-slide-text')).toBeNull();
   });
 });

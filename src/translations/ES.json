@@ -90,6 +90,7 @@
       "roleDescription": "carrusel",
       "slide": "diapositiva",
       "slideOf": "{count} de {total}",
+      "slideStatus": "Anuncio {count} de {total}",
       "previous": "Anuncio anterior",
       "next": "Anuncio siguiente",
       "pause": "Pausar carrusel",
