@@ -132,11 +132,18 @@ describeDb('Bizum front contract against the real SQL', () => {
   it('get_payment_fx_status reports the central row: constant source exchange_rates, no author', async () => {
     const { rows: cur } = await owner.query(`SELECT code, id FROM public.currencies WHERE code IN ('USD', 'EUR')`);
     const byCode = Object.fromEntries(cur.map((r) => [r.code, r.id]));
-    const { rows } = await client.query(
-      `INSERT INTO public.exchange_rates (from_currency_id, to_currency_id, rate, is_active, effective_date)
-       VALUES ($1, $2, 0.92, true, CURRENT_DATE) RETURNING id`,
-      [byCode.USD, byCode.EUR]
-    );
+    // DEC-10: only a super_admin writes exchange_rates; promoted for this write only.
+    await owner.query(`UPDATE public.user_profiles SET role = 'super_admin' WHERE id = $1`, [actors.adminId]);
+    let rows;
+    try {
+      ({ rows } = await client.query(
+        `INSERT INTO public.exchange_rates (from_currency_id, to_currency_id, rate, is_active, effective_date)
+         VALUES ($1, $2, 0.92, true, CURRENT_DATE) RETURNING id`,
+        [byCode.USD, byCode.EUR]
+      ));
+    } finally {
+      await owner.query(`UPDATE public.user_profiles SET role = 'admin' WHERE id = $1`, [actors.adminId]);
+    }
     centralRateIds.push(rows[0].id);
     const status = (await client.query('SELECT public.get_payment_fx_status() AS s')).rows[0].s;
     expect(status).toMatchObject({ id: rows[0].id, source: 'exchange_rates', created_by: null, state: 'ok' });

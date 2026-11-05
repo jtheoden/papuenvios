@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { dbSuiteSkipReason, connectAdmin, connectAs, connectAnon, endAll } from './db';
-import { loadActors, createTracker, seedProduct, seedOrder, cleanup } from './fixtures';
+import { loadActors, createTracker, seedProduct, seedOrder, cleanup, asRateWriter as rateWriter } from './fixtures';
 
 const skipReason = await dbSuiteSkipReason({
   tables: ['remittances', 'orders', 'remittance_types', 'shipping_zones', 'exchange_rates', 'financial_audit_log'],
@@ -329,14 +329,22 @@ describeDb('financial audit log (local Postgres)', () => {
     it.each(TYPE_COLUMNS)('remittance_types.%s', async (col) => {
       const id = await makeType();
       const before = (await admin.query(`SELECT ${col}::text AS v FROM public.remittance_types WHERE id = $1`, [id])).rows[0].v;
-      const adm = await asAdmin();
-      await adm.query(`UPDATE public.remittance_types SET ${col} = ${col} + 1 WHERE id = $1`, [id]);
+      // F3 (20261104160000): pricing columns are super_admin-only; min/max stay admin-managed.
+      const pricing = ['exchange_rate', 'commission_percentage', 'commission_fixed'].includes(col);
+      const role = pricing ? 'super_admin' : 'admin';
+      await admin.query('UPDATE public.user_profiles SET role = $2 WHERE id = $1', [actors.adminId, role]);
+      try {
+        const adm = await asAdmin();
+        await adm.query(`UPDATE public.remittance_types SET ${col} = ${col} + 1 WHERE id = $1`, [id]);
+      } finally {
+        await admin.query(`UPDATE public.user_profiles SET role = 'admin' WHERE id = $1`, [actors.adminId]);
+      }
       const after = (await admin.query(`SELECT ${col}::text AS v FROM public.remittance_types WHERE id = $1`, [id])).rows[0].v;
       const rows = await auditRows(id);
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({
         table_name: 'remittance_types', column_name: col, old_value: before, new_value: after,
-        changed_by: actors.adminId, changed_by_role: 'admin'
+        changed_by: actors.adminId, changed_by_role: role
       });
     });
 
@@ -410,6 +418,8 @@ describeDb('financial audit log (local Postgres)', () => {
 
     // exchange_rates: the remittance re-pricing reads it. Inactive far-future rows so no active pair is disturbed.
     describe('exchange_rates', () => {
+      // DEC-10: only a super_admin writes exchange_rates; promoted per rate statement only (see fixtures.asRateWriter).
+      const asRateWriter = async () => rateWriter(admin, actors.adminId, await asAdmin());
       const makeRate = async (isActive = false) => {
         const [from, to] = [actors.currencyId, (await admin.query('SELECT id FROM public.currencies WHERE id <> $1 ORDER BY id LIMIT 1', [actors.currencyId])).rows[0].id];
         const day = `20${70 + Math.floor(Math.random() * 29)}-0${1 + Math.floor(Math.random() * 9)}-1${Math.floor(Math.random() * 9)}`;
@@ -422,17 +432,17 @@ describeDb('financial audit log (local Postgres)', () => {
 
       it('rate keeps its exact scale', async () => {
         const { id } = await makeRate();
-        const adm = await asAdmin();
+        const adm = await asRateWriter();
         await adm.query('UPDATE public.exchange_rates SET rate = 124.5 WHERE id = $1', [id]);
         expect((await auditRows(id)).map((r) => [r.table_name, r.column_name, r.old_value, r.new_value, r.changed_by_role])).toEqual([
-          ['exchange_rates', 'rate', '123.456789', '124.500000', 'admin']
+          ['exchange_rates', 'rate', '123.456789', '124.500000', 'super_admin']
         ]);
       });
 
       it('is_active, effective_date and both currency ids', async () => {
         const { id, from, to } = await makeRate();
         const third = (await admin.query('SELECT id FROM public.currencies WHERE id NOT IN ($1,$2) LIMIT 1', [from, to])).rows[0].id;
-        const adm = await asAdmin();
+        const adm = await asRateWriter();
         await rolledBack(adm, async () => {
           await adm.query(`UPDATE public.exchange_rates SET is_active = false WHERE from_currency_id = $1 AND to_currency_id = $2 AND is_active`, [from, third]);
           await adm.query(`UPDATE public.exchange_rates SET is_active = true, effective_date = '2099-12-31', from_currency_id = $2, to_currency_id = $3 WHERE id = $1`, [id, third, from]);
@@ -447,11 +457,11 @@ describeDb('financial audit log (local Postgres)', () => {
 
       it('DELETE audits every monitored column with new_value NULL', async () => {
         const { id } = await makeRate();
-        const adm = await asAdmin();
+        const adm = await asRateWriter();
         await adm.query('DELETE FROM public.exchange_rates WHERE id = $1', [id]);
         const rows = await auditRows(id);
         expect(rows.map((r) => r.column_name).sort()).toEqual(sorted(EXPECTED_COLUMNS.exchange_rates));
-        expect(rows.every((r) => r.operation === 'DELETE' && r.new_value === null && r.changed_by_role === 'admin')).toBe(true);
+        expect(rows.every((r) => r.operation === 'DELETE' && r.new_value === null && r.changed_by_role === 'super_admin')).toBe(true);
       });
 
       it('updated_at-only changes (the existing touch trigger) write nothing', async () => {

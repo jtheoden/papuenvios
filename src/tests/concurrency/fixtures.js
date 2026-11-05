@@ -195,3 +195,20 @@ export const withConstraintDropped = async (admin, table, constraint, fn) => {
     await admin.query(`ALTER TABLE public.${table} ADD CONSTRAINT ${constraint} ${rows[0].def}`);
   }
 };
+
+/**
+ * DEC-10: only a super_admin writes exchange_rates. Wraps an admin client so that ONLY statements touching
+ * exchange_rates run with the admin promoted to super_admin (restored to `admin` right after); every other
+ * statement keeps the plain-admin privileges, so the suite still verifies what a plain admin can do.
+ */
+export const asRateWriter = (owner, adminId, client) => ({
+  query: async (sql, params) => {
+    if (typeof sql !== 'string' || !/exchange_rates/i.test(sql)) return client.query(sql, params);
+    await owner.query(`UPDATE public.user_profiles SET role = 'super_admin' WHERE id = $1`, [adminId]);
+    try {
+      return await client.query(sql, params);
+    } finally {
+      await owner.query(`UPDATE public.user_profiles SET role = 'admin' WHERE id = $1`, [adminId]);
+    }
+  }
+});
