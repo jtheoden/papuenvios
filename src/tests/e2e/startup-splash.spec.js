@@ -28,12 +28,15 @@ const mockSupabase = (page, { settingsDelay = 0, settings = SETTINGS } = {}) => 
   return json(route, wantsObject ? {} : []);
 });
 
-// Records, from navigation start (performance.now()), when the header appears and whether the loading screen showed.
+// Records (performance.now()) when React first commits and when the header appears, and whether the loading screen showed.
 const instrument = (page) => page.addInitScript(({ loadingText, cacheKey }) => {
   localStorage.setItem('preferredLanguage', 'es');
   localStorage.removeItem(cacheKey); // the settings cache would skip the request
-  window.__startup = { headerAt: null, sawLoading: false };
+  window.__startup = { headerAt: null, sawLoading: false, psGoneAt: null };
   new MutationObserver(() => {
+    // React's first commit: #root has content and the static splash (#ps) is gone. Main had no splash: its first commit.
+    const root = document.getElementById('root');
+    if (window.__startup.psGoneAt === null && root?.firstElementChild && !document.getElementById('ps')) window.__startup.psGoneAt = performance.now();
     if (!window.__startup.sawLoading && document.body?.textContent.includes(loadingText)) window.__startup.sawLoading = true;
     if (window.__startup.headerAt === null && document.querySelector('header')) window.__startup.headerAt = performance.now();
   }).observe(document, { childList: true, subtree: true, characterData: true });
@@ -56,8 +59,10 @@ test('served HTML already paints the static splash inside #root', async ({ reque
 
 test('fast settings: the app appears without the fixed 2.5 s wait and no loading screen', async ({ page }) => {
   const startup = await openApp(page);
-  // main started a 2.5 s timer only after the JS loaded and React mounted, so it is always above 2500 ms here.
-  expect(startup.headerAt).toBeLessThan(2500);
+  // Event to event, not wall clock from navigation (the dev server under load can take seconds to serve the modules):
+  // main started its fixed 2.5 s timer after React mounted, so its header came >= 2500 ms after the first commit.
+  expect(startup.psGoneAt).not.toBeNull();
+  expect(startup.headerAt - startup.psGoneAt).toBeLessThan(1000);
   expect(startup.sawLoading).toBe(false);
 });
 
