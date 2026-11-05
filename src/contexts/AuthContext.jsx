@@ -7,6 +7,7 @@ import { TIMEOUTS, RETRY_CONFIG, AUTH_STORAGE_KEY } from '@/lib/constants';
 import { getUserCategory } from '@/lib/userCategorizationService';
 import { flushQueuedActivityLogs, logActivity } from '@/lib/activityLogger';
 import { clearRefreshBlock, getRefreshBlockRemainingMs, isRefreshBlocked, subscribeRefreshBlock } from '@/lib/refreshGuard';
+import { dropApiCaches } from '@/lib/requestBudget';
 
 const AuthContext = createContext();
 
@@ -418,6 +419,7 @@ export const AuthProvider = ({ children }) => {
         const expired = Boolean(sessionRef.current) && !explicitSignOutRef.current;
         explicitSignOutRef.current = false;
         clearRefreshBlock(); // nothing left to refresh: do not carry the cooldown into the next session
+        dropApiCaches(); // the next person on this browser starts with no cached answer of this one
         resetAuthState();
         setSessionRecovering(false);
         setSessionExpired((previous) => expired || previous); // the storage handler may have flagged it first

@@ -4,7 +4,7 @@
 // with the refresh guard in supabase.js. Why: on the Free plan (5 GB egress) every repeated read costs headers + JSON.
 //  1. In-flight dedupe: identical reads (same method, URL, body, Range/Prefer/Accept and user) share one request.
 //     Requests with their own abort signal never share.
-//  2. An allowlist of display selects (CACHED_SELECTS) is cached for API_CACHE_TTL_MS in memory and localStorage
+//  2. An allowlist of exact reads (CACHED_READS: select AND filters) is cached for API_CACHE_TTL_MS in memory and localStorage
 //     (public data), so other tabs and reloads reuse them. Every other read, including those that price an operation,
 //     goes to the network.
 //  3. Budget guardrail, only for the polling counters in GUARDED_READS: once `maxPerMinute` requests of the same
@@ -32,11 +32,20 @@ export const API_CACHE_TTL_MS = 2.5 * 60_000;
 // re-priced with getLiveConversionRate, which is never cached: the cart checkout (an order is only created when the
 // live prices equal the displayed ones), the product save in the inventory, and getExchangeRate (remittance
 // confirmation, convertCurrency). getActiveRate and v_effective_courier_cost are never cached either.
-const CACHED_SELECTS = {
-  exchange_rates: new Set(['from_currency_id,to_currency_id,rate,effective_date', 'from_currency_id,to_currency_id']),
-  currencies: new Set(['id,code,symbol,is_base'])
+// Each entry is the EXACT set of query parameters (select and filters) of one known call; a future read with the same
+// select but other filters is not cached.
+const CACHED_READS = {
+  exchange_rates: [
+    { select: 'from_currency_id,to_currency_id,rate,effective_date', is_active: 'eq.true', order: 'effective_date.desc' },
+    { select: 'from_currency_id,to_currency_id', is_active: 'eq.true' }
+  ],
+  currencies: [{ select: 'id,code,symbol,is_base', is_active: 'eq.true', order: 'code.asc' }]
 };
-const isCachedRead = (table, url) => Boolean(CACHED_SELECTS[table]?.has(url.searchParams.get('select')));
+const isCachedRead = (table, url) => (CACHED_READS[table] || []).some((expected) => {
+  const keys = [...new Set(url.searchParams.keys())];
+  return keys.length === Object.keys(expected).length
+    && keys.every((key) => url.searchParams.getAll(key).length === 1 && url.searchParams.get(key) === expected[key]);
+});
 // The guardrail only ever answers these polling counters from memory (method + REST path). Any other read, and in
 // particular anything about money, prices or stock (rates, currencies, costs, Zelle accounts, FX status...), always
 // reaches the network.
@@ -86,17 +95,22 @@ const notifyWrite = (path) => {
   });
 };
 
+// Keys reach localStorage: identities are stored hashed, never in clear.
+const hashOf = (text) => {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i += 1) hash = ((hash * 33) ^ text.charCodeAt(i)) >>> 0;
+  return hash.toString(36);
+};
+
 // The user (not the token, which rotates every hour) is part of the key: RLS answers depend on it.
 const identityOf = (authorization) => {
   if (!authorization) return '';
   try {
     const payload = JSON.parse(atob(authorization.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-    return `${payload.sub || 'anon'}:${payload.role || ''}`;
+    return `user:${hashOf(`${payload.sub || 'anon'}:${payload.role || ''}`)}`;
   } catch {
-    // Not a JWT: keep requests of different tokens apart without ever storing the token (keys reach localStorage).
-    let hash = 5381;
-    for (let i = 0; i < authorization.length; i += 1) hash = ((hash * 33) ^ authorization.charCodeAt(i)) >>> 0;
-    return `opaque:${hash.toString(36)}`;
+    // Not a JWT: keep requests of different tokens apart without ever storing the token.
+    return `opaque:${hashOf(authorization)}`;
   }
 };
 

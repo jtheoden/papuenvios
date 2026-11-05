@@ -69,6 +69,28 @@ describe('requestBudget fetch', () => {
     expect(await body(await f(url))).toBe(2);
   });
 
+  it('the allowlist checks the filters too: the same select with other filters is never cached', async () => {
+    const base = makeBase();
+    const f = createRequestBudgetFetch(base);
+    const select = 'select=from_currency_id%2Cto_currency_id%2Crate%2Ceffective_date';
+    await f(`${BASE}/exchange_rates?${select}&is_active=eq.true&from_currency_id=eq.usd&order=effective_date.desc`);
+    await f(`${BASE}/exchange_rates?${select}&is_active=eq.true&from_currency_id=eq.usd&order=effective_date.desc`);
+    await f(`${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base`);
+    await f(`${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base`);
+    expect(base).toHaveBeenCalledTimes(4);
+  });
+
+  it('the user id never reaches localStorage in clear (hashed in the cache key)', async () => {
+    const base = makeBase();
+    const f = createRequestBudgetFetch(base);
+    const sub = '6f1c2d3e-aaaa-bbbb-cccc-1234567890ab';
+    const jwt = `x.${btoa(JSON.stringify({ sub, role: 'authenticated' }))}.y`;
+    await f(`${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base&is_active=eq.true&order=code.asc`, { headers: { Authorization: `Bearer ${jwt}` } });
+    const stored = localStorage.getItem(API_CACHE_STORAGE_KEY);
+    expect(stored).toBeTruthy();
+    expect(stored).not.toContain(sub);
+  });
+
   it('caches only the allow-listed display selects: other reads of the same tables stay live', async () => {
     const base = makeBase();
     const f = createRequestBudgetFetch(base);
@@ -97,7 +119,7 @@ describe('requestBudget fetch', () => {
 
   it('rate cache survives a reload through localStorage and a write anywhere clears it (own action never stale)', async () => {
     const base = makeBase();
-    const url = `${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base`;
+    const url = `${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base&is_active=eq.true&order=code.asc`;
     await createRequestBudgetFetch(base)(url);
     const reloaded = createRequestBudgetFetch(base);
     expect(await body(await reloaded(url))).toBe(1);
@@ -111,7 +133,7 @@ describe('requestBudget fetch', () => {
   it('a non-JWT token is never written to localStorage, and different tokens never share a cached answer', async () => {
     const base = makeBase();
     const f = createRequestBudgetFetch(base);
-    const url = `${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base`;
+    const url = `${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base&is_active=eq.true&order=code.asc`;
     await f(url, { headers: { Authorization: 'Bearer opaque-token-AAAA' } });
     await f(url, { headers: { Authorization: 'Bearer opaque-token-BBBB' } });
     expect(base).toHaveBeenCalledTimes(2);
@@ -121,7 +143,7 @@ describe('requestBudget fetch', () => {
   it('another tab writing (storage event) drops this tab\'s cache', async () => {
     const base = makeBase();
     const f = createRequestBudgetFetch(base);
-    const url = `${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base`;
+    const url = `${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base&is_active=eq.true&order=code.asc`;
     await f(url);
     window.dispatchEvent(new StorageEvent('storage', { key: API_CACHE_STORAGE_KEY, newValue: null }));
     await f(url);
@@ -135,7 +157,7 @@ describe('requestBudget fetch', () => {
       return Promise.resolve(json({ n: 'new' }));
     });
     const f = createRequestBudgetFetch(base);
-    const url = `${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base`;
+    const url = `${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base&is_active=eq.true&order=code.asc`;
     const pending = f(url);
     await f(`${BASE}/currencies?id=eq.1`, { method: 'PATCH', body: '{}' });
     release();
@@ -208,7 +230,7 @@ describe('requestBudget fetch', () => {
     it('can be switched off by flag: every request passes through untouched', async () => {
       const base = makeBase();
       const f = createRequestBudgetFetch(base, { enabled: false });
-      await Promise.all([f(`${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base`), f(`${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base`)]);
+      await Promise.all([f(`${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base&is_active=eq.true&order=code.asc`), f(`${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base&is_active=eq.true&order=code.asc`)]);
       expect(base).toHaveBeenCalledTimes(2);
     });
   });
