@@ -1,12 +1,6 @@
-import { BRAND_PALETTE, NEW_KEY_DEFAULTS, isHexColor } from '@/lib/brandPalette';
+import { BRAND_PALETTE, NEW_KEY_DEFAULTS, hex, isHexColor, pair } from '@/lib/brandPalette';
 
 const { white, charcoal, warmGray, gold, goldDeep, goldSoft, beige } = BRAND_PALETTE;
-
-/** First value that is a HEX colour, so nothing unchecked reaches a style attribute. */
-const hex = (...candidates) => candidates.find(isHexColor);
-
-/** A text/background pair: if either colour is invalid BOTH fall back, so a good text colour never lands on the other fallback. */
-const pair = (fg, bg, fgFallback, bgFallback) => (isHexColor(fg) && isHexColor(bg) ? [fg, bg] : [fgFallback, bgFallback]);
 
 // Legacy blue/violet fallbacks, kept only for the stored-gradient CTA so the production look does not move.
 const LEGACY_FROM = '#2563eb';
