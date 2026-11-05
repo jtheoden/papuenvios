@@ -766,7 +766,7 @@ const UserPanel = ({ onNavigate }) => {
                   >
                     <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
                       {pub.cover_image_url ? (
-                        <img src={pub.cover_image_url} alt="" className="w-full h-full object-cover" />
+                        <img loading="lazy" decoding="async" src={pub.cover_image_url} alt="" className="w-full h-full object-cover" />
                       ) : (
                         <div
                           className="w-full h-full flex items-center justify-center"

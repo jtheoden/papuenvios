@@ -123,6 +123,9 @@ const HeroCarousel = ({ slides, visualSettings }) => {
             data-testid="hero-slide-image"
             src={slide.image_url || slide.image_file}
             alt={title || ''}
+            // The first poster is the LCP: eager + high priority. Only the active slide is mounted, so later ones load on rotation.
+            loading="eager"
+            fetchpriority={current === 0 ? 'high' : 'auto'}
             onError={() => setFailed((prev) => new Set(prev).add(slideKey(slide, slides.indexOf(slide))))}
             className="h-full w-full object-contain animate-in fade-in motion-reduce:animate-none"
             style={{ animationDuration: `${transitionMs}ms` }}

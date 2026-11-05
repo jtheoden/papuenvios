@@ -609,7 +609,7 @@ const SettingsPageContent = ({ localNotifications, setLocalNotifications, visual
                       {/* Cover image thumbnail or placeholder */}
                       <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100 flex items-center justify-center">
                         {pub.cover_image_url ? (
-                          <img src={pub.cover_image_url} alt="" className="w-full h-full object-cover" />
+                          <img loading="lazy" decoding="async" src={pub.cover_image_url} alt="" className="w-full h-full object-cover" />
                         ) : (
                           <FileText className="w-4 h-4 text-gray-400" />
                         )}
@@ -676,7 +676,7 @@ const SettingsPageContent = ({ localNotifications, setLocalNotifications, visual
                           <label className="block text-xs font-medium text-gray-600 mb-1">{t('settings.content.pubCoverImage')}</label>
                           {pub.cover_image_url ? (
                             <div className="relative inline-block">
-                              <img
+                              <img loading="lazy" decoding="async"
                                 src={pub.cover_image_url}
                                 alt="Cover"
                                 className="h-24 rounded-lg object-cover border border-gray-200"

@@ -88,7 +88,7 @@ const VendorManagementTab = ({ testimonials, onTestimonialsRefresh }) => {
                   <div className="flex items-center gap-3 mb-1">
                     {/* Author Avatar */}
                     {(testimonial.user_avatar || testimonial.user_photo) && (
-                      <img
+                      <img loading="lazy" decoding="async"
                         src={testimonial.user_avatar || testimonial.user_photo}
                         alt={testimonial.user_name || 'User'}
                         className="w-10 h-10 rounded-full object-cover flex-shrink-0"

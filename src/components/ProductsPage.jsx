@@ -431,6 +431,8 @@ const ProductsPage = ({ onNavigate }) => {
                         <img
                           src={combo.image}
                           alt={combo.name}
+                          loading="lazy"
+                          decoding="async"
                           className="w-full h-full object-cover"
                         />
                       ) : (
@@ -573,6 +575,8 @@ const ProductsPage = ({ onNavigate }) => {
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     alt={product.name_es || product.name}
                     src={product.image_url || product.image_file}
+                    loading="lazy"
+                    decoding="async"
                     onError={(e) => {
                       e.target.style.display = 'none';
                       e.target.nextElementSibling?.classList.remove('hidden');

@@ -1551,7 +1551,7 @@ const CartPage = ({ onNavigate }) => {
                         {/* Product Image */}
                         <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden">
                           {displayImage ? (
-                            <img
+                            <img loading="lazy" decoding="async"
                               className="w-full h-full object-cover"
                               alt={displayName}
                               src={displayImage}

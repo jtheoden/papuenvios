@@ -78,6 +78,18 @@ describe('ProductsPage shows the stored price and never a computed or zero one',
     expect(within(card).getByRole('button', { name: 'products.priceUnavailable' })).toBeDisabled();
   });
 
+  // Egress: the catalog used to download all 68 images (~7 MB) on every visit.
+  it('loads product and combo images lazily with async decoding', () => {
+    state.products = [product({ image_url: 'https://x.test/p1.jpg' })];
+    state.combos = [combo({ image: 'https://x.test/c1.jpg' })];
+    render(<ProductsPage onNavigate={vi.fn()} />);
+    const imgs = [within(cardOf('Rice')).getByRole('img'), within(cardOf('Combo Uno')).getByRole('img')];
+    imgs.forEach((img) => {
+      expect(img).toHaveAttribute('loading', 'lazy');
+      expect(img).toHaveAttribute('decoding', 'async');
+    });
+  });
+
   it('prices a combo from its stored finalPrice, not from the components', () => {
     state.combos = [combo({ finalPrice: 8 })];
     render(<ProductsPage onNavigate={vi.fn()} />);

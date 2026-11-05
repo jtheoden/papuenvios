@@ -1508,7 +1508,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
                     {/* Thumbnail */}
                     <div className="w-10 h-6 sm:w-16 sm:h-9 rounded overflow-hidden bg-gray-100 flex-shrink-0">
                       {(slidePreviews[slide.id] || slide.image_url) ? (
-                        <img
+                        <img loading="lazy" decoding="async"
                           src={slidePreviews[slide.id] || slide.image_url}
                           alt=""
                           className="w-full h-full object-cover"
@@ -1602,7 +1602,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
                         <div>
                           <p className="text-sm font-medium text-gray-700 mb-1">{t('settings.visual.preview')}</p>
                           <div className="relative w-full aspect-[16/9] rounded-lg overflow-hidden border-2 border-gray-300 bg-gray-100">
-                            <img
+                            <img loading="lazy" decoding="async"
                               src={slidePreviews[slide.id] || slide.image_url}
                               alt={t('settings.visual.preview')}
                               className="w-full h-full object-cover"

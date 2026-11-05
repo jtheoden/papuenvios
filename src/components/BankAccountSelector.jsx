@@ -225,7 +225,7 @@ const BankAccountSelector = ({
                       {/* Bank Logo */}
                       <div className="flex-shrink-0">
                         {logoPath ? (
-                          <img
+                          <img loading="lazy" decoding="async"
                             src={logoPath}
                             alt={account.bank_account?.bank?.name}
                             className="w-12 h-12 object-contain rounded"

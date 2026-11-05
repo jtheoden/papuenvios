@@ -66,6 +66,17 @@ afterEach(() => {
   delete window.matchMedia;
 });
 
+describe('LCP image', () => {
+  it('the first poster loads eagerly with high fetch priority; later posters do not claim it', () => {
+    mount();
+    const first = screen.getByTestId('hero-slide-image');
+    expect(first.getAttribute('loading')).not.toBe('lazy');
+    expect(first.getAttribute('fetchpriority')).toBe('high');
+    fireEvent.click(screen.getByRole('button', { name: names(ES).next }));
+    expect(screen.getByTestId('hero-slide-image').getAttribute('fetchpriority')).not.toBe('high');
+  });
+});
+
 describe('autoplay', () => {
   it('advances every carouselAutoplaySpeed ms (default 5000) and wraps', () => {
     mount();

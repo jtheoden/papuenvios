@@ -65,12 +65,11 @@ const UserAvatar = ({
   return (
     <div className={`relative flex-shrink-0 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center font-semibold text-white ${sizeClasses[size]} ${className}`}>
       {hasImage ? (
-        <img
+        <img loading="lazy" decoding="async"
           src={avatarUrl}
           alt={fullName || email}
           className="w-full h-full object-cover"
           onError={() => setImageError(true)}
-          loading="lazy"
         />
       ) : (
         <div className={`w-full h-full bg-gradient-to-r ${gradientColor} flex items-center justify-center font-semibold text-white`}>

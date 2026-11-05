@@ -566,7 +566,7 @@ const HomePage = ({ onNavigate }) => {
                   >
                     <div className="h-36 overflow-hidden">
                       {pub.cover_image_url ? (
-                        <img
+                        <img loading="lazy" decoding="async"
                           src={pub.cover_image_url}
                           alt={title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
@@ -646,7 +646,7 @@ const HomePage = ({ onNavigate }) => {
                   className="glass-effect p-8 rounded-2xl"
                 >
                   <div className="flex items-center mb-4">
-                    <img
+                    <img loading="lazy" decoding="async"
                       className="w-14 h-14 rounded-full mr-4 object-cover"
                       alt={dbTestimonials[testimonialIndex]?.user_name || 'User'}
                       src={dbTestimonials[testimonialIndex]?.user_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(dbTestimonials[testimonialIndex]?.user_name || 'U')}&background=random`}

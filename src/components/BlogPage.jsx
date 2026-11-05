@@ -217,7 +217,7 @@ const BlogPage = ({ onNavigate }) => {
                   {/* Cover image or gradient placeholder */}
                   <div className="h-40 overflow-hidden">
                     {pub.cover_image_url ? (
-                      <img
+                      <img loading="lazy" decoding="async"
                         src={pub.cover_image_url}
                         alt={title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
