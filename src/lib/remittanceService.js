@@ -213,44 +213,50 @@ export const DELIVERY_METHODS = {
 // recipient_bank_account_id column now exists in remittances table (added 2026-01-19)
 
 // ============================================================================
-// EXCHANGE RATE HELPERS - Get rate from exchange_rates table with fallback
+// EXCHANGE RATE HELPERS
 // ============================================================================
 
 /**
- * Get exchange rate for remittance from exchange_rates table
- * Uses the rate configured in financial settings (exchange_rates table)
- * Falls back to remittance_type.exchange_rate if no configured rate exists
+ * Get the exchange rate for a remittance.
+ * The type's own rate wins; exchange_rates is used only when the type has none.
  *
  * @param {string} fromCurrencyCode - Source currency code (e.g., 'USD')
  * @param {string} toCurrencyCode - Target currency code (e.g., 'CUP')
- * @param {number} fallbackRate - Fallback rate from remittance_type if not found
- * @returns {Promise<{rate: number, source: 'configured'|'fallback'}>} Exchange rate and its source
+ * @param {number|string|null|undefined} typeRate - Rate configured on the remittance type
+ * @returns {Promise<{rate: number, source: 'type'|'configured'}>} Exchange rate and its source
+ * @throws {AppError} If no valid rate is available for the currency pair
  */
 export const getRemittanceExchangeRate = async (fromCurrencyCode, toCurrencyCode, typeRate) => {
+  const unavailableError = () => new AppError(
+    'The exchange rate for this currency pair is not available.',
+    ERROR_CODES.EXCHANGE_RATE_UNAVAILABLE,
+    503,
+    { from: fromCurrencyCode, to: toCurrencyCode }
+  );
+
   try {
-    // Same currency = 1:1 rate
+    // Same currency = 1:1 rate, without querying any external configuration.
     if (fromCurrencyCode === toCurrencyCode) {
       return { rate: 1, source: 'configured' };
     }
 
-    // The type's exchange_rate is authoritative when set (admin configured it explicitly)
-    if (typeRate && typeRate > 0) {
-      return { rate: typeRate, source: 'type' };
+    const numericTypeRate = Number(typeRate);
+    if (Number.isFinite(numericTypeRate) && numericTypeRate > 0) {
+      return { rate: numericTypeRate, source: 'type' };
     }
 
-    // Fallback to exchange_rates table when the type doesn't have its own rate
-    const configuredRate = await getCurrencyExchangeRate(fromCurrencyCode, toCurrencyCode);
-
-    if (configuredRate && configuredRate > 0) {
+    const configuredRate = Number(await getCurrencyExchangeRate(fromCurrencyCode, toCurrencyCode));
+    if (Number.isFinite(configuredRate) && configuredRate > 0) {
       return { rate: configuredRate, source: 'configured' };
     }
 
-    console.warn(`[getRemittanceExchangeRate] No rate found for ${fromCurrencyCode}→${toCurrencyCode}, using 1`);
-    return { rate: 1, source: 'fallback' };
+    throw unavailableError();
   } catch (error) {
-    // If any error, use type rate or 1
-    console.warn(`[getRemittanceExchangeRate] Error getting rate for ${fromCurrencyCode}→${toCurrencyCode}`, error);
-    return { rate: typeRate || 1, source: 'fallback' };
+    const appError = error?.code === ERROR_CODES.EXCHANGE_RATE_UNAVAILABLE
+      ? error
+      : unavailableError();
+    logError(appError, { operation: 'getRemittanceExchangeRate' });
+    throw appError;
   }
 };
 
@@ -686,8 +692,8 @@ export const getCommissionOverride = async (remittanceId) => {
 
 /**
  * Calculate remittance details including exchange rate, commissions, and delivery amount
- * Uses exchange rate from exchange_rates table (financial settings) when available,
- * falls back to remittance_type.exchange_rate if not configured
+ * The type's own rate wins; exchange_rates is used only when the type has none.
+ * If neither provides a valid rate, the calculation throws.
  *
  * @param {string} typeId - Remittance type ID
  * @param {number} amount - Amount to send
@@ -742,7 +748,7 @@ export const calculateRemittance = async (typeId, amount, offer = null) => {
       );
     }
 
-    // Get exchange rate from configured rates (exchange_rates table) or fallback to type rate
+    // The type's own rate wins; exchange_rates is used only when the type has none.
     const { rate: exchangeRate, source: rateSource } = await getRemittanceExchangeRate(
       type.currency_code,
       type.delivery_currency,
@@ -782,8 +788,8 @@ export const calculateRemittance = async (typeId, amount, offer = null) => {
 /**
  * Calculate remittance in REVERSE mode (from desired receive amount)
  * Given how much recipient should receive, calculate how much sender needs to send
- * Uses exchange rate from exchange_rates table (financial settings) when available,
- * falls back to remittance_type.exchange_rate if not configured
+ * The type's own rate wins; exchange_rates is used only when the type has none.
+ * If neither provides a valid rate, the calculation throws.
  *
  * @param {string} typeId - Remittance type UUID
  * @param {number} desiredReceiveAmount - Amount recipient should receive (in delivery currency)
@@ -822,11 +828,11 @@ export const calculateReverseRemittance = async (typeId, desiredReceiveAmount) =
       throw createNotFoundError('Remittance type', typeId);
     }
 
-    // Get exchange rate from configured rates (exchange_rates table) or fallback to type rate
+    // The type's own rate wins; exchange_rates is used only when the type has none.
     const { rate: exchangeRate, source: rateSource } = await getRemittanceExchangeRate(
       type.currency_code,
       type.delivery_currency,
-      type.exchange_rate || 1
+      type.exchange_rate
     );
 
     const commissionPercentage = type.commission_percentage || 0;

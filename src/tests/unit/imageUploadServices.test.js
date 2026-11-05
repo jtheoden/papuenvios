@@ -17,7 +17,12 @@ vi.mock('@/lib/supabase', () => {
     b.order = vi.fn(() => b);
     b.limit = vi.fn(async () => ({ data: [], error: null }));
     b.single = vi.fn(async () => ({ data: { id: 'new-id', ...(db.inserts.at(-1)?.row || {}) }, error: null }));
-    b.then = (resolve) => resolve({ data: null, error: null });
+    b.then = (resolve) => resolve({
+      data: table === 'products' ? [{ id: 'p1', base_currency_id: 'usd' }]
+        : table === 'currencies' ? [{ id: 'usd' }]
+          : null,
+      error: null
+    });
     return b;
   };
   return { supabase: { from: builder, rpc: vi.fn(async () => ({ data: null, error: null })) } };
