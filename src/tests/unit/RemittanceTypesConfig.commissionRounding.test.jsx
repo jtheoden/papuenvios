@@ -46,7 +46,7 @@ describe('RemittanceTypesConfig commission derived from rates', () => {
     fireEvent.change(market, { target: { value: '520' } });
     fireEvent.change(delivery, { target: { value: '500' } });
 
-    // 3.846153...% is stored as numeric(5,2): the UI shows what is stored, not the raw float
+    // 3.846153...% is rounded to 2 decimals (A9): the UI shows what will be saved, not the raw float
     await waitFor(() => expect(screen.getByText('3.85%')).toBeInTheDocument());
     expect(screen.getByText('remittances.admin.effectiveDeliveryRate:')).toBeInTheDocument();
     expect(screen.getByTestId('effective-delivery-rate')).toHaveTextContent('499.98');

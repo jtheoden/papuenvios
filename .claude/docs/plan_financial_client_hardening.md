@@ -41,8 +41,8 @@ Pedidos de hoy (USD, Zelle) y remesas USD→CUP / USD→USD no deben cambiar de 
 - Limitación documentada: una comisión sobrescrita por admin (override) no es visible para el cliente; el RPC es la fuente de verdad.
 
 ### A9 — `commission_percentage` derivado
-- A9.1 `calcCommissionFromRates(market, delivery)` (puro, exportado desde `remittanceCalculations`) redondea a 2 decimales (escala `numeric(5,2)`): 520/500 -> 3.85.
-- A9.2 `RemittanceTypesConfig` guarda el valor redondeado y muestra la tasa de entrega efectiva (`market * (1 - pct/100)`, 2 dec.) para que el admin vea lo que realmente se aplicará.
+- A9.1 `calcCommissionFromRates(market, delivery)` (puro, exportado desde `remittanceCalculations`) redondea a 2 decimales: 520/500 -> 3.85. (Corregido en la revisión: `remittance_types.commission_percentage` es `numeric(20,10)`; solo `remittances.commission_percentage` es `numeric(5,2)`. La premisa original de escala era falsa para esta tabla.)
+- A9.2 `RemittanceTypesConfig` recalcula la comisión SOLO cuando el usuario cambia la tasa de mercado o la de entrega (nunca al abrir el formulario de edición: editar solo el nombre/límites/is_active conserva el valor almacenado con precisión completa). Al cambiar tasas guarda el valor redondeado y muestra la tasa de entrega efectiva (`market * (1 - pct/100)`, 2 dec.) para que el admin vea lo que realmente se aplicará.
 
 ## Diferido / fuera de alcance (documentado)
 - A2 (cliente fija montos; `passedDiscountAmount`), A4 (6 decimales en inversa), A8 (umbrales de edad USD→CUP), A10 `computeComboPricing` redondeo, A11 (Edge Function), banda dura USD→CUP, RPC de par atómico, fórmulas de remesa, guards BD.

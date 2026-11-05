@@ -57,15 +57,20 @@ const RemittanceTypesConfig = () => {
     loadCurrencies();
   }, []);
 
-  // Auto-calculate commission_percentage when market rate or delivery rate change
-  useEffect(() => {
-    const marketRate = parseFloat(formData.exchange_rate);
-    const deliveryRate = parseFloat(formData.delivery_rate);
-    if (marketRate > 0 && deliveryRate > 0) {
-      const pct = calcCommissionFromRates(marketRate, deliveryRate);
-      setFormData(prev => ({ ...prev, commission_percentage: pct.toString() }));
-    }
-  }, [formData.exchange_rate, formData.delivery_rate]);
+  // commission_percentage is derived ONLY when the user types a market or delivery rate. Doing it in an effect
+  // would also fire when handleEdit loads the form and overwrite the stored full-precision value
+  // (remittance_types.commission_percentage is numeric(20,10)) with a 2-decimal one.
+  const handleRateChange = (field, value) => {
+    setFormData(prev => {
+      const next = { ...prev, [field]: value };
+      const marketRate = parseFloat(next.exchange_rate);
+      const deliveryRate = parseFloat(next.delivery_rate);
+      if (marketRate > 0 && deliveryRate > 0) {
+        next.commission_percentage = calcCommissionFromRates(marketRate, deliveryRate).toString();
+      }
+      return next;
+    });
+  };
 
   // Show advanced if commission_fixed > 0 on load
   useEffect(() => {
@@ -493,7 +498,7 @@ const RemittanceTypesConfig = () => {
                   type="number"
                   step="0.01"
                   value={formData.exchange_rate}
-                  onChange={(e) => setFormData({ ...formData, exchange_rate: e.target.value })}
+                  onChange={(e) => handleRateChange('exchange_rate', e.target.value)}
                   className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="472.00"
                   disabled={!isSuperAdmin}
@@ -515,7 +520,7 @@ const RemittanceTypesConfig = () => {
                   type="number"
                   step="0.01"
                   value={formData.delivery_rate}
-                  onChange={(e) => setFormData({ ...formData, delivery_rate: e.target.value })}
+                  onChange={(e) => handleRateChange('delivery_rate', e.target.value)}
                   className={`w-full pl-10 pr-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                     parseFloat(formData.delivery_rate) > parseFloat(formData.exchange_rate) && parseFloat(formData.exchange_rate) > 0
                       ? 'border-red-400 bg-red-50'

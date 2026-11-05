@@ -1,6 +1,8 @@
 /**
- * A9 - the admin types the market rate and the delivery rate; the commission percentage is derived and stored in
- * numeric(5,2). The derived value must already be rounded to that scale, so the simulator and the stored rate agree.
+ * A9 - the admin types the market rate and the delivery rate; the commission percentage is derived and rounded to
+ * 2 decimals, so the simulator, the displayed delivery rate and the stored value agree. It is derived only when the
+ * rates are typed, never when a type is loaded for edit: remittance_types.commission_percentage is numeric(20,10)
+ * and a stored value such as 2.1857923497 must not be rewritten (see RemittanceTypesConfig.commissionPreserved).
  */
 import { describe, it, expect } from 'vitest';
 import { calcCommissionFromRates, effectiveDeliveryRate, simulateRemittance } from '@/lib/remittanceCalculations';
