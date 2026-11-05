@@ -9,6 +9,9 @@ const currencyList = [
   { id: 'cup', code: 'CUP', symbol: '₱', is_base: false }
 ];
 
+// Saved prices are converted with the live rate (currencyService), not the display cache
+const liveRate = vi.hoisted(() => vi.fn(async () => 1));
+vi.mock('@/lib/currencyService', () => ({ getLiveConversionRate: (...args) => liveRate(...args) }));
 vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({ t: (k) => k, language: 'en' })
 }));
@@ -101,6 +104,7 @@ describe('VendorInventoryTab currency handling (RB-20)', () => {
     mocks.toast.mockClear();
     mocks.convertAmountAsync.mockReset();
     mocks.convertAmountAsync.mockResolvedValue(9000); // a positive converted price
+    liveRate.mockReset().mockResolvedValue(1);
     updateProduct.mockClear();
   });
 
@@ -183,7 +187,7 @@ describe('VendorInventoryTab currency handling (RB-20)', () => {
       pressEdit();
       fireEvent.change(screen.getByDisplayValue('USD (Base)'), { target: { value: 'cup' } });
       await waitFor(() => expect(screen.getByDisplayValue('CUP')).toBeTruthy());
-      mocks.convertAmountAsync.mockRejectedValue(new Error('no rate'));
+      liveRate.mockRejectedValue(new Error('no rate')); // the preview reads the live rate, like the save
 
       const note = await screen.findByText('vendor.inventory.previewUnavailable', {}, { timeout: 2000 });
       expect(note.getAttribute('role')).toBe('status');
@@ -202,7 +206,7 @@ describe('VendorInventoryTab currency handling (RB-20)', () => {
 
     it('does not call updateProduct, shows a destructive toast and keeps the form open', async () => {
       await editWithForeignCurrency();
-      mocks.convertAmountAsync.mockRejectedValue(new Error('no rate'));
+      liveRate.mockRejectedValue(new Error('no rate'));
 
       fireEvent.click(screen.getByText('vendor.addProduct.save').closest('button'));
 
@@ -223,6 +227,18 @@ describe('VendorInventoryTab currency handling (RB-20)', () => {
 
       await waitFor(() => expect(updateProduct).toHaveBeenCalled());
       expect(updateProduct.mock.calls[0][1]).toMatchObject({ basePrice: 0.01, base_currency_id: 'usd' });
+    });
+
+    it('the saved base price uses the rate read live (cup -> usd), never the cached display rate', async () => {
+      mocks.convertAmountAsync.mockResolvedValue(9000); // display conversion when switching the form to CUP
+      liveRate.mockResolvedValue(1 / 900);
+      await editWithForeignCurrency();
+
+      fireEvent.click(screen.getByText('vendor.addProduct.save').closest('button'));
+
+      await waitFor(() => expect(updateProduct).toHaveBeenCalled());
+      expect(liveRate).toHaveBeenCalledWith('cup', 'usd');
+      expect(updateProduct.mock.calls[0][1].basePrice).toBeCloseTo(10);
     });
   });
 });

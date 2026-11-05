@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import { TO_PROCESS_STATUSES, getAdminWorkRemittances } from '@/lib/remittanceService';
-import { skipWhileRefreshBlocked } from '@/lib/refreshGuard';
-
-const POLL_INTERVAL_MS = 30000;
+import { useVisiblePolling, POLL_FOLLOWER_MS } from '@/lib/visiblePolling';
+import { WORK_REMITTANCES_KEY, affectsAdminPending } from '@/lib/adminPollKeys';
 
 /**
- * Remittances that need admin attention, kept fresh by one realtime subscription
- * plus a 30s polling fallback in case a realtime event is missed.
+ * Remittances that need admin attention, kept fresh by one realtime subscription and own writes, plus a
+ * 15-minute polling safety net (visible tab only) in case a realtime event is missed.
  *
  * @param {{ enabled?: boolean }} options
  * @returns {{
@@ -32,45 +31,44 @@ export const usePendingRemittances = ({ enabled = true } = {}) => {
     };
   }, []);
 
-  const reload = useCallback(async () => {
-    try {
-      const data = await getAdminWorkRemittances();
-      if (!mountedRef.current) return;
-
-      const toProcessIds = data
-        .filter((r) => TO_PROCESS_STATUSES.includes(r.status))
-        .map((r) => r.id);
-      if (knownIdsRef.current) {
-        const fresh = toProcessIds.filter((id) => !knownIdsRef.current.has(id));
-        setNewCount(fresh.length);
-      }
-      knownIdsRef.current = new Set(toProcessIds);
-
-      setRemittances(data);
-      setError(null);
-      setRefreshFailed(false);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      // Keep the last good list on later failures; only a first-load failure is blocking.
-      if (knownIdsRef.current) setRefreshFailed(true);
-      else setError(err);
-    } finally {
-      if (mountedRef.current) setLoading(false);
+  const onData = useCallback((data) => {
+    if (!mountedRef.current) return;
+    const toProcessIds = data
+      .filter((r) => TO_PROCESS_STATUSES.includes(r.status))
+      .map((r) => r.id);
+    if (knownIdsRef.current) {
+      const fresh = toProcessIds.filter((id) => !knownIdsRef.current.has(id));
+      setNewCount(fresh.length);
     }
+    knownIdsRef.current = new Set(toProcessIds);
+
+    setRemittances(data);
+    setError(null);
+    setRefreshFailed(false);
+    setLoading(false);
   }, []);
+
+  const onError = useCallback((err) => {
+    if (!mountedRef.current) return;
+    // Keep the last good list on later failures; only a first-load failure is blocking.
+    if (knownIdsRef.current) setRefreshFailed(true);
+    else setError(err);
+    setLoading(false);
+  }, []);
+
+  const reload = useVisiblePolling(WORK_REMITTANCES_KEY, () => getAdminWorkRemittances(), {
+    enabled,
+    intervalMs: POLL_FOLLOWER_MS,
+    refreshOnWrite: affectsAdminPending,
+    onData,
+    onError
+  });
 
   const retry = useCallback(async () => {
     setLoading(true);
     setError(null);
     await reload();
   }, [reload]);
-
-  useEffect(() => {
-    if (!enabled) return undefined;
-    reload();
-    const interval = setInterval(skipWhileRefreshBlocked(reload), POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [enabled, reload]);
 
   useRealtimeRemittances({ enabled, onUpdate: reload });
 

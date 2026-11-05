@@ -12,6 +12,7 @@ import { setAnalyticsConsent, ANALYTICS_STORAGE_KEYS, CONSENT_STORAGE_KEY } from
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   insert.mockReset();
   insert.mockResolvedValue({ error: null });
   from.mockClear();
@@ -67,5 +68,35 @@ describe('trackPageVisit consent gate', () => {
     expect(insert).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem('site_visit_session_id')).toBeNull();
     expect(localStorage.getItem(CONSENT_STORAGE_KEY)).not.toBeNull();
+  });
+});
+
+describe('trackPageVisit egress: once per session and logical page', () => {
+  it('logs a page once per browser session, however many times it is shown or re-rendered', async () => {
+    vi.useFakeTimers();
+    setAnalyticsConsent(true);
+    await trackPageVisit({ pageUrl: '/products', userId: null });
+    vi.advanceTimersByTime(10 * 60_000); // even well past the old 1-minute throttle
+    await trackPageVisit({ pageUrl: '/products', userId: null });
+    await trackPageVisit({ pageUrl: '/products', userId: null });
+    expect(insert).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('a different page, or a new browser session, is logged again', async () => {
+    setAnalyticsConsent(true);
+    await trackPageVisit({ pageUrl: '/products', userId: null });
+    await trackPageVisit({ pageUrl: '/cart', userId: null });
+    expect(insert).toHaveBeenCalledTimes(2);
+    sessionStorage.clear(); // new tab/session
+    await trackPageVisit({ pageUrl: '/products', userId: null });
+    expect(insert).toHaveBeenCalledTimes(3);
+  });
+
+  it('withdrawing consent also forgets the pages of this session', async () => {
+    setAnalyticsConsent(true);
+    await trackPageVisit({ pageUrl: '/a', userId: null });
+    setAnalyticsConsent(false);
+    for (const key of ANALYTICS_STORAGE_KEYS) expect(sessionStorage.getItem(key)).toBeNull();
   });
 });
