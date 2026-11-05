@@ -3196,5 +3196,11 @@
     "cancelledOn": "Cancelled on {date}",
     "eligibleFrom": "From: {date}",
     "dueBy": "Until: {date}"
+  },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "staleVersion": "There is a new version of the site. Reload the page to continue.",
+    "generic": "An unexpected error occurred. Reload the page to continue.",
+    "reload": "Reload page"
   }
 }

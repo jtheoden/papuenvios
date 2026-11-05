@@ -3204,5 +3204,11 @@
     "cancelledOn": "Cancelado el {date}",
     "eligibleFrom": "Desde: {date}",
     "dueBy": "Hasta: {date}"
+  },
+  "errorBoundary": {
+    "title": "Algo salió mal",
+    "staleVersion": "Hay una versión nueva del sitio. Recargue la página para continuar.",
+    "generic": "Ocurrió un error inesperado. Recargue la página para continuar.",
+    "reload": "Recargar página"
   }
 }
