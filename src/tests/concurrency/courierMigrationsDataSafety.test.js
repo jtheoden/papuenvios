@@ -181,6 +181,18 @@ describeDb('data safety on realistic rows (local Postgres)', () => {
     expect(await fingerprint()).toEqual(before);
   });
 
+  it('the phase A rollback refuses to run while phase B is applied (its down file goes first)', async () => {
+    await admin.query('BEGIN');
+    try {
+      await admin.query('CREATE TABLE public.courier_payment_type_subscriptions (id int)');
+      const e = await admin.query(strip(readSql(ROLLBACKS.a))).then(() => null, (err) => err);
+      expect(e?.code).toBe('55000');
+      expect(e?.message).toMatch(/phase B/);
+    } finally {
+      await admin.query('ROLLBACK');
+    }
+  });
+
   it('the phase A rollback refuses to run once a rule depends on it (fixed_amount, CUP currency, percent on orders)', async () => {
     const c = await kit.as(actors.adminId);
     const { wipeTable } = await import('./courierTestKit');
