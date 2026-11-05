@@ -71,6 +71,26 @@ describe('loadVisualSettings with the new brand keys', () => {
   });
 });
 
+describe('loadVisualSettings with the selectable theme key', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    singleMock.mockReset();
+  });
+
+  it('a stored row without activeTheme loads as classic: production does not change by deploying', async () => {
+    singleMock.mockResolvedValue({ data: { settings: PRODUCTION_ROW }, error: null });
+    expect((await loadVisualSettings()).activeTheme).toBe('classic');
+  });
+
+  it('keeps a stored papuenvios choice and its classic snapshot', async () => {
+    const classicSnapshot = { buttonBgColor: '#2563eb' };
+    singleMock.mockResolvedValue({ data: { settings: { ...PRODUCTION_ROW, activeTheme: 'papuenvios', classicSnapshot } }, error: null });
+    const s = await loadVisualSettings();
+    expect(s.activeTheme).toBe('papuenvios');
+    expect(s.classicSnapshot).toEqual(classicSnapshot);
+  });
+});
+
 describe('applyVisualSettingsToDOM exposes the brand CSS variables', () => {
   const root = () => document.documentElement;
 

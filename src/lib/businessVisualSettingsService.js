@@ -137,7 +137,9 @@ export const DEFAULT_VISUAL_SETTINGS = {
   carouselAutoplaySpeed: 5000,
   carouselTransitionSpeed: 1000,
   // Brand refresh keys (additive; see brandPalette.js)
-  ...NEW_KEY_DEFAULTS
+  ...NEW_KEY_DEFAULTS,
+  // Selectable default theme (see visualThemes.js): rows saved without the key resolve to 'classic'
+  activeTheme: 'classic'
 };
 
 /**
