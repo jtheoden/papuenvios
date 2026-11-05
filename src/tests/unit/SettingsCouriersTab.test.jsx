@@ -335,6 +335,10 @@ describe('subscribed payment types per courier (phase B)', () => {
     // asks first: nothing is sent until the removal is confirmed; cancelling keeps it
     const confirm = await within(section).findByRole('alertdialog');
     expect(confirm.textContent).toContain('couriers.subscriptions.confirmRemove');
+    // the dialog takes focus (keyboard / screen reader land on it) and reuses the warn Notice, no hand-written colors
+    expect(document.activeElement).toBe(within(confirm).getByRole('button', { name: 'couriers.subscriptions.confirmRemoveYes' }));
+    expect(confirm.className).not.toMatch(/amber-/);
+    expect(confirm.querySelectorAll('[class*="amber-"]')).toHaveLength(1); // only the shared warn Notice
     expect(svc.unsubscribeCourier).not.toHaveBeenCalled();
     fireEvent.click(within(confirm).getByRole('button', { name: 'couriers.common.cancel' }));
     expect(within(section).queryByRole('alertdialog')).toBeNull();

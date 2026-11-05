@@ -93,15 +93,18 @@ const CourierSubscriptions = ({ courier, subscriptions, types, onChanged }) => {
                 {t('couriers.subscriptions.remove')}
               </Btn>
               {confirming === s.payment_type_code && (
-                <div role="alertdialog" aria-label={t('couriers.subscriptions.remove')} className="w-full space-y-2 rounded-lg border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900">
-                  <p>{t('couriers.subscriptions.confirmRemove', { name: nameOf(s.payment_type_code) })}</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Btn tone="danger" disabled={busy}
-                      onClick={() => run(() => unsubscribeCourier(courier.id, s.payment_type_code), 'couriers.subscriptions.removed')}>
-                      {t('couriers.subscriptions.confirmRemoveYes')}
-                    </Btn>
-                    <Btn onClick={() => setConfirming(null)} disabled={busy}>{t('couriers.common.cancel')}</Btn>
-                  </div>
+                <div role="alertdialog" aria-label={t('couriers.subscriptions.remove')} className="w-full">
+                  <Notice tone="warn" announce={false}>
+                    <p>{t('couriers.subscriptions.confirmRemove', { name: nameOf(s.payment_type_code) })}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {/* focus moves into the dialog it just opened (the trigger stays next to it) */}
+                      <Btn tone="danger" disabled={busy} autoFocus
+                        onClick={() => run(() => unsubscribeCourier(courier.id, s.payment_type_code), 'couriers.subscriptions.removed')}>
+                        {t('couriers.subscriptions.confirmRemoveYes')}
+                      </Btn>
+                      <Btn onClick={() => setConfirming(null)} disabled={busy}>{t('couriers.common.cancel')}</Btn>
+                    </div>
+                  </Notice>
                 </div>
               )}
             </li>
