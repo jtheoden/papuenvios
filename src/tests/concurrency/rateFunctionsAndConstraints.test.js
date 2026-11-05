@@ -330,7 +330,9 @@ describeDb('rate functions fix + exchange_rates constraints', () => {
         `SELECT conname, convalidated FROM pg_constraint
           WHERE conrelid = 'public.exchange_rates'::regclass AND contype = 'c' ORDER BY conname`
       );
-      expect(Object.fromEntries(cons.rows.map((r) => [r.conname, r.convalidated]))).toEqual({
+      // exchange_rates_rate_type_check comes with rate_type (production drift, reconciled by courier phase A)
+      expect(Object.fromEntries(cons.rows.filter((r) => r.conname !== 'exchange_rates_rate_type_check')
+        .map((r) => [r.conname, r.convalidated]))).toEqual({
         exchange_rates_distinct_currencies_chk: expect.any(Boolean),
         exchange_rates_rate_positive_chk: true
       });
@@ -443,7 +445,11 @@ describeDb('rate functions fix + exchange_rates constraints', () => {
         && f !== '20261105150000_courier_payment_types_currency_ranges.sql');
       const phaseA = readFileSync('supabase/migrations/20261105150000_courier_payment_types_currency_ranges.sql', 'utf8')
         .split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
-      expect(phaseA).not.toMatch(/\b(DELETE\s+FROM|UPDATE|INSERT\s+INTO|TRUNCATE|ALTER\s+TABLE)\s+(public\.)?exchange_rates/i);
+      // its one DDL on exchange_rates is the production-drift column rate_type, IF NOT EXISTS (a no-op in production)
+      const rateTypeDdl = /ALTER TABLE public\.exchange_rates\s+ADD COLUMN IF NOT EXISTS rate_type text DEFAULT 'general' CHECK \(rate_type IN \('general', 'orders', 'remittances'\)\);/;
+      expect(phaseA).toMatch(rateTypeDdl);
+      expect(phaseA.replace(rateTypeDdl, ''))
+        .not.toMatch(/\b(DELETE\s+FROM|UPDATE|INSERT\s+INTO|TRUNCATE|ALTER\s+TABLE)\s+(public\.)?exchange_rates/i);
       // never through the helpers that fail OPEN (they return 1.0 when no rate exists)
       expect(phaseA).not.toMatch(/get_order_exchange_rate|get_market_exchange_rate|recalculate_remittance_at_current_rate/);
       expect(phaseA).toMatch(/FROM public\.exchange_rates er/);

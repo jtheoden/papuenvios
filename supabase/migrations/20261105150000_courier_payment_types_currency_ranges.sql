@@ -20,7 +20,10 @@
 --      tramo and fell to a lower-precedence rule; v2 stops with 'no_fx' (fail closed).
 --   Guards (review): NaN is refused in every numeric parameter and by messenger_payment_types_no_nan_chk (it passes
 --      `>= 0`); amounts above 9999999999.99, percent beyond 3 decimals and cup_per_usd beyond 4 are 22023; an accrual
---      that would overflow numeric(12,2) is kept with amount NULL and reason 'amount_out_of_range'; a NaN rate is "no rate".
+--      that would overflow numeric(12,2) is kept with amount NULL and reason 'amount_out_of_range'; a NaN rate is "no rate";
+--      a margin that margin_usd (12,2) / margin_pct (10,4) cannot store is unknown (the accrual is still written); a NaN
+--      operation value matches no tramo and is no percent base. The live rate prefers rate_type 'general', ties by id
+--      (exchange_rates.rate_type is production drift, added here IF NOT EXISTS).
 --   4. _courier_compute_accrual (same signature): orders take the subtotal as value and as percent base; fixed USD is converted
 --      at the live rate in force at delivery (amount_usd = the fixed figure, fx_used = that rate); reasons no_fx / no_tier_match
 --      are frozen in rule_snapshot. The delivery is NEVER blocked (the trigger is not touched).
@@ -48,6 +51,12 @@ SET LOCAL lock_timeout = '5s';
 ALTER TABLE public.messenger_payment_types
   ADD COLUMN IF NOT EXISTS currency text NOT NULL DEFAULT 'USD',
   ADD COLUMN IF NOT EXISTS fixed_amount numeric(12,2);
+
+-- exchange_rates.rate_type exists in production (added out of band, same definition as
+-- 20261102110000_dual_exchange_rates_for_orders.sql on an unmerged branch) but not in the repo chain: the live-rate lookup
+-- below orders by it. No-op in production (the whole clause, CHECK included, is skipped); NOT dropped by the rollback.
+ALTER TABLE public.exchange_rates
+  ADD COLUMN IF NOT EXISTS rate_type text DEFAULT 'general' CHECK (rate_type IN ('general', 'orders', 'remittances'));
 
 ALTER TABLE public.messenger_payment_types DROP CONSTRAINT IF EXISTS messenger_payment_types_currency_chk;
 ALTER TABLE public.messenger_payment_types ADD CONSTRAINT messenger_payment_types_currency_chk
@@ -296,13 +305,13 @@ BEGIN
   v_deliver := NULLIF(v_deliver, 'NaN'::numeric);
   v_tier := NULLIF(v_tier, 'NaN'::numeric);
 
-  -- the active USD->CUP row, read live (no cache, no fail-open helper)
+  -- the active USD->CUP row, read live (no cache, no fail-open helper); prefers rate_type 'general', ties broken by id
   SELECT er.rate INTO v_live_fx
     FROM public.exchange_rates er
     JOIN public.currencies f ON f.id = er.from_currency_id AND f.code = 'USD'
     JOIN public.currencies t ON t.id = er.to_currency_id AND t.code = 'CUP'
    WHERE er.is_active
-   ORDER BY er.effective_date DESC LIMIT 1;
+   ORDER BY (er.rate_type = 'general') DESC NULLS LAST, er.effective_date DESC, er.id LIMIT 1;
   -- a NaN rate passes `rate > 0`: treat it as missing (never multiply an accrual by NaN)
   -- (fx_used numeric(15,6) cannot overflow: its sources are exchange_rates.rate (15,6) and remittances.exchange_rate (12,4))
   v_live_fx := NULLIF(v_live_fx, 'NaN'::numeric);

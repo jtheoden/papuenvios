@@ -498,6 +498,35 @@ describeDb('M2: assignments, accruals, effective cost (local Postgres)', () => {
       expect(rows[0].n).toBe(0);
     });
 
+    it('the live rate prefers rate_type general and breaks ties by id (deterministic even with two active rows)', async () => {
+      // production allows one active USD->CUP row (two unique indexes); drop them inside a rolled-back transaction and
+      // compute directly on this connection (a delivery on another connection would wait on the index lock)
+      await kit.setRule(await adminClient(), fixed({ fixed_amount: 1 }));
+      const id = await rem();
+      const cur = (await admin.query(`SELECT (SELECT id FROM public.currencies WHERE code='USD') AS usd, (SELECT id FROM public.currencies WHERE code='CUP') AS cup`)).rows[0];
+      const fx = async (rows) => {
+        await admin.query('BEGIN');
+        try {
+          await admin.query('DROP INDEX public.exchange_rates_one_active_per_pair');
+          await admin.query('ALTER TABLE public.exchange_rates DROP CONSTRAINT unique_currency_pair_date');
+          await admin.query('UPDATE public.exchange_rates SET is_active = false WHERE from_currency_id = $1 AND to_currency_id = $2', [cur.usd, cur.cup]);
+          for (const [rid, type, rate] of rows) {
+            await admin.query(
+              `INSERT INTO public.exchange_rates (id, from_currency_id, to_currency_id, rate, is_active, effective_date, rate_type)
+               VALUES ($1,$2,$3,$4,true,CURRENT_DATE,$5)`, [rid, cur.usd, cur.cup, rate, type]);
+          }
+          return (await admin.query(`SELECT fx_used FROM public._courier_compute_accrual('remittance', $1, NULL, 'test')`, [id])).rows[0].fx_used;
+        } finally {
+          await admin.query('ROLLBACK');
+        }
+      };
+      const lo = '00000000-0000-4000-8000-000000000001';
+      const hi = 'ffffffff-ffff-4fff-bfff-ffffffffffff';
+      expect(Number(await fx([[lo, 'orders', 900], [hi, 'general', 830]]))).toBe(830);
+      expect(Number(await fx([[hi, 'general', 840], [lo, 'general', 830]]))).toBe(830);
+      expect(Number(await fx([[lo, 'general', 830], [hi, 'general', 840]]))).toBe(830);
+    });
+
     it('no rule at all keeps reason no_rule (the 16 production accruals use it)', async () => {
       const a = await deliverRem();
       expect(a.rule_snapshot.reason).toBe('no_rule');

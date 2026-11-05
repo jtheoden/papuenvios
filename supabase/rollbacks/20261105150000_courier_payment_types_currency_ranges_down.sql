@@ -4,6 +4,7 @@
 -- M1 CHECKs and drops the columns currency / fixed_amount.
 -- GUARD: aborts (55000) while any rule depends on phase A (method fixed_amount, currency CUP, percent_of_base on orders):
 --   rows are append-only and such rules cannot be represented by M1. Export them and decide first.
+-- exchange_rates.rate_type is NOT dropped: production had it before phase A (phase A only reconciles the repo chain).
 -- Accruals already written keep their frozen rule_snapshot (reasons no_fx / no_tier_match stay as history).
 -- DEPLOY: roll the frontend back to the v1 client together with this file.
 BEGIN;
