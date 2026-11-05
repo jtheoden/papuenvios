@@ -570,6 +570,7 @@
       "pageSubtitle": "Send money quickly and securely",
       "selectTypeRequired": "Select remittance type *",
       "rate": "Rate",
+      "rateUnavailable": "The exchange rate for this remittance type is not available right now. Please try again later or contact support.",
       "calculating": "Calculating...",
       "continue": "Continue",
       "back": "Back",

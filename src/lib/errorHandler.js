@@ -79,6 +79,7 @@ export const ERROR_CODES = {
   INVALID_OPERATION: 'INVALID_OPERATION',
   PAYMENT_FAILED: 'PAYMENT_FAILED',
   DELIVERY_PROOF_REQUIRED: 'DELIVERY_PROOF_REQUIRED',
+  EXCHANGE_RATE_UNAVAILABLE: 'EXCHANGE_RATE_UNAVAILABLE',
 
   // Server
   INTERNAL_SERVER_ERROR: 'INTERNAL_SERVER_ERROR',
@@ -128,6 +129,7 @@ const ERROR_MESSAGES = {
   [ERROR_CODES.INVALID_OPERATION]: 'This operation cannot be performed at this time.',
   [ERROR_CODES.PAYMENT_FAILED]: 'Payment processing failed.',
   [ERROR_CODES.DELIVERY_PROOF_REQUIRED]: 'Delivery proof is required to complete this operation.',
+  [ERROR_CODES.EXCHANGE_RATE_UNAVAILABLE]: 'The exchange rate for this currency pair is not available.',
 
   // Server
   [ERROR_CODES.INTERNAL_SERVER_ERROR]: 'An internal server error occurred. Please try again later.',

@@ -578,6 +578,7 @@
       "pageSubtitle": "Envía dinero de forma rápida y segura",
       "selectTypeRequired": "Seleccione el tipo de remesa *",
       "rate": "Tasa",
+      "rateUnavailable": "La tasa de cambio para este tipo de remesa no está disponible en este momento. Por favor, inténtelo más tarde o contacte con soporte.",
       "calculating": "Calculando...",
       "continue": "Continuar",
       "back": "Atrás",
