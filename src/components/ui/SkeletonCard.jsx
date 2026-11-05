@@ -125,8 +125,8 @@ const SkeletonCard = ({ variant = 'product', count = 1 }) => {
 
       case 'carousel':
         return (
-          <div className="relative w-full overflow-hidden rounded-xl">
-            <SkeletonPulse className="h-64 md:h-80 lg:h-96 w-full" />
+          <div className="relative aspect-video w-full overflow-hidden rounded-xl">
+            <SkeletonPulse className="h-full w-full" />
             {/* Navigation dots */}
             <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2">
               <SkeletonPulse className="h-2 w-2 rounded-full" />

@@ -71,7 +71,30 @@
       "subtitle": "Envía productos y dinero a Cuba de forma rápida, segura y confiable",
       "cta": {
         "products": "Ver Productos"
+      },
+      "cards": {
+        "combos": {
+          "title": "Combos de comida",
+          "description": "Arme un combo de alimentos y envíelo a su familia en Cuba.",
+          "cta": "Ver combos"
+        },
+        "remittances": {
+          "title": "Remesas a Cuba",
+          "description": "Envíe dinero a Cuba desde Estados Unidos o España.",
+          "cta": "Enviar remesa"
+        }
       }
+    },
+    "carousel": {
+      "label": "Carrusel de anuncios",
+      "roleDescription": "carrusel",
+      "slide": "diapositiva",
+      "slideOf": "{count} de {total}",
+      "previous": "Anuncio anterior",
+      "next": "Anuncio siguiente",
+      "pause": "Pausar carrusel",
+      "play": "Reanudar carrusel",
+      "goTo": "Ir al anuncio {count}"
     },
     "features": {
       "title": "Funcionalidades Principales",

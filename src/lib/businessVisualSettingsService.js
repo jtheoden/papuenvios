@@ -336,7 +336,8 @@ export function applyVisualSettingsToDOM(settings) {
       else root.style.removeProperty(cssVar);
     }
 
-    // Apply page background to body
+    // Apply page background to body. It sits under the stylesheet gradient (index.css), which stays: the brand ivory
+    // is painted by the Home root only (see homeTheme.js), so other pages keep their look.
     document.body.style.backgroundColor = settings.pageBgColor || '#f9fafb';
 
   } catch (err) {

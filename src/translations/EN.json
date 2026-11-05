@@ -71,7 +71,30 @@
       "subtitle": "Send products and money to Cuba quickly, safely and reliably",
       "cta": {
         "products": "View Products"
+      },
+      "cards": {
+        "combos": {
+          "title": "Food combos",
+          "description": "Put together a food combo and send it to your family in Cuba.",
+          "cta": "View combos"
+        },
+        "remittances": {
+          "title": "Remittances to Cuba",
+          "description": "Send money to Cuba from the United States or Spain.",
+          "cta": "Send remittance"
+        }
       }
+    },
+    "carousel": {
+      "label": "Announcements carousel",
+      "roleDescription": "carousel",
+      "slide": "slide",
+      "slideOf": "{count} of {total}",
+      "previous": "Previous announcement",
+      "next": "Next announcement",
+      "pause": "Pause carousel",
+      "play": "Resume carousel",
+      "goTo": "Go to announcement {count}"
     },
     "features": {
       "title": "Key Features",
