@@ -92,7 +92,9 @@ describe('LoadingState', () => {
     const box = screen.getByRole('status').querySelector('[data-skeleton]');
     expect(box.className).toContain('motion-safe:animate-skeleton');
     expect(box.className.split(' ')).not.toContain('animate-skeleton');
-    expect(box).toHaveClass('bg-muted');
+    // Theme token a step darker than bg-muted, so the skeleton reads on glass/ivory surfaces.
+    expect(box).toHaveClass('bg-theme-accent-line/70');
+    expect(box).not.toHaveClass('bg-muted');
     expect(screen.getByRole('status').className).toContain('motion-safe:transition-opacity');
   });
 

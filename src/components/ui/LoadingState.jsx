@@ -7,9 +7,12 @@ import { loadingTiming, SHOW_DELAY_MS, MIN_VISIBLE_MS } from '@/components/ui/lo
 // Fast networks never see the skeleton; once shown it stays long enough not to flicker.
 export { SHOW_DELAY_MS, MIN_VISIBLE_MS };
 
-/** Skeleton placeholder block: theme token colour, pulse only without prefers-reduced-motion. */
+/**
+ * Skeleton placeholder block. Colour: the theme's accent line token (beige in the brand look, blue-200 in classic),
+ * a step darker than bg-muted so it stays visible on glass and ivory. Pulse only without prefers-reduced-motion.
+ */
 export const SkeletonBox = ({ className }) => (
-  <div data-skeleton aria-hidden="true" className={cn('rounded-md bg-muted motion-safe:animate-skeleton', className)} />
+  <div data-skeleton aria-hidden="true" className={cn('rounded-md bg-theme-accent-line/70 motion-safe:animate-skeleton', className)} />
 );
 
 /**
