@@ -12,8 +12,10 @@ import {
   loadVisualSettings,
   applyVisualSettingsToDOM,
 } from '@/lib/businessVisualSettingsService';
+import { BRAND_PRESET } from '@/lib/brandPalette';
+import { resolveThemeId } from '@/lib/visualThemes';
 
-// Row stored in production today (blue/violet, no brand keys).
+// Classic row as production stored it before the brand palette was saved (blue/violet, no brand keys).
 const PRODUCTION_ROW = {
   primaryColor: '#3499dc',
   secondaryColor: '#9333ea',
@@ -77,9 +79,16 @@ describe('loadVisualSettings with the selectable theme key', () => {
     singleMock.mockReset();
   });
 
-  it('a stored row without activeTheme loads as classic: production does not change by deploying', async () => {
+  it('a stored classic row without activeTheme resolves to classic and the key stays absent', async () => {
     singleMock.mockResolvedValue({ data: { settings: PRODUCTION_ROW }, error: null });
-    expect((await loadVisualSettings()).activeTheme).toBe('classic');
+    const s = await loadVisualSettings();
+    expect(s).not.toHaveProperty('activeTheme');
+    expect(resolveThemeId(s)).toBe('classic');
+  });
+
+  it('a stored row with every brand value and no activeTheme resolves to papuenvios', async () => {
+    singleMock.mockResolvedValue({ data: { settings: { ...PRODUCTION_ROW, ...BRAND_PRESET } }, error: null });
+    expect(resolveThemeId(await loadVisualSettings())).toBe('papuenvios');
   });
 
   it('keeps a stored papuenvios choice and its classic snapshot', async () => {

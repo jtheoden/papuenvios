@@ -1,6 +1,7 @@
-// Row stored in production for business_visual_settings.settings (blue/violet look, no theme key).
-// Plain module so vitest and Playwright specs can share it (no '@/' alias on purpose).
-export const PROD_ROW = {
+// Reference row of the CLASSIC (blue/violet) look, as production stored it BEFORE the owner saved the
+// PapuEnvios palette. It is NOT the current production row (that one already holds every BRAND_PRESET key).
+// Plain module so vitest and Playwright specs can share it (no '@/' alias on purpose); it carries no theme key.
+export const CLASSIC_ROW = {
   useGradient: true,
   logo: '',
   primaryColor: '#3499dc',

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 
 vi.mock('@/lib/supabase', () => ({ supabase: { from: vi.fn() } }));
 vi.mock('@/contexts/LanguageContext', () => ({
@@ -26,10 +26,10 @@ import SettingsPageVisual from '@/components/settings/SettingsPageVisual';
 import { DEFAULT_VISUAL_SETTINGS, saveVisualSettings } from '@/lib/businessVisualSettingsService';
 import { BRAND_PRESET } from '@/lib/brandPalette';
 import { THEME_PRESETS } from '@/lib/visualThemes';
-import { PROD_ROW } from '../fixtures/prodVisualRow';
+import { CLASSIC_ROW } from '../fixtures/classicVisualRow';
 
 const T = 'settings.visual.brand.theme.';
-const PROD = { ...DEFAULT_VISUAL_SETTINGS, ...PROD_ROW };
+const PROD = { ...DEFAULT_VISUAL_SETTINGS, ...CLASSIC_ROW };
 
 const setup = (overrides = {}, props = {}) => {
   const setVisualSettings = vi.fn();
@@ -61,7 +61,7 @@ describe('theme selector - accessibility', () => {
     expect(radios).toHaveLength(2);
     expect(new Set(radios.map((r) => r.getAttribute('name'))).size).toBe(1);
     for (const r of radios) expect(r).toHaveAttribute('type', 'radio'); // native: arrow keys and Space work
-    expect(radio('classic')).toHaveAccessibleDescription(`${T}classic.description`);
+    expect(radio('classic')).toHaveAccessibleDescription(`${T}classic.description ${T}inUse`); // classic is the saved theme
     expect(radio('papuenvios')).toHaveAccessibleDescription(`${T}papuenvios.description`);
   });
 
@@ -201,9 +201,127 @@ describe('theme selector - what Save persists', () => {
     expect(payload.classicSnapshot).toEqual(classicSnapshot);
   });
 
-  it('an old row without the key saves as classic', () => {
+  it('an old classic row without the key saves as classic', () => {
     const { setVisualSettings } = setup();
     save();
     expect(setVisualSettings.mock.calls[0][0].activeTheme).toBe('classic');
+  });
+});
+
+describe('theme selector - the real production row (brand values, no activeTheme)', () => {
+  const REAL = { ...BRAND_PRESET, logo: 'x.png', homeFeatures: [{ id: 'custom' }] };
+
+  it('shows papuenvios as selected and in use, and describes the badge', () => {
+    setup(REAL);
+    expect(radio('papuenvios')).toBeChecked();
+    expect(radio('classic')).not.toBeChecked();
+    expect(radio('papuenvios').closest('label')).toHaveTextContent(`${T}inUse`);
+    expect(radio('papuenvios')).toHaveAccessibleDescription(`${T}papuenvios.description ${T}inUse`);
+    expect(radio('classic')).toHaveAccessibleDescription(`${T}classic.description`);
+  });
+
+  it('clicking Clasico really switches the form and saves classic with the content untouched', () => {
+    const { setVisualSettings } = setup(REAL);
+    fireEvent.click(radio('classic'));
+    expect(radio('classic')).toBeChecked();
+    expect(legacyInput('settings.visual.pageBackground').value).toBe('#f9fafb');
+    save();
+    const payload = setVisualSettings.mock.calls[0][0];
+    expect(payload.activeTheme).toBe('classic');
+    expect(payload).toMatchObject(THEME_PRESETS.classic);
+    expect(payload.logo).toBe('x.png');
+    expect(payload.homeFeatures).toEqual([{ id: 'custom' }]);
+  });
+});
+
+describe('theme selector - hand-edited colours notice', () => {
+  const notice = () => screen.queryByTestId('theme-customized');
+
+  it('is silent while the form equals the preset of its theme', () => {
+    setup();
+    expect(notice()).not.toBeInTheDocument();
+  });
+
+  it('appears when a preset colour is edited by hand, and goes away when the edit is undone', () => {
+    setup();
+    fireEvent.change(screen.getByLabelText('settings.visual.brand.cartBadgeBg'), { target: { value: '#123456' } });
+    expect(notice()).toHaveAttribute('role', 'status');
+    expect(notice()).toHaveTextContent(`${T}customized`);
+    fireEvent.change(screen.getByLabelText('settings.visual.brand.cartBadgeBg'), { target: { value: '#dc2626' } });
+    expect(notice()).not.toBeInTheDocument();
+  });
+
+  it('is cleared by choosing a theme (its preset replaces the edits)', () => {
+    setup({ cartBadgeBgColor: '#123456' });
+    expect(notice()).toBeInTheDocument();
+    fireEvent.click(radio('papuenvios'));
+    expect(notice()).not.toBeInTheDocument();
+  });
+});
+
+describe('Restore theme (destructive reset to the code defaults)', () => {
+  const STORED = {
+    ...BRAND_PRESET,
+    activeTheme: 'papuenvios',
+    classicSnapshot: { buttonBgColor: '#123456' },
+    primaryColor: '#abcdef',
+    logo: 'x.png',
+    favicon: 'y.png',
+    siteTitle: 'Acme - tienda',
+    companyName: 'Acme',
+    carouselAutoplaySpeed: 9000,
+    homeFeatures: [{ id: 'custom', titleEs: 'Mio' }],
+  };
+  const restoreButton = () => screen.queryByRole('button', { name: 'settings.visual.restoreTheme' });
+  const confirmButton = () => screen.getByRole('button', { name: `${'settings.visual.brand.'}reset.confirm` });
+
+  it('is hidden for anyone without theme permission, so an admin cannot run it', () => {
+    setup(STORED, { canChangeTheme: false });
+    expect(restoreButton()).not.toBeInTheDocument();
+    expect(saveVisualSettings).not.toHaveBeenCalled();
+  });
+
+  it('has an accessible name even when only the icon shows, different from the harmless undo text', () => {
+    setup(STORED);
+    const button = restoreButton();
+    expect(button).toHaveAttribute('aria-label', 'settings.visual.restoreTheme');
+    expect(button.getAttribute('aria-label')).not.toBe('settings.visual.brand.undoPreset');
+  });
+
+  it('asks for confirmation first and explains the consequences; nothing is saved before confirming', () => {
+    setup(STORED);
+    fireEvent.click(restoreButton());
+    const dialog = screen.getByRole('alertdialog');
+    expect(within(dialog).getByText('settings.visual.brand.reset.title')).toBeInTheDocument();
+    expect(within(dialog).getByText('settings.visual.brand.reset.description')).toBeInTheDocument();
+    expect(saveVisualSettings).not.toHaveBeenCalled();
+  });
+
+  it('cancelling closes the dialog and saves nothing', () => {
+    const { setVisualSettings } = setup(STORED);
+    fireEvent.click(restoreButton());
+    fireEvent.click(screen.getByRole('button', { name: 'settings.visual.brand.reset.cancel' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(saveVisualSettings).not.toHaveBeenCalled();
+    expect(setVisualSettings).not.toHaveBeenCalled();
+    expect(radio('papuenvios')).toBeChecked();
+  });
+
+  it('confirming resets the theme keys to the code defaults and keeps all content keys', async () => {
+    const { setVisualSettings } = setup(STORED);
+    fireEvent.click(restoreButton());
+    fireEvent.click(confirmButton());
+    await waitFor(() => expect(saveVisualSettings).toHaveBeenCalledTimes(1));
+    const saved = saveVisualSettings.mock.calls[0][0];
+    expect(saved).toMatchObject(THEME_PRESETS.classic);
+    expect(saved.primaryColor).toBe(DEFAULT_VISUAL_SETTINGS.primaryColor);
+    expect(saved.activeTheme).toBe('classic');
+    expect(saved.classicSnapshot).toBeNull();
+    for (const key of ['logo', 'favicon', 'siteTitle', 'companyName', 'carouselAutoplaySpeed', 'homeFeatures']) {
+      expect(saved[key], key).toEqual(STORED[key]);
+    }
+    expect(setVisualSettings).toHaveBeenCalledWith(saved);
+    await waitFor(() => expect(radio('classic')).toBeChecked());
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 });

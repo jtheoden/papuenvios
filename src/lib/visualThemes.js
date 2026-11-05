@@ -20,8 +20,19 @@ export const THEME_PRESETS = {
   papuenvios: BRAND_PRESET,
 };
 
-/** Missing, null or unknown => classic, so a row without the key keeps today's look. */
-export const resolveThemeId = (settings) => (THEME_IDS.includes(settings?.activeTheme) ? settings.activeTheme : DEFAULT_THEME_ID);
+const sameValue = (a, b) => (typeof a === 'string' && typeof b === 'string' ? a.toLowerCase() === b.toLowerCase() : a === b);
+
+const matchesPreset = (settings, preset) => PRESET_KEYS.every((key) => sameValue(settings?.[key], preset[key]));
+
+/**
+ * A valid stored `activeTheme` wins. Without one (rows saved before the selector existed) the theme is inferred
+ * from the values: every brand preset value present => papuenvios (the row the owner saved with the old button),
+ * anything else => classic. The key must stay absent from DEFAULT_VISUAL_SETTINGS, or the merge would hide this.
+ */
+export const resolveThemeId = (settings) => {
+  if (THEME_IDS.includes(settings?.activeTheme)) return settings.activeTheme;
+  return matchesPreset(settings, BRAND_PRESET) ? 'papuenvios' : DEFAULT_THEME_ID;
+};
 
 const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -42,8 +53,6 @@ const sanitizeSnapshot = (raw) =>
       )
     : {};
 
-const sameValue = (a, b) => (typeof a === 'string' && typeof b === 'string' ? a.toLowerCase() === b.toLowerCase() : a === b);
-
 /**
  * Returns the form values after choosing a theme. Pure: nothing is persisted here.
  * - Same theme as the current one: unchanged (custom colours are never replaced by defaults).
@@ -57,9 +66,32 @@ export const selectTheme = (form, targetId) => {
 
   if (targetId === 'papuenvios') {
     const current = pickPresetKeys(form);
-    const alreadyBrand = PRESET_KEYS.every((key) => sameValue(current[key], BRAND_PRESET[key]));
+    const alreadyBrand = matchesPreset(current, BRAND_PRESET);
     return { ...form, ...BRAND_PRESET, activeTheme: 'papuenvios', classicSnapshot: alreadyBrand ? null : current };
   }
 
   return { ...form, ...THEME_PRESETS.classic, ...sanitizeSnapshot(form.classicSnapshot), activeTheme: 'classic', classicSnapshot: null };
+};
+
+/** Content that is not part of any theme: a theme reset must never touch it. */
+export const CONTENT_KEYS = [
+  'logo', 'favicon', 'companyName', 'siteTitle', 'showCompanyName', 'logoMaxHeight',
+  'homeFeatures', 'carouselEnabled', 'carouselAutoplaySpeed', 'carouselTransitionSpeed',
+];
+
+/**
+ * Settings after "Restore theme": every non-content key goes back to the code defaults (classic look) and the
+ * classic marker is explicit. Content keys and any key the code does not know are kept as stored.
+ */
+export const restoreThemeDefaults = (settings) => ({
+  ...settings,
+  ...Object.fromEntries(Object.entries(DEFAULT_VISUAL_SETTINGS).filter(([key]) => !CONTENT_KEYS.includes(key))),
+  activeTheme: 'classic',
+  classicSnapshot: null,
+});
+
+/** Preset keys whose form value was edited away from the preset of the form's theme. */
+export const getThemeDeviations = (form) => {
+  const preset = THEME_PRESETS[resolveThemeId(form)];
+  return PRESET_KEYS.filter((key) => !sameValue(form?.[key], preset[key]));
 };
