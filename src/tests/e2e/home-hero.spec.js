@@ -4,8 +4,8 @@ import path from 'node:path';
 
 // Home hero + carousel brand theme (S2/S3). Supabase is fully mocked with page.route: no network, no real data.
 // Set HOME_SHOTS_DIR to also save screenshots (evidence only, never a gate).
-// Spec (layout = option A, the mockup): centered h1, two cards (side by side from md) and the carousel below at
-// full width (max 1024px, centered), all stacked without overlap; no horizontal overflow at 320/768/1280 in ES
+// Spec (spaced layout, the default): centered h1, two cards (side by side from md) and the carousel below in a card at
+// the same width as the cards (max 1024px, centered), all stacked without overlap; no horizontal overflow at 320/768/1280 in ES
 // and EN; the brand ivory is painted by the Home root only, the body keeps the stylesheet gradient everywhere
 // else (checked on another page); the production row keeps its blue/violet CTA and gradient page; the preset shows the brand
 // CTA (gold, charcoal text, AA contrast), the ivory page and a gold active dot; dots are >= 24px targets;
@@ -71,7 +71,7 @@ const PROD_ROW = {
 };
 
 // A 3.8:1 poster (the real banners are wide), served from a fake CDN.
-const POSTER = (n) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1520 400"><rect width="1520" height="400" fill="#${['1d4ed8', '0f766e', '9a3412'][n]}"/><text x="60" y="230" font-size="90" fill="#fff" font-family="sans-serif">Poster ${n + 1}</text></svg>`;
+const POSTER = (n) => `<svg xmlns="http://www.w3.org/2000/svg" width="1520" height="400" viewBox="0 0 1520 400"><rect width="1520" height="400" fill="#${['1d4ed8', '0f766e', '9a3412'][n]}"/><text x="60" y="230" font-size="90" fill="#fff" font-family="sans-serif">Poster ${n + 1}</text></svg>`;
 const SLIDES = [0, 1, 2].map((n) => ({
   id: `s${n + 1}`, is_active: true, display_order: n,
   image_url: `https://cdn.example.test/poster-${n + 1}.svg`,
@@ -193,7 +193,8 @@ for (const width of [320, 768, 1280]) {
           const img = page.locator('[data-testid="hero-slide-image"]');
           await expect(img).toHaveCSS('object-fit', 'contain');
           const frame = await box(page.locator('[data-testid="hero-carousel-frame"]'));
-          expect(Math.abs(frame.width / frame.height - 16 / 9)).toBeLessThan(0.05);
+          // the frame takes the ratio of the loaded poster (3.8:1 here, same as the skeleton)
+          expect(Math.abs(frame.width / frame.height - 1520 / 400)).toBeLessThan(0.05);
           const poster = await box(img);
           expect(poster.x).toBeGreaterThanOrEqual(frame.x - 0.5);
           expect(poster.right).toBeLessThanOrEqual(frame.right + 0.5);

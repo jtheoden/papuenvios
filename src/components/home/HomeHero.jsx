@@ -4,8 +4,12 @@ import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getHeadingStyle } from '@/lib/styleUtils';
 import { buildHomeTheme } from '@/lib/homeTheme';
-import SkeletonCard from '@/components/ui/SkeletonCard';
-import HeroCarousel from '@/components/home/HeroCarousel';
+import { resolveHeroLayout } from '@/lib/heroLayout';
+import HeroCarousel, { HeroCarouselSkeleton } from '@/components/home/HeroCarousel';
+import ClassicHero from '@/components/home/ClassicHero';
+
+// One width for the cards and the carousel, so the two blocks line up
+const CONTENT_WIDTH = 'max-w-5xl';
 
 // Hero cards (mockup): both use routes that already exist. "Combos" has no page of its own yet (S6/ND-4), so it opens products.
 const HERO_CARDS = [
@@ -26,9 +30,15 @@ const HomeHero = ({ slides, loading, visualSettings, onNavigate }) => {
   const usableSlides = slides.filter((slide) => slide.image_url || slide.image_file);
   const hasCarousel = carouselEnabled && (loading || usableSlides.length > 0);
 
+  // The stored value is only compared against the closed list, never used as a class. Without slides to cover
+  // the section there is nothing for `classic` to show, so it falls back to the spaced block.
+  if (hasCarousel && resolveHeroLayout(visualSettings) === 'classic') {
+    return <ClassicHero slides={usableSlides} loading={loading} visualSettings={visualSettings} onNavigate={onNavigate} />;
+  }
+
   return (
     <section data-testid="home-hero" className="px-4 pb-8 pt-[4.5rem] sm:pb-12 md:pt-12 lg:py-16">
-      <div className="container mx-auto flex flex-col items-center gap-8 text-center">
+      <div className="container mx-auto flex flex-col items-center gap-6 text-center md:gap-8">
         <div className="w-full max-w-3xl">
           <h1
             className="mb-4 break-words text-3xl font-bold sm:text-4xl lg:text-5xl"
@@ -52,7 +62,7 @@ const HomeHero = ({ slides, loading, visualSettings, onNavigate }) => {
           </Button>
         </div>
 
-        <div className="grid w-full max-w-4xl gap-4 md:grid-cols-2">
+        <div className={`grid w-full ${CONTENT_WIDTH} gap-4 md:grid-cols-2`}>
           {HERO_CARDS.map(({ key, icon: Icon, route, variant }) => (
             <div
               key={key}
@@ -80,9 +90,9 @@ const HomeHero = ({ slides, loading, visualSettings, onNavigate }) => {
         </div>
 
         {hasCarousel && (
-          <div className="mx-auto w-full max-w-5xl">
+          <div className={`mx-auto w-full ${CONTENT_WIDTH}`}>
             {loading ? (
-              <SkeletonCard variant="carousel" />
+              <HeroCarouselSkeleton visualSettings={visualSettings} />
             ) : (
               <HeroCarousel slides={usableSlides} visualSettings={visualSettings} />
             )}

@@ -7,9 +7,10 @@ import ES from '@/translations/ES.json';
 import { PRESET, layoutSignature } from './homeTestKit';
 
 // Spec (hero layout S2/S3): the structure of [data-testid=home-hero] is pinned by a fixture, like
-// homeProdColorSignature.json pins the colours. The `spaced` entry was generated from main's HomePage before the
-// hero was extracted into HomeHero (S2, no visual change) and was regenerated once, on purpose, by the S3
-// improvements. Do not regenerate it to make a test pass.
+// homeProdColorSignature.json pins the colours. The first `spaced` entry was generated from main's HomePage before
+// the hero was extracted into HomeHero (S2, no visual change: the extraction commit passed against it). S3 then
+// regenerated `spaced` once, on purpose, for the agreed improvements (shared width, card frame, caption, arrows,
+// gap-6 md:gap-8) and added `classic`. Do not regenerate either to make a test pass.
 
 const FIXTURE = path.resolve(__dirname, '__fixtures__/homeHeroLayoutSignature.json');
 
@@ -66,6 +67,10 @@ const fixture = () => JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
 describe('hero structure signature', () => {
   it('the row stored in production (brand preset, no heroLayout key) keeps exactly the structure of today', async () => {
     expect(await heroSignature(withoutHeroLayout(PRESET))).toEqual(fixture().spaced);
+  });
+
+  it('classic keeps its own structure (full-bleed cover with the controls over the image)', async () => {
+    expect(await heroSignature({ ...PRESET, heroLayout: 'classic' })).toEqual(fixture().classic);
   });
 
   it('an explicit spaced, or a value that is not listed, gives the same structure as a missing key', async () => {
