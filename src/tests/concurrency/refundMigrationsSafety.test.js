@@ -30,6 +30,8 @@ const STACKED = [
   '20261029110500_refund_proof_retention',
   '20261029110600_refund_constants_search_path'
 ];
+// Later migrations that change what re-applying the files above restores (only grants: none of them alters these tables).
+const LATER = ['20261103140000_revoke_admin_resolve_refund_v1'];
 const up = (name) => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 const down = (name) => readFileSync(`supabase/rollbacks/${name}_down.sql`, 'utf8');
 
@@ -192,10 +194,20 @@ describeDb('refund migrations on realistic data (dynamic)', () => {
     } finally {
       // Whatever happened, leave the scratch database with the migrations applied (idempotent files).
       for (const name of [...MIGRATIONS, ...STACKED]) await admin.query(up(name));
+      // refund_rpcs grants v1 to authenticated again; the later revoke must win, as it does in the real chain
+      for (const name of LATER) await admin.query(up(name));
     }
 
     expect(after).toEqual(before);
     expect(refundRowsAfterApply).toBe(0);
+  });
+
+  it('leaves the database as the full chain does: admin_resolve_refund v1 stays revoked from authenticated (reusable DB)', async () => {
+    const { rows } = await admin.query(
+      `SELECT bool_or(has_function_privilege('authenticated', p.oid, 'EXECUTE')) AS granted
+         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public' AND p.proname = 'admin_resolve_refund'`);
+    expect(rows[0].granted).toBe(false);
   });
 
   it('after applying, cancelling existing operations behaves as before: same final rows, plus a refund request when paid', async () => {
