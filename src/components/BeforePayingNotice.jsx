@@ -52,11 +52,11 @@ const BeforePayingNotice = ({ onNavigate, rate, rateCheckedAt, fee, deliveryCost
       <p className="mt-3">{t('beforePaying.estimate')}</p>
       <p className="mt-2">
         {t('beforePaying.seeAlso')}{' '}
-        <LegalLink page="terms" onNavigate={onNavigate} className="font-medium text-blue-700 underline">
+        <LegalLink page="terms" onNavigate={onNavigate} className="font-medium text-theme-link-strong underline">
           {t('legal.links.terms')}
         </LegalLink>
         {' · '}
-        <LegalLink page="terms" hash="refunds" onNavigate={onNavigate} className="font-medium text-blue-700 underline">
+        <LegalLink page="terms" hash="refunds" onNavigate={onNavigate} className="font-medium text-theme-link-strong underline">
           {t('legal.links.refunds')}
         </LegalLink>
       </p>

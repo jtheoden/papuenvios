@@ -96,7 +96,7 @@ const ConsentBanner = ({ suppressed = false, onNavigate }) => {
               aria-controls={detailsId}
               onClick={() => setExpanded((value) => !value)}
               // 44px touch target; the negative margin keeps the text line (and the banner) at its compact height
-              className="-my-3 inline-flex min-h-[44px] items-center font-medium text-blue-700 underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+              className="-my-3 inline-flex min-h-[44px] items-center font-medium text-theme-link-strong underline focus:outline-none focus-visible:ring-2 focus-visible:ring-theme-focus"
             >
               {t('cookieConsent.moreInfo')}
             </button>
