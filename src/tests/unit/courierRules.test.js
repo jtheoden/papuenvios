@@ -189,6 +189,30 @@ describe('overlaps and gaps (twin of the RPC checks)', () => {
     // closed or inactive rules do not count
     expect(analyzeRuleConflicts(form({ rangeX: '99.99' }), rules.map((r) => ({ ...r, is_active: false }))).overlap).toBe(false);
   });
+  it('validity windows: same rules as the RPC (overlap/currency on intersecting windows; coverage only by rules spanning the whole window)', () => {
+    const NOW = Date.parse('2026-11-05T12:00:00Z');
+    const row = (o) => ({ code: 'x', is_active: true, valid_from: '2026-11-01T00:00:00Z', valid_to: null, applies_to: 'remittance',
+      currency: 'USD', courier_id: null, shipping_zone_id: null, remittance_type_id: null, amount_from: null, amount_to: null, ...o });
+    const form = (o) => ({ code: 'N', appliesTo: 'remittance', currency: 'USD', courierId: '', zoneId: '', typeId: '', rangeOp: 'lte', rangeY: '100',
+      validFrom: '', validTo: '', ...o });
+    const ending = [row({ code: 'OLD', amount_to: '100.00', valid_to: '2026-12-01T00:00:00Z' })];
+    // contiguous windows: the new rule starts exactly when the old one ends -> no overlap, no mixed currency
+    expect(analyzeRuleConflicts(form({ validFrom: '2026-12-01T00:00:00Z' }), ending, NOW).overlap).toBe(false);
+    expect(analyzeRuleConflicts(form({ validFrom: '2026-12-01T00:00:00Z', currency: 'CUP' }), ending, NOW).mixedCurrency).toBe(false);
+    // intersecting windows -> overlap (and the other currency is refused)
+    expect(analyzeRuleConflicts(form({ validFrom: '2026-11-20T00:00:00Z' }), ending, NOW).overlap).toBe(true);
+    expect(analyzeRuleConflicts(form(), ending, NOW).overlap).toBe(true); // empty start = now
+    expect(analyzeRuleConflicts(form({ validFrom: '2026-11-20T00:00:00Z', currency: 'CUP' }), ending, NOW).mixedCurrency).toBe(true);
+    // a rule that ends before the new one does not cover it; one that spans it does
+    const gtForm = form({ rangeOp: 'gt', rangeX: '100', rangeY: '' });
+    expect(analyzeRuleConflicts(gtForm, ending, NOW).gaps).toEqual([{ kind: 'remittance', from: null, to: 10000 }]);
+    expect(analyzeRuleConflicts({ ...gtForm, validTo: '2026-11-30T00:00:00Z' }, ending, NOW).gaps).toEqual([]);
+    // a rule scheduled after the window start does not cover it either
+    const later = [row({ code: 'LATER', amount_to: '100.00', valid_from: '2026-11-10T00:00:00Z' })];
+    expect(analyzeRuleConflicts(gtForm, later, NOW).gaps).toEqual([{ kind: 'remittance', from: null, to: 10000 }]);
+    // an unreadable date: the form does not decide (the server will)
+    expect(analyzeRuleConflicts(form({ validFrom: 'not a date' }), ending, NOW)).toEqual({ overlap: false, mixedCurrency: false, gaps: [] });
+  });
   it('coverageGapsFromError reads the JSON detail of a coverage_gap refusal (in cents)', () => {
     const e = { code: '22023', message: 'coverage_gap: ...', details: '{"currency":"USD","gaps":[{"kind":"order","from":100,"to":100.01}]}' };
     expect(coverageGapsFromError(e)).toEqual([{ kind: 'order', from: 10000, to: 10001 }]);

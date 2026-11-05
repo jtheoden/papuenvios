@@ -65,17 +65,24 @@ export const coverageGaps = (ranges) => {
 
 const kindsOf = (appliesTo) => (appliesTo === 'both' ? ['remittance', 'order'] : [appliesTo]);
 const sameId = (a, b) => (a || null) === (b || null);
-const isCurrentRule = (r, now) => r.is_active && (!r.valid_to || new Date(r.valid_to).getTime() > now);
+const time = (value, empty) => (value ? new Date(value).getTime() : empty);
 
 /**
- * Client twin of the RPC checks on save, against the CURRENT rules (the server re-validates with the validity windows):
- * overlap of a tramo of the same scope, another currency in a tiered scope, and the gaps the ladder would leave.
+ * Client twin of the RPC checks on save, with the same validity-window rules: overlap of a tramo and another currency in
+ * a tiered scope count against rules whose window INTERSECTS the new one; gaps count only rules spanning the WHOLE new
+ * window (_courier_rule_coverage). An unreadable date decides nothing here: the server has the last word.
  */
 export const analyzeRuleConflicts = (form, rules = [], now = Date.now()) => {
   const range = rangeFromForm(form);
   const none = { overlap: false, mixedCurrency: false, gaps: [] };
   if (range.from === null && range.to === null) return none;
-  const scope = (rules || []).filter((r) => isCurrentRule(r, now) && r.code !== String(form.code ?? '').trim()
+  const from = time(form.validFrom, now);
+  const to = time(form.validTo, Infinity);
+  if (Number.isNaN(from) || Number.isNaN(to)) return none;
+  const window = (r) => ({ from: time(r.valid_from, -Infinity), to: time(r.valid_to, Infinity) });
+  const intersects = (r) => window(r).from < to && from < window(r).to;
+  const spans = (r) => window(r).from <= from && (window(r).to === Infinity || (to !== Infinity && window(r).to >= to));
+  const scope = (rules || []).filter((r) => r.is_active && r.code !== String(form.code ?? '').trim()
     && sameId(r.courier_id, form.courierId) && sameId(r.shipping_zone_id, form.zoneId) && sameId(r.remittance_type_id, form.typeId));
   const tiered = (r) => r.amount_from !== null || r.amount_to !== null;
   const toRange = (r) => ({ from: centsOrNull(r.amount_from), to: centsOrNull(r.amount_to) });
@@ -83,10 +90,11 @@ export const analyzeRuleConflicts = (form, rules = [], now = Date.now()) => {
   kindsOf(form.appliesTo).forEach((kind) => {
     const sameKind = scope.filter((r) => r.applies_to === kind || r.applies_to === 'both');
     const ladder = sameKind.filter(tiered);
-    if (ladder.some((r) => (r.currency || 'USD') !== form.currency)) result.mixedCurrency = true;
-    if (ladder.some((r) => rangesOverlap(toRange(r), range))) result.overlap = true;
-    if (!sameKind.some((r) => !tiered(r))) {
-      result.gaps.push(...coverageGaps([...ladder.filter((r) => (r.currency || 'USD') === form.currency).map(toRange), range])
+    const live = ladder.filter(intersects);
+    if (live.some((r) => (r.currency || 'USD') !== form.currency)) result.mixedCurrency = true;
+    if (live.some((r) => rangesOverlap(toRange(r), range))) result.overlap = true;
+    if (!sameKind.some((r) => !tiered(r) && spans(r))) {
+      result.gaps.push(...coverageGaps([...ladder.filter((r) => spans(r) && (r.currency || 'USD') === form.currency).map(toRange), range])
         .map((g) => ({ kind, ...g })));
     }
   });
