@@ -128,6 +128,7 @@ const RemittanceTypesConfig = () => {
   };
 
   const handleCreate = () => {
+    if (!isSuperAdmin) return;
     setEditingType(null);
     // Set defaults based on available currencies
     const defaultOrigin = currencies.find(c => c.code === 'USD') || currencies[0];
@@ -243,9 +244,11 @@ const RemittanceTypesConfig = () => {
       name: formData.name,
       currency_code: formData.currency_code,
       delivery_currency: formData.delivery_currency,
-      exchange_rate: parseFloat(formData.exchange_rate),
-      commission_percentage: parseFloat(formData.commission_percentage) || 0,
-      commission_fixed: parseFloat(formData.commission_fixed) || 0,
+      ...(isSuperAdmin ? {
+        exchange_rate: parseFloat(formData.exchange_rate),
+        commission_percentage: parseFloat(formData.commission_percentage) || 0,
+        commission_fixed: parseFloat(formData.commission_fixed) || 0
+      } : {}),
       min_amount: parseFloat(formData.min_amount),
       max_amount: formData.max_amount ? parseFloat(formData.max_amount) : null,
       delivery_method: formData.delivery_method,
@@ -268,7 +271,7 @@ const RemittanceTypesConfig = () => {
         const rateChanged = Math.abs(oldRate - newRate) > 0.0001 ||
                             Math.abs(oldCommPct - newCommPct) > 0.01;
 
-        if (rateChanged) {
+        if (isSuperAdmin && rateChanged) {
           const pendingCount = await getPendingRemittancesCountByType(editingType.id);
           if (pendingCount > 0) {
             const msg = t('remittances.admin.rateChangeAffected', { count: pendingCount })
@@ -394,13 +397,15 @@ const RemittanceTypesConfig = () => {
             {t('remittances.admin.title')}
           </p>
         </div>
-        <button
-          onClick={handleCreate}
-          className={`${getPrimaryButtonStyle()} flex items-center gap-2`}
-        >
-          <Plus className="h-5 w-5" />
-          {t('remittances.admin.newType')}
-        </button>
+        {isSuperAdmin && (
+          <button
+            onClick={handleCreate}
+            className={`${getPrimaryButtonStyle()} flex items-center gap-2`}
+          >
+            <Plus className="h-5 w-5" />
+            {t('remittances.admin.newType')}
+          </button>
+        )}
       </div>
 
       {/* Form Modal */}
@@ -415,6 +420,13 @@ const RemittanceTypesConfig = () => {
           </h3>
 
           <form onSubmit={handleSave} className="grid md:grid-cols-2 gap-6">
+            {!isSuperAdmin && (
+              <p id="remittance-rate-super-admin-only-note" role="note" className="md:col-span-2 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{t('remittances.admin.rateFieldsSuperAdminOnly')}</span>
+              </p>
+            )}
+
             {/* Nombre */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -484,6 +496,8 @@ const RemittanceTypesConfig = () => {
                   onChange={(e) => setFormData({ ...formData, exchange_rate: e.target.value })}
                   className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="472.00"
+                  disabled={!isSuperAdmin}
+                  aria-describedby={!isSuperAdmin ? 'remittance-rate-super-admin-only-note' : undefined}
                   required
                 />
               </div>
@@ -508,6 +522,8 @@ const RemittanceTypesConfig = () => {
                       : 'border-gray-300'
                   }`}
                   placeholder="470.00"
+                  disabled={!isSuperAdmin}
+                  aria-describedby={!isSuperAdmin ? 'remittance-rate-super-admin-only-note' : undefined}
                   required
                 />
               </div>
@@ -562,6 +578,8 @@ const RemittanceTypesConfig = () => {
                     onChange={(e) => setFormData({ ...formData, commission_fixed: e.target.value })}
                     className="w-full max-w-xs px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="0.00"
+                    disabled={!isSuperAdmin}
+                    aria-describedby={!isSuperAdmin ? 'remittance-rate-super-admin-only-note' : undefined}
                   />
                   {parseFloat(formData.commission_fixed) > 0 && (
                     <p className="text-xs text-amber-600 flex items-center gap-1">
@@ -812,13 +830,15 @@ const RemittanceTypesConfig = () => {
         <div className="text-center py-12 glass-effect rounded-xl">
           <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <p className="text-gray-600 mb-4">{t('remittances.admin.noTypes')}</p>
-          <button
-            onClick={handleCreate}
-            className={`${getPrimaryButtonStyle()} inline-flex items-center gap-2`}
-          >
-            <Plus className="h-5 w-5" />
-            {t('remittances.admin.newType')}
-          </button>
+          {isSuperAdmin && (
+            <button
+              onClick={handleCreate}
+              className={`${getPrimaryButtonStyle()} inline-flex items-center gap-2`}
+            >
+              <Plus className="h-5 w-5" />
+              {t('remittances.admin.newType')}
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid gap-4">

@@ -12,6 +12,15 @@ import { rateAgeHours } from './rateAge';
 
 const ratesChangedListeners = new Set();
 
+const rateNotChangedError = (code = ERROR_CODES.FORBIDDEN, status = 403) => new AppError(
+  'Exchange rate not changed: it no longer exists or only a super_admin can change exchange rates.',
+  code,
+  status,
+  { requiredRole: 'super_admin' }
+);
+const isRlsViolation = (error) => error?.code === '42501' && /row-level security/i.test(error?.message || '');
+const parseRateWriteError = (error) => (isRlsViolation(error) ? rateNotChangedError() : parseSupabaseError(error));
+
 /**
  * Subscribe to exchange-rate writes so rate caches can invalidate themselves.
  * @param {function} listener
@@ -688,7 +697,7 @@ export const saveExchangeRate = async (rateData) => {
       .single();
 
     if (error) {
-      throw parseSupabaseError(error);
+      throw parseRateWriteError(error);
     }
 
     notifyRatesChanged();
@@ -751,13 +760,17 @@ export const deleteExchangeRate = async (rateId) => {
       throw createValidationError({ rateId: 'Rate ID required' }, 'Missing rate ID');
     }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('exchange_rates')
       .update({ is_active: false })
-      .eq('id', rateId);
+      .eq('id', rateId)
+      .select('id');
 
     if (error) {
-      throw parseSupabaseError(error);
+      throw parseRateWriteError(error);
+    }
+    if (!data || data.length === 0) {
+      throw rateNotChangedError();
     }
 
     notifyRatesChanged();
@@ -849,12 +862,12 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
     );
 
     if (directError) {
-      throw parseSupabaseError(directError);
+      throw parseRateWriteError(directError);
     }
 
     // The pair may have been deactivated or deleted since the admin loaded it: never report a no-op as saved.
     if (!directRows || directRows.length === 0) {
-      throw createNotFoundError('Exchange rate pair');
+      throw rateNotChangedError(ERROR_CODES.NOT_FOUND, 404);
     }
 
     // Update inverse rate (to→from)
@@ -863,7 +876,7 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
     );
 
     if (inverseError) {
-      const originalError = parseSupabaseError(inverseError);
+      const originalError = parseRateWriteError(inverseError);
       if (previousDirect) {
         try {
           const { error: restoreError } = await updateActiveRateRow(
@@ -871,7 +884,7 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
             toCurrencyId,
             { rate: previousDirect.rate, effective_date: previousDirect.effective_date }
           );
-          if (restoreError) throw parseSupabaseError(restoreError);
+          if (restoreError) throw parseRateWriteError(restoreError);
         } catch (restoreError) {
           logError(restoreError, { operation: 'updateExchangeRatePair - restore direct rate', fromCurrencyId, toCurrencyId });
         }
@@ -923,11 +936,14 @@ export const deleteExchangeRatePair = async (fromCurrencyId, toCurrencyId) => {
       .select('id');
 
     if (error) {
-      throw parseSupabaseError(error);
+      throw parseRateWriteError(error);
+    }
+    if (!data || data.length === 0) {
+      throw rateNotChangedError();
     }
 
     notifyRatesChanged();
-    return { deletedCount: data?.length || 0 };
+    return { deletedCount: data.length };
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, {
