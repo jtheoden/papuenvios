@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 
 // ─── Mutable test state read by the mocks ───────────────────────────────────
 const state = {
@@ -208,6 +208,21 @@ describe('CartPage - payment step', () => {
       const terms = screen.getAllByRole('link', { name: 'legal.links.terms' });
       expect(terms.some((a) => a.getAttribute('href') === '/terms')).toBe(true);
       expect(screen.getByRole('link', { name: 'legal.links.privacy' })).toHaveAttribute('href', '/privacy');
+    });
+  });
+
+  describe('before you pay block (orders)', () => {
+    it('shows the Zelle warning, shipping and total, the estimate and the refunds link next to confirm', async () => {
+      await reachPaymentStep();
+
+      const block = screen.getByRole('region', { name: 'beforePaying.title' });
+      const text = block.textContent;
+      expect(text).toContain('beforePaying.irreversible');
+      expect(text).toContain('$6.00 USD');
+      expect(text).toContain('beforePaying.total');
+      expect(text).toContain('beforePaying.estimate');
+      expect(text).not.toContain('beforePaying.rate');
+      expect(within(block).getByRole('link', { name: 'legal.links.refunds' })).toHaveAttribute('href', '/terms#refunds');
     });
   });
 

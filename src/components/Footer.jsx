@@ -4,6 +4,7 @@ import { useBusiness } from '@/contexts/BusinessContext';
 import LegalLink from '@/components/LegalLink';
 import RegulatoryNotice from '@/components/RegulatoryNotice';
 import { openConsentPreferences } from '@/lib/consent';
+import { getSupportEmail } from '@/lib/legalConfig';
 import { buildFooterTheme } from '@/lib/footerTheme';
 import { LEGAL_LINK, SIGNATURE, MUTED, BRAND, FOOTER_ROOT, FOOTER_DIVIDER } from '@/lib/footerStyles';
 
@@ -13,6 +14,9 @@ const Footer = ({ onNavigate, showNotice = true }) => {
   const currentDate = new Date().toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US');
   const companyName = visualSettings?.companyName || 'PapuEnvíos';
   const currentYear = new Date().getFullYear();
+  // Contact block: public configuration only (company name + VITE_SUPPORT_EMAIL). Never notification_settings:
+  // that table is readable by any signed-in user and holds admin contact data.
+  const supportEmail = getSupportEmail();
 
   return (
     <footer className={`mt-8 md:mt-12 ${FOOTER_ROOT}`} style={buildFooterTheme(visualSettings || {})}>
@@ -28,9 +32,9 @@ const Footer = ({ onNavigate, showNotice = true }) => {
           {/* Developer signature */}
           <a
             href="https://www.linkedin.com/in/juan-a-centelles-geides/"
-            className={`${SIGNATURE} text-center md:text-left break-words max-w-full`}
+            className={`${SIGNATURE} text-[11px] md:text-xs text-center md:text-left break-words max-w-full`}
           >
-            {t('footer.developedBy', { name: 'Juan A. Centelles', email: 'jtheoden@gmail.com' })}
+            {t('footer.developedBy', { name: 'Juan A. Centelles' })}
           </a>
 
           {/* Company name */}
@@ -39,6 +43,17 @@ const Footer = ({ onNavigate, showNotice = true }) => {
             <span className={BRAND}>{companyName}</span>
           </span>
         </div>
+
+        {supportEmail && (
+          <div
+            role="group"
+            aria-label={t('footer.identity.label')}
+            className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs md:text-sm"
+          >
+            <span className={BRAND}>{companyName}</span>
+            <a href={`mailto:${supportEmail}`} className={LEGAL_LINK}>{supportEmail}</a>
+          </div>
+        )}
 
         {/* Legal links */}
         <nav

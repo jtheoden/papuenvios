@@ -80,7 +80,7 @@
         },
         "remittances": {
           "title": "Remittances to Cuba",
-          "description": "Send money to Cuba from the United States or Spain.",
+          "description": "Send money to Cuba from the United States.",
           "cta": "Send remittance"
         }
       }
@@ -105,7 +105,7 @@
       },
       "remittances": {
         "title": "Remittances to Cuba",
-        "description": "Send money to Cuba from USA and Spain quickly and securely"
+        "description": "Send money to Cuba from the United States quickly and securely"
       },
       "analytics": {
         "title": "Profit Dashboard",
@@ -148,13 +148,16 @@
   },
   "footer": {
     "date": "Today is {date}",
-    "developedBy": "Developed by {name} ({email})",
+    "developedBy": "Developed by {name}",
+    "identity": {
+      "label": "Business contact"
+    },
     "to": "To",
     "copyright": "All rights reserved"
   },
   "products": {
     "title": "Product Catalog",
-    "subtitle": "Discover products and combos to send to Cuba at competitive prices",
+    "subtitle": "Products and combos to send to Cuba.",
     "preview": "Preview",
     "searchPlaceholder": "Search products...",
     "specialCombos": "Special Combos",
@@ -216,7 +219,7 @@
   },
   "remittances": {
     "title": "Remittances to Cuba",
-    "subtitle": "Send money to Cuba from USA and Spain quickly and securely",
+    "subtitle": "Send money to Cuba from the United States. You can follow the status and see the delivery receipt in My remittances.",
     "calculator": "Remittance Calculator",
     "amount": "Amount to Send (USD)",
     "country": "Destination Country",
@@ -231,6 +234,20 @@
     "sendNew": "New Remittance",
     "myRemittances": "My Remittances",
     "howItWorks": "How It Works",
+    "features": {
+      "rates": {
+        "title": "Rate shown before you pay",
+        "description": "We show you the rate, the fee and the total before you pay."
+      },
+      "delivery": {
+        "title": "Timing depends on the area",
+        "description": "Estimated delivery, not guaranteed; timing depends on the area."
+      },
+      "tracking": {
+        "title": "Tracking in My remittances",
+        "description": "You can follow the status and see the delivery receipt in My remittances."
+      }
+    },
     "step1": {
       "title": "Select Country",
       "description": "Choose the destination country and amount to send"
@@ -474,7 +491,7 @@
       "trackYourRemittances": "Track the status of your money transfers",
       "trackRemittances": "Track the status of your money transfers",
       "noRemittances": "You have no registered remittances",
-      "noRemittancesDesc": "Send your first remittance quickly and securely",
+      "noRemittancesDesc": "Send your first remittance. You can follow the status and see the delivery receipt in My remittances.",
       "remittanceNumber": "Remittance Number",
       "amountSent": "Sent",
       "toDeliver": "To Deliver",
@@ -590,7 +607,7 @@
       "importantNote": "Important",
       "proofNote": "Your remittance will be processed once we validate the payment proof. You will receive a notification when this happens.",
       "pageTitle": "Send Remittance",
-      "pageSubtitle": "Send money quickly and securely",
+      "pageSubtitle": "Pay with Zelle. You can follow the status and see the delivery receipt in My remittances.",
       "selectTypeRequired": "Select remittance type *",
       "rate": "Rate",
       "rateUnavailable": "The exchange rate for this remittance type is not available right now. Please try again later or contact support.",
@@ -647,7 +664,7 @@
       "paymentInstructions": "Now make the payment and upload the proof to complete the process.",
       "proofSubmittedSuccess": "Proof submitted successfully!",
       "submitProofAndComplete": "Submit Proof and Complete",
-      "estimatedDeliveryTime": "24-72 hours",
+      "estimatedDeliveryTime": "Estimated delivery, not guaranteed; timing depends on the area.",
       "couponLabel": "Discount coupon (optional)",
       "couponPlaceholder": "Enter your code",
       "applyCoupon": "Apply",
@@ -1864,7 +1881,7 @@
       "contactWhatsapp": "Contact via WhatsApp",
       "back": "Back",
       "processing": "Processing...",
-      "estimatedDelivery": "24-72 hours"
+      "estimatedDelivery": "Estimated delivery, not guaranteed; timing depends on the area."
     },
     "restored": {
       "title": "Welcome back!",
@@ -2940,10 +2957,26 @@
       "seeTerms": "See Terms of Service"
     }
   },
+  "beforePaying": {
+    "title": "Before you pay",
+    "irreversible": "Zelle payments cannot be reversed. Check the recipient details and total before sending.",
+    "rate": "Rate checked",
+    "rateCheckedAt": "at {time}",
+    "rateNote": "The final amount is calculated with the rate in effect when you confirm.",
+    "easternTime": "US Eastern time",
+    "fee": "Fee (deducted from the amount sent)",
+    "deliveryCost": "Delivery cost",
+    "total": "Total to pay",
+    "recipientReceives": "Recipient receives",
+    "estimate": "Estimated delivery, not guaranteed; timing depends on the area.",
+    "seeAlso": "See:"
+  },
   "cookieConsent": {
     "title": "Privacy and analytics",
+    "short": "We only measure visits if you accept.",
+    "moreInfo": "More information",
     "description": "We use strictly necessary local storage to make the site work (for example, your session). Only if you accept will we record the pages you visit for statistics: page, referrer, browser, a session identifier and, if you are signed in, your user identifier.",
-    "accept": "Accept analytics",
+    "accept": "Accept",
     "reject": "Reject",
     "privacyLink": "Privacy Policy",
     "statusOn": "Current status: analytics enabled.",

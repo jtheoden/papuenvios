@@ -53,7 +53,7 @@ describe('ConfirmationModal guided WhatsApp step', () => {
 
     const items = screen.getAllByRole('listitem');
     expect(items).toHaveLength(4);
-    expect(items[0]).toHaveTextContent('Opcional: envíanos el comprobante por WhatsApp con el botón de abajo para acelerar la verificación');
+    expect(items[0]).toHaveTextContent('Opcional: envíenos el comprobante por WhatsApp con el botón de abajo para acelerar la verificación');
     expect(items[0]).toHaveTextContent('1');
   });
 
@@ -103,11 +103,11 @@ describe('ConfirmationModal pending-proof variant', () => {
 
     const items = screen.getAllByRole('listitem');
     expect(items).toHaveLength(4);
-    expect(items[0]).toHaveTextContent('Opcional: avísanos por WhatsApp que registraste la remesa con el botón de abajo para acelerar la verificación');
-    expect(items[1]).toHaveTextContent('Sube tu comprobante de pago desde Mis Remesas');
-    expect(screen.queryByText('Verificaremos tu comprobante de pago')).not.toBeInTheDocument();
-    expect(items[2]).toHaveTextContent('Procesaremos tu remesa cuando validemos el pago');
-    expect(screen.queryByText('Procesaremos tu remesa en las próximas horas')).not.toBeInTheDocument();
+    expect(items[0]).toHaveTextContent('Opcional: avísenos por WhatsApp que registró la remesa con el botón de abajo para acelerar la verificación');
+    expect(items[1]).toHaveTextContent('Suba su comprobante de pago desde Mis Remesas');
+    expect(screen.queryByText('Verificaremos su comprobante de pago')).not.toBeInTheDocument();
+    expect(items[2]).toHaveTextContent('Procesaremos su remesa cuando validemos el pago');
+    expect(screen.queryByText('Procesaremos su remesa una vez validado el pago.')).not.toBeInTheDocument();
   });
 
   it('stacks above other z-50 modals', () => {
@@ -124,8 +124,8 @@ describe('ConfirmationModal pending-proof variant', () => {
     expect(screen.getByText('¡Remesa Enviada!')).toBeInTheDocument();
     expect(screen.getByText('Tu remesa ha sido registrada exitosamente')).toBeInTheDocument();
     expect(screen.getByTestId('confirmation-whatsapp-link')).toHaveTextContent('Enviar comprobante por WhatsApp');
-    expect(screen.getByText('Verificaremos tu comprobante de pago')).toBeInTheDocument();
-    expect(screen.getByText('Procesaremos tu remesa en las próximas horas')).toBeInTheDocument();
+    expect(screen.getByText('Verificaremos su comprobante de pago')).toBeInTheDocument();
+    expect(screen.getByText('Procesaremos su remesa una vez validado el pago.')).toBeInTheDocument();
   });
 
   it('ignores proofPending for product orders', () => {
