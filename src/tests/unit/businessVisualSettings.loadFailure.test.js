@@ -7,6 +7,7 @@ import { BRAND_PRESET } from '@/lib/brandPalette';
 const singleMock = vi.fn();
 vi.mock('@/lib/supabase', () => ({
   supabase: { from: () => ({ select: () => ({ limit: () => ({ single: singleMock }) }) }) },
+  withTimeout: (promise) => promise,
 }));
 
 const BRAND_ROW = { ...BRAND_PRESET };

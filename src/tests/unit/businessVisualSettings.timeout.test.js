@@ -19,7 +19,9 @@ import {
   DEFAULT_VISUAL_SETTINGS,
   VISUAL_SETTINGS_TIMEOUT_MS,
   loadVisualSettings,
+  applyVisualSettingsToDOM,
 } from '@/lib/businessVisualSettingsService';
+import { BRAND_PRESET } from '@/lib/brandPalette';
 
 const settle = async (promise) => {
   let value;
@@ -60,5 +62,23 @@ describe('loadVisualSettings timeout', () => {
     const result = await settle(loadVisualSettings());
     await vi.advanceTimersByTimeAsync(VISUAL_SETTINGS_TIMEOUT_MS);
     expect(result.value).toEqual({ ...DEFAULT_VISUAL_SETTINGS, primaryColor: '#123456' });
+  });
+
+  // T0: a timed-out load is a failed load, so the unverified defaults must not pick the look.
+  it('a timeout with nothing cached leaves data-theme as the first paint set it', async () => {
+    document.documentElement.dataset.theme = 'papuenvios';
+    const result = await settle(loadVisualSettings());
+    await vi.advanceTimersByTimeAsync(VISUAL_SETTINGS_TIMEOUT_MS);
+    applyVisualSettingsToDOM(result.value);
+    expect(document.documentElement.dataset.theme).toBe('papuenvios');
+  });
+
+  it('a timeout with a stale brand cache keeps the brand look', async () => {
+    document.documentElement.dataset.theme = 'classic';
+    localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify({ data: { ...BRAND_PRESET }, timestamp: 0 }));
+    const result = await settle(loadVisualSettings());
+    await vi.advanceTimersByTimeAsync(VISUAL_SETTINGS_TIMEOUT_MS);
+    applyVisualSettingsToDOM(result.value);
+    expect(document.documentElement.dataset.theme).toBe('papuenvios');
   });
 });
