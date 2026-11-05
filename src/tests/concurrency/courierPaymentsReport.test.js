@@ -313,14 +313,14 @@ describeDb('M3: payments and report (local Postgres)', () => {
         await admin.query('ROLLBACK');
       }
     });
-    it('A -> M3 -> M2 -> M1 in reverse order leaves none of the courier objects', async () => {
+    it('B -> A -> M3 -> M2 -> M1 in reverse order leaves none of the courier objects', async () => {
       await admin.query('BEGIN');
       try {
         await admin.query(`SET LOCAL app.confirm_courier_rollback = 'yes'`);
-        for (const k of ['a', 'm3', 'm2', 'm1']) await admin.query(readSql(ROLLBACKS[k]).replace(/^\s*(BEGIN|COMMIT);\s*$/gm, ''));
+        for (const k of ['b', 'a', 'm3', 'm2', 'm1']) await admin.query(readSql(ROLLBACKS[k]).replace(/^\s*(BEGIN|COMMIT);\s*$/gm, ''));
         const { rows } = await admin.query(
           `SELECT count(*)::int AS n FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = 'public' AND c.relname IN ('couriers','messenger_payment_types','courier_margin_settings','delivery_assignments','courier_accruals','courier_payments','v_effective_courier_cost')`);
+            WHERE n.nspname = 'public' AND c.relname IN ('couriers','messenger_payment_types','courier_margin_settings','delivery_assignments','courier_accruals','courier_payments','v_effective_courier_cost','courier_payment_type_subscriptions')`);
         expect(rows[0].n).toBe(0);
         const fns = await admin.query(
           `SELECT count(*)::int AS n FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND (proname LIKE '\\_courier\\_%' OR proname LIKE 'admin\\_%courier%' OR proname = '_operation_margin' OR proname LIKE '%accrual%' OR proname LIKE '%messenger%')`);

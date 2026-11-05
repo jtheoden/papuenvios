@@ -643,7 +643,7 @@ describeDb('M1: couriers, payment types, thresholds (local Postgres)', () => {
 describeDb('rollback of M1 (executed inside a transaction that is rolled back)', () => {
   it('drops every M1 object', async () => {
     const admin = await connectAdmin();
-    const body = ['m3', 'm2', 'm1'].map((k) => readSql(ROLLBACKS[k]).replace(/^\s*(BEGIN|COMMIT);\s*$/gm, '')).join('\n');
+    const body = ['b', 'm3', 'm2', 'm1'].map((k) => readSql(ROLLBACKS[k]).replace(/^\s*(BEGIN|COMMIT);\s*$/gm, '')).join('\n');
     try {
       await admin.query('BEGIN');
       await admin.query(`SET LOCAL app.confirm_courier_rollback = 'yes'`);

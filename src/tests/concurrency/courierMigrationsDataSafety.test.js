@@ -19,8 +19,9 @@ const EXISTING = ['orders', 'order_items', 'remittances', 'remittance_types', 's
   'remittance_status_history', 'courier_accruals', 'messenger_payment_types'];
 const strip = (sql) => sql.replace(/^\s*(BEGIN|COMMIT);\s*$/gm, '');
 const ALL = ['m1', 'm2', 'm3'];
-// phase A alters messenger_payment_types (a module table, empty in production): it is checked on its own, then chained last
-const CHAIN = [...ALL, 'a'];
+// phase A alters messenger_payment_types (a module table, empty in production): it is checked on its own, then chained;
+// phase B (subscriptions) goes on top of A and is rolled back first
+const CHAIN = [...ALL, 'a', 'b'];
 
 describe('static: additive only', () => {
   it.each(ALL)('%s migration has no DROP / TRUNCATE / DELETE / mass UPDATE on existing tables', (k) => {
@@ -128,7 +129,7 @@ describeDb('data safety on realistic rows (local Postgres)', () => {
     expect(await fingerprint()).toEqual(before);
   });
 
-  it('rolling back A -> M3 -> M2 -> M1 and re-applying M1 -> A leaves existing data untouched and restores the objects', async () => {
+  it('rolling back B -> A -> M3 -> M2 -> M1 and re-applying M1 -> B leaves existing data untouched and restores the objects', async () => {
     const before = await fingerprint();
     await admin.query('BEGIN');
     let during;
