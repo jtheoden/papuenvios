@@ -2842,8 +2842,9 @@
   "beforePaying": {
     "title": "Before you pay",
     "irreversible": "Zelle payments cannot be reversed. Check the recipient details and total before sending.",
-    "rate": "Applied rate",
-    "rateCheckedAt": "checked at {time}",
+    "rate": "Rate checked",
+    "rateCheckedAt": "at {time}",
+    "rateNote": "The final amount is calculated with the rate in effect when you confirm.",
     "easternTime": "US Eastern time",
     "fee": "Fee (deducted from the amount sent)",
     "deliveryCost": "Delivery cost",

@@ -48,6 +48,10 @@ describe('BeforePayingNotice', () => {
     const text = region.textContent;
     expect(text).toContain('Los pagos por Zelle no se pueden revertir. Revise los datos del destinatario y el total antes de enviar.');
     expect(text).toContain('1 USD = 100 CUP');
+    // The rate is re-read when the remittance is created: it is labelled as checked, not applied/locked.
+    expect(text).toContain('Tasa consultada');
+    expect(text).not.toMatch(/tasa aplicada/i);
+    expect(text).toContain('El monto final se calcula con la tasa vigente al confirmar.');
     expect(text).toMatch(/10:04/);
     expect(text).toContain(ES.beforePaying.easternTime);
     for (const value of ['1.00 USD', '0.00 USD', '50.00 USD', '4900.00 CUP']) expect(text).toContain(value);
@@ -61,6 +65,7 @@ describe('BeforePayingNotice', () => {
     render(<BeforePayingNotice onNavigate={vi.fn()} deliveryCost="6.00 USD" total="8.90 USD" />);
     const region = screen.getByRole('region', { name: ES.beforePaying.title });
     expect(region.textContent).not.toContain(ES.beforePaying.rate);
+    expect(region.textContent).not.toContain(ES.beforePaying.rateNote);
     expect(region.textContent).not.toContain(ES.beforePaying.fee);
     expect(region.textContent).not.toContain(ES.beforePaying.recipientReceives);
     expect(region.textContent).toContain('6.00 USD');

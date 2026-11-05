@@ -47,6 +47,8 @@ const BeforePayingNotice = ({ onNavigate, rate, rateCheckedAt, fee, deliveryCost
           </div>
         ))}
       </dl>
+      {/* createRemittance re-reads the rate on confirm: say so instead of presenting it as locked */}
+      {rate && <p className="mt-2 text-xs text-gray-700">{t('beforePaying.rateNote')}</p>}
       <p className="mt-3">{t('beforePaying.estimate')}</p>
       <p className="mt-2">
         {t('beforePaying.seeAlso')}{' '}
