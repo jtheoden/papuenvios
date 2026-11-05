@@ -151,6 +151,7 @@ DROP FUNCTION IF EXISTS public.admin_set_messenger_payment_type_v2(text, text, t
 DROP FUNCTION IF EXISTS public._courier_rule_coverage(text, uuid, uuid, uuid, text, timestamptz, timestamptz);
 DROP FUNCTION IF EXISTS public._courier_rule_resolve_v2(text, uuid, uuid, uuid, numeric, text, numeric, timestamptz);
 
+ALTER TABLE public.messenger_payment_types DROP CONSTRAINT IF EXISTS messenger_payment_types_no_nan_chk;
 ALTER TABLE public.messenger_payment_types DROP CONSTRAINT IF EXISTS messenger_payment_types_base_scope_chk;
 ALTER TABLE public.messenger_payment_types DROP CONSTRAINT IF EXISTS messenger_payment_types_currency_chk;
 ALTER TABLE public.messenger_payment_types DROP CONSTRAINT IF EXISTS messenger_payment_types_fixed_amount_chk;

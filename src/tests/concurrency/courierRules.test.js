@@ -486,6 +486,32 @@ describeDb('M1: couriers, payment types, thresholds (local Postgres)', () => {
       await bad({ method: 'per_usd_delivered', fixed_cup: null, cup_per_usd: 1, base: 'nominal_usd', applies_to: 'order' });
     });
 
+    it('NaN is refused for every numeric parameter (22023) and no row is left; the table CHECKs refuse it too', async () => {
+      for (const o of [
+        fixed({ fixed_amount: 'NaN' }), fixed({ amount_from: 'NaN' }), fixed({ amount_to: 'NaN' }), { fixed_cup: 'NaN' },
+        { method: 'per_usd_delivered', fixed_cup: null, cup_per_usd: 'NaN', base: 'nominal_usd' },
+        { method: 'percent_of_base', fixed_cup: null, percent: 'NaN', base: 'nominal_usd' }
+      ]) {
+        const c = await kit.as(actors.adminId);
+        const e = await failure(kit.setRule(c, o));
+        expect(e.code, JSON.stringify(o)).toBe('22023');
+        expect(e.message).toMatch(/NaN/);
+      }
+      expect(await rules()).toEqual([]);
+      const insert = (col, method, extra = '') => admin.query(
+        `INSERT INTO public.messenger_payment_types (code, name, version, applies_to, method, ${col}, valid_from${extra ? `, ${extra.split('=')[0]}` : ''})
+         VALUES ('t','t',1,'remittance',$1,'NaN'::numeric, now()${extra ? `, '${extra.split('=')[1]}'` : ''})`, [method]);
+      for (const [col, method, extra] of [['fixed_amount', 'fixed_amount'], ['fixed_cup', 'fixed_cup'],
+        ['cup_per_usd', 'per_usd_delivered', 'base=nominal_usd'], ['percent', 'percent_of_base', 'base=nominal_usd']]) {
+        expect((await failure(insert(col, method, extra))).code, col).toBe('23514');
+      }
+      const tier = (col) => admin.query(
+        `INSERT INTO public.messenger_payment_types (code, name, version, applies_to, method, fixed_cup, ${col}, valid_from)
+         VALUES ('t','t',1,'remittance','fixed_cup',1,'NaN'::numeric, now())`);
+      expect((await failure(tier('amount_from'))).code).toBe('23514');
+      expect((await failure(tier('amount_to'))).code).toBe('23514');
+    });
+
     it('amounts with more than 2 decimals are refused (never silently rounded); from = to refused', async () => {
       await bad(fixed({ amount_to: 100.005 }));
       await bad(fixed({ amount_from: 0.001 }));

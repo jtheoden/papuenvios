@@ -52,6 +52,13 @@ ALTER TABLE public.messenger_payment_types DROP CONSTRAINT IF EXISTS messenger_p
 ALTER TABLE public.messenger_payment_types ADD CONSTRAINT messenger_payment_types_fixed_amount_chk
   CHECK (fixed_amount IS NULL OR fixed_amount >= 0);
 
+-- 'NaN'::numeric sorts above every number, so the inherited `x >= 0` CHECKs let it through: refuse it explicitly.
+ALTER TABLE public.messenger_payment_types DROP CONSTRAINT IF EXISTS messenger_payment_types_no_nan_chk;
+ALTER TABLE public.messenger_payment_types ADD CONSTRAINT messenger_payment_types_no_nan_chk CHECK (
+      (fixed_cup IS NULL OR fixed_cup < 'NaN'::numeric) AND (fixed_amount IS NULL OR fixed_amount < 'NaN'::numeric)
+  AND (cup_per_usd IS NULL OR cup_per_usd < 'NaN'::numeric) AND (percent IS NULL OR percent < 'NaN'::numeric)
+  AND (amount_from IS NULL OR amount_from < 'NaN'::numeric) AND (amount_to IS NULL OR amount_to < 'NaN'::numeric));
+
 ALTER TABLE public.messenger_payment_types DROP CONSTRAINT IF EXISTS messenger_payment_types_method_check;
 ALTER TABLE public.messenger_payment_types ADD CONSTRAINT messenger_payment_types_method_check
   CHECK (method IN ('fixed_cup', 'fixed_amount', 'per_usd_delivered', 'percent_of_base'));
@@ -285,6 +292,9 @@ BEGIN
     JOIN public.currencies t ON t.id = er.to_currency_id AND t.code = 'CUP'
    WHERE er.is_active
    ORDER BY er.effective_date DESC LIMIT 1;
+  -- a NaN rate passes `rate > 0`: treat it as missing (never multiply an accrual by NaN)
+  v_live_fx := NULLIF(v_live_fx, 'NaN'::numeric);
+  v_fx := NULLIF(v_fx, 'NaN'::numeric);
   IF v_fx IS NULL AND v_live_fx IS NOT NULL THEN
     v_fx := v_live_fx;
     v_fx_src := 'exchange_rates';
@@ -414,6 +424,11 @@ BEGIN
   END IF;
   IF p_type_id IS NOT NULL AND p_applies_to <> 'remittance' THEN
     RAISE EXCEPTION 'invalid_argument: a remittance type only makes sense for remittance rules' USING ERRCODE = '22023';
+  END IF;
+  -- NaN passes `>= 0` (it sorts above every number) and would be frozen into the accruals
+  IF 'NaN'::numeric IN (p_amount_from, p_amount_to, p_fixed_amount, p_fixed_cup, p_cup_per_usd, p_percent) THEN
+    RAISE EXCEPTION 'invalid_argument: NaN is not a valid amount, rate or percentage' USING ERRCODE = '22023',
+      DETAIL = 'amount_from, amount_to, fixed_amount, fixed_cup, cup_per_usd and percent must be finite numbers';
   END IF;
   -- Typed parameters of the chosen method, and none of the others.
   IF NOT (CASE p_method

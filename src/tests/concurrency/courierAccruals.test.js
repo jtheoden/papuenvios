@@ -432,6 +432,18 @@ describeDb('M2: assignments, accruals, effective cost (local Postgres)', () => {
       expect((await deliverRem({ amount: 50 })).amount_cup).toBe('300.00');
     });
 
+    it('a NaN exchange rate is treated as missing: the accrual is NULL (no_fx), never NaN', async () => {
+      await kit.seedUsdCupRate('NaN');
+      await kit.setRule(await adminClient(), fixed({ fixed_amount: 2, applies_to: 'both' }));
+      const a = await deliverRem();
+      expect(a).toMatchObject({ amount_cup: null, amount_usd: null });
+      expect(a.rule_snapshot.reason).toBe('no_fx');
+      const o = await deliverOrd();
+      expect(o).toMatchObject({ amount_cup: null, amount_usd: null });
+      const { rows } = await admin.query(`SELECT count(*)::int AS n FROM public.courier_accruals WHERE amount_cup = 'NaN' OR amount_usd = 'NaN' OR fx_used = 'NaN'`);
+      expect(rows[0].n).toBe(0);
+    });
+
     it('no rule at all keeps reason no_rule (the 16 production accruals use it)', async () => {
       const a = await deliverRem();
       expect(a.rule_snapshot.reason).toBe('no_rule');
