@@ -58,10 +58,8 @@ function DynamicVisualSettings() {
     // Update document title
     document.title = visualSettings.siteTitle || visualSettings.companyName || 'PapuEnvíos';
 
-    // Apply page background color to body
-    if (visualSettings.pageBgColor) {
-      document.body.style.backgroundColor = visualSettings.pageBgColor;
-    }
+    // The body background is NOT set here: applyVisualSettingsToDOM does it (with its fallback) once the settings
+    // load. Doing it from the default state painted #f9fafb over the brand ivory before they arrived.
 
     // Apply favicon
     if (visualSettings.favicon) {

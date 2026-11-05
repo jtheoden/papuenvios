@@ -1,4 +1,4 @@
-import { BRAND_PRESET } from '@/lib/brandPalette';
+import { BRAND_PRESET, LOOK_IDS, resolveLookId } from '@/lib/brandPalette';
 import { DEFAULT_VISUAL_SETTINGS } from '@/lib/businessVisualSettingsService';
 
 /**
@@ -6,7 +6,7 @@ import { DEFAULT_VISUAL_SETTINGS } from '@/lib/businessVisualSettingsService';
  * (headerTheme, footerTheme, loadingTheme, styleUtils) keep reading those VALUES, never the theme name,
  * so both themes resolve exactly as before. `activeTheme` only records which one the super admin chose.
  */
-export const THEME_IDS = ['classic', 'papuenvios'];
+export const THEME_IDS = LOOK_IDS;
 export const DEFAULT_THEME_ID = 'classic';
 
 const PRESET_KEYS = Object.keys(BRAND_PRESET);
@@ -28,11 +28,9 @@ const matchesPreset = (settings, preset) => PRESET_KEYS.every((key) => sameValue
  * A valid stored `activeTheme` wins. Without one (rows saved before the selector existed) the theme is inferred
  * from the values: every brand preset value present => papuenvios (the row the owner saved with the old button),
  * anything else => classic. The key must stay absent from DEFAULT_VISUAL_SETTINGS, or the merge would hide this.
+ * Same function as brandPalette.resolveLookId (data-theme), so the selector and the page look never diverge.
  */
-export const resolveThemeId = (settings) => {
-  if (THEME_IDS.includes(settings?.activeTheme)) return settings.activeTheme;
-  return matchesPreset(settings, BRAND_PRESET) ? 'papuenvios' : DEFAULT_THEME_ID;
-};
+export const resolveThemeId = resolveLookId;
 
 const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
