@@ -2852,7 +2852,7 @@
     "irreversible": "Los pagos por Zelle no se pueden revertir. Revise los datos del destinatario y el total antes de enviar.",
     "rate": "Tasa aplicada",
     "rateCheckedAt": "consultada a las {time}",
-    "easternTime": "hora del Este (EE. UU.)",
+    "easternTime": "hora del Este de EE. UU.",
     "fee": "Comisión (descontada del monto enviado)",
     "deliveryCost": "Costo de entrega",
     "total": "Total a pagar",

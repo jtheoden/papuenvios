@@ -35,7 +35,7 @@ const Footer = ({ onNavigate, showNotice = true }) => {
           {/* Developer signature */}
           <a
             href="https://www.linkedin.com/in/juan-a-centelles-geides/"
-            className={`${SIGNATURE} text-center md:text-left break-words max-w-full`}
+            className={`${SIGNATURE} text-[11px] md:text-xs text-center md:text-left break-words max-w-full`}
           >
             {t('footer.developedBy', { name: 'Juan A. Centelles' })}
           </a>

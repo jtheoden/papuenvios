@@ -32,6 +32,8 @@ const open = async (page, language) => {
   const dict = language === 'es' ? ES : EN;
   const banner = page.getByRole('region', { name: dict.cookieConsent.title });
   await expect(banner).toBeVisible();
+  // Measure with the final web font, not the fallback (line wrapping decides the height).
+  await page.evaluate(() => document.fonts.ready);
   return { banner, dict };
 };
 
