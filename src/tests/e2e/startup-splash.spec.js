@@ -29,9 +29,11 @@ const mockSupabase = (page, { settingsDelay = 0, settings = SETTINGS } = {}) => 
 });
 
 // Records (performance.now()) when React first commits and when the header appears, and whether the loading screen showed.
-const instrument = (page) => page.addInitScript(({ loadingText, cacheKey }) => {
+// freshCache: settings already cached (within the 1 min TTL), so nothing waits on a mocked request.
+const instrument = (page, { freshCache = null } = {}) => page.addInitScript(({ loadingText, cacheKey, fresh }) => {
   localStorage.setItem('preferredLanguage', 'es');
-  localStorage.removeItem(cacheKey); // the settings cache would skip the request
+  if (fresh) localStorage.setItem(cacheKey, JSON.stringify({ data: fresh, timestamp: Date.now() }));
+  else localStorage.removeItem(cacheKey); // the settings cache would skip the request
   window.__startup = { headerAt: null, sawLoading: false, psGoneAt: null };
   new MutationObserver(() => {
     // React's first commit: #root has content and the static splash (#ps) is gone. Main had no splash: its first commit.
@@ -40,11 +42,11 @@ const instrument = (page) => page.addInitScript(({ loadingText, cacheKey }) => {
     if (!window.__startup.sawLoading && document.body?.textContent.includes(loadingText)) window.__startup.sawLoading = true;
     if (window.__startup.headerAt === null && document.querySelector('header')) window.__startup.headerAt = performance.now();
   }).observe(document, { childList: true, subtree: true, characterData: true });
-}, { loadingText: LOADING_TEXT, cacheKey: 'business_visual_settings_cache' });
+}, { loadingText: LOADING_TEXT, cacheKey: 'business_visual_settings_cache', fresh: freshCache });
 
-const openApp = async (page, options) => {
+const openApp = async (page, options = {}) => {
   await mockSupabase(page, options);
-  await instrument(page);
+  await instrument(page, options);
   await page.goto('/'); // warm-up: lets the dev server compile the modules
   await expect(page.locator('header')).toBeVisible({ timeout: 60000 });
   await page.goto('/');
@@ -58,7 +60,9 @@ test('served HTML already paints the static splash inside #root', async ({ reque
 });
 
 test('fast settings: the app appears without the fixed 2.5 s wait and no loading screen', async ({ page }) => {
-  const startup = await openApp(page);
+  // Settings served from a fresh cache: with parallel workers the mocked request (page.route) alone took > 300 ms at
+  // times, showing the loading screen. The request paths are covered by the slow and hung tests below.
+  const startup = await openApp(page, { freshCache: SETTINGS });
   // Event to event, not wall clock from navigation (the dev server under load can take seconds to serve the modules):
   // main started its fixed 2.5 s timer after React mounted, so its header came >= 2500 ms after the first commit.
   expect(startup.psGoneAt).not.toBeNull();
