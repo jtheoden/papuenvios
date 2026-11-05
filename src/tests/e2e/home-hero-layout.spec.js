@@ -112,6 +112,16 @@ const open = async (page, { heroLayout, settings = PRESET_ROW, language = 'es', 
   // a previous visit: the skeleton follows what the carousel looked like then (see heroShape.js)
   if (shape) await page.addInitScript((value) => localStorage.setItem('hero-carousel-shape', JSON.stringify(value)), shape);
   await page.goto('/');
+  // The app slides the page in with a transform while it mounts; two measurements taken during it (a few ms apart)
+  // differ by pixels that are not layout. Measure only once the Home has no transform left on it or its ancestors.
+  await expect(page.locator('[data-testid="home-page"]')).toBeAttached({ timeout: 20000 });
+  await expect.poll(() => page.evaluate(() => {
+    for (let el = document.querySelector('[data-testid="home-page"]'); el && el !== document.documentElement; el = el.parentElement) {
+      const { transform } = getComputedStyle(el);
+      if (transform !== 'none' && transform !== 'matrix(1, 0, 0, 1, 0, 0)') return transform;
+    }
+    return 'none';
+  }), { timeout: 15000 }).toBe('none');
   if (!waitImage) return knobs;
   await expect(page.locator('[data-testid="hero-carousel"]')).toBeVisible({ timeout: 20000 });
   await expect(page.locator('[data-testid="hero-slide-image"]')).toHaveJSProperty('complete', true, { timeout: 15000 });
