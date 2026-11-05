@@ -2839,6 +2839,19 @@
       "seeTerms": "See Terms of Service"
     }
   },
+  "beforePaying": {
+    "title": "Before you pay",
+    "irreversible": "Zelle payments cannot be reversed. Check the recipient details and total before sending.",
+    "rate": "Applied rate",
+    "rateCheckedAt": "checked at {time}",
+    "easternTime": "US Eastern time",
+    "fee": "Fee (deducted from the amount sent)",
+    "deliveryCost": "Delivery cost",
+    "total": "Total to pay",
+    "recipientReceives": "Recipient receives",
+    "estimate": "Estimated delivery, not guaranteed; timing depends on the area.",
+    "seeAlso": "See:"
+  },
   "cookieConsent": {
     "title": "Privacy and analytics",
     "description": "We use strictly necessary local storage to make the site work (for example, your session). Only if you accept will we record the pages you visit for statistics: page, referrer, browser, a session identifier and, if you are signed in, your user identifier.",

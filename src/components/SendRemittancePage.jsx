@@ -44,6 +44,7 @@ import PaymentMethodsUnavailable from '@/components/PaymentMethodsUnavailable';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { isPaymentMethodEnabled, isPaymentMethodDisabledError, PAYMENT_FLOWS } from '@/lib/paymentMethodsService';
 import RegulatoryNotice from '@/components/RegulatoryNotice';
+import BeforePayingNotice from '@/components/BeforePayingNotice';
 import LegalConsentLine from '@/components/LegalConsentLine';
 
 const SendRemittancePage = ({ onNavigate }) => {
@@ -67,6 +68,8 @@ const SendRemittancePage = ({ onNavigate }) => {
   const [selectedType, setSelectedType] = useState(null);
   const [amount, setAmount] = useState('');
   const [calculation, setCalculation] = useState(null);
+  // When the rate in `calculation` was read; createRemittance re-reads it, so the UI says "checked at", not "locked".
+  const [rateCheckedAt, setRateCheckedAt] = useState(null);
 
   // Calculator mode: 'send' = user enters amount to send, 'receive' = user enters desired receive amount
   const [calcMode, setCalcMode] = useState('send');
@@ -298,6 +301,7 @@ const SendRemittancePage = ({ onNavigate }) => {
             calculateRemittance(savedType.id, parseFloat(savedAmount))
               .then((calc) => {
                 setCalculation(calc);
+                setRateCheckedAt(new Date());
                 setStep(2);
                 toast({
                   title: t('remittances.wizard.dataRestored'),
@@ -449,6 +453,7 @@ const SendRemittancePage = ({ onNavigate }) => {
     try {
       const calculation = await calculateRemittance(selectedType.id, parseFloat(amount), appliedOffer || null);
       setCalculation(calculation);
+      setRateCheckedAt(new Date());
       setStep(2);
     } catch (error) {
       console.error('Error calculating remittance:', error);
@@ -1329,6 +1334,15 @@ const SendRemittancePage = ({ onNavigate }) => {
             </div>
 
             <RegulatoryNotice onNavigate={onNavigate} />
+            <BeforePayingNotice
+              onNavigate={onNavigate}
+              rate={calculation.exchangeRate ? `1 ${calculation.currency} = ${calculation.exchangeRate} ${calculation.deliveryCurrency}` : undefined}
+              rateCheckedAt={rateCheckedAt}
+              fee={`${calculation.totalCommission.toFixed(2)} ${calculation.currency}`}
+              deliveryCost={`${previewDeliveryCost.toFixed(2)} ${calculation.currency}`}
+              total={`${previewTotalToPay.toFixed(2)} ${calculation.currency}`}
+              recipientReceives={`${calculation.amountToDeliver.toFixed(2)} ${calculation.deliveryCurrency}`}
+            />
             <LegalConsentLine variant="confirm" onNavigate={onNavigate} />
 
             <div className="flex justify-between">

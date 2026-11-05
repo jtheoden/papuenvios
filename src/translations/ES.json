@@ -2847,6 +2847,19 @@
       "seeTerms": "Ver Términos de Servicio"
     }
   },
+  "beforePaying": {
+    "title": "Antes de pagar",
+    "irreversible": "Los pagos por Zelle no se pueden revertir. Revise los datos del destinatario y el total antes de enviar.",
+    "rate": "Tasa aplicada",
+    "rateCheckedAt": "consultada a las {time}",
+    "easternTime": "hora del Este (EE. UU.)",
+    "fee": "Comisión (descontada del monto enviado)",
+    "deliveryCost": "Costo de entrega",
+    "total": "Total a pagar",
+    "recipientReceives": "Recibe el destinatario",
+    "estimate": "Entrega estimada, no garantizada; el plazo depende de la zona.",
+    "seeAlso": "Consulte:"
+  },
   "cookieConsent": {
     "title": "Privacidad y analítica",
     "description": "Usamos almacenamiento local estrictamente necesario para que el sitio funcione (por ejemplo, tu sesión). Solo si lo aceptas, registraremos las páginas que visitas con fines estadísticos: página, origen, navegador, un identificador de sesión y, si iniciaste sesión, tu identificador de usuario.",

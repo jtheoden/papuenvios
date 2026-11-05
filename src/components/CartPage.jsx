@@ -43,6 +43,7 @@ import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { isPaymentMethodEnabled, isPaymentMethodDisabledError, PAYMENT_FLOWS } from '@/lib/paymentMethodsService';
 import { useModal } from '@/contexts/ModalContext';
 import RegulatoryNotice from '@/components/RegulatoryNotice';
+import BeforePayingNotice from '@/components/BeforePayingNotice';
 import LegalConsentLine from '@/components/LegalConsentLine';
 
 const STOCK_REFUSAL_MESSAGE_KEYS = {
@@ -1432,6 +1433,14 @@ const CartPage = ({ onNavigate }) => {
           </motion.div>
 
           <RegulatoryNotice onNavigate={onNavigate} className="mb-4" />
+
+          {/* Orders are USD-only goods: no exchange rate, fee or recipient amount to show */}
+          <BeforePayingNotice
+            onNavigate={onNavigate}
+            deliveryCost={`${BASE_CURRENCY_SYMBOL}${shippingCost.toFixed(2)} ${BASE_CURRENCY_CODE}`}
+            total={`${BASE_CURRENCY_SYMBOL}${totalDisplay} ${BASE_CURRENCY_CODE}`}
+            className="mb-4"
+          />
 
           <div className="space-y-3">
             <LegalConsentLine variant="confirm" onNavigate={onNavigate} />
