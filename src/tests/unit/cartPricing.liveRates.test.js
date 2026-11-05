@@ -15,11 +15,13 @@ describe('buildCartLinesLive', () => {
     expect(live.lines.map((l) => l.unitPrice)).toEqual([8, 10]);
     expect(live.subtotal).toBe(26);
     expect(live.hasInvalidLines).toBe(false);
+    expect(live.rateReadFailed).toBe(false);
   });
 
   it('fails closed (invalid line) when a live rate cannot be read', async () => {
     const live = await buildCartLinesLive([cup], priceItem, async () => { throw new Error('down'); });
     expect(live.hasInvalidLines).toBe(true);
+    expect(live.rateReadFailed).toBe(true);
   });
 
   it('needs no read at all for a cart already in the base currency', async () => {

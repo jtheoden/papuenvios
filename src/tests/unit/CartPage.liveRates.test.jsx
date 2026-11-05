@@ -245,7 +245,9 @@ describe('CartPage - the order is priced with rates read live, the cart only dis
   it('a live rate that cannot be read never creates an order (fail closed)', async () => {
     live.getLiveConversionRate.mockRejectedValue(new Error('down'));
     await submitOrder({ province: 'Matanzas', municipality: '' }, '$5.00');
-    await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ description: 'cart.pricesUpdated' })));
+    // Not "prices changed" (they may not have): the customer is told the rate could not be verified
+    await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ description: 'cart.rateCheckFailed' })));
+    expect(toast).not.toHaveBeenCalledWith(expect.objectContaining({ description: 'cart.pricesUpdated' }));
     expect(createOrder).not.toHaveBeenCalled();
   });
 });

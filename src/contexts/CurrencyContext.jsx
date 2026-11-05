@@ -256,7 +256,9 @@ export const CurrencyProvider = ({ children }) => {
 
   // Precache conversion rates when the selected currency changes and refresh them before the TTL expires, only while the
   // tab is visible (visiblePolling; coming back refreshes at once). Every pair reads the same cached request
-  // (currencyService + requestBudget), so a refresh costs at most one request.
+  // (currencyService + requestBudget), so a refresh costs at most one request. EVERY ordered pair is cached: rates are
+  // not reciprocal (USD->CUP 915, CUP->USD 1/900), so each direction must resolve direct-first like the live path
+  // (getLiveConversionRate), never as the inverse of the opposite cached pair.
   // MUST be after getConversionRateWithCache is defined to avoid TDZ error
   const ratesPollKey = `currency:rates:${selectedCurrency}`;
   const preloadConversionRates = async () => {
@@ -265,9 +267,9 @@ export const CurrencyProvider = ({ children }) => {
     try {
       await Promise.race([
         Promise.all(
-          currencies
-            .filter(currency => currency.id !== selectedCurrency)
-            .map(currency => getConversionRateWithCache(currency.id, selectedCurrency, { force: true }))
+          currencies.flatMap(from => currencies
+            .filter(to => to.id !== from.id)
+            .map(to => getConversionRateWithCache(from.id, to.id, { force: true })))
         ),
         // supabase-js has no request timeout: give up (and back off) instead of waiting forever
         new Promise((_, reject) => {

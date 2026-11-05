@@ -1798,6 +1798,7 @@
   },
   "cart": {
     "pricesUpdated": "Las tasas de cambio se actualizaron y algún precio del carrito cambió. Revise el total y vuelva a confirmar.",
+    "rateCheckFailed": "No se pudo verificar la tasa de cambio. Inténtelo de nuevo en unos segundos.",
     "clearAll": {
       "button": "Vaciar carrito",
       "title": "¿Vaciar el carrito?",

@@ -114,7 +114,8 @@ export const getCartItemUnitPrice = (item, { baseCurrencyId = null, convertAmoun
 /**
  * Cart lines priced with rates read LIVE (what the order stores), while the cart shows the cached display rates.
  * A first pass records which currency pairs the pricing needs; each is read once with `getRate`, then the lines are
- * built with exactly those rates. A rate that cannot be read leaves its line invalid (fail closed).
+ * built with exactly those rates. A rate that cannot be read leaves its line invalid (fail closed) and sets
+ * `rateReadFailed`, so the caller can tell "could not verify" from "prices changed".
  *
  * @param {Array<object>} cart
  * @param {(item: object, convertAmount: function) => number} priceItem - e.g. getCartItemUnitPrice with its context
@@ -138,7 +139,8 @@ export const buildCartLinesLive = async (cart, priceItem, getRate) => {
     const rate = rates.get(`${from}>${to}`);
     return Number.isFinite(rate) && rate > 0 ? amount * rate : NaN;
   };
-  return buildCartLines(cart, (item) => priceItem(item, convertAmount));
+  const rateReadFailed = [...rates.values()].some((rate) => !(Number.isFinite(rate) && rate > 0));
+  return { ...buildCartLines(cart, (item) => priceItem(item, convertAmount)), rateReadFailed };
 };
 
 /**

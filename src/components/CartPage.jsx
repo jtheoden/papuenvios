@@ -787,13 +787,23 @@ const CartPage = ({ onNavigate }) => {
       }
 
       // The cart shows prices converted with the (briefly cached) display rates; the order stores them, so they are
-      // re-priced with rates read live. If anything moved, nothing is created: the cart reloads the rates and the
-      // customer confirms the new amounts.
+      // re-priced with rates read live. Both paths resolve a pair the same way (direct rate first, else the inverse),
+      // so they only differ when a rate really moved. Then nothing is created: invalidateRateCaches reloads the display
+      // rates (the confirm button stays disabled while any line is unpriced), the cart shows the live amounts and the
+      // next confirmation converges.
       const liveLines = await buildCartLinesLive(
         cart,
         (item, convert) => getCartItemUnitPrice(withStoredComboPrice(item, combos), { baseCurrencyId, convertAmount: convert }),
         (from, to) => getLiveConversionRate(from, to)
       );
+      if (liveLines.rateReadFailed) {
+        toast({
+          title: t('common.error'),
+          description: t('cart.rateCheckFailed'),
+          variant: 'destructive'
+        });
+        return;
+      }
       const pricesMoved = liveLines.hasInvalidLines
         || liveLines.subtotal !== cartLines.subtotal
         || liveLines.lines.some((line, index) => line.unitPrice !== cartLines.lines[index]?.unitPrice);
@@ -1479,7 +1489,7 @@ const CartPage = ({ onNavigate }) => {
                 className="flex-1"
                 size="lg"
                 style={getPrimaryButtonStyle(visualSettings)}
-                disabled={paymentBlocker !== null || uploadingProof || processingPayment || zelleOrdersBlocked}
+                disabled={paymentBlocker !== null || uploadingProof || processingPayment || zelleOrdersBlocked || cartLines.hasInvalidLines}
               >
                 {processingPayment ? t('cart.payment.processing') : t('cart.payment.confirm')}
               </Button>
