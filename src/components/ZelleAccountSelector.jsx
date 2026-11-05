@@ -119,7 +119,8 @@ const ZelleAccountSelector = ({
 
   // Refresh periodically (visible tab only) and when the user returns to the tab/window, so a deactivated account is
   // detected without table realtime (customers get no events).
-  const refresh = useVisiblePolling(`zelle-accounts:${usageType}`, () => loadAccountsRef.current(false), {
+  // amount is part of the query (account limits): it is part of the key so two selectors never share an answer
+  const refresh = useVisiblePolling(`zelle-accounts:${usageType}:${amount}`, () => loadAccountsRef.current(false), {
     intervalMs: ZELLE_REFRESH_INTERVAL_MS,
     immediate: false // the initial load effect above already loaded them
   });

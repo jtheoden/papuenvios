@@ -108,6 +108,16 @@ describe('requestBudget fetch', () => {
     expect(await body(await reloaded(url))).toBe(3);
   });
 
+  it('a non-JWT token is never written to localStorage, and different tokens never share a cached answer', async () => {
+    const base = makeBase();
+    const f = createRequestBudgetFetch(base);
+    const url = `${BASE}/currencies?select=id%2Ccode%2Csymbol%2Cis_base`;
+    await f(url, { headers: { Authorization: 'Bearer opaque-token-AAAA' } });
+    await f(url, { headers: { Authorization: 'Bearer opaque-token-BBBB' } });
+    expect(base).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem(API_CACHE_STORAGE_KEY)).not.toContain('opaque-token');
+  });
+
   it('another tab writing (storage event) drops this tab\'s cache', async () => {
     const base = makeBase();
     const f = createRequestBudgetFetch(base);

@@ -3,15 +3,20 @@
 // Fetch layer for Supabase REST calls (/rest/v1 only; auth, storage, functions and realtime pass untouched). Composed
 // with the refresh guard in supabase.js. Why: on the Free plan (5 GB egress) every repeated read costs headers + JSON.
 //  1. In-flight dedupe: identical reads (same method, URL, body, Range/Prefer/Accept and user) share one request.
-//  2. Display rate reads (all active exchange rates in one read, currency lists) are cached for API_CACHE_TTL_MS in
-//     memory and localStorage (public data), so other tabs and reloads reuse them. Reads that price an operation
-//     (single-pair rate at confirmation) are never cached.
-//  3. Budget guardrail: more than `maxPerMinute` reads of the same method+path in a sliding minute are served from the
-//     last identical answer (exact same request only, never another query's body) with ONE logError per episode.
-//     Without an identical earlier answer the request goes through.
-//  4. Writes (POST/PATCH/PUT/DELETE, mutating RPCs) are never delayed or dropped. When one lands, every cached answer is
-//     dropped (this tab and, via localStorage, the others) and subscribeApiWrites listeners are told, so the screen
-//     reloads what the action changed at once: an own action is never followed by stale data.
+//     Requests with their own abort signal never share.
+//  2. An allowlist of display selects (CACHED_SELECTS) is cached for API_CACHE_TTL_MS in memory and localStorage
+//     (public data), so other tabs and reloads reuse them. Every other read, including those that price an operation,
+//     goes to the network.
+//  3. Budget guardrail: once `maxPerMinute` real requests of the same method+path happened in the sliding minute, a read
+//     is served from the last IDENTICAL answer (never another query's body) only if that answer is younger than the
+//     window, with ONE logError per episode; served answers do not count. Otherwise the request goes through.
+//  4. Writes (POST/PATCH/PUT/DELETE, mutating RPCs) are never delayed or dropped. When one lands, every cached answer
+//     and every in-flight read is dropped (this tab and, via localStorage, the others' caches) and subscribeApiWrites
+//     listeners are told, so the screen reloads what the action changed at once.
+//  5. noteRemoteChange (called on every realtime event) drops stored answers and in-flight reads: the refetches an
+//     event triggers always reach the network.
+//  Known limit: only writes through /rest/v1 invalidate; storage uploads, Edge Functions and auth calls do not (none
+//  of them changes the cached display reads).
 //  Switch: VITE_API_GUARD=off turns the whole layer into a pass-through.
 import { logError } from '@/lib/errorHandler';
 
@@ -64,7 +69,10 @@ const identityOf = (authorization) => {
     const payload = JSON.parse(atob(authorization.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
     return `${payload.sub || 'anon'}:${payload.role || ''}`;
   } catch {
-    return authorization;
+    // Not a JWT: keep requests of different tokens apart without ever storing the token (keys reach localStorage).
+    let hash = 5381;
+    for (let i = 0; i < authorization.length; i += 1) hash = ((hash * 33) ^ authorization.charCodeAt(i)) >>> 0;
+    return `opaque:${hash.toString(36)}`;
   }
 };
 
