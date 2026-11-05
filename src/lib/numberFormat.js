@@ -48,8 +48,9 @@ const toFinite = (value) => {
 /**
  * Money in the app language: always two decimals, rounded half-up through moneyPure.roundMoney (never
  * toFixed). Unavailable input renders an em dash, not a misleading zero.
+ * currencyDisplay: 'code' shows the ISO code (USD) where the symbol is ambiguous (US$, $).
  */
-export const formatMoney = (value, { currency = 'USD', language } = {}) => {
+export const formatMoney = (value, { currency = 'USD', language, currencyDisplay = 'symbol' } = {}) => {
   const number = toFinite(value);
   if (number === null) return UNAVAILABLE;
   const amount = roundMoney(number);
@@ -57,6 +58,7 @@ export const formatMoney = (value, { currency = 'USD', language } = {}) => {
     return new Intl.NumberFormat(localeFor(language), {
       style: 'currency',
       currency,
+      currencyDisplay,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     }).format(amount);

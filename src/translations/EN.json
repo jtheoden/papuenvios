@@ -1647,6 +1647,7 @@
     "checkout": "Proceed to Checkout",
     "shippingUnavailable": "We do not ship to this destination right now. Choose another municipality or province, or contact support.",
     "invalidItems": "Some items in your cart have an invalid price or quantity. Remove them or refresh the page to continue.",
+    "currencyUnavailable": "We could not load the currencies and exchange rates. Please reload the page to continue.",
     "rateUnavailable": {
       "notice": "No exchange rate is available for {currency}; amounts are shown in USD. Select USD to continue with payment."
     },
@@ -1752,6 +1753,12 @@
     "authenticating": "Authenticating...",
     "roleUnresolved": "We could not verify your permissions; we keep trying.",
     "roleRetry": "Retry",
+    "sessionReconnecting": "We are reconnecting your session; it will recover automatically.",
+    "sessionReconnectingTitle": "Reconnecting your session",
+    "sessionReconnectingBody": "We could not renew your session for now. Your session is still saved and we will restore it automatically; you do not need to do anything. If you prefer, you can sign in again.",
+    "sessionExpiredTitle": "Your session expired",
+    "sessionExpiredBody": "Your session expired or was closed. Please sign in again to continue.",
+    "signInAgain": "Sign in again",
     "verifyingPermissions": "Verifying permissions",
     "loadingMessages": {
       "connecting": "Connecting with Google...",

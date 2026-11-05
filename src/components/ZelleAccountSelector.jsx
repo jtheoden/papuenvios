@@ -24,6 +24,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
 import { getZelleAccountsForCustomer } from '@/lib/zelleService';
 import { getZelleAccountPublicContact } from '@/lib/zelleVisibility';
+import { skipWhileRefreshBlocked } from '@/lib/refreshGuard';
 
 export const ZELLE_REFRESH_INTERVAL_MS = 30000;
 
@@ -119,7 +120,7 @@ const ZelleAccountSelector = ({
   // Refresh periodically and when the user returns to the tab/window, so a
   // deactivated account is detected without table realtime (customers get no events).
   useEffect(() => {
-    const refresh = () => loadAccountsRef.current(false);
+    const refresh = skipWhileRefreshBlocked(() => loadAccountsRef.current(false));
     const onVisibility = () => {
       if (document.visibilityState === 'visible') refresh();
     };

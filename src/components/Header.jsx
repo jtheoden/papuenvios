@@ -13,6 +13,7 @@ import { getRefundCounts, REFUNDS_CHANGED_EVENT } from '@/lib/refundService';
 import { useRealtimeOrders, useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import { semanticColors } from '@/lib/colorTokens';
 import RoleUnresolvedBanner from '@/components/RoleUnresolvedBanner';
+import { isRefreshBlocked } from '@/lib/refreshGuard';
 import { buildHeaderTheme } from '@/lib/headerTheme';
 
 // Colours come from CSS variables set on the header root (see buildHeaderTheme). Hover and focus
@@ -26,7 +27,7 @@ const NAV_IDLE = 'text-[color:var(--hdr-text)] hover:bg-[color:var(--hdr-hover-b
 const ACTIVE_CUE = 'font-semibold underline decoration-2 underline-offset-4';
 const NAV_ACTIVE = `${ACTIVE_CUE} [background:var(--hdr-active-background)] text-[color:var(--hdr-active-text)] hover:bg-[color:var(--hdr-active-bg)] hover:text-[color:var(--hdr-active-text)]`;
 const PILL_IDLE = 'bg-[color:var(--hdr-pill-bg)] border-[color:var(--hdr-pill-border)] text-[color:var(--hdr-pill-text)] hover:bg-[color:var(--hdr-hover-bg)] hover:text-[color:var(--hdr-hover-text)]';
-const MENU_IDLE ='text-[color:var(--hdr-menu-text)] hover:bg-[color:var(--hdr-hover-bg)] hover:text-[color:var(--hdr-hover-text)]';
+const MENU_IDLE = 'text-[color:var(--hdr-menu-text)] hover:bg-[color:var(--hdr-hover-bg)] hover:text-[color:var(--hdr-hover-text)]';
 const MENU_ACTIVE = `${ACTIVE_CUE} bg-[color:var(--hdr-menu-active-bg)] text-[color:var(--hdr-menu-active-text)] hover:bg-[color:var(--hdr-menu-active-bg)] hover:text-[color:var(--hdr-menu-active-text)]`;
 
 const NavButton = ({ active, current = active, menu = false, icon: Icon, label, className = '', children, ...props }) => {
@@ -118,7 +119,9 @@ const Header = ({ currentPage, onNavigate }) => {
 
   // Pending work for admins: orders + remittances + refunds that can be paid today (past the 48 h hold).
   // A failing source counts as 0 without hiding the others.
+  // While the token refresh is blocked the requests would go out anonymous and read as 0: keep the last badge.
   const loadPendingCount = useCallback(async () => {
+    if (isRefreshBlocked()) return;
     const [orders, remittances, refunds] = await Promise.all([
       getPendingOrdersCount().catch((error) => {
         console.error('Error loading pending orders:', error);

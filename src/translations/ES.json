@@ -1655,6 +1655,7 @@
     "checkout": "Proceder al Pago",
     "shippingUnavailable": "No realizamos envíos a este destino por ahora. Elige otro municipio o provincia, o contacta a soporte.",
     "invalidItems": "Algunos artículos de tu carrito tienen un precio o cantidad inválidos. Quítalos o recarga la página para continuar.",
+    "currencyUnavailable": "No pudimos cargar las monedas ni las tasas de cambio. Recargue la página para continuar.",
     "rateUnavailable": {
       "notice": "No hay una tasa de cambio disponible para {currency}; se muestran los importes en USD. Elige USD para continuar con el pago."
     },
@@ -1760,6 +1761,12 @@
     "authenticating": "Autenticando...",
     "roleUnresolved": "No pudimos verificar sus permisos; seguimos intentándolo.",
     "roleRetry": "Reintentar",
+    "sessionReconnecting": "Estamos reconectando su sesión; se recuperará automáticamente.",
+    "sessionReconnectingTitle": "Reconectando su sesión",
+    "sessionReconnectingBody": "No pudimos renovar su sesión por ahora. Su sesión sigue guardada y la recuperaremos automáticamente; no necesita hacer nada. Si lo prefiere, puede iniciar sesión de nuevo.",
+    "sessionExpiredTitle": "Su sesión expiró",
+    "sessionExpiredBody": "Su sesión expiró o se cerró. Inicie sesión de nuevo para continuar.",
+    "signInAgain": "Iniciar sesión de nuevo",
     "verifyingPermissions": "Verificando permisos",
     "loadingMessages": {
       "connecting": "Conectando con Google...",

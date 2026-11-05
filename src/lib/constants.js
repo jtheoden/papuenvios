@@ -3,6 +3,9 @@
  * Centralized configuration values to eliminate magic numbers and duplicate strings
  */
 
+// localStorage key where supabase-js keeps the session (see src/lib/supabase.js)
+export const AUTH_STORAGE_KEY = 'papuenvios-auth';
+
 // File Upload Limits
 export const FILE_SIZE_LIMITS = {
   PAYMENT_PROOF: 5 * 1024 * 1024, // 5MB
