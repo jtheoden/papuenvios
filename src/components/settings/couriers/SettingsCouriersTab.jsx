@@ -3,11 +3,11 @@
  * The front is deployed before the migrations: while the module's tables/RPCs do not exist the tab shows a calm
  * "not available yet" note (no error, no console noise) and the service retries every 5 minutes.
  */
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAsyncResource } from '@/hooks/useAsyncResource';
 import { listCouriers } from '@/lib/courierService';
-import { skipWhileRefreshBlocked } from '@/lib/refreshGuard';
+import { useVisiblePolling } from '@/lib/visiblePolling';
 import PaymentsTabs from '@/components/settings/PaymentsTabs';
 import { Btn, Notice, errorText } from './courierUi';
 import CouriersPanel from './CouriersPanel';
@@ -25,11 +25,8 @@ const SettingsCouriersTab = () => {
   // Applying the migrations is picked up without a reload: while unavailable, look again every 5 minutes.
   const unavailable = probe.data?.available === false;
   const { reload } = probe;
-  useEffect(() => {
-    if (!unavailable) return undefined;
-    const timer = setInterval(skipWhileRefreshBlocked(reload), RETRY_MS);
-    return () => clearInterval(timer);
-  }, [unavailable, reload]);
+  // Visible tab only; the probe that said "unavailable" is the first load.
+  useVisiblePolling('couriers:availability', reload, { enabled: unavailable, intervalMs: RETRY_MS, immediate: false });
 
   if (probe.loading && !probe.data) return <p role="status" className="text-sm text-gray-700">{t('couriers.loading')}</p>;
   if (probe.error && !probe.data) {

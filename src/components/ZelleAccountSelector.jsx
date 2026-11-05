@@ -24,7 +24,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
 import { getZelleAccountsForCustomer } from '@/lib/zelleService';
 import { getZelleAccountPublicContact } from '@/lib/zelleVisibility';
-import { skipWhileRefreshBlocked } from '@/lib/refreshGuard';
+import { useVisiblePolling } from '@/lib/visiblePolling';
 
 export const ZELLE_REFRESH_INTERVAL_MS = 30000;
 
@@ -117,22 +117,17 @@ const ZelleAccountSelector = ({
     loadAccounts();
   }, [usageType, amount]);
 
-  // Refresh periodically and when the user returns to the tab/window, so a
-  // deactivated account is detected without table realtime (customers get no events).
+  // Refresh periodically (visible tab only) and when the user returns to the tab/window, so a deactivated account is
+  // detected without table realtime (customers get no events).
+  // amount is part of the query (account limits): it is part of the key so two selectors never share an answer
+  const refresh = useVisiblePolling(`zelle-accounts:${usageType}:${amount}`, () => loadAccountsRef.current(false), {
+    intervalMs: ZELLE_REFRESH_INTERVAL_MS,
+    immediate: false // the initial load effect above already loaded them
+  });
   useEffect(() => {
-    const refresh = skipWhileRefreshBlocked(() => loadAccountsRef.current(false));
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') refresh();
-    };
-    const intervalId = setInterval(refresh, ZELLE_REFRESH_INTERVAL_MS);
     window.addEventListener('focus', refresh);
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      clearInterval(intervalId);
-      window.removeEventListener('focus', refresh);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [usageType]);
+    return () => window.removeEventListener('focus', refresh);
+  }, [refresh]);
 
   const handleSelect = (account) => {
     setSelectedAccount(account);

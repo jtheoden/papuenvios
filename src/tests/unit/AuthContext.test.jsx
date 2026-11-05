@@ -55,6 +55,7 @@ vi.mock('@/lib/activityLogger', () => ({
 import { supabase } from '@/lib/supabase';
 import { TIMEOUTS } from '@/lib/constants';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { API_CACHE_STORAGE_KEY } from '@/lib/requestBudget';
 
 const SESSION = {
   user: { id: 'u1', email: 'u1@test.com', user_metadata: {} },
@@ -168,5 +169,13 @@ describe('AuthProvider — initial session race condition', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(singleMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('signing out drops the request cache kept in localStorage (the next person starts clean)', async () => {
+    render(<AuthProvider>{null}</AuthProvider>);
+    await waitFor(() => expect(singleMock).toHaveBeenCalledTimes(1));
+    localStorage.setItem(API_CACHE_STORAGE_KEY, '{"k":{"at":1}}');
+    authStateCallback('SIGNED_OUT', null);
+    expect(localStorage.getItem(API_CACHE_STORAGE_KEY)).toBeNull();
   });
 });

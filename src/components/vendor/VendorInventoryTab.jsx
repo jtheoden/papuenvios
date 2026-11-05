@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
+import { getLiveConversionRate } from '@/lib/currencyService';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { isImageUploadError, getImageUploadMessageKey } from '@/lib/imageStorage';
@@ -106,7 +107,9 @@ const VendorInventoryTab = ({
 
     setIsConverting(true);
     try {
-      const converted = await convertAmountAsync(parseFloat(price), fromCurrencyId, systemBaseCurrencyId);
+      // Same live rate as the save: the preview is the amount that will be stored
+      const converted = parseFloat(price) * await getLiveConversionRate(fromCurrencyId, systemBaseCurrencyId);
+      if (!Number.isFinite(converted)) throw new Error('No valid exchange rate available');
       const baseCurrencyInfo = getCurrencyById(systemBaseCurrencyId);
       setConvertedPreview({
         amount: converted,
@@ -120,7 +123,7 @@ const VendorInventoryTab = ({
     } finally {
       setIsConverting(false);
     }
-  }, [convertAmountAsync, getCurrencyById, systemBaseCurrencyId]);
+  }, [getCurrencyById, systemBaseCurrencyId]);
 
   // Trigger conversion preview when form price or currency changes
   useEffect(() => {
@@ -453,11 +456,10 @@ const VendorInventoryTab = ({
 
       if (productForm.base_currency_id !== systemBaseCurrencyId) {
         try {
-          normalizedPrice = await convertAmountAsync(
-            parseFloat(productForm.basePrice),
-            productForm.base_currency_id,
-            systemBaseCurrencyId
-          );
+          // A saved price: converted with the rate read live, never the cached display rate.
+          const liveRate = await getLiveConversionRate(productForm.base_currency_id, systemBaseCurrencyId);
+          normalizedPrice = parseFloat(productForm.basePrice) * liveRate;
+          if (!Number.isFinite(normalizedPrice)) throw new Error('No valid exchange rate available');
           finalCurrencyId = systemBaseCurrencyId;
         } catch (convError) {
           // Never persist a number typed in one currency under another: abort and keep the form open

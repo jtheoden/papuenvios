@@ -1,10 +1,14 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getCurrenciesWithRates, getConversionRate, subscribeRatesChanged } from '@/lib/currencyService';
 import { logError } from '@/lib/errorHandler';
+import { useVisiblePolling, refreshPoll } from '@/lib/visiblePolling';
 import { UNAVAILABLE } from '@/lib/numberFormat';
 
 // Cached rates expire so a stale rate is never shown indefinitely; they are refreshed in the background.
 const RATE_TTL_MS = 10 * 60 * 1000;
+/** Background refresh (visible tab). requestBudget caches the rates read for at most half of it. */
+export const RATE_REFRESH_MS = RATE_TTL_MS / 2;
+const RATE_REFRESH_TIMEOUT_MS = 30_000;
 
 const CurrencyContext = createContext();
 
@@ -35,8 +39,6 @@ export const CurrencyProvider = ({ children }) => {
   const [conversionLoading, setConversionLoading] = useState(false);
   // True when the last attempt to load a rate failed (rates cannot be trusted for display)
   const [ratesUnavailable, setRatesUnavailable] = useState(false);
-  // Bumped when rates are saved elsewhere so the preload runs again
-  const [ratesEpoch, setRatesEpoch] = useState(0);
 
   // Load currencies on mount (only active currencies with exchange rates)
   useEffect(() => {
@@ -64,9 +66,15 @@ export const CurrencyProvider = ({ children }) => {
     loadCurrencies();
   }, []);
 
+  // True while the background refresh runs: an expired rate (tab hidden longer than the TTL) stays on screen until the
+  // refresh answers, exactly as when the old timer kept running in background tabs. A failed refresh drops it.
+  const refreshingRef = useRef(false);
   const readCachedRate = (cacheKey) => {
     const entry = exchangeRatesCacheRef.current.get(cacheKey);
-    return entry && entry.expiresAt > Date.now() ? entry.rate : null;
+    if (!entry) return null;
+    const now = Date.now();
+    // Grace bounded to one extra TTL: a refresh that never answers cannot keep an old rate on screen forever.
+    return entry.expiresAt > now || (refreshingRef.current && entry.expiresAt + RATE_TTL_MS > now) ? entry.rate : null;
   };
 
   /**
@@ -246,28 +254,45 @@ export const CurrencyProvider = ({ children }) => {
     return `${symbol}${formatted} ${code}`;
   }, [selectedCurrency, getSymbol, getCode, formatCurrency]);
 
-  // Drop cached rates whenever rates are saved elsewhere (Settings → Financial)
+  // Precache conversion rates when the selected currency changes and refresh them before the TTL expires, only while the
+  // tab is visible (visiblePolling; coming back refreshes at once). Every pair reads the same cached request
+  // (currencyService + requestBudget), so a refresh costs at most one request. EVERY ordered pair is cached: rates are
+  // not reciprocal (USD->CUP 915, CUP->USD 1/900), so each direction must resolve direct-first like the live path
+  // (getLiveConversionRate), never as the inverse of the opposite cached pair.
+  // MUST be after getConversionRateWithCache is defined to avoid TDZ error
+  const ratesPollKey = `currency:rates:${selectedCurrency}`;
+  const preloadConversionRates = async () => {
+    refreshingRef.current = true;
+    let timer;
+    try {
+      await Promise.race([
+        Promise.all(
+          currencies.flatMap(from => currencies
+            .filter(to => to.id !== from.id)
+            .map(to => getConversionRateWithCache(from.id, to.id, { force: true })))
+        ),
+        // supabase-js has no request timeout: give up (and back off) instead of waiting forever
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Exchange-rate refresh timed out')), RATE_REFRESH_TIMEOUT_MS);
+        })
+      ]);
+    } finally {
+      clearTimeout(timer);
+      refreshingRef.current = false;
+      setConversionLoading(false); // a request that never answered must not leave the spinner on
+    }
+  };
+  useVisiblePolling(ratesPollKey, preloadConversionRates, {
+    enabled: Boolean(selectedCurrency) && currencies.length > 0,
+    intervalMs: RATE_REFRESH_MS
+  });
+
+  // Drop cached rates whenever rates are saved elsewhere (Settings → Financial) and load them again
   useEffect(() => subscribeRatesChanged(() => {
     exchangeRatesCacheRef.current.clear();
     setCacheVersion(prev => prev + 1);
-    setRatesEpoch(prev => prev + 1);
-  }), []);
-
-  // Precache conversion rates when selected currency changes and refresh them before the TTL expires.
-  // MUST be after getConversionRateWithCache is defined to avoid TDZ error
-  useEffect(() => {
-    if (!selectedCurrency || currencies.length === 0) return undefined;
-
-    const preloadConversionRates = (force) => Promise.all(
-      currencies
-        .filter(currency => currency.id !== selectedCurrency)
-        .map(currency => getConversionRateWithCache(currency.id, selectedCurrency, { force }))
-    );
-
-    preloadConversionRates(false);
-    const refreshTimer = setInterval(() => preloadConversionRates(true), RATE_TTL_MS / 2);
-    return () => clearInterval(refreshTimer);
-  }, [selectedCurrency, currencies, getConversionRateWithCache, ratesEpoch]);
+    refreshPoll(ratesPollKey);
+  }), [ratesPollKey]);
 
   // Create currency map for quick access
   const currencyMap = useMemo(() => {

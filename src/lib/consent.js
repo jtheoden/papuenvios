@@ -52,6 +52,7 @@ const removeAnalyticsKeys = () => {
   for (const key of ANALYTICS_STORAGE_KEYS) {
     try {
       localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
     } catch {
       // Storage unavailable: nothing was persisted.
     }

@@ -37,7 +37,8 @@ import RemittanceTypesConfig from './RemittanceTypesConfig';
 import ZellePaymentHistoryTab from './admin/ZellePaymentHistoryTab';
 import ActivityLogTab from './ActivityLogTab';
 import { fetchAllRows } from '@/lib/fetchAllRows';
-import { skipWhileRefreshBlocked } from '@/lib/refreshGuard';
+import { useVisiblePolling, POLL_STATS_MS } from '@/lib/visiblePolling';
+import { affectsAdminPending } from '@/lib/adminPollKeys';
 
 // Cost reads settle to { data, error } so one missing RPC does not blank the whole dashboard.
 const settleCosts = (promise) =>
@@ -299,30 +300,26 @@ const DashboardPage = ({ onNavigate }) => {
     }
   }, []);
 
+  // Orders/remittances refresh via realtime and own writes; the 5-min poll is a safety net and the only source for
+  // the other figures and site_visits (not in the realtime publication). 30 s here cost ~3.5 GB of egress in 10 days.
+  // Nothing is asked while the tab is hidden; coming back refreshes at once (visiblePolling).
+  const canSeeStats = Boolean(user && (isAdmin || isSuperAdmin));
+  const refreshStats = useVisiblePolling('dashboard:stats', fetchStats, {
+    enabled: canSeeStats,
+    intervalMs: POLL_STATS_MS,
+    refreshOnWrite: affectsAdminPending
+  });
+  useVisiblePolling('dashboard:visits', fetchVisitStats, { enabled: canSeeStats, intervalMs: POLL_STATS_MS });
+
   useRealtimeOrders({
     enabled: isAdmin || isSuperAdmin,
-    onUpdate: fetchStats
+    onUpdate: refreshStats
   });
 
   useRealtimeRemittances({
     enabled: isAdmin || isSuperAdmin,
-    onUpdate: fetchStats
+    onUpdate: refreshStats
   });
-
-  useEffect(() => {
-    if (user && (isAdmin || isSuperAdmin)) {
-      fetchStats();
-      fetchVisitStats();
-
-      // Poll every 30 seconds (site_visits is not in the realtime publication)
-      const statsInterval = setInterval(skipWhileRefreshBlocked(() => {
-        fetchStats();
-        fetchVisitStats();
-      }), 30000);
-
-      return () => clearInterval(statsInterval);
-    }
-  }, [user, isAdmin, isSuperAdmin, fetchStats, fetchVisitStats]);
 
   // Calculate profits and apply exchange rate
   // Order profit is an ESTIMATE: per-product margin, discount deducted, shipping excluded

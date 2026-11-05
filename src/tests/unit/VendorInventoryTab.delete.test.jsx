@@ -5,6 +5,9 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 const tableOptions = vi.hoisted(() => ({ current: null, onSelectionChange: null }));
 const bulkResult = vi.hoisted(() => ({ promise: null }));
 
+// Saved prices are converted with the live rate (currencyService), not the display cache
+const liveRate = vi.hoisted(() => vi.fn(async () => 1));
+vi.mock('@/lib/currencyService', () => ({ getLiveConversionRate: (...args) => liveRate(...args) }));
 vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({ t: (k) => k, language: 'en' })
 }));

@@ -146,12 +146,15 @@ const clearCooldown = () => {
 const isTemporaryRefreshFailure = (status) =>
   status === 429 || status === 408 || (status >= 500 && ![502, 503, 504].includes(status));
 
+const isTabHidden = () => typeof document !== 'undefined' && document.hidden === true;
+
 /**
  * Wraps a poll tick: skipped while the refresh is in cooldown (the request would stall on auth-js's
- * lock and then go out with the anon key). The caller keeps its last value; the next tick after the
- * cooldown runs normally.
+ * lock and then go out with the anon key) and while the tab is hidden (a background admin tab polling
+ * 24/7 was the main Supabase egress drain, see audit-egress-supabase-2026-11-05). The caller keeps its
+ * last value; the next tick runs normally.
  */
-export const skipWhileRefreshBlocked = (fn) => (...args) => (isRefreshBlocked() ? undefined : fn(...args));
+export const skipWhileRefreshBlocked = (fn) => (...args) => (isRefreshBlocked() || isTabHidden() ? undefined : fn(...args));
 
 /** Nothing left to refresh (signed out): drop the cooldown so the next session starts clean. */
 export const clearRefreshBlock = clearCooldown;
