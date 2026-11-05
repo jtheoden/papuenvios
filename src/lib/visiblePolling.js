@@ -8,6 +8,8 @@
 //  - Interval jitter ±10 %, exponential backoff on errors (capped at 10 min), reset after a success.
 //  - refreshPoll(key) runs now (realtime event, own mutation, view opened); calls made while a request is in flight
 //    coalesce into ONE rerun, because the in-flight answer may predate the change.
+//  - A run that takes longer than POLL_RUN_TIMEOUT_MS fails (onError + backoff): a hung request never freezes the
+//    resource, its late answer is ignored.
 //  - refreshOnWrite(path): own writes through the Supabase client (requestBudget's write signal) refresh the
 //    resource at once, without waiting for the interval or realtime.
 import { useCallback, useEffect, useRef } from 'react';
@@ -21,6 +23,7 @@ export const POLL_REALTIME_FALLBACK_MS = 5 * 60_000;
 /** Admin work lists already refreshed by realtime, own writes and the badge: a long backstop is enough. */
 export const POLL_FOLLOWER_MS = 15 * 60_000;
 export const POLL_STATS_MS = 5 * 60_000;
+export const POLL_RUN_TIMEOUT_MS = 30_000;
 const JITTER = 0.1;
 
 const resources = new Map();
@@ -59,8 +62,11 @@ const run = (res) => {
   clearTimeout(res.timer);
   res.stale = false;
   const [first] = res.subs;
-  res.inFlight = Promise.resolve()
-    .then(() => first.fetcher())
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Poll ${res.key} timed out after ${POLL_RUN_TIMEOUT_MS} ms`)), POLL_RUN_TIMEOUT_MS);
+  });
+  res.inFlight = Promise.race([Promise.resolve().then(() => first.fetcher()), timeout])
     .then(
       (value) => {
         res.value = value;
@@ -74,6 +80,7 @@ const run = (res) => {
       }
     )
     .finally(() => {
+      clearTimeout(timer);
       res.inFlight = null;
       const rerun = res.rerun;
       res.rerun = null;

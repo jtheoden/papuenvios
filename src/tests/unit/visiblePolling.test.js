@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  subscribePoll, refreshPoll, watchPoll, resetPolling, POLL_MAX_BACKOFF_MS, POLL_FRESH_MS
+  subscribePoll, refreshPoll, watchPoll, resetPolling, POLL_MAX_BACKOFF_MS, POLL_FRESH_MS, POLL_RUN_TIMEOUT_MS
 } from '@/lib/visiblePolling';
 import { createRefreshGuardFetch, resetRefreshGuard } from '@/lib/refreshGuard';
 
@@ -152,6 +152,26 @@ describe('visiblePolling', () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
     await advance(20_000); // t=40 s tick after it
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('R9: a fetcher that hangs once times out, reports the error and polling, refreshPoll and resume keep working', async () => {
+    let calls = 0;
+    const fetcher = vi.fn(() => {
+      calls += 1;
+      return calls === 1 ? new Promise(() => {}) : Promise.resolve(calls);
+    });
+    const onData = vi.fn();
+    const onError = vi.fn();
+    subscribePoll('k', fetcher, { intervalMs: 300_000, onData, onError });
+    await advance(POLL_RUN_TIMEOUT_MS);
+    expect(onError).toHaveBeenCalledTimes(1);
+    await advance(2 * 60 * 60_000);
+    await refreshPoll('k');
+    setVisibility('hidden');
+    setVisibility('visible');
+    await advance(0);
+    expect(fetcher.mock.calls.length).toBeGreaterThan(1);
+    expect(onData).toHaveBeenCalled();
   });
 
   it('stops when the last subscriber leaves', async () => {
