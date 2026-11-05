@@ -42,6 +42,25 @@ export const convertPrice = (amount, fromCurrency, toCurrency, exchangeRates, ba
 };
 
 /**
+ * Convert an amount with the UUID-keyed exchange-rate map used by the vendor page.
+ * Missing or invalid rates fail closed so a foreign price is never presented as local.
+ */
+export const convertWithRates = (amount, fromCurrencyId, toCurrencyId, exchangeRates) => {
+  if (Number.isNaN(amount)) return NaN;
+  if (!amount) return 0;
+  if (fromCurrencyId === toCurrencyId) return amount;
+  if (!fromCurrencyId || !toCurrencyId) return NaN;
+
+  const directRate = exchangeRates?.[`${fromCurrencyId}-${toCurrencyId}`];
+  if (directRate > 0) return amount * directRate;
+
+  const inverseRate = exchangeRates?.[`${toCurrencyId}-${fromCurrencyId}`];
+  if (inverseRate > 0) return amount / inverseRate;
+
+  return NaN;
+};
+
+/**
  * Calculate combo prices (base and final with profit margin)
  * @param {object} combo - Combo object with products, productQuantities, profitMargin
  * @param {array} products - Available products for lookup
@@ -121,6 +140,7 @@ export const computeComboPricing = ({
 
   // Normalize product prices to base currency when possible to avoid drift
   let computedBaseTotal = 0;
+  let hasUnconvertibleComponent = false;
   (combo.products || []).forEach(productId => {
     const product = products.find(p => p.id === productId);
     if (!product) return;
@@ -133,13 +153,22 @@ export const computeComboPricing = ({
       normalizedPrice = convert(basePrice, product.base_currency_id, baseCurrencyId);
     }
 
+    if (!Number.isFinite(normalizedPrice)) {
+      hasUnconvertibleComponent = true;
+      return;
+    }
+
     computedBaseTotal += normalizedPrice * quantity;
   });
+
+  if (hasUnconvertibleComponent) return { basePrice: NaN, finalPrice: NaN };
 
   const baseTotal = computedBaseTotal > 0 ? computedBaseTotal : storedBaseTotal;
   const baseInSelected = convert && selectedCurrencyId && baseCurrencyId && selectedCurrencyId !== baseCurrencyId
     ? convert(baseTotal, baseCurrencyId, selectedCurrencyId)
     : baseTotal;
+
+  if (!Number.isFinite(baseInSelected)) return { basePrice: NaN, finalPrice: NaN };
 
   const roundedBase = Math.round((baseInSelected || 0) * 100) / 100;
   const finalPrice = Math.round(roundedBase * (1 + profitMargin / 100) * 100) / 100;

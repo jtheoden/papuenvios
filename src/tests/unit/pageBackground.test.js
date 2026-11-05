@@ -4,9 +4,9 @@ vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 
 import { applyVisualSettingsToDOM } from '@/lib/businessVisualSettingsService';
 
-// Spec (S2, ND-5): the brand ivory belongs to the Home only. applyVisualSettingsToDOM must never strip the
-// stylesheet gradient of the body (index.css), whatever pageBgColor is, so admin and the other pages keep
-// their look when the preset is applied. The Home root paints pageBgColor itself (see HomePage.hero.test.jsx).
+// Spec (S2, ND-5, updated by T0): applyVisualSettingsToDOM never touches the body's background-image, whatever
+// pageBgColor is. Which look shows the stylesheet gradient is decided in index.css by data-theme (classic only;
+// themeCompliance.test.js and theme-tokens.spec.js cover it). The Home root paints pageBgColor itself (HomePage.hero.test.jsx).
 
 describe('applyVisualSettingsToDOM leaves the body gradient alone', () => {
   beforeEach(() => {

@@ -1,9 +1,10 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { Helmet, HelmetProvider } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster } from '@/components/ui/toaster';
 import StartupGate from '@/components/StartupGate';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { lazyWithRetry } from '@/lib/lazyWithRetry';
 import { diagnostics } from '@/lib/diagnostics';
 import Header from '@/components/Header';
 import HomePage from '@/components/HomePage';
@@ -25,10 +26,10 @@ import ConsentBanner from '@/components/ConsentBanner';
 
 // PERF-01: admin-only areas are code-split out of the main bundle — they're never
 // touched by the public/customer golden path (home, products, cart, remittances).
-const DashboardPage = lazy(() => import('@/components/DashboardPage'));
-const AdminPage = lazy(() => import('@/components/AdminPage'));
-const SettingsPage = lazy(() => import('@/components/SettingsPage'));
-const UserManagement = lazy(() => import('@/components/UserManagement'));
+const DashboardPage = lazyWithRetry(() => import('@/components/DashboardPage'));
+const AdminPage = lazyWithRetry(() => import('@/components/AdminPage'));
+const SettingsPage = lazyWithRetry(() => import('@/components/SettingsPage'));
+const UserManagement = lazyWithRetry(() => import('@/components/UserManagement'));
 import { withProtectedRoute } from '@/components/withProtectedRoute';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { BusinessProvider, useBusiness } from '@/contexts/BusinessContext';
@@ -57,10 +58,8 @@ function DynamicVisualSettings() {
     // Update document title
     document.title = visualSettings.siteTitle || visualSettings.companyName || 'PapuEnvíos';
 
-    // Apply page background color to body
-    if (visualSettings.pageBgColor) {
-      document.body.style.backgroundColor = visualSettings.pageBgColor;
-    }
+    // The body background is NOT set here: applyVisualSettingsToDOM does it (with its fallback) once the settings
+    // load. Doing it from the default state painted #f9fafb over the brand ivory before they arrived.
 
     // Apply favicon
     if (visualSettings.favicon) {

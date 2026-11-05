@@ -41,9 +41,12 @@ describe('comboService profit margin input', () => {
     rpcMock.mockResolvedValue({ data: [{ id: 'p1', base_price: 10, profit_margin: 35 }], error: null });
     comboInsert = undefined;
     updatePayload = undefined;
-    fromMock.mockImplementation((table) =>
-      chain({ data: { id: 'k1' }, error: null }, table)
-    );
+    // The currency guard reads the components' currencies and the base currency.
+    fromMock.mockImplementation((table) => {
+      if (table === 'products') return chain({ data: [{ id: 'p1', base_currency_id: 'usd' }], error: null }, table);
+      if (table === 'currencies') return chain({ data: [{ id: 'usd' }], error: null }, table);
+      return chain({ data: { id: 'k1' }, error: null }, table);
+    });
   });
 
   it.each([[0, 0], ['0', 0], ['0.0', 0], [20, 20]])(

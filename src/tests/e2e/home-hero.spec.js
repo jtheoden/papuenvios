@@ -6,8 +6,7 @@ import path from 'node:path';
 // Set HOME_SHOTS_DIR to also save screenshots (evidence only, never a gate).
 // Spec (layout = option A, the mockup): centered h1, two cards (side by side from md) and the carousel below at
 // full width (max 1024px, centered), all stacked without overlap; no horizontal overflow at 320/768/1280 in ES
-// and EN; the brand ivory is painted by the Home root only, the body keeps the stylesheet gradient everywhere
-// else (checked on another page); the production row keeps its blue/violet CTA and gradient page; the preset shows the brand
+// and EN; the brand look paints a flat ivory body on every page (theme tokens, T0: the classic gradient is classic-only); the production row keeps its blue/violet CTA and gradient page; the preset shows the brand
 // CTA (gold, charcoal text, AA contrast), the ivory page and a gold active dot; dots are >= 24px targets;
 // autoplay stops with prefers-reduced-motion and with the pause button.
 
@@ -34,6 +33,17 @@ const BRAND_PRESET = {
   navBarActiveTextColor: '#171717',
   headingColor: '#171717',
   useHeadingGradient: false,
+  // Tabs and footer: the full preset, so data-theme resolves to papuenvios (resolveLookId needs every preset key).
+  tabActiveColor: '#171717',
+  tabActiveBgColor: '#FFF1CC',
+  tabInactiveColor: '#605B52',
+  tabInactiveBgColor: '#FFFFFF',
+  tabHoverColor: '#171717',
+  tabHoverBgColor: '#FAF7F0',
+  footerBgColor: '#FFFFFF',
+  footerTextColor: '#605B52',
+  footerLinkColor: '#171717',
+  footerLinkHoverColor: '#605B52',
   buttonBgColor: '#FFA500',
   buttonTextColor: '#171717',
   buttonHoverBgColor: '#E59400',
@@ -253,15 +263,15 @@ test.describe('colours follow the Visual settings', () => {
     await expect(page.locator('[data-testid="home-page"]')).toHaveCSS('background-color', 'rgb(238, 221, 204)');
   });
 
-  test('preset applied: other pages keep the body gradient and no ivory surface (ND-5: ivory is Home only)', async ({ page }) => {
+  test('preset applied: the body is flat brand ivory on every page, not the classic gradient (theme tokens, T0)', async ({ page }) => {
     await open(page, { settings: BRAND_PRESET });
-    await expect(page.locator('body')).toHaveCSS('background-image', /linear-gradient/);
+    await expect(page.locator('body')).toHaveCSS('background-image', 'none');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(250, 247, 240)');
     await page.locator('header nav button', { hasText: /Blog/ }).first().click();
     await expect(page.locator('[data-testid="home-page"]')).toHaveCount(0);
-    await page.mouse.move(5, 700); // the header hover colour is ivory in the preset
-    await expect(page.locator('body')).toHaveCSS('background-image', /linear-gradient/);
-    const ivory = await page.evaluate(() => [...document.querySelectorAll('body *')].filter((el) => getComputedStyle(el).backgroundColor === 'rgb(250, 247, 240)').length);
-    expect(ivory).toBe(0);
+    await page.mouse.move(5, 700);
+    await expect(page.locator('body')).toHaveCSS('background-image', 'none');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(250, 247, 240)');
   });
 });
 

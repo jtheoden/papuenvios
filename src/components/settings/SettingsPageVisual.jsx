@@ -8,8 +8,10 @@ import { getPrimaryButtonStyle, getHeadingStyle } from '@/lib/styleUtils';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { isImageUploadError, getImageUploadMessageKey } from '@/lib/imageStorage';
-import { DEFAULT_VISUAL_SETTINGS, clearVisualSettingsCache, saveVisualSettings, applyVisualSettingsToDOM } from '@/lib/businessVisualSettingsService';
-import { BRAND_PRESET, pickNewKeys, getContrastIssues } from '@/lib/brandPalette';
+import { clearVisualSettingsCache, saveVisualSettings, applyVisualSettingsToDOM } from '@/lib/businessVisualSettingsService';
+import { pickNewKeys, getContrastIssues } from '@/lib/brandPalette';
+import * as AlertDialog from '@radix-ui/react-alert-dialog';
+import { THEME_IDS, THEME_PRESETS, resolveThemeId, pickThemeKeys, selectTheme, restoreThemeDefaults, getThemeDeviations } from '@/lib/visualThemes';
 import {
   getCarouselSlides, createCarouselSlide, updateCarouselSlide,
   hardDeleteCarouselSlide, toggleCarouselSlideActive
@@ -17,13 +19,18 @@ import {
 import { useRealtimeCarouselSlides } from '@/hooks/useRealtimeSubscription';
 import FooterPreview from '@/components/settings/FooterPreview';
 
-const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVisualSettings }) => {
+// Colours drawn in each theme card (decorative; the description carries the meaning)
+const SWATCH_KEYS = ['buttonBgColor', 'headerMenuActiveBgColor', 'pageBgColor', 'headingColor'];
+
+// canChangeTheme: only a super admin may pick the default theme (the tab itself is open to admins)
+const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVisualSettings, canChangeTheme = false }) => {
   const { t, language } = useLanguage();
   const [livePreview, setLivePreview] = useState(true); // Toggle for live preview
   const isUserEditing = useRef(false); // Track if user is actively editing
   const originalSettings = useRef(null); // Store original settings for cancel functionality
   const [hasChanges, setHasChanges] = useState(false); // Track if there are unsaved changes
   const [presetUndo, setPresetUndo] = useState(null); // Form state before the brand preset, null when not applied
+  const [resetOpen, setResetOpen] = useState(false); // Confirmation dialog of "Restore theme"
 
   const [appearance, setAppearance] = useState({
     companyName: visualSettings.companyName || 'PapuEnvíos',
@@ -96,7 +103,9 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     carouselAutoplaySpeed: visualSettings.carouselAutoplaySpeed || 5000,
     carouselTransitionSpeed: visualSettings.carouselTransitionSpeed || 1000,
     // Brand refresh keys
-    ...pickNewKeys(visualSettings)
+    ...pickNewKeys(visualSettings),
+    // Selectable default theme (activeTheme + classic snapshot)
+    ...pickThemeKeys(visualSettings)
   });
   const [logoPreview, setLogoPreview] = useState(visualSettings.logo || '');
   const [faviconPreview, setFaviconPreview] = useState(visualSettings.favicon || '');
@@ -192,13 +201,19 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       carouselEnabled: visualSettings.carouselEnabled !== undefined ? visualSettings.carouselEnabled : true,
       carouselAutoplaySpeed: visualSettings.carouselAutoplaySpeed || 5000,
       carouselTransitionSpeed: visualSettings.carouselTransitionSpeed || 1000,
-      ...pickNewKeys(visualSettings)
+      ...pickNewKeys(visualSettings),
+      ...pickThemeKeys(visualSettings)
     };
     setAppearance(newAppearance);
     setLogoPreview(visualSettings.logo || '');
     setFaviconPreview(visualSettings.favicon || '');
     setHasChanges(false);
   }, [visualSettings]);
+
+  const selectedThemeId = resolveThemeId(appearance);
+  const savedThemeId = resolveThemeId(visualSettings);
+  const themePending = selectedThemeId !== savedThemeId; // chosen in the form, not saved yet
+  const themeDeviations = getThemeDeviations(appearance); // preset colours edited by hand
 
   // Update appearance with live preview
   const updateAppearance = useCallback((key, value) => {
@@ -207,23 +222,24 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     const newAppearance = { ...appearance, [key]: value };
     setAppearance(newAppearance);
 
-    // Apply live preview to the entire system
-    if (livePreview) {
+    // Apply live preview to the entire system (never while a theme choice is unsaved: it would persist it)
+    if (livePreview && !themePending) {
       setVisualSettings({ ...visualSettings, ...newAppearance });
     }
 
     // Reset editing flag after a delay
     setTimeout(() => { isUserEditing.current = false; }, 1000);
-  }, [appearance, visualSettings, setVisualSettings, livePreview]);
+  }, [appearance, visualSettings, setVisualSettings, livePreview, themePending]);
 
-  // Brand preset: fills the FORM only. Live preview goes off because updateAppearance would
-  // otherwise persist the whole form (through setVisualSettings) on the next edit.
-  const handleApplyBrandPreset = () => {
-    setPresetUndo({ appearance, livePreview });
-    setAppearance(prev => ({ ...prev, ...BRAND_PRESET }));
+  // Theme selector: fills the FORM only. Live preview goes off (and stays locked while the choice is
+  // unsaved) because updateAppearance would otherwise persist the whole form on the next edit.
+  const handleSelectTheme = (themeId) => {
+    if (!canChangeTheme || themeId === selectedThemeId) return;
+    setPresetUndo(prev => prev ?? { appearance, livePreview }); // undo goes back to before the first choice
+    setAppearance(selectTheme(appearance, themeId));
     setLivePreview(false);
     setHasChanges(true);
-    // Same guard as updateAppearance: an external visualSettings refresh must not wipe the preset.
+    // Same guard as updateAppearance: an external visualSettings refresh must not wipe the choice.
     isUserEditing.current = true;
     setTimeout(() => { isUserEditing.current = false; }, 1000);
   };
@@ -332,47 +348,37 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     });
   };
 
-  // Restore theme to factory defaults: clears localStorage, saves defaults to DB
-  const handleAppearanceCancel = async () => {
+  // Restore theme: theme/colour keys go back to the code defaults (classic look), saved at once. Content
+  // (logo, favicon, texts, home features, carousel) is kept. Only for users who may change the theme.
+  const handleRestoreTheme = async () => {
+    if (!canChangeTheme) return;
+    setResetOpen(false);
     try {
-      // 1. Clear localStorage cache
       clearVisualSettingsCache();
       // Also clear any legacy cache keys that might exist
       localStorage.removeItem('visual_settings_cache');
       localStorage.removeItem('visualSettings');
 
-      // 2. Save DEFAULT_VISUAL_SETTINGS to database
-      const result = await saveVisualSettings(DEFAULT_VISUAL_SETTINGS);
+      const restored = restoreThemeDefaults(visualSettings);
+      const result = await saveVisualSettings(restored);
       if (!result.success) {
         console.error('[RestoreTheme] Failed to save defaults to DB:', result.error);
         toast({
           title: t('common.error'),
-          description: result.error || 'Error al restaurar configuración',
+          description: result.error || t('settings.visual.brand.reset.error'),
           variant: 'destructive'
         });
         return;
       }
 
-      // 3. Update local state with defaults
-      setAppearance({ ...DEFAULT_VISUAL_SETTINGS });
-      setLogoPreview(DEFAULT_VISUAL_SETTINGS.logo || '');
-      setFaviconPreview(DEFAULT_VISUAL_SETTINGS.favicon || '');
+      // Unsaved content edits in the form stay; the theme keys follow the restored settings
+      setAppearance(prev => restoreThemeDefaults(prev));
 
-      // 4. Apply defaults to context (propagates to entire app)
-      setVisualSettings({ ...DEFAULT_VISUAL_SETTINGS });
+      // Propagate to the whole app and the DOM
+      setVisualSettings(restored);
+      applyVisualSettingsToDOM(restored);
 
-      // 5. Apply defaults to DOM immediately
-      applyVisualSettingsToDOM(DEFAULT_VISUAL_SETTINGS);
-      document.body.style.backgroundColor = DEFAULT_VISUAL_SETTINGS.pageBgColor;
-
-      // 6. Reset favicon to default (empty means browser default)
-      const existingFavicon = document.querySelector("link[rel='icon']");
-      if (existingFavicon && !DEFAULT_VISUAL_SETTINGS.favicon) {
-        existingFavicon.href = '/favicon.ico'; // Reset to default favicon
-      }
-
-      // 7. Update originalSettings reference
-      originalSettings.current = { ...DEFAULT_VISUAL_SETTINGS };
+      originalSettings.current = { ...restored };
       setHasChanges(false);
       setPresetUndo(null);
 
@@ -619,6 +625,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
             <input
               type="checkbox"
               checked={livePreview}
+              disabled={themePending}
               onChange={e => setLivePreview(e.target.checked)}
               className="rounded"
             />
@@ -637,24 +644,81 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
           </div>
         )}
 
-        {/* Brand preset + contrast warning */}
+        {/* Default theme selector + contrast warning */}
         <div className="mb-6 p-4 rounded-xl border border-amber-200 bg-amber-50/60">
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" variant="outline" onClick={handleApplyBrandPreset} className="h-9 px-3">
-              <Palette className="h-4 w-4 mr-2" />
-              {t('settings.visual.brand.applyPreset')}
-            </Button>
-            {presetUndo && (
+          <p id="theme-selector-label" className="text-base font-semibold text-gray-900">{t('settings.visual.brand.theme.title')}</p>
+          <p id="theme-selector-hint" className="text-sm text-gray-700 mt-1">{t('settings.visual.brand.theme.hint')}</p>
+          <div
+            role="radiogroup"
+            aria-labelledby="theme-selector-label"
+            aria-describedby="theme-selector-hint"
+            className="grid sm:grid-cols-2 gap-3 mt-3"
+          >
+            {THEME_IDS.map((themeId) => {
+              const selected = themeId === selectedThemeId;
+              const nameId = `theme-${themeId}-name`;
+              const descId = `theme-${themeId}-desc`;
+              const inUseId = `theme-${themeId}-inuse`;
+              const inUse = themeId === savedThemeId;
+              return (
+                <label
+                  key={themeId}
+                  className={`relative flex flex-col gap-2 rounded-xl border-2 bg-white p-4 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-gray-900 ${
+                    selected ? 'border-gray-900' : 'border-gray-200'
+                  } ${canChangeTheme ? 'cursor-pointer hover:border-gray-500' : 'cursor-not-allowed opacity-75'}`}
+                >
+                  <input
+                    type="radio"
+                    name="visual-default-theme"
+                    value={themeId}
+                    checked={selected}
+                    disabled={!canChangeTheme}
+                    onChange={() => handleSelectTheme(themeId)}
+                    aria-labelledby={nameId}
+                    aria-describedby={inUse ? `${descId} ${inUseId}` : descId}
+                    className="sr-only"
+                  />
+                  <span className="flex items-center justify-between gap-2">
+                    <span id={nameId} className="font-semibold text-gray-900">{t(`settings.visual.brand.theme.${themeId}.name`)}</span>
+                    <span className="flex items-center gap-1 text-xs font-medium">
+                      {selected && <Check className="h-4 w-4 text-gray-900" aria-hidden="true" />}
+                      {inUse && (
+                        <span id={inUseId} className="rounded-full bg-gray-900 px-2 py-0.5 text-white">{t('settings.visual.brand.theme.inUse')}</span>
+                      )}
+                    </span>
+                  </span>
+                  <span className="flex gap-1.5">
+                    {SWATCH_KEYS.map((key) => (
+                      <span
+                        key={key}
+                        data-testid="theme-swatch"
+                        aria-hidden="true"
+                        className="h-6 w-6 rounded-full border border-gray-300"
+                        style={{ backgroundColor: THEME_PRESETS[themeId][key] }}
+                      />
+                    ))}
+                  </span>
+                  <span id={descId} className="text-sm text-gray-700">{t(`settings.visual.brand.theme.${themeId}.description`)}</span>
+                </label>
+              );
+            })}
+          </div>
+          <p className="text-xs text-gray-600 mt-3">{t('settings.visual.brand.theme.changes')}</p>
+          {!canChangeTheme && <p className="text-xs text-amber-800 mt-1">{t('settings.visual.brand.theme.restricted')}</p>}
+          {themeDeviations.length > 0 && (
+            <p data-testid="theme-customized" role="status" className="text-sm text-amber-800 mt-2">
+              {t('settings.visual.brand.theme.customized')}
+            </p>
+          )}
+          {presetUndo && (
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <p data-testid="brand-preset-applied" role="status" className="text-sm text-green-700">
+                {t('settings.visual.brand.theme.pending')}
+              </p>
               <Button type="button" variant="ghost" onClick={handleUndoBrandPreset} className="h-9 px-3">
                 {t('settings.visual.brand.undoPreset')}
               </Button>
-            )}
-          </div>
-          <p className="text-xs text-gray-600 mt-2">{t('settings.visual.brand.applyPresetHint')}</p>
-          {presetUndo && (
-            <p data-testid="brand-preset-applied" role="status" className="text-sm text-green-700 mt-2">
-              {t('settings.visual.brand.applied')}
-            </p>
+            </div>
           )}
           <div data-testid="brand-contrast-warning" role="status" className={contrastIssues.length ? 'mt-3 text-sm text-amber-800' : undefined}>
             {contrastIssues.length > 0 && (
@@ -1297,14 +1361,40 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
         </div>
 
         <div className="flex justify-end gap-2">
-          <Button
-            onClick={handleAppearanceCancel}
-            variant="outline"
-            className="h-9 px-3"
-          >
-            <RefreshCw className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">{t('settings.visual.restoreTheme')}</span>
-          </Button>
+          {canChangeTheme && (
+            <AlertDialog.Root open={resetOpen} onOpenChange={setResetOpen}>
+              <AlertDialog.Trigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 px-3"
+                  aria-label={t('settings.visual.restoreTheme')}
+                >
+                  <RefreshCw className="h-4 w-4 sm:mr-2" aria-hidden="true" />
+                  <span className="hidden sm:inline">{t('settings.visual.restoreTheme')}</span>
+                </Button>
+              </AlertDialog.Trigger>
+              <AlertDialog.Portal>
+                <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+                <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl bg-white p-5 space-y-3">
+                  <AlertDialog.Title className="text-lg font-semibold text-gray-900">{t('settings.visual.brand.reset.title')}</AlertDialog.Title>
+                  <AlertDialog.Description className="text-sm text-gray-800">{t('settings.visual.brand.reset.description')}</AlertDialog.Description>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <AlertDialog.Cancel className="h-9 rounded-md border border-gray-400 bg-white px-3 text-sm text-gray-900 hover:bg-gray-50">
+                      {t('settings.visual.brand.reset.cancel')}
+                    </AlertDialog.Cancel>
+                    <button
+                      type="button"
+                      onClick={handleRestoreTheme}
+                      className="h-9 rounded-md bg-red-700 px-3 text-sm text-white hover:bg-red-800"
+                    >
+                      {t('settings.visual.brand.reset.confirm')}
+                    </button>
+                  </div>
+                </AlertDialog.Content>
+              </AlertDialog.Portal>
+            </AlertDialog.Root>
+          )}
           <Button onClick={handleAppearanceSave} style={getPrimaryButtonStyle(visualSettings)} className="h-9 px-3">
             <Save className="h-4 w-4 sm:mr-2" />
             <span className="hidden sm:inline">{t('settings.visual.saveCustomization')}</span>

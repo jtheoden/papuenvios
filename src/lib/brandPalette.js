@@ -94,6 +94,26 @@ export const BRAND_PRESET = {
   focusRingColor: charcoal,
 };
 
+export const LOOK_IDS = ['classic', 'papuenvios'];
+
+const sameValue = (a, b) => (typeof a === 'string' && typeof b === 'string' ? a.toLowerCase() === b.toLowerCase() : a === b);
+
+/** True when every brand preset key holds the brand value (HEX compared case-insensitively). */
+const matchesBrandPreset = (settings) =>
+  Object.keys(BRAND_PRESET).every((key) => sameValue(settings?.[key], BRAND_PRESET[key]));
+
+/**
+ * Look of the site: 'classic' or 'papuenvios'. Single source for the `data-theme` on <html> (the --t-* tokens in
+ * index.css) AND the Settings > Visual selector (visualThemes.resolveThemeId is this function), so they never diverge.
+ * A valid stored `activeTheme` wins; without one (rows saved before the selector) every brand preset value present
+ * => papuenvios, anything else => classic. It lives here, not in visualThemes, because visualThemes imports the
+ * settings service, which imports this file (an import cycle). The inline script in index.html mirrors it.
+ */
+export const resolveLookId = (settings) => {
+  if (LOOK_IDS.includes(settings?.activeTheme)) return settings.activeTheme;
+  return matchesBrandPreset(settings) ? 'papuenvios' : 'classic';
+};
+
 /** setting key -> CSS variable consumed by the Tailwind `brand-*` colours. */
 export const BRAND_CSS_VARS = {
   buttonBgColor: '--brand-button-bg',

@@ -4,9 +4,8 @@
  */
 
 import { supabase, withTimeout } from '@/lib/supabase';
-import { NEW_KEY_DEFAULTS, BRAND_CSS_VARS, isHexColor } from '@/lib/brandPalette';
+import { NEW_KEY_DEFAULTS, BRAND_CSS_VARS, isHexColor, resolveLookId } from '@/lib/brandPalette';
 import { LOCAL_CACHE_KEY } from '@/lib/constants';
-import { readStoredVisualSettings } from '@/lib/loadingTheme';
 
 const CACHE_DURATION = 60 * 1000; // 1 minute cache
 // Startup waits for these settings (StartupGate), after auth's own cap: a hung query must not block the app.
@@ -141,17 +140,19 @@ export const DEFAULT_VISUAL_SETTINGS = {
   carouselTransitionSpeed: 1000,
   // Brand refresh keys (additive; see brandPalette.js)
   ...NEW_KEY_DEFAULTS
+  // No `activeTheme` here on purpose: visualThemes.resolveThemeId infers it from the stored values
 };
 
 /**
- * Get cached settings from localStorage
+ * Get cached settings from localStorage. `ignoreTtl` is for load failures: a stale look beats flipping to the code
+ * defaults (the inline script in index.html also ignores the TTL).
  */
-function getCachedSettings() {
+function getCachedSettings(ignoreTtl = false) {
   try {
     const cached = localStorage.getItem(LOCAL_CACHE_KEY);
     if (cached) {
       const { data, timestamp } = JSON.parse(cached);
-      if (Date.now() - timestamp < CACHE_DURATION) {
+      if (data && (ignoreTtl || Date.now() - timestamp < CACHE_DURATION)) {
         return data;
       }
     }
@@ -159,6 +160,22 @@ function getCachedSettings() {
     console.warn('[BusinessVisualSettings] Cache read error:', err);
   }
   return null;
+}
+
+// Last settings that really came from the database/cache/an admin save, for failed reloads in the same session.
+let lastGoodSettings = null;
+// Code defaults handed out because a load FAILED (nothing better known): applyVisualSettingsToDOM must not let them
+// pick the look, since the defaults are classic and the stored (production) row is the brand.
+const unverifiedSettings = new WeakSet();
+
+/** What to use when the settings request fails: last good settings, else the stale cache, else unverified defaults. */
+function settingsAfterFailure() {
+  if (lastGoodSettings) return lastGoodSettings;
+  const stale = getCachedSettings(true);
+  if (stale) return { ...DEFAULT_VISUAL_SETTINGS, ...stale };
+  const fallback = { ...DEFAULT_VISUAL_SETTINGS };
+  unverifiedSettings.add(fallback);
+  return fallback;
 }
 
 /**
@@ -196,7 +213,8 @@ export async function loadVisualSettings() {
     // Check cache first
     const cached = getCachedSettings();
     if (cached) {
-      return { ...DEFAULT_VISUAL_SETTINGS, ...cached };
+      lastGoodSettings = { ...DEFAULT_VISUAL_SETTINGS, ...cached };
+      return lastGoodSettings;
     }
 
     const { data, error } = await withTimeout(
@@ -211,16 +229,17 @@ export async function loadVisualSettings() {
         return DEFAULT_VISUAL_SETTINGS;
       }
       console.error('[BusinessVisualSettings] Load error:', error);
-      return DEFAULT_VISUAL_SETTINGS;
+      return settingsAfterFailure();
     }
 
     const settings = { ...DEFAULT_VISUAL_SETTINGS, ...(data?.settings || {}) };
     setCachedSettings(settings);
+    lastGoodSettings = settings;
     return settings;
   } catch (err) {
     console.error('[BusinessVisualSettings] Load exception:', err);
-    // Timeout or network failure: last look the user saw (stale cache) beats the defaults.
-    return { ...DEFAULT_VISUAL_SETTINGS, ...(readStoredVisualSettings() || {}) };
+    // Timeout (withTimeout) or network failure: same fallback as a DB error.
+    return settingsAfterFailure();
   }
 }
 
@@ -266,6 +285,7 @@ export async function saveVisualSettings(settings) {
     clearVisualSettingsCache();
     // Re-cache with new settings
     setCachedSettings(settings);
+    lastGoodSettings = settings;
 
     return { success: true };
   } catch (err) {
@@ -280,6 +300,11 @@ export async function saveVisualSettings(settings) {
  */
 export function applyVisualSettingsToDOM(settings) {
   try {
+    // First on purpose: it switches the --t-* tokens, so nothing below may keep it from running. The try/catch is
+    // the guard for environments without a document.
+    // Defaults handed out after a failed load do not pick the look: keep what the inline script / cache set.
+    if (!unverifiedSettings.has(settings)) document.documentElement.dataset.theme = resolveLookId(settings);
+
     // Update document title
     if (settings.siteTitle) {
       document.title = settings.siteTitle;
@@ -340,8 +365,8 @@ export function applyVisualSettingsToDOM(settings) {
       else root.style.removeProperty(cssVar);
     }
 
-    // Apply page background to body. It sits under the stylesheet gradient (index.css), which stays: the brand ivory
-    // is painted by the Home root only (see homeTheme.js), so other pages keep their look.
+    // Apply page background to body. In the classic look it sits under the stylesheet gradient (index.css); in the
+    // brand look the gradient is off (data-theme above), so this colour is the page. Never touch background-image here.
     document.body.style.backgroundColor = settings.pageBgColor || '#f9fafb';
 
   } catch (err) {

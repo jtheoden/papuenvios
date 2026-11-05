@@ -413,6 +413,7 @@ const SettingsPage = () => {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
+                  aria-label={tab.label}
                   className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-6 py-2 sm:py-3 rounded-t-lg font-medium transition-all text-sm sm:text-base whitespace-nowrap ${
                     isActive ? 'shadow-md border-b-2' : ''
                   }`}
@@ -447,7 +448,7 @@ const SettingsPage = () => {
                   }}
                 >
                   <tab.icon className="h-4 w-4 sm:h-5 sm:w-5" />
-                  <span className="hidden xs:inline sm:inline">{tab.label}</span>
+                  <span className="hidden sm:inline">{tab.label}</span>
                 </button>
               );
             })}
@@ -470,6 +471,7 @@ const SettingsPage = () => {
               setLocalVisual={setLocalVisual}
               visualSettings={visualSettings}
               setVisualSettings={setVisualSettings}
+              canChangeTheme={isSuperAdmin}
             />
           )}
 

@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getCurrenciesWithRates, getConversionRate, subscribeRatesChanged } from '@/lib/currencyService';
+import { logError } from '@/lib/errorHandler';
+import { UNAVAILABLE } from '@/lib/numberFormat';
 
 // Cached rates expire so a stale rate is never shown indefinitely; they are refreshed in the background.
 const RATE_TTL_MS = 10 * 60 * 1000;
@@ -53,7 +55,7 @@ export const CurrencyProvider = ({ children }) => {
           }
         }
       } catch (error) {
-        console.error('Error loading currencies:', error);
+        logError(error, { operation: 'CurrencyContext.loadCurrencies' });
       } finally {
         setLoading(false);
       }
@@ -101,7 +103,7 @@ export const CurrencyProvider = ({ children }) => {
       setRatesUnavailable(true);
       return null;
     } catch (error) {
-      console.error('Error getting conversion rate:', error);
+      logError(error, { operation: 'CurrencyContext.getConversionRate' });
       setRatesUnavailable(true);
       return null;
     } finally {
@@ -111,8 +113,9 @@ export const CurrencyProvider = ({ children }) => {
 
   /**
    * Convert amount from one currency to another
-   * SYNCHRONOUS VERSION - Uses cached rates only. Returns NaN when there is no valid rate,
-   * so callers show "unavailable" instead of an unconverted amount presented as converted.
+   * SYNCHRONOUS VERSION - Uses cached rates only. NaN and missing currency IDs return NaN;
+   * null, undefined, empty, and zero amounts return 0. Missing rates also return NaN so callers
+   * show "unavailable" instead of an unconverted amount presented as converted.
    * For render-phase calls. Use convertAmountAsync in effects/handlers.
    * @param {number} amount - Amount to convert
    * @param {string} fromCurrencyId - Source currency UUID
@@ -120,8 +123,9 @@ export const CurrencyProvider = ({ children }) => {
    * @returns {number} Converted amount, or NaN when no valid rate is cached
    */
   const convertAmount = useCallback((amount, fromCurrencyId, toCurrencyId) => {
+    if (Number.isNaN(amount)) return NaN;
     if (!amount || amount === 0) return 0;
-    if (!fromCurrencyId || !toCurrencyId) return amount;
+    if (!fromCurrencyId || !toCurrencyId) return NaN;
     if (fromCurrencyId === toCurrencyId) return amount;
 
     const rate = readCachedRate(`${fromCurrencyId}-${toCurrencyId}`);
@@ -224,6 +228,7 @@ export const CurrencyProvider = ({ children }) => {
    * @returns {string} Formatted value
    */
   const formatCurrency = useCallback((value, decimals = 2) => {
+    if (Number.isNaN(value)) return UNAVAILABLE;
     return (value || 0).toFixed(decimals);
   }, []);
 
@@ -234,6 +239,7 @@ export const CurrencyProvider = ({ children }) => {
    * @returns {string} Formatted display (e.g., "$123.45 USD")
    */
   const displayCurrency = useCallback((value, currencyId = selectedCurrency) => {
+    if (Number.isNaN(value)) return UNAVAILABLE;
     const symbol = getSymbol(currencyId);
     const code = getCode(currencyId);
     const formatted = formatCurrency(value);

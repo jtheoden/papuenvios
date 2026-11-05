@@ -6,6 +6,25 @@
 		<meta name="generator" content="Hostinger Horizons" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>Papuenvios</title>
+		<script>
+			// First paint: pick the look from the cached visual settings (mirrors resolveLookId in brandPalette.js:
+			// a valid activeTheme wins, else every BRAND_PRESET value present => papuenvios, else classic).
+			// The cache TTL is ignored on purpose: a stale look is better than a flash of the other one.
+			// Only the constant literals 'classic' / 'papuenvios' are ever written. themeCompliance.test.js keeps P == BRAND_PRESET.
+			try {
+				var cached = JSON.parse(localStorage.getItem('business_visual_settings_cache'));
+				var d = cached && cached.data;
+				if (d) {
+					var P = {"pageBgColor":"#FAF7F0","cardBgColor":"#FFFFFF","accentColor":"#FFA500","useGradient":false,"useHeaderGradient":false,"headerBgColor":"#FFFFFF","headerTextColor":"#171717","headerMenuBgColor":"#FFFFFF","headerMenuTextColor":"#171717","headerMenuHoverBgColor":"#FAF7F0","headerMenuHoverTextColor":"#171717","headerMenuActiveBgColor":"#FFF1CC","headerMenuActiveColor":"#171717","navBarActiveBgColor":"#FFF1CC","navBarActiveTextColor":"#171717","headingColor":"#171717","useHeadingGradient":false,"tabActiveColor":"#171717","tabActiveBgColor":"#FFF1CC","tabInactiveColor":"#605B52","tabInactiveBgColor":"#FFFFFF","tabHoverColor":"#171717","tabHoverBgColor":"#FAF7F0","buttonBgColor":"#FFA500","buttonTextColor":"#171717","buttonHoverBgColor":"#E59400","useButtonGradient":false,"footerBgColor":"#FFFFFF","footerTextColor":"#605B52","footerLinkColor":"#171717","footerLinkHoverColor":"#605B52","cartBadgeBgColor":"#FFA500","cartBadgeTextColor":"#171717","carouselDotActiveColor":"#FFA500","borderColor":"#E8E0D2","mutedTextColor":"#605B52","softAccentColor":"#FFF1CC","focusRingColor":"#171717"};
+					var brand = true;
+					for (var k in P) {
+						var a = d[k], b = P[k];
+						if (typeof a === 'string' && typeof b === 'string' ? a.toLowerCase() !== b.toLowerCase() : a !== b) brand = false;
+					}
+					document.documentElement.dataset.theme = d.activeTheme === 'classic' ? 'classic' : d.activeTheme === 'papuenvios' || brand ? 'papuenvios' : 'classic';
+				}
+			} catch (e) {}
+		</script>
 		<!-- Static splash: painted before any JS loads; React replaces #root content on its first commit. -->
 		<style>
 			#ps{position:fixed;inset:0;display:flex;flex-direction:column;gap:16px;align-items:center;justify-content:center;background:#FAF7F0;color:#171717;font:16px system-ui,sans-serif}
