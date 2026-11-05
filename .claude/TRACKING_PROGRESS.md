@@ -425,3 +425,9 @@ Decisiones y verificaciones del dueño: revisar `default_spread_pct` (1.5 %) y l
 - (6) `20261104160400`: `get_my_role()` devuelve 'user' si la cuenta no está habilitada (22 policies la usan).
 - Tests: `exchangeRatesSuperAdminWrite.test.js` y `financialDbHardeningF3.test.js` (rojo → verde, rollback e idempotencia contra el estado vivo). `financialAuditLog.test.js` y `rateFunctionsAndConstraints.test.js` se ajustaron al nuevo contrato.
 - Deriva repo↔prod nueva: `exchange_rates.market_rate`, `rate_type`, el CHECK `rate_higher_than_market` y las funciones `get_*_exchange_rate` solo existen en prod.
+
+### F3 — correcciones tras revisión independiente (2026-11-05)
+- W3: el guard de `remittance_types` también protege `currency_code`/`delivery_currency` (un admin podía convertir USD→USD, tasa 105, en USD→CUP). `is_active`/`min_amount`/`max_amount` siguen siendo de admin (decisión F4).
+- W4: `exchange_rate_history` guarda `effective_date` y `rate_type`; registra cambios de `effective_date`, `rate_type` y del par de monedas, y los DELETE (6 triggers).
+- W6: la sección (3b) del test reproduce la forma de prod (`market_rate NOT NULL`, `rate_type`, CHECK `rate_higher_than_market`). Prueba INSERT, UPDATE de solo `market_rate`, upsert por conflicto y el 23502 de `saveExchangeRate`.
+- W5/W7: el runbook documenta cómo reproducir la fase roja real, el orden 4→5→6→3→2 con "dale" y backup antes de cada paso, renombrar al version de prod tras cada `apply_migration`, que el historial no se podrá borrar con un platform reset, y los hallazgos fuera de alcance.
