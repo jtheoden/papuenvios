@@ -445,8 +445,8 @@ describeDb('rate functions fix + exchange_rates constraints', () => {
         && f !== '20261105150000_courier_payment_types_currency_ranges.sql');
       const phaseA = readFileSync('supabase/migrations/20261105150000_courier_payment_types_currency_ranges.sql', 'utf8')
         .split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
-      // its one DDL on exchange_rates is the production-drift column rate_type, IF NOT EXISTS (a no-op in production)
-      const rateTypeDdl = /ALTER TABLE public\.exchange_rates\s+ADD COLUMN IF NOT EXISTS rate_type text DEFAULT 'general' CHECK \(rate_type IN \('general', 'orders', 'remittances'\)\);/;
+      // its one DDL on exchange_rates is the production-drift column rate_type, behind a catalog check (no lock in production)
+      const rateTypeDdl = /IF NOT EXISTS \(SELECT 1 FROM information_schema\.columns\s+WHERE table_schema = 'public' AND table_name = 'exchange_rates' AND column_name = 'rate_type'\) THEN\s+ALTER TABLE public\.exchange_rates\s+ADD COLUMN rate_type text DEFAULT 'general' CHECK \(rate_type IN \('general', 'orders', 'remittances'\)\);\s+END IF;/;
       expect(phaseA).toMatch(rateTypeDdl);
       expect(phaseA.replace(rateTypeDdl, ''))
         .not.toMatch(/\b(DELETE\s+FROM|UPDATE|INSERT\s+INTO|TRUNCATE|ALTER\s+TABLE)\s+(public\.)?exchange_rates/i);
