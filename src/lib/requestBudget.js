@@ -35,6 +35,10 @@ const MAX_STORED_ENTRIES = 200;
 const NULL_BODY_STATUS = new Set([101, 204, 205, 304]);
 
 const writeListeners = new Set();
+const remoteChangeHandlers = new Set();
+
+/** Called on every realtime change: the refetches it triggers never get an answer from before the change. */
+export const noteRemoteChange = () => remoteChangeHandlers.forEach((handler) => handler());
 
 /** Listener receives the REST path of every write (e.g. '/rest/v1/orders', '/rest/v1/rpc/admin_resolve_refund'). */
 export const subscribeApiWrites = (listener) => {
@@ -124,7 +128,7 @@ export const createRequestBudgetFetch = (
 
   const inFlight = new Map(); // key -> Promise<snapshot>
   const ttlCache = new Map(); // key -> { at, snap } (rate tables)
-  const lastAnswer = new Map(); // key -> snap (any read; the guardrail's fallback)
+  const lastAnswer = new Map(); // key -> { at, snap } (any read; the guardrail's fallback)
   const hits = new Map(); // budgetKey -> timestamps
   const flagged = new Set();
   let generation = 0;
@@ -152,6 +156,13 @@ export const createRequestBudgetFetch = (
     flagged.clear();
   };
 
+  // A realtime event: data changed on the server, so no read may be answered from before it.
+  remoteChangeHandlers.add(() => {
+    generation += 1;
+    inFlight.clear();
+    lastAnswer.clear();
+  });
+
   if (typeof window !== 'undefined' && window.addEventListener) {
     window.addEventListener('storage', (event) => {
       if (event.key === API_CACHE_STORAGE_KEY && event.newValue === null) dropAll();
@@ -164,13 +175,13 @@ export const createRequestBudgetFetch = (
     if (map.size > MAX_STORED_ENTRIES) map.delete(map.keys().next().value);
   };
 
-  const overBudget = (budgetKey) => {
+  // Only requests that reach the network count; an answer served by the guardrail does not.
+  const recentHits = (budgetKey) => {
     const now = Date.now();
     const recent = (hits.get(budgetKey) || []).filter((t) => now - t < windowMs);
-    recent.push(now);
     hits.set(budgetKey, recent);
-    if (recent.length <= maxPerMinute) flagged.delete(budgetKey);
-    return recent.length > maxPerMinute;
+    if (recent.length < maxPerMinute) flagged.delete(budgetKey);
+    return recent;
   };
 
   return async (input, init) => {
@@ -194,7 +205,10 @@ export const createRequestBudgetFetch = (
     const cached = ttlCache.get(req.key);
     if (cached && Date.now() - cached.at < cacheTtlMs) return responseOf(cached.snap);
 
-    if (overBudget(req.budgetKey) && lastAnswer.has(req.key)) {
+    const recent = recentHits(req.budgetKey);
+    const last = lastAnswer.get(req.key);
+    // Over budget: the identical answer is served only while it is younger than the window itself.
+    if (recent.length >= maxPerMinute && last && Date.now() - last.at < windowMs) {
       if (!flagged.has(req.budgetKey)) {
         flagged.add(req.budgetKey);
         logError(new Error(`Request budget exceeded: ${req.budgetKey} (> ${maxPerMinute}/min), serving the last answer`), {
@@ -202,8 +216,9 @@ export const createRequestBudgetFetch = (
           budgetKey: req.budgetKey
         });
       }
-      return responseOf(lastAnswer.get(req.key));
+      return responseOf(last.snap);
     }
+    recent.push(Date.now());
 
     // A caller with its own abort signal must not abort (or be aborted by) other callers: no sharing.
     if (init?.signal) return baseFetch(input, init);
@@ -216,7 +231,7 @@ export const createRequestBudgetFetch = (
         .then((snap) => {
           const storable = snap.status >= 200 && snap.status < 300 && (snap.body?.length ?? 0) <= MAX_STORED_BODY;
           if (storable && startedAt === generation) {
-            remember(lastAnswer, req.key, snap);
+            remember(lastAnswer, req.key, { at: Date.now(), snap });
             if (req.cached) {
               remember(ttlCache, req.key, { at: Date.now(), snap, persist: true }); // public data
               persist();

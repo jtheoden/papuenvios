@@ -100,4 +100,39 @@ describe('requestBudget with the real Supabase client', () => {
     expect((await earlyResult).data[0].v).toBe('before');
     expect((await lateResult).data[0].v).toBe('after');
   });
+
+  it('the guardrail never serves an answer older than its window', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const { supabase } = await load();
+    expect((await supabase.from('orders').select('id, v').eq('id', 1)).data[0].v).toBe('v1');
+    vi.setSystemTime(Date.now() + 60 * 60_000);
+    for (let i = 2; i < 40; i += 1) await supabase.from('orders').select('id, v').eq('id', i);
+    net.orders = 'v2';
+    expect((await supabase.from('orders').select('id, v').eq('id', 1)).data[0].v).toBe('v2');
+  });
+
+  it('answers served by the guardrail do not count: it recovers as soon as the real requests leave the window', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const { supabase } = await load();
+    for (let i = 0; i < 30; i += 1) await supabase.from('orders').select('id, v');
+    for (let i = 0; i < 50; i += 1) {
+      vi.setSystemTime(Date.now() + 1_000); // a runaway loop keeps asking every second
+      await supabase.from('orders').select('id, v');
+    }
+    const network = () => net.calls.filter((c) => c.startsWith('GET /rest/v1/orders')).length;
+    const before = network();
+    net.orders = 'v2';
+    vi.setSystemTime(Date.now() + 11_000); // > 60 s since the last real request
+    expect((await supabase.from('orders').select('id, v')).data[0].v).toBe('v2');
+    expect(network()).toBe(before + 1);
+  });
+
+  it('a realtime change makes the next identical read go to the network even over budget', async () => {
+    const { supabase } = await load();
+    const { noteRemoteChange } = await import('@/lib/requestBudget');
+    for (let i = 0; i < 35; i += 1) await supabase.from('orders').select('id, v');
+    net.orders = 'changed';
+    noteRemoteChange();
+    expect((await supabase.from('orders').select('id, v')).data[0].v).toBe('changed');
+  });
 });
