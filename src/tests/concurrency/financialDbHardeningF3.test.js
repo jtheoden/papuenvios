@@ -12,7 +12,16 @@
  * back the live state, and re-applies (idempotency). History rows cannot be deleted (append-only), so assertions are
  * keyed by source_id, never by count(*).
  *
- * RED phase: F3_SKIP_MIGRATION=1 (migrations not applied before the behavioural assertions).
+ * RED phase: F3_SKIP_MIGRATION=1 only skips RE-applying the migrations in beforeAll. A scratch DB built by
+ * scripts/test-db-bootstrap.sh from this repo already contains them (the bootstrap replays supabase/migrations), so
+ * that flag alone is NOT red. To reproduce red on such a DB, first undo F3 there (scratch only, never prod):
+ *   for f in supabase/rollbacks/2026110416*_down.sql; do psql "$STOCK_TEST_DB_URL" -v ON_ERROR_STOP=1 -f "$f"; done
+ *   psql "$STOCK_TEST_DB_URL" -c 'DROP TABLE IF EXISTS public.exchange_rate_history; DROP FUNCTION IF EXISTS public.exchange_rate_history_block_mutation()'
+ *   F3_SKIP_MIGRATION=1 npx vitest run --config src/tests/concurrency/vitest.config.js src/tests/concurrency/financialDbHardeningF3.test.js
+ * (or bootstrap the scratch DB from a checkout that does not have the F3 files yet).
+ *
+ * Prod shape: exchange_rates.market_rate (NOT NULL), rate_type and CHECK rate_higher_than_market exist only in prod;
+ * section (3b) adds them to the scratch table for its duration and drops them afterwards.
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -224,6 +233,24 @@ describeDb('F3 financial hardening (local Postgres)', () => {
       expect(await auditOf(id)).toEqual([]);
     });
 
+    it('a plain admin cannot change currency_code or delivery_currency (42501); super_admin and postgres can', async () => {
+      const id = await seedType();
+      const adm = await asRole('admin');
+      for (const set of [`currency_code = 'EUR'`, `delivery_currency = 'USD'`]) {
+        const err = await failure(adm.query(`UPDATE public.remittance_types SET ${set} WHERE id = $1`, [id]));
+        expect(err).toMatchObject({ code: '42501' });
+        expect(err.message).toMatch(/remittance_type_pricing_super_admin_only/);
+      }
+      // re-sending the same currencies (what the edit form does) is not a change
+      expect((await adm.query(
+        `UPDATE public.remittance_types SET currency_code = 'USD', delivery_currency = 'CUP', name = 'f3-cur' WHERE id = $1`, [id])).rowCount).toBe(1);
+      const sup = await asRole('super_admin');
+      expect((await sup.query(`UPDATE public.remittance_types SET delivery_currency = 'USD' WHERE id = $1`, [id])).rowCount).toBe(1);
+      expect((await admin.query(`UPDATE public.remittance_types SET currency_code = 'EUR' WHERE id = $1`, [id])).rowCount).toBe(1);
+      const { rows } = await admin.query('SELECT currency_code, delivery_currency FROM public.remittance_types WHERE id = $1', [id]);
+      expect(rows[0]).toEqual({ currency_code: 'EUR', delivery_currency: 'USD' });
+    });
+
     it('a plain admin still edits the rest when the form re-sends the same pricing (JS float round-trip)', async () => {
       const id = await seedType();
       const adm = await asRole('admin');
@@ -235,6 +262,24 @@ describeDb('F3 financial hardening (local Postgres)', () => {
           WHERE id = $1`, [id, 915, formPct, 0]);
       expect(res.rowCount).toBe(1);
       expect(await typeOf(id)).toMatchObject({ name: 'f3-renamed', rate: '915.0000', pct: '2.1857923497', touched: true });
+    });
+
+    // The 4 live prod rows (exchange_rate, stored commission_percentage, 2-decimal delivery rate the form derives).
+    it.each([
+      [915, '2.1857923497', 895], [103, '2.9126213592', 100], [900, '5.5555555556', 850], [105, '4.7619047619', 100]
+    ])('form round-trip of live row rate %s / pct %s passes the guard for a plain admin', async (rate, pct, delivery) => {
+      const { rows } = await admin.query(
+        `INSERT INTO public.remittance_types (name, currency_code, delivery_currency, exchange_rate, commission_percentage,
+                                              commission_fixed, min_amount, delivery_method)
+         VALUES ($1, 'USD', 'CUP', $2, $3, 0, 1, 'transfer') RETURNING id`, [`f3-rt-${randomUUID().slice(0, 8)}`, rate, pct]);
+      types.push(rows[0].id);
+      const adm = await asRole('admin');
+      const formPct = (1 - delivery / rate) * 100;
+      const res = await adm.query(
+        `UPDATE public.remittance_types SET name = name || '-e', exchange_rate = $2, commission_percentage = $3,
+                commission_fixed = 0, currency_code = 'USD', delivery_currency = 'CUP' WHERE id = $1`, [rows[0].id, rate, formPct]);
+      expect(res.rowCount).toBe(1);
+      expect((await typeOf(rows[0].id)).pct).toBe(pct);
     });
 
     it('a plain admin cannot create a type (it carries a rate) but can still delete one', async () => {
@@ -298,13 +343,41 @@ describeDb('F3 financial hardening (local Postgres)', () => {
       const sup = await asRole('super_admin');
       const id = await seedRate(sup);
       await sup.query('UPDATE public.exchange_rates SET rate = 124.5 WHERE id = $1', [id]);
-      await sup.query(`UPDATE public.exchange_rates SET effective_date = effective_date + 5000 WHERE id = $1`, [id]); // untracked
       expect(await historyOf(id)).toEqual([
         { source_table: 'exchange_rates', operation: 'INSERT', from_currency: 'USD', to_currency: 'CUP', rate: '123.450000',
           previous_rate: null, pct: null, previous_pct: null, fixed: null, is_active: false, changed_by_role: 'super_admin' },
         { source_table: 'exchange_rates', operation: 'UPDATE', from_currency: 'USD', to_currency: 'CUP', rate: '124.500000',
           previous_rate: '123.450000', pct: null, previous_pct: null, fixed: null, is_active: false, changed_by_role: 'super_admin' }
       ]);
+    });
+
+    it('records effective_date and currency-pair changes of exchange_rates, with effective_date and rate_type captured', async () => {
+      const id = await seedRate();
+      await admin.query(`UPDATE public.exchange_rates SET effective_date = effective_date + 5000 WHERE id = $1`, [id]);
+      await admin.query('UPDATE public.exchange_rates SET to_currency_id = $2 WHERE id = $1', [id, cur.EUR]);
+      await admin.query('UPDATE public.exchange_rates SET updated_at = now() WHERE id = $1', [id]); // untracked
+      const { rows } = await admin.query(
+        `SELECT operation, from_currency, to_currency, effective_date - DATE '2093-01-01' AS days, rate_type
+           FROM public.exchange_rate_history WHERE source_id = $1 ORDER BY id`, [id]);
+      expect(rows.map((r) => [r.operation, r.from_currency, r.to_currency])).toEqual([
+        ['INSERT', 'USD', 'CUP'], ['UPDATE', 'USD', 'CUP'], ['UPDATE', 'USD', 'EUR']]);
+      expect(rows[1].days - rows[0].days).toBe(5000);
+      expect(rows.every((r) => r.rate_type === null)).toBe(true); // repo schema has no rate_type; see (3b) for prod shape
+    });
+
+    it('records the DELETE of an exchange_rates row and of a remittance type (snapshot of the deleted row)', async () => {
+      const rateId = await seedRate();
+      const sup = await asRole('super_admin');
+      expect((await sup.query('DELETE FROM public.exchange_rates WHERE id = $1', [rateId])).rowCount).toBe(1);
+      const typeId = await seedType();
+      expect((await sup.query('DELETE FROM public.remittance_types WHERE id = $1', [typeId])).rowCount).toBe(1);
+      const last = async (id) => (await historyOf(id)).at(-1);
+      expect(await last(rateId)).toMatchObject({
+        source_table: 'exchange_rates', operation: 'DELETE', from_currency: 'USD', to_currency: 'CUP', rate: '123.450000',
+        previous_rate: '123.450000', changed_by_role: 'super_admin' });
+      expect(await last(typeId)).toMatchObject({
+        source_table: 'remittance_types', operation: 'DELETE', rate: '915.0000', previous_rate: '915.0000',
+        previous_pct: '2.1857923497', changed_by_role: 'super_admin' });
     });
 
     it('records is_active toggles (which rate is effective) of exchange_rates', async () => {
@@ -378,7 +451,9 @@ describeDb('F3 financial hardening (local Postgres)', () => {
       }
       const trg = [...await triggersOf('exchange_rates'), ...await triggersOf('remittance_types')]
         .filter((t) => t.tgname.startsWith('exchange_rate_history_'));
-      expect(trg).toHaveLength(4);
+      expect(trg.map((t) => t.tgname).sort()).toEqual([
+        'exchange_rate_history_delete', 'exchange_rate_history_delete', 'exchange_rate_history_insert',
+        'exchange_rate_history_insert', 'exchange_rate_history_update', 'exchange_rate_history_update']);
       expect(trg.every((t) => t.tgenabled === 'A')).toBe(true);
     });
 
@@ -391,6 +466,90 @@ describeDb('F3 financial hardening (local Postgres)', () => {
       await admin.query(mig('hist'));
       await admin.query('UPDATE public.exchange_rates SET rate = 201 WHERE id = $1', [id]);
       expect((await historyOf(id)).map((r) => [r.operation, r.rate])).toEqual([['INSERT', '123.450000'], ['UPDATE', '201.000000']]);
+    });
+  });
+
+  // ---------------------------------------------------------------------------------------------------------------
+  describe('(3b) exchange_rate_history with the PROD shape of exchange_rates (market_rate NOT NULL, rate_type, CHECK)', () => {
+    // Prod-only objects (read-only check 2026-11-05): market_rate numeric(20,6) NOT NULL without default, rate_type text
+    // DEFAULT 'general' + exchange_rates_rate_type_check, CHECK rate_higher_than_market (rate >= market_rate).
+    beforeAll(async () => {
+      await admin.query(`
+        ALTER TABLE public.exchange_rates ADD COLUMN IF NOT EXISTS market_rate numeric(20,6);
+        UPDATE public.exchange_rates SET market_rate = rate WHERE market_rate IS NULL; -- scratch rows only
+        ALTER TABLE public.exchange_rates ALTER COLUMN market_rate SET NOT NULL;
+        ALTER TABLE public.exchange_rates ADD COLUMN IF NOT EXISTS rate_type text DEFAULT 'general'
+          CONSTRAINT exchange_rates_rate_type_check CHECK (rate_type = ANY (ARRAY['general', 'orders', 'remittances']));
+        ALTER TABLE public.exchange_rates DROP CONSTRAINT IF EXISTS rate_higher_than_market;
+        ALTER TABLE public.exchange_rates ADD CONSTRAINT rate_higher_than_market CHECK (rate >= market_rate);`);
+    });
+    afterAll(async () => {
+      await admin.query(`
+        ALTER TABLE public.exchange_rates DROP CONSTRAINT IF EXISTS rate_higher_than_market;
+        ALTER TABLE public.exchange_rates DROP COLUMN IF EXISTS rate_type;
+        ALTER TABLE public.exchange_rates DROP COLUMN IF EXISTS market_rate;`);
+    });
+
+    const insertProdShape = async (client, { rate = 915, market = 900, day = 0 } = {}) => {
+      seq += 1;
+      const { rows } = await client.query(
+        `INSERT INTO public.exchange_rates (from_currency_id, to_currency_id, rate, market_rate, is_active, effective_date)
+         VALUES ($1, $2, $3, $4, false, DATE '2095-01-01' + $5::int) RETURNING id`, [cur.USD, cur.CUP, rate, market, seq * 10 + day]);
+      rates.push(rows[0].id);
+      return rows[0].id;
+    };
+    const prodHistory = async (id) =>
+      (await admin.query(
+        `SELECT operation, rate::text AS rate, previous_rate::text AS previous_rate, market_rate::text AS market_rate,
+                rate_type, changed_by_role FROM public.exchange_rate_history WHERE source_id = $1 ORDER BY id`, [id])).rows;
+
+    it('super_admin INSERT is recorded with market_rate and rate_type', async () => {
+      const id = await insertProdShape(await asRole('super_admin'));
+      expect(await prodHistory(id)).toEqual([
+        { operation: 'INSERT', rate: '915.000000', previous_rate: null, market_rate: '900.000000', rate_type: 'general',
+          changed_by_role: 'super_admin' }]);
+    });
+
+    it('an UPDATE of market_rate only (rate unchanged) leaves a row; so does a rate_type change', async () => {
+      const id = await insertProdShape(admin);
+      const sup = await asRole('super_admin');
+      await sup.query('UPDATE public.exchange_rates SET market_rate = 905 WHERE id = $1', [id]);
+      await sup.query(`UPDATE public.exchange_rates SET rate_type = 'remittances' WHERE id = $1`, [id]);
+      expect((await prodHistory(id)).map((r) => [r.operation, r.rate, r.market_rate, r.rate_type])).toEqual([
+        ['INSERT', '915.000000', '900.000000', 'general'],
+        ['UPDATE', '915.000000', '905.000000', 'general'],
+        ['UPDATE', '915.000000', '905.000000', 'remittances']]);
+    });
+
+    it('an upsert on (from, to, effective_date) as super_admin records INSERT then UPDATE', async () => {
+      const sup = await asRole('super_admin');
+      seq += 1;
+      const upsert = (rate) => sup.query(
+        `INSERT INTO public.exchange_rates (from_currency_id, to_currency_id, rate, market_rate, is_active, effective_date)
+         VALUES ($1, $2, $3, 900, false, DATE '2096-01-01' + $4::int)
+         ON CONFLICT (from_currency_id, to_currency_id, effective_date) DO UPDATE SET rate = EXCLUDED.rate RETURNING id`,
+        [cur.USD, cur.CUP, rate, seq]);
+      const id = (await upsert(915)).rows[0].id;
+      rates.push(id);
+      expect((await upsert(920)).rows[0].id).toBe(id);
+      expect((await prodHistory(id)).map((r) => [r.operation, r.rate, r.previous_rate])).toEqual([
+        ['INSERT', '915.000000', null], ['UPDATE', '920.000000', '915.000000']]);
+    });
+
+    it('the CHECK still rejects rate < market_rate and nothing is recorded (fail-closed, same transaction)', async () => {
+      const id = await insertProdShape(admin);
+      const err = await failure((await asRole('super_admin')).query('UPDATE public.exchange_rates SET rate = 800 WHERE id = $1', [id]));
+      expect(err.code).toBe('23514');
+      expect((await prodHistory(id)).map((r) => r.operation)).toEqual(['INSERT']);
+    });
+
+    it('documents a front finding: the saveExchangeRate-shaped upsert (no market_rate) fails 23502 on a new row', async () => {
+      const sup = await asRole('super_admin');
+      const err = await failure(sup.query(
+        `INSERT INTO public.exchange_rates (from_currency_id, to_currency_id, rate, effective_date, is_active)
+         VALUES ($1, $2, 915, DATE '2097-01-01', false)
+         ON CONFLICT (from_currency_id, to_currency_id, effective_date) DO UPDATE SET rate = EXCLUDED.rate`, [cur.USD, cur.CUP]));
+      expect(err.code).toBe('23502');
     });
   });
 

@@ -9,8 +9,10 @@ SET LOCAL lock_timeout = '5s';
 
 DROP TRIGGER IF EXISTS exchange_rate_history_insert ON public.exchange_rates;
 DROP TRIGGER IF EXISTS exchange_rate_history_update ON public.exchange_rates;
+DROP TRIGGER IF EXISTS exchange_rate_history_delete ON public.exchange_rates;
 DROP TRIGGER IF EXISTS exchange_rate_history_insert ON public.remittance_types;
 DROP TRIGGER IF EXISTS exchange_rate_history_update ON public.remittance_types;
+DROP TRIGGER IF EXISTS exchange_rate_history_delete ON public.remittance_types;
 DROP FUNCTION IF EXISTS public.record_exchange_rate_history();
 
 COMMIT;

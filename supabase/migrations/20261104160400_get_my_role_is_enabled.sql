@@ -15,8 +15,9 @@
 --   notification_settings (3), publications (3), remittance_bank_transfers (3), storage.objects publications bucket (3).
 --   No SQL function or view calls it; src/ and supabase/functions do not call it (rg).
 --
--- WHAT: CREATE OR REPLACE with the same signature, LANGUAGE sql, STABLE, SECURITY DEFINER, search_path (ACL and policy
---   inlining unchanged). An account with is_enabled not true reads as 'user'; no profile row / anon still 'user'.
+-- WHAT: CREATE OR REPLACE with the same signature, LANGUAGE sql, STABLE, SECURITY DEFINER, search_path, so the ACL is
+--   kept (a SECURITY DEFINER SQL function is never inlined, before or after: the planner cost does not change).
+--   An account with is_enabled not true reads as 'user'; no profile row / anon still 'user'.
 --
 -- DATA: nothing is written. Prod: 2 admins + 3 super_admins, all is_enabled = true (0 NULL) -> nobody's access changes;
 --   only a future disabled admin loses the 22 gates above (intended).

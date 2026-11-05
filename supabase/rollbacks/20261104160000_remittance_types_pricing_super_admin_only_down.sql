@@ -1,5 +1,6 @@
 -- ROLLBACK of 20261104160000_remittance_types_pricing_super_admin_only.sql: plain admins can again create types and edit
--- their pricing; updated_at stops moving. No row is touched (updated_at values already written stay).
+-- their pricing (exchange_rate, commission_percentage, commission_fixed) and currency pair (currency_code,
+-- delivery_currency); updated_at stops moving. No row is touched (updated_at values already written stay).
 BEGIN;
 
 SET LOCAL lock_timeout = '5s';

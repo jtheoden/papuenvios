@@ -350,10 +350,16 @@ describeDb('financial audit log (local Postgres)', () => {
 
     it('remittance_types.is_active / currency_code / delivery_currency', async () => {
       const id = await makeType();
-      const adm = await asAdmin();
-      await adm.query(
-        `UPDATE public.remittance_types SET is_active = false, currency_code = 'EUR', delivery_currency = 'USD' WHERE id = $1`, [id]
-      );
+      // F3 (20261104160000): the currency pair is super_admin-only, like pricing.
+      await admin.query(`UPDATE public.user_profiles SET role = 'super_admin' WHERE id = $1`, [actors.adminId]);
+      try {
+        const adm = await asAdmin();
+        await adm.query(
+          `UPDATE public.remittance_types SET is_active = false, currency_code = 'EUR', delivery_currency = 'USD' WHERE id = $1`, [id]
+        );
+      } finally {
+        await admin.query(`UPDATE public.user_profiles SET role = 'admin' WHERE id = $1`, [actors.adminId]);
+      }
       const rows = await auditRows(id);
       expect(rows.map((r) => [r.column_name, r.old_value, r.new_value]).sort()).toEqual([
         ['currency_code', 'USD', 'EUR'], ['delivery_currency', 'CUP', 'USD'], ['is_active', 'true', 'false']
