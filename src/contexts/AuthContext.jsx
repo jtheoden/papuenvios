@@ -13,6 +13,8 @@ const AuthContext = createContext();
 // Waits between session-recovery attempts (the refresh guard's cooldown, when longer, wins).
 const SESSION_RECOVERY_DELAYS = [5000, 15000, 30000, 60000];
 const SESSION_RECOVERY_JITTER = 0.2;
+// Auth events that never change the profile of an already resolved user (no user_profiles request for them).
+const PROFILE_STABLE_EVENTS = new Set(['TOKEN_REFRESHED', 'SIGNED_IN', 'INITIAL_SESSION']);
 const isRetryableAuthError = (error) => error?.name === 'AuthRetryableFetchError';
 // auth-js refreshes a token this close to its expiry (EXPIRY_MARGIN_MS = AUTO_REFRESH_TICK_THRESHOLD (3)
 // x AUTO_REFRESH_TICK_DURATION_MS (30 s) in @supabase/auth-js/src/lib/constants.ts), so a session with
@@ -440,6 +442,12 @@ export const AuthProvider = ({ children }) => {
       if (session) {
         // A session about to expire proves nothing yet; one with life left means we are back.
         if (hasLifeLeft(session)) markSessionHealthy();
+        // Same person, profile already loaded: a token refresh or the SIGNED_IN that auth-js re-emits when the tab
+        // regains focus changes nothing in user_profiles. Keep the new token, skip the request (Supabase egress).
+        if (PROFILE_STABLE_EVENTS.has(event) && session.user?.id && session.user.id === resolvedUidRef.current) {
+          sessionRef.current = session;
+          return;
+        }
         updateUserState(session);
       }
     });

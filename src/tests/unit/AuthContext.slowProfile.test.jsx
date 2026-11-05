@@ -144,14 +144,33 @@ describe('AuthProvider — slow / failing profile fetch', () => {
     singleMock
       .mockReturnValueOnce(new Promise((r) => { resolveOld = r; }))
       .mockReturnValueOnce(new Promise((r) => { resolveNew = r; }));
+    // USER_UPDATED (metadata changed) re-reads the profile; token refreshes do not (see below)
     await act(async () => {
-      authStateCallback('SIGNED_IN', SESSION);
-      authStateCallback('TOKEN_REFRESHED', SESSION);
+      authStateCallback('USER_UPDATED', SESSION);
+      authStateCallback('USER_UPDATED', SESSION);
     });
 
     await act(async () => { resolveNew(profile('admin')); });
     await act(async () => { resolveOld(profile('user')); });
 
+    expect(probe()).toBe('admin|resolved|user');
+  });
+
+  it('egress: token refreshes and the SIGNED_IN re-emitted on focus do not re-read an already loaded profile', async () => {
+    singleMock.mockResolvedValueOnce(profile('admin'));
+    await mountApp();
+    expect(probe()).toBe('admin|resolved|user');
+    singleMock.mockClear();
+
+    await act(async () => {
+      authStateCallback('TOKEN_REFRESHED', SESSION);
+      authStateCallback('SIGNED_IN', SESSION);
+      authStateCallback('TOKEN_REFRESHED', SESSION);
+    });
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    await advance(60_000);
+
+    expect(singleMock).not.toHaveBeenCalled();
     expect(probe()).toBe('admin|resolved|user');
   });
 
