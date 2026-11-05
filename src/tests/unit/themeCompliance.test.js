@@ -219,8 +219,8 @@ describe('inline first-paint script (index.html)', () => {
 // Ratchet: slices migrate screens to the `theme-*` utilities and lower the baseline; it can never go up.
 // MIGRATED_FILES grows with every slice: a migrated file must stay free of the old palette.
 // Measured with the codemod's own counter (tests and exempt files excluded) on the T0 base.
-const BASELINE_OLD_PALETTE_CLASSES = 773;
-const MIGRATED_FILES = [];
+const BASELINE_OLD_PALETTE_CLASSES = 770;
+const MIGRATED_FILES = ['src/components/LoginPage.jsx'];
 
 describe('old palette ratchet', () => {
   const files = listSourceFiles('src', ROOT).filter((file) => !file.startsWith('src/tests/'));

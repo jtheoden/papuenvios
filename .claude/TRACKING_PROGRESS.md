@@ -507,3 +507,11 @@ Rama `fix/financial-client-hardening`. Especificación y criterios: `.claude/doc
 - Cambio de comportamiento: classic con solo `useGradient` desmarcado => `data-theme="classic"` (antes papuenvios); sin ajustes (`{}`/null) => classic (antes papuenvios). `applyVisualSettingsToDOM` siempre recibe ajustes mezclados con los defaults; la rama de error (valores no verificados) sigue sin tocar `data-theme`.
 - Script inline de `index.html`: lee `cached.data.activeTheme` y compara con una copia literal del preset (test que exige igualdad exacta con `BRAND_PRESET` y paridad con `resolveLookId` en 9 filas). Sigue ignorando el TTL, con try/catch, y solo escribe 'classic'/'papuenvios'.
 - e2e `theme-tokens` y `home-hero`: la fila de preset simulada incluye ahora todas las claves (pestañas y footer), como la fila real de producción; nuevo e2e de `activeTheme` en caché.
+
+### Login con el logo de marca (2026-11-05) — rama `feat/login-brand-logo`
+- `LoginPage` muestra el logo de Ajustes > Visual (`settings.logo`) en lugar del icono degradado azul-violeta con flecha. Respaldo: wordmark `papuenvios-wordmark-onlight.svg`; si también falla, texto con `companyName`. Alto fijo = `logoMaxHeight` (por defecto 40, tope 64 = rango del slider), ancho máx. `min(100%, 320px)`, `object-contain`, `loading="eager"`; wordmark con width/height 1557x235.
+- Nuevo `src/components/BrandLogo.jsx`: `<img>` con `fallback` si no hay `src` o falla (`onError`). El valor del admin solo va a `src`. El `Header` lo reutiliza: un logo roto cae al tile legado en vez de mostrar imagen rota.
+- Trinquete de paleta 773 → 770; `LoginPage.jsx` entra en `MIGRATED_FILES`.
+- `LoginForm.jsx` tiene el mismo icono pero no se importa en ningún sitio (código muerto): no tocado.
+- Tests: `LoginPage.brandLogo.test.jsx` (5), +1 en `Header.brandTheme.test.jsx`, e2e `login-brand.spec.js` (320/414 px, 6, Supabase simulado; `THEME_E2E_MATCH='login-brand\.spec\.js' npx playwright test -c playwright.theme.config.js`).
+- Sin verificar: render en dispositivo real, logo real de producción subido por un admin (hoy `logo: ""`).

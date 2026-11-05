@@ -231,6 +231,13 @@ describe('Header brand theme (S1)', () => {
       const { header } = mount({ ...BRAND_PRESET, logo: 'https://cdn.test/logo.png', companyName: 'PapuEnvíos' });
       expect(header.querySelector('img').getAttribute('src')).toBe('https://cdn.test/logo.png');
     });
+
+    it('a configured logo that fails to load falls back to the legacy tile, not a broken image', () => {
+      const { header } = mount({ ...PROD, logo: 'https://cdn.test/broken.png' });
+      fireEvent.error(header.querySelector('img'));
+      expect(header.querySelector('img')).toBeNull();
+      expect(header.querySelector('.rounded-lg svg')).toBeTruthy();
+    });
   });
 
   describe('cart badge', () => {
