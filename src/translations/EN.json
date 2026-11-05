@@ -3041,7 +3041,7 @@
       "required": "Fill in the required fields.",
       "coverageGap": "The ranges of this scope leave values without a rule. Review the gaps and confirm if you want to save anyway.",
       "mixedCurrency": "The ranges of this scope already use another currency. Use the same currency or define another scope.",
-      "decimals": "Amounts accept at most 2 decimals."
+      "decimals": "Amounts accept at most 2 decimals; the percentage, 3; CUP per USD, 4."
     },
     "validation": {
       "required": "This field is required.",

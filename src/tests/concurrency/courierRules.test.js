@@ -512,6 +512,22 @@ describeDb('M1: couriers, payment types, thresholds (local Postgres)', () => {
       expect((await failure(tier('amount_to'))).code).toBe('23514');
     });
 
+    it('percent (3 decimals) and cup_per_usd (4 decimals) beyond their column scale are refused, never rounded', async () => {
+      const pct = { method: 'percent_of_base', fixed_cup: null, base: 'nominal_usd' };
+      const per = { method: 'per_usd_delivered', fixed_cup: null, base: 'nominal_usd' };
+      for (const o of [{ ...pct, percent: 1.2345 }, { ...per, cup_per_usd: 1.23456 }]) {
+        const c = await kit.as(actors.adminId);
+        const e = await failure(kit.setRule(c, o));
+        expect(e.code, JSON.stringify(o)).toBe('22023');
+        expect(e.message).toMatch(/decimals/);
+      }
+      expect(await rules()).toEqual([]);
+      const c = await kit.as(actors.adminId);
+      await kit.setRule(c, { ...pct, code: 'p', percent: 1.235 });
+      await kit.setRule(c, { ...per, code: 'q', cup_per_usd: 1.2346, type_id: await kit.seedType() });
+      expect((await rules()).map((r) => [r.code, r.percent, r.cup_per_usd])).toEqual([['p', '1.235', null], ['q', null, '1.2346']]);
+    });
+
     it('amounts above the column maximum (9999999999.99) are a typed 22023, not a raw overflow', async () => {
       for (const o of [fixed({ fixed_amount: 10000000000 }), fixed({ amount_from: 10000000000 }), fixed({ amount_to: 1e11 }), { fixed_cup: 10000000000 }]) {
         const c = await kit.as(actors.adminId);

@@ -256,6 +256,7 @@ describe('courierErrorKey: typed RPC errors', () => {
     expect(key({ code: '22023', message: 'coverage_gap: the ranges of this scope leave values without a rule' })).toBe('couriers.errors.coverageGap');
     expect(key({ code: '22023', message: 'mixed_currency_scope: the ranges of this scope already use another currency' })).toBe('couriers.errors.mixedCurrency');
     expect(key({ code: '22023', message: 'invalid_argument: amounts accept at most 2 decimals' })).toBe('couriers.errors.decimals');
+    expect(key({ code: '22023', message: 'invalid_argument: percent accepts at most 3 decimals and cup_per_usd at most 4 decimals' })).toBe('couriers.errors.decimals');
     expect(key({ code: '22023', message: 'something else' })).toBe('couriers.errors.invalid');
     expect(key({ code: '55P03' })).toBe('couriers.errors.generic');
     expect(key(null)).toBe('couriers.errors.generic');

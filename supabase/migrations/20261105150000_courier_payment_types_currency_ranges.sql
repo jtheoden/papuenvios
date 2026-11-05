@@ -458,6 +458,10 @@ BEGIN
      OR p_fixed_amount <> round(p_fixed_amount, 2) OR p_fixed_cup <> round(p_fixed_cup, 2) THEN
     RAISE EXCEPTION 'invalid_argument: amounts accept at most 2 decimals' USING ERRCODE = '22023';
   END IF;
+  -- same for percent numeric(6,3) and cup_per_usd numeric(12,4)
+  IF p_percent <> round(p_percent, 3) OR p_cup_per_usd <> round(p_cup_per_usd, 4) THEN
+    RAISE EXCEPTION 'invalid_argument: percent accepts at most 3 decimals and cup_per_usd at most 4 decimals' USING ERRCODE = '22023';
+  END IF;
   IF (p_amount_from IS NOT NULL AND p_amount_from < 0) OR (p_amount_to IS NOT NULL AND p_amount_to < 0)
      OR (p_amount_from IS NOT NULL AND p_amount_to IS NOT NULL AND p_amount_to <= p_amount_from) THEN
     RAISE EXCEPTION 'invalid_argument: the amount tier must satisfy 0 <= from < to' USING ERRCODE = '22023';

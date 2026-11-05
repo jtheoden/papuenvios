@@ -3049,7 +3049,7 @@
       "required": "Complete los campos obligatorios.",
       "coverageGap": "Los rangos de este alcance dejan valores sin regla. Revise los huecos y confirme si desea guardar igualmente.",
       "mixedCurrency": "Los rangos de este alcance ya usan otra moneda. Use la misma moneda o defina otro alcance.",
-      "decimals": "Los montos admiten como máximo 2 decimales."
+      "decimals": "Los montos admiten como máximo 2 decimales; el porcentaje, 3; los CUP por USD, 4."
     },
     "validation": {
       "required": "Este campo es obligatorio.",

@@ -273,7 +273,7 @@ export const courierErrorKey = (error) => {
   if (code === '22023') {
     if (message.includes('coverage_gap')) return 'couriers.errors.coverageGap';
     if (message.includes('mixed_currency_scope')) return 'couriers.errors.mixedCurrency';
-    if (message.includes('at most 2 decimals')) return 'couriers.errors.decimals';
+    if (/at most \d+ decimals/.test(message)) return 'couriers.errors.decimals';
     if (message.includes('cannot be in the past')) return 'couriers.errors.pastDate';
     if (message.includes('every accrual must be')) return 'couriers.errors.notPayable';
     if (message.includes('unknown amount can be recalculated')) return 'couriers.errors.notRecalculable';
