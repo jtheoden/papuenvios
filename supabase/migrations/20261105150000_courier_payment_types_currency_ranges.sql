@@ -23,7 +23,7 @@
 --      that would overflow numeric(12,2) is kept with amount NULL and reason 'amount_out_of_range'; a NaN rate is "no rate";
 --      a margin that margin_usd (12,2) / margin_pct (10,4) cannot store is unknown (the accrual is still written); a NaN
 --      operation value matches no tramo and is no percent base. The live rate prefers rate_type 'general', ties by id
---      (exchange_rates.rate_type is production drift, added here IF NOT EXISTS).
+--      (exchange_rates.rate_type is production drift, added here only when missing: no lock in production).
 --   4. _courier_compute_accrual (same signature): orders take the subtotal as value and as percent base; fixed USD is converted
 --      at the live rate in force at delivery (amount_usd = the fixed figure, fx_used = that rate); reasons no_fx / no_tier_match
 --      are frozen in rule_snapshot. The delivery is NEVER blocked (the trigger is not touched).
@@ -54,9 +54,17 @@ ALTER TABLE public.messenger_payment_types
 
 -- exchange_rates.rate_type exists in production (added out of band, same definition as
 -- 20261102110000_dual_exchange_rates_for_orders.sql on an unmerged branch) but not in the repo chain: the live-rate lookup
--- below orders by it. No-op in production (the whole clause, CHECK included, is skipped); NOT dropped by the rollback.
-ALTER TABLE public.exchange_rates
-  ADD COLUMN IF NOT EXISTS rate_type text DEFAULT 'general' CHECK (rate_type IN ('general', 'orders', 'remittances'));
+-- below orders by it. NOT dropped by the rollback. Guarded by a catalog check, not IF NOT EXISTS: ALTER TABLE takes
+-- ACCESS EXCLUSIVE on exchange_rates even when it skips, which would queue every rate read until COMMIT; this way
+-- production (column present) takes no lock at all. The CHECK keeps the auto name exchange_rates_rate_type_check.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'exchange_rates' AND column_name = 'rate_type') THEN
+    ALTER TABLE public.exchange_rates
+      ADD COLUMN rate_type text DEFAULT 'general' CHECK (rate_type IN ('general', 'orders', 'remittances'));
+  END IF;
+END $$;
 
 ALTER TABLE public.messenger_payment_types DROP CONSTRAINT IF EXISTS messenger_payment_types_currency_chk;
 ALTER TABLE public.messenger_payment_types ADD CONSTRAINT messenger_payment_types_currency_chk

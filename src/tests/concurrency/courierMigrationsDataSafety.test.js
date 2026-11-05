@@ -58,11 +58,13 @@ describe('static: additive only', () => {
     const alters = [...sql.matchAll(/ALTER TABLE\s+(?:ONLY\s+)?public\.(\w+)\s+([^;]*);/gi)];
     for (const m of alters.filter((a) => a[1] !== 'messenger_payment_types')) {
       expect(m[1]).toBe('exchange_rates');
-      expect(m[2]).toMatch(/^ADD COLUMN IF NOT EXISTS rate_type text DEFAULT 'general' CHECK \(rate_type IN \('general', 'orders', 'remittances'\)\)$/);
+      expect(m[2]).toMatch(/^ADD COLUMN rate_type text DEFAULT 'general' CHECK \(rate_type IN \('general', 'orders', 'remittances'\)\)$/);
     }
     expect(alters.filter((a) => a[1] === 'exchange_rates')).toHaveLength(1);
+    // ... and only behind a catalog check: ALTER TABLE ... IF NOT EXISTS would still take ACCESS EXCLUSIVE in production
+    expect(sql).toMatch(/IF NOT EXISTS \(SELECT 1 FROM information_schema\.columns\s+WHERE table_schema = 'public' AND table_name = 'exchange_rates' AND column_name = 'rate_type'\) THEN\s+ALTER TABLE public\.exchange_rates\s+ADD COLUMN rate_type /);
     for (const m of sql.matchAll(/DROP CONSTRAINT IF EXISTS (\w+)/gi)) expect(m[1]).toMatch(/^messenger_payment_types_\w+_chk$|^messenger_payment_types_method_check$/);
-    for (const m of sql.matchAll(/ADD COLUMN (\w+ )?(\w+)/gi)) expect(m[1]).toBe('IF ');
+    for (const m of sql.matchAll(/ADD COLUMN (\w+ )?(\w+)/gi)) if (m[1] !== 'rate_type ') expect(m[1]).toBe('IF ');
     expect(sql).not.toMatch(/CREATE FUNCTION/);
     expect(sql).not.toMatch(/FUNCTION public\._(order|remittance)_transition/);
     // v1 is closed, never dropped nor replaced (the rollback re-grants it)
@@ -181,6 +183,43 @@ describeDb('data safety on realistic rows (local Postgres)', () => {
     }
     expect(during).toEqual(before);
     expect(await fingerprint()).toEqual(before);
+  });
+
+  it('with exchange_rates.rate_type already there (production) phase A takes NO lock on exchange_rates', async () => {
+    const reader = await connectAdmin();
+    try {
+      await reader.query('BEGIN');
+      await reader.query('LOCK TABLE public.exchange_rates IN ACCESS SHARE MODE'); // a long rate read (checkout, quote)
+      await admin.query('BEGIN');
+      try {
+        await admin.query(strip(readSql(MIGRATIONS.a))); // would wait on the reader and fail 55P03 after lock_timeout
+        const { rows } = await admin.query(
+          `SELECT count(*)::int AS n FROM pg_locks WHERE pid = pg_backend_pid() AND relation = 'public.exchange_rates'::regclass`);
+        expect(rows[0].n).toBe(0);
+      } finally {
+        await admin.query('ROLLBACK');
+      }
+    } finally {
+      await reader.query('ROLLBACK');
+      await endAll([reader]);
+    }
+  });
+
+  it('without exchange_rates.rate_type phase A creates it with the production definition and CHECK name', async () => {
+    await admin.query('BEGIN');
+    try {
+      await admin.query('ALTER TABLE public.exchange_rates DROP COLUMN rate_type');
+      await admin.query(strip(readSql(MIGRATIONS.a)));
+      const col = (await admin.query(`SELECT is_nullable, column_default FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'exchange_rates' AND column_name = 'rate_type'`)).rows;
+      expect(col).toEqual([{ is_nullable: 'YES', column_default: "'general'::text" }]);
+      const chk = (await admin.query(`SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+        WHERE conrelid = 'public.exchange_rates'::regclass AND conname = 'exchange_rates_rate_type_check'`)).rows;
+      expect(chk).toHaveLength(1);
+      expect(chk[0].def).toMatch(/'general'.*'orders'.*'remittances'/);
+    } finally {
+      await admin.query('ROLLBACK');
+    }
   });
 
   it('the phase A rollback refuses to run while phase B is applied (its down file goes first)', async () => {
