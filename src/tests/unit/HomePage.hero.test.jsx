@@ -8,8 +8,10 @@ import { PROD, PRESET, SLIDES } from './homeTestKit';
 // Spec (S2a/S2b) for the Home hero. Acceptance criteria:
 //  1. Exactly one h1, from i18n (home.hero.title), outside the carousel and never re-mounted by slide changes.
 //  2. Posters are shown whole: <img> with object-contain in a 16:9 frame, alt = slide title, no dark veil, no bg-cover.
-//  3. Layout (ND-1, owner's literal text): text column and carousel column in one 12-col grid from lg up
-//     (text 5/12, carousel 7/12), stacked below lg.
+//  3. Layout (ND-1 = option A, the mockup, decided by the owner): centered title block, two cards
+//     ("Combos de comida", "Remesas a Cuba") and the carousel below at full width, all stacked in DOM order.
+//  3b. The cards navigate with the existing routes, read their colours from the Visual settings and the
+//     Home root (not the body) paints pageBgColor, except for the legacy default #f9fafb of production.
 //  4. The CTA follows the Visual settings: stored gradient look while useButtonGradient is on (decoupled from
 //     useGradient), otherwise a class-driven brand button whose colours come from --brand-button-* on the Home root.
 //  5. Carousel dots: <button> with a name, aria-current on the active one, active colour = carouselDotActiveColor.
@@ -48,9 +50,9 @@ vi.stubGlobal('IntersectionObserver', class { observe() {} unobserve() {} discon
 import HomePage from '@/components/HomePage';
 import SkeletonCard from '@/components/ui/SkeletonCard';
 
-const mount = async ({ settings = PROD, slides = SLIDES, language = 'es', isAdmin = false } = {}) => {
+const mount = async ({ settings = PROD, slides = SLIDES, language = 'es', isAdmin = false, onNavigate = vi.fn() } = {}) => {
   Object.assign(state, { settings, slides, language, isAdmin });
-  const view = render(<HomePage onNavigate={vi.fn()} />);
+  const view = render(<HomePage onNavigate={onNavigate} />);
   if (slides.length > 0 && settings.carouselEnabled !== false) await screen.findByTestId('hero-carousel');
   else await screen.findByRole('button', { name: translate('home.hero.cta.products') });
   return view;
@@ -113,23 +115,56 @@ describe('hero structure', () => {
     expect(screen.getByTestId('hero-slide-image').getAttribute('alt')).toBe(SLIDES[0].title_en);
   });
 
-  it('puts text and carousel in one 12-column grid from lg (text 5/12, carousel 7/12) and stacks below', async () => {
+  it('stacks a centered title block, two cards and a full-width carousel (no side-by-side grid)', async () => {
     await mount();
     const hero = screen.getByTestId('home-hero');
     const h1 = hero.querySelector('h1');
     const carousel = screen.getByTestId('hero-carousel');
-    const grid = [...hero.querySelectorAll('div')].find((d) => d.className.split(/\s+/).includes('lg:grid-cols-12'));
-    expect(grid).toBeTruthy();
-    const column = (el) => {
-      let node = el;
-      while (node.parentElement !== grid) node = node.parentElement;
-      return node;
-    };
-    expect(column(h1).className.split(/\s+/)).toContain('lg:col-span-5');
-    expect(column(carousel).className.split(/\s+/)).toContain('lg:col-span-7');
-    expect(column(h1)).not.toBe(column(carousel));
-    // DOM order = reading order = stacked order on mobile: text first
-    expect(h1.compareDocumentPosition(carousel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const cards = screen.getAllByTestId('hero-card');
+    expect([hero, ...hero.querySelectorAll('*')].some((el) => /lg:grid-cols-12|lg:col-span-(5|7)/.test(el.className))).toBe(false);
+    expect(h1.closest('[class*="text-center"]')).toBeTruthy();
+    expect(cards).toHaveLength(2);
+    // reading order = stacked order: title, cards, carousel
+    const before = (a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(before(h1, cards[0])).toBeTruthy();
+    expect(before(cards[1], carousel)).toBeTruthy();
+    const column = carousel.parentElement;
+    expect(column.className.split(/\s+/)).toEqual(expect.arrayContaining(['w-full', 'max-w-5xl', 'mx-auto']));
+  });
+
+  it('renders the two cards with i18n copy (ES and EN) and one button each', async () => {
+    for (const language of ['es', 'en']) {
+      const dict = language === 'es' ? ES : EN;
+      const { unmount } = await mount({ language });
+      const [combos, remittances] = screen.getAllByTestId('hero-card');
+      for (const [card, key] of [[combos, 'combos'], [remittances, 'remittances']]) {
+        const copy = dict.home.hero.cards[key];
+        expect(within(card).getByRole('heading', { name: copy.title })).toBeTruthy();
+        expect(within(card).getByText(copy.description)).toBeTruthy();
+        expect(within(card).getAllByRole('button')).toHaveLength(1);
+        expect(within(card).getByRole('button', { name: copy.cta })).toBeTruthy();
+      }
+      unmount();
+    }
+  });
+
+  it('cards navigate through the existing routes: combos to products, remittances to remittances', async () => {
+    const onNavigate = vi.fn();
+    await mount({ onNavigate });
+    const [combos, remittances] = screen.getAllByTestId('hero-card');
+    fireEvent.click(within(combos).getByRole('button'));
+    expect(onNavigate).toHaveBeenLastCalledWith('products');
+    fireEvent.click(within(remittances).getByRole('button'));
+    expect(onNavigate).toHaveBeenLastCalledWith('remittances');
+  });
+
+  it('card headings are not extra h1 and their colours come from the settings', async () => {
+    const { container } = await mount({ settings: { ...PRESET, cardBgColor: '#abcdef', borderColor: '#123abc', headingColor: '#778899' } });
+    expect(container.querySelectorAll('h1')).toHaveLength(1);
+    const [card] = screen.getAllByTestId('hero-card');
+    expect(card.style.backgroundColor).toBe('rgb(171, 205, 239)');
+    expect(card.style.borderColor).toBe('rgb(18, 58, 188)');
+    expect(within(card).getByRole('heading').style.color).toBe('rgb(119, 136, 153)');
   });
 
   it('renders text and CTA but no carousel when there are no slides, or the carousel is disabled', async () => {
@@ -243,5 +278,25 @@ describe('carousel dots', () => {
   it('production row: the default brand dot colour (the key does not exist in the stored row)', async () => {
     await mount({ settings: PROD });
     expect(paint(dots()[0])).toBe('rgb(255, 165, 0)');
+  });
+});
+
+describe('page background belongs to the Home, not to the body', () => {
+  it('preset: the Home root paints pageBgColor (ivory)', async () => {
+    const { container } = await mount({ settings: PRESET });
+    expect(container.firstElementChild.style.backgroundColor).toBe('rgb(250, 247, 240)');
+  });
+
+  it('a customised pageBgColor reaches the Home root; an invalid one is ignored', async () => {
+    const custom = await mount({ settings: { ...PRESET, pageBgColor: '#eeddcc' } });
+    expect(custom.container.firstElementChild.style.backgroundColor).toBe('rgb(238, 221, 204)');
+    custom.unmount();
+    const bad = await mount({ settings: { ...PRESET, pageBgColor: 'red;} x{' } });
+    expect(bad.container.firstElementChild.style.backgroundColor).toBe('');
+  });
+
+  it('production row (legacy default #f9fafb): the Home root stays transparent so the stylesheet gradient shows', async () => {
+    const { container } = await mount({ settings: PROD });
+    expect(container.firstElementChild.style.backgroundColor).toBe('');
   });
 });

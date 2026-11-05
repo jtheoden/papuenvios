@@ -4,8 +4,10 @@ import path from 'node:path';
 
 // Home hero + carousel brand theme (S2/S3). Supabase is fully mocked with page.route: no network, no real data.
 // Set HOME_SHOTS_DIR to also save screenshots (evidence only, never a gate).
-// Spec: no horizontal overflow at 320/768/1280 in ES and EN; text and carousel never overlap (side by side from
-// lg, stacked below); the production row keeps its blue/violet CTA and gradient page; the preset shows the brand
+// Spec (layout = option A, the mockup): centered h1, two cards (side by side from md) and the carousel below at
+// full width (max 1024px, centered), all stacked without overlap; no horizontal overflow at 320/768/1280 in ES
+// and EN; the brand ivory is painted by the Home root only, the body keeps the stylesheet gradient everywhere
+// else (checked on another page); the production row keeps its blue/violet CTA and gradient page; the preset shows the brand
 // CTA (gold, charcoal text, AA contrast), the ivory page and a gold active dot; dots are >= 24px targets;
 // autoplay stops with prefers-reduced-motion and with the pause button.
 
@@ -167,13 +169,26 @@ for (const width of [320, 768, 1280]) {
           const h1 = await box(page.locator('[data-testid="home-hero"] h1'));
           const cta = await box(page.locator('[data-testid="home-hero"] button').first());
           const carousel = await box(page.locator('[data-testid="hero-carousel"]'));
-          const textBottom = Math.max(h1.bottom, cta.bottom);
-          const textRight = Math.max(h1.right, cta.right);
-          if (width >= 1024) {
-            expect(textRight, 'side by side from lg').toBeLessThanOrEqual(carousel.x + 0.5);
+          const [cardA, cardB] = await Promise.all([0, 1].map((n) => box(page.locator('[data-testid="hero-card"]').nth(n))));
+          await expect(page.locator('[data-testid="hero-card"]')).toHaveCount(2);
+
+          // title block centered
+          await expect(page.locator('[data-testid="home-hero"] h1')).toHaveCSS('text-align', 'center');
+          expect(Math.abs(h1.x + h1.width / 2 - width / 2)).toBeLessThan(2);
+          // vertical order: title, CTA, cards, carousel, never overlapping
+          expect(h1.bottom).toBeLessThanOrEqual(cta.y + 0.5);
+          expect(cta.bottom).toBeLessThanOrEqual(Math.min(cardA.y, cardB.y) + 0.5);
+          expect(Math.max(cardA.bottom, cardB.bottom)).toBeLessThanOrEqual(carousel.y + 0.5);
+          // cards: side by side from md, stacked below
+          if (width >= 768) {
+            expect(Math.abs(cardA.y - cardB.y)).toBeLessThan(1);
+            expect(cardA.right).toBeLessThanOrEqual(cardB.x + 0.5);
           } else {
-            expect(textBottom, 'stacked below lg').toBeLessThanOrEqual(carousel.y + 0.5);
+            expect(cardA.bottom).toBeLessThanOrEqual(cardB.y + 0.5);
           }
+          // carousel: full width of the content (capped at 1024px) and centered
+          expect(carousel.width).toBeGreaterThanOrEqual(Math.min(1024, width - 96) - 1);
+          expect(Math.abs(carousel.x + carousel.width / 2 - width / 2)).toBeLessThan(2);
 
           const img = page.locator('[data-testid="hero-slide-image"]');
           await expect(img).toHaveCSS('object-fit', 'contain');
@@ -199,6 +214,8 @@ test.describe('colours follow the Visual settings', () => {
     await expect(cta).toHaveCSS('color', 'rgb(255, 255, 255)');
     await expect(page.locator('body')).toHaveCSS('background-image', /linear-gradient/);
     await expect(page.locator('[data-testid="hero-carousel"] button[aria-current="true"]')).toHaveCSS('background-color', 'rgb(255, 165, 0)');
+    // the legacy default #f9fafb is not painted by the Home root: the body gradient shows
+    await expect(page.locator('[data-testid="home-page"]')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   });
 
   test('no row at all (code defaults) keeps the same legacy CTA and gradient page', async ({ page }) => {
@@ -216,8 +233,7 @@ test.describe('colours follow the Visual settings', () => {
     expect(ratio('rgb(23, 23, 23)', 'rgb(255, 165, 0)')).toBeGreaterThanOrEqual(4.5);
     await cta.hover();
     await expect(cta).toHaveCSS('background-color', 'rgb(229, 148, 0)');
-    await expect(page.locator('body')).toHaveCSS('background-image', 'none');
-    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(250, 247, 240)');
+    await expect(page.locator('[data-testid="home-page"]')).toHaveCSS('background-color', 'rgb(250, 247, 240)');
     await expect(page.locator('[data-testid="hero-carousel"] button[aria-current="true"]')).toHaveCSS('background-color', 'rgb(255, 165, 0)');
     await expect(page.locator('h1')).toHaveCSS('color', 'rgb(23, 23, 23)');
     for (const h2 of await page.locator('h2').all()) await expect(h2).toHaveCSS('color', 'rgb(23, 23, 23)');
@@ -229,8 +245,18 @@ test.describe('colours follow the Visual settings', () => {
     await expect(cta).toHaveCSS('background-color', 'rgb(17, 34, 51)');
     await expect(cta).toHaveCSS('color', 'rgb(254, 254, 254)');
     await expect(page.locator('[data-testid="hero-carousel"] button[aria-current="true"]')).toHaveCSS('background-color', 'rgb(68, 85, 102)');
-    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(238, 221, 204)');
-    await expect(page.locator('body')).toHaveCSS('background-image', 'none');
+    await expect(page.locator('[data-testid="home-page"]')).toHaveCSS('background-color', 'rgb(238, 221, 204)');
+  });
+
+  test('preset applied: other pages keep the body gradient and no ivory surface (ND-5: ivory is Home only)', async ({ page }) => {
+    await open(page, { settings: BRAND_PRESET });
+    await expect(page.locator('body')).toHaveCSS('background-image', /linear-gradient/);
+    await page.locator('header nav button', { hasText: /Blog/ }).first().click();
+    await expect(page.locator('[data-testid="home-page"]')).toHaveCount(0);
+    await page.mouse.move(5, 700); // the header hover colour is ivory in the preset
+    await expect(page.locator('body')).toHaveCSS('background-image', /linear-gradient/);
+    const ivory = await page.evaluate(() => [...document.querySelectorAll('body *')].filter((el) => getComputedStyle(el).backgroundColor === 'rgb(250, 247, 240)').length);
+    expect(ivory).toBe(0);
   });
 });
 
