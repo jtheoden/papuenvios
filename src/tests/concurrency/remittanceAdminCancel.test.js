@@ -64,9 +64,12 @@ describeDb('remittance_admin_cancel', () => {
     return id;
   };
 
+  let adminOriginal;
+
   beforeAll(async () => {
     admin = await connectAdmin();
     actors = await loadActors(admin);
+    adminOriginal = (await admin.query('SELECT role, is_enabled FROM public.user_profiles WHERE id = $1', [actors.adminId])).rows[0];
     const t = await admin.query(
       `INSERT INTO public.remittance_types (name, currency_code, delivery_currency, exchange_rate,
          commission_percentage, commission_fixed, min_amount, delivery_method)
@@ -77,7 +80,7 @@ describeDb('remittance_admin_cancel', () => {
   });
   afterEach(async () => {
     await endAll(clients.splice(0));
-    await setUser(actors.adminId, { is_enabled: true, role: 'admin' });
+    await setUser(actors.adminId, { is_enabled: adminOriginal.is_enabled, role: adminOriginal.role });
     if (remittances.length) {
       await admin.query('DELETE FROM public.refund_requests WHERE remittance_id = ANY($1)', [remittances]);
       await admin.query('DELETE FROM public.remittance_status_history WHERE remittance_id = ANY($1)', [remittances]);
@@ -159,6 +162,58 @@ describeDb('remittance_admin_cancel', () => {
   it('an unknown id is remittance_not_found for an admin', async () => {
     const c = await as(actors.adminId);
     expect((await failure(cancel(c, randomUUID(), 'x'))).code).toBe('P0002');
+  });
+
+  it('accepts a reason of exactly 500 characters', async () => {
+    const id = await seed('payment_pending');
+    const c = await as(actors.adminId);
+    const reason = 'r'.repeat(500);
+    expect((await cancel(c, id, reason)).status).toBe('cancelled');
+    expect((await row(id)).cancellation_reason).toBe(reason);
+  });
+
+  it('an admin may cancel his OWN pending remittance (a customer action, allowed by the self-dealing guard)', async () => {
+    const id = await seed('payment_pending');
+    await admin.query('UPDATE public.remittances SET user_id = $2 WHERE id = $1', [id, actors.adminId]);
+    const c = await as(actors.adminId);
+    expect((await cancel(c, id, 'my own test request')).status).toBe('cancelled');
+    expect((await row(id)).cancelled_by).toBe(actors.adminId);
+  });
+
+  it('race A: the customer uploads the proof holding the row lock; admin_cancel waits and gets invalid_transition', async () => {
+    const id = await seed('payment_pending');
+    const owner = await as(actors.customerId);
+    const adm = await as(actors.adminId);
+    const admPid = (await adm.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+    await owner.query('BEGIN');
+    await owner.query('SELECT * FROM public.remittance_submit_proof($1, $2, $3, $4, $5)',
+      [id, 'user-id/REM-1.jpg', 'Payer Ref', null, '+13055550100']);
+    const pending = failure(cancel(adm, id, 'never paid'));
+    // Wait until the admin call is parked on the row lock, then let the customer commit.
+    let parked = false;
+    for (let i = 0; i < 100 && !parked; i += 1) {
+      const { rows } = await admin.query('SELECT wait_event_type FROM pg_stat_activity WHERE pid = $1', [admPid]);
+      parked = rows[0]?.wait_event_type === 'Lock';
+      if (!parked) await new Promise((r) => setTimeout(r, 20));
+    }
+    await owner.query('COMMIT');
+    expect(parked).toBe(true);
+    const err = await pending;
+    expect(err.code).toBe('22023');
+    expect(err.message).toBe('invalid_transition');
+    expect((await row(id)).status).toBe('payment_proof_uploaded');
+  });
+
+  it('race B: submit_proof after the admin cancelled gets invalid_transition and the remittance stays cancelled', async () => {
+    const id = await seed('payment_pending');
+    const adm = await as(actors.adminId);
+    await cancel(adm, id, 'never paid');
+    const owner = await as(actors.customerId);
+    const err = await failure(owner.query('SELECT * FROM public.remittance_submit_proof($1, $2, $3, $4, $5)',
+      [id, 'user-id/REM-1.jpg', 'Payer Ref', null, '+13055550100']));
+    expect(err.code).toBe('22023');
+    expect(err.message).toBe('invalid_transition');
+    expect((await row(id)).status).toBe('cancelled');
   });
 
   it('remittance_cancel stays owner-only: the admin still gets 42501 there', async () => {
