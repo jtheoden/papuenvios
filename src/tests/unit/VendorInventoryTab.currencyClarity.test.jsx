@@ -10,6 +10,9 @@ const currencyList = [
   { id: 'eur', code: 'EUR', symbol: '€', is_base: false }
 ];
 
+// Saved prices are converted with the live rate (currencyService), not the display cache
+const liveRate = vi.hoisted(() => vi.fn(async () => 1));
+vi.mock('@/lib/currencyService', () => ({ getLiveConversionRate: (...args) => liveRate(...args) }));
 vi.mock('@/contexts/LanguageContext', () => ({
   // Params are appended so tests can assert the interpolated values
   useLanguage: () => ({ t: (k, p) => (p ? `${k}|${Object.values(p).join('|')}` : k), language: 'en' })
@@ -110,6 +113,12 @@ describe('VendorInventoryTab form currency clarity', () => {
     mocks.convertAmountAsync.mockImplementation(async (amount, from, to) => {
       if (from === 'usd' && to === 'cup') return amount * RATE;
       if (from === 'cup' && to === 'usd') return amount / RATE;
+      throw new Error('no rate');
+    });
+    liveRate.mockReset();
+    liveRate.mockImplementation(async (from, to) => {
+      if (from === 'usd' && to === 'cup') return RATE;
+      if (from === 'cup' && to === 'usd') return 1 / RATE;
       throw new Error('no rate');
     });
     updateProduct.mockClear();

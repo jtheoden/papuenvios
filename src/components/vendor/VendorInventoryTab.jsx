@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
+import { getLiveConversionRate } from '@/lib/currencyService';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { isImageUploadError, getImageUploadMessageKey } from '@/lib/imageStorage';
@@ -453,11 +454,10 @@ const VendorInventoryTab = ({
 
       if (productForm.base_currency_id !== systemBaseCurrencyId) {
         try {
-          normalizedPrice = await convertAmountAsync(
-            parseFloat(productForm.basePrice),
-            productForm.base_currency_id,
-            systemBaseCurrencyId
-          );
+          // A saved price: converted with the rate read live, never the cached display rate.
+          const liveRate = await getLiveConversionRate(productForm.base_currency_id, systemBaseCurrencyId);
+          normalizedPrice = parseFloat(productForm.basePrice) * liveRate;
+          if (!Number.isFinite(normalizedPrice)) throw new Error('No valid exchange rate available');
           finalCurrencyId = systemBaseCurrencyId;
         } catch (convError) {
           // Never persist a number typed in one currency under another: abort and keep the form open

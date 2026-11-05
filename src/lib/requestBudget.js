@@ -24,12 +24,14 @@ import { logError } from '@/lib/errorHandler';
 export const API_CACHE_STORAGE_KEY = 'papuenvios-api-cache';
 // At most half of CurrencyContext's RATE_REFRESH_MS: a forced refresh never reads an answer older than one interval.
 export const API_CACHE_TTL_MS = 2.5 * 60_000;
-// Only an explicit allowlist of DISPLAY selects is cached (table -> select as PostgREST receives it, no spaces):
+// Only an explicit allowlist of selects is cached (table -> select as PostgREST receives it, no spaces):
 //  - exchange_rates: all active rates at once (getConversionRate -> CurrencyContext) and the pair list that decides
 //    which currencies the selector shows (getCurrenciesWithRates);
 //  - currencies: the Dashboard's base-currency label.
-// Everything else goes to the network, in particular the reads that price an operation (getExchangeRate at remittance
-// confirmation and convertCurrency in the cart, getActiveRate) and v_effective_courier_cost.
+// CurrencyContext's rates DO price what the screen shows (cart lines, catalog), so every amount that is SAVED is
+// re-priced with getLiveConversionRate, which is never cached: the cart checkout (an order is only created when the
+// live prices equal the displayed ones), the product save in the inventory, and getExchangeRate (remittance
+// confirmation, convertCurrency). getActiveRate and v_effective_courier_cost are never cached either.
 const CACHED_SELECTS = {
   exchange_rates: new Set(['from_currency_id,to_currency_id,rate,effective_date', 'from_currency_id,to_currency_id']),
   currencies: new Set(['id,code,symbol,is_base'])
@@ -56,6 +58,17 @@ const remoteChangeHandlers = new Set();
 
 /** Called on every realtime change: the refetches it triggers never get an answer from before the change. */
 export const noteRemoteChange = () => remoteChangeHandlers.forEach((handler) => handler());
+
+const dropHandlers = new Set();
+/** Drops every cached answer (this tab and the others' localStorage cache), as a write would. */
+export const dropApiCaches = () => {
+  dropHandlers.forEach((handler) => handler());
+  try {
+    localStorage.removeItem(API_CACHE_STORAGE_KEY);
+  } catch {
+    // storage unavailable
+  }
+};
 
 /** Listener receives the REST path of every write (e.g. '/rest/v1/orders', '/rest/v1/rpc/admin_resolve_refund'). */
 export const subscribeApiWrites = (listener) => {
@@ -175,6 +188,8 @@ export const createRequestBudgetFetch = (
     hits.clear();
     flagged.clear();
   };
+
+  dropHandlers.add(() => dropAll());
 
   // A realtime event: data changed on the server, so no read may be answered from before it.
   remoteChangeHandlers.add(() => {

@@ -13,7 +13,7 @@ import { processImage } from '@/lib/imageUtils';
 import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingService';
 import { getSelectableProvinces, getShippingState, isShippingBlocked, resolveShippingZone } from '@/lib/shippingZoneRules';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
-import { convertCurrency } from '@/lib/currencyService';
+import { convertCurrency, getLiveConversionRate, invalidateRateCaches } from '@/lib/currencyService';
 import { generateWhatsAppURL, buildAdminNewPaymentWhatsAppUrl, openWhatsAppChat } from '@/lib/whatsappService';
 import { getActiveWhatsappRecipient, getGuidedWhatsappPhone, getFreshNotificationSettings } from '@/lib/notificationSettingsService';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
@@ -25,7 +25,7 @@ import { pickAvailableZelleAccount, registerZelleTransaction, ZELLE_TRANSACTION_
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
 import { calculateOrderTotal } from '@/lib/priceCalculationService';
-import { getCartItemUnitPrice, buildCartLines, withStoredComboPrice } from '@/lib/cartPricing';
+import { getCartItemUnitPrice, buildCartLines, buildCartLinesLive, withStoredComboPrice } from '@/lib/cartPricing';
 import { roundMoney } from '@/lib/moneyPure';
 import { validateAndGetOffer, recordOfferUsage } from '@/lib/orderDiscountService';
 import { buildDiscountBreakdown } from '@/lib/discountDisplayService';
@@ -781,6 +781,27 @@ const CartPage = ({ onNavigate }) => {
         toast({
           title: t('common.error'),
           description: t('paymentMethods.checkout.rejected'),
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // The cart shows prices converted with the (briefly cached) display rates; the order stores them, so they are
+      // re-priced with rates read live. If anything moved, nothing is created: the cart reloads the rates and the
+      // customer confirms the new amounts.
+      const liveLines = await buildCartLinesLive(
+        cart,
+        (item, convert) => getCartItemUnitPrice(withStoredComboPrice(item, combos), { baseCurrencyId, convertAmount: convert }),
+        (from, to) => getLiveConversionRate(from, to)
+      );
+      const pricesMoved = liveLines.hasInvalidLines
+        || liveLines.subtotal !== cartLines.subtotal
+        || liveLines.lines.some((line, index) => line.unitPrice !== cartLines.lines[index]?.unitPrice);
+      if (pricesMoved) {
+        invalidateRateCaches();
+        toast({
+          title: t('common.error'),
+          description: t('cart.pricesUpdated'),
           variant: 'destructive'
         });
         return;

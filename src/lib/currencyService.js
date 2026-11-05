@@ -9,7 +9,7 @@ import {
   ERROR_CODES
 } from './errorHandler';
 import { rateAgeHours } from './rateAge';
-import { subscribeApiWrites } from './requestBudget';
+import { subscribeApiWrites, dropApiCaches } from './requestBudget';
 
 const ratesChangedListeners = new Set();
 
@@ -49,6 +49,15 @@ const notifyRatesChanged = () => {
       logError(error, { operation: 'notifyRatesChanged' });
     }
   });
+};
+
+/**
+ * The rates changed (or the caller saw a priced amount differ from the displayed one): drop every cached rate read and
+ * tell the rate caches (CurrencyContext reloads).
+ */
+export const invalidateRateCaches = () => {
+  dropApiCaches();
+  notifyRatesChanged();
 };
 
 // Any write to rates or currencies through the client (including the Settings save paths that update the table
@@ -390,6 +399,25 @@ const readActivePairRate = async (fromCurrencyId, toCurrencyId) => {
 };
 
 /**
+ * Conversion rate read live from the server (direct pair, else the inverse of the opposite pair; fail closed), for
+ * every amount that is SAVED (order lines, product prices, remittances). getConversionRate is the cached display read.
+ * @throws {AppError} SERVICE_UNAVAILABLE if no active rate exists
+ */
+export const getLiveConversionRate = async (fromCurrencyId, toCurrencyId) => {
+  if (fromCurrencyId === toCurrencyId) return 1;
+  const direct = await readActivePairRate(fromCurrencyId, toCurrencyId);
+  if (direct) return direct;
+  const inverse = await readActivePairRate(toCurrencyId, fromCurrencyId);
+  if (inverse) return 1 / inverse;
+  throw new AppError(
+    'No active exchange rate for this currency pair',
+    ERROR_CODES.SERVICE_UNAVAILABLE,
+    503,
+    { from: fromCurrencyId, to: toCurrencyId }
+  );
+};
+
+/**
  * Convert price from one currency to another
  * General, reusable conversion utility across entire system
  *
@@ -519,18 +547,8 @@ export const getExchangeRate = async (fromCurrencyCode, toCurrencyCode) => {
     const fromCurrency = currencies.find(c => c.code === fromCurrencyCode);
     const toCurrency = currencies.find(c => c.code === toCurrencyCode);
 
-    // Prices an operation (remittance confirmation, cart): its own pair reads, never the cached all-rates read.
-    const direct = await readActivePairRate(fromCurrency.id, toCurrency.id);
-    if (direct) return direct;
-    const inverse = await readActivePairRate(toCurrency.id, fromCurrency.id);
-    if (inverse) return 1 / inverse;
-
-    throw new AppError(
-      'No active exchange rate for this currency pair',
-      ERROR_CODES.SERVICE_UNAVAILABLE,
-      503,
-      { from: fromCurrencyCode, to: toCurrencyCode }
-    );
+    // Prices an operation (remittance confirmation, cart): live pair reads, never the cached all-rates read.
+    return await getLiveConversionRate(fromCurrency.id, toCurrency.id);
 
   } catch (error) {
     if (error.code) throw error;

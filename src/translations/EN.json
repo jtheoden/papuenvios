@@ -1789,6 +1789,7 @@
     }
   },
   "cart": {
+    "pricesUpdated": "Exchange rates were updated and a price in your cart changed. Please review the total and confirm again.",
     "clearAll": {
       "button": "Empty cart",
       "title": "Empty your cart?",

@@ -193,4 +193,26 @@ describe('requestBudget with the real Supabase client', () => {
       expect(await svc.getExchangeRate('USD', 'CUP')).toBe(500);
     });
   });
+
+  describe('reads that set prices use the live path, the cache only feeds the display', () => {
+    it('getLiveConversionRate sees a change the cached display read does not see yet', async () => {
+      const { svc } = await load();
+      expect(await svc.getConversionRate('usd', 'cup')).toBe(400);
+      net.rate = 500;
+      expect(await svc.getConversionRate('usd', 'cup')).toBe(400); // display: cached for a short TTL
+      expect(await svc.getLiveConversionRate('usd', 'cup')).toBe(500);
+      expect(await svc.getLiveConversionRate('cup', 'usd')).toBeCloseTo(1 / 500);
+    });
+
+    it('invalidateRateCaches drops the cached display read and tells the rate caches', async () => {
+      const { svc } = await load();
+      await svc.getConversionRate('usd', 'cup');
+      net.rate = 500;
+      const changed = vi.fn();
+      svc.subscribeRatesChanged(changed);
+      svc.invalidateRateCaches();
+      expect(changed).toHaveBeenCalled();
+      expect(await svc.getConversionRate('usd', 'cup')).toBe(500);
+    });
+  });
 });

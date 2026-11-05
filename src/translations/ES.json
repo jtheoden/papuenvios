@@ -1797,6 +1797,7 @@
     }
   },
   "cart": {
+    "pricesUpdated": "Las tasas de cambio se actualizaron y algún precio del carrito cambió. Revise el total y vuelva a confirmar.",
     "clearAll": {
       "button": "Vaciar carrito",
       "title": "¿Vaciar el carrito?",

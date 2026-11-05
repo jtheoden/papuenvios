@@ -112,6 +112,36 @@ export const getCartItemUnitPrice = (item, { baseCurrencyId = null, convertAmoun
 };
 
 /**
+ * Cart lines priced with rates read LIVE (what the order stores), while the cart shows the cached display rates.
+ * A first pass records which currency pairs the pricing needs; each is read once with `getRate`, then the lines are
+ * built with exactly those rates. A rate that cannot be read leaves its line invalid (fail closed).
+ *
+ * @param {Array<object>} cart
+ * @param {(item: object, convertAmount: function) => number} priceItem - e.g. getCartItemUnitPrice with its context
+ * @param {(fromId: string, toId: string) => Promise<number>} getRate - live rate (amount in from * rate = amount in to)
+ */
+export const buildCartLinesLive = async (cart, priceItem, getRate) => {
+  const pairs = new Map();
+  (cart || []).forEach((item) => priceItem(item, (amount, from, to) => {
+    if (from && to && from !== to) pairs.set(`${from}>${to}`, [from, to]);
+    return NaN;
+  }));
+  const rates = new Map(await Promise.all([...pairs].map(async ([key, [from, to]]) => {
+    try {
+      return [key, await getRate(from, to)];
+    } catch {
+      return [key, NaN];
+    }
+  })));
+  const convertAmount = (amount, from, to) => {
+    if (from === to) return amount;
+    const rate = rates.get(`${from}>${to}`);
+    return Number.isFinite(rate) && rate > 0 ? amount * rate : NaN;
+  };
+  return buildCartLines(cart, (item) => priceItem(item, convertAmount));
+};
+
+/**
  * Build the cart lines and subtotal with cent-exact amounts.
  *
  *  - unitPrice  = cent-rounded unit price
