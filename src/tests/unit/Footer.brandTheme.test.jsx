@@ -62,7 +62,8 @@ describe('Footer brand theme (S4)', () => {
   it('keeps the production look until the preset is applied (blue links, primary-coloured name)', () => {
     const { cssVar } = mount(PROD);
     expect(cssVar('--ftr-link')).toBe('#2563eb');
-    expect(cssVar('--ftr-link-hover')).toBe('#9333ea');
+    expect(cssVar('--ftr-sig-hover')).toBe('#9333ea');
+    expect(cssVar('--ftr-link-hover')).toBe('#2563eb');
     expect(cssVar('--ftr-brand')).toBe('#3499dc');
     expect(cssVar('--ftr-text-opacity')).toBe('0.8');
   });
@@ -79,7 +80,7 @@ describe('Footer brand theme (S4)', () => {
     const dev = within(footer).getByRole('link', { name: /Juan A\. Centelles/ });
     expect(dev.getAttribute('style')).toBeNull();
     expect(hasClass(dev, 'text-[color:var(--ftr-link)]')).toBe(true);
-    expect(hasClass(dev, 'hover:text-[color:var(--ftr-link-hover)]')).toBe(true);
+    expect(hasClass(dev, 'hover:text-[color:var(--ftr-sig-hover)]')).toBe(true);
     expect(dev.className).toMatch(/focus-visible:ring-2/);
     fireEvent.mouseEnter(dev);
     expect(dev.getAttribute('style')).toBeNull();

@@ -4,7 +4,7 @@ import { render, screen, act } from '@testing-library/react';
 import ES from '@/translations/ES.json';
 import EN from '@/translations/EN.json';
 import { BRAND_PRESET } from '@/lib/brandPalette';
-import { DEFAULT_VISUAL_SETTINGS } from '@/lib/businessVisualSettingsService';
+import { LOCAL_CACHE_KEY } from '@/lib/constants';
 
 const state = vi.hoisted(() => ({ lang: 'es' }));
 
@@ -14,15 +14,14 @@ const translate = (key) => {
   return typeof value === 'string' ? value : key;
 };
 
-vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({ t: translate, language: state.lang }),
 }));
 
 import AuthLoadingScreen from '@/components/AuthLoadingScreen';
 
-const CACHE_KEY = 'business_visual_settings_cache';
-const PROD = { ...DEFAULT_VISUAL_SETTINGS, useGradient: true, primaryColor: '#3499dc', secondaryColor: '#9333ea' };
+const CACHE_KEY = LOCAL_CACHE_KEY;
+const PROD = { useGradient: true, primaryColor: '#3499dc', secondaryColor: '#9333ea' };
 const PRESET = { ...PROD, ...BRAND_PRESET };
 const POISON = { primaryColor: '#abcdef', secondaryColor: '#fedcba', accentColor: '#123456' };
 
@@ -52,6 +51,13 @@ describe('AuthLoadingScreen (S4)', () => {
       state.lang = lang;
       render(<AuthLoadingScreen />);
       expect(screen.getByRole('status')).toHaveTextContent(message);
+    });
+
+    it('announces a new message when the one it is given changes', () => {
+      const { rerender } = render(<AuthLoadingScreen />);
+      rerender(<AuthLoadingScreen loadingMessage={ES.auth.verifyingPermissions} />);
+      expect(screen.getByRole('status')).toHaveTextContent(ES.auth.verifyingPermissions);
+      expect(screen.getByRole('status')).not.toHaveTextContent(ES.auth.authenticating);
     });
 
     it('announces the message it is given (permission check)', () => {

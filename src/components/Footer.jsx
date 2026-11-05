@@ -5,13 +5,7 @@ import LegalLink from '@/components/LegalLink';
 import RegulatoryNotice from '@/components/RegulatoryNotice';
 import { openConsentPreferences } from '@/lib/consent';
 import { buildFooterTheme } from '@/lib/footerTheme';
-
-// Colours come from the footer CSS variables (see footerTheme.js); hover and focus are classes, never inline styles.
-const FOCUS = 'rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ftr-focus)] focus-visible:ring-offset-2 motion-reduce:transition-none';
-const LINK = `text-[color:var(--ftr-link)] hover:text-[color:var(--ftr-link-hover)] transition-colors duration-200 ${FOCUS}`;
-const LEGAL_LINK = `${LINK} underline`;
-const MUTED = 'text-[color:var(--ftr-text)] opacity-[var(--ftr-text-opacity)]';
-const BRAND = 'text-[color:var(--ftr-brand)] font-semibold';
+import { LEGAL_LINK, SIGNATURE, MUTED, BRAND, FOOTER_ROOT, FOOTER_DIVIDER } from '@/lib/footerStyles';
 
 const Footer = ({ onNavigate, showNotice = true }) => {
   const { t, language } = useLanguage();
@@ -21,7 +15,7 @@ const Footer = ({ onNavigate, showNotice = true }) => {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="mt-8 md:mt-12 border-t border-[color:var(--ftr-border)]" style={buildFooterTheme(visualSettings || {})}>
+    <footer className={`mt-8 md:mt-12 ${FOOTER_ROOT}`} style={buildFooterTheme(visualSettings || {})}>
       {showNotice && <RegulatoryNotice variant="strip" onNavigate={onNavigate} />}
       <div className="container mx-auto px-3 py-4 md:px-4 md:py-6">
         {/* Main footer content */}
@@ -34,7 +28,7 @@ const Footer = ({ onNavigate, showNotice = true }) => {
           {/* Developer signature */}
           <a
             href="https://www.linkedin.com/in/juan-a-centelles-geides/"
-            className={`${LINK} [text-decoration-line:var(--ftr-link-decoration)] underline-offset-2 font-semibold text-center md:text-left break-words max-w-full`}
+            className={`${SIGNATURE} text-center md:text-left break-words max-w-full`}
           >
             {t('footer.developedBy', { name: 'Juan A. Centelles', email: 'jtheoden@gmail.com' })}
           </a>
@@ -60,7 +54,7 @@ const Footer = ({ onNavigate, showNotice = true }) => {
         </nav>
 
         {/* Copyright */}
-        <div className="text-center mt-3 pt-3 md:mt-4 md:pt-4 border-t border-[color:var(--ftr-divider)]">
+        <div className={`text-center mt-3 pt-3 md:mt-4 md:pt-4 ${FOOTER_DIVIDER}`}>
           <p className={`text-xs ${MUTED}`}>
             <span>© {currentYear}</span>{' '}
             <span className={BRAND}>{companyName}</span>

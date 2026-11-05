@@ -134,16 +134,27 @@ const CONTRAST_PAIRS = [
   ['tab', 'tabActiveColor', 'tabActiveBgColor'],
   ['button', 'buttonTextColor', 'buttonBgColor'],
   ['cartBadge', 'cartBadgeTextColor', 'cartBadgeBgColor'],
-  ['footerText', 'footerTextColor', 'footerBgColor'],
   ['footerLink', 'footerLinkColor', 'footerBgColor'],
+  ['footerLinkHover', 'footerLinkHoverColor', 'footerBgColor'],
+];
+
+/**
+ * Pairs whose colour or opacity depends on the look, mirroring footerTheme.js: while useGradient is on the
+ * footer text is painted at 80% opacity and the company name uses primaryColor; with the preset the text is solid
+ * and the name uses headingColor.
+ */
+const footerLookPairs = (s) => [
+  ['footerText', s.footerTextColor, s.footerBgColor, s.useGradient ? 0.8 : 1],
+  ['footerBrand', s.useGradient ? s.primaryColor : s.headingColor, s.footerBgColor, 1],
 ];
 
 /** Text/background pairs below WCAG AA (4.5:1). Pairs with a non-HEX value are skipped. */
 export const getContrastIssues = (settings) =>
-  CONTRAST_PAIRS.flatMap(([id, fgKey, bgKey]) => {
-    const fg = settings[fgKey];
-    const bg = settings[bgKey];
+  [
+    ...CONTRAST_PAIRS.map(([id, fgKey, bgKey]) => [id, settings[fgKey], settings[bgKey], 1]),
+    ...footerLookPairs(settings),
+  ].flatMap(([id, fg, bg, alpha]) => {
     if (!isHexColor(fg) || !isHexColor(bg)) return [];
-    const ratio = contrastRatio(fg, bg);
+    const ratio = contrastRatio(fg, bg, alpha);
     return ratio < MIN_TEXT_CONTRAST ? [{ id, fg, bg, ratio }] : [];
   });

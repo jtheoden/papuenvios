@@ -4,6 +4,13 @@ import path from 'node:path';
 
 // Footer + loading screen brand theme (S4). Supabase is fully mocked with page.route: no network, no real data.
 // Set FOOTER_SHOTS_DIR to also save screenshots (evidence only, never a gate).
+//
+// Run it in isolation (the default config also wants a local Supabase stack for the role-based suites):
+//   npx vite build --outDir .e2e-dist        # with VITE_SUPABASE_URL=http://127.0.0.1:56321 VITE_SUPABASE_ANON_KEY=any (never used)
+//   E2E_PREVIEW=1 VITE_SUPABASE_URL=http://127.0.0.1:56321 VITE_SUPABASE_ANON_KEY=any \
+//     npx playwright test src/tests/e2e/footer-brand.spec.js --project=chromium --no-deps
+// The loading-screen tests freeze the page clock and emulate reduced motion so the screen stays up and is painted in
+// its final state: they check colours, text and layout, NOT the animated look (spinner, entry spring, progress bar).
 
 const SHOTS_DIR = process.env.FOOTER_SHOTS_DIR;
 const ES = JSON.parse(fs.readFileSync(path.resolve('src/translations/ES.json'), 'utf8'));
@@ -115,6 +122,14 @@ test.describe('footer, brand preset applied', () => {
     await expect(terms).toHaveCSS('box-shadow', /rgb\(23, 23, 23\)/);
   });
 
+  test('legal links and the cookie button take the hover colour', async ({ page }) => {
+    const footer = await open(page, { settings: BRAND_PRESET });
+    const nav = footer.getByRole('navigation', { name: ES.legal.nav.label });
+    const button = nav.getByRole('button', { name: ES.cookieConsent.preferencesLink });
+    await button.hover();
+    await expect(button).toHaveCSS('color', 'rgb(96, 91, 82)');
+  });
+
   test('a customised link colour reaches the footer', async ({ page }) => {
     const footer = await open(page, { settings: { ...BRAND_PRESET, footerLinkColor: '#112233', footerLinkHoverColor: '#445566' } });
     const link = signature(footer);
@@ -146,6 +161,15 @@ test.describe('footer, production row (no preset applied) keeps its look', () =>
     await link.hover();
     await expect(link).toHaveCSS('color', 'rgb(147, 51, 234)');
     await expect(companyName(footer)).toHaveCSS('color', 'rgb(52, 153, 220)');
+  });
+
+  test('legal links and the cookie button have no hover colour, as before', async ({ page }) => {
+    const footer = await open(page, { settings: PROD_ROW });
+    const nav = footer.getByRole('navigation', { name: ES.legal.nav.label });
+    for (const el of [nav.getByRole('link').first(), nav.getByRole('button', { name: ES.cookieConsent.preferencesLink })]) {
+      await el.hover();
+      await expect(el).toHaveCSS('color', 'rgb(37, 99, 235)');
+    }
   });
 
   test('no row at all (code defaults) renders the same blue links', async ({ page }) => {
@@ -205,7 +229,7 @@ const openLoading = async (page, { settings, language = 'es' } = {}) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   const handle = await page.waitForFunction(() => {
     const el = document.querySelector('[role="status"]');
-    if (!el) return null;
+    if (!el || !el.textContent) return null; // the announcement is filled after mount
     const style = getComputedStyle(el);
     const card = el.querySelector('.shadow-xl');
     return {

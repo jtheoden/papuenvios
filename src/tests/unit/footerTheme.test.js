@@ -28,7 +28,11 @@ describe('buildFooterTheme (S4)', () => {
       expect(theme.backgroundColor).toBe('#ffffff');
       expect(theme['--ftr-text']).toBe('#374151');
       expect(theme['--ftr-link']).toBe('#2563eb');
-      expect(theme['--ftr-link-hover']).toBe('#9333ea');
+    });
+
+    it('keeps the hover where main had it: only the signature changes colour; legal links and cookie button stay put', () => {
+      expect(theme['--ftr-sig-hover']).toBe('#9333ea');
+      expect(theme['--ftr-link-hover']).toBe(theme['--ftr-link']);
     });
 
     it('keeps the primary colour on the company name and the tinted top border', () => {
@@ -51,6 +55,7 @@ describe('buildFooterTheme (S4)', () => {
       expect(theme['--ftr-text']).toBe('#605B52');
       expect(theme['--ftr-link']).toBe('#171717');
       expect(theme['--ftr-link-hover']).toBe('#605B52');
+      expect(theme['--ftr-sig-hover']).toBe('#605B52');
       expect(theme['--ftr-brand']).toBe('#171717');
       expect(theme['--ftr-border']).toBe('#E8E0D2');
       expect(theme['--ftr-divider']).toBe('#E8E0D2');
@@ -63,7 +68,7 @@ describe('buildFooterTheme (S4)', () => {
 
     it('reaches WCAG AA 4.5:1 for text, links and company name on the footer background (read from the output)', () => {
       const bg = theme.backgroundColor;
-      for (const key of ['--ftr-text', '--ftr-link', '--ftr-link-hover', '--ftr-brand']) {
+      for (const key of ['--ftr-text', '--ftr-link', '--ftr-link-hover', '--ftr-sig-hover', '--ftr-brand']) {
         expect(contrastRatio(theme[key], bg), key).toBeGreaterThanOrEqual(4.5);
       }
     });
@@ -89,6 +94,13 @@ describe('buildFooterTheme (S4)', () => {
       expect(theme['--ftr-text']).toBe('#eeeeee');
       expect(theme['--ftr-link']).toBe('#ffd9a0');
       expect(theme['--ftr-link-hover']).toBe('#ffffff');
+      expect(theme['--ftr-sig-hover']).toBe('#ffffff');
+    });
+
+    it('legacy: a customised hover colour reaches the signature only', () => {
+      const theme = buildFooterTheme({ ...PROD, footerLinkHoverColor: '#445566' });
+      expect(theme['--ftr-sig-hover']).toBe('#445566');
+      expect(theme['--ftr-link-hover']).toBe(theme['--ftr-link']);
     });
 
     it('keeps the focus ring visible: falls back to the text colour when the ring is invisible on the footer', () => {

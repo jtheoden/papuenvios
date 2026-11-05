@@ -1,5 +1,5 @@
 import { BRAND_PALETTE, hex } from '@/lib/brandPalette';
-import { LOCAL_CACHE_KEY } from '@/lib/businessVisualSettingsService';
+import { LOCAL_CACHE_KEY } from '@/lib/constants';
 
 const { charcoal, warmGray } = BRAND_PALETTE;
 

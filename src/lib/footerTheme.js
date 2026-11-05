@@ -12,6 +12,9 @@ const MIN_FOCUS_CONTRAST = 3;
  *
  * primaryColor is read only for the legacy look (company name and tinted borders), and only while
  * useGradient is on, so production keeps its look until the brand preset (which turns it off) is applied.
+ * Hover: in the legacy look only the developer signature changed colour on hover; the legal links and the cookie
+ * button did not, so `--ftr-link-hover` equals the link colour there and `--ftr-sig-hover` carries the stored hover
+ * colour. With the preset both follow footerLinkHoverColor.
  * The preset instead underlines the signature link, so it is not told apart from the text by colour alone,
  * and drops the 80% opacity that would pull the grey text under AA.
  */
@@ -20,11 +23,13 @@ export const buildFooterTheme = (s = {}) => {
   const link = hex(s.footerLinkColor, text);
   const ring = hex(s.focusRingColor, charcoal);
 
+  const hover = hex(s.footerLinkHoverColor, link);
   const theme = {
     backgroundColor: bg,
     '--ftr-text': text,
     '--ftr-link': link,
-    '--ftr-link-hover': hex(s.footerLinkHoverColor, link),
+    '--ftr-sig-hover': hover,
+    '--ftr-link-hover': hover,
     '--ftr-focus': contrastRatio(ring, bg) >= MIN_FOCUS_CONTRAST ? ring : text,
   };
 
@@ -33,6 +38,7 @@ export const buildFooterTheme = (s = {}) => {
     const tint = primary ? toLongHex(primary) : null;
     return {
       ...theme,
+      '--ftr-link-hover': link,
       '--ftr-brand': primary || link,
       '--ftr-border': tint ? `${tint}20` : hex(s.borderColor, beige),
       '--ftr-divider': tint ? `${tint}10` : hex(s.borderColor, beige),

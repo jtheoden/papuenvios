@@ -1,15 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('@/lib/supabase', () => ({ supabase: {} }));
-
 import { BRAND_PRESET } from '@/lib/brandPalette';
-import { DEFAULT_VISUAL_SETTINGS } from '@/lib/businessVisualSettingsService';
+import { LOCAL_CACHE_KEY } from '@/lib/constants';
 import { contrastRatio } from '@/lib/contrast';
 import { buildLoadingTheme, readStoredVisualSettings } from '@/lib/loadingTheme';
 
-const CACHE_KEY = 'business_visual_settings_cache';
+const CACHE_KEY = LOCAL_CACHE_KEY;
 
-const PROD = { ...DEFAULT_VISUAL_SETTINGS, useGradient: true, primaryColor: '#3499dc', secondaryColor: '#9333ea' };
+const PROD = { useGradient: true, primaryColor: '#3499dc', secondaryColor: '#9333ea' };
 const PRESET = { ...PROD, ...BRAND_PRESET };
 const POISON = { primaryColor: '#abcdef', secondaryColor: '#fedcba', accentColor: '#123456' };
 

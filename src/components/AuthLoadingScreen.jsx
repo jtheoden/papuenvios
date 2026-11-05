@@ -11,6 +11,12 @@ const AuthLoadingScreen = ({ loadingMessage }) => {
   const theme = useMemo(() => buildLoadingTheme(readStoredVisualSettings()), []);
   const [displayMessage, setDisplayMessage] = useState(defaultMessage);
   const [dotCount, setDotCount] = useState(0);
+  // Mounted empty and filled after mount: screen readers announce text that CHANGES inside a live region, not text that is already there.
+  const [announcement, setAnnouncement] = useState('');
+
+  useEffect(() => {
+    setAnnouncement(defaultMessage);
+  }, [defaultMessage]);
 
   // Animate loading dots
   useEffect(() => {
@@ -42,7 +48,7 @@ const AuthLoadingScreen = ({ loadingMessage }) => {
       style={theme}
     >
       {/* Static text for assistive tech: the animated dots and rotating hints below are hidden from it. */}
-      <span className="sr-only">{defaultMessage}</span>
+      <span className="sr-only">{announcement}</span>
       <motion.div
         aria-hidden="true"
         initial={reduceMotion ? false : { opacity: 0, scale: 0.5 }}
@@ -72,7 +78,7 @@ const AuthLoadingScreen = ({ loadingMessage }) => {
             {/* Status messages carousel */}
             <motion.div
               className="min-h-6"
-              initial={{ opacity: 0, y: 5 }}
+              initial={reduceMotion ? false : { opacity: 0, y: 5 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
             >
