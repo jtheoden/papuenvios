@@ -398,9 +398,9 @@ const DashboardPage = ({ onNavigate }) => {
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex justify-between items-start mb-8"
+          className="flex flex-wrap justify-between items-start gap-4 mb-8"
         >
-          <div>
+          <div className="min-w-0">
             <h1 className="text-4xl font-bold mb-2" style={getHeadingStyle(visualSettings)}>
               {t('dashboard.title')}
             </h1>
@@ -527,13 +527,13 @@ const DashboardPage = ({ onNavigate }) => {
                       { title: t('dashboard.stats.pendingOrders'), value: stats.pendingOrders, icon: Package, bg: 'bg-orange-50', iconBg: 'bg-orange-100', iconColor: 'text-orange-600' },
                       { title: t('dashboard.stats.totalUsers'), value: stats.totalUsers, icon: Users2, bg: 'bg-violet-50', iconBg: 'bg-violet-100', iconColor: 'text-violet-600' }
                     ].map((stat, i) => (
-                      <div key={i} className={`${stat.bg} rounded-xl p-4 flex items-center gap-3`}>
+                      <div key={i} className={`${stat.bg} rounded-xl p-3 sm:p-4 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3`}>
                         <div className={`w-9 h-9 ${stat.iconBg} rounded-lg flex items-center justify-center flex-shrink-0`}>
                           <stat.icon className={`w-4 h-4 ${stat.iconColor}`} />
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 w-full">
                           <p className="text-lg font-bold text-gray-900 leading-tight">{stat.value}</p>
-                          <p className="text-xs text-gray-500 truncate">{stat.title}</p>
+                          <p className="text-xs text-gray-500 leading-tight break-words">{stat.title}</p>
                         </div>
                       </div>
                     ))}
