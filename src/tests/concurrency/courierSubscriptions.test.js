@@ -67,7 +67,7 @@ describe('phase B migration hygiene (static)', () => {
   it('replaces only the phase A / M1 functions it must, and never the transitions / platform reset', () => {
     const replaced = [...code.matchAll(/CREATE OR REPLACE FUNCTION public\.(\w+)\(/g)].map((m) => m[1]);
     const allowed = [...REPLACED, 'courier_payment_type_subscriptions_guard', '_courier_effective_conflict',
-      'admin_subscribe_courier_payment_type', 'admin_unsubscribe_courier_payment_type'];
+      'admin_subscribe_courier_payment_type', 'admin_unsubscribe_courier_payment_type', '_courier_subscriber_gaps'];
     for (const f of replaced) expect(allowed).toContain(f);
     for (const f of REPLACED) expect(replaced).toContain(f);
     expect(code).not.toMatch(/execute_platform_reset|_courier_compute_accrual|_(order|remittance)_transition/);
@@ -266,6 +266,7 @@ describeDb('phase B: courier subscriptions to payment types (local Postgres)', (
       const s = JSON.parse(summary[0].new_value);
       expect(s).toMatchObject({ code: 'g' });
       expect(s.couriers.sort()).toEqual([x, y].sort());
+      expect(s.subscriber_gaps).toEqual([]); // neither has courier-level tramos left in that scope: general rules apply
       // recreated from scratch: a general rule again for everybody, never with courier precedence for x
       await kit.setRule(c, { code: 'zone', zone_id: zone });
       await kit.setRule(c, { code: 'g', fixed_cup: 999 });
@@ -361,6 +362,50 @@ describeDb('phase B: courier subscriptions to payment types (local Postgres)', (
       await kit.setRule(c, fixed({ code: 'g', amount_to: 100, fixed_amount: 7, valid_from: at(60) }));
       const versions = (await admin.query(`SELECT version FROM public.messenger_payment_types WHERE code = 'g' ORDER BY version`)).rows;
       expect(versions.map((v) => v.version)).toEqual([1, 2]);
+    });
+
+    it('set_v2: a new version of a subscribed code reports the gaps it opens for EACH subscriber (DETAIL + audit)', async () => {
+      const c = await adminClient();
+      const x = await kit.makeCourier();
+      await kit.setRule(c, fixed({ code: 'g', amount_to: 100 }));
+      await kit.setRule(c, fixed({ code: 'own', courier_id: x, amount_from: 100 }));
+      await kit.subscribe(c, x, 'g'); // x: [0,100] + (100,inf): complete
+      const at = new Date(Date.now() + 60000).toISOString();
+      const e = await failure(kit.setRule(c, fixed({ code: 'g', amount_to: 50, valid_from: at, accept_gaps: false })));
+      expect(e.message).toMatch(/coverage_gap/);
+      const d = JSON.parse(e.detail);
+      expect(d.subscribers).toEqual([{ courier_id: x, gaps: [{ kind: 'remittance', from: 50, to: 100 }] }]);
+      expect(d.gaps).toEqual(expect.arrayContaining([{ kind: 'remittance', from: 50, to: 100 }]));
+      const id = await kit.setRule(c, fixed({ code: 'g', amount_to: 50, valid_from: at, accept_gaps: true }));
+      const audit = (await admin.query(
+        `SELECT new_value FROM public.financial_audit_log WHERE table_name = 'messenger_payment_types' AND row_id = $1 AND column_name = 'created'`, [id])).rows;
+      expect(JSON.parse(audit[0].new_value).subscriber_gaps).toEqual([{ courier_id: x, gaps: [{ kind: 'remittance', from: 50, to: 100 }] }]);
+    });
+
+    it('set_v2: subscriber gaps alone (the general ladder is complete) still need p_accept_gaps', async () => {
+      const c = await adminClient();
+      const x = await kit.makeCourier();
+      await kit.setRule(c, fixed({ code: 'g', amount_to: 100 }));
+      await kit.setRule(c, fixed({ code: 'h', amount_from: 100 }));
+      await kit.setRule(c, fixed({ code: 'own', courier_id: x, amount_from: 200 }));
+      await kit.subscribe(c, x, 'g', true); // x: [0,100] + (200,inf)
+      const at = new Date(Date.now() + 60000).toISOString();
+      // general ladder g v2 [0,100] + h: complete; x keeps its (100,200] gap
+      const e = await failure(kit.setRule(c, fixed({ code: 'g', amount_to: 100, fixed_amount: 6, valid_from: at, accept_gaps: false })));
+      expect(e.message).toMatch(/coverage_gap/);
+      expect(JSON.parse(e.detail).gaps).toEqual([{ kind: 'remittance', from: 100, to: 200 }]);
+    });
+
+    it('deactivating a subscribed code reports the gaps it leaves in the subscribers own ladders', async () => {
+      const c = await adminClient();
+      const x = await kit.makeCourier();
+      const gid = await kit.setRule(c, fixed({ code: 'g', amount_to: 100 }));
+      await kit.setRule(c, fixed({ code: 'own', courier_id: x, amount_from: 100 }));
+      await kit.subscribe(c, x, 'g');
+      await kit.call(c, 'admin_deactivate_messenger_payment_type', ['g']);
+      const summary = (await admin.query(
+        `SELECT new_value FROM public.financial_audit_log WHERE table_name = 'messenger_payment_types' AND column_name = 'subscriptions_closed' AND row_id = $1`, [gid])).rows;
+      expect(JSON.parse(summary[0].new_value).subscriber_gaps).toEqual([{ courier_id: x, gaps: [{ kind: 'remittance', from: null, to: 100 }] }]);
     });
 
     it('set_v2: a new version of a subscribed code cannot move it to another courier while someone else is subscribed', async () => {

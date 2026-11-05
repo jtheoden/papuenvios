@@ -124,6 +124,31 @@ AS $function$
 $function$;
 REVOKE ALL ON FUNCTION public._courier_effective_conflict(uuid) FROM PUBLIC, anon, authenticated, service_role;
 
+-- Gaps that the tiered rules p_rule_ids leave in the courier-level ladder of each courier of p_couriers (subscribers):
+-- [{courier_id, gaps:[{kind, from, to}]}], only couriers with a gap. A scope where the courier has no tramo at all
+-- (from and to both open) is not a gap of its ladder: its general rules keep applying there.
+CREATE OR REPLACE FUNCTION public._courier_subscriber_gaps(p_rule_ids uuid[], p_couriers uuid[])
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SET search_path = public, pg_temp
+AS $function$
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('courier_id', x.courier_id, 'gaps', x.gaps) ORDER BY x.courier_id), '[]'::jsonb)
+    FROM (
+      SELECT c.courier_id, jsonb_agg(DISTINCT g.gap) AS gaps
+        FROM unnest(p_couriers) AS c(courier_id)
+        CROSS JOIN public.messenger_payment_types m
+        CROSS JOIN LATERAL jsonb_array_elements(public._courier_rule_coverage(
+                     m.applies_to, c.courier_id, m.shipping_zone_id, m.remittance_type_id, m.currency,
+                     greatest(m.valid_from, now()), m.valid_to)) AS g(gap)
+       WHERE m.id = ANY(p_rule_ids)
+         AND (m.amount_from IS NOT NULL OR m.amount_to IS NOT NULL)
+         AND NOT (g.gap->'from' = 'null'::jsonb AND g.gap->'to' = 'null'::jsonb)
+       GROUP BY c.courier_id
+    ) x;
+$function$;
+REVOKE ALL ON FUNCTION public._courier_subscriber_gaps(uuid[], uuid[]) FROM PUBLIC, anon, authenticated, service_role;
+
 -- ---------------------------------------------------------------------------
 -- 3. Resolver v2 (phase A body + subscribed type ranked as a courier rule)
 -- ---------------------------------------------------------------------------
@@ -308,6 +333,7 @@ DECLARE
   v_gaps    jsonb;
   v_sub     record;
   v_clash   text;
+  v_sub_gaps jsonb;
 BEGIN
   PERFORM pg_advisory_xact_lock(hashtext('courier_rules'));
 
@@ -474,10 +500,22 @@ BEGIN
   -- Gaps are computed on the table as it will be (new row in, superseded version closed); refusing rolls both back.
   IF v_tiered THEN
     v_gaps := public._courier_rule_coverage(p_applies_to, p_courier_id, p_zone_id, p_type_id, p_currency, v_from, p_valid_to);
-    IF jsonb_array_length(v_gaps) > 0 AND NOT COALESCE(p_accept_gaps, false) THEN
-      RAISE EXCEPTION 'coverage_gap: the ranges of this scope leave values without a rule; confirm to save anyway'
-        USING ERRCODE = '22023', DETAIL = jsonb_build_object('currency', p_currency, 'gaps', v_gaps)::text;
-    END IF;
+  END IF;
+  -- phase B: also the gaps this code leaves in the ladder of each of its subscribers (same confirmation)
+  v_sub_gaps := public._courier_subscriber_gaps(
+    ARRAY(SELECT m.id FROM public.messenger_payment_types m
+           WHERE m.code = v_code AND m.is_active AND (m.valid_to IS NULL OR m.valid_to > now())),
+    ARRAY(SELECT s.courier_id FROM public.courier_payment_type_subscriptions s WHERE s.is_active AND s.payment_type_code = v_code));
+  IF (jsonb_array_length(COALESCE(v_gaps, '[]'::jsonb)) > 0 OR jsonb_array_length(v_sub_gaps) > 0)
+     AND NOT COALESCE(p_accept_gaps, false) THEN
+    RAISE EXCEPTION 'coverage_gap: the ranges of this scope leave values without a rule; confirm to save anyway'
+      USING ERRCODE = '22023', DETAIL = (CASE WHEN jsonb_array_length(v_sub_gaps) = 0
+        THEN jsonb_build_object('currency', p_currency, 'gaps', v_gaps)  -- same DETAIL as phase A
+        ELSE jsonb_build_object('currency', p_currency, 'subscribers', v_sub_gaps,
+               'gaps', (SELECT COALESCE(jsonb_agg(u.g), '[]'::jsonb) FROM (
+                         SELECT jsonb_array_elements(COALESCE(v_gaps, '[]'::jsonb)) AS g
+                         UNION SELECT jsonb_array_elements(x->'gaps') FROM jsonb_array_elements(v_sub_gaps) x) u))
+        END)::text;
   END IF;
 
   PERFORM public._courier_audit('messenger_payment_types', v_id, 'created', NULL,
@@ -486,7 +524,8 @@ BEGIN
                        'courier_id', p_courier_id, 'zone_id', p_zone_id, 'type_id', p_type_id,
                        'amount_from', p_amount_from, 'amount_to', p_amount_to, 'valid_from', v_from, 'valid_to', p_valid_to,
                        'currency', p_currency, 'fixed_amount', p_fixed_amount,
-                       'accept_gaps', COALESCE(p_accept_gaps, false), 'gaps', v_gaps)::text,
+                       'accept_gaps', COALESCE(p_accept_gaps, false), 'gaps', v_gaps,
+                       'subscriber_gaps', v_sub_gaps)::text,
     'UPDATE');
   RETURN v_id;
 END;
@@ -652,7 +691,8 @@ BEGIN
     PERFORM public._courier_audit('messenger_payment_types',
       (SELECT id FROM public.messenger_payment_types WHERE code = v_code ORDER BY version DESC LIMIT 1),
       'subscriptions_closed', NULL,
-      jsonb_build_object('code', v_code, 'couriers', to_jsonb(v_who))::text, 'UPDATE');
+      jsonb_build_object('code', v_code, 'couriers', to_jsonb(v_who),
+                         'subscriber_gaps', public._courier_subscriber_gaps(v_ids, v_who))::text, 'UPDATE');
   END IF;
   RETURN v_n;
 END;

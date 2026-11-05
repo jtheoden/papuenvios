@@ -373,6 +373,7 @@ $function$;
 REVOKE ALL ON FUNCTION public.admin_deactivate_messenger_payment_type(text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_deactivate_messenger_payment_type(text) TO authenticated;
 
+DROP FUNCTION IF EXISTS public._courier_subscriber_gaps(uuid[], uuid[]);
 DROP FUNCTION IF EXISTS public._courier_effective_conflict(uuid);
 DROP TABLE IF EXISTS public.courier_payment_type_subscriptions;   -- also drops its trigger, policy and indexes
 DROP FUNCTION IF EXISTS public.courier_payment_type_subscriptions_guard();
