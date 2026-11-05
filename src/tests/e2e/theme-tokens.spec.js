@@ -59,12 +59,23 @@ const open = async (page, route, settings) => {
   if (NO_RADIUS) await page.addStyleTag({ content: ':root{--radius:unset}' });
 };
 
+// Entrance animations (framer-motion) are not covered by `animations: 'disabled'`: wait for two identical frames in a row.
+const stableScreenshot = async (page) => {
+  await page.waitForLoadState('networkidle');
+  let previous = await page.screenshot({ animations: 'disabled' });
+  for (let i = 0; i < 30; i += 1) {
+    await page.waitForTimeout(400);
+    const next = await page.screenshot({ animations: 'disabled' });
+    if (next.equals(previous)) return next;
+    previous = next;
+  }
+  throw new Error('the page never settled: two consecutive screenshots keep differing');
+};
+
 const shot = async (page, name) => {
   if (!SHOTS_DIR) return;
   fs.mkdirSync(SHOTS_DIR, { recursive: true });
-  await page.waitForLoadState('networkidle');
-  await page.waitForTimeout(2500); // lazy route chunks compile on demand in the dev server
-  await page.screenshot({ path: path.join(SHOTS_DIR, name), fullPage: false, animations: 'disabled' });
+  fs.writeFileSync(path.join(SHOTS_DIR, name), await stableScreenshot(page));
 };
 
 test.use({ viewport: { width: 1280, height: 800 } });
@@ -195,6 +206,10 @@ test.describe('first paint', () => {
     await page.goto('/products', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'classic');
     await expect(page.locator('body')).toHaveCSS('background-image', 'none');
+    // the app has mounted (and run its own effects) but the settings are still pending: the page must still be ivory
+    await expect(page.locator('#root > *').first()).toBeAttached();
+    await page.waitForTimeout(700);
+    await expect(page.locator('body')).toHaveCSS('background-color', IVORY);
     release();
   });
 });

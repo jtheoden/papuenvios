@@ -12,7 +12,8 @@ const vite = path.join(path.dirname(createRequire(import.meta.url).resolve('vite
 
 export default defineConfig({
   testDir: './src/tests/e2e',
-  testMatch: /theme-tokens\.spec\.js/,
+  // THEME_E2E_MATCH widens the run to other fully mocked specs (home-hero, header-brand, footer-brand) that the body change affects.
+  testMatch: new RegExp(process.env.THEME_E2E_MATCH || 'theme-tokens\\.spec\\.js'),
   fullyParallel: false,
   retries: 0,
   timeout: 60000,
