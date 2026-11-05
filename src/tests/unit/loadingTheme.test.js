@@ -12,16 +12,23 @@ const PRESET = { ...PROD, ...BRAND_PRESET };
 const POISON = { primaryColor: '#abcdef', secondaryColor: '#fedcba', accentColor: '#123456' };
 
 describe('buildLoadingTheme (S4)', () => {
-  it('without settings keeps the shipped look: blue to violet gradient', () => {
-    const theme = buildLoadingTheme(null);
-    expect(theme['--ld-bg']).toBe('linear-gradient(to right, #2563eb, #9333ea)');
-    expect(theme['--ld-accent']).toBe('#2563eb');
-    expect(theme['--ld-card-bg']).toBe('#ffffff');
-    expect(theme['--ld-text']).toBe('#4b5563');
+  it('without settings (first visit, no cache) paints the brand look, like the static splash and the --t-* defaults', () => {
+    for (const missing of [null, undefined]) {
+      expect(buildLoadingTheme(missing)).toEqual(buildLoadingTheme(PRESET));
+      expect(buildLoadingTheme(missing)['--ld-bg']).toBe('#FAF7F0');
+    }
   });
 
   it('with the production row (gradient on) keeps exactly the shipped look: it never honoured the stored colours', () => {
-    expect(buildLoadingTheme({ ...PROD, cardBgColor: '#eeeeee', textPrimaryColor: '#000000' })).toEqual(buildLoadingTheme(null));
+    const shipped = {
+      '--ld-bg': 'linear-gradient(to right, #2563eb, #9333ea)',
+      '--ld-card-bg': '#ffffff',
+      '--ld-accent': '#2563eb',
+      '--ld-text': '#4b5563',
+      '--ld-muted': '#6b7280',
+    };
+    expect(buildLoadingTheme(PROD)).toEqual(shipped);
+    expect(buildLoadingTheme({ ...PROD, cardBgColor: '#eeeeee', textPrimaryColor: '#000000' })).toEqual(shipped);
   });
 
   it('with the brand preset paints a flat ivory page, white card and charcoal accent', () => {

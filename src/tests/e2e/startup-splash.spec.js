@@ -15,7 +15,7 @@ const SETTINGS = { useGradient: true };
 const json = (route, body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
 // settingsDelay: ms before answering the settings query; Infinity = never answer (hung query).
-const mockSupabase = (page, { settingsDelay = 0 } = {}) => page.route(/\/(rest|auth|functions|storage)\/v1\//, async (route) => {
+const mockSupabase = (page, { settingsDelay = 0, settings = SETTINGS } = {}) => page.route(/\/(rest|auth|functions|storage)\/v1\//, async (route) => {
   const request = route.request();
   const url = request.url();
   const wantsObject = (request.headers().accept || '').includes('pgrst.object');
@@ -23,7 +23,7 @@ const mockSupabase = (page, { settingsDelay = 0 } = {}) => page.route(/\/(rest|a
   if (url.includes('/rest/v1/business_visual_settings')) {
     if (settingsDelay === Infinity) return undefined; // never fulfilled
     if (settingsDelay) await new Promise((r) => setTimeout(r, settingsDelay));
-    return json(route, wantsObject ? { settings: SETTINGS } : [{ settings: SETTINGS }]).catch(() => {});
+    return json(route, wantsObject ? { settings } : [{ settings }]).catch(() => {});
   }
   return json(route, wantsObject ? {} : []);
 });
@@ -71,4 +71,44 @@ test('hung settings query: the app still appears after the cap', async ({ page }
   const startup = await openApp(page, { settingsDelay: Infinity });
   expect(startup.sawLoading).toBe(true);
   expect(startup.headerAt).toBeGreaterThan(3500);
+});
+
+const IVORY = 'rgb(250, 247, 240)';
+const CLASSIC_STOPS = /rgb\(37, 99, 235\)|rgb\(147, 51, 234\)/;
+
+// Every frame from navigation: the backdrop (top-left corner) while the static splash or a loading screen covers the
+// page, the body once the header is there. 'none' = nothing painted (the canvas).
+const sampleBackdrop = (page) => page.addInitScript(() => {
+  window.__bg = [];
+  const paint = (el) => {
+    for (; el; el = el.parentElement) {
+      const style = getComputedStyle(el);
+      if (style.backgroundImage !== 'none') return style.backgroundImage;
+      if (style.backgroundColor !== 'rgba(0, 0, 0, 0)') return style.backgroundColor;
+    }
+    return 'none';
+  };
+  const tick = () => {
+    if (document.body && window.__bg.length < 5000) {
+      const phase = document.getElementById('ps') ? 'splash' : document.querySelector('header') ? 'app' : 'loading';
+      const bg = phase === 'app' ? paint(document.body) : paint(document.elementFromPoint(2, 2));
+      window.__bg.push({ phase, bg });
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+});
+
+test('first visit, no cache, slow settings: ivory from the static splash through the loading screen to the app', async ({ page }) => {
+  await sampleBackdrop(page);
+  // The brand row (production): activeTheme makes resolveLookId pick papuenvios once the settings load.
+  const startup = await openApp(page, { settingsDelay: 1200, settings: { activeTheme: 'papuenvios', useGradient: false, pageBgColor: '#FAF7F0' } });
+  expect(startup.sawLoading).toBe(true);
+  await expect(page.locator('body')).toHaveCSS('background-color', IVORY);
+  const samples = await page.evaluate(() => window.__bg);
+  expect(samples.filter((s) => CLASSIC_STOPS.test(s.bg)), 'no blue/violet frame').toEqual([]);
+  const covered = samples.filter((s) => s.phase !== 'app' && s.bg !== 'none');
+  expect(covered.filter((s) => s.phase === 'loading').length).toBeGreaterThan(0);
+  expect([...new Set(covered.map((s) => s.bg))]).toEqual([IVORY]);
+  expect([...new Set(samples.filter((s) => s.phase === 'app').map((s) => s.bg))]).toEqual([IVORY]);
 });
