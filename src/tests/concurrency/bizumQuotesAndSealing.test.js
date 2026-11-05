@@ -145,15 +145,21 @@ describeDb('Bizum S5a: payment quotes and order sealing', () => {
    * bizum_settings.default_spread_pct (1.5 by default), so `spread` only exists for readability at call sites.
    */
   const setRate = async (mid = 0.92, { daysAgo = 0, active = true } = {}) => {
+    // DEC-10: only a super_admin writes exchange_rates. Promoted for the write only, so the plain-admin tests stay plain.
+    await admin.query(`UPDATE public.user_profiles SET role = 'super_admin' WHERE id = $1`, [actors.adminId]);
     const c = await asAdmin();
-    return (await c.query(
-      `INSERT INTO public.exchange_rates (from_currency_id, to_currency_id, rate, is_active, effective_date)
-       VALUES ($1, $2, $3, $4, CURRENT_DATE - $5::int)
-       ON CONFLICT (from_currency_id, to_currency_id, effective_date)
-       DO UPDATE SET rate = EXCLUDED.rate, is_active = EXCLUDED.is_active
-       RETURNING *`,
-      [usdId, eurId, Number(mid.toFixed(6)), active, daysAgo]
-    )).rows[0];
+    try {
+      return (await c.query(
+        `INSERT INTO public.exchange_rates (from_currency_id, to_currency_id, rate, is_active, effective_date)
+         VALUES ($1, $2, $3, $4, CURRENT_DATE - $5::int)
+         ON CONFLICT (from_currency_id, to_currency_id, effective_date)
+         DO UPDATE SET rate = EXCLUDED.rate, is_active = EXCLUDED.is_active
+         RETURNING *`,
+        [usdId, eurId, Number(mid.toFixed(6)), active, daysAgo]
+      )).rows[0];
+    } finally {
+      await admin.query(`UPDATE public.user_profiles SET role = 'admin' WHERE id = $1`, [actors.adminId]);
+    }
   };
   /** Bizum ON + one account + a fresh rate: the usual happy-path preconditions. */
   const ready = async (accountOverrides = {}) => {
@@ -602,8 +608,14 @@ describeDb('Bizum S5a: payment quotes and order sealing', () => {
       const customer = await asCustomer();
       const q = await quote(customer);
       const order = await insertBizumOrder(customer, actors.customerId, q.quote_id);
+      await admin.query(`UPDATE public.user_profiles SET role = 'super_admin' WHERE id = $1`, [actors.adminId]); // DEC-10
       const admin2 = await asAdmin();
-      const del = await admin2.query(`DELETE FROM public.exchange_rates WHERE id = $1`, [row.id]);
+      let del;
+      try {
+        del = await admin2.query(`DELETE FROM public.exchange_rates WHERE id = $1`, [row.id]);
+      } finally {
+        await admin.query(`UPDATE public.user_profiles SET role = 'admin' WHERE id = $1`, [actors.adminId]);
+      }
       expect(del.rowCount).toBe(1);
       const after = await admin.query(`SELECT payment_fx_rate, payment_fx_rate_id, payment_amount FROM public.orders WHERE id = $1`, [order.id]);
       expect(after.rows[0]).toEqual({ payment_fx_rate: '0.933800', payment_fx_rate_id: row.id, payment_amount: '93.38' });
