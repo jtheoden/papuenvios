@@ -457,6 +457,57 @@ Decisiones y verificaciones del dueño: revisar `default_spread_pct` (1.5 %) y l
 - Pantalla de carga: región viva montada vacía y rellenada tras el montaje (los lectores anuncian cambios), `motion-reduce` también en las pistas rotativas, `px-4` en la raíz (margen mínimo en 320 px). `LOCAL_CACHE_KEY` vive en `src/lib/constants.js` (loadingTheme ya no arrastra supabase); test que ata el escritor (`loadVisualSettings`) con el lector.
 - Declarado: (a) anillo de foco `focus-visible:ring-2` + `outline-none` en los enlaces del footer = mejora de a11y (main solo tenía el outline del navegador); (b) la clave antigua `visualSettings` de localStorage (navegadores previos a 2026) deja de leerse: el aspecto se unifica con la caché real; la clave antigua NO se borra.
 
+### Coherencia visual T0 — tokens de tema, fondo global y --radius (2026-11-05)
+- `src/index.css`: tokens `--t-*` (canales RGB) con la marca por defecto y `:root[data-theme="classic"]` con los tonos Tailwind exactos; `body` usa los tokens `--t-page-*` y en el look de marca no pinta degradado (`background-image: none`, gana `pageBgColor`; elimina la franja azul-lavanda entre la Home y el footer). `--radius: 0.5rem` global (decisión del dueño: cambia las esquinas `rounded-lg/md/sm` también en classic, hoy a 0).
+- `resolveLookId(settings)` en `brandPalette.js` (hoy por `useGradient`; futuro `activeTheme` sin tocar consumidores). `applyVisualSettingsToDOM` fija `data-theme` en `<html>`; script inline en `index.html` lo fija antes del primer pintado desde `business_visual_settings_cache` (ignora el TTL). `App.jsx` deja de pintar `#f9fafb` en el body antes de cargar los ajustes.
+- `tailwind.config.js`: colores `theme-*` con `<alpha-value>`. `scripts/theme-codemod.mjs` (`--dry-run`, `--check`, `--files`): NO ejecutado sobre pantallas en este slice. Trinquete en `themeCompliance.test.js` (línea base 773 clases, `MIGRATED_FILES` vacío).
+- Pruebas: `themeCompliance.test.js`, `themeCodemod.test.js`, e2e `theme-tokens.spec.js` (`npm run test:e2e:theme`, puerto 5189, Supabase simulado).
+
+### Temas por defecto seleccionables classic / papuenvios (2026-11-05)
+- Clave nueva opcional `activeTheme` (`classic` por defecto si falta) y `classicSnapshot` en `business_visual_settings.settings` (jsonb: sin migracion). La fila de produccion no cambia hasta que un super_admin elija `papuenvios` y pulse Guardar.
+- `src/lib/visualThemes.js`: `selectTheme(form, id)` aplica el preset sobre el formulario; classic -> papuenvios guarda en `classicSnapshot` los valores previos de las claves del preset y papuenvios -> classic los restaura (reversible). No toca primario/secundario, logo, textos ni carrusel. Los resolvers (header/footer/loading/styleUtils) siguen leyendo VALORES, no el nombre del tema.
+- Ajustes > Visual: el boton "Aplicar paleta PapuEnvios" pasa a un `radiogroup` (nombre, descripcion, muestras, texto "En uso"). Solo rellena el formulario, apaga y bloquea la vista previa en vivo mientras la eleccion no este guardada. Solo `isSuperAdmin` (prop `canChangeTheme`); la restriccion es de UI, RLS sigue permitiendo escribir a `admin`.
+- Tests: `visualThemes.test.js`, `visualThemes.parity.test.js` (fila de produccion `src/tests/fixtures/prodVisualRow.js` y preset), `SettingsPageVisual.themeSelector.test.jsx`, paridad ES/EN. Plan: `.claude/docs/plan_visual_theme_selector.md`.
+
+## Auditoría financiera — Fase 2 (cliente) — 2026-11-05
+
+Rama `fix/financial-client-hardening`. Especificación y criterios: `.claude/docs/plan_financial_client_hardening.md`. Sin BD ni migraciones.
+- A1 `getRemittanceExchangeRate` falla cerrado (`EXCHANGE_RATE_UNAVAILABLE`), sin `|| 1`; `SendRemittancePage` avisa y bloquea el tipo sin tasa. Precedencia sin cambios (tasa del tipo > central).
+- A3 `getBusinessMonthRange` (America/New_York) en `getMarginSummary` y en el fallback de Zelle.
+- A5 `saveExchangeRatePair` / restauración en `updateExchangeRatePair` / UUID en `deleteExchangeRatePair`; confirmación >5 % para cualquier par. Atomicidad real = RPC (Fase 3).
+- A6 `CurrencyContext`, `convertWithRates` (combos) y guarda de moneda base en `createCombo/updateCombo`.
+- A7 alerta de cambio de tasa (`remittanceRateChange.js`; ver correcciones de la revisión: ya no proyecta monto). A9 `calcCommissionFromRates` redondeado a 2 decimales + tasa de entrega efectiva.
+- Modo solo lectura de tasas para admin no super (perdido en el revert #144) y campos de tasa/comisión + "nuevo tipo" solo super_admin en `RemittanceTypesConfig`.
+- Diferido: A2, A4, A8, A10 (redondeo), A11, banda dura USD→CUP, fórmulas de remesa, guards BD.
+
+### Fase 2 — correcciones tras revisión independiente (2026-11-05)
+- A9 (regresión propia, corregida): `RemittanceTypesConfig` recalculaba `commission_percentage` en un `useEffect` que también se disparaba al abrir el formulario de edición, así que editar solo el nombre guardaba 2.19 en vez de 2.1857923497. `remittance_types.commission_percentage` es `numeric(20,10)` (solo `remittances.commission_percentage` es `numeric(5,2)`; la premisa del plan era falsa). Ahora se recalcula SOLO en el onChange de la tasa de mercado o de entrega (redondeado a 2 decimales, A9); abrir/editar nombre, límites o `is_active` conserva el valor exacto. Tests con las 4 filas vivas.
+- A7: la alerta de `MyRemittancesPage` ya NO muestra "nuevo monto" (el RPC aplica override de comisión de admin y ofertas que el dueño no puede leer; la cifra del cliente podía diferir, p. ej. +274,50 CUP en la remesa con override). Se mantiene tasa fijada vs actual. Sin alerta (ni banner) para misma moneda (USD→USD usa tasa 1 en SQL). Seguimiento Fase 3/F4: función SQL de solo lectura que cotice con la lógica del RPC.
+- A5: `updateExchangeRatePair` con inversa ausente/inactiva (0 filas) restaura la directa y lanza `EXCHANGE_RATE_PAIR_INCOMPLETE` (antes devolvía éxito con "Se actualizaron ambas"); si la compensación falla lanza `EXCHANGE_RATE_PAIR_PARTIAL` (la UI avisa y recarga). `saveExchangeRatePair` lee la fila del mismo día antes del upsert y, si falla la inversa, la RESTAURA (valor e `is_active` previos) en vez de desactivarla. `commitRatePairUpdate` recarga tasas también en el catch.
+- `rateNotChangedError`: `requiredRole:'super_admin'` solo en el error de RLS (42501). Un resultado de 0 filas es NOT_FOUND (`reason:'no_rows'`) y la UI elige el texto según `canWriteRates`.
+- Controles bloqueados por rol (`lockedBy`, `ratesLock`): `aria-disabled` + `aria-describedby` en vez de `disabled` nativo para que sigan enfocables y se anuncie la nota; los handlers ya estaban guardados. Pendiente (no hecho): los inputs de `RemittanceTypesConfig` siguen con `disabled` nativo.
+- Seguimientos (sin implementar): F3/F4 índice único parcial sobre `currencies.is_base` + RPC para cambiar la base (hoy cualquier admin puede, no atómico); interpolaciones PostgREST restantes en `SettingsPageFinancial.jsx:378` y `remittanceService.js:1495`; `getConversionRate` usa la inversa pero el RPC SQL no; handlers legados de `SettingsPage.jsx` (L169, L245; no tocado porque otro agente edita ese archivo en el lote de backlog).
+
+### Fase 2 — segunda revisión independiente (2026-11-05)
+- A9: teclear una tasa y volver al valor cargado (entrega 895.00→896→895.00, mercado 915→916→915) enviaba 2.19 en vez de 2.1857923497 y no avisaba de remesas pendientes. Ahora `handleRateChange` restaura la comisión almacenada si ambas tasas coinciden con las cargadas en `handleEdit`; `calcCommissionFromRates` redondea a 10 decimales (escala real de la columna; las 4 filas vivas salen exactas); el umbral de aviso es > 1e-10 (antes > 0.01). Se muestra el porcentaje con 2 decimales. Para F3: el comentario "round-trips exactly" de la migración debe tener en cuenta `numeric(20,10)`.
+- `handleDeleteRate`/`handleDeleteRatePair` recargan las tasas en el catch (el texto `rateNotFound` lo promete). `handleDeleteRate` no tiene botón que lo use (código muerto, sin test de UI).
+- Tests A5 afinados (código exacto PARTIAL, `reason: 'no_rows'`, pre-lectura filtrada por `effective_date`, fallo de pre-lectura = sin escritura). Plan actualizado (A5.1/A5.2, A9.1/A9.2).
+- Sin tocar: dato de producción del par USD/CUP (915 vs 1/900), decisión del dueño ya en la auditoría.
+
+### Cierre de la tanda de PRs (2026-11-05)
+- PRs abiertos, pendientes de "merge" explícito del dueño: #160 (`e2e.yml`), #161 (S4 footer/loading), #162 (F3 migraciones, NO aplicadas), #163 (F2 cliente financiero), #164 (lote backlog: Header a11y, desbordes móviles, RB-21, docs RB-26/RB-04), #165 (S2 Home/Hero).
+- Orden de merge propuesto: #160, #161, #165, #163, #164, #162. La migración 2 de F3 solo se aplica DESPUÉS de desplegar #163; el resto de migraciones F3 una por una con su "dale", backup/PITR confirmado y renombrando el archivo del repo a la versión de prod tras cada una.
+- Revisiones independientes (Opus): F2 dos rondas (A9 y su caso de revertir tasa corregidos; los 4 últimos commits de F2 revisados por el orquestador, sin tercera revisión), F3 una ronda, S4 una, S2 una, lote una (sin críticos).
+- RB-21: la causa de `LegalAcceptanceContext` está inferida por mecanismo, no reproducida en rojo.
+- Pendientes del dueño: par USD→CUP inconsistente en prod (915 directa vs 0.001111 inversa ≈ 900; UPDATE manual de un super_admin el 2026-11-04 14:20), pedido ORD-20261023-100004 contra el banco, decisiones ND-2/3/4/11/A/C, subtítulos de slides, ruta de "Enviar remesa", tú/usted, confirmar remesas desde España, assets de logo S5, aplicar "Aplicar paleta PapuEnvíos", RB-26 ND, decisiones F4/F5.
+- Backlog menor detectado: `xs:` muertos en AdminOffersTab/VendorCategoriesTab/VendorCombosTab, ArrowUp en `useDropdownMenu`, `role="separator"` en el menú, 8 claves `remittances.user.*` solo en ES, `MotionConfig reducedMotion="user"` global, e2e de responsive acoplado a clases y sin proyecto propio sin `setup`.
+
+### Coherencia visual T0 — reconciliación con el selector de tema #167 (2026-11-05)
+- `resolveLookId` (brandPalette.js) adopta las reglas de #167 y `visualThemes.resolveThemeId` es ahora la MISMA función (alias): `activeTheme` válido gana; sin él, todas las claves de `BRAND_PRESET` presentes => papuenvios; si no, classic. La lógica vive en brandPalette.js porque visualThemes importa el servicio de ajustes, que importa brandPalette (ciclo).
+- Cambio de comportamiento: classic con solo `useGradient` desmarcado => `data-theme="classic"` (antes papuenvios); sin ajustes (`{}`/null) => classic (antes papuenvios). `applyVisualSettingsToDOM` siempre recibe ajustes mezclados con los defaults; la rama de error (valores no verificados) sigue sin tocar `data-theme`.
+- Script inline de `index.html`: lee `cached.data.activeTheme` y compara con una copia literal del preset (test que exige igualdad exacta con `BRAND_PRESET` y paridad con `resolveLookId` en 9 filas). Sigue ignorando el TTL, con try/catch, y solo escribe 'classic'/'papuenvios'.
+- e2e `theme-tokens` y `home-hero`: la fila de preset simulada incluye ahora todas las claves (pestañas y footer), como la fila real de producción; nuevo e2e de `activeTheme` en caché.
+
 ## Confianza: copy verificable, pie de página, «Antes de pagar» y banner de cookies — 2026-11-05
 
 Rama `feat/trust-copy-footer-checkout` (desde `origin/main` fac1f5ef). Sin push, sin PR, sin Supabase remoto ni migraciones.
