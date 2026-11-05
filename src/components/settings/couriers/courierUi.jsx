@@ -45,13 +45,14 @@ const NOTICE = {
   ok: { cls: 'bg-green-50 border-green-400 text-green-900', Icon: CheckCircle2 }
 };
 
-export const Notice = ({ tone = 'info', children, live = false, testId }) => {
+/** `announce={false}` when the Notice sits inside a persistent aria-live container (one live region, one announcement). */
+export const Notice = ({ tone = 'info', children, live = false, testId, announce = true }) => {
   const { cls, Icon } = NOTICE[tone];
   return (
     <div
       data-testid={testId}
-      role={tone === 'error' ? 'alert' : 'status'}
-      aria-live={live || tone === 'error' ? 'polite' : undefined}
+      role={announce ? (tone === 'error' ? 'alert' : 'status') : undefined}
+      aria-live={announce && (live || tone === 'error') ? 'polite' : undefined}
       className={`flex gap-2 rounded-lg border px-3 py-2 text-sm ${cls}`}
     >
       <Icon className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />

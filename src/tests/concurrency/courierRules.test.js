@@ -486,6 +486,59 @@ describeDb('M1: couriers, payment types, thresholds (local Postgres)', () => {
       await bad({ method: 'per_usd_delivered', fixed_cup: null, cup_per_usd: 1, base: 'nominal_usd', applies_to: 'order' });
     });
 
+    it('NaN is refused for every numeric parameter (22023) and no row is left; the table CHECKs refuse it too', async () => {
+      for (const o of [
+        fixed({ fixed_amount: 'NaN' }), fixed({ amount_from: 'NaN' }), fixed({ amount_to: 'NaN' }), { fixed_cup: 'NaN' },
+        { method: 'per_usd_delivered', fixed_cup: null, cup_per_usd: 'NaN', base: 'nominal_usd' },
+        { method: 'percent_of_base', fixed_cup: null, percent: 'NaN', base: 'nominal_usd' }
+      ]) {
+        const c = await kit.as(actors.adminId);
+        const e = await failure(kit.setRule(c, o));
+        expect(e.code, JSON.stringify(o)).toBe('22023');
+        expect(e.message).toMatch(/NaN/);
+      }
+      expect(await rules()).toEqual([]);
+      const insert = (col, method, extra = '') => admin.query(
+        `INSERT INTO public.messenger_payment_types (code, name, version, applies_to, method, ${col}, valid_from${extra ? `, ${extra.split('=')[0]}` : ''})
+         VALUES ('t','t',1,'remittance',$1,'NaN'::numeric, now()${extra ? `, '${extra.split('=')[1]}'` : ''})`, [method]);
+      for (const [col, method, extra] of [['fixed_amount', 'fixed_amount'], ['fixed_cup', 'fixed_cup'],
+        ['cup_per_usd', 'per_usd_delivered', 'base=nominal_usd'], ['percent', 'percent_of_base', 'base=nominal_usd']]) {
+        expect((await failure(insert(col, method, extra))).code, col).toBe('23514');
+      }
+      const tier = (col) => admin.query(
+        `INSERT INTO public.messenger_payment_types (code, name, version, applies_to, method, fixed_cup, ${col}, valid_from)
+         VALUES ('t','t',1,'remittance','fixed_cup',1,'NaN'::numeric, now())`);
+      expect((await failure(tier('amount_from'))).code).toBe('23514');
+      expect((await failure(tier('amount_to'))).code).toBe('23514');
+    });
+
+    it('percent (3 decimals) and cup_per_usd (4 decimals) beyond their column scale are refused, never rounded', async () => {
+      const pct = { method: 'percent_of_base', fixed_cup: null, base: 'nominal_usd' };
+      const per = { method: 'per_usd_delivered', fixed_cup: null, base: 'nominal_usd' };
+      for (const o of [{ ...pct, percent: 1.2345 }, { ...per, cup_per_usd: 1.23456 }]) {
+        const c = await kit.as(actors.adminId);
+        const e = await failure(kit.setRule(c, o));
+        expect(e.code, JSON.stringify(o)).toBe('22023');
+        expect(e.message).toMatch(/decimals/);
+      }
+      expect(await rules()).toEqual([]);
+      const c = await kit.as(actors.adminId);
+      await kit.setRule(c, { ...pct, code: 'p', percent: 1.235 });
+      await kit.setRule(c, { ...per, code: 'q', cup_per_usd: 1.2346, type_id: await kit.seedType() });
+      expect((await rules()).map((r) => [r.code, r.percent, r.cup_per_usd])).toEqual([['p', '1.235', null], ['q', null, '1.2346']]);
+    });
+
+    it('amounts above the column maximum (9999999999.99) are a typed 22023, not a raw overflow', async () => {
+      for (const o of [fixed({ fixed_amount: 10000000000 }), fixed({ amount_from: 10000000000 }), fixed({ amount_to: 1e11 }), { fixed_cup: 10000000000 }]) {
+        const c = await kit.as(actors.adminId);
+        const e = await failure(kit.setRule(c, o));
+        expect(e.code, JSON.stringify(o)).toBe('22023');
+        expect(e.message).toMatch(/at most 9999999999\.99/);
+      }
+      const c = await kit.as(actors.adminId);
+      await expect(kit.setRule(c, fixed({ fixed_amount: 9999999999.99 }))).resolves.toBeTruthy();
+    });
+
     it('amounts with more than 2 decimals are refused (never silently rounded); from = to refused', async () => {
       await bad(fixed({ amount_to: 100.005 }));
       await bad(fixed({ amount_from: 0.001 }));

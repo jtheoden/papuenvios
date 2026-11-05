@@ -3062,7 +3062,8 @@
       "required": "Complete los campos obligatorios.",
       "coverageGap": "Los rangos de este alcance dejan valores sin regla. Revise los huecos y confirme si desea guardar igualmente.",
       "mixedCurrency": "Los rangos de este alcance ya usan otra moneda. Use la misma moneda o defina otro alcance.",
-      "decimals": "Los montos admiten como máximo 2 decimales.",
+      "decimals": "Los montos admiten como máximo 2 decimales; el porcentaje, 3; los CUP por USD, 4.",
+      "amountMax": "Los montos no pueden superar 9999999999.99.",
       "ownedByOther": "Ese tipo de pago pertenece a otro mensajero.",
       "noActiveVersion": "Ese tipo de pago no existe o no tiene una versión vigente.",
       "subscribedElsewhere": "Ese tipo de pago está suscrito por otro mensajero. Quite esa suscripción antes de asignarlo a un mensajero concreto.",
@@ -3076,7 +3077,8 @@
       "percentRange": "El porcentaje debe estar entre 0 y 100.",
       "tierOrder": "El monto máximo debe ser mayor que el mínimo.",
       "windowOrder": "La vigencia final debe ser posterior a la inicial.",
-      "money": "Indique un monto mayor o igual a cero con hasta 2 decimales (por ejemplo 100.50)."
+      "money": "Indique un monto mayor o igual a cero con hasta 2 decimales (por ejemplo 100.50).",
+      "moneyMax": "El monto no puede superar 9999999999.99."
     },
     "margin": {
       "ok": "Margen correcto",

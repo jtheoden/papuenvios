@@ -91,6 +91,9 @@ describe('validateRuleForm / buildRuleArgs', () => {
     expect(validateRuleForm({ ...f, fixedAmount: '1.005' })).toHaveProperty('fixedAmount', 'money');
     expect(validateRuleForm({ ...f, fixedAmount: '-1' })).toHaveProperty('fixedAmount', 'money');
     expect(validateRuleForm({ ...f, currency: 'EUR' })).toHaveProperty('currency');
+    expect(validateRuleForm({ ...f, fixedAmount: '10000000000' })).toHaveProperty('fixedAmount', 'moneyMax');
+    expect(validateRuleForm({ ...f, fixedAmount: '9999999999.99' })).toEqual({});
+    expect(validateRuleForm({ ...f, rangeOp: 'gt', rangeX: '10000000000.00' })).toHaveProperty('rangeX', 'moneyMax');
   });
   it('percent of the nominal USD is allowed for orders; delivered_cup and per-USD stay remittance-only', () => {
     expect(validateRuleForm({ ...ok, method: 'percent_of_base', fixedCup: '', percent: '2', base: 'nominal_usd', appliesTo: 'order' })).toEqual({});
@@ -139,6 +142,9 @@ describe('cents helpers (never floats)', () => {
     expect(toCents('100.01')).toBe(10001);
     expect(toCents(100.01)).toBe(10001);
     for (const bad of ['', ' ', '100.005', '-1', '1e3', '1,5', 'abc', '.5', '5.', null, undefined]) expect(toCents(bad), String(bad)).toBeNull();
+    // same maximum as the server / numeric(12,2)
+    expect(toCents('9999999999.99')).toBe(999999999999);
+    expect(toCents('10000000000')).toBeNull();
     expect(centsToText(10001)).toBe('100.01');
     expect(centsToText(5)).toBe('0.05');
   });
@@ -189,6 +195,30 @@ describe('overlaps and gaps (twin of the RPC checks)', () => {
     // closed or inactive rules do not count
     expect(analyzeRuleConflicts(form({ rangeX: '99.99' }), rules.map((r) => ({ ...r, is_active: false }))).overlap).toBe(false);
   });
+  it('validity windows: same rules as the RPC (overlap/currency on intersecting windows; coverage only by rules spanning the whole window)', () => {
+    const NOW = Date.parse('2026-11-05T12:00:00Z');
+    const row = (o) => ({ code: 'x', is_active: true, valid_from: '2026-11-01T00:00:00Z', valid_to: null, applies_to: 'remittance',
+      currency: 'USD', courier_id: null, shipping_zone_id: null, remittance_type_id: null, amount_from: null, amount_to: null, ...o });
+    const form = (o) => ({ code: 'N', appliesTo: 'remittance', currency: 'USD', courierId: '', zoneId: '', typeId: '', rangeOp: 'lte', rangeY: '100',
+      validFrom: '', validTo: '', ...o });
+    const ending = [row({ code: 'OLD', amount_to: '100.00', valid_to: '2026-12-01T00:00:00Z' })];
+    // contiguous windows: the new rule starts exactly when the old one ends -> no overlap, no mixed currency
+    expect(analyzeRuleConflicts(form({ validFrom: '2026-12-01T00:00:00Z' }), ending, NOW).overlap).toBe(false);
+    expect(analyzeRuleConflicts(form({ validFrom: '2026-12-01T00:00:00Z', currency: 'CUP' }), ending, NOW).mixedCurrency).toBe(false);
+    // intersecting windows -> overlap (and the other currency is refused)
+    expect(analyzeRuleConflicts(form({ validFrom: '2026-11-20T00:00:00Z' }), ending, NOW).overlap).toBe(true);
+    expect(analyzeRuleConflicts(form(), ending, NOW).overlap).toBe(true); // empty start = now
+    expect(analyzeRuleConflicts(form({ validFrom: '2026-11-20T00:00:00Z', currency: 'CUP' }), ending, NOW).mixedCurrency).toBe(true);
+    // a rule that ends before the new one does not cover it; one that spans it does
+    const gtForm = form({ rangeOp: 'gt', rangeX: '100', rangeY: '' });
+    expect(analyzeRuleConflicts(gtForm, ending, NOW).gaps).toEqual([{ kind: 'remittance', from: null, to: 10000 }]);
+    expect(analyzeRuleConflicts({ ...gtForm, validTo: '2026-11-30T00:00:00Z' }, ending, NOW).gaps).toEqual([]);
+    // a rule scheduled after the window start does not cover it either
+    const later = [row({ code: 'LATER', amount_to: '100.00', valid_from: '2026-11-10T00:00:00Z' })];
+    expect(analyzeRuleConflicts(gtForm, later, NOW).gaps).toEqual([{ kind: 'remittance', from: null, to: 10000 }]);
+    // an unreadable date: the form does not decide (the server will)
+    expect(analyzeRuleConflicts(form({ validFrom: 'not a date' }), ending, NOW)).toEqual({ overlap: false, mixedCurrency: false, gaps: [] });
+  });
   it('coverageGapsFromError reads the JSON detail of a coverage_gap refusal (in cents)', () => {
     const e = { code: '22023', message: 'coverage_gap: ...', details: '{"currency":"USD","gaps":[{"kind":"order","from":100,"to":100.01}]}' };
     expect(coverageGapsFromError(e)).toEqual([{ kind: 'order', from: 10000, to: 10001 }]);
@@ -232,6 +262,9 @@ describe('courierErrorKey: typed RPC errors', () => {
     expect(key({ code: '22023', message: 'coverage_gap: the ranges of this scope leave values without a rule' })).toBe('couriers.errors.coverageGap');
     expect(key({ code: '22023', message: 'mixed_currency_scope: the ranges of this scope already use another currency' })).toBe('couriers.errors.mixedCurrency');
     expect(key({ code: '22023', message: 'invalid_argument: amounts accept at most 2 decimals' })).toBe('couriers.errors.decimals');
+    expect(key({ code: '22023', message: 'invalid_argument: percent accepts at most 3 decimals and cup_per_usd at most 4 decimals' })).toBe('couriers.errors.decimals');
+    expect(key({ code: '22023', message: 'invalid_argument: amounts accept at most 9999999999.99' })).toBe('couriers.errors.amountMax');
+    expect(key({ code: '22023', message: 'invalid_argument: NaN is not a valid amount, rate or percentage' })).toBe('couriers.errors.invalid');
     // phase B: subscriptions
     expect(key({ code: '22023', message: 'invalid_argument: this payment type belongs to another courier' })).toBe('couriers.errors.ownedByOther');
     expect(key({ code: '22023', message: 'invalid_argument: unknown payment type code or no active version' })).toBe('couriers.errors.noActiveVersion');

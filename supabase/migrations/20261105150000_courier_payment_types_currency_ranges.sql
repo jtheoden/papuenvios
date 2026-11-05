@@ -15,7 +15,12 @@
 --      accrual (no cache, never get_order_exchange_rate / get_market_exchange_rate: they fail open with 1.0). Fail CLOSED:
 --      a tiered candidate that needs a missing rate stops the resolution with reason 'no_fx' (never a lower-precedence rule).
 --   3. _courier_rule_resolve_v2(): same precedence as v1 (courier > zone > type > tramo > general), returns (rule_id, reason)
---      with reason no_rule / no_tier_match / no_fx. v1 is kept untouched (rollback).
+--      with reason no_rule / no_tier_match / no_fx. v1 is kept untouched (rollback). DIFFERS FROM v1 on purpose when a
+--      tiered candidate needs a rate that is missing (value in another currency, no active USD->CUP row): v1 skipped the
+--      tramo and fell to a lower-precedence rule; v2 stops with 'no_fx' (fail closed).
+--   Guards (review): NaN is refused in every numeric parameter and by messenger_payment_types_no_nan_chk (it passes
+--      `>= 0`); amounts above 9999999999.99, percent beyond 3 decimals and cup_per_usd beyond 4 are 22023; an accrual
+--      that would overflow numeric(12,2) is kept with amount NULL and reason 'amount_out_of_range'; a NaN rate is "no rate".
 --   4. _courier_compute_accrual (same signature): orders take the subtotal as value and as percent base; fixed USD is converted
 --      at the live rate in force at delivery (amount_usd = the fixed figure, fx_used = that rate); reasons no_fx / no_tier_match
 --      are frozen in rule_snapshot. The delivery is NEVER blocked (the trigger is not touched).
@@ -51,6 +56,13 @@ ALTER TABLE public.messenger_payment_types ADD CONSTRAINT messenger_payment_type
 ALTER TABLE public.messenger_payment_types DROP CONSTRAINT IF EXISTS messenger_payment_types_fixed_amount_chk;
 ALTER TABLE public.messenger_payment_types ADD CONSTRAINT messenger_payment_types_fixed_amount_chk
   CHECK (fixed_amount IS NULL OR fixed_amount >= 0);
+
+-- 'NaN'::numeric sorts above every number, so the inherited `x >= 0` CHECKs let it through: refuse it explicitly.
+ALTER TABLE public.messenger_payment_types DROP CONSTRAINT IF EXISTS messenger_payment_types_no_nan_chk;
+ALTER TABLE public.messenger_payment_types ADD CONSTRAINT messenger_payment_types_no_nan_chk CHECK (
+      (fixed_cup IS NULL OR fixed_cup < 'NaN'::numeric) AND (fixed_amount IS NULL OR fixed_amount < 'NaN'::numeric)
+  AND (cup_per_usd IS NULL OR cup_per_usd < 'NaN'::numeric) AND (percent IS NULL OR percent < 'NaN'::numeric)
+  AND (amount_from IS NULL OR amount_from < 'NaN'::numeric) AND (amount_to IS NULL OR amount_to < 'NaN'::numeric));
 
 ALTER TABLE public.messenger_payment_types DROP CONSTRAINT IF EXISTS messenger_payment_types_method_check;
 ALTER TABLE public.messenger_payment_types ADD CONSTRAINT messenger_payment_types_method_check
@@ -285,6 +297,9 @@ BEGIN
     JOIN public.currencies t ON t.id = er.to_currency_id AND t.code = 'CUP'
    WHERE er.is_active
    ORDER BY er.effective_date DESC LIMIT 1;
+  -- a NaN rate passes `rate > 0`: treat it as missing (never multiply an accrual by NaN)
+  v_live_fx := NULLIF(v_live_fx, 'NaN'::numeric);
+  v_fx := NULLIF(v_fx, 'NaN'::numeric);
   IF v_fx IS NULL AND v_live_fx IS NOT NULL THEN
     v_fx := v_live_fx;
     v_fx_src := 'exchange_rates';
@@ -326,6 +341,14 @@ BEGIN
     v_usd := v_rule.fixed_amount;
   ELSIF v_cup IS NOT NULL AND v_fx IS NOT NULL THEN
     v_usd := round(v_cup / v_fx, 2);
+  END IF;
+
+  -- courier_accruals.amount_cup / amount_usd are numeric(12,2): an overflow would make the (non-blocking) trigger swallow
+  -- the error and leave NO accrual. Keep the row, with an unknown amount and a reason.
+  IF abs(v_cup) >= 1e10 OR abs(v_usd) >= 1e10 OR v_cup = 'NaN'::numeric OR v_usd = 'NaN'::numeric THEN
+    v_cup := NULL;
+    v_usd := NULL;
+    v_reason := 'amount_out_of_range';
   END IF;
 
   -- Margin: remittances only (the order profit is not stored in SQL). Cost = this accrual, else the legacy estimate.
@@ -415,6 +438,11 @@ BEGIN
   IF p_type_id IS NOT NULL AND p_applies_to <> 'remittance' THEN
     RAISE EXCEPTION 'invalid_argument: a remittance type only makes sense for remittance rules' USING ERRCODE = '22023';
   END IF;
+  -- NaN passes `>= 0` (it sorts above every number) and would be frozen into the accruals
+  IF 'NaN'::numeric IN (p_amount_from, p_amount_to, p_fixed_amount, p_fixed_cup, p_cup_per_usd, p_percent) THEN
+    RAISE EXCEPTION 'invalid_argument: NaN is not a valid amount, rate or percentage' USING ERRCODE = '22023',
+      DETAIL = 'amount_from, amount_to, fixed_amount, fixed_cup, cup_per_usd and percent must be finite numbers';
+  END IF;
   -- Typed parameters of the chosen method, and none of the others.
   IF NOT (CASE p_method
             WHEN 'fixed_cup' THEN p_fixed_cup >= 0 AND p_fixed_amount IS NULL AND p_cup_per_usd IS NULL AND p_percent IS NULL AND p_base IS NULL
@@ -426,10 +454,18 @@ BEGIN
           END) IS TRUE THEN
     RAISE EXCEPTION 'invalid_argument: parameters do not match the method' USING ERRCODE = '22023';
   END IF;
+  -- numeric(12,2) holds at most 9999999999.99: a typed refusal instead of a raw 22003 overflow
+  IF greatest(p_amount_from, p_amount_to, p_fixed_amount, p_fixed_cup) > 9999999999.99 THEN
+    RAISE EXCEPTION 'invalid_argument: amounts accept at most 9999999999.99' USING ERRCODE = '22023';
+  END IF;
   -- numeric(12,2) columns would round 100.005 silently: refuse anything beyond cents
   IF p_amount_from <> round(p_amount_from, 2) OR p_amount_to <> round(p_amount_to, 2)
      OR p_fixed_amount <> round(p_fixed_amount, 2) OR p_fixed_cup <> round(p_fixed_cup, 2) THEN
     RAISE EXCEPTION 'invalid_argument: amounts accept at most 2 decimals' USING ERRCODE = '22023';
+  END IF;
+  -- same for percent numeric(6,3) and cup_per_usd numeric(12,4)
+  IF p_percent <> round(p_percent, 3) OR p_cup_per_usd <> round(p_cup_per_usd, 4) THEN
+    RAISE EXCEPTION 'invalid_argument: percent accepts at most 3 decimals and cup_per_usd at most 4 decimals' USING ERRCODE = '22023';
   END IF;
   IF (p_amount_from IS NOT NULL AND p_amount_from < 0) OR (p_amount_to IS NOT NULL AND p_amount_to < 0)
      OR (p_amount_from IS NOT NULL AND p_amount_to IS NOT NULL AND p_amount_to <= p_amount_from) THEN

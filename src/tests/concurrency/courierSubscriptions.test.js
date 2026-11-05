@@ -327,6 +327,26 @@ describeDb('phase B: courier subscriptions to payment types (local Postgres)', (
     });
   });
 
+  describe('set_v2 keeps every phase A guard (NaN, amount cap, decimals) with B applied', () => {
+    it('refuses NaN, amounts above 9999999999.99 and over-precise percent / cup_per_usd (22023), for owners and subscribers alike', async () => {
+      const c = await adminClient();
+      const courier = await kit.makeCourier();
+      await kit.setRule(c, { code: 'g' });
+      await kit.subscribe(c, courier, 'g');
+      for (const [o, msg] of [
+        [fixed({ code: 'g', fixed_amount: 'NaN' }), /NaN/],
+        [fixed({ code: 'n', courier_id: courier, amount_from: 'NaN' }), /NaN/],
+        [fixed({ code: 'n', courier_id: courier, fixed_amount: 10000000000 }), /9999999999\.99/],
+        [{ code: 'n', courier_id: courier, method: 'percent_of_base', fixed_cup: null, percent: 1.0005, base: 'nominal_usd' }, /decimals/],
+        [{ code: 'n', courier_id: courier, method: 'per_usd_delivered', fixed_cup: null, cup_per_usd: 1.00005, base: 'nominal_usd' }, /decimals/]
+      ]) {
+        const e = await failure(kit.setRule(c, { ...o, valid_from: new Date(Date.now() + 60000).toISOString() }));
+        expect(e.code, JSON.stringify(o)).toBe('22023');
+        expect(e.message).toMatch(msg);
+      }
+    });
+  });
+
   describe('resolver v2: subscribed type ranks as a courier rule', () => {
     it('subscribed > general zone > general; a non-subscribed courier keeps the general precedence; own beats subscribed', async () => {
       const c = await adminClient();

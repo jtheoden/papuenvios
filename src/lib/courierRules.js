@@ -21,13 +21,25 @@ const num = (v) => (isNum(v) ? Number(v) : null);
 // Money in integer cents (ranges and fixed amounts are compared exactly, never as floats)
 // ---------------------------------------------------------------------------------------------------------------------
 const MONEY = /^\d+(\.\d{1,2})?$/;
-/** '100.01' -> 10001; anything that is not a non-negative amount with at most 2 decimals -> null. */
-export const toCents = (value) => {
+/** Largest numeric(12,2) value, the same cap the RPC enforces (9999999999.99). */
+export const MAX_MONEY_CENTS = 999999999999;
+const parseCents = (value) => {
   if (value === null || value === undefined) return null;
   const text = typeof value === 'number' ? String(value) : String(value).trim();
   if (!MONEY.test(text)) return null;
   const [units, decimals = ''] = text.split('.');
   return Number(units) * 100 + Number(decimals.padEnd(2, '0'));
+};
+/** '100.01' -> 10001; anything that is not a non-negative amount with at most 2 decimals, or is above the cap -> null. */
+export const toCents = (value) => {
+  const cents = parseCents(value);
+  return cents !== null && cents <= MAX_MONEY_CENTS ? cents : null;
+};
+/** Validation key of a money field: null when valid, 'moneyMax' above the cap, else 'money'. */
+const moneyError = (value) => {
+  const cents = parseCents(value);
+  if (cents === null) return 'money';
+  return cents > MAX_MONEY_CENTS ? 'moneyMax' : null;
 };
 export const centsToText = (cents) => `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
 const centsOrNull = (v) => (v === null || v === undefined || v === '' ? null : toCents(v));
@@ -65,17 +77,24 @@ export const coverageGaps = (ranges) => {
 
 const kindsOf = (appliesTo) => (appliesTo === 'both' ? ['remittance', 'order'] : [appliesTo]);
 const sameId = (a, b) => (a || null) === (b || null);
-const isCurrentRule = (r, now) => r.is_active && (!r.valid_to || new Date(r.valid_to).getTime() > now);
+const time = (value, empty) => (value ? new Date(value).getTime() : empty);
 
 /**
- * Client twin of the RPC checks on save, against the CURRENT rules (the server re-validates with the validity windows):
- * overlap of a tramo of the same scope, another currency in a tiered scope, and the gaps the ladder would leave.
+ * Client twin of the RPC checks on save, with the same validity-window rules: overlap of a tramo and another currency in
+ * a tiered scope count against rules whose window INTERSECTS the new one; gaps count only rules spanning the WHOLE new
+ * window (_courier_rule_coverage). An unreadable date decides nothing here: the server has the last word.
  */
 export const analyzeRuleConflicts = (form, rules = [], now = Date.now()) => {
   const range = rangeFromForm(form);
   const none = { overlap: false, mixedCurrency: false, gaps: [] };
   if (range.from === null && range.to === null) return none;
-  const scope = (rules || []).filter((r) => isCurrentRule(r, now) && r.code !== String(form.code ?? '').trim()
+  const from = time(form.validFrom, now);
+  const to = time(form.validTo, Infinity);
+  if (Number.isNaN(from) || Number.isNaN(to)) return none;
+  const window = (r) => ({ from: time(r.valid_from, -Infinity), to: time(r.valid_to, Infinity) });
+  const intersects = (r) => window(r).from < to && from < window(r).to;
+  const spans = (r) => window(r).from <= from && (window(r).to === Infinity || (to !== Infinity && window(r).to >= to));
+  const scope = (rules || []).filter((r) => r.is_active && r.code !== String(form.code ?? '').trim()
     && sameId(r.courier_id, form.courierId) && sameId(r.shipping_zone_id, form.zoneId) && sameId(r.remittance_type_id, form.typeId));
   const tiered = (r) => r.amount_from !== null || r.amount_to !== null;
   const toRange = (r) => ({ from: centsOrNull(r.amount_from), to: centsOrNull(r.amount_to) });
@@ -83,10 +102,11 @@ export const analyzeRuleConflicts = (form, rules = [], now = Date.now()) => {
   kindsOf(form.appliesTo).forEach((kind) => {
     const sameKind = scope.filter((r) => r.applies_to === kind || r.applies_to === 'both');
     const ladder = sameKind.filter(tiered);
-    if (ladder.some((r) => (r.currency || 'USD') !== form.currency)) result.mixedCurrency = true;
-    if (ladder.some((r) => rangesOverlap(toRange(r), range))) result.overlap = true;
-    if (!sameKind.some((r) => !tiered(r))) {
-      result.gaps.push(...coverageGaps([...ladder.filter((r) => (r.currency || 'USD') === form.currency).map(toRange), range])
+    const live = ladder.filter(intersects);
+    if (live.some((r) => (r.currency || 'USD') !== form.currency)) result.mixedCurrency = true;
+    if (live.some((r) => rangesOverlap(toRange(r), range))) result.overlap = true;
+    if (!sameKind.some((r) => !tiered(r) && spans(r))) {
+      result.gaps.push(...coverageGaps([...ladder.filter((r) => spans(r) && (r.currency || 'USD') === form.currency).map(toRange), range])
         .map((g) => ({ kind, ...g })));
     }
   });
@@ -213,7 +233,7 @@ export const validateRuleForm = (form = {}) => {
     if (!isNum(form[field]) || Number(form[field]) < 0) errors[field] = 'nonNegative';
   };
   if (form.method === 'fixed_cup') nonNegative('fixedCup');
-  if (form.method === 'fixed_amount' && toCents(form.fixedAmount) === null) errors.fixedAmount = 'money';
+  if (form.method === 'fixed_amount' && moneyError(form.fixedAmount)) errors.fixedAmount = moneyError(form.fixedAmount);
   if (form.method === 'per_usd_delivered') nonNegative('cupPerUsd');
   if (form.method === 'percent_of_base') {
     if (!isNum(form.percent) || Number(form.percent) < 0 || Number(form.percent) > 100) errors.percent = 'percentRange';
@@ -222,8 +242,8 @@ export const validateRuleForm = (form = {}) => {
   const op = form.rangeOp ?? 'none';
   if (!RANGE_OPERATORS.includes(op)) errors.rangeOp = 'invalid';
   const { from, to } = rangeFromForm({ ...form, rangeOp: op });
-  if ((op === 'gt' || op === 'between') && from === null) errors.rangeX = 'money';
-  if ((op === 'lte' || op === 'between') && to === null) errors.rangeY = 'money';
+  if ((op === 'gt' || op === 'between') && from === null) errors.rangeX = moneyError(form.rangeX);
+  if ((op === 'lte' || op === 'between') && to === null) errors.rangeY = moneyError(form.rangeY);
   if (op === 'between' && from !== null && to !== null && to <= from) errors.rangeY = 'tierOrder';
   if (form.validFrom && form.validTo && new Date(form.validTo) <= new Date(form.validFrom)) errors.validTo = 'windowOrder';
   return errors;
@@ -265,7 +285,8 @@ export const courierErrorKey = (error) => {
   if (code === '22023') {
     if (message.includes('coverage_gap')) return 'couriers.errors.coverageGap';
     if (message.includes('mixed_currency_scope')) return 'couriers.errors.mixedCurrency';
-    if (message.includes('at most 2 decimals')) return 'couriers.errors.decimals';
+    if (/at most \d+ decimals/.test(message)) return 'couriers.errors.decimals';
+    if (message.includes('at most 9999999999.99')) return 'couriers.errors.amountMax';
     if (message.includes('belongs to another courier')) return 'couriers.errors.ownedByOther';
     if (message.includes('no active version')) return 'couriers.errors.noActiveVersion';
     if (message.includes('subscribed by another courier')) return 'couriers.errors.subscribedElsewhere';

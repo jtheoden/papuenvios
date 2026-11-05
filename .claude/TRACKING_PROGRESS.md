@@ -555,6 +555,15 @@ Rama `feat/courier-payment-types-ranges` (desde `origin/main` 30f8f5da). Sin PR,
 - Fuera de esta rama: suscripciones (fase B).
 - Verificación: eslint src limpio; vitest unit 365 archivos / 4386 tests verdes; suite BD local completa (BD propia `papuenvios_test_courier_ranges`, borrada al final) 51 archivos / 1766 verdes + 1 skip preexistente; e2e simulado `courier-payment-type-ranges.spec.js` 2/2 (`playwright.theme.config.js`); build a directorio temporal OK, `dist/` sin tocar.
 
+### Mensajería fase A — correcciones tras revisión independiente (2026-11-05)
+- 🔴 NaN: `'NaN'::numeric` pasaba los CHECK `>= 0`. La RPC v2 lo rechaza (22023) en `amount_from/to`, `fixed_amount`, `fixed_cup`, `cup_per_usd`, `percent`; nuevo `messenger_payment_types_no_nan_chk`; una tasa NaN se trata como ausente (`no_fx`). El devengo nunca contiene NaN.
+- 🟡 Desbordamiento: un monto que no cabe en `numeric(12,2)` deja el devengo con monto NULL y motivo `amount_out_of_range` (antes el trigger se tragaba el 22003 y la entrega quedaba sin devengo). La RPC rechaza importes > 9999999999.99 (22023).
+- 🟡 Vigencias: `analyzeRuleConflicts` usa las mismas reglas que la RPC (solape/moneda por intersección de ventanas; huecos solo con reglas que cubren toda la ventana); fecha ilegible → decide el servidor.
+- 🟢 `percent` > 3 decimales y `cup_per_usd` > 4 rechazados (22023), sin redondeo silencioso.
+- 🟢 `toCents` con el mismo tope que el servidor (`validation.moneyMax`, `errors.amountMax`); en el formulario los avisos dentro de un contenedor `aria-live` no llevan `role` propio (`Notice announce={false}`). Mismo patrón doble en CouriersPanel, MarginThresholdsCard, PayablePanel y PaymentTypesPanel: no tocado (fuera del hallazgo).
+- Cabecera de la migración: documenta que v2 difiere de v1 a propósito (moneda sin tasa → `no_fx`, sin caer a menor precedencia).
+- Verificación: eslint src limpio; BD local propia `papuenvios_test_codex_fixa` (recreada desde cero con la migración editada, borrada al final) 51 archivos / 1771 verdes + 1 skip preexistente; build a directorio temporal OK, `dist/` sin tocar; vitest unit completo 365 archivos / 4388 verdes; e2e simulado 2/2.
+
 ## Mensajería: suscripción de mensajeros a tipos de pago (fase B) — 2026-11-05
 
 Rama `feat/courier-subscriptions` (desde `origin/feat/courier-payment-types-ranges`, fase A sin PR). Sin PR, sin merge, migración NO aplicada en remoto (solo SELECTs de lectura: prod tiene M1–M3, no tiene fase A; 0 reglas, 2 mensajeros, 16 accruals).
@@ -568,3 +577,4 @@ Rama `feat/courier-subscriptions` (desde `origin/feat/courier-payment-types-rang
 - DESPLIEGUE: aplicar DESPUÉS de la fase A, junto con este front. Rollback: `supabase/rollbacks/20261105160000_courier_payment_type_subscriptions_down.sql` ANTES del de fase A (aborta con suscripciones salvo `SET app.confirm_courier_rollback = 'yes'`). Pendiente «dale» del dueño.
 - Fuera de esta rama: fase C (asignar mensajero tras la entrega).
 - Verificación: eslint src limpio; vitest unit 365 archivos / 4396 verdes; suite BD local completa (BD propia `papuenvios_test_subs`, recreada limpia y borrada al final) 52 archivos / 1791 verdes + 1 skip preexistente; e2e simulados `courier-subscriptions.spec.js` + `courier-payment-type-ranges.spec.js` 3/3; build a directorio temporal OK, `dist/` sin tocar.
+- Integración de los arreglos de revisión de la fase A (merge de `origin/feat/courier-payment-types-ranges` en b76d2251, sin reescribir historia): conflictos resueltos conservando ambas lógicas (`courierErrorKey`: decimales genéricos + `amountMax` de A y las 4 claves de B; i18n ES/EN con ambas). Migración y rollback de B regenerados desde el cuerpo NUEVO de `admin_set_messenger_payment_type_v2` (NaN, tope 9999999999.99, decimales de percent/cup_per_usd); resolver y cobertura no cambiaron en A; `_courier_compute_accrual` no lo reemplaza B. Test nuevo: con B aplicada, set_v2 sigue rechazando NaN/tope/decimales. Orden de rollback B → A coherente (A elimina `no_nan_chk` después). Verificación: eslint limpio; vitest unit 365 / 4398; BD local propia recreada y borrada 52 / 1797 + 1 skip preexistente; e2e simulados 3/3; build a directorio temporal OK.

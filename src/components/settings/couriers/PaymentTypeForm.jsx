@@ -150,7 +150,7 @@ const PaymentTypeForm = ({ initial, lockedCode = false, rules = [], couriers, zo
   return (
     <form className="space-y-4 rounded-xl border border-gray-200 bg-white p-4" aria-label={t('couriers.types.formTitle')} onSubmit={submit} noValidate>
       <Notice tone="warn">{t('couriers.types.onlyNewDeliveries')}</Notice>
-      <div aria-live="polite">{message && <Notice tone={message.tone}>{message.text}</Notice>}</div>
+      <div aria-live="polite">{message && <Notice tone={message.tone} announce={false}>{message.text}</Notice>}</div>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label={t('couriers.types.code')} error={err('code')} hint={lockedCode ? t('couriers.types.codeLocked') : t('couriers.types.codeHint')}>
           {(p) => <input {...p} className={inputCls} value={form.code} maxLength={100} readOnly={lockedCode} onChange={set('code')} />}
@@ -207,7 +207,7 @@ const PaymentTypeForm = ({ initial, lockedCode = false, rules = [], couriers, zo
       <div aria-live="polite">
         {gaps.length > 0 && (
           <div className="space-y-2" data-testid="range-gap-warning">
-            <Notice tone="warn">
+            <Notice tone="warn" announce={false}>
               <p>{t('couriers.types.gapWarning')}</p>
               <ul className="list-disc pl-5">
                 {gaps.map((g) => (

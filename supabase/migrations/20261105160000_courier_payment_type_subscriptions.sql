@@ -324,6 +324,11 @@ BEGIN
   IF p_type_id IS NOT NULL AND p_applies_to <> 'remittance' THEN
     RAISE EXCEPTION 'invalid_argument: a remittance type only makes sense for remittance rules' USING ERRCODE = '22023';
   END IF;
+  -- NaN passes `>= 0` (it sorts above every number) and would be frozen into the accruals
+  IF 'NaN'::numeric IN (p_amount_from, p_amount_to, p_fixed_amount, p_fixed_cup, p_cup_per_usd, p_percent) THEN
+    RAISE EXCEPTION 'invalid_argument: NaN is not a valid amount, rate or percentage' USING ERRCODE = '22023',
+      DETAIL = 'amount_from, amount_to, fixed_amount, fixed_cup, cup_per_usd and percent must be finite numbers';
+  END IF;
   -- Typed parameters of the chosen method, and none of the others.
   IF NOT (CASE p_method
             WHEN 'fixed_cup' THEN p_fixed_cup >= 0 AND p_fixed_amount IS NULL AND p_cup_per_usd IS NULL AND p_percent IS NULL AND p_base IS NULL
@@ -335,10 +340,18 @@ BEGIN
           END) IS TRUE THEN
     RAISE EXCEPTION 'invalid_argument: parameters do not match the method' USING ERRCODE = '22023';
   END IF;
+  -- numeric(12,2) holds at most 9999999999.99: a typed refusal instead of a raw 22003 overflow
+  IF greatest(p_amount_from, p_amount_to, p_fixed_amount, p_fixed_cup) > 9999999999.99 THEN
+    RAISE EXCEPTION 'invalid_argument: amounts accept at most 9999999999.99' USING ERRCODE = '22023';
+  END IF;
   -- numeric(12,2) columns would round 100.005 silently: refuse anything beyond cents
   IF p_amount_from <> round(p_amount_from, 2) OR p_amount_to <> round(p_amount_to, 2)
      OR p_fixed_amount <> round(p_fixed_amount, 2) OR p_fixed_cup <> round(p_fixed_cup, 2) THEN
     RAISE EXCEPTION 'invalid_argument: amounts accept at most 2 decimals' USING ERRCODE = '22023';
+  END IF;
+  -- same for percent numeric(6,3) and cup_per_usd numeric(12,4)
+  IF p_percent <> round(p_percent, 3) OR p_cup_per_usd <> round(p_cup_per_usd, 4) THEN
+    RAISE EXCEPTION 'invalid_argument: percent accepts at most 3 decimals and cup_per_usd at most 4 decimals' USING ERRCODE = '22023';
   END IF;
   IF (p_amount_from IS NOT NULL AND p_amount_from < 0) OR (p_amount_to IS NOT NULL AND p_amount_to < 0)
      OR (p_amount_from IS NOT NULL AND p_amount_to IS NOT NULL AND p_amount_to <= p_amount_from) THEN

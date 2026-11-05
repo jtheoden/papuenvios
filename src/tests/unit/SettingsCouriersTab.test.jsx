@@ -207,6 +207,18 @@ describe('payment type form: currency, range operators, overlaps and gaps (phase
     expect(svc.setPaymentType.mock.calls[0][0]).toMatchObject({ p_amount_from: 100.01, p_amount_to: 200, p_accept_gaps: true });
   });
 
+  it('one live region per message: notices inside an aria-live container carry no role of their own (no double announcement)', async () => {
+    const { form, set, save } = await openForm(LADDER);
+    set('couriers.types.rangeOp', 'between');
+    set('couriers.types.rangeX', '100.01');
+    set('couriers.types.rangeY', '200');
+    save();
+    expect(await within(form).findByText('couriers.types.acceptGapsRequired')).toBeTruthy();
+    expect(within(form).getByTestId('range-gap-warning')).toBeTruthy();
+    const nested = form.querySelectorAll('[aria-live] [role="status"], [aria-live] [role="alert"], [aria-live] [aria-live]');
+    expect(nested).toHaveLength(0);
+  });
+
   it('the reference ladder closes every gap: no warning, saved without confirmation', async () => {
     svc.setPaymentType.mockResolvedValue('id');
     const { form, set, save } = await openForm(LADDER);
