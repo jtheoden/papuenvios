@@ -488,6 +488,7 @@ const HomePage = ({ onNavigate }) => {
         </section>
       )}
 
+      {features.length > 0 && (
       <section className="py-20 px-4">
         <div className="container mx-auto">
           <motion.div
@@ -532,6 +533,7 @@ const HomePage = ({ onNavigate }) => {
           </div>
         </div>
       </section>
+      )}
 
       {/* Blog Section */}
       {guideArticles.length > 0 && (
