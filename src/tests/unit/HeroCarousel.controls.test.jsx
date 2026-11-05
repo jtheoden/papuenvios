@@ -42,7 +42,8 @@ const setHidden = (hidden) => {
   document.dispatchEvent(new Event('visibilitychange'));
 };
 
-const activeAlt = () => screen.getByTestId('hero-slide-image').getAttribute('alt');
+// The poster's alt is empty (the title is the visible caption), so the active slide is identified by its image
+const activeAlt = () => SLIDES.find((slide) => slide.image_url === screen.getByTestId('hero-slide-image').getAttribute('src'))?.title_es ?? null;
 const tick = (ms) => act(() => { vi.advanceTimersByTime(ms); });
 const names = (dict) => ({
   pause: dict.home.carousel.pause,

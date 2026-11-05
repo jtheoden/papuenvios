@@ -136,6 +136,8 @@ export const DEFAULT_VISUAL_SETTINGS = {
   carouselEnabled: true,
   carouselAutoplaySpeed: 5000,
   carouselTransitionSpeed: 1000,
+  // heroLayout ('spaced' | 'cover', see heroLayout.js) is deliberately NOT a default: everything that spreads these
+  // defaults would persist it. A missing key already resolves to 'spaced'.
   // Brand refresh keys (additive; see brandPalette.js)
   ...NEW_KEY_DEFAULTS
   // No `activeTheme` here on purpose: visualThemes.resolveThemeId infers it from the stored values
