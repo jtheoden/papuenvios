@@ -553,3 +553,12 @@ Rama `feat/loading-states-lists` (desde `origin/main` 30f8f5da). Sin PR, sin Sup
 - `MotionConfig reducedMotion="user"` global en `main.jsx`: las entradas framer de todas las vistas respetan reduced-motion.
 - e2e incluye un combo (huella del skeleton) y un test de Home: sin `enter-up`/`fade-in` en la primera pintura y CLS 0.
 - Pendiente: `SkeletonCard` (Home) mantiene su pulso de framer (opacidad, infinito mientras carga).
+
+### Estados de carga — correcciones tras revisión independiente (2026-11-05)
+- Intermitencias (`MyRemittancesPage.commissionChange`/`rateChange`, `UserPanel.errorToasts`): con render > 300 ms el skeleton retenido (role="status") convivía con los avisos role="status" de la página. Reproducido en rojo forzando `showDelayMs = 0` (9 fallos). Timing en `src/components/ui/loadingTiming.js` (sin dependencias); `src/tests/setup.js` pone `minVisibleMs = 0` (el skeleton se va al terminar la carga) y `LoadingState.test.jsx` restaura el real. Peor caso (`showDelayMs = 0` + `minVisibleMs = 0`): 21/21.
+- `LoadingState` envuelve SIEMPRE el contenido en el mismo nodo (`contentClassName` para el layout del contenedor; solo cambia la clase de fade): el DOM ya no depende de la velocidad de la red. Ofertas pasan `space-y-3`. Test de estructura DOM rápida vs lenta.
+- Recargas con datos: test por vista (remesas, pedidos, destinatarios, remesas admin, ofertas), verificado por mutación (quitar `&& lista.length === 0` hace fallar cada uno). `ResponsiveTableWrapper` en recarga con filas: `aria-busy` + `opacity-60` (transición motion-safe, sin layout shift) vía la prop `refreshing`.
+- Skeleton: `bg-theme-accent-line/70` (beige en la marca, blue-200 en classic), más visible que `bg-muted` sobre vidrio/marfil. Trinquete themeCompliance fijado en 769 SIN margen: cualquier clase de paleta vieja nueva lo rompe.
+- Varias regiones cargando a la vez: solo la primera es región viva (role="status", aria-live); las demás quedan aria-busy con la etiqueta aria-hidden. Limitación (shortcut documentado): si la primera termina, las otras no toman el relevo.
+- `ProductContext`: `loading` termina con productos y combos; categorías, testimonios y carrusel ya no retienen el skeleton del catálogo (solo ProductsPage consume ese flag).
+- Seguimiento: la fila de combos del skeleton se reserva siempre (no se sabe si hay combos antes de cargar); sin combos, la grilla sube ~500 px al llegar los datos (los nodos se reemplazan, CLS medido 0). Alternativa futura: recordar en sesión si el último catálogo tenía combos.
