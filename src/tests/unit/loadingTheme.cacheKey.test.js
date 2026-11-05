@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BRAND_PRESET } from '@/lib/brandPalette';
 
 // The loading screen reads what loadVisualSettings writes: lock the two ends together.
-const row = { settings: { useGradient: false, pageBgColor: '#FAF7F0' } };
+const row = { settings: { ...BRAND_PRESET } };
 vi.mock('@/lib/supabase', () => ({
   withTimeout: (promise) => promise,
   supabase: { from: () => ({ select: () => ({ limit: () => ({ single: async () => ({ data: row, error: null }) }) }) }) },

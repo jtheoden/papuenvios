@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 
-import { BRAND_PRESET } from '@/lib/brandPalette';
+import { BRAND_PRESET, resolveLookId } from '@/lib/brandPalette';
 import { LOCAL_CACHE_KEY } from '@/lib/constants';
 import { contrastRatio } from '@/lib/contrast';
 import { buildLoadingTheme, readStoredVisualSettings } from '@/lib/loadingTheme';
@@ -55,8 +57,8 @@ describe('buildLoadingTheme (S4)', () => {
     Object.values(POISON).forEach((hex) => expect(dump).not.toContain(hex));
   });
 
-  it('follows a customised page and card colour', () => {
-    const theme = buildLoadingTheme({ ...PRESET, pageBgColor: '#112233', cardBgColor: '#f0f0f0' });
+  it('follows a customised page and card colour (papuenvios chosen in the selector)', () => {
+    const theme = buildLoadingTheme({ ...PRESET, activeTheme: 'papuenvios', pageBgColor: '#112233', cardBgColor: '#f0f0f0' });
     expect(theme['--ld-bg']).toBe('#112233');
     expect(theme['--ld-card-bg']).toBe('#f0f0f0');
   });
@@ -67,6 +69,39 @@ describe('buildLoadingTheme (S4)', () => {
     for (const value of Object.values(theme)) {
       expect(String(value)).not.toMatch(/evil|url|;/i);
     }
+  });
+});
+
+// The static splash (index.html) and the loading screens must agree: the splash paints the classic gradient exactly
+// when the inline script sets data-theme="classic" (resolveLookId), ivory otherwise (also with nothing cached).
+describe('buildLoadingTheme agrees with the static splash (data-theme) for every row', () => {
+  const GRADIENT = 'linear-gradient(to right, #2563eb, #9333ea)';
+  const script = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
+  const splashLook = (data) => {
+    document.documentElement.removeAttribute('data-theme');
+    localStorage.clear();
+    if (data) localStorage.setItem(CACHE_KEY, JSON.stringify({ data, timestamp: 0 }));
+    new Function(script)();
+    return document.documentElement.getAttribute('data-theme') === 'classic' ? 'classic' : 'brand';
+  };
+  const ROWS = {
+    nothingCached: null,
+    productionBrandRow: { ...BRAND_PRESET },
+    classicGradient: PROD,
+    classicNoGradient: { ...PROD, useGradient: false, pageBgColor: '#f8fafc' },
+    papuenviosWithGradient: { ...BRAND_PRESET, useGradient: true, activeTheme: 'papuenvios' },
+    brandMarkedClassic: { ...BRAND_PRESET, activeTheme: 'classic' },
+    classicMarkedPapuenvios: { ...PROD, activeTheme: 'papuenvios' },
+    brandMissingOneKey: { ...BRAND_PRESET, footerLinkHoverColor: '#123456' },
+    empty: {},
+  };
+
+  it.each(Object.entries(ROWS))('%s', (_name, row) => {
+    const look = splashLook(row);
+    expect(look).toBe(row ? (resolveLookId(row) === 'classic' ? 'classic' : 'brand') : 'brand');
+    const bg = buildLoadingTheme(row)['--ld-bg'];
+    if (look === 'classic') expect(bg).toBe(GRADIENT);
+    else expect(bg).not.toMatch(/gradient/);
   });
 });
 

@@ -30,7 +30,12 @@ describe('theme resolvers do not depend on the theme name', () => {
   it('the activeTheme / classicSnapshot keys change nothing for the classic row', () => {
     const withKeys = { ...CLASSIC, activeTheme: 'classic', classicSnapshot: null };
     expect(resolve(withKeys)).toEqual(resolve(CLASSIC));
-    expect(resolve({ ...CLASSIC, activeTheme: 'papuenvios' })).toEqual(resolve(CLASSIC));
+    // The loading screen is the exception: it follows the look (resolveLookId), like the static splash it replaces.
+    const { loading, ...rest } = resolve({ ...CLASSIC, activeTheme: 'papuenvios' });
+    const { loading: classicLoading, ...classicRest } = resolve(CLASSIC);
+    expect(rest).toEqual(classicRest);
+    expect(loading).not.toEqual(classicLoading);
+    expect(loading['--ld-bg']).not.toMatch(/gradient/);
   });
 
   it('classic and papuenvios do resolve differently (the checks below are not vacuous)', () => {
