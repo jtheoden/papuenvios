@@ -38,6 +38,24 @@ export const SLIDES = [
   { id: 's3', image_url: 'https://cdn.example.test/poster-3.png', title_es: 'Combos de comida', title_en: 'Food combos', subtitle_es: 'c', subtitle_en: 'c' },
 ];
 
+// Structural fingerprint of a DOM subtree: one line per element, indented by depth, with the tag, the sorted class
+// tokens and the attributes that carry layout or semantics (data-testid, role, aria-*). No text and no inline
+// style, so copy and colour changes do not move it; any change of structure, spacing or responsive classes does.
+export const layoutSignature = (root) => {
+  const lines = [];
+  const walk = (el, depth) => {
+    const classes = (el.getAttribute('class') || '').split(/\s+/).filter(Boolean).sort();
+    const attrs = [...el.attributes]
+      .filter((a) => a.name === 'data-testid' || a.name === 'role' || a.name.startsWith('aria-'))
+      .map((a) => `${a.name}=${a.value}`)
+      .sort();
+    lines.push(`${'  '.repeat(depth)}${el.tagName.toLowerCase()}${classes.map((c) => `.${c}`).join('')}${attrs.length ? ` [${attrs.join(' ')}]` : ''}`);
+    [...el.children].forEach((child) => walk(child, depth + 1));
+  };
+  walk(root, 0);
+  return lines;
+};
+
 // Colour-only fingerprint of a DOM subtree: tag + class tokens that name a colour + colour-ish inline
 // declarations. Layout/size/spacing classes are ignored on purpose, so responsive fixes do not matter.
 const COLOR_WORDS = /(white|black|gray|slate|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|brand|transparent|current)/;

@@ -9,22 +9,14 @@ const RemittancesPage = ({ onNavigate }) => {
   const { user } = useAuth();
 
   const features = [
-    {
-      icon: TrendingUp,
-      title: 'Tasas Competitivas',
-      description: 'Las mejores tasas de cambio del mercado'
-    },
-    {
-      icon: Clock,
-      title: 'Entrega Rápida',
-      description: 'Entrega en 24-72 horas'
-    },
-    {
-      icon: CheckCircle,
-      title: 'Seguro y Confiable',
-      description: 'Tus remesas están protegidas'
-    }
-  ];
+    { icon: TrendingUp, key: 'rates' },
+    { icon: Clock, key: 'delivery' },
+    { icon: CheckCircle, key: 'tracking' }
+  ].map(({ icon, key }) => ({
+    icon,
+    title: t(`remittances.features.${key}.title`),
+    description: t(`remittances.features.${key}.description`)
+  }));
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
