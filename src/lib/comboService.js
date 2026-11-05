@@ -23,12 +23,43 @@ import { ORDER_STATUS } from './orderService';
 import { PUBLIC_COMBO_COLUMNS, PUBLIC_COMBO_ITEM_COLUMNS } from './publicCatalogColumns';
 import { listProductCosts, listComboCosts } from './adminCostService';
 
-/** base_total_price of a combo: sum of component base_price x quantity (base prices come from the admin RPC). */
+/** base_total_price of a combo: sum of component base_price x quantity (currency was already asserted). */
 const sumBaseTotal = (productsWithQuantities, costs) =>
   productsWithQuantities.reduce((sum, item) => {
     const cost = costs.get(item.productId);
     return cost ? sum + (parseFloat(cost.base_price) * item.quantity) : sum;
   }, 0);
+
+const assertComponentsInBaseCurrency = async (productIds) => {
+  const [productsResult, currenciesResult] = await Promise.all([
+    supabase.from('products').select('id, base_currency_id').in('id', productIds),
+    supabase.from('currencies').select('id').eq('is_base', true)
+  ]);
+
+  if (productsResult.error) {
+    const appError = parseSupabaseError(productsResult.error);
+    logError(appError, { operation: 'assertComponentsInBaseCurrency.products' });
+    throw appError;
+  }
+  if (currenciesResult.error) {
+    const appError = parseSupabaseError(currenciesResult.error);
+    logError(appError, { operation: 'assertComponentsInBaseCurrency.currencies' });
+    throw appError;
+  }
+
+  const baseCurrencyIds = new Set((currenciesResult.data || []).map(currency => currency.id));
+  const hasMismatch = baseCurrencyIds.size === 0 || (productsResult.data || []).some(product =>
+    product.base_currency_id !== null && product.base_currency_id !== undefined && !baseCurrencyIds.has(product.base_currency_id)
+  );
+  if (hasMismatch) {
+    const error = createValidationError(
+      { productsWithQuantities: 'All combo components must be priced in the base currency' },
+      'Combo components in a non-base currency'
+    );
+    error.i18nKey = 'vendor.combos.componentCurrencyMismatch';
+    throw error;
+  }
+};
 
 // Explicit projections so new heavy or sensitive columns are never pulled by accident.
 
@@ -157,6 +188,7 @@ export const createCombo = withCatalogInvalidation(async (comboData) => {
     // Calculate base total price from selected products with quantities
     // (an unavailable cost source aborts the save: a silent 0 would store a wrong base_total_price)
     const productIds = comboData.productsWithQuantities.map(item => item.productId);
+    await assertComponentsInBaseCurrency(productIds);
     const baseTotalPrice = sumBaseTotal(comboData.productsWithQuantities, await listProductCosts(productIds));
 
     // Upload first: if it fails nothing is saved (no base64 fallback)
@@ -233,6 +265,7 @@ export const updateCombo = withCatalogInvalidation(async (comboId, comboData) =>
     let baseTotalPrice = undefined;
     if (comboData.productsWithQuantities && comboData.productsWithQuantities.length > 0) {
       const productIds = comboData.productsWithQuantities.map(item => item.productId);
+      await assertComponentsInBaseCurrency(productIds);
       baseTotalPrice = sumBaseTotal(comboData.productsWithQuantities, await listProductCosts(productIds));
     }
 

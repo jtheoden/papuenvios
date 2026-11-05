@@ -23,6 +23,16 @@ import { roundMoney, roundTo, ceilMoney } from './moneyPure';
 const MAX_REVERSE_STEPS = 100;
 const CENT = 0.01;
 
+export function calcCommissionFromRates(marketRate, deliveryRate) {
+  if (!Number.isFinite(marketRate) || marketRate <= 0) return 0;
+  if (!Number.isFinite(deliveryRate) || deliveryRate <= 0) return 100;
+  if (deliveryRate >= marketRate) return 0;
+  return roundTo((1 - deliveryRate / marketRate) * 100, 2);
+}
+
+export const effectiveDeliveryRate = (marketRate, commissionPct) =>
+  roundTo(marketRate * (1 - commissionPct / 100), 2);
+
 const calcDiscount = (gross, offer) => {
   if (!offer?.discount_type || !offer?.discount_value) return 0;
   const type = normalizeDiscountType(offer.discount_type);

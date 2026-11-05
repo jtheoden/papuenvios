@@ -12,18 +12,10 @@ import {
   getPendingRemittancesCountByType,
   DELIVERY_METHODS
 } from '@/lib/remittanceService';
-import { simulateRemittance } from '@/lib/remittanceCalculations';
+import { calcCommissionFromRates, effectiveDeliveryRate, simulateRemittance } from '@/lib/remittanceCalculations';
 import { getCurrenciesWithRates } from '@/lib/currencyService';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
-
-// Calculate commission % from market rate and delivery rate
-const calcCommissionFromRates = (marketRate, deliveryRate) => {
-  if (!marketRate || marketRate <= 0) return 0;
-  if (!deliveryRate || deliveryRate <= 0) return 100;
-  if (deliveryRate >= marketRate) return 0;
-  return ((1 - deliveryRate / marketRate) * 100);
-};
 
 const RemittanceTypesConfig = () => {
   const { t, language } = useLanguage();
@@ -169,7 +161,7 @@ const RemittanceTypesConfig = () => {
     // Derive delivery_rate from existing exchange_rate and commission_percentage
     const rate = type.exchange_rate || 0;
     const pct = type.commission_percentage || 0;
-    const derivedDeliveryRate = rate * (1 - pct / 100);
+    const derivedDeliveryRate = effectiveDeliveryRate(rate, pct);
     setFormData({
       name: type.name,
       currency_code: type.currency_code,
@@ -539,6 +531,12 @@ const RemittanceTypesConfig = () => {
                     <span className="text-sm text-blue-700 font-medium">{t('remittances.admin.marginPerUnit')}:</span>
                     <span className="text-sm font-bold text-blue-800">
                       {(parseFloat(formData.exchange_rate) - parseFloat(formData.delivery_rate)).toFixed(2)} {formData.delivery_currency || ''}/{formData.currency_code || ''}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-blue-700 font-medium">{t('remittances.admin.effectiveDeliveryRate')}:</span>
+                    <span className="text-sm font-bold text-blue-800" data-testid="effective-delivery-rate">
+                      {effectiveDeliveryRate(parseFloat(formData.exchange_rate), parseFloat(formData.commission_percentage) || 0).toFixed(2)} {formData.delivery_currency || ''}/{formData.currency_code || ''}
                     </span>
                   </div>
                 </div>

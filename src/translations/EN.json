@@ -412,6 +412,7 @@
       "marketRate": "Market Rate",
       "marketRateHint": "Actual market exchange rate",
       "calculatedCommission": "Calculated commission",
+      "effectiveDeliveryRate": "Effective delivery rate",
       "marginPerUnit": "Margin per unit",
       "deliveryRateTooHigh": "Delivery rate cannot exceed the market rate",
       "advancedCommission": "Additional fixed commission (Advanced)",
@@ -822,6 +823,7 @@
       "sellPriceTooLow": "Invalid sell price",
       "sellPriceTooLowDesc": "Sell price cannot be less than product costs",
       "addProductsFirst": "Add products to the combo first",
+      "componentCurrencyMismatch": "All products in a combo must be priced in the base currency. Remove or replace the products in another currency.",
       "userSavings": "Customer savings",
       "individualTotal": "Individual purchase"
     },

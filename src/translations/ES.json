@@ -412,6 +412,7 @@
       "marketRate": "Tasa de Mercado",
       "marketRateHint": "Tasa de cambio real del mercado",
       "calculatedCommission": "Comisión calculada",
+      "effectiveDeliveryRate": "Tasa de entrega efectiva",
       "marginPerUnit": "Margen por unidad",
       "deliveryRateTooHigh": "La tasa de entrega no puede ser mayor a la tasa de mercado",
       "advancedCommission": "Comisión fija adicional (Avanzado)",
@@ -830,6 +831,7 @@
       "sellPriceTooLow": "Precio de venta inválido",
       "sellPriceTooLowDesc": "El precio de venta no puede ser menor que el costo de productos",
       "addProductsFirst": "Agregue productos al combo primero",
+      "componentCurrencyMismatch": "Todos los productos de un combo deben tener su precio en la moneda base. Quite o reemplace los productos en otra moneda.",
       "userSavings": "Ahorro del cliente",
       "individualTotal": "Compra individual"
     },
