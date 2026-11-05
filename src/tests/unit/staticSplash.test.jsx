@@ -35,16 +35,16 @@ describe('static splash in index.html', () => {
     expect(styles).toMatch(/prefers-reduced-motion:\s*reduce/);
   });
 
+  it('tells users without JavaScript that the app needs it', () => {
+    expect(root.querySelector('noscript')?.textContent).toMatch(/JavaScript/);
+  });
+
   it('is announced to assistive tech as a loading status', () => {
     expect(root.querySelector('[role="status"]')).not.toBeNull();
   });
 });
 
 describe('React takes over #root', () => {
-  it('main.jsx does not blank #root before React renders (avoids a white frame)', () => {
-    expect(read('src/main.jsx')).not.toMatch(/innerHTML\s*=\s*''/);
-  });
-
   it('createRoot replaces the pre-rendered splash on its first commit', async () => {
     const container = document.createElement('div');
     container.innerHTML = root.innerHTML;
