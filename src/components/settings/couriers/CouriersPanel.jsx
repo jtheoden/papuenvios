@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { upsertCourier } from '@/lib/courierService';
+import { useAsyncResource } from '@/hooks/useAsyncResource';
+import { upsertCourier, listSubscriptions, listPaymentTypes } from '@/lib/courierService';
 import { Btn, Field, Notice, errorText, inputCls } from './courierUi';
+import CourierSubscriptions from './CourierSubscriptions';
 
 const EMPTY = { id: null, name: '', phone: '', notes: '', isActive: true };
 
@@ -11,6 +13,10 @@ const CouriersPanel = ({ couriers, onChanged }) => {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null); // { tone, text }
   const [fieldError, setFieldError] = useState(null);
+  const subs = useAsyncResource(listSubscriptions);
+  const types = useAsyncResource(listPaymentTypes);
+  // hidden until the subscriptions migration exists (or while its read fails); the rest of the panel is unaffected
+  const subsReady = subs.data?.available === true && types.data?.available === true;
 
   const open = (courier) => {
     setMessage(null);
@@ -87,6 +93,14 @@ const CouriersPanel = ({ couriers, onChanged }) => {
                   {t(c.is_active ? 'couriers.common.deactivate' : 'couriers.common.activate')}
                 </Btn>
               </div>
+              {subsReady && (
+                <CourierSubscriptions
+                  courier={c}
+                  subscriptions={subs.data.items.filter((s) => s.courier_id === c.id)}
+                  types={types.data.items}
+                  onChanged={subs.reload}
+                />
+              )}
             </li>
           ))}
         </ul>

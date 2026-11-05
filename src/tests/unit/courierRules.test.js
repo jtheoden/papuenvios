@@ -232,6 +232,11 @@ describe('courierErrorKey: typed RPC errors', () => {
     expect(key({ code: '22023', message: 'coverage_gap: the ranges of this scope leave values without a rule' })).toBe('couriers.errors.coverageGap');
     expect(key({ code: '22023', message: 'mixed_currency_scope: the ranges of this scope already use another currency' })).toBe('couriers.errors.mixedCurrency');
     expect(key({ code: '22023', message: 'invalid_argument: amounts accept at most 2 decimals' })).toBe('couriers.errors.decimals');
+    // phase B: subscriptions
+    expect(key({ code: '22023', message: 'invalid_argument: this payment type belongs to another courier' })).toBe('couriers.errors.ownedByOther');
+    expect(key({ code: '22023', message: 'invalid_argument: unknown payment type code or no active version' })).toBe('couriers.errors.noActiveVersion');
+    expect(key({ code: '22023', message: 'invalid_argument: this payment type is subscribed by another courier; unsubscribe it first' })).toBe('couriers.errors.subscribedElsewhere');
+    expect(key({ code: '22023', message: 'invalid_argument: courier not found or inactive' })).toBe('couriers.errors.courierInactive');
     expect(key({ code: '22023', message: 'something else' })).toBe('couriers.errors.invalid');
     expect(key({ code: '55P03' })).toBe('couriers.errors.generic');
     expect(key(null)).toBe('couriers.errors.generic');

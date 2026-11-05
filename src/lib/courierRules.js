@@ -266,6 +266,10 @@ export const courierErrorKey = (error) => {
     if (message.includes('coverage_gap')) return 'couriers.errors.coverageGap';
     if (message.includes('mixed_currency_scope')) return 'couriers.errors.mixedCurrency';
     if (message.includes('at most 2 decimals')) return 'couriers.errors.decimals';
+    if (message.includes('belongs to another courier')) return 'couriers.errors.ownedByOther';
+    if (message.includes('no active version')) return 'couriers.errors.noActiveVersion';
+    if (message.includes('subscribed by another courier')) return 'couriers.errors.subscribedElsewhere';
+    if (message.includes('courier not found or inactive')) return 'couriers.errors.courierInactive';
     if (message.includes('cannot be in the past')) return 'couriers.errors.pastDate';
     if (message.includes('every accrual must be')) return 'couriers.errors.notPayable';
     if (message.includes('unknown amount can be recalculated')) return 'couriers.errors.notRecalculable';

@@ -6,7 +6,8 @@ const svc = vi.hoisted(() => ({
   listCouriers: vi.fn(), upsertCourier: vi.fn(), listPaymentTypes: vi.fn(), setPaymentType: vi.fn(), deactivatePaymentType: vi.fn(),
   getMarginSettings: vi.fn(), setMarginThresholds: vi.fn(), listZoneOptions: vi.fn(), listRemittanceTypeOptions: vi.fn(),
   listAccruals: vi.fn(), registerPayment: vi.fn(), voidAccrual: vi.fn(), adjustAccrual: vi.fn(), recalculateAccrual: vi.fn(),
-  listDeliveriesWithoutAccrual: vi.fn(), backfillMissingAccruals: vi.fn(), getCourierReport: vi.fn()
+  listDeliveriesWithoutAccrual: vi.fn(), backfillMissingAccruals: vi.fn(), getCourierReport: vi.fn(),
+  listSubscriptions: vi.fn(), subscribeCourier: vi.fn(), unsubscribeCourier: vi.fn()
 }));
 const auth = vi.hoisted(() => ({ isSuperAdmin: false }));
 vi.mock('@/lib/courierService', () => svc);
@@ -31,6 +32,7 @@ beforeEach(() => {
   svc.listAccruals.mockImplementation(async ({ status } = {}) => ({ available: true, items: status === 'paid' ? [] : [] }));
   svc.listDeliveriesWithoutAccrual.mockResolvedValue({ available: true, items: [] });
   svc.getCourierReport.mockResolvedValue({ available: true, rows: [] });
+  svc.listSubscriptions.mockResolvedValue({ available: true, items: [] });
 });
 afterEach(() => vi.useRealTimers());
 
@@ -260,6 +262,90 @@ describe('payment type form: currency, range operators, overlaps and gaps (phase
     save();
     await waitFor(() => expect(svc.setPaymentType).toHaveBeenCalled());
     expect(svc.setPaymentType.mock.calls[0][0]).toMatchObject({ p_applies_to: 'order', p_method: 'percent_of_base', p_base: 'nominal_usd', p_percent: 2 });
+  });
+});
+
+describe('subscribed payment types per courier (phase B)', () => {
+  const type = (o) => ({ id: `${o.code}-1`, version: 1, name: o.code.toUpperCase(), is_active: true, valid_from: '2026-10-01T00:00:00Z', valid_to: null,
+    applies_to: 'remittance', method: 'fixed_amount', fixed_amount: '5.00', currency: 'USD', courier_id: null, amount_from: null, amount_to: null, ...o });
+  const TYPES = [type({ code: 'g' }), type({ code: 'mine', courier_id: 'c1' }), type({ code: 'theirs', courier_id: 'c2' }),
+    type({ code: 'old', is_active: false }), type({ code: 'low', amount_to: '100.00' })];
+  const open = async ({ subs = [], types = TYPES } = {}) => {
+    svc.listPaymentTypes.mockResolvedValue({ available: true, items: types });
+    svc.listSubscriptions.mockResolvedValue({ available: true, items: subs });
+    render(<SettingsCouriersTab />);
+    return screen.findByRole('region', { name: 'couriers.subscriptions.title Ana' });
+  };
+
+  it('offers only the current types usable by this courier (general or its own) and subscribes to the chosen one', async () => {
+    svc.subscribeCourier.mockResolvedValue('s1');
+    const section = await open();
+    expect(within(section).getByText('couriers.subscriptions.empty')).toBeTruthy();
+    const select = within(section).getByLabelText('couriers.subscriptions.type');
+    const codes = [...select.querySelectorAll('option')].map((o) => o.value).filter(Boolean);
+    expect(codes).toEqual(['g', 'low', 'mine']);
+    fireEvent.change(select, { target: { value: 'g' } });
+    fireEvent.click(within(section).getByRole('button', { name: 'couriers.subscriptions.add' }));
+    await waitFor(() => expect(svc.subscribeCourier).toHaveBeenCalledWith('c1', 'g', { acceptGaps: false }));
+    expect(await within(section).findByText('couriers.subscriptions.added')).toBeTruthy();
+    expect(svc.listSubscriptions).toHaveBeenCalledTimes(2); // reloaded after the change
+  });
+
+  it('lists the active subscriptions (not offered again) and removes one', async () => {
+    svc.unsubscribeCourier.mockResolvedValue(1);
+    const section = await open({ subs: [{ id: 's1', courier_id: 'c1', payment_type_code: 'g' }, { id: 's2', courier_id: 'c9', payment_type_code: 'low' }] });
+    const items = within(section).getAllByTestId('subscription-row');
+    expect(items).toHaveLength(1);
+    expect(items[0].textContent).toContain('G');
+    expect(items[0].textContent).toContain('g');
+    const codes = [...within(section).getByLabelText('couriers.subscriptions.type').querySelectorAll('option')].map((o) => o.value).filter(Boolean);
+    expect(codes).toEqual(['low', 'mine']);
+    fireEvent.click(within(section).getByRole('button', { name: 'couriers.subscriptions.remove G' }));
+    await waitFor(() => expect(svc.unsubscribeCourier).toHaveBeenCalledWith('c1', 'g'));
+    expect(await within(section).findByText('couriers.subscriptions.removed')).toBeTruthy();
+  });
+
+  it('a coverage_gap refusal shows the gaps in a live region; confirming resends with acceptGaps', async () => {
+    svc.subscribeCourier
+      .mockRejectedValueOnce(Object.assign(new Error('coverage_gap: x'), { i18nKey: 'couriers.errors.coverageGap', gaps: [{ kind: 'remittance', from: 10000, to: null }] }))
+      .mockResolvedValueOnce('s1');
+    const section = await open();
+    fireEvent.change(within(section).getByLabelText('couriers.subscriptions.type'), { target: { value: 'low' } });
+    const add = within(section).getByRole('button', { name: 'couriers.subscriptions.add' });
+    fireEvent.click(add);
+    const warning = await within(section).findByTestId('subscription-gap-warning');
+    expect(warning.closest('[aria-live]')).toBeTruthy();
+    expect(warning.textContent).toContain('couriers.types.range.gt:{"x":"100.00","currency":"USD"}');
+    expect(within(section).getByText('couriers.errors.coverageGap')).toBeTruthy();
+    fireEvent.click(add);
+    expect(await within(section).findByText('couriers.types.acceptGapsRequired')).toBeTruthy();
+    expect(svc.subscribeCourier).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(section).getByRole('checkbox', { name: 'couriers.subscriptions.acceptGaps' }));
+    fireEvent.click(add);
+    await waitFor(() => expect(svc.subscribeCourier).toHaveBeenCalledTimes(2));
+    expect(svc.subscribeCourier.mock.calls[1]).toEqual(['c1', 'low', { acceptGaps: true }]);
+  });
+
+  it('an overlap refusal is shown as a typed error (no gap confirmation)', async () => {
+    svc.subscribeCourier.mockRejectedValue(Object.assign(new Error('x'), { i18nKey: 'couriers.errors.overlap', gaps: null }));
+    const section = await open();
+    fireEvent.change(within(section).getByLabelText('couriers.subscriptions.type'), { target: { value: 'g' } });
+    fireEvent.click(within(section).getByRole('button', { name: 'couriers.subscriptions.add' }));
+    expect(await within(section).findByText('couriers.errors.overlap')).toBeTruthy();
+    expect(within(section).queryByTestId('subscription-gap-warning')).toBeNull();
+  });
+
+  it('the add button stays disabled until a type is chosen', async () => {
+    const section = await open();
+    expect(within(section).getByRole('button', { name: 'couriers.subscriptions.add' }).disabled).toBe(true);
+  });
+
+  it('is hidden while its migration is not applied (the rest of the tab works)', async () => {
+    svc.listSubscriptions.mockResolvedValue({ available: false, items: [] });
+    render(<SettingsCouriersTab />);
+    expect(await screen.findByText('Ana')).toBeTruthy();
+    expect(screen.queryByText('couriers.subscriptions.title')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });
 
