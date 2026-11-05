@@ -125,9 +125,78 @@ AS $function$
 $function$;
 REVOKE ALL ON FUNCTION public._courier_effective_conflict(uuid) FROM PUBLIC, anon, authenticated, service_role;
 
--- Gaps that the tiered rules p_rule_ids leave in the courier-level ladder of each courier of p_couriers (subscribers):
--- [{courier_id, gaps:[{kind, from, to}]}], only couriers with a gap. A scope where the courier has no tramo at all
--- (from and to both open) is not a gap of its ladder: its general rules keep applying there.
+-- Part of p_gaps (gaps of one courier-level ladder, {kind, from, to} = (from, to]) that NO rule the resolver would
+-- still try for that courier pays: its own rules, its subscribed ones and the general ones of the same or a wider
+-- zone / remittance-type scope (a courier tramo that does not match falls to them). Tramos in another currency are
+-- not compared (no rate here): they never shrink a gap, so the warning errs on the side of asking.
+CREATE OR REPLACE FUNCTION public._courier_uncovered(
+  p_gaps       jsonb,
+  p_courier_id uuid,
+  p_zone_id    uuid,
+  p_type_id    uuid,
+  p_currency   text,
+  p_from       timestamptz,
+  p_to         timestamptz
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_g    jsonb;
+  v_kind text;
+  v_a    numeric;
+  v_b    numeric;
+  v_c    numeric;
+  v_r    record;
+  v_out  jsonb := '[]'::jsonb;
+BEGIN
+  FOR v_g IN SELECT * FROM jsonb_array_elements(COALESCE(p_gaps, '[]'::jsonb)) LOOP
+    v_kind := v_g->>'kind';
+    v_a := COALESCE((v_g->>'from')::numeric, -0.01);
+    v_b := COALESCE((v_g->>'to')::numeric, 1e15);
+    CONTINUE WHEN EXISTS (
+      SELECT 1 FROM public.messenger_payment_types m
+       WHERE m.is_active AND m.applies_to IN (v_kind, 'both')
+         AND (m.courier_id IS NULL OR m.courier_id = p_courier_id)
+         AND (m.shipping_zone_id IS NULL OR m.shipping_zone_id = p_zone_id)
+         AND (m.remittance_type_id IS NULL OR m.remittance_type_id = p_type_id)
+         AND m.amount_from IS NULL AND m.amount_to IS NULL
+         AND m.valid_from <= p_from AND (m.valid_to IS NULL OR (p_to IS NOT NULL AND m.valid_to >= p_to)));
+    v_c := v_a;
+    FOR v_r IN
+      SELECT COALESCE(m.amount_from, -0.01) AS lo, COALESCE(m.amount_to, 1e15) AS hi
+        FROM public.messenger_payment_types m
+       WHERE m.is_active AND m.applies_to IN (v_kind, 'both')
+         AND (m.courier_id IS NULL OR m.courier_id = p_courier_id)
+         AND (m.shipping_zone_id IS NULL OR m.shipping_zone_id = p_zone_id)
+         AND (m.remittance_type_id IS NULL OR m.remittance_type_id = p_type_id)
+         AND (m.amount_from IS NOT NULL OR m.amount_to IS NOT NULL)
+         AND m.currency = p_currency
+         AND m.valid_from <= p_from AND (m.valid_to IS NULL OR (p_to IS NOT NULL AND m.valid_to >= p_to))
+       ORDER BY 1, 2
+    LOOP
+      EXIT WHEN v_c >= v_b;
+      CONTINUE WHEN v_r.hi <= v_c;
+      IF v_r.lo > v_c THEN
+        v_out := v_out || jsonb_build_object('kind', v_kind, 'from', CASE WHEN v_c >= 0 THEN v_c END,
+                                             'to', CASE WHEN least(v_r.lo, v_b) < 1e15 THEN least(v_r.lo, v_b) END);
+      END IF;
+      v_c := greatest(v_c, v_r.hi);
+    END LOOP;
+    IF v_c < v_b THEN
+      v_out := v_out || jsonb_build_object('kind', v_kind, 'from', CASE WHEN v_c >= 0 THEN v_c END,
+                                           'to', CASE WHEN v_b < 1e15 THEN v_b END);
+    END IF;
+  END LOOP;
+  RETURN v_out;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public._courier_uncovered(jsonb, uuid, uuid, uuid, text, timestamptz, timestamptz) FROM PUBLIC, anon, authenticated, service_role;
+
+-- Values that the tiered rules p_rule_ids leave WITHOUT any applicable rule for each courier of p_couriers (subscribers):
+-- [{courier_id, gaps:[{kind, from, to}]}], only couriers with such values (what a general rule still pays is not reported).
 CREATE OR REPLACE FUNCTION public._courier_subscriber_gaps(p_rule_ids uuid[], p_couriers uuid[])
 RETURNS jsonb
 LANGUAGE sql
@@ -139,9 +208,10 @@ AS $function$
       SELECT c.courier_id, jsonb_agg(DISTINCT g.gap) AS gaps
         FROM unnest(p_couriers) AS c(courier_id)
         CROSS JOIN public.messenger_payment_types m
-        CROSS JOIN LATERAL jsonb_array_elements(public._courier_rule_coverage(
-                     m.applies_to, c.courier_id, m.shipping_zone_id, m.remittance_type_id, m.currency,
-                     greatest(m.valid_from, now()), m.valid_to)) AS g(gap)
+        CROSS JOIN LATERAL jsonb_array_elements(public._courier_uncovered(
+                     public._courier_rule_coverage(m.applies_to, c.courier_id, m.shipping_zone_id, m.remittance_type_id, m.currency,
+                                                   greatest(m.valid_from, now()), m.valid_to),
+                     c.courier_id, m.shipping_zone_id, m.remittance_type_id, m.currency, greatest(m.valid_from, now()), m.valid_to)) AS g(gap)
        WHERE m.id = ANY(p_rule_ids)
          AND (m.amount_from IS NOT NULL OR m.amount_to IS NOT NULL)
          AND NOT (g.gap->'from' = 'null'::jsonb AND g.gap->'to' = 'null'::jsonb)
@@ -615,8 +685,10 @@ BEGIN
      ORDER BY m.valid_from
   LOOP
     v_cur := COALESCE(v_cur, v_r.currency);
-    v_gaps := v_gaps || public._courier_rule_coverage(v_r.applies_to, p_courier_id, v_r.shipping_zone_id, v_r.remittance_type_id,
-                                                      v_r.currency, v_r.f, v_r.valid_to);
+    -- only values that no rule would pay for this courier (a general rule may still pay a hole of its own ladder)
+    v_gaps := v_gaps || public._courier_uncovered(
+      public._courier_rule_coverage(v_r.applies_to, p_courier_id, v_r.shipping_zone_id, v_r.remittance_type_id, v_r.currency, v_r.f, v_r.valid_to),
+      p_courier_id, v_r.shipping_zone_id, v_r.remittance_type_id, v_r.currency, v_r.f, v_r.valid_to);
   END LOOP;
   SELECT COALESCE(jsonb_agg(DISTINCT g), '[]'::jsonb) INTO v_gaps FROM jsonb_array_elements(v_gaps) g;
   IF jsonb_array_length(v_gaps) > 0 AND NOT COALESCE(p_accept_gaps, false) THEN

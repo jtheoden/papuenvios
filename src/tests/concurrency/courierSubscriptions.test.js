@@ -67,7 +67,7 @@ describe('phase B migration hygiene (static)', () => {
   it('replaces only the phase A / M1 functions it must, and never the transitions / platform reset', () => {
     const replaced = [...code.matchAll(/CREATE OR REPLACE FUNCTION public\.(\w+)\(/g)].map((m) => m[1]);
     const allowed = [...REPLACED, 'courier_payment_type_subscriptions_guard', '_courier_effective_conflict',
-      'admin_subscribe_courier_payment_type', 'admin_unsubscribe_courier_payment_type', '_courier_subscriber_gaps'];
+      'admin_subscribe_courier_payment_type', 'admin_unsubscribe_courier_payment_type', '_courier_subscriber_gaps', '_courier_uncovered'];
     for (const f of replaced) expect(allowed).toContain(f);
     for (const f of REPLACED) expect(replaced).toContain(f);
     expect(code).not.toMatch(/execute_platform_reset|_(order|remittance)_transition/);
@@ -409,18 +409,51 @@ describeDb('phase B: courier subscriptions to payment types (local Postgres)', (
       expect(JSON.parse(audit[0].new_value).subscriber_gaps).toEqual([{ courier_id: x, gaps: [{ kind: 'remittance', from: 50, to: 100 }] }]);
     });
 
-    it('set_v2: subscriber gaps alone (the general ladder is complete) still need p_accept_gaps', async () => {
+    it('a subscriber gap that an applicable general rule pays is not a gap (only values with no rule at all are reported)', async () => {
+      const c = await adminClient();
+      const x = await kit.makeCourier();
+      await kit.setRule(c, { code: 'flat', fixed_cup: 50 }); // general, no tramo: pays every value the courier ladder misses
+      await kit.setRule(c, fixed({ code: 'g', amount_to: 100 }));
+      await kit.setRule(c, fixed({ code: 'own', courier_id: x, amount_from: 100 }));
+      await kit.subscribe(c, x, 'g');
+      const at = new Date(Date.now() + 60000).toISOString();
+      const id = await kit.setRule(c, fixed({ code: 'g', amount_to: 50, valid_from: at, accept_gaps: false }));
+      const audit = (await admin.query(
+        `SELECT new_value FROM public.financial_audit_log WHERE table_name = 'messenger_payment_types' AND row_id = $1 AND column_name = 'created'`, [id])).rows;
+      expect(JSON.parse(audit[0].new_value).subscriber_gaps).toEqual([]);
+      // subscribing is judged the same way: (100,200] of y is paid by flat
+      const y = await kit.makeCourier();
+      await kit.setRule(c, fixed({ code: 'owny', courier_id: y, amount_to: 100 }));
+      await kit.setRule(c, fixed({ code: 'high', amount_from: 200 }));
+      await kit.subscribe(c, y, 'high');
+    });
+
+    it('a general tramo in a wider scope covers part of a subscriber gap: only the rest is reported', async () => {
+      const c = await adminClient();
+      const zone = await kit.seedZone();
+      const x = await kit.makeCourier();
+      await kit.setRule(c, fixed({ code: 'mid', amount_from: 60, amount_to: 80 })); // general, any zone
+      await kit.setRule(c, fixed({ code: 'g', zone_id: zone, amount_to: 100 }));
+      await kit.setRule(c, fixed({ code: 'own', courier_id: x, zone_id: zone, amount_from: 100 }));
+      await kit.subscribe(c, x, 'g');
+      const at = new Date(Date.now() + 60000).toISOString();
+      const e = await failure(kit.setRule(c, fixed({ code: 'g', zone_id: zone, amount_to: 50, valid_from: at, accept_gaps: false })));
+      expect(JSON.parse(e.detail).subscribers).toEqual([{ courier_id: x, gaps: [
+        { kind: 'remittance', from: 50, to: 60 }, { kind: 'remittance', from: 80, to: 100 }] }]);
+    });
+
+    it('set_v2: a hole of the subscriber ladder that the complete general ladder pays needs no p_accept_gaps', async () => {
       const c = await adminClient();
       const x = await kit.makeCourier();
       await kit.setRule(c, fixed({ code: 'g', amount_to: 100 }));
       await kit.setRule(c, fixed({ code: 'h', amount_from: 100 }));
       await kit.setRule(c, fixed({ code: 'own', courier_id: x, amount_from: 200 }));
-      await kit.subscribe(c, x, 'g', true); // x: [0,100] + (200,inf)
+      await kit.subscribe(c, x, 'g'); // x ladder: [0,100] + (200,inf); (100,200] falls to the general h
       const at = new Date(Date.now() + 60000).toISOString();
-      // general ladder g v2 [0,100] + h: complete; x keeps its (100,200] gap
-      const e = await failure(kit.setRule(c, fixed({ code: 'g', amount_to: 100, fixed_amount: 6, valid_from: at, accept_gaps: false })));
-      expect(e.message).toMatch(/coverage_gap/);
-      expect(JSON.parse(e.detail).gaps).toEqual([{ kind: 'remittance', from: 100, to: 200 }]);
+      const id = await kit.setRule(c, fixed({ code: 'g', amount_to: 100, fixed_amount: 6, valid_from: at, accept_gaps: false }));
+      const audit = (await admin.query(
+        `SELECT new_value FROM public.financial_audit_log WHERE table_name = 'messenger_payment_types' AND row_id = $1 AND column_name = 'created'`, [id])).rows;
+      expect(JSON.parse(audit[0].new_value).subscriber_gaps).toEqual([]);
     });
 
     it('deactivating a subscribed code reports the gaps it leaves in the subscribers own ladders', async () => {
