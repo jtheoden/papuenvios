@@ -57,16 +57,35 @@ describe('requestBudget fetch', () => {
     expect(base).toHaveBeenCalledTimes(4);
   });
 
-  it('caches rate tables (exchange_rates, currencies, v_effective_courier_cost) for the TTL, then refetches', async () => {
+  it('caches the display rate reads (all active rates in one read, currencies) for the TTL, then refetches', async () => {
     const base = makeBase();
     const f = createRequestBudgetFetch(base, { cacheTtlMs: 300_000 });
-    const url = `${BASE}/exchange_rates?select=rate&is_active=eq.true`;
+    const url = `${BASE}/exchange_rates?select=from_currency_id%2Cto_currency_id%2Crate%2Ceffective_date&is_active=eq.true&order=effective_date.desc`;
     expect(await body(await f(url))).toBe(1);
     await vi.advanceTimersByTimeAsync(299_000);
     expect(await body(await f(url))).toBe(1);
     expect(base).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(2_000);
     expect(await body(await f(url))).toBe(2);
+  });
+
+  it('never caches the rate reads that price an operation (single pair at confirmation, payment FX card)', async () => {
+    const base = makeBase();
+    const f = createRequestBudgetFetch(base);
+    const pair = `${BASE}/exchange_rates?select=rate&from_currency_id=eq.usd&to_currency_id=eq.cup&is_active=eq.true`;
+    await f(pair);
+    await f(pair);
+    await f(`${BASE}/v_effective_courier_cost?select=*`);
+    await f(`${BASE}/v_effective_courier_cost?select=*`);
+    expect(base).toHaveBeenCalledTimes(4);
+  });
+
+  it('requests with an abort signal never share a request (one caller aborting must not abort the others)', async () => {
+    const base = makeBase();
+    const f = createRequestBudgetFetch(base);
+    const url = `${BASE}/orders?select=id`;
+    await Promise.all([f(url, { signal: new AbortController().signal }), f(url, { signal: new AbortController().signal })]);
+    expect(base).toHaveBeenCalledTimes(2);
   });
 
   it('never caches other tables between sequential reads (counters stay live)', async () => {

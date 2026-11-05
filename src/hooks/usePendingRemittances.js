@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import { TO_PROCESS_STATUSES, getAdminWorkRemittances } from '@/lib/remittanceService';
-import { useVisiblePolling, POLL_REALTIME_FALLBACK_MS } from '@/lib/visiblePolling';
+import { useVisiblePolling, POLL_FOLLOWER_MS } from '@/lib/visiblePolling';
 import { WORK_REMITTANCES_KEY, affectsAdminPending } from '@/lib/adminPollKeys';
 
 /**
  * Remittances that need admin attention, kept fresh by one realtime subscription and own writes, plus a
- * 5-minute polling safety net (visible tab only) in case a realtime event is missed.
+ * 15-minute polling safety net (visible tab only) in case a realtime event is missed.
  *
  * @param {{ enabled?: boolean }} options
  * @returns {{
@@ -58,7 +58,7 @@ export const usePendingRemittances = ({ enabled = true } = {}) => {
 
   const reload = useVisiblePolling(WORK_REMITTANCES_KEY, () => getAdminWorkRemittances(), {
     enabled,
-    intervalMs: POLL_REALTIME_FALLBACK_MS,
+    intervalMs: POLL_FOLLOWER_MS,
     refreshOnWrite: affectsAdminPending,
     onData,
     onError

@@ -89,6 +89,8 @@ const byEndpoint = () => requests.reduce((acc, r) => ({ ...acc, [r]: (acc[r] || 
 let Header;
 let CurrencyProvider;
 let DashboardPage;
+let usePendingRemittances;
+let useRefundQueue;
 
 beforeAll(async () => {
   vi.stubEnv('VITE_SUPABASE_URL', 'https://test.supabase.co');
@@ -97,21 +99,31 @@ beforeAll(async () => {
   ({ default: Header } = await import('@/components/Header'));
   ({ CurrencyProvider } = await import('@/contexts/CurrencyContext'));
   ({ default: DashboardPage } = await import('@/components/DashboardPage'));
+  ({ usePendingRemittances } = await import('@/hooks/usePendingRemittances'));
+  ({ useRefundQueue } = await import('@/hooks/useRefundQueue'));
 });
 afterAll(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
 
-const AdminShell = ({ withDashboard }) => (
+// What AdminWorkTabs (the admin panel) keeps polling, without its heavy tab bodies
+const AdminWorkLists = () => {
+  usePendingRemittances({ enabled: true });
+  useRefundQueue({ enabled: true });
+  return null;
+};
+
+const AdminShell = ({ withDashboard, withAdminPanel }) => (
   <CurrencyProvider>
     <Header currentPage={withDashboard ? 'dashboard' : 'admin'} onNavigate={() => {}} />
     {withDashboard ? <DashboardPage onNavigate={() => {}} /> : null}
+    {withAdminPanel ? <AdminWorkLists /> : null}
   </CurrencyProvider>
 );
 
-const runHour = async ({ withDashboard = false, hidden = false } = {}) => {
-  render(<AdminShell withDashboard={withDashboard} />);
+const runHour = async ({ withDashboard = false, withAdminPanel = false, hidden = false } = {}) => {
+  render(<AdminShell withDashboard={withDashboard} withAdminPanel={withAdminPanel} />);
   await advance(STARTUP);
   const startup = requests.length;
   if (hidden) setHidden(true);
@@ -141,6 +153,13 @@ describe('admin tab request budget (1 simulated hour, realtime silent)', () => {
     expect(hour).toBeLessThanOrEqual(60);
   });
 
+  it('admin panel (work lists of remittances and refunds), tab visible: <= 60 REST requests per hour', async () => {
+    const { startup, hour, endpoints } = await runHour({ withAdminPanel: true });
+    report('admin panel visible - startup (1st minute)', startup);
+    report('admin panel visible - requests/hour', `${hour} ${JSON.stringify(endpoints)}`);
+    expect(hour).toBeLessThanOrEqual(60);
+  });
+
   it('admin on the Dashboard, tab visible: bounded (5-min safety net, no 30 s polling)', async () => {
     const { startup, hour, endpoints } = await runHour({ withDashboard: true });
     report('dashboard visible - startup (1st minute)', startup);
@@ -149,7 +168,7 @@ describe('admin tab request budget (1 simulated hour, realtime silent)', () => {
   });
 
   it('tab hidden: 0 REST requests per hour (admin view and Dashboard)', async () => {
-    const { hour, endpoints } = await runHour({ withDashboard: true, hidden: true });
+    const { hour, endpoints } = await runHour({ withDashboard: true, withAdminPanel: true, hidden: true });
     report('dashboard hidden - requests/hour', `${hour} ${JSON.stringify(endpoints)}`);
     expect(hour).toBe(0);
   });

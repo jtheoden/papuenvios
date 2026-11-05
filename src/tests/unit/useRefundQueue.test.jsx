@@ -86,14 +86,14 @@ describe('useRefundQueue', () => {
     expect(result.current.newCount).toBe(1);
   });
 
-  it('polls every 5 minutes as a safety net', async () => {
+  it('polls every 15 minutes as a safety net (realtime via the badge and own writes reload it at once)', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.spyOn(Math, 'random').mockReturnValue(0.5); // no jitter
     listRefunds.mockResolvedValue({ total: 0, items: [] });
     renderHook(() => useRefundQueue({ enabled: true }));
     await vi.advanceTimersByTimeAsync(0);
     const first = listRefunds.mock.calls.length;
-    await vi.advanceTimersByTimeAsync(299_000);
+    await vi.advanceTimersByTimeAsync(899_000);
     expect(listRefunds.mock.calls.length).toBe(first);
     await vi.advanceTimersByTimeAsync(1_000);
     expect(listRefunds.mock.calls.length).toBe(first + 1);

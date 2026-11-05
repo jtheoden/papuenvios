@@ -62,13 +62,13 @@ describe('usePendingRemittances', () => {
     expect(result.current.loading).toBe(false);
   });
 
-  it('polls every 5 minutes as a safety net (realtime and own writes refresh it at once)', async () => {
+  it('polls every 15 minutes as a safety net (realtime and own writes refresh it at once)', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.spyOn(Math, 'random').mockReturnValue(0.5); // no jitter
     renderHook(() => usePendingRemittances({ enabled: true }));
     await vi.advanceTimersByTimeAsync(0);
     expect(getAdminWorkRemittances).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(299_000);
+    await vi.advanceTimersByTimeAsync(899_000);
     expect(getAdminWorkRemittances).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1_000);
     expect(getAdminWorkRemittances).toHaveBeenCalledTimes(2);

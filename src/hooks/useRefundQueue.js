@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listRefunds } from '@/lib/refundService';
 import { summarizeRefunds, withQueueState } from '@/lib/refundRules';
-import { useVisiblePolling, watchPoll, POLL_REALTIME_FALLBACK_MS } from '@/lib/visiblePolling';
+import { useVisiblePolling, watchPoll, POLL_FOLLOWER_MS } from '@/lib/visiblePolling';
 import { ADMIN_PENDING_KEY, REFUND_QUEUE_KEY, affectsAdminPending } from '@/lib/adminPollKeys';
 
 const PAGE_SIZE = 200;
@@ -11,7 +11,7 @@ const loadQueue = () => listRefunds({ status: 'all', limit: PAGE_SIZE });
  * The admin refunds queue (open and resolved requests): one load, `reload` after every resolution, and a reload
  * whenever the header badge's refund counts change. No realtime subscription on purpose: the header badge already
  * listens to orders / remittances (a cancellation creates the request and shows there at once) and the work tabs keep
- * one realtime remittance subscription (UserPanel.adminTabs test). Own writes reload it too; a 5-minute poll (visible
+ * one realtime remittance subscription (UserPanel.adminTabs test). Own writes reload it too; a 15-minute poll (visible
  * tab only) is the safety net.
  *
  * actionableCount / overdueCount are recomputed from the stored instants on every render of fresh data, so they match
@@ -63,7 +63,7 @@ export const useRefundQueue = ({ enabled = true } = {}) => {
 
   const reload = useVisiblePolling(REFUND_QUEUE_KEY, loadQueue, {
     enabled,
-    intervalMs: POLL_REALTIME_FALLBACK_MS,
+    intervalMs: POLL_FOLLOWER_MS,
     refreshOnWrite: affectsAdminPending,
     onData,
     onError

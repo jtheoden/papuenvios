@@ -18,7 +18,8 @@ export const POLL_FRESH_MS = 30_000;
 export const POLL_MAX_BACKOFF_MS = 10 * 60_000;
 /** Counter whose changes already arrive by realtime: the poll is only a safety net. */
 export const POLL_REALTIME_FALLBACK_MS = 5 * 60_000;
-export const POLL_COUNTER_MS = 2 * 60_000;
+/** Admin work lists already refreshed by realtime, own writes and the badge: a long backstop is enough. */
+export const POLL_FOLLOWER_MS = 15 * 60_000;
 export const POLL_STATS_MS = 5 * 60_000;
 const JITTER = 0.1;
 
@@ -44,9 +45,9 @@ const schedule = (res) => {
   clearTimeout(res.timer);
   if (isHidden() || res.subs.size === 0) return;
   const base = intervalOf(res);
-  const wait = res.failures ? base * 2 ** res.failures : base;
-  const jittered = wait * (1 + (Math.random() * 2 - 1) * JITTER);
-  res.timer = setTimeout(() => tick(res), Math.min(jittered, POLL_MAX_BACKOFF_MS));
+  // Backoff caps at 10 min (or the interval itself when it is longer)
+  const wait = res.failures ? Math.min(base * 2 ** res.failures, Math.max(base, POLL_MAX_BACKOFF_MS)) : base;
+  res.timer = setTimeout(() => tick(res), wait * (1 + (Math.random() * 2 - 1) * JITTER));
 };
 
 const run = (res) => {

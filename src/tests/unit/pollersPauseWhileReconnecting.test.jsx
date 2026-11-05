@@ -49,7 +49,7 @@ import { useRefundCounts } from '@/hooks/useRefundCounts';
 import { getAdminWorkRemittances } from '@/lib/remittanceService';
 import { listRefunds, getRefundCounts } from '@/lib/refundService';
 import { refreshPoll } from '@/lib/visiblePolling';
-import { REFUND_COUNTS_KEY } from '@/lib/adminPollKeys';
+import { REFUND_COUNTS_KEY, REFUND_QUEUE_KEY, WORK_REMITTANCES_KEY } from '@/lib/adminPollKeys';
 import {
   createRefreshGuardFetch, resetRefreshGuard, skipWhileRefreshBlocked, isRefreshBlocked
 } from '@/lib/refreshGuard';
@@ -129,9 +129,10 @@ describe('pollers pause while the token refresh is blocked', () => {
     const first = getAdminWorkRemittances.mock.calls.length;
 
     await act(async () => { await blockRefresh(); }); // blocked from t=1 s until t=31 s
-    await advance(268_000); // the 5-min tick (270 s with this jitter) is after the cooldown: nothing yet
+    await act(async () => { await refreshPoll(WORK_REMITTANCES_KEY); }); // e.g. an own write inside the cooldown: skipped
+    await advance(29_000);
     expect(getAdminWorkRemittances.mock.calls.length).toBe(first);
-    await advance(2_000);
+    await advance(2_000); // cooldown over: the skipped refresh runs at once instead of waiting for the 15-min tick
     expect(getAdminWorkRemittances.mock.calls.length).toBe(first + 1);
   });
 
@@ -141,9 +142,10 @@ describe('pollers pause while the token refresh is blocked', () => {
     const first = listRefunds.mock.calls.length;
 
     await act(async () => { await blockRefresh(); }); // blocked from t=1 s until t=31 s
-    await advance(268_000); // the 5-min tick (270 s with this jitter) is after the cooldown: nothing yet
+    await act(async () => { await refreshPoll(REFUND_QUEUE_KEY); }); // e.g. an own write inside the cooldown: skipped
+    await advance(29_000);
     expect(listRefunds.mock.calls.length).toBe(first);
-    await advance(2_000);
+    await advance(2_000); // cooldown over: the skipped refresh runs at once instead of waiting for the 15-min tick
     expect(listRefunds.mock.calls.length).toBe(first + 1);
   });
 

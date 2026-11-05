@@ -3,9 +3,9 @@
 // Fetch layer for Supabase REST calls (/rest/v1 only; auth, storage, functions and realtime pass untouched). Composed
 // with the refresh guard in supabase.js. Why: on the Free plan (5 GB egress) every repeated read costs headers + JSON.
 //  1. In-flight dedupe: identical reads (same method, URL, body, Range/Prefer/Accept and user) share one request.
-//  2. Rate tables (exchange_rates, currencies, v_effective_courier_cost) are cached for API_CACHE_TTL_MS: memory, and
-//     localStorage for the public ones so other tabs and reloads reuse them. Every page that reads rates goes through
-//     here, whatever service it uses.
+//  2. Display rate reads (all active exchange rates in one read, currency lists) are cached for API_CACHE_TTL_MS in
+//     memory and localStorage (public data), so other tabs and reloads reuse them. Reads that price an operation
+//     (single-pair rate at confirmation) are never cached.
 //  3. Budget guardrail: more than `maxPerMinute` reads of the same method+path in a sliding minute are served from the
 //     last identical answer (exact same request only, never another query's body) with ONE logError per episode.
 //     Without an identical earlier answer the request goes through.
@@ -17,8 +17,12 @@ import { logError } from '@/lib/errorHandler';
 
 export const API_CACHE_STORAGE_KEY = 'papuenvios-api-cache';
 export const API_CACHE_TTL_MS = 5 * 60_000;
-const CACHED_TABLES = new Set(['exchange_rates', 'currencies', 'v_effective_courier_cost']);
-const PERSISTED_TABLES = new Set(['exchange_rates', 'currencies']); // public data only in localStorage
+// Only DISPLAY reads are cached: the one read of all active rates (getConversionRate / CurrencyContext) and currency
+// lists. Single-pair reads (getExchangeRate at remittance confirmation, getActiveRate, convertCurrency) always go to the
+// network: a rate changed on another device must never price an operation from a cache.
+const BULK_RATES_SELECT = 'from_currency_id,to_currency_id,rate,effective_date';
+const isCachedRead = (table, url) =>
+  table === 'currencies' || (table === 'exchange_rates' && url.searchParams.get('select') === BULK_RATES_SELECT);
 const READ_RPC = /^(get|list|has|admin_list)_|^(admin_refund_counts|admin_courier_report|orders_with_consumed_stock|select_available_zelle_account)$/;
 const REST_PREFIX = '/rest/v1/';
 const MAX_STORED_BODY = 64 * 1024;
@@ -75,7 +79,7 @@ const describe = (input, init) => {
     headers.get('range') || '', headers.get('prefer') || '', headers.get('accept') || '',
     identityOf(headers.get('authorization'))
   ].join('|');
-  return { path, method, isRead, table, key, budgetKey: `${method} ${path}` };
+  return { path, method, isRead, table, key, budgetKey: `${method} ${path}`, cached: isCachedRead(table, url) };
 };
 
 const snapshotOf = async (response, method) => ({
@@ -195,6 +199,9 @@ export const createRequestBudgetFetch = (
       return responseOf(lastAnswer.get(req.key));
     }
 
+    // A caller with its own abort signal must not abort (or be aborted by) other callers: no sharing.
+    if (init?.signal) return baseFetch(input, init);
+
     let pending = inFlight.get(req.key);
     if (!pending) {
       const startedAt = generation;
@@ -204,9 +211,9 @@ export const createRequestBudgetFetch = (
           const storable = snap.status >= 200 && snap.status < 300 && (snap.body?.length ?? 0) <= MAX_STORED_BODY;
           if (storable && startedAt === generation) {
             remember(lastAnswer, req.key, snap);
-            if (CACHED_TABLES.has(req.table)) {
-              remember(ttlCache, req.key, { at: Date.now(), snap, persist: PERSISTED_TABLES.has(req.table) });
-              if (PERSISTED_TABLES.has(req.table)) persist();
+            if (req.cached) {
+              remember(ttlCache, req.key, { at: Date.now(), snap, persist: true }); // public data
+              persist();
             }
           }
           return snap;
