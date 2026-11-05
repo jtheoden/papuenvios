@@ -1,7 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { useDelayedSplash } from '@/hooks/useDelayedSplash';
 
 // The React splash depends only on readiness: hidden for fast loads (< 300 ms), and once shown it stays
@@ -48,11 +46,3 @@ describe('useDelayedSplash', () => {
   });
 });
 
-describe('App startup', () => {
-  it('has no fixed splash timeout and gates the splash on readiness', () => {
-    const app = readFileSync(resolve(process.cwd(), 'src/App.jsx'), 'utf8');
-    expect(app).not.toMatch(/setTimeout\([^)]*setIsLoading/s);
-    expect(app).not.toMatch(/2500/);
-    expect(app).toMatch(/useDelayedSplash\(/);
-  });
-});

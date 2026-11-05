@@ -2,7 +2,7 @@ import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Helmet, HelmetProvider } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster } from '@/components/ui/toaster';
-import LoadingScreen from '@/components/LoadingScreen';
+import StartupGate from '@/components/StartupGate';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { diagnostics } from '@/lib/diagnostics';
 import Header from '@/components/Header';
@@ -38,7 +38,6 @@ import { LegalAcceptanceProvider } from '@/contexts/LegalAcceptanceContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { trackPageVisit } from '@/lib/analyticsService';
-import { useDelayedSplash } from '@/hooks/useDelayedSplash';
 import { normalizePath, resolvePageFromPathname, pageToPath, shouldShowFooterNotice } from '@/lib/routes';
 
 // Lightweight fallback for lazy-loaded routes (admin area) — a full LoadingScreen
@@ -94,17 +93,6 @@ function DynamicVisualSettings() {
       <title>{visualSettings.siteTitle || visualSettings.companyName || 'PapuEnvíos'}</title>
       <meta name="description" content="Plataforma completa de comercio digital con vendedores independientes, remesas y gestión de ganancias" />
     </Helmet>
-  );
-}
-
-// Auth readiness is already gated by AuthProvider (AuthLoadingScreen); this only waits for the visual settings.
-function StartupGate({ children }) {
-  const { visualSettingsLoaded } = useBusiness();
-  const showSplash = useDelayedSplash(visualSettingsLoaded);
-  return (
-    <AnimatePresence mode="wait">
-      {showSplash ? <LoadingScreen key="loading" /> : visualSettingsLoaded ? children : null}
-    </AnimatePresence>
   );
 }
 
