@@ -58,9 +58,72 @@
   --popover-foreground: 220 8.9% 46.1%;
 }
 
+/*
+ * Theme tokens, RGB channels so Tailwind can add an alpha (`bg-theme-accent/30`). Consumers use the `theme-*`
+ * utilities (tailwind.config.js); scripts/theme-codemod.mjs moves old blue/purple classes onto them.
+ * The brand look is the default so the first paint is already on brand. `data-theme` on <html> is set before the
+ * first paint by the inline script in index.html and kept in sync by applyVisualSettingsToDOM (resolveLookId).
+ * Values: BRAND_PALETTE (brandPalette.js) / the Tailwind tones named on each line. themeCompliance.test.js checks both.
+ */
+:root {
+  --radius: 0.5rem;
+  --t-accent: 255 165 0; /* gold */
+  --t-accent-hover: 229 148 0; /* goldDeep */
+  --t-on-accent: 23 23 23; /* charcoal */
+  --t-accent-soft: 255 241 204; /* goldSoft */
+  --t-accent-soft-2: 255 241 204; /* goldSoft */
+  --t-accent-line: 232 224 210; /* beige */
+  --t-link: 23 23 23; /* charcoal, underlined (see below) */
+  --t-link-strong: 23 23 23; /* charcoal */
+  --t-focus: 23 23 23; /* charcoal */
+  --t-accent-2: 255 165 0; /* gold */
+  --t-accent-2-soft: 255 241 204; /* goldSoft */
+  --t-accent-2-soft-2: 255 241 204; /* goldSoft */
+  --t-grad-from: 255 165 0; /* gold */
+  --t-grad-to: 255 165 0; /* gold */
+  --t-page-from: 250 247 240; /* ivory */
+  --t-page-via: 250 247 240; /* ivory */
+  --t-page-to: 250 247 240; /* ivory */
+}
+
+/* Classic look (useGradient on): exactly the Tailwind tones the screens used before the tokens. */
+:root[data-theme="classic"] {
+  --t-accent: 37 99 235; /* blue-600 */
+  --t-accent-hover: 29 78 216; /* blue-700 */
+  --t-on-accent: 255 255 255; /* white */
+  --t-accent-soft: 239 246 255; /* blue-50 */
+  --t-accent-soft-2: 219 234 254; /* blue-100 */
+  --t-accent-line: 191 219 254; /* blue-200 */
+  --t-link: 37 99 235; /* blue-600 */
+  --t-link-strong: 29 78 216; /* blue-700 */
+  --t-focus: 59 130 246; /* blue-500 */
+  --t-accent-2: 147 51 234; /* purple-600 */
+  --t-accent-2-soft: 250 245 255; /* purple-50 */
+  --t-accent-2-soft-2: 243 232 255; /* purple-100 */
+  --t-grad-from: 59 130 246; /* blue-500 */
+  --t-grad-to: 147 51 234; /* purple-600 */
+  --t-page-from: 248 250 252; /* slate-50 */
+  --t-page-via: 239 246 255; /* blue-50 */
+  --t-page-to: 224 231 255; /* indigo-100 */
+}
+
 body {
   font-family: 'Inter', sans-serif;
-  @apply bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 text-gray-900;
+  @apply text-gray-900;
+  /* Only painted until the settings load (the inline pageBgColor wins afterwards); under the gradient in classic. */
+  background-color: rgb(var(--t-page-via));
+  background-image: linear-gradient(to bottom right, rgb(var(--t-page-from)), rgb(var(--t-page-via)), rgb(var(--t-page-to)));
+}
+
+/* Brand look: a flat page that follows the Visual settings' pageBgColor. An opaque ivory gradient would hide a
+   customised pageBgColor, and a body gradient showing between the Home and the footer was the lavender strip. */
+:root:not([data-theme="classic"]) body {
+  background-image: none;
+}
+
+/* Brand links are charcoal, so they are underlined to stay recognisable (never orange text). Classic keeps blue. */
+:root:not([data-theme="classic"]) :is(.text-theme-link, .text-theme-link-strong):not(.no-underline) {
+  text-decoration-line: underline;
 }
 
 .loading-spinner {

@@ -46,6 +46,7 @@ const setup = (overrides = {}) => {
       setLocalVisual={vi.fn()}
       visualSettings={vs}
       setVisualSettings={setVisualSettings}
+      canChangeTheme
     />
   );
   const { rerender } = render(ui(visualSettings));
@@ -55,6 +56,7 @@ const setup = (overrides = {}) => {
 // The legacy colour inputs are not associated to their label; find them through the label text.
 const legacyInput = (labelKey) => screen.getByText(labelKey).parentElement.querySelector('input');
 const warning = () => screen.getByTestId('brand-contrast-warning');
+const selectPapuenvios = () => fireEvent.click(screen.getByRole('radio', { name: `${P}theme.papuenvios.name` }));
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -85,7 +87,7 @@ describe('SettingsPageVisual - brand preset', () => {
     const { setVisualSettings } = setup();
     expect(legacyInput('settings.visual.pageBackground').value).toBe('#f9fafb');
 
-    fireEvent.click(screen.getByText(`${P}applyPreset`));
+    selectPapuenvios();
 
     expect(legacyInput('settings.visual.pageBackground').value).toBe(BRAND_PRESET.pageBgColor.toLowerCase());
     expect(legacyInput('settings.visual.buttonColor').value).toBe('#ffa500');
@@ -93,13 +95,13 @@ describe('SettingsPageVisual - brand preset', () => {
     expect(screen.getByLabelText(NEW_CONTROLS.focusRingColor).value).toBe('#171717');
     expect(setVisualSettings).not.toHaveBeenCalled();
     expect(saveVisualSettings).not.toHaveBeenCalled();
-    expect(screen.getByTestId('brand-preset-applied')).toHaveTextContent(`${P}applied`);
+    expect(screen.getByTestId('brand-preset-applied')).toHaveTextContent(`${P}theme.pending`);
   });
 
   it('turns live preview off so a later edit cannot persist the preset behind the Save button', () => {
     const { setVisualSettings } = setup();
     expect(screen.getByLabelText('settings.visual.livePreview')).toBeChecked();
-    fireEvent.click(screen.getByText(`${P}applyPreset`));
+    selectPapuenvios();
     expect(screen.getByLabelText('settings.visual.livePreview')).not.toBeChecked();
     fireEvent.change(screen.getByLabelText(NEW_CONTROLS.cartBadgeBgColor), { target: { value: '#123456' } });
     expect(setVisualSettings).not.toHaveBeenCalled();
@@ -107,7 +109,7 @@ describe('SettingsPageVisual - brand preset', () => {
 
   it('persists the preset only through the existing Save button', () => {
     const { setVisualSettings } = setup();
-    fireEvent.click(screen.getByText(`${P}applyPreset`));
+    selectPapuenvios();
     fireEvent.click(screen.getByText('settings.visual.saveCustomization'));
     expect(setVisualSettings).toHaveBeenCalledTimes(1);
     expect(setVisualSettings.mock.calls[0][0]).toMatchObject(BRAND_PRESET);
@@ -115,7 +117,7 @@ describe('SettingsPageVisual - brand preset', () => {
 
   it('restores the previous values (and live preview) with the undo button', () => {
     setup({ pageBgColor: '#f9fafb', buttonBgColor: '#2563eb' });
-    fireEvent.click(screen.getByText(`${P}applyPreset`));
+    selectPapuenvios();
     fireEvent.click(screen.getByText(`${P}undoPreset`));
 
     expect(legacyInput('settings.visual.pageBackground').value).toBe('#f9fafb');
@@ -128,7 +130,7 @@ describe('SettingsPageVisual - brand preset', () => {
 describe('SettingsPageVisual - preset lifecycle', () => {
   it('clears the applied notice and undo after Save', async () => {
     setup();
-    fireEvent.click(screen.getByText(`${P}applyPreset`));
+    selectPapuenvios();
     fireEvent.click(screen.getByText('settings.visual.saveCustomization'));
     await waitFor(() => expect(screen.queryByTestId('brand-preset-applied')).not.toBeInTheDocument());
     expect(screen.queryByText(`${P}undoPreset`)).not.toBeInTheDocument();
@@ -136,15 +138,16 @@ describe('SettingsPageVisual - preset lifecycle', () => {
 
   it('clears the applied notice and undo after Restore theme', async () => {
     setup();
-    fireEvent.click(screen.getByText(`${P}applyPreset`));
-    fireEvent.click(screen.getByText('settings.visual.restoreTheme'));
+    selectPapuenvios();
+    fireEvent.click(screen.getByRole('button', { name: 'settings.visual.restoreTheme' }));
+    fireEvent.click(screen.getByRole('button', { name: `${P}reset.confirm` }));
     await waitFor(() => expect(screen.queryByText(`${P}undoPreset`)).not.toBeInTheDocument());
     expect(screen.queryByTestId('brand-preset-applied')).not.toBeInTheDocument();
   });
 
   it('keeps the preset in the form when visualSettings is refreshed externally', () => {
     const { rerender } = setup();
-    fireEvent.click(screen.getByText(`${P}applyPreset`));
+    selectPapuenvios();
     rerender({ pageBgColor: '#f9fafb', logo: 'x.png' });
     expect(legacyInput('settings.visual.pageBackground').value).toBe('#faf7f0');
     expect(screen.getByText(`${P}undoPreset`)).toBeInTheDocument();

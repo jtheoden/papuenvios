@@ -39,7 +39,8 @@ export const LanguageProvider = ({ children }) => {
       );
     }
 
-    return value || key;
+    // `defaultValue` (i18next-style) is the fallback for a missing key; without it the key is returned.
+    return value || params?.defaultValue || key;
   };
 
   return (

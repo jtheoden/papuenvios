@@ -18,6 +18,7 @@ vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({ t: (key) => key, language: 'en' })
 }));
 
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ isSuperAdmin: true }) }));
 vi.mock('@/contexts/BusinessContext', () => ({
   useBusiness: () => ({ visualSettings: {}, applyMarginSettings: applyMarginSettingsMock })
 }));

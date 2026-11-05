@@ -4,11 +4,12 @@ import { DollarSign, Save, Plus, Edit, Trash2, AlertTriangle, ArrowRightLeft, In
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { getPrimaryButtonStyle, getHeadingStyle } from '@/lib/styleUtils';
 import { toast } from '@/components/ui/use-toast';
 import {
   getCurrencies, getAllCurrencies, createCurrency, updateCurrency, deleteCurrency,
-  getAllExchangeRates, saveExchangeRate, deleteExchangeRate, deleteExchangeRatePair, updateExchangeRatePair
+  getAllExchangeRates, saveExchangeRatePair, deleteExchangeRate, deleteExchangeRatePair, updateExchangeRatePair
 } from '@/lib/currencyService';
 import { supabase } from '@/lib/supabase';
 import { saveMarginSettings } from '@/lib/financialSettingsService';
@@ -138,9 +139,25 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
  * Financial Settings component
  * Manages profit margins, shipping, currencies, and exchange rates
  */
+const RATES_NOTE_ID = 'rates-super-admin-only-note';
+const CURRENCY_DELETE_NOTE_ID = 'currency-delete-super-admin-only-note';
+const SuperOnlyNote = ({ id, children }) => (
+  <p id={id} role="note" className="mb-4 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+    <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+    <span className="min-w-0 break-words">{children}</span>
+  </p>
+);
+
 const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   const { t, language } = useLanguage();
   const { visualSettings, applyMarginSettings } = useBusiness();
+  const { isSuperAdmin } = useAuth();
+  const canWriteRates = Boolean(isSuperAdmin);
+  // aria-disabled (not the native attribute) keeps the control focusable so the note it points at is announced;
+  // every write handler is guarded by canWriteRates.
+  const LOCKED_STYLE = 'aria-disabled:cursor-not-allowed aria-disabled:opacity-50';
+  const ratesLock = (describedBy = RATES_NOTE_ID) =>
+    canWriteRates ? {} : { 'aria-disabled': true, 'aria-describedby': describedBy };
 
   // Currency states
   const [currencies, setCurrencies] = useState([]);
@@ -353,6 +370,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   };
 
   const handleRemoveCurrency = async (currencyId) => {
+    if (!canWriteRates) return;
     if (!confirm(t('settings.financial.confirmDeleteCurrency'))) {
       return;
     }
@@ -470,7 +488,20 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
     }
   };
 
+  // Text for a failed rate write. Only the RLS refusal proves a role problem; a 0-row result means the rate is gone
+  // (a plain admin never gets here: the handlers are guarded by canWriteRates).
+  const rateWriteErrorMessage = (error) => {
+    if (error?.context?.requiredRole === 'super_admin') return t('settings.financial.ratesSuperAdminOnly');
+    if (error?.code === 'EXCHANGE_RATE_PAIR_PARTIAL') return t('settings.financial.ratePairPartial');
+    if (error?.code === 'EXCHANGE_RATE_PAIR_INCOMPLETE') return t('settings.financial.ratePairIncomplete');
+    if (error?.code === 'NOT_FOUND' && error?.context?.reason === 'no_rows') {
+      return canWriteRates ? t('settings.financial.rateNotFound') : t('settings.financial.ratesSuperAdminOnly');
+    }
+    return error.message;
+  };
+
   const handleSaveRate = async () => {
+    if (!canWriteRates) return;
     if (!newRate.fromCurrencyId || !newRate.toCurrencyId || !newRate.rate) {
       toast({
         title: t('settings.financial.incompleteData'),
@@ -520,17 +551,8 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
     }
 
     try {
-      const result = await saveExchangeRate(newRate);
+      const result = await saveExchangeRatePair(newRate);
       if (result.error) throw result.error;
-
-      const inverseRate = {
-        fromCurrencyId: newRate.toCurrencyId,
-        toCurrencyId: newRate.fromCurrencyId,
-        rate: (1 / parseFloat(newRate.rate)).toString(),
-        effectiveDate: newRate.effectiveDate
-      };
-      const inverseResult = await saveExchangeRate(inverseRate);
-      if (inverseResult.error) throw inverseResult.error;
 
       await loadExchangeRates();
       setShowAddRate(false);
@@ -543,17 +565,20 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         title: t('settings.financial.ratesSaved')
       });
     } catch (error) {
-      if (handleSessionExpired(error)) return;
-      console.error('Error saving rate:', error);
-      toast({
-        title: t('settings.financial.saveError'),
-        description: error.message,
-        variant: 'destructive'
-      });
+      if (!handleSessionExpired(error)) {
+        console.error('Error saving rate:', error);
+        toast({
+          title: t('settings.financial.saveError'),
+          description: rateWriteErrorMessage(error),
+          variant: 'destructive'
+        });
+      }
+      await loadExchangeRates();
     }
   };
 
   const handleDeleteRate = async (rateId) => {
+    if (!canWriteRates) return;
     if (!confirm(t('settings.financial.confirmDeleteRate'))) {
       return;
     }
@@ -571,14 +596,17 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       console.error('Error deleting rate:', error);
       toast({
         title: 'Error',
-        description: error.message,
+        description: rateWriteErrorMessage(error),
         variant: 'destructive'
       });
+      // rateNotFound promises a reload: show the real state
+      await loadExchangeRates();
     }
   };
 
   // Delete exchange rate pair (both direct and inverse)
   const handleDeleteRatePair = async (fromCurrencyId, toCurrencyId) => {
+    if (!canWriteRates) return;
     const confirmMessage = language === 'es'
       ? '¿Eliminar este par de tasas de cambio? Se eliminarán ambas direcciones (directa e inversa).'
       : 'Delete this exchange rate pair? Both directions (direct and inverse) will be removed.';
@@ -603,14 +631,17 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       console.error('Error deleting rate pair:', error);
       toast({
         title: 'Error',
-        description: error.message,
+        description: rateWriteErrorMessage(error),
         variant: 'destructive'
       });
+      // rateNotFound promises a reload: show the real state
+      await loadExchangeRates();
     }
   };
 
   // Start editing a rate pair
   const handleEditRatePair = (pair) => {
+    if (!canWriteRates) return;
     setEditingRatePair({
       fromCurrencyId: pair.directRate.from_currency_id,
       toCurrencyId: pair.directRate.to_currency_id,
@@ -625,6 +656,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
 
   // Preload the form from the external reference. Never saves: the admin reviews and saves explicitly.
   const handleUseReference = ({ rate }) => {
+    if (!canWriteRates) return;
     if (!usdCurrency || !eurCurrency) return;
     const today = new Date().toISOString().split('T')[0];
     // Edit only when the USD->EUR row itself exists: updating a pair touches rows by direction.
@@ -658,6 +690,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
 
   // Persist the pair (both direct and inverse) once every guard has passed
   const commitRatePairUpdate = async (pair) => {
+    if (!canWriteRates) return;
     try {
       const result = await updateExchangeRatePair(
         pair.fromCurrencyId,
@@ -679,13 +712,16 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       if (handleSessionExpired(error)) return;
       toast({
         title: 'Error',
-        description: error.message,
+        description: rateWriteErrorMessage(error),
         variant: 'destructive'
       });
+      // The pair may be half written or gone: show the real state, not the stale list.
+      await loadExchangeRates();
     }
   };
 
   const handleUpdateRatePair = async () => {
+    if (!canWriteRates) return;
     if (!editingRatePair || !editingRatePair.rate) {
       toast({
         title: t('common.error'),
@@ -704,10 +740,11 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         });
         return;
       }
-      if (requiresChangeConfirmation(editingRatePair.originalRate, editingRatePair.rate)) {
-        setRateChangeConfirm({ isOpen: true, pair: editingRatePair });
-        return;
-      }
+    }
+
+    if (requiresChangeConfirmation(editingRatePair.originalRate, editingRatePair.rate)) {
+      setRateChangeConfirm({ isOpen: true, pair: editingRatePair });
+      return;
     }
 
     await commitRatePairUpdate(editingRatePair);
@@ -801,6 +838,8 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
             <h3 className="text-xl font-semibold">{t('settings.financial.currencies')}</h3>
           </div>
 
+          {!canWriteRates && <SuperOnlyNote id={CURRENCY_DELETE_NOTE_ID}>{t('settings.financial.currencyDeleteSuperAdminOnly')}</SuperOnlyNote>}
+
           <div className="space-y-2 mb-6">
             {currencies.map(currency => (
               <div
@@ -862,9 +901,9 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                     <Button
                       variant="destructive"
                       size="icon"
-                      className={`h-8 w-8 ${currency.is_base ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      className={`h-8 w-8 ${LOCKED_STYLE} ${currency.is_base ? 'opacity-50 cursor-not-allowed' : ''}`}
                       onClick={() => !currency.is_base && handleRemoveCurrency(currency.id)}
-                      disabled={currency.is_base}
+                      {...(canWriteRates ? { disabled: currency.is_base } : ratesLock(CURRENCY_DELETE_NOTE_ID))}
                       title={currency.is_base
                         ? (language === 'es' ? 'La moneda base no puede eliminarse' : 'Base currency cannot be deleted')
                         : (language === 'es' ? 'Eliminar moneda' : 'Delete currency')
@@ -973,18 +1012,22 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
             {t('settings.financial.exchangeRates')}
           </h3>
           <Button
-            onClick={() => setShowAddRate(!showAddRate)}
+            onClick={() => canWriteRates && setShowAddRate(!showAddRate)}
             style={getPrimaryButtonStyle(visualSettings)}
-            className="h-8 px-2 sm:px-3"
+            className={`h-8 px-2 sm:px-3 ${LOCKED_STYLE}`}
             title={t('settings.financial.newRate')}
+            {...ratesLock()}
           >
             <Plus className="h-4 w-4 sm:mr-2" />
             <span className="hidden sm:inline">{t('settings.financial.newRate')}</span>
           </Button>
         </div>
 
+        {!canWriteRates && <SuperOnlyNote id={RATES_NOTE_ID}>{t('settings.financial.ratesSuperAdminOnly')}</SuperOnlyNote>}
+
         <FxReferenceCard
           onUse={handleUseReference}
+          lockedBy={canWriteRates ? null : RATES_NOTE_ID}
           disabledReason={usdCurrency && eurCurrency ? null : t('settings.fxReference.missingCurrencies')}
         />
 
@@ -1294,8 +1337,10 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                     <Button
                       variant="outline"
                       size="sm"
+                      className={LOCKED_STYLE}
                       onClick={() => handleEditRatePair(pair)}
                       title={language === 'es' ? 'Editar par de tasas' : 'Edit rate pair'}
+                      {...ratesLock()}
                     >
                       <Edit className="h-4 w-4 mr-1" />
                       <span className="hidden sm:inline">
@@ -1305,8 +1350,10 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                     <Button
                       variant="destructive"
                       size="sm"
+                      className={LOCKED_STYLE}
                       onClick={() => handleDeleteRatePair(pair.directRate.from_currency_id, pair.directRate.to_currency_id)}
                       title={language === 'es' ? 'Eliminar par de tasas' : 'Delete rate pair'}
+                      {...ratesLock()}
                     >
                       <Trash2 className="h-4 w-4 mr-1" />
                       <span className="hidden sm:inline">
@@ -1321,14 +1368,18 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         )}
       </motion.div>
 
-      {/* Large USD->EUR rate change confirmation */}
+      {/* Large rate change confirmation */}
       <ConfirmationModal
         isOpen={rateChangeConfirm.isOpen}
         onClose={handleCloseRateChangeConfirm}
         onConfirm={handleConfirmRateChange}
         title={t('settings.financial.rateChangeConfirmTitle')}
         message={rateChangeConfirm.pair
-          ? t('settings.financial.rateChangeConfirmMessage', {
+          ? t(isUsdEurPair(rateChangeConfirm.pair.fromCurrency?.code, rateChangeConfirm.pair.toCurrency?.code)
+            ? 'settings.financial.rateChangeConfirmMessage'
+            : 'settings.financial.rateChangeConfirmMessageGeneric', {
+              from: rateChangeConfirm.pair.fromCurrency?.code,
+              to: rateChangeConfirm.pair.toCurrency?.code,
               previous: String(Number(rateChangeConfirm.pair.originalRate)),
               next: String(Number(rateChangeConfirm.pair.rate)),
               percent: (rateChangeRatio(rateChangeConfirm.pair.originalRate, rateChangeConfirm.pair.rate) * 100).toFixed(1)

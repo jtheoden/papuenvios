@@ -11,6 +11,7 @@ import { supabase } from './supabase';
 import { logError } from './errorHandler';
 import { isBackendMissingError } from './commissionProposalRules';
 import { courierErrorKey, shortId } from './courierRules';
+import { getBusinessMonthRange } from './dashboardMetrics';
 
 const MISSING_RETRY_MS = 5 * 60 * 1000;
 let missingAt = null;
@@ -121,8 +122,7 @@ export const getMarginSummary = async (now = new Date()) => {
     if (!s.available) return none;
     const set = ['remittance', 'order'].some((k) => s.settings[k].warningPct !== null || s.settings[k].criticalPct !== null);
     if (!set) return { available: true, thresholdsSet: false, counts: null };
-    const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const to = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+    const { from, to } = getBusinessMonthRange(now);
     const rep = await getCourierReport({ from, to });
     if (!rep.available) return none;
     const sum = (key) => rep.rows.reduce((acc, row) => acc + (Number(row[key]) || 0), 0);
