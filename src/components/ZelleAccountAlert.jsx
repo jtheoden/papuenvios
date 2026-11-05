@@ -77,7 +77,9 @@ const ZelleAccountAlert = ({ onSelectNewAccount, operationType = 'all' }) => {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -20, scale: 0.95 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="fixed top-4 left-4 right-4 z-50 md:left-auto md:right-4 md:max-w-md"
+        // Below the fixed Header (z-40): --header-h is its real height; the fallback is the h-16 bar + role banner.
+        // z-30 keeps the header, its dropdowns and the role banner above the alert.
+        className="fixed top-[calc(var(--header-h,calc(4.5rem+var(--role-banner-h,0px)))+0.5rem)] left-4 right-4 z-30 md:left-auto md:right-4 md:max-w-md"
       >
         <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl shadow-2xl overflow-hidden border-2 border-amber-300">
           {/* Header */}
