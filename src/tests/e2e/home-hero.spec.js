@@ -149,7 +149,10 @@ const shot = async (page, name) => {
   await page.screenshot({ path: path.join(SHOTS_DIR, name), fullPage: false });
 };
 
-const VARIANTS = { preset: BRAND_PRESET, prod: PROD_ROW };
+// Autoplay swaps (re-mounts) the <img>, so a box() taken at that moment finds it detached and returns null; the layout
+// assertions are about geometry, not rotation, so the slides do not rotate during them.
+const AUTOPLAY_SPEED = 600000;
+const VARIANTS = { preset: { ...BRAND_PRESET, carouselAutoplaySpeed: AUTOPLAY_SPEED }, prod: { ...PROD_ROW, carouselAutoplaySpeed: AUTOPLAY_SPEED } };
 
 for (const width of [320, 768, 1280]) {
   for (const language of ['es', 'en']) {
