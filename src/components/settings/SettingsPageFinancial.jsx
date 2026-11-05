@@ -599,6 +599,8 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         description: rateWriteErrorMessage(error),
         variant: 'destructive'
       });
+      // rateNotFound promises a reload: show the real state
+      await loadExchangeRates();
     }
   };
 
@@ -632,6 +634,8 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         description: rateWriteErrorMessage(error),
         variant: 'destructive'
       });
+      // rateNotFound promises a reload: show the real state
+      await loadExchangeRates();
     }
   };
 

@@ -10,6 +10,7 @@ const svc = vi.hoisted(() => ({
   saveExchangeRate: vi.fn(),
   saveExchangeRatePair: vi.fn(),
   updateExchangeRatePair: vi.fn(),
+  deleteExchangeRatePair: vi.fn(),
   fetchReference: vi.fn()
 }));
 
@@ -34,7 +35,7 @@ vi.mock('@/lib/currencyService', () => ({
   saveExchangeRate: (...a) => svc.saveExchangeRate(...a),
   saveExchangeRatePair: (...a) => svc.saveExchangeRatePair(...a),
   deleteExchangeRate: vi.fn(),
-  deleteExchangeRatePair: vi.fn(),
+  deleteExchangeRatePair: (...a) => svc.deleteExchangeRatePair(...a),
   updateExchangeRatePair: (...a) => svc.updateExchangeRatePair(...a)
 }));
 vi.mock('@/lib/fxReference', async (importOriginal) => ({
@@ -364,6 +365,27 @@ describe('Financial: USD->EUR guards', () => {
       await waitFor(() => expect(svc.updateExchangeRatePair).toHaveBeenCalledWith('usd', 'cup', '800', expect.any(String)));
       expect(screen.queryByText('Confirm large rate change')).toBeNull();
     });
+  });
+});
+
+describe('Financial: deleting a rate pair that no longer exists', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('reloads the list after a NOT_FOUND (the message promises it) and shows the not-found text, not a permissions one', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    svc.getAllExchangeRates.mockResolvedValue(cupPair());
+    svc.deleteExchangeRatePair.mockRejectedValue(Object.assign(new Error('raw'), { code: 'NOT_FOUND', context: { reason: 'no_rows' } }));
+    renderPage();
+    await screen.findByText('1 USD = 790.0000 CUP');
+    const loadsBefore = svc.getAllExchangeRates.mock.calls.length;
+
+    fireEvent.click(screen.getByTitle('Delete rate pair'));
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({
+      variant: 'destructive',
+      description: expect.stringMatching(/no longer exists/i)
+    })));
+    await waitFor(() => expect(svc.getAllExchangeRates.mock.calls.length).toBeGreaterThan(loadsBefore));
   });
 });
 
