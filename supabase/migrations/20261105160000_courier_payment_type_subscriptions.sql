@@ -335,6 +335,7 @@ DECLARE
   v_sub     record;
   v_clash   text;
   v_sub_gaps jsonb;
+  v_stale   jsonb;
 BEGIN
   PERFORM pg_advisory_xact_lock(hashtext('courier_rules'));
 
@@ -423,6 +424,18 @@ BEGIN
     RAISE EXCEPTION 'invalid_argument: this deactivated code still has active subscriptions; unsubscribe them before recreating it'
       USING ERRCODE = '22023', DETAIL = (SELECT jsonb_build_object('code', v_code, 'couriers', jsonb_agg(s.courier_id ORDER BY s.courier_id))::text
                                           FROM public.courier_payment_type_subscriptions s WHERE s.is_active AND s.payment_type_code = v_code);
+  END IF;
+
+  -- phase B: subscribers of a code whose every version already expired would start paying with this version
+  -- again (with courier precedence): only after an explicit confirmation, and named in the audit.
+  SELECT COALESCE(jsonb_agg(s.courier_id ORDER BY s.courier_id), '[]'::jsonb) INTO v_stale
+    FROM public.courier_payment_type_subscriptions s
+   WHERE s.is_active AND s.payment_type_code = v_code AND v_last IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM public.messenger_payment_types m
+                      WHERE m.code = v_code AND m.is_active AND (m.valid_to IS NULL OR m.valid_to > now()));
+  IF jsonb_array_length(v_stale) > 0 AND NOT COALESCE(p_accept_gaps, false) THEN
+    RAISE EXCEPTION 'stale_subscribers: couriers subscribed to this expired code start paying with it again; confirm to save'
+      USING ERRCODE = '22023', DETAIL = jsonb_build_object('code', v_code, 'couriers', v_stale)::text;
   END IF;
 
   -- phase B: a subscribed type cannot become the own rule of a courier that is not its subscriber.
@@ -526,7 +539,7 @@ BEGIN
                        'amount_from', p_amount_from, 'amount_to', p_amount_to, 'valid_from', v_from, 'valid_to', p_valid_to,
                        'currency', p_currency, 'fixed_amount', p_fixed_amount,
                        'accept_gaps', COALESCE(p_accept_gaps, false), 'gaps', v_gaps,
-                       'subscriber_gaps', v_sub_gaps)::text,
+                       'subscriber_gaps', v_sub_gaps, 'stale_subscribers', v_stale)::text,
     'UPDATE');
   RETURN v_id;
 END;

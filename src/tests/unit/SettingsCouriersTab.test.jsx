@@ -264,6 +264,24 @@ describe('payment type form: currency, range operators, overlaps and gaps (phase
     expect(svc.setPaymentType.mock.calls[1][0].p_accept_gaps).toBe(true);
   });
 
+  it('a stale_subscribers refusal names the count and needs the explicit confirmation; confirming resends with p_accept_gaps', async () => {
+    const details = '{"code":"R2","couriers":["c1","c2"]}';
+    svc.setPaymentType.mockRejectedValueOnce(Object.assign(new Error('stale_subscribers: x'), { i18nKey: 'couriers.errors.staleSubscribers', details }))
+      .mockResolvedValueOnce('id');
+    const { form, save } = await openForm();
+    save();
+    const warning = await within(form).findByTestId('stale-subscribers-warning');
+    expect(warning.closest('[aria-live]')).toBeTruthy();
+    expect(warning.textContent).toContain('couriers.types.staleSubscribers:{"count":2}');
+    save();
+    expect(await within(form).findByText('couriers.types.acceptGapsRequired')).toBeTruthy();
+    expect(svc.setPaymentType).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(form).getByRole('checkbox', { name: 'couriers.types.acceptGaps' }));
+    save();
+    await waitFor(() => expect(svc.setPaymentType).toHaveBeenCalledTimes(2));
+    expect(svc.setPaymentType.mock.calls[1][0].p_accept_gaps).toBe(true);
+  });
+
   it('percent of the nominal USD is offered for orders (base = order subtotal)', async () => {
     svc.setPaymentType.mockResolvedValue('id');
     const { set, save } = await openForm();

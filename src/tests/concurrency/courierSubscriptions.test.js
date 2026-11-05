@@ -277,6 +277,30 @@ describeDb('phase B: courier subscriptions to payment types (local Postgres)', (
       expect((await subs()).filter((r) => r.is_active)).toEqual([]);
     });
 
+    it('a subscription to an EXPIRED code (valid_to passed, still is_active) does not revive silently with the next version', async () => {
+      const c = await adminClient();
+      const typeId = await kit.seedType();
+      const k1 = await kit.makeCourier();
+      await kit.setRule(c, { code: 'e', valid_to: new Date(Date.now() + 1500).toISOString() });
+      await kit.subscribe(c, k1, 'e');
+      await new Promise((r) => setTimeout(r, 1700));
+      const e = await failure(kit.setRule(c, { code: 'e', fixed_cup: 777, accept_gaps: false }));
+      expect(e.code).toBe('22023');
+      expect(e.message).toMatch(/stale_subscribers/);
+      expect(JSON.parse(e.detail)).toEqual({ code: 'e', couriers: [k1] });
+      // confirmed explicitly: saved, and the audit names the subscriber that starts paying with it again
+      const id = await kit.setRule(c, { code: 'e', fixed_cup: 777, accept_gaps: true });
+      const audit = (await admin.query(
+        `SELECT new_value FROM public.financial_audit_log WHERE table_name = 'messenger_payment_types' AND row_id = $1 AND column_name = 'created'`, [id])).rows;
+      expect(JSON.parse(audit[0].new_value).stale_subscribers).toEqual([k1]);
+      const r = await kit.seedRemittance({ typeId });
+      await kit.call(c, 'admin_assign_delivery_courier', ['remittance', r, k1]);
+      await kit.deliverRemittance(r);
+      const [acc] = await kit.accruals(r);
+      expect(acc).toMatchObject({ amount_cup: '777.00' });
+      expect(acc.rule_snapshot.via_subscription).toBe(true);
+    });
+
     it('set_v2 refuses to recreate a deactivated code while active subscriptions to it remain (state left by older code)', async () => {
       const c = await adminClient();
       const x = await kit.makeCourier();

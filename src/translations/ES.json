@@ -3071,7 +3071,8 @@
       "noActiveVersion": "Ese tipo de pago no existe o no tiene una versión vigente.",
       "subscribedElsewhere": "Ese tipo de pago está suscrito por otro mensajero. Quite esa suscripción antes de asignarlo a un mensajero concreto.",
       "courierInactive": "El mensajero no existe o está inactivo.",
-      "staleSubscriptions": "Este código desactivado aún tiene suscripciones activas. Quítelas antes de volver a crearlo."
+      "staleSubscriptions": "Este código desactivado aún tiene suscripciones activas. Quítelas antes de volver a crearlo.",
+      "staleSubscribers": "Este código expiró y hay mensajeros suscritos que volverán a cobrar con esta versión."
     },
     "validation": {
       "required": "Este campo es obligatorio.",
@@ -3204,7 +3205,8 @@
       },
       "gapWarning": "Con este rango, estos valores quedan sin regla de este alcance. Una entrega en un hueco no se bloquea: su costo queda desconocido.",
       "acceptGaps": "Entiendo que quedan huecos y quiero guardar igualmente",
-      "acceptGapsRequired": "Confirme que acepta los huecos antes de guardar."
+      "acceptGapsRequired": "Confirme que acepta los huecos antes de guardar.",
+      "staleSubscribers": "{count} mensajero(s) suscrito(s) a este código expirado volverán a cobrar con esta versión, con prioridad de mensajero. Confirme para guardar."
     },
     "payable": {
       "title": "Por pagar",

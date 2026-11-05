@@ -3063,7 +3063,8 @@
       "noActiveVersion": "That payment type does not exist or has no current version.",
       "subscribedElsewhere": "That payment type is subscribed by another courier. Remove that subscription before assigning it to a specific courier.",
       "courierInactive": "The courier does not exist or is inactive.",
-      "staleSubscriptions": "This deactivated code still has active subscriptions. Remove them before recreating it."
+      "staleSubscriptions": "This deactivated code still has active subscriptions. Remove them before recreating it.",
+      "staleSubscribers": "This code expired and subscribed couriers will be paid with this version again."
     },
     "validation": {
       "required": "This field is required.",
@@ -3196,7 +3197,8 @@
       },
       "gapWarning": "With this range, these values are left without a rule of this scope. A delivery in a gap is not blocked: its cost stays unknown.",
       "acceptGaps": "I understand there are gaps and want to save anyway",
-      "acceptGapsRequired": "Confirm that you accept the gaps before saving."
+      "acceptGapsRequired": "Confirm that you accept the gaps before saving.",
+      "staleSubscribers": "{count} courier(s) subscribed to this expired code will be paid with this version again, with courier priority. Confirm to save."
     },
     "payable": {
       "title": "Payable",

@@ -3,7 +3,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { setPaymentType } from '@/lib/courierService';
 import {
   RULE_METHODS, RULE_APPLIES_TO, RULE_BASES, RULE_CURRENCIES, RANGE_OPERATORS, validateRuleForm, buildRuleArgs, simulateRule,
-  analyzeRuleConflicts, coverageGapsFromError, centsToText
+  analyzeRuleConflicts, coverageGapsFromError, staleCouriersFromError, centsToText
 } from '@/lib/courierRules';
 import { Btn, Field, Notice, errorText, inputCls, formatCup, formatUsd } from './courierUi';
 
@@ -103,9 +103,11 @@ const PaymentTypeForm = ({ initial, lockedCode = false, rules = [], couriers, zo
   const [message, setMessage] = useState(null);
   const [acceptGaps, setAcceptGaps] = useState(false);
   const [serverGaps, setServerGaps] = useState(null);
+  const [staleCount, setStaleCount] = useState(0); // couriers of an expired code that this version would revive
   const set = (key) => (e) => {
     setForm({ ...form, [key]: e.target.value });
     setServerGaps(null);
+    setStaleCount(0);
     setAcceptGaps(false); // a confirmation only covers the ranges it was given for
   };
   const err = (key) => (errors[key] ? t(`couriers.validation.${errors[key]}`) : undefined);
@@ -116,6 +118,7 @@ const PaymentTypeForm = ({ initial, lockedCode = false, rules = [], couriers, zo
 
   const conflicts = useMemo(() => analyzeRuleConflicts(form, rules), [form, rules]);
   const gaps = serverGaps ?? conflicts.gaps;
+  const needsConfirm = gaps.length > 0 || staleCount > 0;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -126,22 +129,27 @@ const PaymentTypeForm = ({ initial, lockedCode = false, rules = [], couriers, zo
       setMessage({ tone: 'error', text: t(conflicts.overlap ? 'couriers.errors.overlap' : 'couriers.errors.mixedCurrency') });
       return;
     }
-    if (gaps.length && !acceptGaps) {
+    if (needsConfirm && !acceptGaps) {
       setMessage({ tone: 'warn', text: t('couriers.types.acceptGapsRequired') });
       return;
     }
     setBusy(true);
     setMessage(null);
     try {
-      await setPaymentType(buildRuleArgs(form, { acceptGaps: gaps.length > 0 && acceptGaps }));
+      await setPaymentType(buildRuleArgs(form, { acceptGaps: needsConfirm && acceptGaps }));
       await onSaved();
     } catch (error) {
       const fromServer = coverageGapsFromError(error);
+      const stale = staleCouriersFromError(error);
+      if (stale) {
+        setStaleCount(stale);
+        setAcceptGaps(false);
+      }
       if (fromServer?.length) {
         setServerGaps(fromServer);
         setAcceptGaps(false);
       }
-      setMessage({ tone: fromServer?.length ? 'warn' : 'error', text: errorText(t, error) });
+      setMessage({ tone: fromServer?.length || stale ? 'warn' : 'error', text: errorText(t, error) });
     } finally {
       setBusy(false);
     }
@@ -205,16 +213,23 @@ const PaymentTypeForm = ({ initial, lockedCode = false, rules = [], couriers, zo
       </fieldset>
 
       <div aria-live="polite">
-        {gaps.length > 0 && (
-          <div className="space-y-2" data-testid="range-gap-warning">
-            <Notice tone="warn" announce={false}>
-              <p>{t('couriers.types.gapWarning')}</p>
-              <ul className="list-disc pl-5">
-                {gaps.map((g) => (
-                  <li key={`${g.kind}-${g.from}-${g.to}`}>{t(`couriers.common.kind.${g.kind}`)}: {describeRange(t, g.from, g.to, form.currency)}</li>
-                ))}
-              </ul>
-            </Notice>
+        {staleCount > 0 && (
+          <div data-testid="stale-subscribers-warning">
+            <Notice tone="warn" announce={false}>{t('couriers.types.staleSubscribers', { count: staleCount })}</Notice>
+          </div>
+        )}
+        {needsConfirm && (
+          <div className="space-y-2" data-testid={gaps.length > 0 ? 'range-gap-warning' : undefined}>
+            {gaps.length > 0 && (
+              <Notice tone="warn" announce={false}>
+                <p>{t('couriers.types.gapWarning')}</p>
+                <ul className="list-disc pl-5">
+                  {gaps.map((g) => (
+                    <li key={`${g.kind}-${g.from}-${g.to}`}>{t(`couriers.common.kind.${g.kind}`)}: {describeRange(t, g.from, g.to, form.currency)}</li>
+                  ))}
+                </ul>
+              </Notice>
+            )}
             <label className="flex min-h-[44px] items-center gap-2 text-sm">
               <input type="checkbox" className="h-5 w-5" checked={acceptGaps} onChange={(e) => setAcceptGaps(e.target.checked)} />
               {t('couriers.types.acceptGaps')}
