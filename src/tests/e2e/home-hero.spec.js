@@ -11,6 +11,8 @@ import path from 'node:path';
 
 const SHOTS_DIR = process.env.HOME_SHOTS_DIR;
 
+test.describe.configure({ timeout: 60000 }); // the dev server compiles on demand: first loads are slow
+
 // Literal values on purpose: Playwright does not resolve the '@/' alias and this keeps the check independent of brandPalette.js.
 const BRAND_PRESET = {
   pageBgColor: '#FAF7F0',
@@ -109,8 +111,8 @@ const open = async (page, { settings, language = 'es' } = {}) => {
   const loaded = page.waitForResponse((r) => r.url().includes('/rest/v1/business_visual_settings'));
   await page.goto('/');
   await loaded;
-  await expect(page.locator('[data-testid="hero-carousel"]')).toBeVisible();
-  await expect(page.locator('[data-testid="hero-slide-image"]')).toBeVisible();
+  await expect(page.locator('[data-testid="hero-carousel"]')).toBeVisible({ timeout: 20000 });
+  await expect(page.locator('[data-testid="hero-slide-image"]')).toBeVisible({ timeout: 15000 });
   await expect(page.locator('[data-testid="hero-slide-image"]')).toHaveJSProperty('complete', true);
 };
 

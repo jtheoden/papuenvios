@@ -23,6 +23,7 @@ const translate = (key, params = {}) => {
   return Object.entries(params).reduce((acc, [k, v]) => acc.replace(`{${k}}`, v), value);
 };
 
+vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 vi.mock('@/contexts/LanguageContext', () => ({ useLanguage: () => ({ t: translate, language: state.language }) }));
 
 import HeroCarousel from '@/components/home/HeroCarousel';

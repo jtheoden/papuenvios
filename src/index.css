@@ -113,3 +113,17 @@ body {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner,
+  .shimmer {
+    animation: none;
+  }
+
+  .hover-lift {
+    transition: none;
+  }
+
+  .hover-lift:hover {
+    transform: none;
+  }
+}

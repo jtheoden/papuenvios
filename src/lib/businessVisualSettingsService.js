@@ -336,8 +336,15 @@ export function applyVisualSettingsToDOM(settings) {
       else root.style.removeProperty(cssVar);
     }
 
-    // Apply page background to body
+    // Apply page background to body. The stylesheet paints a blue gradient (background-image) that would
+    // hide pageBgColor, so it is dropped for any valid colour except the legacy default #f9fafb, which keeps
+    // the gradient (production look). shortcut: an admin who really wants #f9fafb keeps the gradient too.
     document.body.style.backgroundColor = settings.pageBgColor || '#f9fafb';
+    if (isHexColor(settings.pageBgColor) && settings.pageBgColor.toLowerCase() !== '#f9fafb') {
+      document.body.style.backgroundImage = 'none';
+    } else {
+      document.body.style.removeProperty('background-image');
+    }
 
   } catch (err) {
     console.error('[BusinessVisualSettings] DOM apply error:', err);

@@ -73,6 +73,14 @@
         "products": "Ver Productos"
       }
     },
+    "carousel": {
+      "label": "Carrusel de anuncios",
+      "previous": "Anuncio anterior",
+      "next": "Anuncio siguiente",
+      "pause": "Pausar carrusel",
+      "play": "Reanudar carrusel",
+      "goTo": "Ir al anuncio {count}"
+    },
     "features": {
       "title": "Funcionalidades Principales",
       "subtitle": "Todo lo que necesitas para hacer crecer tu negocio digital",

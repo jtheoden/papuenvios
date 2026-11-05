@@ -73,6 +73,14 @@
         "products": "View Products"
       }
     },
+    "carousel": {
+      "label": "Announcements carousel",
+      "previous": "Previous announcement",
+      "next": "Next announcement",
+      "pause": "Pause carousel",
+      "play": "Resume carousel",
+      "goTo": "Go to announcement {count}"
+    },
     "features": {
       "title": "Key Features",
       "subtitle": "Everything you need to grow your digital business",
