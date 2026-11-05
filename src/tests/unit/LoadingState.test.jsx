@@ -7,6 +7,7 @@ vi.mock('@/contexts/LanguageContext', () => ({
 }));
 
 import LoadingState, { SkeletonBox, SHOW_DELAY_MS, MIN_VISIBLE_MS } from '@/components/ui/LoadingState';
+import { loadingTiming } from '@/components/ui/loadingTiming';
 
 const skeleton = <SkeletonBox className="h-10" />;
 const ui = (loading) => (
@@ -18,8 +19,16 @@ const ui = (loading) => (
 const advance = (ms) => act(() => { vi.advanceTimersByTime(ms); });
 
 describe('LoadingState', () => {
-  beforeEach(() => { vi.useFakeTimers(); });
-  afterEach(() => { vi.useRealTimers(); });
+  // The test setup shortens the timing for every other suite: this one checks the real values.
+  const saved = { ...loadingTiming };
+  beforeEach(() => {
+    vi.useFakeTimers();
+    Object.assign(loadingTiming, { showDelayMs: SHOW_DELAY_MS, minVisibleMs: MIN_VISIBLE_MS });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    Object.assign(loadingTiming, saved);
+  });
 
   it('uses a short show delay and a minimum visible time', () => {
     expect(SHOW_DELAY_MS).toBe(300);

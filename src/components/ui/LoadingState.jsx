@@ -2,9 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 
+import { loadingTiming, SHOW_DELAY_MS, MIN_VISIBLE_MS } from '@/components/ui/loadingTiming';
+
 // Fast networks never see the skeleton; once shown it stays long enough not to flicker.
-export const SHOW_DELAY_MS = 300;
-export const MIN_VISIBLE_MS = 400;
+export { SHOW_DELAY_MS, MIN_VISIBLE_MS };
 
 /** Skeleton placeholder block: theme token colour, pulse only without prefers-reduced-motion. */
 export const SkeletonBox = ({ className }) => (
@@ -40,10 +41,10 @@ const LoadingState = ({ loading, skeleton, label, className, children }) => {
         shownAt.current = Date.now();
         wasShown.current = true;
         enter('visible');
-      }, SHOW_DELAY_MS);
+      }, loadingTiming.showDelayMs);
       return () => clearTimeout(id);
     }
-    const remaining = phaseRef.current === 'visible' ? MIN_VISIBLE_MS - (Date.now() - shownAt.current) : 0;
+    const remaining = phaseRef.current === 'visible' ? loadingTiming.minVisibleMs - (Date.now() - shownAt.current) : 0;
     if (remaining <= 0) {
       enter('done');
       return undefined;
