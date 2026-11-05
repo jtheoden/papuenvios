@@ -136,6 +136,8 @@ export const DEFAULT_VISUAL_SETTINGS = {
   carouselEnabled: true,
   carouselAutoplaySpeed: 5000,
   carouselTransitionSpeed: 1000,
+  // Home hero composition: 'spaced' | 'classic' (see heroLayout.js). Deliberately outside the brand preset.
+  heroLayout: 'spaced',
   // Brand refresh keys (additive; see brandPalette.js)
   ...NEW_KEY_DEFAULTS
 };
