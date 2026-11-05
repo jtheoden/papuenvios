@@ -81,6 +81,9 @@ describe('phase B migration hygiene (static)', () => {
       expect(fnBlock(down, f), f).not.toBeNull();
       expect(fnBlock(down, f), f).toBe(fnBlock(source, f));
     }
+    // the guard on phase A columns comes before anything is dropped
+    expect(down.indexOf("column_name = 'currency'")).toBeGreaterThan(0);
+    expect(down.indexOf("column_name = 'currency'")).toBeLessThan(down.indexOf('DROP FUNCTION'));
     expect(down).toMatch(/app\.confirm_courier_rollback/);
     expect(down).toMatch(/^BEGIN;/m);
     expect(down).toMatch(/SET LOCAL lock_timeout/);
@@ -598,6 +601,18 @@ describeDb('phase B: courier subscriptions to payment types (local Postgres)', (
         await admin.query('ROLLBACK');
       }
       expect((await admin.query(`SELECT to_regclass('public.${TABLE}') IS NOT NULL AS back`)).rows[0].back).toBe(true);
+    });
+
+    it('the rollback aborts (55000) when phase A is no longer there (currency column missing)', async () => {
+      await admin.query('BEGIN');
+      try {
+        await admin.query('ALTER TABLE public.messenger_payment_types DROP COLUMN currency CASCADE');
+        const e = await admin.query(strip(readSql(ROLLBACKS.b))).then(() => null, (err) => err);
+        expect(e?.code).toBe('55000');
+        expect(e?.message).toMatch(/phase A/);
+      } finally {
+        await admin.query('ROLLBACK');
+      }
     });
 
     it('with no subscriptions the rollback runs without confirmation', async () => {

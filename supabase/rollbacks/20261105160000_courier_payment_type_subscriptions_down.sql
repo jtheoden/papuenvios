@@ -1,7 +1,8 @@
 -- ROLLBACK of 20261105160000_courier_payment_type_subscriptions.sql (phase B). Run it BEFORE the phase A rollback.
 -- Restores the phase A bodies of _courier_rule_resolve_v2, _courier_rule_coverage and admin_set_messenger_payment_type_v2
 -- and the M1 body of admin_deactivate_messenger_payment_type verbatim, then drops the subscribe / unsubscribe RPCs, _courier_effective_conflict, the table, its trigger and guard.
--- GUARD: aborts (55000) while courier_payment_type_subscriptions has rows (active or closed), because they would be lost.
+-- GUARD: aborts (55000) when phase A is no longer applied (messenger_payment_types.currency missing), and
+--   while courier_payment_type_subscriptions has rows (active or closed), because they would be lost.
 --   MANDATORY first: export them (COPY public.courier_payment_type_subscriptions TO ...). Then confirm in the same session:
 --   SET app.confirm_courier_rollback = 'yes';
 -- Accruals already written keep their frozen rule_snapshot; nothing else is touched.
@@ -12,6 +13,12 @@ SET LOCAL lock_timeout = '5s';
 
 DO $$
 BEGIN
+  -- restoring the phase A bodies needs the phase A columns: run this file BEFORE the phase A down file, never after
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'messenger_payment_types' AND column_name = 'currency') THEN
+    RAISE EXCEPTION 'courier phase A is not applied (messenger_payment_types.currency missing): this phase B rollback must run before the phase A one'
+      USING ERRCODE = '55000';
+  END IF;
   IF to_regclass('public.courier_payment_type_subscriptions') IS NOT NULL
      AND EXISTS (SELECT 1 FROM public.courier_payment_type_subscriptions)
      AND COALESCE(current_setting('app.confirm_courier_rollback', true), '') <> 'yes' THEN
