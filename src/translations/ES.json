@@ -1679,6 +1679,11 @@
       "message": "Se quitarán todos los productos del carrito. Esta acción no se puede deshacer.",
       "confirm": "Sí, vaciar"
     },
+    "item": {
+      "decrease": "Disminuir la cantidad de {name}",
+      "increase": "Aumentar la cantidad de {name}",
+      "remove": "Quitar {name} del carrito"
+    },
     "title": "Tu Carrito de Compras",
     "empty": "Tu carrito está vacío.",
     "browse": "Explorar productos",

@@ -481,3 +481,11 @@ Rama `fix/financial-client-hardening`. Especificación y criterios: `.claude/doc
 - `handleDeleteRate`/`handleDeleteRatePair` recargan las tasas en el catch (el texto `rateNotFound` lo promete). `handleDeleteRate` no tiene botón que lo use (código muerto, sin test de UI).
 - Tests A5 afinados (código exacto PARTIAL, `reason: 'no_rows'`, pre-lectura filtrada por `effective_date`, fallo de pre-lectura = sin escritura). Plan actualizado (A5.1/A5.2, A9.1/A9.2).
 - Sin tocar: dato de producción del par USD/CUP (915 vs 1/900), decisión del dueño ya en la auditoría.
+
+### Cierre de la tanda de PRs (2026-11-05)
+- PRs abiertos, pendientes de "merge" explícito del dueño: #160 (`e2e.yml`), #161 (S4 footer/loading), #162 (F3 migraciones, NO aplicadas), #163 (F2 cliente financiero), #164 (lote backlog: Header a11y, desbordes móviles, RB-21, docs RB-26/RB-04), #165 (S2 Home/Hero).
+- Orden de merge propuesto: #160, #161, #165, #163, #164, #162. La migración 2 de F3 solo se aplica DESPUÉS de desplegar #163; el resto de migraciones F3 una por una con su "dale", backup/PITR confirmado y renombrando el archivo del repo a la versión de prod tras cada una.
+- Revisiones independientes (Opus): F2 dos rondas (A9 y su caso de revertir tasa corregidos; los 4 últimos commits de F2 revisados por el orquestador, sin tercera revisión), F3 una ronda, S4 una, S2 una, lote una (sin críticos).
+- RB-21: la causa de `LegalAcceptanceContext` está inferida por mecanismo, no reproducida en rojo.
+- Pendientes del dueño: par USD→CUP inconsistente en prod (915 directa vs 0.001111 inversa ≈ 900; UPDATE manual de un super_admin el 2026-11-04 14:20), pedido ORD-20261023-100004 contra el banco, decisiones ND-2/3/4/11/A/C, subtítulos de slides, ruta de "Enviar remesa", tú/usted, confirmar remesas desde España, assets de logo S5, aplicar "Aplicar paleta PapuEnvíos", RB-26 ND, decisiones F4/F5.
+- Backlog menor detectado: `xs:` muertos en AdminOffersTab/VendorCategoriesTab/VendorCombosTab, ArrowUp en `useDropdownMenu`, `role="separator"` en el menú, 8 claves `remittances.user.*` solo en ES, `MotionConfig reducedMotion="user"` global, e2e de responsive acoplado a clases y sin proyecto propio sin `setup`.

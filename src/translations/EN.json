@@ -1671,6 +1671,11 @@
       "message": "All items will be removed from your cart. This action cannot be undone.",
       "confirm": "Yes, empty it"
     },
+    "item": {
+      "decrease": "Decrease the quantity of {name}",
+      "increase": "Increase the quantity of {name}",
+      "remove": "Remove {name} from the cart"
+    },
     "title": "Your Shopping Cart",
     "empty": "Your cart is empty.",
     "browse": "Browse products",
