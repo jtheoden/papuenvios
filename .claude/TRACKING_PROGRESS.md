@@ -507,3 +507,27 @@ Rama `fix/financial-client-hardening`. Especificación y criterios: `.claude/doc
 - Cambio de comportamiento: classic con solo `useGradient` desmarcado => `data-theme="classic"` (antes papuenvios); sin ajustes (`{}`/null) => classic (antes papuenvios). `applyVisualSettingsToDOM` siempre recibe ajustes mezclados con los defaults; la rama de error (valores no verificados) sigue sin tocar `data-theme`.
 - Script inline de `index.html`: lee `cached.data.activeTheme` y compara con una copia literal del preset (test que exige igualdad exacta con `BRAND_PRESET` y paridad con `resolveLookId` en 9 filas). Sigue ignorando el TTL, con try/catch, y solo escribe 'classic'/'papuenvios'.
 - e2e `theme-tokens` y `home-hero`: la fila de preset simulada incluye ahora todas las claves (pestañas y footer), como la fila real de producción; nuevo e2e de `activeTheme` en caché.
+
+### Egress Supabase — auditoría y recortes (rama `perf/storage-egress-images`, 2026-11-05)
+- Auditoría con logs del ciclo completo (`.claude/docs/audit-egress-supabase-2026-11-05.md`). La causa principal NO son las imágenes. Es el **polling del Dashboard admin**: unas 43.300 vueltas entre el 22-oct y el 02-nov, cada una con 9 listados (~80 kB), ≈ 3,5 GB sin caché. Le sigue el base64 del catálogo anterior al 16-oct (≈ 1-2 GB, ya corregido). Las imágenes suman ≈ 0,7-0,9 GB y van mayormente a la cuota *Cached Egress*, que es aparte.
+- Corregido primero:
+  - `skipWhileRefreshBlocked` salta también los ticks con la pestaña oculta, y el badge del Header lo usa.
+  - Dashboard: sondeo cada 5 min (antes 30 s) y refresco al volver a la pestaña.
+- C: `loading="lazy"` y `decoding="async"` en el catálogo, combos, publicaciones, blog, avatares y miniaturas de Ajustes. El cartel LCP del Hero queda eager con `fetchpriority="high"`.
+- E (`catalog-images.spec.js`, Supabase simulado, 68 imágenes de 60-200 kB), primera carga:
+  - Antes: 68/68 imágenes, 8,30 MB.
+  - Después: 33/68 (4,07 MB) a 1280×800 y 11/68 (1,25 MB) a 390×844.
+- B:
+  - `src/lib/imageOptimizer.js` único, con fallback al original. Publicaciones en WebP con caché de 1 año; product-images con caché de 1 año, pero en JPEG hasta aplicar la migración `20261105100000` (NO aplicada) y cambiar `PRODUCT_IMAGES_FORMAT`.
+  - Comprobantes de pago y de entrega: ≤ 1600 px, q 0,85, una sola re-codificación. Reembolsos no se tocan.
+- D: `scripts/optimize-existing-images.mjs` y su runbook. El dry-run no descarga nada. El apply va por etapas y queda bloqueado hasta el 09-nov o Pro. NO ejecutado.
+- Verificación:
+  - eslint src OK.
+  - vitest: 4267/4268. El único fallo, `selfHostedFonts`, es de entorno: el worktree no tiene `node_modules/@fontsource`.
+  - e2e simulados: home-hero + catalog-images 27/27.
+  - Build a directorio temporal OK.
+- Pendiente del dueño:
+  - Mirar en Usage si el 4,97 GB es *Egress* o *Cached*.
+  - Aplicar la migración webp con su propio "dale".
+  - Ejecutar el script tras el 09-nov.
+  - Valorar Pro (250 GB / 250 GB).
