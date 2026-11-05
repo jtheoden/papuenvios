@@ -80,7 +80,7 @@
         },
         "remittances": {
           "title": "Remesas a Cuba",
-          "description": "Envíe dinero a Cuba desde Estados Unidos o España.",
+          "description": "Envíe dinero a Cuba desde Estados Unidos.",
           "cta": "Enviar remesa"
         }
       }
@@ -90,6 +90,7 @@
       "roleDescription": "carrusel",
       "slide": "diapositiva",
       "slideOf": "{count} de {total}",
+      "slideStatus": "Anuncio {count} de {total}",
       "previous": "Anuncio anterior",
       "next": "Anuncio siguiente",
       "pause": "Pausar carrusel",
@@ -105,7 +106,7 @@
       },
       "remittances": {
         "title": "Remesas a Cuba",
-        "description": "Envía dinero a Cuba desde USA y España de forma rápida y segura"
+        "description": "Envía dinero a Cuba desde Estados Unidos de forma rápida y segura"
       },
       "analytics": {
         "title": "Panel de Ganancias",
@@ -148,13 +149,16 @@
   },
   "footer": {
     "date": "Hoy es {date}",
-    "developedBy": "Desarrollado por {name} ({email})",
+    "developedBy": "Desarrollado por {name}",
+    "identity": {
+      "label": "Contacto del negocio"
+    },
     "to": "Para",
     "copyright": "Todos los derechos reservados"
   },
   "products": {
     "title": "Catálogo de Productos",
-    "subtitle": "Descubre productos y combos para enviar a Cuba con precios competitivos",
+    "subtitle": "Productos y combos para enviar a Cuba.",
     "preview": "Vista previa",
     "searchPlaceholder": "Buscar productos...",
     "specialCombos": "Combos Especiales",
@@ -216,7 +220,7 @@
   },
   "remittances": {
     "title": "Remesas a Cuba",
-    "subtitle": "Envía dinero a Cuba desde USA y España de forma rápida y segura",
+    "subtitle": "Envíe dinero a Cuba desde Estados Unidos. Puede seguir el estado y ver el comprobante de entrega en Mis remesas.",
     "calculator": "Calculadora de Remesas",
     "amount": "Cantidad a Enviar (USD)",
     "country": "País de Destino",
@@ -231,6 +235,20 @@
     "sendNew": "Nueva Remesa",
     "myRemittances": "Mis Remesas",
     "howItWorks": "¿Cómo Funciona?",
+    "features": {
+      "rates": {
+        "title": "Tasa visible antes de pagar",
+        "description": "Le mostramos la tasa, la comisión y el total antes de que pague."
+      },
+      "delivery": {
+        "title": "Plazo según la zona",
+        "description": "Entrega estimada, no garantizada; el plazo depende de la zona."
+      },
+      "tracking": {
+        "title": "Seguimiento en Mis remesas",
+        "description": "Puede seguir el estado y ver el comprobante de entrega en Mis remesas."
+      }
+    },
     "step1": {
       "title": "Selecciona el País",
       "description": "Elige el país de destino y la cantidad a enviar"
@@ -474,7 +492,7 @@
       "trackYourRemittances": "Consulte el estado de sus envíos de dinero",
       "trackRemittances": "Consulte el estado de sus envíos de dinero",
       "noRemittances": "No tiene remesas registradas",
-      "noRemittancesDesc": "Envíe su primera remesa de forma rápida y segura",
+      "noRemittancesDesc": "Envíe su primera remesa. Puede seguir el estado y ver el comprobante de entrega en Mis remesas.",
       "remittanceNumber": "Número de Remesa",
       "amountSent": "Enviado",
       "toDeliver": "A Entregar",
@@ -598,7 +616,7 @@
       "importantNote": "Importante",
       "proofNote": "Su remesa será procesada una vez validemos el comprobante de pago. Recibirá una notificación cuando esto ocurra.",
       "pageTitle": "Enviar Remesa",
-      "pageSubtitle": "Envía dinero de forma rápida y segura",
+      "pageSubtitle": "Pague con Zelle. Puede seguir el estado y ver el comprobante de entrega en Mis remesas.",
       "selectTypeRequired": "Seleccione el tipo de remesa *",
       "rate": "Tasa",
       "rateUnavailable": "La tasa de cambio para este tipo de remesa no está disponible en este momento. Por favor, inténtelo más tarde o contacte con soporte.",
@@ -655,7 +673,7 @@
       "paymentInstructions": "Ahora realiza el pago y sube el comprobante para completar el proceso.",
       "proofSubmittedSuccess": "¡Comprobante enviado exitosamente!",
       "submitProofAndComplete": "Enviar Comprobante y Completar",
-      "estimatedDeliveryTime": "24-72 horas",
+      "estimatedDeliveryTime": "Entrega estimada, no garantizada; el plazo depende de la zona.",
       "couponLabel": "Cupón de descuento (opcional)",
       "couponPlaceholder": "Ingresa tu código",
       "applyCoupon": "Aplicar",
@@ -1872,7 +1890,7 @@
       "contactWhatsapp": "Contactar por WhatsApp",
       "back": "Atrás",
       "processing": "Procesando...",
-      "estimatedDelivery": "24-72 horas"
+      "estimatedDelivery": "Entrega estimada, no garantizada; el plazo depende de la zona."
     },
     "restored": {
       "title": "¡Bienvenido de vuelta!",
@@ -2948,15 +2966,31 @@
       "seeTerms": "Ver Términos de Servicio"
     }
   },
+  "beforePaying": {
+    "title": "Antes de pagar",
+    "irreversible": "Los pagos por Zelle no se pueden revertir. Revise los datos del destinatario y el total antes de enviar.",
+    "rate": "Tasa consultada",
+    "rateCheckedAt": "a las {time}",
+    "rateNote": "El monto final se calcula con la tasa vigente al confirmar.",
+    "easternTime": "hora del Este de EE. UU.",
+    "fee": "Comisión (descontada del monto enviado)",
+    "deliveryCost": "Costo de entrega",
+    "total": "Total a pagar",
+    "recipientReceives": "Recibe el destinatario",
+    "estimate": "Entrega estimada, no garantizada; el plazo depende de la zona.",
+    "seeAlso": "Consulte:"
+  },
   "cookieConsent": {
     "title": "Privacidad y analítica",
-    "description": "Usamos almacenamiento local estrictamente necesario para que el sitio funcione (por ejemplo, tu sesión). Solo si lo aceptas, registraremos las páginas que visitas con fines estadísticos: página, origen, navegador, un identificador de sesión y, si iniciaste sesión, tu identificador de usuario.",
-    "accept": "Aceptar analítica",
+    "short": "Medimos visitas solo si usted acepta.",
+    "moreInfo": "Más información",
+    "description": "Usamos almacenamiento local estrictamente necesario para que el sitio funcione (por ejemplo, su sesión). Solo si usted lo acepta, registraremos las páginas que visita con fines estadísticos: página, origen, navegador, un identificador de sesión y, si inició sesión, su identificador de usuario.",
+    "accept": "Aceptar",
     "reject": "Rechazar",
     "privacyLink": "Política de Privacidad",
     "statusOn": "Estado actual: analítica activada.",
     "statusOff": "Estado actual: analítica desactivada.",
-    "gpcNote": "Detectamos la señal Global Privacy Control de tu navegador y la respetamos: la analítica permanece desactivada. Puedes activarla aquí de forma expresa.",
+    "gpcNote": "Detectamos la señal Global Privacy Control de su navegador y la respetamos: la analítica permanece desactivada. Puede activarla aquí de forma expresa.",
     "preferencesLink": "Preferencias de cookies"
   },
   "couriers": {

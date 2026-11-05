@@ -1,97 +1,117 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { buildHomeTheme } from '@/lib/homeTheme';
 import { cn } from '@/lib/utils';
+import StackedSlides from '@/components/home/StackedSlides';
+import { DOT_GAP, DOT_HIT_AREA } from '@/components/home/heroControls';
+import { readHeroShape, saveHeroShape } from '@/components/home/heroShape';
+import { useHeroSlides, useIsWide, useFrameRatio, slideKey, slideTexts, DEFAULT_POSTER_RATIO } from '@/components/home/useHeroSlides';
 
-const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
-const DEFAULT_AUTOPLAY_MS = 5000;
-const MIN_AUTOPLAY_MS = 2000; // WCAG 2.2.2 / readability: never flip faster than this, whatever the stored setting
-const DEFAULT_TRANSITION_MS = 1000;
+const focusRing =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus focus-visible:ring-offset-2';
+const controlClass = cn(
+  'inline-flex h-11 w-11 items-center justify-center rounded-full border transition-colors motion-reduce:transition-none',
+  focusRing
+);
+const arrowClass = cn(controlClass, 'absolute top-1/2 z-10 -translate-y-1/2 shadow-md');
 
-// stable identity of a slide for the failed-image set and React keys
-const slideKey = (item, i) => item.id ?? `${i}:${item.image_url || item.image_file}`;
+// Reserved by the skeleton so swapping it for the carousel does not move the page: the controls row (h-11 buttons)
+// and, when the previous visit did not measure the caption block at this width, an estimate of a one-line title + a
+// one-line subtitle (16px padding + 24px + 20px on mobile, 16px + 28px + 24px from md).
+// Below sm the controls are two rows (pause + arrows, then the dots: 44px + 8px + 24px) instead of wrapping when
+// the width happens to run out, so the height never depends on it; from sm they are one row of 44px.
+const CONTROLS_ROW = 'mt-3';
+const CONTROLS_PLACEHOLDER_HEIGHT = 'min-h-[4.75rem] sm:min-h-[2.75rem]';
+const CAPTION_MIN_HEIGHT = 'min-h-[3.75rem] md:min-h-[4.25rem]';
 
-const prefersReducedMotion = () => typeof window.matchMedia === 'function' && window.matchMedia(REDUCED_MOTION).matches;
-
-const useReducedMotion = () => {
-  const [reduced, setReduced] = useState(prefersReducedMotion);
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return undefined;
-    const query = window.matchMedia(REDUCED_MOTION);
-    const onChange = (event) => setReduced(event.matches);
-    query.addEventListener?.('change', onChange);
-    return () => query.removeEventListener?.('change', onChange);
-  }, []);
-  return reduced;
-};
-
-const useDocumentHidden = () => {
-  const [hidden, setHidden] = useState(() => document.hidden);
-  useEffect(() => {
-    const onChange = () => setHidden(document.hidden);
-    document.addEventListener('visibilitychange', onChange);
-    return () => document.removeEventListener('visibilitychange', onChange);
-  }, []);
-  return hidden;
-};
-
-const controlClass =
-  'inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus focus-visible:ring-offset-2';
+const cardStyle = (theme) => ({ borderColor: theme.border, backgroundColor: theme.cardBg });
 
 /**
- * Hero carousel. WCAG 2.2.2: it pauses on hover, on focus inside, when the tab is hidden and with the pause
- * button; with prefers-reduced-motion it starts paused. The user's own pause is never undone automatically, and an
- * explicit "resume" wins over hover/focus until the pointer and the focus have both left the carousel.
- * Slides without an image, or whose image fails to load, are skipped.
+ * Reserves the card, the panoramic frame and, when the previous visit had them, the caption and the controls row
+ * while the slides are being fetched (see heroShape.js; without a previous visit it assumes both).
+ */
+export const HeroCarouselSkeleton = ({ visualSettings }) => {
+  const theme = buildHomeTheme(visualSettings);
+  const { caption, multiple, captionHeight } = readHeroShape();
+  return (
+    <div data-testid="hero-carousel-skeleton" aria-hidden="true">
+      <div className="rounded-2xl border p-2 md:p-3" style={cardStyle(theme)}>
+        <div
+          className="w-full animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none"
+          data-frame-ratio={DEFAULT_POSTER_RATIO}
+          style={{ aspectRatio: DEFAULT_POSTER_RATIO }}
+        />
+        {caption && (
+          <div
+            data-testid="hero-caption-placeholder"
+            className={cn('px-2 pb-1 pt-3', CAPTION_MIN_HEIGHT)}
+            style={captionHeight ? { minHeight: captionHeight } : undefined}
+          />
+        )}
+      </div>
+      {multiple && <div data-testid="hero-controls-placeholder" className={cn(CONTROLS_ROW, CONTROLS_PLACEHOLDER_HEIGHT)} />}
+    </div>
+  );
+};
+
+/**
+ * Hero carousel of the `spaced` composition: the poster in a card (padding p-2 md:p-3), its title and subtitle as a
+ * caption under it when they exist, arrows over the sides from md, and pause + dots below.
+ *
+ * Frame ratio: computed once, before the real frame is shown, from the size of every poster (useFrameRatio). Until
+ * then the frame is a 3.8:1 skeleton with the poster hidden; after that it never changes, so neither a slide change
+ * nor a late image can shift the page. The only layout change is the one at that first reveal, when the real ratio
+ * differs from 3.8:1 (the real banners are 3.8:1).
  */
 const HeroCarousel = ({ slides, visualSettings }) => {
   const { t, language } = useLanguage();
   const theme = buildHomeTheme(visualSettings);
-  const reducedMotion = useReducedMotion();
-  const hidden = useDocumentHidden();
-  const [index, setIndex] = useState(0);
-  const [userPaused, setUserPaused] = useState(reducedMotion);
-  const [hovered, setHovered] = useState(false);
-  const [focused, setFocused] = useState(false);
-  const [holdIgnored, setHoldIgnored] = useState(false);
-  const [failed, setFailed] = useState(() => new Set());
+  const wide = useIsWide();
+  const carousel = useHeroSlides(slides, visualSettings);
+  const { usable, count, multiple, current, slide, running, userPaused, transitionMs } = carousel;
+  const measured = useFrameRatio(usable.map((item) => item.image_url || item.image_file));
+  const hasCaption = usable.some((item) => {
+    const texts = slideTexts(item, language);
+    return texts.title || texts.subtitle;
+  });
 
-  const usable = useMemo(
-    () => slides.filter((item, i) => (item.image_url || item.image_file) && !failed.has(slideKey(item, i))),
-    [slides, failed]
-  );
-  const count = usable.length;
-  const multiple = count > 1;
-  const current = Math.min(index, Math.max(count - 1, 0));
-  const slide = usable[current];
-  const speed = Math.max(MIN_AUTOPLAY_MS, Number(visualSettings.carouselAutoplaySpeed) || DEFAULT_AUTOPLAY_MS);
-  const transitionMs = visualSettings.carouselTransitionSpeed || DEFAULT_TRANSITION_MS;
-  const running = multiple && !userPaused && (holdIgnored || (!hovered && !focused)) && !hidden;
-
+  // Remember the shape for the next visit. Written when the carousel appears and when the caption block changes size
+  // (viewport, language); never on a slide change, which leaves its height untouched.
+  const captionRef = useRef(null);
+  const hasSlide = Boolean(slide);
   useEffect(() => {
-    if (reducedMotion) setUserPaused(true);
-  }, [reducedMotion]);
-
-  useEffect(() => {
-    if (!hovered && !focused) setHoldIgnored(false);
-  }, [hovered, focused]);
-
-  useEffect(() => {
-    if (!running) return undefined;
-    const timer = setInterval(() => setIndex((i) => (Math.min(i, count - 1) + 1) % count), speed);
-    return () => clearInterval(timer);
-  }, [running, speed, count]);
+    if (!hasSlide) return undefined;
+    const remember = () => saveHeroShape({ caption: hasCaption, multiple, captionHeight: captionRef.current?.offsetHeight });
+    remember();
+    const node = captionRef.current;
+    if (!node || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(remember);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasSlide, hasCaption, multiple]);
 
   if (!slide) return null;
 
-  const go = (delta) => setIndex((current + delta + count) % count);
-  const togglePause = () => {
-    setHoldIgnored(userPaused); // resuming ignores hover/focus until both are gone
-    setUserPaused(!userPaused);
-  };
-  const title = language === 'es' ? slide.title_es : slide.title_en;
+  const ready = measured !== null;
+  const live = running ? 'off' : 'polite';
   const controlStyle = { borderColor: theme.border, backgroundColor: theme.cardBg, color: theme.ink };
+  const arrows = [
+    { name: t('home.carousel.previous'), delta: -1, Icon: ChevronLeft, side: 'left-2 md:left-3' },
+    { name: t('home.carousel.next'), delta: 1, Icon: ChevronRight, side: 'right-2 md:right-3' },
+  ];
+  const renderArrow = ({ name, delta, Icon, side }, overlay) => (
+    <button
+      key={delta}
+      type="button"
+      className={overlay ? cn(arrowClass, side) : controlClass}
+      style={controlStyle}
+      aria-label={name}
+      onClick={() => carousel.go(delta)}
+    >
+      <Icon className="h-5 w-5" aria-hidden="true" />
+    </button>
+  );
 
   return (
     <div
@@ -99,57 +119,86 @@ const HeroCarousel = ({ slides, visualSettings }) => {
       role="region"
       aria-roledescription={t('home.carousel.roleDescription')}
       aria-label={t('home.carousel.label')}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onFocus={() => setFocused(true)}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
-      }}
+      {...carousel.regionHandlers}
     >
-      <div
-        data-testid="hero-carousel-frame"
-        aria-live={running ? 'off' : 'polite'}
-        className="relative aspect-video w-full overflow-hidden rounded-xl border"
-        style={{ borderColor: theme.border, backgroundColor: theme.cardBg }}
-      >
-        <div
-          role="group"
-          aria-roledescription={t('home.carousel.slide')}
-          aria-label={t('home.carousel.slideOf', { count: current + 1, total: count })}
-          className="h-full w-full"
-        >
-          <img
-            key={slideKey(slide, current)}
-            data-testid="hero-slide-image"
-            src={slide.image_url || slide.image_file}
-            alt={title || ''}
-            onError={() => setFailed((prev) => new Set(prev).add(slideKey(slide, slides.indexOf(slide))))}
-            className="h-full w-full object-contain animate-in fade-in motion-reduce:animate-none"
-            style={{ animationDuration: `${transitionMs}ms` }}
-          />
+      <div data-testid="hero-carousel-card" className="rounded-2xl border p-2 md:p-3" style={cardStyle(theme)}>
+        <div className="relative">
+          <div
+            data-testid="hero-carousel-frame"
+            aria-live={live}
+            data-frame-ready={ready}
+            data-frame-ratio={measured ?? DEFAULT_POSTER_RATIO}
+            className="relative w-full overflow-hidden rounded-xl"
+            style={{ aspectRatio: measured ?? DEFAULT_POSTER_RATIO }}
+          >
+            <div
+              role="group"
+              aria-roledescription={t('home.carousel.slide')}
+              aria-label={t('home.carousel.slideOf', { count: current + 1, total: count })}
+              className="h-full w-full"
+            >
+              {/* empty alt: the title is the visible caption below (and the live region announces changes) */}
+              <img
+                key={slideKey(slide, current)}
+                data-testid="hero-slide-image"
+                src={slide.image_url || slide.image_file}
+                alt=""
+                fetchpriority={carousel.isFirst(slide) ? 'high' : undefined}
+                onError={() => carousel.markFailed(slide)}
+                className={cn('h-full w-full object-contain animate-in fade-in motion-reduce:animate-none', !ready && 'invisible')}
+                style={{ animationDuration: `${transitionMs}ms` }}
+              />
+            </div>
+            {multiple && (
+              <span className="sr-only">{t('home.carousel.slideStatus', { count: current + 1, total: count })}</span>
+            )}
+            {!ready && (
+              <div
+                data-testid="hero-frame-skeleton"
+                aria-hidden="true"
+                className="absolute inset-0 animate-pulse bg-gray-200 motion-reduce:animate-none"
+              />
+            )}
+          </div>
+          {multiple && wide && arrows.map((arrow) => renderArrow(arrow, true))}
         </div>
+
+        {hasCaption && (
+          <StackedSlides
+            testId="hero-slide-caption"
+            containerRef={captionRef}
+            live={live}
+            className="px-2 pb-1 pt-3 text-center"
+            items={usable}
+            current={current}
+            render={(item) => {
+              const texts = slideTexts(item, language);
+              return (
+                <>
+                  {texts.title && <p className="font-semibold md:text-lg" style={{ color: theme.ink }}>{texts.title}</p>}
+                  {texts.subtitle && <p className="text-sm md:text-base" style={{ color: theme.muted }}>{texts.subtitle}</p>}
+                </>
+              );
+            }}
+          />
+        )}
       </div>
 
       {multiple && (
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+        <div className={cn(CONTROLS_ROW, 'flex flex-col items-center justify-center gap-y-2 sm:flex-row sm:flex-wrap sm:gap-x-4')}>
           <div className="flex items-center gap-1.5">
             <button
               type="button"
               className={controlClass}
               style={controlStyle}
               aria-label={userPaused ? t('home.carousel.play') : t('home.carousel.pause')}
-              onClick={togglePause}
+              onClick={carousel.togglePause}
             >
               {userPaused ? <Play className="h-4 w-4" aria-hidden="true" /> : <Pause className="h-4 w-4" aria-hidden="true" />}
             </button>
-            <button type="button" className={controlClass} style={controlStyle} aria-label={t('home.carousel.previous')} onClick={() => go(-1)}>
-              <ChevronLeft className="h-5 w-5" aria-hidden="true" />
-            </button>
-            <button type="button" className={controlClass} style={controlStyle} aria-label={t('home.carousel.next')} onClick={() => go(1)}>
-              <ChevronRight className="h-5 w-5" aria-hidden="true" />
-            </button>
+            {!wide && arrows.map((arrow) => renderArrow(arrow, false))}
           </div>
-          <div className="flex flex-wrap items-center justify-center gap-1.5">
+          <div className={cn('flex flex-wrap items-center justify-center', DOT_GAP)}>
             {usable.map((item, i) => {
               const active = i === current;
               return (
@@ -158,9 +207,11 @@ const HeroCarousel = ({ slides, visualSettings }) => {
                   type="button"
                   aria-label={t('home.carousel.goTo', { count: i + 1 })}
                   aria-current={active ? 'true' : undefined}
-                  onClick={() => setIndex(i)}
+                  onClick={() => carousel.select(i)}
                   className={cn(
-                    'h-6 rounded-full border-2 transition-all motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus focus-visible:ring-offset-2',
+                    'h-6 rounded-full border-2 transition-all motion-reduce:transition-none',
+                    DOT_HIT_AREA,
+                    focusRing,
                     active ? 'w-8' : 'w-6'
                   )}
                   style={{ backgroundColor: active ? theme.dotActive : theme.border, borderColor: theme.ink }}

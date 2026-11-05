@@ -8,7 +8,7 @@ import { contrastRatio } from '@/lib/contrast';
 
 // Spec (S2a/S2b) for the Home hero. Acceptance criteria:
 //  1. Exactly one h1, from i18n (home.hero.title), outside the carousel and never re-mounted by slide changes.
-//  2. Posters are shown whole: <img> with object-contain in a 16:9 frame, alt = slide title, no dark veil, no bg-cover.
+//  2. Posters are shown whole: <img> with object-contain in a card frame whose ratio follows the poster, alt empty (the title is the visible caption), no dark veil, no bg-cover.
 //  3. Layout (ND-1 = option A, the mockup, decided by the owner): centered title block, two cards
 //     ("Combos de comida", "Remesas a Cuba") and the carousel below at full width, all stacked in DOM order.
 //  3b. The cards navigate with the existing routes, read their colours from the Visual settings and the
@@ -49,7 +49,7 @@ vi.mock('@/hooks/useRealtimeSubscription', () => ({
 vi.stubGlobal('IntersectionObserver', class { observe() {} unobserve() {} disconnect() {} });
 
 import HomePage from '@/components/HomePage';
-import SkeletonCard from '@/components/ui/SkeletonCard';
+import { HeroCarouselSkeleton } from '@/components/home/HeroCarousel';
 
 const mount = async ({ settings = PROD, slides = SLIDES, language = 'es', isAdmin = false, onNavigate = vi.fn() } = {}) => {
   Object.assign(state, { settings, slides, language, isAdmin });
@@ -95,25 +95,27 @@ describe('hero structure', () => {
     expect(container.querySelectorAll('h1')).toHaveLength(1);
   });
 
-  it('shows the poster whole: object-contain img in a 16:9 frame, alt from the slide, no veil, no background image', async () => {
+  it('shows the poster whole: object-contain img in a card frame, empty alt (the caption shows the title), no veil, no background image', async () => {
     const { container } = await mount();
     const img = screen.getByTestId('hero-slide-image');
     expect(img.tagName).toBe('IMG');
     expect(img.className.split(/\s+/)).toContain('object-contain');
     expect(img.className).not.toMatch(/object-cover/);
     expect(img.getAttribute('src')).toBe(SLIDES[0].image_url);
-    expect(img.getAttribute('alt')).toBe(SLIDES[0].title_es);
+    expect(img.getAttribute('alt')).toBe('');
+    expect(within(screen.getByTestId('hero-slide-caption')).getByText(SLIDES[0].title_es)).toBeTruthy();
     const frame = screen.getByTestId('hero-carousel-frame');
     expect(frame.contains(img)).toBe(true);
-    expect(frame.className.split(/\s+/)).toContain('aspect-video');
+    // the frame takes its ratio from the poster (HomeHero.layouts.test.jsx covers it): 3.8:1 until one has loaded
+    expect(frame.getAttribute('data-frame-ratio')).toBe('3.8');
     expect(container.querySelector('.bg-black\\/50, .bg-cover')).toBeNull();
     const hero = screen.getByTestId('home-hero');
     expect([hero, ...hero.querySelectorAll('*')].some((el) => el.style.backgroundImage.includes('url('))).toBe(false);
   });
 
-  it('uses the English title as alt in EN', async () => {
+  it('shows the English title as the caption in EN', async () => {
     await mount({ language: 'en' });
-    expect(screen.getByTestId('hero-slide-image').getAttribute('alt')).toBe(SLIDES[0].title_en);
+    expect(within(screen.getByTestId('hero-slide-caption')).getByText(SLIDES[0].title_en)).toBeTruthy();
   });
 
   it('stacks a centered title block, two cards and a full-width carousel (no side-by-side grid)', async () => {
@@ -179,10 +181,10 @@ describe('hero structure', () => {
     }
   });
 
-  it('the loading skeleton reserves the same 16:9 box (no layout shift)', () => {
-    const { container } = render(<SkeletonCard variant="carousel" />);
-    expect(container.querySelector('.aspect-video')).toBeTruthy();
-    expect(container.innerHTML).not.toMatch(/\bh-64\b|\bh-96\b|md:h-80/);
+  it('the loading skeleton reserves the same 3.8:1 frame as the carousel (no layout shift)', () => {
+    const { container } = render(<HeroCarouselSkeleton visualSettings={PRESET} />);
+    expect(container.querySelector('[data-frame-ratio="3.8"]')).toBeTruthy();
+    expect(container.innerHTML).not.toMatch(/\bh-64\b|\bh-96\b|md:h-80|aspect-video/);
   });
 });
 
@@ -257,7 +259,7 @@ describe('carousel dots', () => {
     expect(list[0].getAttribute('aria-current')).toBe('true');
     expect(list[1].getAttribute('aria-current')).not.toBe('true');
     fireEvent.click(list[1]);
-    expect(screen.getByTestId('hero-slide-image').getAttribute('alt')).toBe(SLIDES[1].title_es);
+    expect(screen.getByTestId('hero-slide-image').getAttribute('src')).toBe(SLIDES[1].image_url);
     expect(dots()[1].getAttribute('aria-current')).toBe('true');
   });
 
