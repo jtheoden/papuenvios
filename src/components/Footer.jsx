@@ -4,15 +4,22 @@ import { useBusiness } from '@/contexts/BusinessContext';
 import LegalLink from '@/components/LegalLink';
 import RegulatoryNotice from '@/components/RegulatoryNotice';
 import { openConsentPreferences } from '@/lib/consent';
+import { getSupportEmail } from '@/lib/legalConfig';
+import { getGuidedWhatsappPhone } from '@/lib/notificationSettingsService';
+import { generateWhatsAppURL } from '@/lib/whatsappService';
 import { buildFooterTheme } from '@/lib/footerTheme';
 import { LEGAL_LINK, SIGNATURE, MUTED, BRAND, FOOTER_ROOT, FOOTER_DIVIDER } from '@/lib/footerStyles';
 
 const Footer = ({ onNavigate, showNotice = true }) => {
   const { t, language } = useLanguage();
-  const { visualSettings } = useBusiness();
+  const { visualSettings, notificationSettings } = useBusiness();
   const currentDate = new Date().toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US');
   const companyName = visualSettings?.companyName || 'PapuEnvíos';
   const currentYear = new Date().getFullYear();
+  // Identity block: only data the business already configured (env + notification settings); nothing is invented.
+  const supportEmail = getSupportEmail();
+  const whatsappPhone = getGuidedWhatsappPhone(notificationSettings);
+  const whatsappUrl = whatsappPhone ? generateWhatsAppURL(whatsappPhone, '') : '';
 
   return (
     <footer className={`mt-8 md:mt-12 ${FOOTER_ROOT}`} style={buildFooterTheme(visualSettings || {})}>
@@ -30,7 +37,7 @@ const Footer = ({ onNavigate, showNotice = true }) => {
             href="https://www.linkedin.com/in/juan-a-centelles-geides/"
             className={`${SIGNATURE} text-center md:text-left break-words max-w-full`}
           >
-            {t('footer.developedBy', { name: 'Juan A. Centelles', email: 'jtheoden@gmail.com' })}
+            {t('footer.developedBy', { name: 'Juan A. Centelles' })}
           </a>
 
           {/* Company name */}
@@ -39,6 +46,24 @@ const Footer = ({ onNavigate, showNotice = true }) => {
             <span className={BRAND}>{companyName}</span>
           </span>
         </div>
+
+        {(supportEmail || whatsappUrl) && (
+          <div
+            role="group"
+            aria-label={t('footer.identity.label')}
+            className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs md:text-sm"
+          >
+            <span className={BRAND}>{companyName}</span>
+            {supportEmail && (
+              <a href={`mailto:${supportEmail}`} className={LEGAL_LINK}>{supportEmail}</a>
+            )}
+            {whatsappUrl && (
+              <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className={LEGAL_LINK}>
+                {t('footer.identity.whatsapp')}
+              </a>
+            )}
+          </div>
+        )}
 
         {/* Legal links */}
         <nav

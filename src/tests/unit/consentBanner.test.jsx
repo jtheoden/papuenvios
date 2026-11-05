@@ -16,6 +16,9 @@ vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({ t: translate, language: lang.current }),
 }));
 
+// Footer imports the WhatsApp helpers, which import the Supabase client.
+vi.mock('@/lib/supabase', () => ({ supabase: {} }));
+
 vi.mock('@/contexts/BusinessContext', () => ({
   useBusiness: () => ({ visualSettings: {} }),
 }));

@@ -148,7 +148,11 @@
   },
   "footer": {
     "date": "Today is {date}",
-    "developedBy": "Developed by {name} ({email})",
+    "developedBy": "Developed by {name}",
+    "identity": {
+      "label": "Business contact",
+      "whatsapp": "Support WhatsApp"
+    },
     "to": "To",
     "copyright": "All rights reserved"
   },
