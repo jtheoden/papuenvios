@@ -23,6 +23,7 @@ const toError = (error, operation) => {
   const e = new Error(error?.message || `${operation}_failed`);
   e.code = error?.code;
   e.i18nKey = courierErrorKey(error);
+  e.details = error?.details; // a coverage_gap refusal carries its gaps as JSON here
   // A non-admin hitting an RPC is expected (refused, not logged); nothing here carries personal data.
   if (error?.code !== '42501') logError(e, { operation });
   return e;
@@ -60,7 +61,7 @@ const text = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const numOrNull = (v) => (v === '' || v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
 
 const COURIER_COLS = 'id, name, phone, notes, is_active, created_at';
-const RULE_COLS = 'id, code, name, version, applies_to, method, fixed_cup, cup_per_usd, percent, base, courier_id, shipping_zone_id, remittance_type_id, amount_from, amount_to, valid_from, valid_to, is_active, created_at';
+const RULE_COLS = 'id, code, name, version, applies_to, method, fixed_cup, cup_per_usd, percent, base, courier_id, shipping_zone_id, remittance_type_id, amount_from, amount_to, valid_from, valid_to, is_active, created_at, currency, fixed_amount';
 const ACCRUAL_COLS = 'id, source_kind, component, courier_id, amount_cup, amount_usd, fx_used, status, delivered_at, margin_status, payment_id, adjusts_accrual_id';
 
 // ---------------------------------------------------------------------------------------------- reads
@@ -151,7 +152,7 @@ export const upsertCourier = ({ id = null, name, phone = null, notes = null, isA
   write('upsertCourier', 'admin_upsert_courier', { p_id: id, p_name: String(name ?? '').trim(), p_phone: text(phone), p_notes: text(notes), p_is_active: isActive });
 
 /** args = buildRuleArgs(form) */
-export const setPaymentType = (args) => write('setPaymentType', 'admin_set_messenger_payment_type', args);
+export const setPaymentType = (args) => write('setPaymentType', 'admin_set_messenger_payment_type_v2', args);
 export const deactivatePaymentType = (code) => write('deactivatePaymentType', 'admin_deactivate_messenger_payment_type', { p_code: code });
 
 export const setMarginThresholds = (kind, { targetPct, warningPct, criticalPct }) =>

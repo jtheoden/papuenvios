@@ -1,14 +1,25 @@
 import React, { useMemo, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { setPaymentType } from '@/lib/courierService';
-import { RULE_METHODS, RULE_APPLIES_TO, RULE_BASES, validateRuleForm, buildRuleArgs, simulateRule } from '@/lib/courierRules';
+import {
+  RULE_METHODS, RULE_APPLIES_TO, RULE_BASES, RULE_CURRENCIES, RANGE_OPERATORS, validateRuleForm, buildRuleArgs, simulateRule,
+  analyzeRuleConflicts, coverageGapsFromError, centsToText
+} from '@/lib/courierRules';
 import { Btn, Field, Notice, errorText, inputCls, formatCup, formatUsd } from './courierUi';
 
 export const EMPTY_RULE_FORM = {
-  code: '', name: '', appliesTo: 'remittance', method: 'fixed_cup', fixedCup: '', cupPerUsd: '', percent: '', base: '',
-  courierId: '', zoneId: '', typeId: '', amountFrom: '', amountTo: '', validFrom: '', validTo: ''
+  code: '', name: '', appliesTo: 'remittance', method: 'fixed_amount', fixedCup: '', fixedAmount: '', cupPerUsd: '', percent: '',
+  base: '', currency: 'USD', courierId: '', zoneId: '', typeId: '', rangeOp: 'none', rangeX: '', rangeY: '', validFrom: '', validTo: ''
 };
 const EMPTY_SIM = { amountSentUsd: '', amountToDeliver: '', rate: '', commissionUsd: '', deliveryChargeUsd: '' };
+
+/** Human text of a (from, to] range in cents, same wording as the operators of the form. */
+export const describeRange = (t, from, to, currency) => {
+  if (from === null && to === null) return t('couriers.types.range.any');
+  if (from === null) return t('couriers.types.range.lte', { y: centsToText(to), currency });
+  if (to === null) return t('couriers.types.range.gt', { x: centsToText(from), currency });
+  return t('couriers.types.range.between', { x: centsToText(from), y: centsToText(to), currency });
+};
 
 const Simulator = ({ form, thresholds }) => {
   const { t } = useLanguage();
@@ -16,7 +27,10 @@ const Simulator = ({ form, thresholds }) => {
   const valid = Object.keys(validateRuleForm(form)).length === 0;
   const result = useMemo(
     () => (valid ? simulateRule(
-      { method: form.method, fixedCup: form.fixedCup, cupPerUsd: form.cupPerUsd, percent: form.percent, base: form.base },
+      {
+        method: form.method, fixedCup: form.fixedCup, fixedAmount: form.fixedAmount, cupPerUsd: form.cupPerUsd, percent: form.percent,
+        base: form.base, currency: form.currency, rangeOp: form.rangeOp, rangeX: form.rangeX, rangeY: form.rangeY
+      },
       { ...sim, warningPct: thresholds?.warningPct, criticalPct: thresholds?.criticalPct }
     ) : null),
     [valid, form, sim, thresholds]
@@ -39,7 +53,7 @@ const Simulator = ({ form, thresholds }) => {
         {result && (
           <>
             <p>{t('couriers.simulator.cost')}: <strong>{formatCup(result.cup) ?? t('couriers.common.unknown')}</strong> / <strong>{formatUsd(result.usd) ?? t('couriers.common.unknown')}</strong></p>
-            {result.cup === null && <p className="text-amber-900">{t('couriers.simulator.unknownBasis')}</p>}
+            {result.cup === null && <p className="text-amber-900">{t(`couriers.simulator.reasons.${result.reason}`)}</p>}
             <p>
               {t('couriers.simulator.margin')}:{' '}
               <strong>{margin.marginUsd === null ? t('couriers.common.unknown') : `${formatUsd(margin.marginUsd)} (${margin.marginPct}%)`}</strong>
@@ -59,8 +73,8 @@ const Simulator = ({ form, thresholds }) => {
   );
 };
 
-const SelectField = ({ form, set, err, field, label, options, blank }) => (
-  <Field label={label} error={err(field)}>
+const SelectField = ({ form, set, err, field, label, options, blank, hint }) => (
+  <Field label={label} error={err(field)} hint={hint}>
     {(p) => (
       <select {...p} className={inputCls} value={form[field]} onChange={set(field)}>
         {blank !== undefined && <option value="">{blank}</option>}
@@ -70,32 +84,64 @@ const SelectField = ({ form, set, err, field, label, options, blank }) => (
   </Field>
 );
 
+const MoneyInput = ({ form, set, err, field, label, hint }) => (
+  <Field label={label} error={err(field)} hint={hint}>
+    {(p) => <input {...p} className={inputCls} inputMode="decimal" value={form[field]} onChange={set(field)} />}
+  </Field>
+);
+
 /**
  * Create / new-version form of a payment type. Methods are the enumerated ones; every number is typed by the admin.
  * `lockedCode` (editing) keeps the code: saving creates a NEW VERSION that only applies to deliveries from its start on.
+ * `rules` = the listed payment types: overlaps and gaps are checked here AND again by the RPC (which has the last word).
  */
-const PaymentTypeForm = ({ initial, lockedCode = false, couriers, zones, remittanceTypes, thresholds, onSaved, onCancel }) => {
+const PaymentTypeForm = ({ initial, lockedCode = false, rules = [], couriers, zones, remittanceTypes, thresholds, onSaved, onCancel }) => {
   const { t } = useLanguage();
   const [form, setForm] = useState(initial);
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
-  const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
+  const [acceptGaps, setAcceptGaps] = useState(false);
+  const [serverGaps, setServerGaps] = useState(null);
+  const set = (key) => (e) => {
+    setForm({ ...form, [key]: e.target.value });
+    setServerGaps(null);
+    setAcceptGaps(false); // a confirmation only covers the ranges it was given for
+  };
   const err = (key) => (errors[key] ? t(`couriers.validation.${errors[key]}`) : undefined);
-  const usesBase = form.method !== 'fixed_cup';
+  const usesBase = form.method === 'per_usd_delivered' || form.method === 'percent_of_base';
+  const op = form.rangeOp;
+  // fixed_cup stays readable for older versions; new rules use the fixed amount with its currency
+  const methods = RULE_METHODS.filter((m) => m !== 'fixed_cup' || initial.method === 'fixed_cup');
+
+  const conflicts = useMemo(() => analyzeRuleConflicts(form, rules), [form, rules]);
+  const gaps = serverGaps ?? conflicts.gaps;
 
   const submit = async (e) => {
     e.preventDefault();
     const found = validateRuleForm(form);
     setErrors(found);
     if (Object.keys(found).length) return;
+    if (conflicts.overlap || conflicts.mixedCurrency) {
+      setMessage({ tone: 'error', text: t(conflicts.overlap ? 'couriers.errors.overlap' : 'couriers.errors.mixedCurrency') });
+      return;
+    }
+    if (gaps.length && !acceptGaps) {
+      setMessage({ tone: 'warn', text: t('couriers.types.acceptGapsRequired') });
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {
-      await setPaymentType(buildRuleArgs(form));
+      await setPaymentType(buildRuleArgs(form, { acceptGaps: gaps.length > 0 && acceptGaps }));
       await onSaved();
     } catch (error) {
-      setMessage({ tone: 'error', text: errorText(t, error) });
+      const fromServer = coverageGapsFromError(error);
+      if (fromServer?.length) {
+        setServerGaps(fromServer);
+        setAcceptGaps(false);
+      }
+      setMessage({ tone: fromServer?.length ? 'warn' : 'error', text: errorText(t, error) });
     } finally {
       setBusy(false);
     }
@@ -113,8 +159,11 @@ const PaymentTypeForm = ({ initial, lockedCode = false, couriers, zones, remitta
           {(p) => <input {...p} className={inputCls} value={form.name} maxLength={200} onChange={set('name')} />}
         </Field>
         <SelectField form={form} set={set} err={err} field="appliesTo" label={t('couriers.types.appliesTo')} options={RULE_APPLIES_TO.map((v) => ({ value: v, label: t(`couriers.types.applies.${v}`) }))} />
-        <SelectField form={form} set={set} err={err} field="method" label={t('couriers.types.method')} options={RULE_METHODS.map((v) => ({ value: v, label: t(`couriers.types.methods.${v}`) }))} />
+        <SelectField form={form} set={set} err={err} field="method" label={t('couriers.types.method')} options={methods.map((v) => ({ value: v, label: t(`couriers.types.methods.${v}`) }))} />
+        <SelectField form={form} set={set} err={err} field="currency" label={t('couriers.types.currency')} hint={t('couriers.types.currencyHint')}
+          options={RULE_CURRENCIES.map((v) => ({ value: v, label: v }))} />
 
+        {form.method === 'fixed_amount' && <MoneyInput form={form} set={set} err={err} field="fixedAmount" label={t('couriers.types.fixedAmount')} />}
         {form.method === 'fixed_cup' && (
           <Field label={t('couriers.types.fixedCup')} error={err('fixedCup')}>
             {(p) => <input {...p} className={inputCls} inputMode="decimal" value={form.fixedCup} onChange={set('fixedCup')} />}
@@ -142,13 +191,11 @@ const PaymentTypeForm = ({ initial, lockedCode = false, couriers, zones, remitta
           options={couriers.filter((c) => c.is_active).map((c) => ({ value: c.id, label: c.name }))} />
         <SelectField form={form} set={set} err={err} field="zoneId" label={t('couriers.types.zone')} blank={t('couriers.types.anyZone')} options={zones.map((z) => ({ value: z.id, label: z.label }))} />
         <SelectField form={form} set={set} err={err} field="typeId" label={t('couriers.types.remittanceType')} blank={t('couriers.types.anyType')} options={remittanceTypes.map((r) => ({ value: r.id, label: r.label }))} />
-        <div />
-        <Field label={t('couriers.types.amountFrom')} error={err('amountFrom')} hint={t('couriers.types.tierHint')}>
-          {(p) => <input {...p} className={inputCls} inputMode="decimal" value={form.amountFrom} onChange={set('amountFrom')} />}
-        </Field>
-        <Field label={t('couriers.types.amountTo')} error={err('amountTo')}>
-          {(p) => <input {...p} className={inputCls} inputMode="decimal" value={form.amountTo} onChange={set('amountTo')} />}
-        </Field>
+        <SelectField form={form} set={set} err={err} field="rangeOp" label={t('couriers.types.rangeOp')}
+          hint={t('couriers.types.rangeHelp', { currency: form.currency })}
+          options={RANGE_OPERATORS.map((v) => ({ value: v, label: t(`couriers.types.rangeOps.${v}`) }))} />
+        {(op === 'gt' || op === 'between') && <MoneyInput form={form} set={set} err={err} field="rangeX" label={t('couriers.types.rangeX')} />}
+        {(op === 'lte' || op === 'between') && <MoneyInput form={form} set={set} err={err} field="rangeY" label={t('couriers.types.rangeY')} />}
         <Field label={t('couriers.types.validFrom')} error={err('validFrom')} hint={t('couriers.types.validFromHint')}>
           {(p) => <input {...p} type="datetime-local" className={inputCls} value={form.validFrom} onChange={set('validFrom')} />}
         </Field>
@@ -156,6 +203,25 @@ const PaymentTypeForm = ({ initial, lockedCode = false, couriers, zones, remitta
           {(p) => <input {...p} type="datetime-local" className={inputCls} value={form.validTo} onChange={set('validTo')} />}
         </Field>
       </fieldset>
+
+      <div aria-live="polite">
+        {gaps.length > 0 && (
+          <div className="space-y-2" data-testid="range-gap-warning">
+            <Notice tone="warn">
+              <p>{t('couriers.types.gapWarning')}</p>
+              <ul className="list-disc pl-5">
+                {gaps.map((g) => (
+                  <li key={`${g.kind}-${g.from}-${g.to}`}>{t(`couriers.common.kind.${g.kind}`)}: {describeRange(t, g.from, g.to, form.currency)}</li>
+                ))}
+              </ul>
+            </Notice>
+            <label className="flex min-h-[44px] items-center gap-2 text-sm">
+              <input type="checkbox" className="h-5 w-5" checked={acceptGaps} onChange={(e) => setAcceptGaps(e.target.checked)} />
+              {t('couriers.types.acceptGaps')}
+            </label>
+          </div>
+        )}
+      </div>
 
       <Simulator form={form} thresholds={thresholds} />
 

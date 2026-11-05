@@ -5,14 +5,15 @@ import {
   listPaymentTypes, getMarginSettings, listZoneOptions, listRemittanceTypeOptions, deactivatePaymentType
 } from '@/lib/courierService';
 import { Btn, Notice, errorText } from './courierUi';
-import PaymentTypeForm, { EMPTY_RULE_FORM } from './PaymentTypeForm';
+import PaymentTypeForm, { EMPTY_RULE_FORM, describeRange } from './PaymentTypeForm';
+import { formFromRange, toCents } from '@/lib/courierRules';
 import MarginThresholdsCard from './MarginThresholdsCard';
 
 const ruleToForm = (r) => ({
   code: r.code, name: r.name, appliesTo: r.applies_to, method: r.method,
-  fixedCup: r.fixed_cup ?? '', cupPerUsd: r.cup_per_usd ?? '', percent: r.percent ?? '', base: r.base ?? '',
-  courierId: r.courier_id ?? '', zoneId: r.shipping_zone_id ?? '', typeId: r.remittance_type_id ?? '',
-  amountFrom: r.amount_from ?? '', amountTo: r.amount_to ?? '', validFrom: '', validTo: ''
+  fixedCup: r.fixed_cup ?? '', fixedAmount: r.fixed_amount ?? '', cupPerUsd: r.cup_per_usd ?? '', percent: r.percent ?? '', base: r.base ?? '',
+  currency: r.currency ?? 'USD', courierId: r.courier_id ?? '', zoneId: r.shipping_zone_id ?? '', typeId: r.remittance_type_id ?? '',
+  ...formFromRange(r.amount_from, r.amount_to), validFrom: '', validTo: ''
 });
 
 const PaymentTypesPanel = ({ couriers }) => {
@@ -43,9 +44,9 @@ const PaymentTypesPanel = ({ couriers }) => {
 
   const describe = (r) => {
     const key = `couriers.types.summary.${r.method}`;
-    const value = r.method === 'fixed_cup' ? r.fixed_cup : r.method === 'per_usd_delivered' ? r.cup_per_usd : r.percent;
+    const value = { fixed_cup: r.fixed_cup, fixed_amount: r.fixed_amount, per_usd_delivered: r.cup_per_usd }[r.method] ?? r.percent;
     const base = r.base ? t(`couriers.types.bases.${r.method}.${r.base}`) : '';
-    return t(key, { value: Number(value), base });
+    return t(key, { value: Number(value), base, currency: r.currency ?? 'USD' });
   };
 
   const deactivate = async (r) => {
@@ -80,6 +81,7 @@ const PaymentTypesPanel = ({ couriers }) => {
           key={editor.initial.code || 'new'}
           initial={editor.initial}
           lockedCode={editor.lockedCode}
+          rules={items}
           couriers={couriers}
           zones={options.zones}
           remittanceTypes={options.types}
@@ -109,7 +111,7 @@ const PaymentTypesPanel = ({ couriers }) => {
               <p className="text-sm">{describe(r)}</p>
               <p className="text-xs text-gray-700">
                 {t(`couriers.types.applies.${r.applies_to}`)} · {courierName(r.courier_id)} · {zoneLabel(r.shipping_zone_id)} · {typeLabel(r.remittance_type_id)}
-                {(r.amount_from !== null || r.amount_to !== null) && ` · (${r.amount_from ?? '0'} - ${r.amount_to ?? '∞'}] USD`}
+                {(r.amount_from !== null || r.amount_to !== null) && ` · ${describeRange(t, toCents(r.amount_from), toCents(r.amount_to), r.currency ?? 'USD')}`}
               </p>
               <p className="text-xs text-gray-700">
                 {t('couriers.types.validFrom')}: {new Date(r.valid_from).toLocaleString()}

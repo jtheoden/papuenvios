@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeOperationMargin, computeOrderMargin, simulateRule, validateRuleForm, buildRuleArgs, courierErrorKey,
-  csvCell, buildReportCsv, shortId, RULE_METHODS
+  csvCell, buildReportCsv, shortId, RULE_METHODS, RULE_CURRENCIES, RANGE_OPERATORS, toCents, centsToText, rangeFromForm,
+  formFromRange, rangesOverlap, coverageGaps, analyzeRuleConflicts, coverageGapsFromError
 } from '@/lib/courierRules';
 
 describe('computeOperationMargin (twin of SQL _operation_margin)', () => {
@@ -68,16 +69,46 @@ describe('simulateRule (mirrors the SQL calculation; all inputs are typed by the
 });
 
 describe('validateRuleForm / buildRuleArgs', () => {
-  const ok = { code: 'g', name: 'General', appliesTo: 'remittance', method: 'fixed_cup', fixedCup: '200', cupPerUsd: '', percent: '', base: '',
-    courierId: '', zoneId: '', typeId: '', amountFrom: '', amountTo: '', validFrom: '', validTo: '' };
+  const ok = { code: 'g', name: 'General', appliesTo: 'remittance', method: 'fixed_cup', fixedCup: '200', fixedAmount: '', cupPerUsd: '',
+    percent: '', base: '', currency: 'USD', courierId: '', zoneId: '', typeId: '', rangeOp: 'none', rangeX: '', rangeY: '',
+    validFrom: '', validTo: '' };
 
-  it('accepts a complete fixed rule and maps it to the RPC arguments with empty values as null', () => {
+  it('accepts a complete fixed rule and maps it to the v2 RPC arguments with empty values as null', () => {
     expect(validateRuleForm(ok)).toEqual({});
     expect(buildRuleArgs(ok)).toEqual({
       p_code: 'g', p_name: 'General', p_applies_to: 'remittance', p_method: 'fixed_cup', p_fixed_cup: 200, p_cup_per_usd: null,
       p_percent: null, p_base: null, p_courier_id: null, p_zone_id: null, p_type_id: null, p_amount_from: null, p_amount_to: null,
-      p_valid_from: null, p_valid_to: null
+      p_valid_from: null, p_valid_to: null, p_currency: 'USD', p_fixed_amount: null, p_accept_gaps: false
     });
+  });
+  it('fixed_amount: any scope, a money value in the chosen currency; p_accept_gaps only when confirmed', () => {
+    const f = { ...ok, method: 'fixed_amount', fixedCup: '', fixedAmount: '2.50', currency: 'USD', appliesTo: 'order' };
+    expect(validateRuleForm(f)).toEqual({});
+    expect(buildRuleArgs(f, { acceptGaps: true })).toMatchObject({
+      p_method: 'fixed_amount', p_fixed_amount: 2.5, p_fixed_cup: null, p_currency: 'USD', p_applies_to: 'order', p_accept_gaps: true
+    });
+    expect(validateRuleForm({ ...f, fixedAmount: '' })).toHaveProperty('fixedAmount', 'money');
+    expect(validateRuleForm({ ...f, fixedAmount: '1.005' })).toHaveProperty('fixedAmount', 'money');
+    expect(validateRuleForm({ ...f, fixedAmount: '-1' })).toHaveProperty('fixedAmount', 'money');
+    expect(validateRuleForm({ ...f, currency: 'EUR' })).toHaveProperty('currency');
+  });
+  it('percent of the nominal USD is allowed for orders; delivered_cup and per-USD stay remittance-only', () => {
+    expect(validateRuleForm({ ...ok, method: 'percent_of_base', fixedCup: '', percent: '2', base: 'nominal_usd', appliesTo: 'order' })).toEqual({});
+    expect(validateRuleForm({ ...ok, method: 'percent_of_base', fixedCup: '', percent: '2', base: 'delivered_cup', appliesTo: 'order' })).toHaveProperty('base', 'remittanceOnly');
+    expect(validateRuleForm({ ...ok, method: 'per_usd_delivered', fixedCup: '', cupPerUsd: '1', base: 'nominal_usd', appliesTo: 'order' })).toHaveProperty('appliesTo', 'remittanceOnly');
+  });
+  it('range operators map to (from, to] and are validated in cents (2 decimals max, X < Y)', () => {
+    const r = (rangeOp, rangeX = '', rangeY = '') => ({ ...ok, rangeOp, rangeX, rangeY });
+    expect(buildRuleArgs(r('gt', '100'))).toMatchObject({ p_amount_from: 100, p_amount_to: null });
+    expect(buildRuleArgs(r('lte', '', '100'))).toMatchObject({ p_amount_from: null, p_amount_to: 100 });
+    expect(buildRuleArgs(r('between', '100', '200.5'))).toMatchObject({ p_amount_from: 100, p_amount_to: 200.5 });
+    expect(buildRuleArgs(r('none', '5', '9'))).toMatchObject({ p_amount_from: null, p_amount_to: null });
+    expect(validateRuleForm(r('gt', ''))).toHaveProperty('rangeX', 'money');
+    expect(validateRuleForm(r('lte', '', '100.005'))).toHaveProperty('rangeY', 'money');
+    expect(validateRuleForm(r('between', '100', '100'))).toHaveProperty('rangeY', 'tierOrder');
+    expect(validateRuleForm(r('between', '100.01', '100'))).toHaveProperty('rangeY', 'tierOrder');
+    expect(validateRuleForm(r('between', '100', '100.01'))).toEqual({});
+    expect(validateRuleForm(r('weird'))).toHaveProperty('rangeOp');
   });
   it('requires the parameter of the chosen method and drops the others', () => {
     expect(validateRuleForm({ ...ok, fixedCup: '' })).toHaveProperty('fixedCup');
@@ -90,11 +121,100 @@ describe('validateRuleForm / buildRuleArgs', () => {
   it('per-USD and percent methods only apply to remittances; a type only to remittance rules; tiers must be ordered', () => {
     expect(validateRuleForm({ ...ok, method: 'per_usd_delivered', cupPerUsd: '1', base: 'nominal_usd', appliesTo: 'both' })).toHaveProperty('appliesTo');
     expect(validateRuleForm({ ...ok, appliesTo: 'order', typeId: 't1' })).toHaveProperty('typeId');
-    expect(validateRuleForm({ ...ok, amountFrom: '50', amountTo: '50' })).toHaveProperty('amountTo');
+    expect(validateRuleForm({ ...ok, rangeOp: 'between', rangeX: '50', rangeY: '50' })).toHaveProperty('rangeY');
     expect(validateRuleForm({ ...ok, code: ' ', name: '' })).toMatchObject({ code: expect.any(String), name: expect.any(String) });
   });
-  it('exposes exactly the enumerated methods (no free-form expression)', () => {
-    expect(RULE_METHODS).toEqual(['fixed_cup', 'per_usd_delivered', 'percent_of_base']);
+  it('exposes exactly the enumerated methods, currencies and operators (no free-form expression)', () => {
+    expect(RULE_METHODS).toEqual(['fixed_amount', 'fixed_cup', 'per_usd_delivered', 'percent_of_base']);
+    expect(RULE_CURRENCIES).toEqual(['USD', 'CUP']);
+    expect(RANGE_OPERATORS).toEqual(['none', 'gt', 'lte', 'between']);
+  });
+});
+
+describe('cents helpers (never floats)', () => {
+  it('toCents accepts ^\\d+(\\.\\d{1,2})?$ only and returns integer cents', () => {
+    expect(toCents('100')).toBe(10000);
+    expect(toCents('100.1')).toBe(10010);
+    expect(toCents('0.29')).toBe(29); // 0.29 * 100 = 28.999999999999996 as a float
+    expect(toCents('100.01')).toBe(10001);
+    expect(toCents(100.01)).toBe(10001);
+    for (const bad of ['', ' ', '100.005', '-1', '1e3', '1,5', 'abc', '.5', '5.', null, undefined]) expect(toCents(bad), String(bad)).toBeNull();
+    expect(centsToText(10001)).toBe('100.01');
+    expect(centsToText(5)).toBe('0.05');
+  });
+  it('form <-> range round-trip', () => {
+    expect(rangeFromForm({ rangeOp: 'lte', rangeY: '100' })).toEqual({ from: null, to: 10000 });
+    expect(rangeFromForm({ rangeOp: 'gt', rangeX: '100' })).toEqual({ from: 10000, to: null });
+    expect(rangeFromForm({ rangeOp: 'between', rangeX: '100', rangeY: '200' })).toEqual({ from: 10000, to: 20000 });
+    expect(rangeFromForm({ rangeOp: 'none' })).toEqual({ from: null, to: null });
+    expect(formFromRange('100.00', '200.00')).toEqual({ rangeOp: 'between', rangeX: '100.00', rangeY: '200.00' });
+    expect(formFromRange(null, '100.00')).toEqual({ rangeOp: 'lte', rangeX: '', rangeY: '100.00' });
+    expect(formFromRange('0.00', null)).toEqual({ rangeOp: 'gt', rangeX: '0.00', rangeY: '' });
+    expect(formFromRange(null, null)).toEqual({ rangeOp: 'none', rangeX: '', rangeY: '' });
+  });
+});
+
+describe('overlaps and gaps (twin of the RPC checks)', () => {
+  const R1 = { from: null, to: 10000 };
+  const R2 = { from: 10000, to: 20000 };
+  const R3 = { from: 20000, to: null };
+  it('half-open (from, to]: adjacent ranges do not overlap, intersecting ones do', () => {
+    expect(rangesOverlap(R1, R2)).toBe(false);
+    expect(rangesOverlap(R2, R3)).toBe(false);
+    expect(rangesOverlap(R1, { from: 9999, to: 20000 })).toBe(true); // "more than 99.99"
+    expect(rangesOverlap(R3, { from: 50000, to: null })).toBe(true);
+  });
+  it('reference ladder is covered; "more than 100.01" leaves (100, 100.01]; start/end gaps reported', () => {
+    expect(coverageGaps([R1, R2, R3])).toEqual([]);
+    expect(coverageGaps([R1, { from: 10001, to: 20000 }, R3])).toEqual([{ from: 10000, to: 10001 }]);
+    expect(coverageGaps([{ from: 5000, to: 6000 }])).toEqual([{ from: null, to: 5000 }, { from: 6000, to: null }]);
+    expect(coverageGaps([{ from: 0, to: null }])).toEqual([{ from: null, to: 0 }]); // "more than 0" leaves 0.00 out
+  });
+  it('analyzeRuleConflicts compares against the current rules of the same scope, excluding the code being versioned', () => {
+    const row = (o) => ({ code: 'x', is_active: true, valid_to: null, applies_to: 'remittance', currency: 'USD', courier_id: null,
+      shipping_zone_id: null, remittance_type_id: null, amount_from: null, amount_to: null, ...o });
+    const rules = [row({ code: 'R1', amount_to: '100.00' }), row({ code: 'R3', amount_from: '200.00' }),
+      row({ code: 'Z', shipping_zone_id: 'z1', amount_from: '5.00' })];
+    const form = (o) => ({ code: 'R2', appliesTo: 'remittance', currency: 'USD', courierId: '', zoneId: '', typeId: '', rangeOp: 'between', rangeX: '100', rangeY: '200', ...o });
+    expect(analyzeRuleConflicts(form(), rules)).toEqual({ overlap: false, mixedCurrency: false, gaps: [] });
+    expect(analyzeRuleConflicts(form({ rangeX: '100.01' }), rules).gaps).toEqual([{ kind: 'remittance', from: 10000, to: 10001 }]);
+    expect(analyzeRuleConflicts(form({ rangeX: '99.99' }), rules).overlap).toBe(true);
+    expect(analyzeRuleConflicts(form({ currency: 'CUP' }), rules).mixedCurrency).toBe(true);
+    expect(analyzeRuleConflicts(form({ code: 'R1', rangeOp: 'lte', rangeX: '', rangeY: '100' }), rules).overlap).toBe(false); // new version of R1
+    expect(analyzeRuleConflicts(form({ rangeOp: 'none' }), rules)).toEqual({ overlap: false, mixedCurrency: false, gaps: [] });
+    // a rule without tramo in the same scope covers every gap
+    expect(analyzeRuleConflicts(form({ rangeX: '100.01' }), [...rules, row({ code: 'flat' })]).gaps).toEqual([]);
+    // 'order' rules are another kind; 'both' is checked for both kinds
+    expect(analyzeRuleConflicts(form({ appliesTo: 'both' }), rules).gaps).toEqual([{ kind: 'order', from: null, to: 10000 }, { kind: 'order', from: 20000, to: null }]);
+    // closed or inactive rules do not count
+    expect(analyzeRuleConflicts(form({ rangeX: '99.99' }), rules.map((r) => ({ ...r, is_active: false }))).overlap).toBe(false);
+  });
+  it('coverageGapsFromError reads the JSON detail of a coverage_gap refusal (in cents)', () => {
+    const e = { code: '22023', message: 'coverage_gap: ...', details: '{"currency":"USD","gaps":[{"kind":"order","from":100,"to":100.01}]}' };
+    expect(coverageGapsFromError(e)).toEqual([{ kind: 'order', from: 10000, to: 10001 }]);
+    expect(coverageGapsFromError({ code: '22023', message: 'other' })).toBeNull();
+    expect(coverageGapsFromError({ message: 'coverage_gap', details: 'not json' })).toEqual([]);
+  });
+});
+
+describe('simulateRule: fixed amount and ranges (phase A)', () => {
+  const op = { amountSentUsd: 100, rate: 830, commissionUsd: 2.4, deliveryChargeUsd: 0 };
+  it('fixed amount in CUP or in USD (converted at the given rate; no rate => no_fx, never 1.0)', () => {
+    expect(simulateRule({ method: 'fixed_amount', fixedAmount: '250', currency: 'CUP' }, op)).toMatchObject({ cup: 250, usd: 0.3 });
+    expect(simulateRule({ method: 'fixed_amount', fixedAmount: '2', currency: 'USD' }, op)).toMatchObject({ cup: 1660, usd: 2 });
+    expect(simulateRule({ method: 'fixed_amount', fixedAmount: '2', currency: 'USD' }, { ...op, rate: '' })).toMatchObject({ cup: null, reason: 'no_fx' });
+  });
+  it('the range is checked in the rule currency: outside => no_tier_match; a CUP range without rate => no_fx', () => {
+    const rule = { method: 'fixed_amount', fixedAmount: '5', currency: 'USD', rangeOp: 'lte', rangeY: '100' };
+    expect(simulateRule(rule, op).cup).not.toBeNull();
+    expect(simulateRule(rule, { ...op, amountSentUsd: '100.01' })).toMatchObject({ cup: null, reason: 'no_tier_match' });
+    const cupRule = { method: 'fixed_amount', fixedAmount: '5', currency: 'CUP', rangeOp: 'gt', rangeX: '83000' };
+    expect(simulateRule(cupRule, op)).toMatchObject({ cup: null, reason: 'no_tier_match' }); // 83000.00 is not > 83000
+    expect(simulateRule(cupRule, { ...op, amountSentUsd: '100.01' }).cup).toBe(5);
+    expect(simulateRule(cupRule, { ...op, rate: '' })).toMatchObject({ cup: null, reason: 'no_fx' });
+  });
+  it('percent of the nominal USD without a rate is no_fx', () => {
+    expect(simulateRule({ method: 'percent_of_base', percent: 2, base: 'nominal_usd' }, { ...op, rate: '' })).toMatchObject({ cup: null, reason: 'no_fx' });
   });
 });
 
@@ -109,6 +229,9 @@ describe('courierErrorKey: typed RPC errors', () => {
     expect(key({ code: '22023', message: 'invalid_argument: every accrual must be calculated, unpaid, of known amount and of this courier' })).toBe('couriers.errors.notPayable');
     expect(key({ code: '22023', message: 'invalid_status: only a calculated delivery accrual with an unknown amount can be recalculated' })).toBe('couriers.errors.notRecalculable');
     expect(key({ code: '22023', message: 'invalid_status: the courier cannot be changed once the operation is delivered' })).toBe('couriers.errors.alreadyDelivered');
+    expect(key({ code: '22023', message: 'coverage_gap: the ranges of this scope leave values without a rule' })).toBe('couriers.errors.coverageGap');
+    expect(key({ code: '22023', message: 'mixed_currency_scope: the ranges of this scope already use another currency' })).toBe('couriers.errors.mixedCurrency');
+    expect(key({ code: '22023', message: 'invalid_argument: amounts accept at most 2 decimals' })).toBe('couriers.errors.decimals');
     expect(key({ code: '22023', message: 'something else' })).toBe('couriers.errors.invalid');
     expect(key({ code: '55P03' })).toBe('couriers.errors.generic');
     expect(key(null)).toBe('couriers.errors.generic');
