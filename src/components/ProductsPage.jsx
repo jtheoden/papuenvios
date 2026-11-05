@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { motion, MotionConfig } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Search, Filter, ShoppingCart, Plus, Package, Upload, X, ChevronLeft, ChevronRight, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -307,8 +307,6 @@ const ProductsPage = ({ onNavigate }) => {
   }, [getProductPrice, userCategoryDiscount]);
 
   return (
-    // reducedMotion="user": the framer entrances below drop their movement under prefers-reduced-motion
-    <MotionConfig reducedMotion="user">
     <div className="min-h-screen py-8 px-4">
       <div className="container mx-auto">
         <motion.div
@@ -770,7 +768,6 @@ const ProductsPage = ({ onNavigate }) => {
         </LoadingState>
       </div>
     </div>
-    </MotionConfig>
   );
 };
 

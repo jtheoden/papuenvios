@@ -37,8 +37,11 @@ import AdminOffersTab from '@/components/AdminOffersTab';
 const pending = () => {
   let resolve;
   mocks.offers = new Promise((res) => { resolve = res; });
-  return (rows) => act(async () => { resolve({ data: rows, error: null }); });
+  const settle = (result) => act(async () => { resolve(result); });
+  settle.rows = (rows) => settle({ data: rows, error: null });
+  return settle;
 };
+const OFFER = { id: 'o-1', code: 'PAPU10', is_active: true, discount_type: 'percentage', discount_value: 10, created_at: '2026-01-01T00:00:00Z' };
 
 describe('AdminOffersTab loading state', () => {
   beforeEach(() => { vi.useFakeTimers(); });
@@ -53,9 +56,24 @@ describe('AdminOffersTab loading state', () => {
     await act(async () => { vi.advanceTimersByTime(300); });
     expect(screen.getByText('common.loading')).toBeInTheDocument();
 
-    await resolve([]);
+    await resolve.rows([]);
     await act(async () => { vi.advanceTimersByTime(400); });
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.getByText('No hay ofertas creadas aún')).toBeInTheDocument();
+  });
+
+  it('shows the offers once loaded', async () => {
+    const resolve = pending();
+    render(<AdminOffersTab />);
+    await resolve.rows([OFFER]);
+    expect(screen.getAllByText('PAPU10').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('drops the skeleton when the load fails', async () => {
+    const resolve = pending();
+    render(<AdminOffersTab />);
+    await resolve({ data: null, error: { message: 'boom' } });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 });

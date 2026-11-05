@@ -67,4 +67,12 @@ describe('UserPanel orders loading state', () => {
     await load.reject(new Error('boom'));
     expect(ordersStatus()).toBeFalsy();
   });
+
+  it('shows the orders once loaded', async () => {
+    const load = pending();
+    render(<UserPanel onNavigate={vi.fn()} />);
+    await load.resolve([{ id: 'o-1', order_number: 'ORD-LOADED-1', status: 'pending', payment_status: 'pending', created_at: '2026-01-01T00:00:00Z', total_amount: 10, subtotal: 10, order_items: [] }]);
+    expect(ordersStatus()).toBeFalsy();
+    expect(screen.getAllByText(/ORD-LOADED-1/).length).toBeGreaterThan(0);
+  });
 });
