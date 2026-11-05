@@ -455,6 +455,21 @@ describeDb('M2: assignments, accruals, effective cost (local Postgres)', () => {
       expect(o.rule_snapshot.reason).toBe('amount_out_of_range');
     });
 
+    it.each([
+      ['fixed_amount', { method: 'fixed_amount', fixed_cup: null, fixed_amount: 2000000, applies_to: 'both' }, {}],
+      ['fixed_cup', { method: 'fixed_cup', fixed_cup: 1620000000, applies_to: 'both' }, {}],
+      ['percent', { method: 'percent_of_base', fixed_cup: null, percent: 10, base: 'nominal_usd', applies_to: 'both' },
+        { amount: 0.01, commission: 0, deliveryCost: 20000 }]
+    ])('a margin that does not fit numeric(10,4) is stored as unknown, the accrual is ALWAYS written (%s)', async (_m, rule, remOpts) => {
+      await kit.seedUsdCupRate(810);
+      await kit.setRule(await adminClient(), rule);
+      const a = await deliverRem(remOpts);
+      expect(a).toMatchObject({ margin_pct: null, margin_status: 'unknown', status: 'calculated' });
+      expect(a.rule_id).not.toBeNull();
+      const o = await deliverOrd();
+      expect(o.margin_status).toBe('unknown');
+    });
+
     it('no rule at all keeps reason no_rule (the 16 production accruals use it)', async () => {
       const a = await deliverRem();
       expect(a.rule_snapshot.reason).toBe('no_rule');
