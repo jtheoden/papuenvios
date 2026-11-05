@@ -13,11 +13,11 @@ const AuthContext = createContext();
 // Waits between session-recovery attempts (the refresh guard's cooldown, when longer, wins).
 const SESSION_RECOVERY_DELAYS = [5000, 15000, 30000, 60000];
 const SESSION_RECOVERY_JITTER = 0.2;
-// A token refresh never changes the profile: no user_profiles request for an already resolved user. The SIGNED_IN that
-// auth-js re-emits when the tab regains focus re-reads it at most every PROFILE_RECHECK_MS, so a disabled or demoted
-// account is still noticed when the person comes back to the tab.
+// Token refreshes (hourly) and the SIGNED_IN that auth-js re-emits when the tab regains focus re-read the profile of an
+// already resolved user at most every PROFILE_RECHECK_MS: a disabled or demoted account is still noticed, even in a tab
+// that is never hidden, without a user_profiles request per event.
 const PROFILE_RECHECK_MS = 5 * 60_000;
-const PROFILE_RECHECK_EVENTS = new Set(['SIGNED_IN', 'INITIAL_SESSION']);
+const PROFILE_RECHECK_EVENTS = new Set(['TOKEN_REFRESHED', 'SIGNED_IN', 'INITIAL_SESSION']);
 const isRetryableAuthError = (error) => error?.name === 'AuthRetryableFetchError';
 // auth-js refreshes a token this close to its expiry (EXPIRY_MARGIN_MS = AUTO_REFRESH_TICK_THRESHOLD (3)
 // x AUTO_REFRESH_TICK_DURATION_MS (30 s) in @supabase/auth-js/src/lib/constants.ts), so a session with
@@ -447,11 +447,10 @@ export const AuthProvider = ({ children }) => {
       if (session) {
         // A session about to expire proves nothing yet; one with life left means we are back.
         if (hasLifeLeft(session)) markSessionHealthy();
-        // Same person, profile already loaded: keep the new token and skip the request (Supabase egress) on a token
-        // refresh, or on a focus SIGNED_IN less than PROFILE_RECHECK_MS after the last read.
+        // Same person, profile read less than PROFILE_RECHECK_MS ago: keep the new token, skip the request (egress).
         const sameResolvedUser = Boolean(session.user?.id) && session.user.id === resolvedUidRef.current;
         const recentlyRead = Date.now() - profileReadAtRef.current < PROFILE_RECHECK_MS;
-        if (sameResolvedUser && (event === 'TOKEN_REFRESHED' || (PROFILE_RECHECK_EVENTS.has(event) && recentlyRead))) {
+        if (sameResolvedUser && PROFILE_RECHECK_EVENTS.has(event) && recentlyRead) {
           sessionRef.current = session;
           return;
         }

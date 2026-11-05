@@ -182,10 +182,23 @@ describe('AuthProvider — slow / failing profile fetch', () => {
     singleMock.mockClear();
     singleMock.mockResolvedValue(profile('user'));
     await advance(5 * 60_000 + 1_000);
-    await act(async () => { authStateCallback('TOKEN_REFRESHED', SESSION); }); // never re-reads
+    await act(async () => { authStateCallback('SIGNED_IN', SESSION); });
+    await advance(0);
+    expect(singleMock).toHaveBeenCalledTimes(1);
+    expect(probe()).toBe('user|resolved|user');
+  });
+
+  it('a TOKEN_REFRESHED (hourly, tab always visible) re-reads a profile older than 5 min: a disabled admin is seen', async () => {
+    singleMock.mockResolvedValueOnce(profile('admin'));
+    await mountApp();
+    singleMock.mockClear();
+
+    await act(async () => { authStateCallback('TOKEN_REFRESHED', SESSION); }); // fresh profile: no request
     expect(singleMock).not.toHaveBeenCalled();
 
-    await act(async () => { authStateCallback('SIGNED_IN', SESSION); });
+    singleMock.mockResolvedValue(profile('user'));
+    await advance(5 * 60_000 + 1_000);
+    await act(async () => { authStateCallback('TOKEN_REFRESHED', SESSION); });
     await advance(0);
     expect(singleMock).toHaveBeenCalledTimes(1);
     expect(probe()).toBe('user|resolved|user');
