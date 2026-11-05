@@ -140,4 +140,24 @@ describe('LoadingState', () => {
     expect(screen.getByText('one').parentElement).toHaveClass('space-y-3');
     expect(screen.getByText('two').parentElement).toBe(screen.getByText('one').parentElement);
   });
+
+  it('announces once when several lists load at the same time (one live region, all busy)', () => {
+    const { container } = render(
+      <>
+        <LoadingState loading skeleton={skeleton}>a</LoadingState>
+        <LoadingState loading skeleton={skeleton}>b</LoadingState>
+      </>
+    );
+    advance(SHOW_DELAY_MS);
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(container.querySelectorAll('[aria-busy="true"]')).toHaveLength(2);
+    expect(container.querySelectorAll('[aria-live]')).toHaveLength(1);
+  });
+
+  it('hands the live region to a later list once the first one is gone', () => {
+    const first = render(<LoadingState loading skeleton={skeleton}>a</LoadingState>);
+    first.unmount();
+    render(<LoadingState loading skeleton={skeleton}>b</LoadingState>);
+    expect(screen.getByRole('status')).toBeInTheDocument();
+  });
 });

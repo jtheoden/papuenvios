@@ -1,11 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
-
 import { loadingTiming, SHOW_DELAY_MS, MIN_VISIBLE_MS } from '@/components/ui/loadingTiming';
 
 // Fast networks never see the skeleton; once shown it stays long enough not to flicker.
 export { SHOW_DELAY_MS, MIN_VISIBLE_MS };
+
+// Several lists can load at once (a page with two tables): only the first one is a live region, so
+// "loading" is announced once. shortcut: the others do not take over when it ends; fine for one or two lists.
+let liveRegionOwner = null;
 
 /**
  * Skeleton placeholder block. Colour: the theme's accent line token (beige in the brand look, blue-200 in classic),
@@ -59,6 +62,17 @@ const LoadingState = ({ loading, skeleton, label, className, contentClassName, r
   // A load that ends before the skeleton appeared shows the content in the same render.
   const showContent = phase === 'done' || (!loading && phase === 'waiting');
 
+  const ownerToken = useRef({});
+  const [ownsLiveRegion, setOwnsLiveRegion] = useState(false);
+  useEffect(() => {
+    if (showContent) return undefined;
+    if (!liveRegionOwner) liveRegionOwner = ownerToken.current;
+    setOwnsLiveRegion(liveRegionOwner === ownerToken.current);
+    return () => {
+      if (liveRegionOwner === ownerToken.current) liveRegionOwner = null;
+    };
+  }, [showContent]);
+
   // The infinite pulse stops while the tab is hidden or the skeleton is scrolled out of view.
   useEffect(() => {
     if (showContent) return undefined;
@@ -102,15 +116,15 @@ const LoadingState = ({ loading, skeleton, label, className, contentClassName, r
   return (
     <div
       ref={statusRef}
-      role="status"
-      aria-live="polite"
+      role={ownsLiveRegion ? 'status' : undefined}
+      aria-live={ownsLiveRegion ? 'polite' : undefined}
       aria-busy="true"
       data-state={visible ? 'visible' : 'waiting'}
       data-paused={paused ? '' : undefined}
       className={cn('motion-safe:transition-opacity motion-safe:duration-motion', visible ? 'opacity-100' : 'opacity-0', className)}
     >
       {/* Fixed height: inserting the text later must not move the skeleton (CLS). Inserted text is announced. */}
-      <p className="mb-4 min-h-5 text-center text-sm text-muted-foreground">
+      <p className="mb-4 min-h-5 text-center text-sm text-muted-foreground" aria-hidden={ownsLiveRegion ? undefined : 'true'}>
         {visible ? (label ?? t('common.loading')) : null}
       </p>
       <div aria-hidden="true">{skeleton}</div>
