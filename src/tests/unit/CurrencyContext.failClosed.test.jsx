@@ -79,3 +79,57 @@ describe('CurrencyContext fails closed without a rate', () => {
     await waitFor(() => expect(result.current.convertAmount(10, 'cup', 'usd')).toBe(2.5));
   });
 });
+
+describe('CurrencyContext inputs that cannot be converted are never reported as converted or free (A6)', () => {
+  beforeEach(() => {
+    svc.listeners.clear();
+    svc.getCurrenciesWithRates.mockReset().mockResolvedValue([USD, CUP]);
+    svc.getConversionRate.mockReset().mockResolvedValue(0.5);
+  });
+
+  const loaded = async () => {
+    const hook = renderHook(() => useCurrency(), { wrapper });
+    await waitFor(() => expect(hook.result.current.convertAmount(10, 'cup', 'usd')).toBe(5));
+    return hook;
+  };
+
+  it('a NaN amount stays NaN instead of turning into 0', async () => {
+    const { result } = await loaded();
+    expect(result.current.convertAmount(NaN, 'cup', 'usd')).toBeNaN();
+  });
+
+  it.each([[0], [null], [undefined]])('an empty amount (%j) is 0', async (amount) => {
+    const { result } = await loaded();
+    expect(result.current.convertAmount(amount, 'cup', 'usd')).toBe(0);
+  });
+
+  it.each([
+    ['missing source id', [undefined, 'usd']],
+    ['missing target id', ['cup', null]],
+    ['both ids missing', [undefined, undefined]]
+  ])('%s is NaN, not the unconverted amount', async (_name, [from, to]) => {
+    const { result } = await loaded();
+    expect(result.current.convertAmount(10, from, to)).toBeNaN();
+  });
+
+  it('the same currency still returns the amount', async () => {
+    const { result } = await loaded();
+    expect(result.current.convertAmount(10, 'usd', 'usd')).toBe(10);
+  });
+
+  it('displayCurrency(NaN) and formatCurrency(NaN) show an unavailable marker, never $0.00', async () => {
+    const { result } = await loaded();
+    expect(result.current.displayCurrency(NaN)).not.toContain('0.00');
+    expect(result.current.displayCurrency(NaN)).toContain('\u2014');
+    expect(result.current.formatCurrency(NaN)).toBe('\u2014');
+  });
+
+  it('displayCurrency and formatCurrency keep formatting real numbers and empty values as before', async () => {
+    const { result } = await loaded();
+    expect(result.current.displayCurrency(12.5)).toBe('$12.50 USD');
+    expect(result.current.formatCurrency(3)).toBe('3.00');
+    expect(result.current.formatCurrency(null)).toBe('0.00');
+    expect(result.current.formatCurrency(undefined)).toBe('0.00');
+  });
+});
+

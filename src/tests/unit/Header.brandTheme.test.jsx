@@ -318,9 +318,9 @@ describe('Header brand theme (S1)', () => {
       const { header } = mount(BRAND_PRESET, { currentPage: 'settings' });
       const trigger = within(header).getByRole('button', { name: /Admin/ });
       fireEvent.click(trigger);
-      const item = within(header).getByRole('button', { name: 'nav.settings' });
+      const item = within(header).getByRole('menuitem', { name: 'nav.settings' });
       expect(item.getAttribute('aria-current')).toBe('page');
-      expect(within(header).getByRole('button', { name: 'nav.dashboard' }).getAttribute('aria-current')).toBeNull();
+      expect(within(header).getByRole('menuitem', { name: 'nav.dashboard' }).getAttribute('aria-current')).toBeNull();
     });
   });
 
@@ -417,7 +417,7 @@ describe('Header brand theme (S1)', () => {
       const { header } = mount(PROD, { currentPage: 'dashboard' });
       expect(within(header).queryByRole('button', { name: /nav\.cart/ })).toBeNull();
       fireEvent.click(within(header).getByRole('button', { name: /Admin/ }));
-      expect(within(header).getByRole('button', { name: 'nav.dashboard' }).getAttribute('aria-current')).toBe('page');
+      expect(within(header).getByRole('menuitem', { name: 'nav.dashboard' }).getAttribute('aria-current')).toBe('page');
       expect(header.querySelector('[title^="users.categories.current"]')).toBeTruthy();
     });
   });

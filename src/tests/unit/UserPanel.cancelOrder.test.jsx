@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 
 const authUser = vi.hoisted(() => ({ id: 'u1', email: 'u@test.com' }));
 const showModal = vi.hoisted(() => vi.fn());
@@ -15,6 +15,27 @@ const order = (status, payment_status) => ({
   shipping_cost: 0,
   created_at: '2026-01-01T00:00:00Z',
   order_items: [],
+});
+
+// AnimatePresence keeps the closed detail modal mounted until its exit animation ends, and that animation
+// is driven by wall-clock frames: on a starved CPU it outlives any waitFor, so "the detail closed" was
+// asserted against animation speed instead of component state. Render plain elements instead.
+vi.mock('framer-motion', async (importOriginal) => {
+  const React = await import('react');
+  const MOTION_ONLY_PROPS = ['initial', 'animate', 'exit', 'transition', 'variants', 'whileHover', 'whileTap', 'whileInView', 'viewport', 'layout', 'layoutId'];
+  const cache = new Map();
+  const motion = new Proxy({}, {
+    get: (_target, tag) => {
+      if (!cache.has(tag)) {
+        cache.set(tag, React.forwardRef(({ children, ...props }, ref) => {
+          MOTION_ONLY_PROPS.forEach((prop) => delete props[prop]);
+          return React.createElement(tag, { ...props, ref }, children);
+        }));
+      }
+      return cache.get(tag);
+    },
+  });
+  return { ...(await importOriginal()), motion, AnimatePresence: ({ children }) => <>{children}</> };
 });
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -70,16 +91,21 @@ import UserPanel from '@/components/UserPanel';
 import { getUserOrders, getOrderById, cancelOrderByUser } from '@/lib/orderService';
 
 const WARNING = 'userPanel.cancelProofUploadedWarning';
-const cancelButton = () => screen.queryByRole('button', { name: 'Cancel order' });
-const settle = () => new Promise((resolve) => setTimeout(resolve, 40));
+// Polled by waitFor: ByRole queries are an order of magnitude costlier than text queries and, under CPU
+// load, each render hop queues behind a poll. A text lookup is enough to poll.
+const cancelButton = () => screen.queryByText('Cancel order')?.closest('button') ?? null;
+// Drains the microtasks queued by an already-resolved mock (no wall-clock sleep).
+const flushMicrotasks = () => act(async () => {});
 
 const openOrder = async (status, paymentStatus) => {
   const o = order(status, paymentStatus);
   getUserOrders.mockResolvedValue([o]);
   getOrderById.mockResolvedValue(o);
   render(<UserPanel onNavigate={vi.fn()} />);
+  await act(async () => {}); // flush the mount effects and resolved mocks synchronously inside act
   fireEvent.click(await screen.findByText('ORD-1'));
-  await settle();
+  // The detail header repeats the order number once the order is loaded: wait for that state, not for time.
+  await waitFor(() => expect(screen.getAllByText('ORD-1')).toHaveLength(2));
 };
 
 const clickCancel = async () => {
@@ -124,7 +150,7 @@ describe('UserPanel - customer cancels an order until the payment is validated',
     await openOrder('pending', ps);
     await clickCancel();
     await waitFor(() => expect(showModal).toHaveBeenCalled());
-    await settle();
+    await flushMicrotasks();
     expect(cancelOrderByUser).not.toHaveBeenCalled();
   });
 

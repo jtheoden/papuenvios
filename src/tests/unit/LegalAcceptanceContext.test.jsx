@@ -34,6 +34,11 @@ const mount = () =>
   );
 
 const acceptInModal = async () => {
+  // The dialog node is committed before the gate's mount effect runs (it resets the form and moves
+  // focus). Under CPU load findByRole can resolve in between, and the late effect would wipe the
+  // clicks below, leaving the gate unsubmitted and the test hung inside act(). Focus on the date
+  // field is the observable signal that the effect has run.
+  await waitFor(() => expect(screen.getByLabelText('legal.gate.birthDateLabel')).toHaveFocus());
   fireEvent.click(screen.getByRole('checkbox'));
   fireEvent.change(screen.getByLabelText('legal.gate.birthDateLabel'), { target: { value: '1990-05-01' } });
   fireEvent.click(screen.getByRole('button', { name: 'legal.gate.accept' }));

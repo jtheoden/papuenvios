@@ -294,12 +294,12 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
           {isProduct ? t('products.detail.backToProducts') : t('products.detail.backToCombos')}
         </motion.button>
 
-        <div className="grid md:grid-cols-2 gap-8 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
           {/* Image Section */}
           <motion.div
             initial={{ opacity: 0, x: -30 }}
             animate={{ opacity: 1, x: 0 }}
-            className="relative"
+            className="relative min-w-0"
           >
             <div className="aspect-square rounded-2xl overflow-hidden bg-gray-100 relative">
               {currentItem.image_url || currentItem.image ? (
@@ -322,7 +322,7 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
             </div>
 
             {/* Navigation Arrows */}
-            <div className="flex items-center justify-between mt-6">
+            <div className="flex flex-wrap items-center justify-between gap-2 mt-6">
               <Button
                 onClick={handlePrevious}
                 variant="outline"
@@ -339,7 +339,7 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
                 variant="outline"
                 size="lg"
                 disabled={currentIndex === currentList.length - 1 && itemType === 'combo' && products.length === 0}
-                className="flex items-center gap-2"
+                className="ml-auto flex items-center gap-2"
               >
                 {t('products.detail.next')}
                 <ChevronRight className="w-5 h-5" />
@@ -374,7 +374,7 @@ const ProductDetailPage = ({ onNavigate, itemId, itemType }) => {
           <motion.div
             initial={{ opacity: 0, x: 30 }}
             animate={{ opacity: 1, x: 0 }}
-            className="space-y-6"
+            className="min-w-0 space-y-6"
           >
             <div>
               <h1 className="text-3xl md:text-4xl font-bold mb-2" style={getHeadingStyle(visualSettings)}>
