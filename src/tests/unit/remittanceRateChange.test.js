@@ -1,9 +1,11 @@
 /**
- * A7 - the "rate changed" alert must promise what recalculate_remittance_at_current_rate will apply:
- * same rounding contract (calcForward), same golden vectors as the SQL twin, with and without an offer.
+ * A7 - the "rate changed" alert only compares the locked rate with the current one. It deliberately does NOT
+ * promise a new amount: recalculate_remittance_at_current_rate may apply an admin commission override and a
+ * percentage offer that the owner cannot read (RLS), so any client-side figure could differ from what the RPC delivers
+ * (a real remittance with an override would show 274.50 CUP more than it gets). The amounts are covered by the
+ * calcForward golden vectors (remittanceCalculations.test.js); a read-only SQL quote function is a Phase 3/F4 follow-up.
  */
 import { describe, it, expect } from 'vitest';
-import golden from '../fixtures/remittanceGoldenVectors.json';
 import { quoteRateChange } from '@/lib/remittanceRateChange';
 
 const remittance = (over = {}, typeOver = {}) => ({
@@ -11,63 +13,13 @@ const remittance = (over = {}, typeOver = {}) => ({
   exchange_rate: 900,
   discount_amount: 0,
   offer_id: null,
-  remittance_types: { exchange_rate: 915, commission_percentage: 3, commission_fixed: 0, ...typeOver },
+  currency_sent: 'USD',
+  currency_delivered: 'CUP',
+  remittance_types: { exchange_rate: 915, commission_percentage: 3, commission_fixed: 0, currency_code: 'USD', delivery_currency: 'CUP', ...typeOver },
   ...over
 });
 
-describe('quoteRateChange against the golden vectors', () => {
-  // The vectors without an offer: the type's own rate is the "current" rate.
-  it.each(golden.forward.filter((v) => !v.input.offer && v.input.rate > 0).map((v) => [v.name, v]))(
-    'no offer: %s',
-    (_name, v) => {
-      const q = quoteRateChange(
-        remittance(
-          { amount_sent: v.input.amount, exchange_rate: v.input.rate / 2 },
-          { exchange_rate: v.input.rate, commission_percentage: v.input.pct, commission_fixed: v.input.fixed }
-        )
-      );
-      expect(q.newAmountToDeliver).toBe(v.expected.amountToDeliver);
-      expect(q.newCommission).toBe(v.expected.commission);
-    }
-  );
-
-  // With an offer the stored discount_amount is what the offer produced at creation (the offer row is not loaded here).
-  it.each(golden.forward.filter((v) => v.input.offer && v.input.rate > 0).map((v) => [v.name, v]))(
-    'with an offer: %s',
-    (_name, v) => {
-      const q = quoteRateChange(
-        remittance(
-          { amount_sent: v.input.amount, exchange_rate: v.input.rate / 2, offer_id: 'offer-1', discount_amount: v.expected.discount },
-          { exchange_rate: v.input.rate, commission_percentage: v.input.pct, commission_fixed: v.input.fixed }
-        )
-      );
-      expect(q.newAmountToDeliver).toBe(v.expected.amountToDeliver);
-      expect(q.newCommission).toBe(v.expected.commission);
-    }
-  );
-
-  it('the vector set really exercises both cases', () => {
-    expect(golden.forward.some((v) => v.input.offer)).toBe(true);
-    expect(golden.forward.some((v) => !v.input.offer)).toBe(true);
-  });
-});
-
-describe('quoteRateChange details', () => {
-  it('rounds with the contract, not with raw float arithmetic (old formula gave 91.0.. artefacts)', () => {
-    const q = quoteRateChange(remittance({ amount_sent: 765, exchange_rate: 800 }, { exchange_rate: 805.5, commission_percentage: 2.5 }));
-    expect(q.newCommission).toBe(19.13);
-    // (765 - 19.13) * 805.5 = 600798.285 exactly: half-up gives .29 (float Math.round would give .28)
-    expect(q.newAmountToDeliver).toBe(600798.29);
-  });
-
-  it('applies the stored discount to the commission (the old alert ignored offers)', () => {
-    const withDiscount = quoteRateChange(remittance({ offer_id: 'o1', discount_amount: 1 }));
-    const without = quoteRateChange(remittance());
-    expect(withDiscount.newCommission).toBe(2);
-    expect(without.newCommission).toBe(3);
-    expect(withDiscount.newAmountToDeliver).toBeGreaterThan(without.newAmountToDeliver);
-  });
-
+describe('quoteRateChange', () => {
   it('reports the direction and the percentage change as a number with two decimals', () => {
     const q = quoteRateChange(remittance({ exchange_rate: 900 }, { exchange_rate: 915 }));
     expect(q.snapshotRate).toBe(900);
@@ -75,6 +27,31 @@ describe('quoteRateChange details', () => {
     expect(q.rateUp).toBe(true);
     expect(q.pctChange).toBe(1.67);
     expect(quoteRateChange(remittance({ exchange_rate: 915 }, { exchange_rate: 900 })).rateUp).toBe(false);
+  });
+
+  it('keeps the rates at their real precision', () => {
+    const q = quoteRateChange(remittance({ exchange_rate: 900.1234 }, { exchange_rate: 915.5678 }));
+    expect(q.snapshotRate).toBe(900.1234);
+    expect(q.currentRate).toBe(915.5678);
+    expect(q.pctChange).toBe(1.72);
+  });
+
+  it('promises no amounts, with or without an offer or an admin commission override (documented follow-up)', () => {
+    const plain = quoteRateChange(remittance());
+    const withPercentageOffer = quoteRateChange(remittance({ offer_id: 'o1', discount_amount: 1 }));
+    const withOverride = quoteRateChange(remittance({ commission_override: 12.5 }, { commission_percentage: 3 }));
+    [plain, withPercentageOffer, withOverride].forEach((q) => {
+      expect(q).not.toHaveProperty('newAmountToDeliver');
+      expect(q).not.toHaveProperty('newCommission');
+      expect(Object.keys(q).sort()).toEqual(['currentRate', 'pctChange', 'rateUp', 'snapshotRate']);
+    });
+  });
+
+  it.each([
+    ['remittance currencies', { currency_sent: 'USD', currency_delivered: 'USD' }, { exchange_rate: 105 }],
+    ['type currencies when the remittance has none', { currency_sent: undefined, currency_delivered: undefined }, { exchange_rate: 105, delivery_currency: 'USD' }]
+  ])('returns null for a same-currency remittance (USD to USD uses rate 1 in SQL), by %s', (_name, over, typeOver) => {
+    expect(quoteRateChange(remittance({ exchange_rate: 1, ...over }, typeOver))).toBeNull();
   });
 
   it.each([

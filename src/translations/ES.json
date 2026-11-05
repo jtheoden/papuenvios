@@ -530,8 +530,6 @@
       "rateChangedBannerPendingHint": "Las remesas pendientes pueden ser actualizadas a la nueva tasa.",
       "rateChangedBannerLockedHint": "Las remesas en proceso están bloqueadas a la tasa original.",
       "rateChangedFrom": "Tasa cambió",
-      "newAmountWouldBe": "Nuevo monto a entregar",
-      "was": "era",
       "updateToNewRate": "Actualizar a nueva tasa",
       "keepCurrentRate": "Mantener tasa actual",
       "rateLockedNote": "Tu remesa está bloqueada a la tasa al momento de su creación",

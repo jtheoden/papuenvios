@@ -47,7 +47,7 @@ import {
 } from '@/lib/whatsappService';
 import { getFreshGuidedWhatsappPhone } from '@/lib/notificationSettingsService';
 import { quoteRateChange } from '@/lib/remittanceRateChange';
-import { formatMoney, formatRate } from '@/lib/numberFormat';
+import { formatRate } from '@/lib/numberFormat';
 
 const MyRemittancesPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
@@ -135,11 +135,8 @@ const MyRemittancesPage = ({ onNavigate }) => {
 
   // Rate change detection helpers
   const hasRateChanged = (remittance) => {
-    if (!remittance.remittance_types) return false;
-    const snapshotRate = remittance.exchange_rate;
-    const currentRate = remittance.remittance_types.exchange_rate;
-    if (!snapshotRate || !currentRate) return false;
-    return Math.abs(snapshotRate - currentRate) / snapshotRate > 0.0001;
+    const change = quoteRateChange(remittance);
+    return Boolean(change) && Math.abs(change.snapshotRate - change.currentRate) / change.snapshotRate > 0.0001;
   };
 
   const canRecalculate = (status) => {
@@ -888,7 +885,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                 {hasRateChanged(remittance) && !dismissedRateAlerts.has(remittance.id) && (canRecalculate(remittance.status) || isInFlight(remittance.status)) && (() => {
                   const rateChange = quoteRateChange(remittance);
                   if (!rateChange) return null;
-                  const { snapshotRate, currentRate, rateUp, pctChange, newAmountToDeliver } = rateChange;
+                  const { snapshotRate, currentRate, rateUp, pctChange } = rateChange;
                   const canUpdate = canRecalculate(remittance.status);
 
                   return (
@@ -911,9 +908,6 @@ const MyRemittancesPage = ({ onNavigate }) => {
                               <>
                                 <p className={`text-sm font-medium ${rateUp ? 'text-blue-800' : 'text-amber-800'}`}>
                                   {t('remittances.user.rateChangedFrom')}: {formatRate(snapshotRate, language)} → {formatRate(currentRate, language)} {remittance.currency_delivered}/{remittance.currency_sent} ({pctChange > 0 ? '+' : ''}{pctChange.toFixed(2)}%)
-                                </p>
-                                <p className={`text-xs mt-1 ${rateUp ? 'text-blue-700' : 'text-amber-700'}`}>
-                                  {t('remittances.user.newAmountWouldBe')}: {formatMoney(newAmountToDeliver, { currency: remittance.currency_delivered, language })} ({t('remittances.user.was')} {formatMoney(remittance.amount_to_deliver, { currency: remittance.currency_delivered, language })})
                                 </p>
                                 <div className="flex flex-wrap gap-2 mt-2">
                                   <button

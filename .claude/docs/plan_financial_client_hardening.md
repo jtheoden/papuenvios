@@ -35,10 +35,9 @@ Pedidos de hoy (USD, Zelle) y remesas USD→CUP / USD→USD no deben cambiar de 
 - A6.5 `comboService.createCombo/updateCombo`: si algún componente tiene `base_currency_id` distinta de la moneda base (null = base) lanza error de validación y no escribe (combos solo admiten componentes en moneda base; convertir es decisión F4).
 
 ### A7 — Alerta de cambio de tasa (MyRemittancesPage)
-- A7.1 Helper puro `quoteRateChange(remittance)` (`src/lib/remittanceRateChange.js`) que usa `calcForward` (contrato único): tasa nueva = `remittance_types.exchange_rate`; comisión del tipo; descuento = `remittance.discount_amount` como `fixed_amount` (espejo de `_remittance_discount_source` cuando la oferta no está cargada). Devuelve `null` si tasa snapshot o actual no son > 0 (guarda de división).
-- A7.2 Vectores dorados (`remittanceGoldenVectors.json`, forward) coinciden con `quoteRateChange` con y sin oferta.
-- A7.3 La alerta formatea tasas con `formatRate` y montos con `formatMoney` (no `toFixed(2)`), `pctChange` con 2 decimales numéricos.
-- Limitación documentada: una comisión sobrescrita por admin (override) no es visible para el cliente; el RPC es la fuente de verdad.
+- A7.1 Helper puro `quoteRateChange(remittance)` (`src/lib/remittanceRateChange.js`): compara tasa fijada vs tasa actual del tipo y devuelve `{snapshotRate, currentRate, rateUp, pctChange}`. `null` si alguna tasa no es > 0, o si moneda de envío y de entrega son iguales (USD→USD usa tasa 1 en SQL: sin alerta).
+- A7.2 Revisión: la alerta NO promete un monto nuevo. El RPC `recalculate_remittance_at_current_rate` aplica el override de comisión del admin y ofertas (también porcentuales) que el dueño no puede leer por RLS; una cifra del cliente puede diferir de la real. Seguimiento Fase 3/F4: función SQL de solo lectura que cotice con la lógica del RPC.
+- A7.3 La alerta formatea tasas con `formatRate`, `pctChange` con 2 decimales numéricos. `hasRateChanged` (alerta y banner) usa `quoteRateChange`.
 
 ### A9 — `commission_percentage` derivado
 - A9.1 `calcCommissionFromRates(market, delivery)` (puro, exportado desde `remittanceCalculations`) redondea a 2 decimales: 520/500 -> 3.85. (Corregido en la revisión: `remittance_types.commission_percentage` es `numeric(20,10)`; solo `remittances.commission_percentage` es `numeric(5,2)`. La premisa original de escala era falsa para esta tabla.)

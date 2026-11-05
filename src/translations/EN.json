@@ -522,8 +522,6 @@
       "rateChangedBannerPendingHint": "Pending remittances can be updated to the new rate.",
       "rateChangedBannerLockedHint": "In-progress remittances are locked at the original rate.",
       "rateChangedFrom": "Rate changed",
-      "newAmountWouldBe": "New amount to deliver",
-      "was": "was",
       "updateToNewRate": "Update to new rate",
       "keepCurrentRate": "Keep current rate",
       "rateLockedNote": "Your remittance is locked at the rate at time of creation",

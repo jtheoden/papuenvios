@@ -94,20 +94,32 @@ describe('MyRemittancesPage - rate change alert (A7)', () => {
     modal.showModal.mockResolvedValue(true);
   });
 
-  it('shows both rates with their real precision and the new amount from the shared rounding contract', async () => {
+  it('shows both rates with their real precision and the change, without promising a new amount', async () => {
     await renderRow();
     const alert = await screen.findByText(/remittances\.user\.rateChangedFrom/);
     expect(alert).toHaveTextContent('900.1234');
     expect(alert).toHaveTextContent('915.5678');
     expect(alert).toHaveTextContent('+1.72%');
-    // (100 - 3) x 915.5678 = 88810.0766 -> 88,810.08 formatted in the app language
-    expect(screen.getByText(/remittances\.user\.newAmountWouldBe/)).toHaveTextContent('88,810.08');
+    // the RPC may apply a commission override / offer the owner cannot see: no projected figure is shown
+    expect(screen.queryByText(/remittances\.user\.newAmountWouldBe/)).toBeNull();
+    expect(screen.getByRole('button', { name: /remittances\.user\.updateToNewRate/ })).toBeInTheDocument();
   });
 
-  it('takes the applied offer discount into account (the old alert ignored it)', async () => {
+  it('does not project an amount with an applied offer either', async () => {
     await renderRow({ offer_id: 'offer-1', discount_amount: 1 });
-    // commission 3 - 1 = 2; (100 - 2) x 915.5678 = 89725.6444 -> 89,725.64
-    expect(await screen.findByText(/remittances\.user\.newAmountWouldBe/)).toHaveTextContent('89,725.64');
+    expect(await screen.findByText(/remittances\.user\.rateChangedFrom/)).toBeInTheDocument();
+    expect(screen.queryByText(/remittances\.user\.newAmountWouldBe/)).toBeNull();
+  });
+
+  it('shows no alert for a USD to USD remittance (rate 1 in SQL) even if the type carries another number', async () => {
+    await renderRow({
+      currency_delivered: 'USD',
+      amount_to_deliver: 100,
+      exchange_rate: 1,
+      remittance_types: { name: 'USD-USD', delivery_method: 'cash', exchange_rate: 105, commission_percentage: 3, commission_fixed: 0, currency_code: 'USD', delivery_currency: 'USD' }
+    });
+    expect(screen.queryByText(/remittances\.user\.rateChangedFrom/)).toBeNull();
+    expect(screen.queryByText(/remittances\.user\.rateChangedBannerTitle/)).toBeNull();
   });
 
   it('shows no alert and no NaN when the stored rate is missing', async () => {
