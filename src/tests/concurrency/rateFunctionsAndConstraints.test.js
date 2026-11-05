@@ -438,7 +438,15 @@ describeDb('rate functions fix + exchange_rates constraints', () => {
         // the money-columns guard only NAMES the RPC in its comments (it lets the SECURITY DEFINER RPCs through)
         && f !== '20261023110000_remittance_money_columns_guard.sql'
         // courier accruals only READ the active USD->CUP exchange_rates row (CUP -> USD conversion); they redefine none of them
-        && f !== '20261031110000_delivery_assignments_and_accruals.sql');
+        && f !== '20261031110000_delivery_assignments_and_accruals.sql'
+        // courier phase A also only READS the active USD->CUP row, live, inside the accrual (checked just below)
+        && f !== '20261105150000_courier_payment_types_currency_ranges.sql');
+      const phaseA = readFileSync('supabase/migrations/20261105150000_courier_payment_types_currency_ranges.sql', 'utf8')
+        .split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+      expect(phaseA).not.toMatch(/\b(DELETE\s+FROM|UPDATE|INSERT\s+INTO|TRUNCATE|ALTER\s+TABLE)\s+(public\.)?exchange_rates/i);
+      // never through the helpers that fail OPEN (they return 1.0 when no rate exists)
+      expect(phaseA).not.toMatch(/get_order_exchange_rate|get_market_exchange_rate|recalculate_remittance_at_current_rate/);
+      expect(phaseA).toMatch(/FROM public\.exchange_rates er/);
       later.forEach((f) => {
         expect(readFileSync(`supabase/migrations/${f}`, 'utf8'), f)
           .not.toMatch(/exchange_rates|recalculate_remittance_at_current_rate|get_remittance_bank_accounts_admin/);

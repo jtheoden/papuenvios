@@ -16,9 +16,11 @@ const describeDb = skipReason ? describe.skip : describe;
 
 const EXISTING = ['orders', 'order_items', 'remittances', 'remittance_types', 'shipping_zones', 'exchange_rates',
   'order_courier_costs', 'remittance_courier_costs', 'user_profiles', 'financial_audit_log', 'order_status_history',
-  'remittance_status_history'];
+  'remittance_status_history', 'courier_accruals', 'messenger_payment_types'];
 const strip = (sql) => sql.replace(/^\s*(BEGIN|COMMIT);\s*$/gm, '');
 const ALL = ['m1', 'm2', 'm3'];
+// phase A alters messenger_payment_types (a module table, empty in production): it is checked on its own, then chained last
+const CHAIN = [...ALL, 'a'];
 
 describe('static: additive only', () => {
   it.each(ALL)('%s migration has no DROP / TRUNCATE / DELETE / mass UPDATE on existing tables', (k) => {
@@ -42,6 +44,26 @@ describe('static: additive only', () => {
     }
     // the only existing tables that gain objects are orders / remittances, and only the two non-blocking triggers
     expect(sql).not.toMatch(/ALTER TABLE public\.(orders|remittances|order_items|financial_audit_log)\b/i);
+  });
+  it('phase A only alters messenger_payment_types: ADD COLUMN IF NOT EXISTS and named CHECKs, no DROP of data objects', () => {
+    const sql = readSql(MIGRATIONS.a).replace(/--.*$/gm, '');
+    expect(sql).toMatch(/^BEGIN;/m);
+    expect(sql).toMatch(/SET LOCAL lock_timeout = '5s'/);
+    expect(sql.trimEnd().endsWith('COMMIT;')).toBe(true);
+    expect(sql).not.toMatch(/\bTRUNCATE\b/i);
+    expect(sql).not.toMatch(/DROP\s+(TABLE|COLUMN|FUNCTION|VIEW|TRIGGER|POLICY)\b/i);
+    const topLevel = sql.replace(/\$function\$[\s\S]*?\$function\$/g, '');
+    expect(topLevel).not.toMatch(/^\s*(DELETE\s+FROM|UPDATE\s|INSERT\s+INTO)/im);
+    for (const m of sql.matchAll(/ALTER TABLE\s+(?:ONLY\s+)?public\.(\w+)/gi)) expect(m[1]).toBe('messenger_payment_types');
+    for (const m of sql.matchAll(/DROP CONSTRAINT IF EXISTS (\w+)/gi)) expect(m[1]).toMatch(/^messenger_payment_types_\w+_chk$|^messenger_payment_types_method_check$/);
+    for (const m of sql.matchAll(/ADD COLUMN (\w+ )?(\w+)/gi)) expect(m[1]).toBe('IF ');
+    expect(sql).not.toMatch(/CREATE FUNCTION/);
+    expect(sql).not.toMatch(/FUNCTION public\._(order|remittance)_transition/);
+    // v1 is closed, never dropped nor replaced (the rollback re-grants it)
+    expect(sql).not.toMatch(/CREATE OR REPLACE FUNCTION public\.admin_set_messenger_payment_type\(/);
+    expect(sql).toMatch(/REVOKE EXECUTE ON FUNCTION public\.admin_set_messenger_payment_type\(/);
+    // the live rate is read from exchange_rates, never through the fail-open helpers
+    expect(sql).not.toMatch(/get_(order|market)_exchange_rate/);
   });
   it.each(ALL)('%s migration is idempotent by construction', (k) => {
     const sql = readSql(MIGRATIONS[k]);
@@ -97,7 +119,7 @@ describeDb('data safety on realistic rows (local Postgres)', () => {
     let during;
     await admin.query('BEGIN');
     try {
-      for (const k of ALL) await admin.query(strip(readSql(MIGRATIONS[k])));
+      for (const k of CHAIN) await admin.query(strip(readSql(MIGRATIONS[k])));
       during = await fingerprint(); // measured inside the transaction, then discarded
     } finally {
       await admin.query('ROLLBACK');
@@ -106,16 +128,16 @@ describeDb('data safety on realistic rows (local Postgres)', () => {
     expect(await fingerprint()).toEqual(before);
   });
 
-  it('rolling back M3 -> M2 -> M1 and re-applying M1 -> M3 leaves existing data untouched and restores the objects', async () => {
+  it('rolling back A -> M3 -> M2 -> M1 and re-applying M1 -> A leaves existing data untouched and restores the objects', async () => {
     const before = await fingerprint();
     await admin.query('BEGIN');
     let during;
     try {
       await admin.query(`SET LOCAL app.confirm_courier_rollback = 'yes'`);
-      for (const k of [...ALL].reverse()) await admin.query(strip(readSql(ROLLBACKS[k])));
+      for (const k of [...CHAIN].reverse()) await admin.query(strip(readSql(ROLLBACKS[k])));
       const gone = (await admin.query(`SELECT to_regclass('public.courier_accruals') IS NULL AS g`)).rows[0].g;
       expect(gone).toBe(true);
-      for (const k of ALL) await admin.query(strip(readSql(MIGRATIONS[k])));
+      for (const k of CHAIN) await admin.query(strip(readSql(MIGRATIONS[k])));
       expect((await admin.query(`SELECT to_regclass('public.courier_accruals') IS NOT NULL AS b`)).rows[0].b).toBe(true);
       during = await fingerprint();
     } finally {
@@ -123,6 +145,54 @@ describeDb('data safety on realistic rows (local Postgres)', () => {
     }
     expect(during).toEqual(before);
     expect(await fingerprint()).toEqual(before);
+  });
+
+  it('phase A over existing no_rule accruals: re-apply, rollback and re-apply leave them (and every other table) byte-identical', async () => {
+    // production today: 0 payment types, 16 accruals with reason no_rule
+    const r = await kit.seedRemittance({ typeId });
+    const o = await kit.seedDispatchedOrder();
+    await kit.deliverRemittance(r);
+    await kit.deliverOrder(o);
+    const reasons = (await admin.query(`SELECT rule_snapshot->>'reason' AS reason, amount_cup FROM public.courier_accruals WHERE source_id = ANY($1) ORDER BY source_kind`, [[r, o]])).rows;
+    expect(reasons).toEqual([{ reason: 'no_rule', amount_cup: null }, { reason: 'no_rule', amount_cup: null }]);
+    const before = await fingerprint();
+    await admin.query('BEGIN');
+    let during;
+    try {
+      await admin.query(strip(readSql(MIGRATIONS.a)));
+      await admin.query(strip(readSql(ROLLBACKS.a)));
+      const cols = (await admin.query(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name = 'messenger_payment_types' AND column_name IN ('currency','fixed_amount')`)).rows[0].n;
+      expect(cols).toBe(0);
+      expect((await admin.query(`SELECT to_regprocedure('public._courier_rule_resolve_v2(text,uuid,uuid,uuid,numeric,text,numeric,timestamptz)') IS NULL AS g`)).rows[0].g).toBe(true);
+      expect((await admin.query(`SELECT has_function_privilege('authenticated', 'public.admin_set_messenger_payment_type(text,text,text,text,numeric,numeric,numeric,text,uuid,uuid,uuid,numeric,numeric,timestamptz,timestamptz)', 'EXECUTE') AS g`)).rows[0].g).toBe(true);
+      await admin.query(strip(readSql(MIGRATIONS.a)));
+      during = await fingerprint();
+    } finally {
+      await admin.query('ROLLBACK');
+    }
+    expect(during).toEqual(before);
+    expect(await fingerprint()).toEqual(before);
+  });
+
+  it('the phase A rollback refuses to run once a rule depends on it (fixed_amount, CUP currency, percent on orders)', async () => {
+    const c = await kit.as(actors.adminId);
+    const { wipeTable } = await import('./courierTestKit');
+    for (const rule of [
+      { method: 'fixed_amount', fixed_cup: null, fixed_amount: 1 },
+      { currency: 'CUP' },
+      { applies_to: 'order', method: 'percent_of_base', fixed_cup: null, percent: 1, base: 'nominal_usd' }
+    ]) {
+      await wipeTable(admin, 'messenger_payment_types', 'messenger_payment_types_guard');
+      await kit.setRule(c, rule);
+      await admin.query('BEGIN');
+      try {
+        const e = await admin.query(strip(readSql(ROLLBACKS.a))).then(() => null, (err) => err);
+        expect(e?.code, JSON.stringify(rule)).toBe('55000');
+      } finally {
+        await admin.query('ROLLBACK');
+      }
+    }
+    await wipeTable(admin, 'messenger_payment_types', 'messenger_payment_types_guard');
   });
 
   it('delivering with the triggers in place changes only the delivery itself (+ the new accrual)', async () => {
