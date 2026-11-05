@@ -67,6 +67,16 @@ module.exports = {
 					'badge-foreground': 'var(--brand-cart-badge-text, #171717)',
 					dot: 'var(--brand-dot-active, #FFA500)',
 				},
+				// Look tokens: --t-* in index.css hold RGB channels, so the alpha modifier works (`bg-theme-accent/30`).
+				// The colour group is `theme`, so the utilities are `bg-theme-accent`: no clash with the shadcn `accent`.
+				// scripts/theme-codemod.mjs moves the old blue/purple classes onto them.
+				theme: Object.fromEntries(
+					[
+						'accent', 'accent-hover', 'on-accent', 'accent-soft', 'accent-soft-2', 'accent-line',
+						'link', 'link-strong', 'focus', 'accent-2', 'accent-2-soft', 'accent-2-soft-2',
+						'grad-from', 'grad-to', 'page-from', 'page-via', 'page-to',
+					].map((token) => [token, `rgb(var(--t-${token}) / <alpha-value>)`])
+				),
 			},
 			borderRadius: {
 				lg: 'var(--radius)',

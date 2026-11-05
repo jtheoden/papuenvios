@@ -94,6 +94,14 @@ export const BRAND_PRESET = {
   focusRingColor: charcoal,
 };
 
+/**
+ * Look of the site: 'classic' (the stored blue/violet gradient look) or 'papuenvios' (brand). It is the value of
+ * `data-theme` on <html>, which switches the --t-* tokens in index.css. Today the discriminator is useGradient, the same
+ * one headerTheme/footerTheme/loadingTheme/homeTheme use. When a stored `activeTheme` arrives, read it here first and
+ * fall back to useGradient: no consumer changes. The inline script in index.html mirrors this for the first paint.
+ */
+export const resolveLookId = (settings) => (settings?.useGradient ? 'classic' : 'papuenvios');
+
 /** setting key -> CSS variable consumed by the Tailwind `brand-*` colours. */
 export const BRAND_CSS_VARS = {
   buttonBgColor: '--brand-button-bg',

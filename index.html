@@ -6,6 +6,14 @@
 		<meta name="generator" content="Hostinger Horizons" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>Papuenvios</title>
+		<script>
+			// First paint: pick the look from the cached visual settings (mirrors resolveLookId in brandPalette.js).
+			// The cache TTL is ignored on purpose: a stale look is better than a flash of the other one.
+			try {
+				var cached = JSON.parse(localStorage.getItem('business_visual_settings_cache'));
+				if (cached && cached.data) document.documentElement.dataset.theme = cached.data.useGradient ? 'classic' : 'papuenvios';
+			} catch (e) {}
+		</script>
 	</head>
 	<body>
 		<div id="root"></div>

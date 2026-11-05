@@ -4,7 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import { NEW_KEY_DEFAULTS, BRAND_CSS_VARS, isHexColor } from '@/lib/brandPalette';
+import { NEW_KEY_DEFAULTS, BRAND_CSS_VARS, isHexColor, resolveLookId } from '@/lib/brandPalette';
 import { LOCAL_CACHE_KEY } from '@/lib/constants';
 
 const CACHE_DURATION = 60 * 1000; // 1 minute cache
@@ -276,6 +276,10 @@ export async function saveVisualSettings(settings) {
  */
 export function applyVisualSettingsToDOM(settings) {
   try {
+    // First on purpose: it switches the --t-* tokens, so nothing below may keep it from running. The try/catch is
+    // the guard for environments without a document.
+    document.documentElement.dataset.theme = resolveLookId(settings);
+
     // Update document title
     if (settings.siteTitle) {
       document.title = settings.siteTitle;
@@ -336,8 +340,8 @@ export function applyVisualSettingsToDOM(settings) {
       else root.style.removeProperty(cssVar);
     }
 
-    // Apply page background to body. It sits under the stylesheet gradient (index.css), which stays: the brand ivory
-    // is painted by the Home root only (see homeTheme.js), so other pages keep their look.
+    // Apply page background to body. In the classic look it sits under the stylesheet gradient (index.css); in the
+    // brand look the gradient is off (data-theme above), so this colour is the page. Never touch background-image here.
     document.body.style.backgroundColor = settings.pageBgColor || '#f9fafb';
 
   } catch (err) {
