@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import ES from '@/translations/ES.json';
 import EN from '@/translations/EN.json';
 
@@ -15,6 +15,11 @@ export const LanguageProvider = ({ children }) => {
     }
     return 'es';
   });
+
+  // index.html ships lang="es" (the default); keep it true for screen readers and translators after a switch.
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
 
   const handleSetLanguage = (newLanguage) => {
     setLanguage(newLanguage);

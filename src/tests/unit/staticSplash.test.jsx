@@ -48,6 +48,11 @@ describe('static splash in index.html', () => {
     expect(css).not.toMatch(/\[data-theme="papuenvios"\]#ps\{[^}]*background:(?!#FAF7F0)/i);
   });
 
+  it('declares Spanish (the default language) on <html> and no stale placeholder note', () => {
+    expect(doc.documentElement.getAttribute('lang')).toBe('es');
+    expect(html).not.toMatch(/Placeholder wordmark/i);
+  });
+
   it('tells users without JavaScript that the app needs it', () => {
     expect(root.querySelector('noscript')?.textContent).toMatch(/JavaScript/);
   });
