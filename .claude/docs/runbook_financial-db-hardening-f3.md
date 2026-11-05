@@ -34,7 +34,7 @@ Requisitos antes de CADA paso: backup/PITR reciente confirmado en el panel de Su
 | 2 | `20261104160300_revoke_rate_readers_from_anon.sql` | `revoke_rate_readers_from_anon` | Quita EXECUTE a PUBLIC/anon en `get_order_exchange_rate` / `get_market_exchange_rate` | — | `..._down.sql` (ACL exacta previa) |
 | 3 | `20261104160400_get_my_role_is_enabled.sql` | `get_my_role_is_enabled` | `get_my_role()` = 'user' si la cuenta no está habilitada | — | `..._down.sql` (cuerpo exacto previo) |
 | 4 | `20261104160100_exchange_rate_history.sql` | `exchange_rate_history` | Tabla append-only + 6 triggers AFTER (INSERT/UPDATE/DELETE en `exchange_rates` y `remittance_types`) | — | `..._down.sql` (quita triggers, **conserva** tabla y filas) |
-| 5 | `20261104160000_remittance_types_pricing_super_admin_only.sql` | `remittance_types_pricing_super_admin_only` | Solo super_admin crea tipos o cambia tasa, comisiones o par de monedas; trigger `updated_at` | **Solo después de desplegar el front F2** (rama `fix/financial-client-hardening`) | `..._down.sql` |
+| 5 | `20261104160000_remittance_types_pricing_super_admin_only.sql` | `remittance_types_pricing_super_admin_only` | Solo super_admin crea tipos o cambia tasa, comisiones o par de monedas; trigger `updated_at` | **Solo después de desplegar el front F2** (rama `fix/financial-client-hardening`, commit 64ad7da9: oculta "Nuevo tipo" y los campos de tasa y comisión a quien no es super_admin, cuyo guardado no envía esas columnas) | `..._down.sql` |
 
 ### Tras CADA `apply_migration`: alinear el repo con la versión que asigna prod (no ampliar la deriva)
 1. Ver la versión asignada: `list_migrations` (MCP) o
@@ -62,8 +62,20 @@ Requisitos antes de CADA paso: backup/PITR reciente confirmado en el panel de Su
 1. (remittance_types) Un admin que no es super_admin ya no puede crear tipos ni cambiar `exchange_rate`,
    `commission_percentage`, `commission_fixed`, `currency_code` o `delivery_currency`; recibe 42501
    `remittance_type_pricing_super_admin_only`. Puede seguir editando el resto, activar/desactivar y borrar tipos.
-   - El formulario actual reenvía esos valores en cada guardado. En las 4 filas vivas el recálculo coincide exactamente
-     (probado), así que editar el nombre no falla.
+   - El guard compara OLD y NEW con `IS DISTINCT FROM`: una columna que no se envía, o que se envía con su valor
+     guardado, no cuenta como cambio. `remittance_types.commission_percentage` es `numeric(20,10)` (solo
+     `remittances.commission_percentage` es `numeric(5,2)`), así que el super_admin la escribe con precisión completa.
+   - Lo que hace F2 (rama `fix/financial-client-hardening`, commit 64ad7da9), y en lo que se apoya el guard: oculta
+     "Nuevo tipo" y los campos de tasa y comisión a quien no es super_admin. El guardado de ese admin no envía
+     `exchange_rate`, `commission_percentage` ni `commission_fixed`. El formulario ya no reescribe
+     `commission_percentage` al editar solo nombre, límites o `is_active`; solo la recalcula si se cambia la tasa de mercado
+     o la de entrega.
+   - Con el front anterior a F2 (el de main hoy), que reenvía todos los campos:
+     - editar el nombre o los límites sigue pasando en las 4 filas vivas, porque su comisión recalculada coincide con la
+       guardada (probado en `financialDbHardeningF3.test.js`);
+     - "Nuevo tipo" y cualquier cambio de tasa o comisión de un admin normal reciben el 42501.
+
+     Por eso esta migración se aplica después de desplegar F2.
    - Los intentos rechazados no quedan en `financial_audit_log`, porque el RAISE revierte la transacción; solo quedan en el
      log de Postgres.
 2. (historial) Desde la aplicación, cada alta, baja o cambio de tasa, `market_rate`, `effective_date`, `rate_type`, par de

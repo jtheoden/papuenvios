@@ -38,12 +38,18 @@
 --
 -- DATA / BEHAVIOUR
 --   No row is read for write, inserted, updated or deleted. Behaviour change: plain admins can no longer create types
---   nor edit their pricing or currency pair (super_admins unaffected). The current edit form re-sends pricing and
---   currencies on every save; for the 4 live rows the recomputed commission_percentage round-trips exactly (checked
---   read-only and in financialDbHardeningF3.test.js), so an admin's name/limit edit passes.
---   Deploy order: apply ONLY after the F2 front (branch fix/financial-client-hardening: "new type" and the rate /
---   commission fields hidden for non-super admins, admin save does not send those columns) is deployed; otherwise
---   those admins get an error (fail-closed, nothing saved).
+--   nor edit their pricing or currency pair (super_admins unaffected). The guard compares OLD vs NEW with IS DISTINCT
+--   FROM, so a column that is not sent, or is sent with its stored value, is never a change.
+--   remittance_types.commission_percentage is numeric(20,10) (only remittances.commission_percentage is numeric(5,2)):
+--   a super_admin's write is stored at full precision, and an unchanged value compares equal.
+--   Front contract the guard relies on (F2, branch fix/financial-client-hardening, commit 64ad7da9): "new type" and the
+--   rate / commission fields are hidden for non-super admins; a non-super admin's save does not send exchange_rate,
+--   commission_percentage or commission_fixed; and the form no longer rewrites commission_percentage when only name,
+--   limits or is_active change (it recomputes it only when the market or delivery rate is edited).
+--   Deploy order: apply ONLY after that F2 front is deployed. With the pre-F2 front (main today), which re-sends every
+--   field, an admin's name/limit edit still passes for the 4 live rows (their recomputed commission_percentage equals
+--   the stored one, financialDbHardeningF3.test.js), but "new type" and any rate/commission edit by a non-super admin
+--   get the 42501 (fail-closed, nothing saved).
 --
 -- ROLLBACK: supabase/rollbacks/20261104160000_remittance_types_pricing_super_admin_only_down.sql
 -- ============================================================================

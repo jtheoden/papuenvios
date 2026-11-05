@@ -151,7 +151,7 @@ describeDb('F3 financial hardening (local Postgres)', () => {
     await profile(role, enabled);
     return as(actors.adminId);
   };
-  // Live-like type: the form round-trips 915 / 895.00 -> 2.1857923497 (numeric(20,10)).
+  // Live-like type: 915 with commission_percentage 2.1857923497 stored at numeric(20,10).
   const seedType = async () => {
     const { rows } = await admin.query(
       `INSERT INTO public.remittance_types (name, currency_code, delivery_currency, exchange_rate, commission_percentage,
@@ -251,10 +251,22 @@ describeDb('F3 financial hardening (local Postgres)', () => {
       expect(rows[0]).toEqual({ currency_code: 'EUR', delivery_currency: 'USD' });
     });
 
-    it('a plain admin still edits the rest when the form re-sends the same pricing (JS float round-trip)', async () => {
+    it('a plain admin edits the rest without sending pricing (F2 front contract)', async () => {
       const id = await seedType();
       const adm = await asRole('admin');
-      const formPct = (1 - 895 / 915) * 100; // what RemittanceTypesConfig recomputes on edit
+      const res = await adm.query(
+        `UPDATE public.remittance_types SET name = 'f3-f2', description = 'x', is_active = false, min_amount = 2 WHERE id = $1`, [id]);
+      expect(res.rowCount).toBe(1);
+      expect(await typeOf(id)).toMatchObject({ name: 'f3-f2', rate: '915.0000', pct: '2.1857923497', touched: true });
+    });
+
+    // Backward compatibility with the PRE-F2 form (main today), which re-sends every field and recomputes
+    // commission_percentage from the 2-decimal delivery rate. The guard compares with IS DISTINCT FROM on
+    // numeric(20,10), so an equal value is not a change. F2 no longer sends these columns for non-super admins.
+    it('pre-F2 form: a plain admin re-sending the same pricing (JS float recompute) still passes', async () => {
+      const id = await seedType();
+      const adm = await asRole('admin');
+      const formPct = (1 - 895 / 915) * 100; // what the pre-F2 RemittanceTypesConfig recomputed on edit
       const res = await adm.query(
         `UPDATE public.remittance_types
             SET name = 'f3-renamed', description = 'x', is_active = false, min_amount = 2, max_delivery_days = 4,
@@ -264,10 +276,11 @@ describeDb('F3 financial hardening (local Postgres)', () => {
       expect(await typeOf(id)).toMatchObject({ name: 'f3-renamed', rate: '915.0000', pct: '2.1857923497', touched: true });
     });
 
-    // The 4 live prod rows (exchange_rate, stored commission_percentage, 2-decimal delivery rate the form derives).
+    // The 4 live prod rows (exchange_rate, stored numeric(20,10) commission_percentage, 2-decimal delivery rate the
+    // pre-F2 form derives): re-sending the recomputed value is IS NOT DISTINCT FROM the stored one for all of them.
     it.each([
       [915, '2.1857923497', 895], [103, '2.9126213592', 100], [900, '5.5555555556', 850], [105, '4.7619047619', 100]
-    ])('form round-trip of live row rate %s / pct %s passes the guard for a plain admin', async (rate, pct, delivery) => {
+    ])('pre-F2 form re-send of live row rate %s / pct %s passes the guard for a plain admin', async (rate, pct, delivery) => {
       const { rows } = await admin.query(
         `INSERT INTO public.remittance_types (name, currency_code, delivery_currency, exchange_rate, commission_percentage,
                                               commission_fixed, min_amount, delivery_method)
