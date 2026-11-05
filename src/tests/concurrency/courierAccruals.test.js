@@ -444,6 +444,17 @@ describeDb('M2: assignments, accruals, effective cost (local Postgres)', () => {
       expect(rows[0].n).toBe(0);
     });
 
+    it('an amount that does not fit numeric(12,2) leaves an accrual with amount NULL and reason amount_out_of_range (never no row)', async () => {
+      await kit.seedUsdCupRate(915);
+      await kit.setRule(await adminClient(), fixed({ fixed_amount: 9999999999.99, applies_to: 'both' }));
+      const a = await deliverRem();
+      expect(a).toMatchObject({ amount_cup: null, amount_usd: null, status: 'calculated' });
+      expect(a.rule_id).not.toBeNull();
+      expect(a.rule_snapshot.reason).toBe('amount_out_of_range');
+      const o = await deliverOrd();
+      expect(o.rule_snapshot.reason).toBe('amount_out_of_range');
+    });
+
     it('no rule at all keeps reason no_rule (the 16 production accruals use it)', async () => {
       const a = await deliverRem();
       expect(a.rule_snapshot.reason).toBe('no_rule');

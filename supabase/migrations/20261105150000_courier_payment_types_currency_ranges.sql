@@ -338,6 +338,14 @@ BEGIN
     v_usd := round(v_cup / v_fx, 2);
   END IF;
 
+  -- courier_accruals.amount_cup / amount_usd are numeric(12,2): an overflow would make the (non-blocking) trigger swallow
+  -- the error and leave NO accrual. Keep the row, with an unknown amount and a reason.
+  IF abs(v_cup) >= 1e10 OR abs(v_usd) >= 1e10 OR v_cup = 'NaN'::numeric OR v_usd = 'NaN'::numeric THEN
+    v_cup := NULL;
+    v_usd := NULL;
+    v_reason := 'amount_out_of_range';
+  END IF;
+
   -- Margin: remittances only (the order profit is not stored in SQL). Cost = this accrual, else the legacy estimate.
   IF p_kind = 'remittance' THEN
     v_income := v_comm + v_dcost;
@@ -440,6 +448,10 @@ BEGIN
                                         AND p_base IN ('nominal_usd', 'delivered_cup')
           END) IS TRUE THEN
     RAISE EXCEPTION 'invalid_argument: parameters do not match the method' USING ERRCODE = '22023';
+  END IF;
+  -- numeric(12,2) holds at most 9999999999.99: a typed refusal instead of a raw 22003 overflow
+  IF greatest(p_amount_from, p_amount_to, p_fixed_amount, p_fixed_cup) > 9999999999.99 THEN
+    RAISE EXCEPTION 'invalid_argument: amounts accept at most 9999999999.99' USING ERRCODE = '22023';
   END IF;
   -- numeric(12,2) columns would round 100.005 silently: refuse anything beyond cents
   IF p_amount_from <> round(p_amount_from, 2) OR p_amount_to <> round(p_amount_to, 2)

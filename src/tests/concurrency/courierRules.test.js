@@ -512,6 +512,17 @@ describeDb('M1: couriers, payment types, thresholds (local Postgres)', () => {
       expect((await failure(tier('amount_to'))).code).toBe('23514');
     });
 
+    it('amounts above the column maximum (9999999999.99) are a typed 22023, not a raw overflow', async () => {
+      for (const o of [fixed({ fixed_amount: 10000000000 }), fixed({ amount_from: 10000000000 }), fixed({ amount_to: 1e11 }), { fixed_cup: 10000000000 }]) {
+        const c = await kit.as(actors.adminId);
+        const e = await failure(kit.setRule(c, o));
+        expect(e.code, JSON.stringify(o)).toBe('22023');
+        expect(e.message).toMatch(/at most 9999999999\.99/);
+      }
+      const c = await kit.as(actors.adminId);
+      await expect(kit.setRule(c, fixed({ fixed_amount: 9999999999.99 }))).resolves.toBeTruthy();
+    });
+
     it('amounts with more than 2 decimals are refused (never silently rounded); from = to refused', async () => {
       await bad(fixed({ amount_to: 100.005 }));
       await bad(fixed({ amount_from: 0.001 }));
