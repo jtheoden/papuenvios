@@ -485,6 +485,18 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
     }
   };
 
+  // Text for a failed rate write. Only the RLS refusal proves a role problem; a 0-row result means the rate is gone
+  // (a plain admin never gets here: the handlers are guarded by canWriteRates).
+  const rateWriteErrorMessage = (error) => {
+    if (error?.context?.requiredRole === 'super_admin') return t('settings.financial.ratesSuperAdminOnly');
+    if (error?.code === 'EXCHANGE_RATE_PAIR_PARTIAL') return t('settings.financial.ratePairPartial');
+    if (error?.code === 'EXCHANGE_RATE_PAIR_INCOMPLETE') return t('settings.financial.ratePairIncomplete');
+    if (error?.code === 'NOT_FOUND' && error?.context?.reason === 'no_rows') {
+      return canWriteRates ? t('settings.financial.rateNotFound') : t('settings.financial.ratesSuperAdminOnly');
+    }
+    return error.message;
+  };
+
   const handleSaveRate = async () => {
     if (!canWriteRates) return;
     if (!newRate.fromCurrencyId || !newRate.toCurrencyId || !newRate.rate) {
@@ -554,9 +566,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         console.error('Error saving rate:', error);
         toast({
           title: t('settings.financial.saveError'),
-          description: error?.context?.requiredRole === 'super_admin'
-            ? t('settings.financial.ratesSuperAdminOnly')
-            : error.message,
+          description: rateWriteErrorMessage(error),
           variant: 'destructive'
         });
       }
@@ -583,9 +593,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       console.error('Error deleting rate:', error);
       toast({
         title: 'Error',
-        description: error?.context?.requiredRole === 'super_admin'
-          ? t('settings.financial.ratesSuperAdminOnly')
-          : error.message,
+        description: rateWriteErrorMessage(error),
         variant: 'destructive'
       });
     }
@@ -618,9 +626,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       console.error('Error deleting rate pair:', error);
       toast({
         title: 'Error',
-        description: error?.context?.requiredRole === 'super_admin'
-          ? t('settings.financial.ratesSuperAdminOnly')
-          : error.message,
+        description: rateWriteErrorMessage(error),
         variant: 'destructive'
       });
     }
@@ -699,11 +705,11 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       if (handleSessionExpired(error)) return;
       toast({
         title: 'Error',
-        description: error?.context?.requiredRole === 'super_admin'
-          ? t('settings.financial.ratesSuperAdminOnly')
-          : error.message,
+        description: rateWriteErrorMessage(error),
         variant: 'destructive'
       });
+      // The pair may be half written or gone: show the real state, not the stale list.
+      await loadExchangeRates();
     }
   };
 

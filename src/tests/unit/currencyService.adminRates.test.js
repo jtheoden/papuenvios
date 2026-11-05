@@ -56,11 +56,15 @@ describe('updateExchangeRatePair reports what it really updated', () => {
     await expect(updateExchangeRatePair('usd', 'eur', 0.9, '2026-10-16')).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
-  it('still succeeds when only the direct rate exists (inverse not configured)', async () => {
+  // Reviewer finding (A5a): a missing/inactive inverse used to be reported as success ("both rates updated").
+  // The precise INCOMPLETE vs PARTIAL outcomes (restore ok / restore failed) are covered in currencyService.ratePairs.test.js.
+  it('does NOT report success when the inverse rate is missing (pair left inconsistent)', async () => {
     db.updateResults = [
       { data: [{ id: 'a' }], error: null },
       { data: [], error: null }
     ];
-    await expect(updateExchangeRatePair('usd', 'eur', 0.9, '2026-10-16')).resolves.toEqual({ updatedCount: 1 });
+    await expect(updateExchangeRatePair('usd', 'eur', 0.9, '2026-10-16')).rejects.toMatchObject({
+      code: expect.stringMatching(/^EXCHANGE_RATE_PAIR_(INCOMPLETE|PARTIAL)$/)
+    });
   });
 });

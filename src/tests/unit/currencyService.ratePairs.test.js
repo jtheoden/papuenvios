@@ -1,7 +1,9 @@
 /**
  * A5 - a rate pair (direct + inverse) is never left half written.
- *  - saveExchangeRatePair: direct, then inverse; if the inverse fails the direct one is rolled back.
- *  - updateExchangeRatePair: if the inverse update fails the direct row gets its previous values back.
+ *  - saveExchangeRatePair: direct, then inverse; if the inverse fails the direct one is put back as it was
+ *    (previous value restored if the upsert overwrote a same-day row, deactivated if it created it).
+ *  - updateExchangeRatePair: if the inverse update fails, or touches 0 rows (missing/inactive inverse), the direct
+ *    row gets its previous values back; if that restore fails too, a distinct EXCHANGE_RATE_PAIR_PARTIAL error says so.
  *  - deleteExchangeRatePair: ids are validated as UUIDs before they reach the PostgREST .or() filter.
  * A real transaction needs an RPC (Phase 3); this is the best-effort compensation available from the client.
  */
@@ -62,9 +64,10 @@ beforeEach(() => {
 
 describe('saveExchangeRatePair', () => {
   const input = { fromCurrencyId: USD, toCurrencyId: CUP, rate: '915', effectiveDate: '2026-11-04' };
+  const NO_PREVIOUS = ok([]); // pre-read of a same-day direct row: none
 
   it('writes the direct rate and its inverse (1 / rate)', async () => {
-    db.responses = [ok({ id: 'direct-1' }), ok({ id: 'inverse-1' })];
+    db.responses = [NO_PREVIOUS, ok({ id: 'direct-1' }), ok({ id: 'inverse-1' })];
     await saveExchangeRatePair(input);
     const upserts = db.ops.filter((o) => o.op === 'upsert');
     expect(upserts).toHaveLength(2);
@@ -73,8 +76,8 @@ describe('saveExchangeRatePair', () => {
     expect(upserts[1].values.rate).toBeCloseTo(1 / 915, 12);
   });
 
-  it('rolls the direct rate back (deactivates it by id) when the inverse fails, and still notifies the change', async () => {
-    db.responses = [ok({ id: 'direct-1' }), fail('inverse failed'), ok([{ id: 'direct-1' }])];
+  it('rolls a newly created direct rate back (deactivates it by id) when the inverse fails, and still notifies the change', async () => {
+    db.responses = [NO_PREVIOUS, ok({ id: 'direct-1' }), fail('inverse failed'), ok([{ id: 'direct-1' }])];
     await expect(saveExchangeRatePair(input)).rejects.toBeDefined();
 
     const rollback = db.ops.find((o) => o.op === 'update');
@@ -84,8 +87,32 @@ describe('saveExchangeRatePair', () => {
     expect(changed).toHaveBeenCalled();
   });
 
+  it('RESTORES the previous value when the upsert overwrote an active same-day row, instead of deactivating it', async () => {
+    const previous = { id: 'direct-1', rate: 900, is_active: true };
+    db.responses = [ok([previous]), ok({ id: 'direct-1' }), fail('inverse failed'), ok([{ id: 'direct-1' }])];
+    await expect(saveExchangeRatePair(input)).rejects.toBeDefined();
+
+    const updates = db.ops.filter((o) => o.op === 'update');
+    expect(updates).toHaveLength(1);
+    expect(updates[0].values).toEqual({ rate: 900, is_active: true });
+    expect(updates[0].filters).toContainEqual(['eq', 'id', 'direct-1']);
+    expect(changed).toHaveBeenCalled();
+  });
+
+  it('puts an inactive same-day row back to inactive with its old rate', async () => {
+    db.responses = [ok([{ id: 'direct-1', rate: 800, is_active: false }]), ok({ id: 'direct-1' }), fail('inverse failed'), ok([{ id: 'direct-1' }])];
+    await expect(saveExchangeRatePair(input)).rejects.toBeDefined();
+    expect(db.ops.find((o) => o.op === 'update').values).toEqual({ rate: 800, is_active: false });
+  });
+
+  it('throws EXCHANGE_RATE_PAIR_PARTIAL (not the raw inverse error) when the compensation fails too', async () => {
+    db.responses = [NO_PREVIOUS, ok({ id: 'direct-1' }), fail('inverse failed'), fail('rollback failed')];
+    await expect(saveExchangeRatePair(input)).rejects.toMatchObject({ code: 'EXCHANGE_RATE_PAIR_PARTIAL' });
+    expect(changed).toHaveBeenCalled();
+  });
+
   it('writes nothing else when the direct rate fails', async () => {
-    db.responses = [fail('direct failed')];
+    db.responses = [NO_PREVIOUS, fail('direct failed')];
     await expect(saveExchangeRatePair(input)).rejects.toBeDefined();
     expect(db.ops.filter((o) => o.op === 'upsert')).toHaveLength(1);
     expect(db.ops.some((o) => o.op === 'update')).toBe(false);
@@ -117,6 +144,32 @@ describe('updateExchangeRatePair partial failure', () => {
     expect(updates[2].filters).toContainEqual(['eq', 'to_currency_id', CUP]);
     expect(updates[2].filters).toContainEqual(['eq', 'is_active', true]);
     expect(changed).toHaveBeenCalled();
+  });
+
+  it('inverse update touching 0 rows (missing or inactive inverse): restores the direct row and throws EXCHANGE_RATE_PAIR_INCOMPLETE, never "both updated"', async () => {
+    db.responses = [
+      ok([prevDirect]), // pre-read
+      ok([{ id: 'd0' }]), // direct update
+      ok([]), // inverse update affected nothing
+      ok([{ id: 'd0' }]) // restore
+    ];
+    await expect(updateExchangeRatePair(USD, CUP, 915, '2026-11-04')).rejects.toMatchObject({ code: 'EXCHANGE_RATE_PAIR_INCOMPLETE' });
+
+    const updates = db.ops.filter((o) => o.op === 'update');
+    expect(updates).toHaveLength(3);
+    expect(updates[2].values).toEqual({ rate: 900, effective_date: '2026-10-01' });
+    expect(changed).toHaveBeenCalled();
+  });
+
+  it('throws EXCHANGE_RATE_PAIR_PARTIAL when the inverse fails AND the restore fails', async () => {
+    db.responses = [ok([prevDirect]), ok([{ id: 'd0' }]), fail('inverse failed'), fail('restore failed')];
+    await expect(updateExchangeRatePair(USD, CUP, 915, '2026-11-04')).rejects.toMatchObject({ code: 'EXCHANGE_RATE_PAIR_PARTIAL' });
+    expect(changed).toHaveBeenCalled();
+  });
+
+  it('throws EXCHANGE_RATE_PAIR_PARTIAL when the inverse is missing AND the restore fails', async () => {
+    db.responses = [ok([prevDirect]), ok([{ id: 'd0' }]), ok([]), fail('restore failed')];
+    await expect(updateExchangeRatePair(USD, CUP, 915, '2026-11-04')).rejects.toMatchObject({ code: 'EXCHANGE_RATE_PAIR_PARTIAL' });
   });
 
   it('does not restore anything when the direct update itself fails', async () => {

@@ -290,6 +290,42 @@ describe('Financial: USD->EUR guards', () => {
       await waitFor(() => expect(svc.updateExchangeRatePair).toHaveBeenCalledWith('usd', 'eur', '0.93', expect.any(String)));
       expect(screen.queryByText('Confirm large rate change')).toBeNull();
     });
+
+    describe('when the pair update fails', () => {
+      const failWith = async (error) => {
+        const form = await startEdit('0.93');
+        svc.updateExchangeRatePair.mockRejectedValue(error);
+        const loadsBefore = svc.getAllExchangeRates.mock.calls.length;
+        fireEvent.click(form.getByRole('button', { name: 'Save Changes' }));
+        await waitFor(() => expect(toastMock).toHaveBeenCalled());
+        return loadsBefore;
+      };
+      const lastToast = () => toastMock.mock.calls.at(-1)[0];
+
+      it('half-written pair (compensation failed): clear warning, no "updated" toast, and the rates are reloaded', async () => {
+        const loadsBefore = await failWith(Object.assign(new Error('raw partial'), { code: 'EXCHANGE_RATE_PAIR_PARTIAL' }));
+        expect(lastToast()).toMatchObject({ variant: 'destructive', description: expect.stringMatching(/only partly saved/i) });
+        expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Rate pair updated' }));
+        await waitFor(() => expect(svc.getAllExchangeRates.mock.calls.length).toBeGreaterThan(loadsBefore));
+      });
+
+      it('incomplete pair (inverse missing, direct restored): says so instead of "both updated", and reloads', async () => {
+        const loadsBefore = await failWith(Object.assign(new Error('raw incomplete'), { code: 'EXCHANGE_RATE_PAIR_INCOMPLETE' }));
+        expect(lastToast()).toMatchObject({ variant: 'destructive', description: expect.stringMatching(/inverse rate is missing/i) });
+        await waitFor(() => expect(svc.getAllExchangeRates.mock.calls.length).toBeGreaterThan(loadsBefore));
+      });
+
+      it('0 rows for a super_admin: the rate no longer exists, NOT a permissions message', async () => {
+        await failWith(Object.assign(new Error('raw not found'), { code: 'NOT_FOUND', context: { reason: 'no_rows' } }));
+        expect(lastToast().description).toMatch(/no longer exists/i);
+        expect(lastToast().description).not.toMatch(/super admin/i);
+      });
+
+      it('RLS refusal keeps the super_admin-only message', async () => {
+        await failWith(Object.assign(new Error('raw forbidden'), { code: 'FORBIDDEN', context: { requiredRole: 'super_admin' } }));
+        expect(lastToast().description).toMatch(/Only a super admin/);
+      });
+    });
   });
 
   describe('other pairs (USD->CUP)', () => {

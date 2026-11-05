@@ -80,6 +80,8 @@ export const ERROR_CODES = {
   PAYMENT_FAILED: 'PAYMENT_FAILED',
   DELIVERY_PROOF_REQUIRED: 'DELIVERY_PROOF_REQUIRED',
   EXCHANGE_RATE_UNAVAILABLE: 'EXCHANGE_RATE_UNAVAILABLE',
+  EXCHANGE_RATE_PAIR_INCOMPLETE: 'EXCHANGE_RATE_PAIR_INCOMPLETE',
+  EXCHANGE_RATE_PAIR_PARTIAL: 'EXCHANGE_RATE_PAIR_PARTIAL',
 
   // Server
   INTERNAL_SERVER_ERROR: 'INTERNAL_SERVER_ERROR',
@@ -130,6 +132,8 @@ const ERROR_MESSAGES = {
   [ERROR_CODES.PAYMENT_FAILED]: 'Payment processing failed.',
   [ERROR_CODES.DELIVERY_PROOF_REQUIRED]: 'Delivery proof is required to complete this operation.',
   [ERROR_CODES.EXCHANGE_RATE_UNAVAILABLE]: 'The exchange rate for this currency pair is not available.',
+  [ERROR_CODES.EXCHANGE_RATE_PAIR_INCOMPLETE]: 'The exchange rate pair is incomplete (its inverse rate is missing or inactive); the direct rate was restored.',
+  [ERROR_CODES.EXCHANGE_RATE_PAIR_PARTIAL]: 'The exchange rate pair may be only partially updated; reload and review it.',
 
   // Server
   [ERROR_CODES.INTERNAL_SERVER_ERROR]: 'An internal server error occurred. Please try again later.',
