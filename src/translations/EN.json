@@ -1129,6 +1129,7 @@
       "rateUpdatedAt": "Last updated: {date}",
       "rateChangeConfirmTitle": "Confirm large rate change",
       "rateChangeConfirmMessage": "The USD to EUR rate changes from {previous} to {next} ({percent}%). Bizum quotes use this rate; make sure the new value is correct.",
+      "rateChangeConfirmMessageGeneric": "The {from} to {to} rate changes from {previous} to {next} ({percent}%). Make sure the new value is correct.",
       "rateChangeConfirmAction": "Save anyway",
       "pairNotAllowed": "Only active currencies can be used in a rate, except an inactive EUR as the target of a USD rate."
     },

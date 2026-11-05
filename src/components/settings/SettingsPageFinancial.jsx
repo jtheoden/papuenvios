@@ -8,7 +8,7 @@ import { getPrimaryButtonStyle, getHeadingStyle } from '@/lib/styleUtils';
 import { toast } from '@/components/ui/use-toast';
 import {
   getCurrencies, getAllCurrencies, createCurrency, updateCurrency, deleteCurrency,
-  getAllExchangeRates, saveExchangeRate, deleteExchangeRate, deleteExchangeRatePair, updateExchangeRatePair
+  getAllExchangeRates, saveExchangeRatePair, deleteExchangeRate, deleteExchangeRatePair, updateExchangeRatePair
 } from '@/lib/currencyService';
 import { supabase } from '@/lib/supabase';
 import { saveMarginSettings } from '@/lib/financialSettingsService';
@@ -520,17 +520,8 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
     }
 
     try {
-      const result = await saveExchangeRate(newRate);
+      const result = await saveExchangeRatePair(newRate);
       if (result.error) throw result.error;
-
-      const inverseRate = {
-        fromCurrencyId: newRate.toCurrencyId,
-        toCurrencyId: newRate.fromCurrencyId,
-        rate: (1 / parseFloat(newRate.rate)).toString(),
-        effectiveDate: newRate.effectiveDate
-      };
-      const inverseResult = await saveExchangeRate(inverseRate);
-      if (inverseResult.error) throw inverseResult.error;
 
       await loadExchangeRates();
       setShowAddRate(false);
@@ -543,13 +534,15 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         title: t('settings.financial.ratesSaved')
       });
     } catch (error) {
-      if (handleSessionExpired(error)) return;
-      console.error('Error saving rate:', error);
-      toast({
-        title: t('settings.financial.saveError'),
-        description: error.message,
-        variant: 'destructive'
-      });
+      if (!handleSessionExpired(error)) {
+        console.error('Error saving rate:', error);
+        toast({
+          title: t('settings.financial.saveError'),
+          description: error.message,
+          variant: 'destructive'
+        });
+      }
+      await loadExchangeRates();
     }
   };
 
@@ -704,10 +697,11 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         });
         return;
       }
-      if (requiresChangeConfirmation(editingRatePair.originalRate, editingRatePair.rate)) {
-        setRateChangeConfirm({ isOpen: true, pair: editingRatePair });
-        return;
-      }
+    }
+
+    if (requiresChangeConfirmation(editingRatePair.originalRate, editingRatePair.rate)) {
+      setRateChangeConfirm({ isOpen: true, pair: editingRatePair });
+      return;
     }
 
     await commitRatePairUpdate(editingRatePair);
@@ -1321,14 +1315,18 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         )}
       </motion.div>
 
-      {/* Large USD->EUR rate change confirmation */}
+      {/* Large rate change confirmation */}
       <ConfirmationModal
         isOpen={rateChangeConfirm.isOpen}
         onClose={handleCloseRateChangeConfirm}
         onConfirm={handleConfirmRateChange}
         title={t('settings.financial.rateChangeConfirmTitle')}
         message={rateChangeConfirm.pair
-          ? t('settings.financial.rateChangeConfirmMessage', {
+          ? t(isUsdEurPair(rateChangeConfirm.pair.fromCurrency?.code, rateChangeConfirm.pair.toCurrency?.code)
+            ? 'settings.financial.rateChangeConfirmMessage'
+            : 'settings.financial.rateChangeConfirmMessageGeneric', {
+              from: rateChangeConfirm.pair.fromCurrency?.code,
+              to: rateChangeConfirm.pair.toCurrency?.code,
               previous: String(Number(rateChangeConfirm.pair.originalRate)),
               next: String(Number(rateChangeConfirm.pair.rate)),
               percent: (rateChangeRatio(rateChangeConfirm.pair.originalRate, rateChangeConfirm.pair.rate) * 100).toFixed(1)

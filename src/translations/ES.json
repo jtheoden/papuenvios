@@ -1137,6 +1137,7 @@
       "rateUpdatedAt": "Última actualización: {date}",
       "rateChangeConfirmTitle": "Confirmar cambio grande de tasa",
       "rateChangeConfirmMessage": "La tasa USD a EUR cambia de {previous} a {next} ({percent}%). Las cotizaciones de Bizum usan esta tasa; verifique que el nuevo valor sea correcto.",
+      "rateChangeConfirmMessageGeneric": "La tasa {from} a {to} cambia de {previous} a {next} ({percent}%). Verifique que el nuevo valor sea correcto.",
       "rateChangeConfirmAction": "Guardar de todos modos",
       "pairNotAllowed": "Solo se pueden usar monedas activas en una tasa, salvo un EUR inactivo como destino de una tasa desde USD."
     },
