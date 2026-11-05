@@ -1644,6 +1644,7 @@
     "checkout": "Proceed to Checkout",
     "shippingUnavailable": "We do not ship to this destination right now. Choose another municipality or province, or contact support.",
     "invalidItems": "Some items in your cart have an invalid price or quantity. Remove them or refresh the page to continue.",
+    "currencyUnavailable": "We could not load the currencies and exchange rates. Please reload the page to continue.",
     "rateUnavailable": {
       "notice": "No exchange rate is available for {currency}; amounts are shown in USD. Select USD to continue with payment."
     },

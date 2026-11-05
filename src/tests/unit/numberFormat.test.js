@@ -35,6 +35,12 @@ describe('formatMoney', () => {
     expect(plain(formatMoney(12345.5, { currency: 'USD', language: 'es' }))).toBe('12.345,50 US$');
   });
 
+  it('can show the ISO currency code instead of the symbol (currencyDisplay: code)', () => {
+    expect(plain(formatMoney(26, { currency: 'USD', language: 'es', currencyDisplay: 'code' }))).toBe('26,00 USD');
+    expect(plain(formatMoney(26, { currency: 'USD', language: 'en', currencyDisplay: 'code' }))).toBe('USD 26.00');
+    expect(plain(formatMoney(7700, { currency: 'CUP', language: 'es', currencyDisplay: 'code' }))).toBe('7700,00 CUP');
+  });
+
   it('defaults to USD and to the English locale', () => {
     expect(formatMoney(5)).toBe('$5.00');
   });

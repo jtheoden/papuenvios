@@ -1652,6 +1652,7 @@
     "checkout": "Proceder al Pago",
     "shippingUnavailable": "No realizamos envíos a este destino por ahora. Elige otro municipio o provincia, o contacta a soporte.",
     "invalidItems": "Algunos artículos de tu carrito tienen un precio o cantidad inválidos. Quítalos o recarga la página para continuar.",
+    "currencyUnavailable": "No pudimos cargar las monedas ni las tasas de cambio. Recargue la página para continuar.",
     "rateUnavailable": {
       "notice": "No hay una tasa de cambio disponible para {currency}; se muestran los importes en USD. Elige USD para continuar con el pago."
     },
