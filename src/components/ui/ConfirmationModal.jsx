@@ -21,7 +21,7 @@ const ConfirmationModal = ({
   currency = 'USD',
   recipientName,
   itemCount,
-  estimatedDelivery = '24-72 horas',
+  estimatedDelivery = 'Entrega estimada, no garantizada; el plazo depende de la zona.',
   whatsappUrl = '',
   whatsappNumber = '',
   whatsappLoading = false,

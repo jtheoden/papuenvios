@@ -216,7 +216,7 @@
   },
   "remittances": {
     "title": "Remesas a Cuba",
-    "subtitle": "Envía dinero a Cuba desde USA y España de forma rápida y segura",
+    "subtitle": "Envíe dinero a Cuba desde Estados Unidos. Pague con Zelle y le confirmamos cada paso de la entrega.",
     "calculator": "Calculadora de Remesas",
     "amount": "Cantidad a Enviar (USD)",
     "country": "País de Destino",
@@ -231,6 +231,20 @@
     "sendNew": "Nueva Remesa",
     "myRemittances": "Mis Remesas",
     "howItWorks": "¿Cómo Funciona?",
+    "features": {
+      "rates": {
+        "title": "Tasa visible antes de pagar",
+        "description": "Le mostramos la tasa, la comisión y el total antes de que pague."
+      },
+      "delivery": {
+        "title": "Plazo según la zona",
+        "description": "Entrega estimada, no garantizada; el plazo depende de la zona."
+      },
+      "tracking": {
+        "title": "Aviso en cada paso",
+        "description": "Le avisamos en cada paso y le enviamos la confirmación de entrega."
+      }
+    },
     "step1": {
       "title": "Selecciona el País",
       "description": "Elige el país de destino y la cantidad a enviar"
@@ -472,7 +486,7 @@
       "trackYourRemittances": "Consulte el estado de sus envíos de dinero",
       "trackRemittances": "Consulte el estado de sus envíos de dinero",
       "noRemittances": "No tiene remesas registradas",
-      "noRemittancesDesc": "Envíe su primera remesa de forma rápida y segura",
+      "noRemittancesDesc": "Envíe su primera remesa. Pague con Zelle y le confirmamos cada paso de la entrega.",
       "remittanceNumber": "Número de Remesa",
       "amountSent": "Enviado",
       "toDeliver": "A Entregar",
@@ -598,7 +612,7 @@
       "importantNote": "Importante",
       "proofNote": "Su remesa será procesada una vez validemos el comprobante de pago. Recibirá una notificación cuando esto ocurra.",
       "pageTitle": "Enviar Remesa",
-      "pageSubtitle": "Envía dinero de forma rápida y segura",
+      "pageSubtitle": "Pague con Zelle y le confirmamos cada paso de la entrega.",
       "selectTypeRequired": "Seleccione el tipo de remesa *",
       "rate": "Tasa",
       "calculating": "Calculando...",
@@ -654,7 +668,7 @@
       "paymentInstructions": "Ahora realiza el pago y sube el comprobante para completar el proceso.",
       "proofSubmittedSuccess": "¡Comprobante enviado exitosamente!",
       "submitProofAndComplete": "Enviar Comprobante y Completar",
-      "estimatedDeliveryTime": "24-72 horas",
+      "estimatedDeliveryTime": "Entrega estimada, no garantizada; el plazo depende de la zona.",
       "couponLabel": "Cupón de descuento (opcional)",
       "couponPlaceholder": "Ingresa tu código",
       "applyCoupon": "Aplicar",
@@ -1753,7 +1767,7 @@
       "contactWhatsapp": "Contactar por WhatsApp",
       "back": "Atrás",
       "processing": "Procesando...",
-      "estimatedDelivery": "24-72 horas"
+      "estimatedDelivery": "Entrega estimada, no garantizada; el plazo depende de la zona."
     },
     "restored": {
       "title": "¡Bienvenido de vuelta!",

@@ -216,7 +216,7 @@
   },
   "remittances": {
     "title": "Remittances to Cuba",
-    "subtitle": "Send money to Cuba from USA and Spain quickly and securely",
+    "subtitle": "Send money to Cuba from the United States. Pay with Zelle and we confirm every step of the delivery.",
     "calculator": "Remittance Calculator",
     "amount": "Amount to Send (USD)",
     "country": "Destination Country",
@@ -231,6 +231,20 @@
     "sendNew": "New Remittance",
     "myRemittances": "My Remittances",
     "howItWorks": "How It Works",
+    "features": {
+      "rates": {
+        "title": "Rate shown before you pay",
+        "description": "We show you the rate, the fee and the total before you pay."
+      },
+      "delivery": {
+        "title": "Timing depends on the area",
+        "description": "Estimated delivery, not guaranteed; timing depends on the area."
+      },
+      "tracking": {
+        "title": "Updates at every step",
+        "description": "We notify you at every step and send you the delivery confirmation."
+      }
+    },
     "step1": {
       "title": "Select Country",
       "description": "Choose the destination country and amount to send"
@@ -472,7 +486,7 @@
       "trackYourRemittances": "Track the status of your money transfers",
       "trackRemittances": "Track the status of your money transfers",
       "noRemittances": "You have no registered remittances",
-      "noRemittancesDesc": "Send your first remittance quickly and securely",
+      "noRemittancesDesc": "Send your first remittance. Pay with Zelle and we confirm every step of the delivery.",
       "remittanceNumber": "Remittance Number",
       "amountSent": "Sent",
       "toDeliver": "To Deliver",
@@ -590,7 +604,7 @@
       "importantNote": "Important",
       "proofNote": "Your remittance will be processed once we validate the payment proof. You will receive a notification when this happens.",
       "pageTitle": "Send Remittance",
-      "pageSubtitle": "Send money quickly and securely",
+      "pageSubtitle": "Pay with Zelle and we confirm every step of the delivery.",
       "selectTypeRequired": "Select remittance type *",
       "rate": "Rate",
       "calculating": "Calculating...",
@@ -646,7 +660,7 @@
       "paymentInstructions": "Now make the payment and upload the proof to complete the process.",
       "proofSubmittedSuccess": "Proof submitted successfully!",
       "submitProofAndComplete": "Submit Proof and Complete",
-      "estimatedDeliveryTime": "24-72 hours",
+      "estimatedDeliveryTime": "Estimated delivery, not guaranteed; timing depends on the area.",
       "couponLabel": "Discount coupon (optional)",
       "couponPlaceholder": "Enter your code",
       "applyCoupon": "Apply",
@@ -1745,7 +1759,7 @@
       "contactWhatsapp": "Contact via WhatsApp",
       "back": "Back",
       "processing": "Processing...",
-      "estimatedDelivery": "24-72 hours"
+      "estimatedDelivery": "Estimated delivery, not guaranteed; timing depends on the area."
     },
     "restored": {
       "title": "Welcome back!",

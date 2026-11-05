@@ -1747,7 +1747,7 @@ const CartPage = ({ onNavigate }) => {
         currency={confirmedOrderInfo?.currency}
         recipientName={confirmedOrderInfo?.recipientName}
         itemCount={confirmedOrderInfo?.itemCount}
-        estimatedDelivery={language === 'es' ? '24-72 horas' : '24-72 hours'}
+        estimatedDelivery={t('cart.payment.estimatedDelivery')}
         whatsappUrl={confirmedOrderInfo?.whatsappUrl}
         whatsappNumber={confirmedOrderInfo?.whatsappNumber}
         whatsappLoading={confirmedOrderInfo?.whatsappLoading}
