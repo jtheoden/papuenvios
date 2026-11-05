@@ -92,16 +92,21 @@ let DashboardPage;
 let usePendingRemittances;
 let useRefundQueue;
 
-beforeAll(async () => {
+beforeAll(() => {
   vi.stubEnv('VITE_SUPABASE_URL', 'https://test.supabase.co');
   vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'anon-key');
   vi.stubGlobal('fetch', countingFetch);
+});
+// Fresh modules per test (a page load): the request cache and the polling resources of one test, stamped with its
+// simulated clock, must not leak into the next.
+const loadApp = async () => {
+  vi.resetModules();
   ({ default: Header } = await import('@/components/Header'));
   ({ CurrencyProvider } = await import('@/contexts/CurrencyContext'));
   ({ default: DashboardPage } = await import('@/components/DashboardPage'));
   ({ usePendingRemittances } = await import('@/hooks/usePendingRemittances'));
   ({ useRefundQueue } = await import('@/hooks/useRefundQueue'));
-});
+};
 afterAll(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
@@ -133,12 +138,13 @@ const runHour = async ({ withDashboard = false, withAdminPanel = false, hidden =
 };
 
 describe('admin tab request budget (1 simulated hour, realtime silent)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
     localStorage.clear();
     sessionStorage.clear();
     requests.length = 0;
     setHidden(false);
+    await loadApp();
   });
   afterEach(() => {
     cleanup();
