@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const singleMock = vi.fn();
 vi.mock('@/lib/supabase', () => ({
   supabase: { from: () => ({ select: () => ({ limit: () => ({ single: singleMock }) }) }) },
+  withTimeout: (promise) => promise,
 }));
 
 import { resolveHeroLayout, HERO_LAYOUTS, DEFAULT_HERO_LAYOUT } from '@/lib/heroLayout';
