@@ -1151,9 +1151,22 @@
     },
     "visual": {
       "brand": {
-        "applyPreset": "Aplicar paleta PapuEnvíos",
-        "applyPresetHint": "Rellena el formulario con los colores de la marca. No se guarda nada hasta que presione \"Guardar Personalización\", siempre que la vista previa en vivo siga apagada.",
-        "applied": "Paleta PapuEnvíos aplicada al formulario. La vista previa en vivo se desactivó y nada se ha guardado todavía; presione \"Guardar Personalización\" para confirmar.",
+        "theme": {
+          "title": "Tema por defecto del sitio",
+          "hint": "Elija el aspecto con el que se muestra el sitio a todos los usuarios. El cambio se previsualiza en el formulario y no se aplica hasta que presione \"Guardar Personalización\".",
+          "classic": {
+            "name": "Clásico (azul y morado)",
+            "description": "El aspecto actual: botones azules, acentos morados, degradados y fondo gris claro."
+          },
+          "papuenvios": {
+            "name": "PapuEnvíos (dorado y marfil)",
+            "description": "La paleta de la marca: botones dorados, texto carbón, fondo marfil y bordes beige, sin degradados."
+          },
+          "inUse": "En uso",
+          "changes": "Al elegir un tema se reemplazan los colores de cabecera, menús, pestañas, botones, pie de página, fondo, insignia del carrito y bordes. No cambian el logo, los textos, los colores primario y secundario, ni el carrusel. Al volver a Clásico se restauran los valores anteriores.",
+          "restricted": "Solo un super administrador puede cambiar el tema por defecto.",
+          "pending": "Tema aplicado al formulario. La vista previa en vivo se desactivó y nada se ha guardado todavía; presione \"Guardar Personalización\" para confirmar."
+        },
         "undoPreset": "Restaurar valores anteriores",
         "sectionTitle": "Marca y acentos",
         "sectionHint": "Colores de la insignia del carrito, el punto activo del carrusel, bordes, texto secundario, acento suave y anillo de foco.",

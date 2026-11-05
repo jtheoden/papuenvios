@@ -9,7 +9,8 @@ import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { isImageUploadError, getImageUploadMessageKey } from '@/lib/imageStorage';
 import { DEFAULT_VISUAL_SETTINGS, clearVisualSettingsCache, saveVisualSettings, applyVisualSettingsToDOM } from '@/lib/businessVisualSettingsService';
-import { BRAND_PRESET, pickNewKeys, getContrastIssues } from '@/lib/brandPalette';
+import { pickNewKeys, getContrastIssues } from '@/lib/brandPalette';
+import { THEME_IDS, THEME_PRESETS, resolveThemeId, pickThemeKeys, selectTheme } from '@/lib/visualThemes';
 import {
   getCarouselSlides, createCarouselSlide, updateCarouselSlide,
   hardDeleteCarouselSlide, toggleCarouselSlideActive
@@ -17,7 +18,11 @@ import {
 import { useRealtimeCarouselSlides } from '@/hooks/useRealtimeSubscription';
 import FooterPreview from '@/components/settings/FooterPreview';
 
-const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVisualSettings }) => {
+// Colours drawn in each theme card (decorative; the description carries the meaning)
+const SWATCH_KEYS = ['buttonBgColor', 'headerMenuActiveBgColor', 'pageBgColor', 'headingColor'];
+
+// canChangeTheme: only a super admin may pick the default theme (the tab itself is open to admins)
+const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVisualSettings, canChangeTheme = false }) => {
   const { t, language } = useLanguage();
   const [livePreview, setLivePreview] = useState(true); // Toggle for live preview
   const isUserEditing = useRef(false); // Track if user is actively editing
@@ -96,7 +101,9 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     carouselAutoplaySpeed: visualSettings.carouselAutoplaySpeed || 5000,
     carouselTransitionSpeed: visualSettings.carouselTransitionSpeed || 1000,
     // Brand refresh keys
-    ...pickNewKeys(visualSettings)
+    ...pickNewKeys(visualSettings),
+    // Selectable default theme (activeTheme + classic snapshot)
+    ...pickThemeKeys(visualSettings)
   });
   const [logoPreview, setLogoPreview] = useState(visualSettings.logo || '');
   const [faviconPreview, setFaviconPreview] = useState(visualSettings.favicon || '');
@@ -192,13 +199,18 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       carouselEnabled: visualSettings.carouselEnabled !== undefined ? visualSettings.carouselEnabled : true,
       carouselAutoplaySpeed: visualSettings.carouselAutoplaySpeed || 5000,
       carouselTransitionSpeed: visualSettings.carouselTransitionSpeed || 1000,
-      ...pickNewKeys(visualSettings)
+      ...pickNewKeys(visualSettings),
+      ...pickThemeKeys(visualSettings)
     };
     setAppearance(newAppearance);
     setLogoPreview(visualSettings.logo || '');
     setFaviconPreview(visualSettings.favicon || '');
     setHasChanges(false);
   }, [visualSettings]);
+
+  const selectedThemeId = resolveThemeId(appearance);
+  const savedThemeId = resolveThemeId(visualSettings);
+  const themePending = selectedThemeId !== savedThemeId; // chosen in the form, not saved yet
 
   // Update appearance with live preview
   const updateAppearance = useCallback((key, value) => {
@@ -207,23 +219,24 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     const newAppearance = { ...appearance, [key]: value };
     setAppearance(newAppearance);
 
-    // Apply live preview to the entire system
-    if (livePreview) {
+    // Apply live preview to the entire system (never while a theme choice is unsaved: it would persist it)
+    if (livePreview && !themePending) {
       setVisualSettings({ ...visualSettings, ...newAppearance });
     }
 
     // Reset editing flag after a delay
     setTimeout(() => { isUserEditing.current = false; }, 1000);
-  }, [appearance, visualSettings, setVisualSettings, livePreview]);
+  }, [appearance, visualSettings, setVisualSettings, livePreview, themePending]);
 
-  // Brand preset: fills the FORM only. Live preview goes off because updateAppearance would
-  // otherwise persist the whole form (through setVisualSettings) on the next edit.
-  const handleApplyBrandPreset = () => {
-    setPresetUndo({ appearance, livePreview });
-    setAppearance(prev => ({ ...prev, ...BRAND_PRESET }));
+  // Theme selector: fills the FORM only. Live preview goes off (and stays locked while the choice is
+  // unsaved) because updateAppearance would otherwise persist the whole form on the next edit.
+  const handleSelectTheme = (themeId) => {
+    if (!canChangeTheme || themeId === selectedThemeId) return;
+    setPresetUndo(prev => prev ?? { appearance, livePreview }); // undo goes back to before the first choice
+    setAppearance(selectTheme(appearance, themeId));
     setLivePreview(false);
     setHasChanges(true);
-    // Same guard as updateAppearance: an external visualSettings refresh must not wipe the preset.
+    // Same guard as updateAppearance: an external visualSettings refresh must not wipe the choice.
     isUserEditing.current = true;
     setTimeout(() => { isUserEditing.current = false; }, 1000);
   };
@@ -619,6 +632,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
             <input
               type="checkbox"
               checked={livePreview}
+              disabled={themePending}
               onChange={e => setLivePreview(e.target.checked)}
               className="rounded"
             />
@@ -637,24 +651,74 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
           </div>
         )}
 
-        {/* Brand preset + contrast warning */}
+        {/* Default theme selector + contrast warning */}
         <div className="mb-6 p-4 rounded-xl border border-amber-200 bg-amber-50/60">
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" variant="outline" onClick={handleApplyBrandPreset} className="h-9 px-3">
-              <Palette className="h-4 w-4 mr-2" />
-              {t('settings.visual.brand.applyPreset')}
-            </Button>
-            {presetUndo && (
+          <p id="theme-selector-label" className="text-base font-semibold text-gray-900">{t('settings.visual.brand.theme.title')}</p>
+          <p id="theme-selector-hint" className="text-sm text-gray-700 mt-1">{t('settings.visual.brand.theme.hint')}</p>
+          <div
+            role="radiogroup"
+            aria-labelledby="theme-selector-label"
+            aria-describedby="theme-selector-hint"
+            className="grid sm:grid-cols-2 gap-3 mt-3"
+          >
+            {THEME_IDS.map((themeId) => {
+              const selected = themeId === selectedThemeId;
+              const nameId = `theme-${themeId}-name`;
+              const descId = `theme-${themeId}-desc`;
+              return (
+                <label
+                  key={themeId}
+                  className={`relative flex flex-col gap-2 rounded-xl border-2 bg-white p-4 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-gray-900 ${
+                    selected ? 'border-gray-900' : 'border-gray-200'
+                  } ${canChangeTheme ? 'cursor-pointer hover:border-gray-500' : 'cursor-not-allowed opacity-75'}`}
+                >
+                  <input
+                    type="radio"
+                    name="visual-default-theme"
+                    value={themeId}
+                    checked={selected}
+                    disabled={!canChangeTheme}
+                    onChange={() => handleSelectTheme(themeId)}
+                    aria-labelledby={nameId}
+                    aria-describedby={descId}
+                    className="sr-only"
+                  />
+                  <span className="flex items-center justify-between gap-2">
+                    <span id={nameId} className="font-semibold text-gray-900">{t(`settings.visual.brand.theme.${themeId}.name`)}</span>
+                    <span className="flex items-center gap-1 text-xs font-medium">
+                      {selected && <Check className="h-4 w-4 text-gray-900" aria-hidden="true" />}
+                      {themeId === savedThemeId && (
+                        <span className="rounded-full bg-gray-900 px-2 py-0.5 text-white">{t('settings.visual.brand.theme.inUse')}</span>
+                      )}
+                    </span>
+                  </span>
+                  <span className="flex gap-1.5">
+                    {SWATCH_KEYS.map((key) => (
+                      <span
+                        key={key}
+                        data-testid="theme-swatch"
+                        aria-hidden="true"
+                        className="h-6 w-6 rounded-full border border-gray-300"
+                        style={{ backgroundColor: THEME_PRESETS[themeId][key] }}
+                      />
+                    ))}
+                  </span>
+                  <span id={descId} className="text-sm text-gray-700">{t(`settings.visual.brand.theme.${themeId}.description`)}</span>
+                </label>
+              );
+            })}
+          </div>
+          <p className="text-xs text-gray-600 mt-3">{t('settings.visual.brand.theme.changes')}</p>
+          {!canChangeTheme && <p className="text-xs text-amber-800 mt-1">{t('settings.visual.brand.theme.restricted')}</p>}
+          {presetUndo && (
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <p data-testid="brand-preset-applied" role="status" className="text-sm text-green-700">
+                {t('settings.visual.brand.theme.pending')}
+              </p>
               <Button type="button" variant="ghost" onClick={handleUndoBrandPreset} className="h-9 px-3">
                 {t('settings.visual.brand.undoPreset')}
               </Button>
-            )}
-          </div>
-          <p className="text-xs text-gray-600 mt-2">{t('settings.visual.brand.applyPresetHint')}</p>
-          {presetUndo && (
-            <p data-testid="brand-preset-applied" role="status" className="text-sm text-green-700 mt-2">
-              {t('settings.visual.brand.applied')}
-            </p>
+            </div>
           )}
           <div data-testid="brand-contrast-warning" role="status" className={contrastIssues.length ? 'mt-3 text-sm text-amber-800' : undefined}>
             {contrastIssues.length > 0 && (

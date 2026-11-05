@@ -9,7 +9,10 @@ const flatten = (node, prefix = '') =>
 const lookup = (dict, path) => path.split('.').reduce((acc, k) => (acc ? acc[k] : undefined), dict);
 
 const REQUIRED = [
-  'applyPreset', 'applyPresetHint', 'applied', 'undoPreset',
+  'undoPreset',
+  'theme.title', 'theme.hint', 'theme.classic.name', 'theme.classic.description',
+  'theme.papuenvios.name', 'theme.papuenvios.description',
+  'theme.inUse', 'theme.changes', 'theme.restricted', 'theme.pending',
   'sectionTitle', 'sectionHint',
   'cartBadgeBg', 'cartBadgeText', 'carouselDotActive', 'border', 'mutedText', 'softAccent', 'focusRing',
   'contrastWarning',

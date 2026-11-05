@@ -1143,9 +1143,22 @@
     },
     "visual": {
       "brand": {
-        "applyPreset": "Apply PapuEnvíos palette",
-        "applyPresetHint": "Fills the form with the brand colors. Nothing is saved until you press \"Save Customization\", as long as live preview stays off.",
-        "applied": "PapuEnvíos palette applied to the form. Live preview was turned off and nothing has been saved yet; press \"Save Customization\" to confirm.",
+        "theme": {
+          "title": "Default site theme",
+          "hint": "Choose the look every user sees on the site. The change is previewed in the form and is not applied until you press \"Save Customization\".",
+          "classic": {
+            "name": "Classic (blue and violet)",
+            "description": "The current look: blue buttons, violet accents, gradients and a light grey background."
+          },
+          "papuenvios": {
+            "name": "PapuEnvíos (gold and ivory)",
+            "description": "The brand palette: gold buttons, charcoal text, ivory background and beige borders, no gradients."
+          },
+          "inUse": "In use",
+          "changes": "Choosing a theme replaces the colors of the header, menus, tabs, buttons, footer, background, cart badge and borders. The logo, texts, primary and secondary colors and the carousel are not changed. Going back to Classic restores the previous values.",
+          "restricted": "Only a super admin can change the default theme.",
+          "pending": "Theme applied to the form. Live preview was turned off and nothing has been saved yet; press \"Save Customization\" to confirm."
+        },
         "undoPreset": "Restore previous values",
         "sectionTitle": "Brand and accents",
         "sectionHint": "Colors for the cart badge, the active carousel dot, borders, secondary text, soft accent and focus ring.",
