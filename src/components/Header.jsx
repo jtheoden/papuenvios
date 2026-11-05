@@ -13,7 +13,7 @@ import { getRefundCounts, REFUNDS_CHANGED_EVENT } from '@/lib/refundService';
 import { useRealtimeOrders, useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import { semanticColors } from '@/lib/colorTokens';
 import RoleUnresolvedBanner from '@/components/RoleUnresolvedBanner';
-import { isRefreshBlocked } from '@/lib/refreshGuard';
+import { isRefreshBlocked, skipWhileRefreshBlocked } from '@/lib/refreshGuard';
 import { buildHeaderTheme } from '@/lib/headerTheme';
 
 // Colours come from CSS variables set on the header root (see buildHeaderTheme). Hover and focus
@@ -201,7 +201,7 @@ const Header = ({ currentPage, onNavigate }) => {
   useEffect(() => {
     if (!isAdminRole) return undefined;
     loadPendingCount();
-    const interval = setInterval(loadPendingCount, 30000);
+    const interval = setInterval(skipWhileRefreshBlocked(loadPendingCount), 30000);
     return () => clearInterval(interval);
   }, [isAdminRole, loadPendingCount]);
 

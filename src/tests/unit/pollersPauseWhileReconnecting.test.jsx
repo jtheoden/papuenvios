@@ -83,6 +83,26 @@ describe('pollers pause while the token refresh is blocked', () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
+  it('skipWhileRefreshBlocked also skips while the tab is hidden (no egress for background tabs)', () => {
+    const fn = vi.fn();
+    const guarded = skipWhileRefreshBlocked(fn);
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    guarded();
+    hidden.mockReturnValue(false);
+    guarded();
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('admin badge does not poll while the tab is hidden', async () => {
+    const { getPendingOrdersCount } = await import('@/lib/orderService');
+    render(<Header currentPage="home" onNavigate={() => {}} />);
+    await advance(1000);
+    const first = getPendingOrdersCount.mock.calls.length;
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    await advance(90_000);
+    expect(getPendingOrdersCount.mock.calls.length).toBe(first);
+  });
+
   it('admin badge keeps its last count (never "0 pending") while reconnecting, and refreshes again afterwards', async () => {
     render(<Header currentPage="home" onNavigate={() => {}} />);
     await advance(1000);
