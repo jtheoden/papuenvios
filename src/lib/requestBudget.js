@@ -7,9 +7,10 @@
 //  2. An allowlist of display selects (CACHED_SELECTS) is cached for API_CACHE_TTL_MS in memory and localStorage
 //     (public data), so other tabs and reloads reuse them. Every other read, including those that price an operation,
 //     goes to the network.
-//  3. Budget guardrail: once `maxPerMinute` real requests of the same method+path happened in the sliding minute, a read
-//     is served from the last IDENTICAL answer (never another query's body) only if that answer is younger than the
-//     window, with ONE logError per episode; served answers do not count. Otherwise the request goes through.
+//  3. Budget guardrail, only for the polling counters in GUARDED_READS: once `maxPerMinute` requests of the same
+//     method+path really reached the network in the sliding minute, a read is served from the last IDENTICAL answer
+//     (never another query's body) only if that answer is younger than the window, with ONE logError per episode.
+//     Joined and served reads do not count. Every other read always goes through.
 //  4. Writes (POST/PATCH/PUT/DELETE, mutating RPCs) are never delayed or dropped. When one lands, every cached answer
 //     and every in-flight read is dropped (this tab and, via localStorage, the others' caches) and subscribeApiWrites
 //     listeners are told, so the screen reloads what the action changed at once.
@@ -34,6 +35,16 @@ const CACHED_SELECTS = {
   currencies: new Set(['id,code,symbol,is_base'])
 };
 const isCachedRead = (table, url) => Boolean(CACHED_SELECTS[table]?.has(url.searchParams.get('select')));
+// The guardrail only ever answers these polling counters from memory (method + REST path). Any other read, and in
+// particular anything about money, prices or stock (rates, currencies, costs, Zelle accounts, FX status...), always
+// reaches the network.
+const GUARDED_READS = new Set([
+  'POST /rest/v1/rpc/get_pending_orders_count',
+  'POST /rest/v1/rpc/admin_refund_counts',
+  'POST /rest/v1/rpc/admin_list_refunds',
+  'HEAD /rest/v1/remittances',
+  'HEAD /rest/v1/site_visits'
+]);
 const READ_RPC = /^(get|list|has|admin_list)_|^(admin_refund_counts|admin_courier_report|orders_with_consumed_stock|select_available_zelle_account)$/;
 const REST_PREFIX = '/rest/v1/';
 const MAX_STORED_BODY = 64 * 1024;
@@ -214,10 +225,11 @@ export const createRequestBudgetFetch = (
     const cached = ttlCache.get(req.key);
     if (cached && Date.now() - cached.at < cacheTtlMs) return responseOf(cached.snap);
 
-    const recent = recentHits(req.budgetKey);
-    const last = lastAnswer.get(req.key);
+    const guarded = GUARDED_READS.has(req.budgetKey);
+    const recent = guarded ? recentHits(req.budgetKey) : null;
+    const last = guarded ? lastAnswer.get(req.key) : null;
     // Over budget: the identical answer is served only while it is younger than the window itself.
-    if (recent.length >= maxPerMinute && last && Date.now() - last.at < windowMs) {
+    if (guarded && recent.length >= maxPerMinute && last && Date.now() - last.at < windowMs) {
       if (!flagged.has(req.budgetKey)) {
         flagged.add(req.budgetKey);
         logError(new Error(`Request budget exceeded: ${req.budgetKey} (> ${maxPerMinute}/min), serving the last answer`), {
@@ -227,20 +239,25 @@ export const createRequestBudgetFetch = (
       }
       return responseOf(last.snap);
     }
-    recent.push(Date.now());
+    // Only requests that really reach the network count (joined and served ones do not).
+    const countNetworkRequest = () => recent?.push(Date.now());
 
     // A caller with its own abort signal must not abort (or be aborted by) other callers: no sharing.
-    if (init?.signal) return baseFetch(input, init);
+    if (init?.signal) {
+      countNetworkRequest();
+      return baseFetch(input, init);
+    }
 
     let pending = inFlight.get(req.key);
     if (!pending) {
+      countNetworkRequest();
       const startedAt = generation;
       pending = baseFetch(input, init)
         .then((response) => snapshotOf(response, req.method))
         .then((snap) => {
           const storable = snap.status >= 200 && snap.status < 300 && (snap.body?.length ?? 0) <= MAX_STORED_BODY;
           if (storable && startedAt === generation) {
-            remember(lastAnswer, req.key, { at: Date.now(), snap });
+            if (guarded) remember(lastAnswer, req.key, { at: Date.now(), snap });
             if (req.cached) {
               remember(ttlCache, req.key, { at: Date.now(), snap, persist: true }); // public data
               persist();

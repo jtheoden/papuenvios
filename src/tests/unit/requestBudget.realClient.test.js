@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Real supabase client + real services over a scripted network. Each test re-imports the modules so it starts with
 // an empty in-memory cache (what a page reload does); localStorage is kept or cleared on purpose.
-const net = { rate: 400, orders: 'v1', pendingOrders: null, calls: [] };
+const net = { rate: 400, orders: 'v1', pendingOrders: null, pending: 2, latencyMs: 0, calls: [] };
 
 const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
@@ -13,6 +13,11 @@ const scriptedFetch = async (input, init = {}) => {
   net.calls.push(`${method} ${path}${url.search}`);
   const accept = new Headers(init.headers).get('accept') || '';
   const one = (rows) => (accept.includes('vnd.pgrst.object') ? rows[0] ?? null : rows);
+  if (path === '/rest/v1/rpc/get_pending_orders_count') return json(net.pending);
+  if (method === 'HEAD' && path === '/rest/v1/remittances') {
+    if (net.latencyMs) await new Promise((resolve) => setTimeout(resolve, net.latencyMs));
+    return new Response(null, { status: 200, headers: { 'Content-Range': `*/${net.pending}` } });
+  }
   if (method !== 'GET' && method !== 'HEAD') return json([]);
   if (path === '/rest/v1/currencies') {
     return json([{ id: 'usd', code: 'USD', symbol: '$', is_base: true }, { id: 'cup', code: 'CUP', symbol: '$', is_base: false }]);
@@ -48,6 +53,8 @@ describe('requestBudget with the real Supabase client', () => {
     net.rate = 400;
     net.orders = 'v1';
     net.pendingOrders = null;
+    net.pending = 2;
+    net.latencyMs = 0;
     net.calls = [];
   });
   afterEach(() => {
@@ -101,38 +108,89 @@ describe('requestBudget with the real Supabase client', () => {
     expect((await lateResult).data[0].v).toBe('after');
   });
 
+  const countRemittances = (supabase, status = 'payment_proof_uploaded') =>
+    supabase.from('remittances').select('id', { count: 'exact', head: true }).eq('status', status).then((r) => r.count);
+  const pendingOrders = (supabase) => supabase.rpc('get_pending_orders_count').then((r) => r.data);
+  const network = (prefix) => net.calls.filter((c) => c.startsWith(prefix)).length;
+
   it('the guardrail never serves an answer older than its window', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     const { supabase } = await load();
-    expect((await supabase.from('orders').select('id, v').eq('id', 1)).data[0].v).toBe('v1');
+    expect(await countRemittances(supabase)).toBe(2);
     vi.setSystemTime(Date.now() + 60 * 60_000);
-    for (let i = 2; i < 40; i += 1) await supabase.from('orders').select('id, v').eq('id', i);
-    net.orders = 'v2';
-    expect((await supabase.from('orders').select('id, v').eq('id', 1)).data[0].v).toBe('v2');
+    for (let i = 0; i < 40; i += 1) await countRemittances(supabase, `s${i}`);
+    net.pending = 5;
+    expect(await countRemittances(supabase)).toBe(5);
   });
 
   it('answers served by the guardrail do not count: it recovers as soon as the real requests leave the window', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     const { supabase } = await load();
-    for (let i = 0; i < 30; i += 1) await supabase.from('orders').select('id, v');
+    for (let i = 0; i < 30; i += 1) await pendingOrders(supabase);
     for (let i = 0; i < 50; i += 1) {
       vi.setSystemTime(Date.now() + 1_000); // a runaway loop keeps asking every second
-      await supabase.from('orders').select('id, v');
+      await pendingOrders(supabase);
     }
-    const network = () => net.calls.filter((c) => c.startsWith('GET /rest/v1/orders')).length;
-    const before = network();
-    net.orders = 'v2';
+    const before = network('POST /rest/v1/rpc/get_pending_orders_count');
+    expect(before).toBe(30);
+    net.pending = 9;
     vi.setSystemTime(Date.now() + 11_000); // > 60 s since the last real request
-    expect((await supabase.from('orders').select('id, v')).data[0].v).toBe('v2');
-    expect(network()).toBe(before + 1);
+    expect(await pendingOrders(supabase)).toBe(9);
+    expect(network('POST /rest/v1/rpc/get_pending_orders_count')).toBe(before + 1);
   });
 
   it('a realtime change makes the next identical read go to the network even over budget', async () => {
     const { supabase } = await load();
     const { noteRemoteChange } = await import('@/lib/requestBudget');
-    for (let i = 0; i < 35; i += 1) await supabase.from('orders').select('id, v');
-    net.orders = 'changed';
+    for (let i = 0; i < 35; i += 1) await pendingOrders(supabase);
+    net.pending = 7;
     noteRemoteChange();
-    expect((await supabase.from('orders').select('id, v')).data[0].v).toBe('changed');
+    expect(await pendingOrders(supabase)).toBe(7);
+  });
+
+  describe('the guardrail never touches money reads, and only real requests count', () => {
+    it('reads joined in flight do not count: after 40 parallel identical counts the next one still goes to the network', async () => {
+      const { supabase } = await load();
+      net.latencyMs = 20; // a real network: the 40 calls overlap and join
+      await Promise.all(Array.from({ length: 40 }, () => countRemittances(supabase)));
+      expect(network('HEAD /rest/v1/remittances')).toBeLessThan(30);
+      net.pending = 3;
+      expect(await countRemittances(supabase)).toBe(3);
+    });
+
+    it('40 parallel getExchangeRate, then a rate change: getExchangeRate sees the new rate', async () => {
+      const { svc } = await load();
+      await Promise.all(Array.from({ length: 40 }, () => svc.getExchangeRate('USD', 'CUP')));
+      net.rate = 500;
+      expect(await svc.getExchangeRate('USD', 'CUP')).toBe(500);
+    });
+
+    it('CartPage pattern: 4 parallel convertCurrency per totals change, 8 changes, then a rate change', async () => {
+      const { svc } = await load();
+      for (let change = 0; change < 8; change += 1) {
+        await Promise.all([1, 2, 3, 4].map((n) => svc.convertCurrency(n + change, 'USD', 'CUP')));
+      }
+      net.rate = 500;
+      expect(await svc.convertCurrency(1, 'USD', 'CUP')).toBe(500);
+    });
+
+    it('getActiveRatesMap x30 does not starve getExchangeRate of fresh data', async () => {
+      const { svc } = await load();
+      for (let i = 0; i < 30; i += 1) await svc.getActiveRatesMap();
+      net.rate = 500;
+      expect(await svc.getExchangeRate('USD', 'CUP')).toBe(500);
+      expect((await svc.getActiveRatesMap())['usd-cup']).toBe(500);
+    });
+
+    it('combined: counters over budget are served from memory while money reads joined in flight stay live', async () => {
+      const { svc, supabase } = await load();
+      for (let i = 0; i < 31; i += 1) await pendingOrders(supabase);
+      net.pending = 8;
+      expect(await pendingOrders(supabase)).toBe(2); // guardrail: counter served from its recent answer
+      await Promise.all(Array.from({ length: 35 }, () => svc.getExchangeRate('USD', 'CUP')));
+      net.rate = 500;
+      await Promise.all(Array.from({ length: 35 }, () => svc.getExchangeRate('USD', 'CUP')));
+      expect(await svc.getExchangeRate('USD', 'CUP')).toBe(500);
+    });
   });
 });

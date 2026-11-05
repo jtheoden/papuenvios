@@ -182,11 +182,20 @@ describe('requestBudget fetch', () => {
     it('after an own write the next read goes to the network even over budget (never stale after an action)', async () => {
       const base = makeBase();
       const f = createRequestBudgetFetch(base, { maxPerMinute: 2 });
-      const url = `${BASE}/orders?select=id`;
-      for (let i = 0; i < 4; i += 1) await f(url);
+      const url = `${BASE}/rpc/get_pending_orders_count`;
+      const read = () => f(url, { method: 'POST', body: '{}' });
+      for (let i = 0; i < 4; i += 1) await read();
       expect(base).toHaveBeenCalledTimes(2);
       await f(`${BASE}/orders?id=eq.1`, { method: 'PATCH', body: '{}' });
-      expect(await body(await f(url))).toBe(4);
+      expect(await body(await read())).toBe(4);
+    });
+
+    it('only polling counters are guarded: any other read always reaches the network', async () => {
+      const base = makeBase();
+      const f = createRequestBudgetFetch(base, { maxPerMinute: 2 });
+      for (let i = 0; i < 5; i += 1) await f(`${BASE}/exchange_rates?select=rate&from_currency_id=eq.usd`);
+      for (let i = 0; i < 5; i += 1) await f(`${BASE}/rpc/get_payment_fx_status`, { method: 'POST', body: '{}' });
+      expect(base).toHaveBeenCalledTimes(10);
     });
 
     it('with no identical earlier answer the read goes through (never serves another query\'s body)', async () => {
