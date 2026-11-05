@@ -37,15 +37,14 @@ import RemittanceTypesConfig from './RemittanceTypesConfig';
 import ZellePaymentHistoryTab from './admin/ZellePaymentHistoryTab';
 import ActivityLogTab from './ActivityLogTab';
 import { fetchAllRows } from '@/lib/fetchAllRows';
-import { skipWhileRefreshBlocked } from '@/lib/refreshGuard';
+import { useVisiblePolling, POLL_STATS_MS } from '@/lib/visiblePolling';
+import { affectsAdminPending } from '@/lib/adminPollKeys';
 
 // Cost reads settle to { data, error } so one missing RPC does not blank the whole dashboard.
 const settleCosts = (promise) =>
   promise
     .then((costs) => ({ data: [...costs.values()], error: null }))
     .catch((error) => ({ data: null, error }));
-
-const DASHBOARD_POLL_MS = 5 * 60 * 1000;
 
 const HEADLINE_PERIODS = [
   { key: 'daily', titleKey: 'dashboard.dailyBreakdown', Icon: Clock, border: 'border-emerald-500', iconBg: 'bg-emerald-100', iconColor: 'text-emerald-600', netColor: 'text-emerald-600' },
@@ -301,37 +300,26 @@ const DashboardPage = ({ onNavigate }) => {
     }
   }, []);
 
+  // Orders/remittances refresh via realtime and own writes; the 5-min poll is a safety net and the only source for
+  // the other figures and site_visits (not in the realtime publication). 30 s here cost ~3.5 GB of egress in 10 days.
+  // Nothing is asked while the tab is hidden; coming back refreshes at once (visiblePolling).
+  const canSeeStats = Boolean(user && (isAdmin || isSuperAdmin));
+  const refreshStats = useVisiblePolling('dashboard:stats', fetchStats, {
+    enabled: canSeeStats,
+    intervalMs: POLL_STATS_MS,
+    refreshOnWrite: affectsAdminPending
+  });
+  useVisiblePolling('dashboard:visits', fetchVisitStats, { enabled: canSeeStats, intervalMs: POLL_STATS_MS });
+
   useRealtimeOrders({
     enabled: isAdmin || isSuperAdmin,
-    onUpdate: fetchStats
+    onUpdate: refreshStats
   });
 
   useRealtimeRemittances({
     enabled: isAdmin || isSuperAdmin,
-    onUpdate: fetchStats
+    onUpdate: refreshStats
   });
-
-  useEffect(() => {
-    if (user && (isAdmin || isSuperAdmin)) {
-      fetchStats();
-      fetchVisitStats();
-
-      // Orders/remittances already refresh via realtime; the poll is a safety net and the only source for
-      // site_visits (not in the realtime publication). 30 s here cost ~3.5 GB of egress in 10 days.
-      const refresh = skipWhileRefreshBlocked(() => {
-        fetchStats();
-        fetchVisitStats();
-      });
-      const statsInterval = setInterval(refresh, DASHBOARD_POLL_MS);
-      // Coming back to the tab refreshes at once instead of waiting up to 5 min.
-      document.addEventListener('visibilitychange', refresh);
-
-      return () => {
-        clearInterval(statsInterval);
-        document.removeEventListener('visibilitychange', refresh);
-      };
-    }
-  }, [user, isAdmin, isSuperAdmin, fetchStats, fetchVisitStats]);
 
   // Calculate profits and apply exchange rate
   // Order profit is an ESTIMATE: per-product margin, discount deducted, shipping excluded

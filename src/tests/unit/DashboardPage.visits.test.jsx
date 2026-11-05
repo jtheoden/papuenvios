@@ -102,25 +102,28 @@ describe('DashboardPage visits (server-side counts)', () => {
 
   // Egress: a dashboard left open polled 9 full lists every 30 s (~80 kB each), ~3.5 GB in 10 days.
   it('polls every 5 minutes and skips the poll while the tab is hidden', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    // visiblePolling schedules with setTimeout and measures freshness with Date.now
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'], shouldAdvanceTime: true });
+    vi.spyOn(Math, 'random').mockReturnValue(0.5); // no jitter
     state.visits = [hoursAgo(1)];
     render(<DashboardPage onNavigate={() => {}} />);
     await waitFor(() => expect(state.visitCalls).toHaveLength(4));
 
-    await act(async () => { vi.advanceTimersByTime(30_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
     expect(state.visitCalls).toHaveLength(4);
 
-    await act(async () => { vi.advanceTimersByTime(270_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(270_000); });
     await waitFor(() => expect(state.visitCalls).toHaveLength(8));
 
     const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
-    await act(async () => { vi.advanceTimersByTime(300_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(300_000); });
     expect(state.visitCalls).toHaveLength(8);
 
     hidden.mockReturnValue(false);
     await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
     await waitFor(() => expect(state.visitCalls).toHaveLength(12));
     hidden.mockRestore();
+    Math.random.mockRestore();
   });
 
   it('says the visits are unavailable instead of showing zeros when the counts fail', async () => {

@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listRefunds } from '@/lib/refundService';
-import { skipWhileRefreshBlocked } from '@/lib/refreshGuard';
 import { summarizeRefunds, withQueueState } from '@/lib/refundRules';
+import { useVisiblePolling, watchPoll, POLL_REALTIME_FALLBACK_MS } from '@/lib/visiblePolling';
+import { ADMIN_PENDING_KEY, REFUND_QUEUE_KEY, affectsAdminPending } from '@/lib/adminPollKeys';
 
-const POLL_INTERVAL_MS = 30000;
 const PAGE_SIZE = 200;
+const loadQueue = () => listRefunds({ status: 'all', limit: PAGE_SIZE });
 
 /**
- * The admin refunds queue (open and resolved requests): one load, a 30 s poll, and `reload` after every resolution.
- * No realtime subscription on purpose: the header badge already listens to orders / remittances (a cancellation shows
- * there at once) and the work tabs keep one realtime remittance subscription (UserPanel.adminTabs test). A new request
- * therefore appears in the list within 30 s.
+ * The admin refunds queue (open and resolved requests): one load, `reload` after every resolution, and a reload
+ * whenever the header badge's refund counts change. No realtime subscription on purpose: the header badge already
+ * listens to orders / remittances (a cancellation creates the request and shows there at once) and the work tabs keep
+ * one realtime remittance subscription (UserPanel.adminTabs test). Own writes reload it too; a 5-minute poll (visible
+ * tab only) is the safety net.
  *
  * actionableCount / overdueCount are recomputed from the stored instants on every render of fresh data, so they match
  * the badge (RPC admin_refund_counts uses the same predicates).
@@ -34,44 +36,55 @@ export const useRefundQueue = ({ enabled = true } = {}) => {
     };
   }, []);
 
-  const reload = useCallback(async () => {
-    try {
-      const { items, total: serverTotal } = await listRefunds({ status: 'all', limit: PAGE_SIZE });
-      if (!mountedRef.current) return;
-      const actionableIds = items
-        .map((r) => withQueueState(r))
-        .filter((r) => r.status === 'pending' && r.queueState !== 'on_hold')
-        .map((r) => r.id);
-      if (knownIdsRef.current) {
-        setNewCount(actionableIds.filter((id) => !knownIdsRef.current.has(id)).length);
-      }
-      knownIdsRef.current = new Set(actionableIds);
-      setRefunds(items);
-      setTotal(serverTotal);
-      setError(null);
-      setRefreshFailed(false);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      // Keep the last good list on later failures; only a first-load failure is blocking.
-      if (knownIdsRef.current) setRefreshFailed(true);
-      else setError(err);
-    } finally {
-      if (mountedRef.current) setLoading(false);
+  const onData = useCallback(({ items, total: serverTotal }) => {
+    if (!mountedRef.current) return;
+    const actionableIds = items
+      .map((r) => withQueueState(r))
+      .filter((r) => r.status === 'pending' && r.queueState !== 'on_hold')
+      .map((r) => r.id);
+    if (knownIdsRef.current) {
+      setNewCount(actionableIds.filter((id) => !knownIdsRef.current.has(id)).length);
     }
+    knownIdsRef.current = new Set(actionableIds);
+    setRefunds(items);
+    setTotal(serverTotal);
+    setError(null);
+    setRefreshFailed(false);
+    setLoading(false);
   }, []);
+
+  const onError = useCallback((err) => {
+    if (!mountedRef.current) return;
+    // Keep the last good list on later failures; only a first-load failure is blocking.
+    if (knownIdsRef.current) setRefreshFailed(true);
+    else setError(err);
+    setLoading(false);
+  }, []);
+
+  const reload = useVisiblePolling(REFUND_QUEUE_KEY, loadQueue, {
+    enabled,
+    intervalMs: POLL_REALTIME_FALLBACK_MS,
+    refreshOnWrite: affectsAdminPending,
+    onData,
+    onError
+  });
+
+  // A refund created/changed elsewhere (seen by the badge through realtime) reloads the list.
+  const lastCountsRef = useRef(null);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    return watchPoll(ADMIN_PENDING_KEY, ({ refunds: counts }) => {
+      const signature = JSON.stringify(counts ?? null);
+      if (lastCountsRef.current !== null && lastCountsRef.current !== signature) reload();
+      lastCountsRef.current = signature;
+    });
+  }, [enabled, reload]);
 
   const retry = useCallback(async () => {
     setLoading(true);
     setError(null);
     await reload();
   }, [reload]);
-
-  useEffect(() => {
-    if (!enabled) return undefined;
-    reload();
-    const interval = setInterval(skipWhileRefreshBlocked(reload), POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [enabled, reload]);
 
   const summary = useMemo(() => summarizeRefunds(refunds.map((r) => withQueueState(r))), [refunds]);
 
