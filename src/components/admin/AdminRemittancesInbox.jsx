@@ -13,6 +13,7 @@ import {
   rejectPayment,
   startProcessing,
   confirmDelivery,
+  adminCancelRemittance,
   getCommissionOverride
 } from '@/lib/remittanceService';
 import ImageProofModal from '@/components/ImageProofModal';
@@ -198,6 +199,27 @@ const AdminRemittancesInbox = ({
     );
   };
 
+  const handleCancel = async (remittance) => {
+    const reason = await showModal({
+      title: t('adminInbox.cancelRemittance'),
+      message: t('remittances.admin.confirmCancelMessage', { number: remittance.remittance_number }),
+      input: true,
+      inputLabel: `${t('remittances.admin.cancelReason')} *`,
+      inputPlaceholder: t('remittances.admin.cancelReasonPlaceholder'),
+      confirmText: t('adminInbox.cancelRemittance'),
+      cancelText: t('common.cancel'),
+      type: 'danger',
+      required: true
+    });
+    if (!reason) return;
+    await runAction(
+      remittance,
+      () => adminCancelRemittance(remittance.id, reason),
+      'remittances.admin.remittanceCancelled',
+      'remittances.admin.cancelFailed'
+    );
+  };
+
   const handleStartProcessing = async (remittance) => {
     const confirmed = await showModal({
       title: t('remittances.admin.process'),
@@ -298,6 +320,22 @@ const AdminRemittancesInbox = ({
           >
             <XCircle className="h-4 w-4" aria-hidden="true" />
             {t('adminInbox.reject')}
+          </button>
+          {adjustButton}
+        </>
+      );
+    }
+    if (remittance.status === 'payment_pending') {
+      return (
+        <>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => handleCancel(remittance)}
+            className={`${base} border border-red-300 text-red-700 hover:bg-red-50 bg-white`}
+          >
+            <XCircle className="h-4 w-4" aria-hidden="true" />
+            {t('adminInbox.cancelRemittance')}
           </button>
           {adjustButton}
         </>
