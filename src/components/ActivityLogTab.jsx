@@ -7,6 +7,7 @@ import { useBusiness } from '@/contexts/BusinessContext';
 import { fetchActivityLogs } from '@/lib/activityLogger';
 import { useRealtimeActivityLogs } from '@/hooks/useRealtimeSubscription';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
+import { getActivityActionLabel, getActivityEntityLabel } from '@/lib/activityLogLabels';
 
 const ACTION_OPTIONS = [
   'all',
@@ -155,7 +156,7 @@ const ActivityLogTab = () => {
       width: 'w-36',
       render: (value) => (
         <span className="px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">
-          {t(`activityLog.actions.${value}`, { defaultValue: value })}
+          {getActivityActionLabel(t, value)}
         </span>
       )
     },
@@ -164,9 +165,7 @@ const ActivityLogTab = () => {
       label: t('activityLog.entity') || 'Entidad',
       width: 'w-32',
       render: (value) => (
-        <span className="capitalize">
-          {t(`activityLog.entities.${value}`, { defaultValue: value })}
-        </span>
+        <span>{getActivityEntityLabel(t, value)}</span>
       )
     },
     {
@@ -221,7 +220,7 @@ const ActivityLogTab = () => {
               <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value)} aria-label={t('activityLog.action')} className="text-sm focus:outline-none">
                 {ACTION_OPTIONS.map(option => (
                   <option key={option} value={option}>
-                    {option === 'all' ? t('common.all') : t(`activityLog.actions.${option}`, { defaultValue: option })}
+                    {option === 'all' ? t('common.all') : getActivityActionLabel(t, option)}
                   </option>
                 ))}
               </select>
@@ -231,7 +230,7 @@ const ActivityLogTab = () => {
               <select value={entityFilter} onChange={(e) => setEntityFilter(e.target.value)} aria-label={t('activityLog.entity')} className="text-sm focus:outline-none">
                 {ENTITY_OPTIONS.map(option => (
                   <option key={option} value={option}>
-                    {option === 'all' ? t('common.all') : t(`activityLog.entities.${option}`, { defaultValue: option })}
+                    {option === 'all' ? t('common.all') : getActivityEntityLabel(t, option)}
                   </option>
                 ))}
               </select>
@@ -397,13 +396,13 @@ const ActivityLogTab = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-purple-50 rounded-lg p-3">
                   <p className="text-xs text-purple-600 mb-1">{t('activityLog.action') || 'Acción'}</p>
-                  <span className="px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700 capitalize">
-                    {selectedLog.action}
+                  <span className="px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">
+                    {getActivityActionLabel(t, selectedLog.action)}
                   </span>
                 </div>
                 <div className="bg-blue-50 rounded-lg p-3">
                   <p className="text-xs text-blue-600 mb-1">{t('activityLog.entity') || 'Entidad'}</p>
-                  <p className="text-sm font-semibold capitalize">{selectedLog.entity_type}</p>
+                  <p className="text-sm font-semibold">{getActivityEntityLabel(t, selectedLog.entity_type)}</p>
                 </div>
               </div>
 
