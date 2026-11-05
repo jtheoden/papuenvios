@@ -5,21 +5,18 @@ import LegalLink from '@/components/LegalLink';
 import RegulatoryNotice from '@/components/RegulatoryNotice';
 import { openConsentPreferences } from '@/lib/consent';
 import { getSupportEmail } from '@/lib/legalConfig';
-import { getGuidedWhatsappPhone } from '@/lib/notificationSettingsService';
-import { generateWhatsAppURL } from '@/lib/whatsappService';
 import { buildFooterTheme } from '@/lib/footerTheme';
 import { LEGAL_LINK, SIGNATURE, MUTED, BRAND, FOOTER_ROOT, FOOTER_DIVIDER } from '@/lib/footerStyles';
 
 const Footer = ({ onNavigate, showNotice = true }) => {
   const { t, language } = useLanguage();
-  const { visualSettings, notificationSettings } = useBusiness();
+  const { visualSettings } = useBusiness();
   const currentDate = new Date().toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US');
   const companyName = visualSettings?.companyName || 'PapuEnvíos';
   const currentYear = new Date().getFullYear();
-  // Identity block: only data the business already configured (env + notification settings); nothing is invented.
+  // Contact block: public configuration only (company name + VITE_SUPPORT_EMAIL). Never notification_settings:
+  // that table is readable by any signed-in user and holds admin contact data.
   const supportEmail = getSupportEmail();
-  const whatsappPhone = getGuidedWhatsappPhone(notificationSettings);
-  const whatsappUrl = whatsappPhone ? generateWhatsAppURL(whatsappPhone, '') : '';
 
   return (
     <footer className={`mt-8 md:mt-12 ${FOOTER_ROOT}`} style={buildFooterTheme(visualSettings || {})}>
@@ -47,21 +44,14 @@ const Footer = ({ onNavigate, showNotice = true }) => {
           </span>
         </div>
 
-        {(supportEmail || whatsappUrl) && (
+        {supportEmail && (
           <div
             role="group"
             aria-label={t('footer.identity.label')}
             className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs md:text-sm"
           >
             <span className={BRAND}>{companyName}</span>
-            {supportEmail && (
-              <a href={`mailto:${supportEmail}`} className={LEGAL_LINK}>{supportEmail}</a>
-            )}
-            {whatsappUrl && (
-              <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className={LEGAL_LINK}>
-                {t('footer.identity.whatsapp')}
-              </a>
-            )}
+            <a href={`mailto:${supportEmail}`} className={LEGAL_LINK}>{supportEmail}</a>
           </div>
         )}
 

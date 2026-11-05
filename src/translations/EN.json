@@ -150,8 +150,7 @@
     "date": "Today is {date}",
     "developedBy": "Developed by {name}",
     "identity": {
-      "label": "Business contact",
-      "whatsapp": "Support WhatsApp"
+      "label": "Business contact"
     },
     "to": "To",
     "copyright": "All rights reserved"

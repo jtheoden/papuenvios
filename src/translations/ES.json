@@ -150,8 +150,7 @@
     "date": "Hoy es {date}",
     "developedBy": "Desarrollado por {name}",
     "identity": {
-      "label": "Contacto del negocio",
-      "whatsapp": "WhatsApp de soporte"
+      "label": "Contacto del negocio"
     },
     "to": "Para",
     "copyright": "Todos los derechos reservados"

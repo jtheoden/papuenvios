@@ -40,15 +40,28 @@ describe('Footer business identity', () => {
     expect(credit.textContent).not.toMatch(/@/);
   });
 
-  it('with support email and WhatsApp configured, shows company, mailto and wa.me links', () => {
+  it('with the public support email, shows the company name and a mailto link', () => {
     vi.stubEnv('VITE_SUPPORT_EMAIL', 'soporte@acme.test');
-    state.notificationSettings = { whatsapp: '+1 (305) 555-0100' };
     const footer = mount();
     const identity = within(footer).getByRole('group', { name: ES.footer.identity.label });
     expect(within(identity).getByText('Acme Envios')).toBeInTheDocument();
     expect(within(identity).getByRole('link', { name: 'soporte@acme.test' })).toHaveAttribute('href', 'mailto:soporte@acme.test');
-    const wa = within(identity).getByRole('link', { name: new RegExp(ES.footer.identity.whatsapp) });
-    expect(wa.getAttribute('href')).toMatch(/^https:\/\/wa\.me\/13055550100/);
+  });
+
+  // notification_settings is readable by any signed-in user and holds admin contact data: never shown in the footer.
+  it('never shows WhatsApp or admin data from the notification settings', () => {
+    vi.stubEnv('VITE_SUPPORT_EMAIL', 'soporte@acme.test');
+    state.notificationSettings = { whatsapp: '+1 (305) 555-0100', whatsappGroup: 'https://chat.whatsapp.com/x', adminEmail: 'admin@acme.test' };
+    const footer = mount();
+    expect(footer.querySelector('a[href*="wa.me"], a[href*="whatsapp"]')).toBeNull();
+    expect(footer.textContent).not.toMatch(/admin@acme\.test|305/);
+  });
+
+  it('renders no contact block from WhatsApp alone', () => {
+    vi.stubEnv('VITE_SUPPORT_EMAIL', '');
+    state.notificationSettings = { whatsapp: '+1 (305) 555-0100' };
+    const footer = mount();
+    expect(within(footer).queryByRole('group', { name: ES.footer.identity.label })).toBeNull();
   });
 
   it('without contact data, renders no identity block and invents nothing', () => {
@@ -59,11 +72,4 @@ describe('Footer business identity', () => {
     expect(footer.querySelector('a[href*="wa.me"]')).toBeNull();
   });
 
-  it('shows only the channel that exists (email only)', () => {
-    vi.stubEnv('VITE_SUPPORT_EMAIL', 'soporte@acme.test');
-    const footer = mount();
-    const identity = within(footer).getByRole('group', { name: ES.footer.identity.label });
-    expect(within(identity).getByRole('link', { name: 'soporte@acme.test' })).toBeInTheDocument();
-    expect(identity.querySelector('a[href*="wa.me"]')).toBeNull();
-  });
 });
