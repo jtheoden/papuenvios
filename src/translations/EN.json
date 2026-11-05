@@ -58,6 +58,9 @@
     "dashboard": "Dashboard",
     "settings": "Settings",
     "cart": "Cart",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "userMenu": "User menu",
     "userPanel": "My Panel",
     "userManagement": "User Management",
     "blog": "Blog"

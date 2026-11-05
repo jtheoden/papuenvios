@@ -22,10 +22,12 @@ const { ivory, white, charcoal, warmGray, gold, goldDeep, goldSoft, beige } = BR
  * before they existed, so no DB migration is needed.
  * borderColor is already read by UserPanel and styleUtils with a grey fallback, so its default
  * keeps that grey: the brand beige only arrives through BRAND_PRESET.
+ * cartBadge* keeps the legacy red (white text, 4.83:1) so production does not change look until
+ * the super admin applies the preset, which sets the brand gold.
  */
 export const NEW_KEY_DEFAULTS = {
-  cartBadgeBgColor: gold,
-  cartBadgeTextColor: charcoal,
+  cartBadgeBgColor: '#dc2626',
+  cartBadgeTextColor: '#ffffff',
   carouselDotActiveColor: gold,
   borderColor: '#e5e7eb',
   mutedTextColor: warmGray,

@@ -43,8 +43,9 @@ describe('loadVisualSettings with the new brand keys', () => {
   it('fills the new keys with brand defaults when the stored row lacks them', async () => {
     singleMock.mockResolvedValue({ data: { settings: PRODUCTION_ROW }, error: null });
     const s = await loadVisualSettings();
-    expect(s.cartBadgeBgColor).toBe('#FFA500');
-    expect(s.cartBadgeTextColor).toBe('#171717');
+    // legacy red badge: production must not change until the super admin applies the preset
+    expect(s.cartBadgeBgColor).toBe('#dc2626');
+    expect(s.cartBadgeTextColor).toBe('#ffffff');
     expect(s.carouselDotActiveColor).toBe('#FFA500');
     expect(s.mutedTextColor).toBe('#605B52');
     expect(s.softAccentColor).toBe('#FFF1CC');

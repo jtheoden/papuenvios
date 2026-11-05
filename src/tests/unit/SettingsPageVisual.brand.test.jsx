@@ -172,7 +172,8 @@ describe('SettingsPageVisual - contrast warning', () => {
 
   it('reacts to edits of the new cart badge pair', () => {
     setup();
-    fireEvent.change(screen.getByLabelText(NEW_CONTROLS.cartBadgeTextColor), { target: { value: '#ffffff' } });
+    // default badge is the legacy red (#dc2626); light pink text on it is ~2.4:1
+    fireEvent.change(screen.getByLabelText(NEW_CONTROLS.cartBadgeTextColor), { target: { value: '#ff9999' } });
     expect(within(warning()).getByText(new RegExp(`${P}pair\\.cartBadge`))).toBeInTheDocument();
   });
 });

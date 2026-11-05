@@ -81,10 +81,10 @@ describe('BRAND_PRESET', () => {
 });
 
 describe('NEW_KEY_DEFAULTS', () => {
-  it('uses brand defaults, except borderColor which is already read elsewhere with a grey fallback', () => {
+  it('uses brand defaults, except the cart badge (legacy red until the preset) and borderColor (already read elsewhere with a grey fallback)', () => {
     expect(NEW_KEY_DEFAULTS).toEqual({
-      cartBadgeBgColor: '#FFA500',
-      cartBadgeTextColor: '#171717',
+      cartBadgeBgColor: '#dc2626',
+      cartBadgeTextColor: '#ffffff',
       carouselDotActiveColor: '#FFA500',
       borderColor: '#e5e7eb',
       mutedTextColor: '#605B52',

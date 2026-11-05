@@ -394,3 +394,22 @@ Decisiones y verificaciones del dueño: revisar `default_spread_pct` (1.5 %) y l
 - Ticket pendiente (defecto a11y real de la app, NO corregido aqui): las pestanas de `SettingsPage` en mobile son solo icono y sin nombre accesible (`hidden xs:inline` sobre el label y sin `aria-label`).
 - `supabase/e2e/base-public-schema.sql` contiene emails ya versionados en migraciones (super_admin en `handle_new_user()`); es solo estructura, sin datos.
 - Bug latente de la app (ticket): `AdminOffersTab.jsx:405` hace `offer.code.toLowerCase()`; `offers.code` es NULLABLE en el esquema, y una oferta sin codigo tumba todo el Dashboard ("Something went wrong"). La siembra E2E asigna codigo para esquivarlo.
+
+## Marca S1 — Header leyendo Ajustes visuales — 2026-11-04
+
+- `Header.jsx` ya no usa `primaryColor`/`secondaryColor` ni gradientes de marca: los colores salen de `visualSettings` (headerBg/Text, headerMenu*, navBarActive*, cartBadge*, focusRingColor, button*) resueltos por `src/lib/headerTheme.js` como CSS vars `--hdr-*` / `--brand-*` en la raíz del header, con fallback a la paleta si el valor no es HEX. Hover y foco por clases (`hover:bg-[color:var(--hdr-hover-bg)]`, `focus-visible:ring-brand-focus`), sin `onMouseEnter` ni estilos inline.
+- Pestaña activa: `aria-current="page"` + negrita + subrayado en escritorio, pastillas móviles y menú móvil; el fondo/texto vienen de `navBarActive*`. El degradado solo se conserva si `useHeaderGradient`/`useGradient` y `headerGradientColor` válido (filas guardadas hoy).
+- Topbar: wordmark de texto (logo configurado si existe); se retira el cuadro con icono genérico. Sin assets nuevos (logo oficial = S5).
+- Botón de idioma = variante `brand` (buttonBgColor/Text/Hover). Insignia del carrito = `cartBadge*`. Insignia admin de pendientes, `--role-banner-h` y RoleUnresolvedBanner intactos.
+- Tests: `Header.brandTheme.test.jsx` (21) + e2e `header-brand.spec.js` (11, Supabase mockeado, 320/768/1280 ES/EN). Vitest: 3402/3403 (solo `selfHostedFonts`, fallo de entorno conocido). Lint y build OK.
+- Hallazgo (fuera de S1): `tailwind-merge` descarta `bg-[color:...]` cuando va junto a `bg-[image:...]`; usar una sola `[background:var(...)]`. Desbordamiento horizontal de 12 px a 320 px en ES viene de `SECTION.py-20` de la Home (S2), no del header.
+
+### Marca S1 — correcciones tras revisión independiente (2026-11-04)
+- Criterio del dueño: la fila de producción (azul/violeta, `useGradient:true`, sin logo) no cambia de aspecto hasta aplicar el preset. Con `useGradient` activo el header conserva el aspecto legacy (recuadro `ShoppingBag` con degradado, nombre con degradado, pastillas móviles teñidas con `primaryColor`, globo móvil y divisores); con `useGradient:false` (BRAND_PRESET) queda el wordmark plano y las pastillas neutras. Comentario `shortcut:` en `headerTheme.js`/`Header.jsx`: retirar con S5.
+- `NEW_KEY_DEFAULTS.cartBadge*` = rojo legacy `#dc2626` / `#ffffff` (4.83:1); el dorado solo llega por BRAND_PRESET. Tests S0 actualizados (`brandPalette`, `businessVisualSettings.brand`, `SettingsPageVisual.brand`).
+- Botón de idioma = `brand-outline` (neutro en prod; beige/charcoal con preset).
+- `pair()` en `headerTheme.js`: si falta/invalida cualquiera de texto o fondo, caen AMBOS al fallback (header, hover, activo, menú, menú activo, insignia, botón). `gradientDirection` con `Number.isFinite`.
+- A11y: `aria-label` + `aria-expanded` en la hamburguesa; nombre accesible (texto sr-only, para no ocultar el contador) en carrito y avatar; claves `nav.openMenu/closeMenu/userMenu` ES/EN con test de paridad. `motion-reduce:active:scale-100` en NavButton.
+- Variables `--brand-*` del header se MANTIENEN: `SettingsContext` solo aplica `applyVisualSettingsToDOM` tras cargar, así que sin ellas habría un parpadeo al dorado de Tailwind antes de la carga (comportamiento no idéntico).
+- E2E ampliado: fila de prod a 320/768/1280 ES/EN, y caso admin (sesión simulada + 2 insignias) a 768/1280. Comparación visual contra el Header de origin/main con la fila de prod: igual salvo pestaña activa en negrita/subrayada, botón de idioma neutro, insignia roja `#dc2626`.
+- Fuera de alcance (backlog): truncado de pastillas a 320 px, ZelleAccountAlert, dropdown de usuario fijo, acento de `companyName` (S5).
