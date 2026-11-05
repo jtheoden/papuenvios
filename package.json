@@ -16,6 +16,7 @@
     "test:concurrency": "vitest run --config src/tests/concurrency/vitest.config.js",
     "test:e2e": "playwright test",
     "test:e2e:local": "bash scripts/e2e-local.sh run",
+    "test:e2e:startup": "bash scripts/e2e-local.sh run src/tests/e2e/startup-flow.spec.js --project=chromium --retries=0",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:theme": "playwright test -c playwright.theme.config.js",
     "theme:codemod": "node scripts/theme-codemod.mjs",

@@ -156,7 +156,15 @@ load_keys() {
   ANON_KEY="${E2E_ANON_KEY:-}"; SERVICE_KEY="${E2E_SERVICE_ROLE_KEY:-}"
   if [ -z "$ANON_KEY" ] || [ -z "$SERVICE_KEY" ]; then
     need supabase
-    local env_out; env_out="$(supabase status --workdir "$STACK_DIR" -o env 2>/dev/null)" \
+    # Under `npm run`, node_modules/.bin comes first in PATH and its older pinned CLI cannot parse the stack's
+    # config.toml: prefer the first supabase on PATH outside any node_modules/.bin (npm also adds the parents' ones).
+    local cli=supabase dir
+    local IFS=:
+    for dir in $PATH; do
+      [[ "$dir" != */node_modules/.bin ]] && [ -x "$dir/supabase" ] && { cli="$dir/supabase"; break; }
+    done
+    unset IFS
+    local env_out; env_out="$("$cli" status --workdir "$STACK_DIR" -o env 2>/dev/null)" \
       || die "cannot read local keys: stack not running? (or export E2E_ANON_KEY and E2E_SERVICE_ROLE_KEY)"
     ANON_KEY="$(printf '%s\n' "$env_out" | sed -n 's/^ANON_KEY="\(.*\)"$/\1/p')"
     SERVICE_KEY="$(printf '%s\n' "$env_out" | sed -n 's/^SERVICE_ROLE_KEY="\(.*\)"$/\1/p')"
