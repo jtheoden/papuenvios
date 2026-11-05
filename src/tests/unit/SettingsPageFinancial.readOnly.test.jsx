@@ -93,15 +93,21 @@ describe('plain admin (not super_admin): rates are read-only with the reason vis
     expect(screen.getByText('1 USD = 915.0000 CUP')).toBeInTheDocument();
   });
 
-  it('disables New Rate, Edit and Delete pair, each tied to the note', async () => {
+  // aria-disabled (not the native attribute) keeps the control focusable, so a screen reader announces the note.
+  const expectLocked = (button, noteId) => {
+    expect(button).not.toBeDisabled();
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.getAttribute('aria-describedby')).toBe(noteId);
+    button.focus();
+    expect(document.activeElement).toBe(button);
+  };
+
+  it('locks New Rate, Edit and Delete pair (aria-disabled, focusable), each tied to the note', async () => {
     await renderPage();
     const newRate = screen.getByRole('button', { name: /New Rate/ });
     const edit = screen.getByRole('button', { name: /Edit/ });
     const del = screen.getByTitle('Delete rate pair');
-    [newRate, edit, del].forEach((button) => {
-      expect(button).toBeDisabled();
-      expect(button.getAttribute('aria-describedby')).toBe(NOTE_ID);
-    });
+    [newRate, edit, del].forEach((button) => expectLocked(button, NOTE_ID));
   });
 
   it('never opens the editor nor calls a write service', async () => {
@@ -115,15 +121,14 @@ describe('plain admin (not super_admin): rates are read-only with the reason vis
     expect(svc.deleteExchangeRatePair).not.toHaveBeenCalled();
   });
 
-  it('disables deleting a currency (it deactivates its rates) with its own note', async () => {
+  it('locks deleting a currency (it deactivates its rates) with its own note', async () => {
     await renderPage();
     expect(document.getElementById(CURRENCY_NOTE_ID)).toHaveTextContent(EN.settings.financial.currencyDeleteSuperAdminOnly);
     const deleteButtons = screen.getAllByTitle('Delete currency');
     expect(deleteButtons.length).toBeGreaterThan(0);
-    deleteButtons.forEach((button) => {
-      expect(button).toBeDisabled();
-      expect(button.getAttribute('aria-describedby')).toBe(CURRENCY_NOTE_ID);
-    });
+    deleteButtons.forEach((button) => expectLocked(button, CURRENCY_NOTE_ID));
+    fireEvent.click(deleteButtons[0]);
+    expect(svc.deleteExchangeRatePair).not.toHaveBeenCalled();
   });
 });
 

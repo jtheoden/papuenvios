@@ -143,12 +143,17 @@ describe('FxReferenceCard', () => {
     expect(screen.getByRole('button', { name: 'Use as rate' })).toBeDisabled();
   });
 
-  it('lockedBy disables "Use as rate" and points at the existing note without repeating any reason', async () => {
+  it('lockedBy locks "Use as rate" (aria-disabled, still focusable) and points at the existing note without repeating any reason', async () => {
     svc.fetch.mockResolvedValue(reference());
-    render(<FxReferenceCard onUse={vi.fn()} lockedBy="some-note" />);
+    const onUse = vi.fn();
+    render(<FxReferenceCard onUse={onUse} lockedBy="some-note" />);
 
     const button = await screen.findByRole('button', { name: 'Use as rate' });
-    expect(button).toBeDisabled();
+    expect(button).not.toBeDisabled();
+    button.focus();
+    expect(document.activeElement).toBe(button);
+    fireEvent.click(button);
+    expect(onUse).not.toHaveBeenCalled();
     expect(button.getAttribute('aria-describedby')).toBe('some-note');
     expect(button.getAttribute('aria-disabled')).toBe('true');
     expect(screen.queryByText(EN.settings.fxReference.useHint)).toBeNull();

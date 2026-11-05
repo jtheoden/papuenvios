@@ -125,10 +125,11 @@ const FxReferenceCard = ({ onUse, disabledReason = null, lockedBy = null, autoLo
             <Button
               type="button"
               size="sm"
-              className="min-h-[44px] px-3"
-              disabled={!canUse}
+              className="min-h-[44px] px-3 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+              // locked by role: aria-disabled keeps it focusable so the note it points at is announced
+              disabled={!canUse && !lockedBy}
               {...(lockedBy ? { 'aria-disabled': true, 'aria-describedby': lockedBy } : {})}
-              onClick={() => onUse({ rate: reference.rate })}
+              onClick={() => canUse && onUse({ rate: reference.rate })}
             >
               {t('settings.fxReference.use')}
             </Button>

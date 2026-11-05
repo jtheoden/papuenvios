@@ -153,8 +153,11 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   const { visualSettings, applyMarginSettings } = useBusiness();
   const { isSuperAdmin } = useAuth();
   const canWriteRates = Boolean(isSuperAdmin);
+  // aria-disabled (not the native attribute) keeps the control focusable so the note it points at is announced;
+  // every write handler is guarded by canWriteRates.
+  const LOCKED_STYLE = 'aria-disabled:cursor-not-allowed aria-disabled:opacity-50';
   const ratesLock = (describedBy = RATES_NOTE_ID) =>
-    canWriteRates ? {} : { disabled: true, 'aria-disabled': true, 'aria-describedby': describedBy };
+    canWriteRates ? {} : { 'aria-disabled': true, 'aria-describedby': describedBy };
 
   // Currency states
   const [currencies, setCurrencies] = useState([]);
@@ -894,7 +897,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                     <Button
                       variant="destructive"
                       size="icon"
-                      className={`h-8 w-8 ${currency.is_base ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      className={`h-8 w-8 ${LOCKED_STYLE} ${currency.is_base ? 'opacity-50 cursor-not-allowed' : ''}`}
                       onClick={() => !currency.is_base && handleRemoveCurrency(currency.id)}
                       {...(canWriteRates ? { disabled: currency.is_base } : ratesLock(CURRENCY_DELETE_NOTE_ID))}
                       title={currency.is_base
@@ -1007,7 +1010,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
           <Button
             onClick={() => canWriteRates && setShowAddRate(!showAddRate)}
             style={getPrimaryButtonStyle(visualSettings)}
-            className="h-8 px-2 sm:px-3"
+            className={`h-8 px-2 sm:px-3 ${LOCKED_STYLE}`}
             title={t('settings.financial.newRate')}
             {...ratesLock()}
           >
@@ -1330,6 +1333,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                     <Button
                       variant="outline"
                       size="sm"
+                      className={LOCKED_STYLE}
                       onClick={() => handleEditRatePair(pair)}
                       title={language === 'es' ? 'Editar par de tasas' : 'Edit rate pair'}
                       {...ratesLock()}
@@ -1342,6 +1346,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                     <Button
                       variant="destructive"
                       size="sm"
+                      className={LOCKED_STYLE}
                       onClick={() => handleDeleteRatePair(pair.directRate.from_currency_id, pair.directRate.to_currency_id)}
                       title={language === 'es' ? 'Eliminar par de tasas' : 'Delete rate pair'}
                       {...ratesLock()}
