@@ -1,15 +1,6 @@
-import { BRAND_PALETTE, NEW_KEY_DEFAULTS, isHexColor } from '@/lib/brandPalette';
+import { BRAND_PALETTE, NEW_KEY_DEFAULTS, hex, pair, toLongHex } from '@/lib/brandPalette';
 
 const { white, charcoal, goldSoft, gold, goldDeep, beige } = BRAND_PALETTE;
-
-/** First value that is a HEX colour, so nothing unchecked reaches the style attribute. */
-const hex = (...candidates) => candidates.find(isHexColor);
-
-/**
- * A text/background pair: if either colour is not a valid HEX, BOTH fall back, so a good text colour
- * chosen for one background is never left on top of the fallback of the other one.
- */
-const pair = (fg, bg, fgFallback, bgFallback) => (isHexColor(fg) && isHexColor(bg) ? [fg, bg] : [fgFallback, bgFallback]);
 
 /**
  * Header colours resolved from the Visual settings, as CSS custom properties for the header root.
@@ -79,8 +70,7 @@ export const buildHeaderTheme = (s = {}) => {
   // so production keeps its look until the preset is applied; drop it when S5 brings the official logo.
   if (s.useGradient) {
     const from = hex(s.primaryColor, charcoal);
-    // #rgb -> #rrggbb so the alpha suffixes below stay valid 8-digit colours
-    const long = from.length === 4 ? `#${[...from.slice(1)].map((c) => c + c).join('')}` : from;
+    const long = toLongHex(from);
     Object.assign(theme, {
       '--hdr-mark-from': from,
       '--hdr-mark-to': hex(s.secondaryColor, from, charcoal),

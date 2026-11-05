@@ -15,6 +15,7 @@ import {
   hardDeleteCarouselSlide, toggleCarouselSlideActive
 } from '@/lib/carouselService';
 import { useRealtimeCarouselSlides } from '@/hooks/useRealtimeSubscription';
+import FooterPreview from '@/components/settings/FooterPreview';
 
 const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVisualSettings }) => {
   const { t, language } = useLanguage();
@@ -1265,20 +1266,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
           {/* Footer preview */}
           <div className="p-3 bg-white rounded-lg border border-gray-200">
             <p className="text-xs text-gray-500 mb-2">{t('settings.visual.footerPreview')}</p>
-            <div className="rounded-lg overflow-hidden" style={{ backgroundColor: appearance.footerBgColor, borderTop: `1px solid ${appearance.primaryColor}20` }}>
-              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-                <span className="text-xs" style={{ color: appearance.footerTextColor }}>© 2026 {appearance.companyName || 'PapuEnvíos'}</span>
-                <span
-                  className="text-xs font-medium cursor-default transition-colors"
-                  style={{ color: appearance.footerLinkColor }}
-                  onMouseEnter={e => { e.currentTarget.style.color = appearance.footerLinkHoverColor; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = appearance.footerLinkColor; }}
-                >
-                  {t('settings.visual.footerPreviewLink')}
-                </span>
-                <span className="text-xs" style={{ color: appearance.footerTextColor }}>{appearance.companyName || 'PapuEnvíos'}</span>
-              </div>
-            </div>
+            <FooterPreview settings={appearance} />
           </div>
         </div>
 
