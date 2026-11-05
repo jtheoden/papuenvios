@@ -71,6 +71,21 @@ describe('CurrencyContext fails closed without a rate', () => {
     expect(result.current.convertAmount(10, 'cup', 'usd')).toBeNaN();
   });
 
+  it('while a background refresh runs an expired rate stays on screen, but only up to one extra TTL', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    svc.getConversionRate.mockResolvedValueOnce(0.5).mockImplementation(() => new Promise(() => {})); // refresh hangs
+    const { result } = renderHook(() => useCurrency(), { wrapper });
+    await waitFor(() => expect(result.current.convertAmount(10, 'cup', 'usd')).toBe(5));
+
+    vi.setSystemTime(Date.now() + 12 * 60 * 1000); // expired (10 min TTL), refresh starts when the tab comes back
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+    await waitFor(() => expect(svc.getConversionRate).toHaveBeenCalledTimes(2));
+    expect(result.current.convertAmount(10, 'cup', 'usd')).toBe(5);
+
+    vi.setSystemTime(Date.now() + 10 * 60 * 1000); // 22 min old: past the grace, even with the refresh still pending
+    expect(result.current.convertAmount(10, 'cup', 'usd')).toBeNaN();
+  });
+
   it('refetches when rates are saved elsewhere (invalidation)', async () => {
     svc.getConversionRate.mockResolvedValueOnce(0.5).mockResolvedValue(0.25);
     const { result } = renderHook(() => useCurrency(), { wrapper });

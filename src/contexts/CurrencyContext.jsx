@@ -8,6 +8,7 @@ import { UNAVAILABLE } from '@/lib/numberFormat';
 const RATE_TTL_MS = 10 * 60 * 1000;
 /** Background refresh (visible tab). requestBudget caches the rates read for at most half of it. */
 export const RATE_REFRESH_MS = RATE_TTL_MS / 2;
+const RATE_REFRESH_TIMEOUT_MS = 30_000;
 
 const CurrencyContext = createContext();
 
@@ -70,7 +71,10 @@ export const CurrencyProvider = ({ children }) => {
   const refreshingRef = useRef(false);
   const readCachedRate = (cacheKey) => {
     const entry = exchangeRatesCacheRef.current.get(cacheKey);
-    return entry && (entry.expiresAt > Date.now() || refreshingRef.current) ? entry.rate : null;
+    if (!entry) return null;
+    const now = Date.now();
+    // Grace bounded to one extra TTL: a refresh that never answers cannot keep an old rate on screen forever.
+    return entry.expiresAt > now || (refreshingRef.current && entry.expiresAt + RATE_TTL_MS > now) ? entry.rate : null;
   };
 
   /**
@@ -257,13 +261,21 @@ export const CurrencyProvider = ({ children }) => {
   const ratesPollKey = `currency:rates:${selectedCurrency}`;
   const preloadConversionRates = async () => {
     refreshingRef.current = true;
+    let timer;
     try {
-      await Promise.all(
-        currencies
-          .filter(currency => currency.id !== selectedCurrency)
-          .map(currency => getConversionRateWithCache(currency.id, selectedCurrency, { force: true }))
-      );
+      await Promise.race([
+        Promise.all(
+          currencies
+            .filter(currency => currency.id !== selectedCurrency)
+            .map(currency => getConversionRateWithCache(currency.id, selectedCurrency, { force: true }))
+        ),
+        // supabase-js has no request timeout: give up (and back off) instead of waiting forever
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Exchange-rate refresh timed out')), RATE_REFRESH_TIMEOUT_MS);
+        })
+      ]);
     } finally {
+      clearTimeout(timer);
       refreshingRef.current = false;
     }
   };
