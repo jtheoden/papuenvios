@@ -13,6 +13,7 @@ import { getRefundCounts, REFUNDS_CHANGED_EVENT } from '@/lib/refundService';
 import { useRealtimeOrders, useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import { semanticColors } from '@/lib/colorTokens';
 import RoleUnresolvedBanner from '@/components/RoleUnresolvedBanner';
+import BrandLogo from '@/components/BrandLogo';
 import { isRefreshBlocked } from '@/lib/refreshGuard';
 import { buildHeaderTheme } from '@/lib/headerTheme';
 
@@ -264,21 +265,20 @@ const Header = ({ currentPage, onNavigate }) => {
             className="flex items-center gap-1 sm:gap-2 cursor-pointer min-w-0 flex-shrink-0"
             onClick={() => handleNavClick('home')}
           >
-            {visualSettings.logo ? (
-              <img
-                src={visualSettings.logo}
-                alt={visualSettings.companyName || 'Logo'}
-                className="object-contain flex-shrink-0"
-                style={{
-                  maxHeight: `${visualSettings.logoMaxHeight || 40}px`,
-                  width: 'auto'
-                }}
-              />
-            ) : legacyMark && (
-              <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${MARK_GRADIENT}`}>
-                <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-              </div>
-            )}
+            <BrandLogo
+              src={visualSettings.logo}
+              alt={visualSettings.companyName || 'Logo'}
+              className="object-contain flex-shrink-0"
+              style={{
+                maxHeight: `${visualSettings.logoMaxHeight || 40}px`,
+                width: 'auto'
+              }}
+              fallback={legacyMark && (
+                <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${MARK_GRADIENT}`}>
+                  <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                </div>
+              )}
+            />
             {(visualSettings.showCompanyName !== false) && (
               <span
                 className={`text-sm sm:text-xl font-bold truncate max-w-[100px] sm:max-w-none ${legacyMark ? `${MARK_GRADIENT} bg-clip-text text-transparent` : ''}`}

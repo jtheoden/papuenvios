@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { LogIn, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import BrandLogo from '@/components/BrandLogo';
+import wordmarkOnLight from '@/assets/brand/papuenvios-wordmark-onlight.svg';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -9,11 +11,22 @@ import { toast } from '@/components/ui/use-toast';
 import LegalConsentLine from '@/components/LegalConsentLine';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 
+// Same range as the Ajustes > Visual slider (24-64 px).
+const MAX_LOGO_HEIGHT = 64;
+
 const LoginPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { signInWithGoogle } = useAuth();
   const { visualSettings } = useBusiness();
   const [loading, setLoading] = useState(false);
+  const companyName = visualSettings.companyName || 'PapuEnvíos';
+  // Fixed height reserves the box before the image loads (no CLS); object-contain keeps the ratio when width is capped.
+  const logoProps = {
+    alt: companyName,
+    loading: 'eager',
+    className: 'object-contain',
+    style: { height: `${Math.min(Number(visualSettings.logoMaxHeight) || 40, MAX_LOGO_HEIGHT)}px`, width: 'auto', maxWidth: 'min(100%, 320px)' },
+  };
 
   const handleGoogleLogin = async () => {
     setLoading(true);
@@ -47,8 +60,20 @@ const LoginPage = ({ onNavigate }) => {
       >
         {/* Header */}
         <div className="text-center">
-          <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mb-4">
-            <LogIn className="w-8 h-8 text-white" />
+          <div className="flex justify-center mb-4">
+            <BrandLogo
+              src={visualSettings.logo}
+              {...logoProps}
+              fallback={
+                <BrandLogo
+                  src={wordmarkOnLight}
+                  width={1557}
+                  height={235}
+                  {...logoProps}
+                  fallback={<span className="text-2xl font-bold" style={getHeadingStyle(visualSettings)}>{companyName}</span>}
+                />
+              }
+            />
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold" style={getHeadingStyle(visualSettings)}>
             {t('auth.loginTitle')}
