@@ -35,13 +35,18 @@ const RLS = { data: null, error: { code: '42501', message: 'new row violates row
 const USD = '11111111-1111-4111-8111-111111111111';
 const CUP = '22222222-2222-4222-8222-222222222222';
 const REQUIRES_SUPER = { code: 'FORBIDDEN', context: expect.objectContaining({ requiredRole: 'super_admin' }) };
-const NO_ROWS = { code: 'NOT_FOUND', context: expect.not.objectContaining({ requiredRole: expect.anything() }) };
+// A write that matched no row: NOT_FOUND with reason 'no_rows' and NO role claim (the rate may simply be gone).
+const expectNoRows = async (promise) => {
+  const error = await promise.then(() => null, (e) => e);
+  expect(error).toMatchObject({ code: 'NOT_FOUND', context: { reason: 'no_rows' } });
+  expect(error.context).not.toHaveProperty('requiredRole');
+};
 
 beforeEach(() => {
   db.responses = [];
 });
 
-describe('writes refused by RLS are reported as "only a super_admin can change rates"', () => {
+describe('writes that change nothing are reported by their real cause (RLS refusal vs no matching row)', () => {
   const NO_PREVIOUS = ok([]); // saveExchangeRatePair pre-reads a same-day direct row first
 
   it('saveExchangeRate: 42501 row-level security', async () => {
@@ -56,7 +61,7 @@ describe('writes refused by RLS are reported as "only a super_admin can change r
 
   it('deleteExchangeRate: 0 rows affected is not a success, and does not claim a role problem', async () => {
     db.responses = [ok([])];
-    await expect(deleteExchangeRate('rate-1')).rejects.toMatchObject(NO_ROWS);
+    await expectNoRows(deleteExchangeRate('rate-1'));
   });
 
   it('deleteExchangeRate: still succeeds when the row was deactivated', async () => {
@@ -66,12 +71,12 @@ describe('writes refused by RLS are reported as "only a super_admin can change r
 
   it('deleteExchangeRatePair: 0 rows affected is not a success, and does not claim a role problem', async () => {
     db.responses = [ok([])];
-    await expect(deleteExchangeRatePair(USD, CUP)).rejects.toMatchObject(NO_ROWS);
+    await expectNoRows(deleteExchangeRatePair(USD, CUP));
   });
 
   it('updateExchangeRatePair: 0 rows updated is NOT_FOUND without claiming a role problem', async () => {
     db.responses = [ok([]), ok([]), ok([])]; // pre-read, direct update (nothing matched), spare
-    await expect(updateExchangeRatePair(USD, CUP, 915, '2026-11-04')).rejects.toMatchObject(NO_ROWS);
+    await expectNoRows(updateExchangeRatePair(USD, CUP, 915, '2026-11-04'));
   });
 
   it('updateExchangeRatePair: an RLS error on the update is reported the same way', async () => {

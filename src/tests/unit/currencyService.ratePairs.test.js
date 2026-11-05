@@ -118,6 +118,24 @@ describe('saveExchangeRatePair', () => {
     expect(db.ops.some((o) => o.op === 'update')).toBe(false);
   });
 
+  it('pre-reads the same-day direct row filtered by pair AND effective_date', async () => {
+    db.responses = [NO_PREVIOUS, ok({ id: 'direct-1' }), ok({ id: 'inverse-1' })];
+    await saveExchangeRatePair(input);
+    const preRead = db.ops[0];
+    expect(preRead.op).toBe('select');
+    expect(preRead.filters).toContainEqual(['eq', 'from_currency_id', USD]);
+    expect(preRead.filters).toContainEqual(['eq', 'to_currency_id', CUP]);
+    expect(preRead.filters).toContainEqual(['eq', 'effective_date', '2026-11-04']);
+  });
+
+  it('writes nothing when the pre-read fails (no upsert, no change notification)', async () => {
+    db.responses = [fail('pre-read failed')];
+    await expect(saveExchangeRatePair(input)).rejects.toBeDefined();
+    expect(db.ops).toHaveLength(1);
+    expect(db.ops.some((o) => o.op === 'upsert' || o.op === 'update')).toBe(false);
+    expect(changed).not.toHaveBeenCalled();
+  });
+
   it('rejects an invalid rate before touching the database', async () => {
     await expect(saveExchangeRatePair({ ...input, rate: '0' })).rejects.toMatchObject({ code: expect.any(String) });
     await expect(saveExchangeRatePair({ ...input, rate: 'abc' })).rejects.toMatchObject({ code: expect.any(String) });
