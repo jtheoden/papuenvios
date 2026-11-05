@@ -85,4 +85,19 @@ describe('requestBudget with the real Supabase client', () => {
     });
   });
 
+  it('a read issued after a write never joins a request started before it', async () => {
+    const { supabase } = await load();
+    let release;
+    net.pendingOrders = new Promise((resolve) => { release = () => resolve(json([{ id: 1, v: 'before' }])); });
+    const earlyResult = supabase.from('orders').select('id, v').then((r) => r);
+    await vi.waitFor(() => expect(net.calls.some((c) => c.startsWith('GET /rest/v1/orders'))).toBe(true));
+    await supabase.from('orders').update({ v: 'after' }).eq('id', 1);
+    net.pendingOrders = null;
+    net.orders = 'after';
+    const lateResult = supabase.from('orders').select('id, v').then((r) => r); // starts while the early read is pending
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    release();
+    expect((await earlyResult).data[0].v).toBe('before');
+    expect((await lateResult).data[0].v).toBe('after');
+  });
 });

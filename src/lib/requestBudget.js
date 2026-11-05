@@ -145,6 +145,7 @@ export const createRequestBudgetFetch = (
 
   const dropAll = () => {
     generation += 1;
+    inFlight.clear(); // a read issued from now on must not join one that started before the change
     ttlCache.clear();
     lastAnswer.clear();
     hits.clear();
@@ -223,7 +224,9 @@ export const createRequestBudgetFetch = (
           }
           return snap;
         })
-        .finally(() => inFlight.delete(req.key));
+        .finally(() => {
+          if (inFlight.get(req.key) === pending) inFlight.delete(req.key);
+        });
       inFlight.set(req.key, pending);
     }
     return responseOf(await pending);
