@@ -108,6 +108,16 @@ describe('CurrencyContext inputs that cannot be converted are never reported as 
     return hook;
   };
 
+  it('a refresh that never answers does not leave the conversion spinner on', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    svc.getConversionRate.mockImplementation(() => new Promise(() => {}));
+    const { result } = renderHook(() => useCurrency(), { wrapper });
+    await waitFor(() => expect(svc.getConversionRate).toHaveBeenCalled());
+    expect(result.current.conversionLoading).toBe(true);
+    await act(async () => { await vi.advanceTimersByTimeAsync(31_000); });
+    expect(result.current.conversionLoading).toBe(false);
+  });
+
   it('a NaN amount stays NaN instead of turning into 0', async () => {
     const { result } = await loaded();
     expect(result.current.convertAmount(NaN, 'cup', 'usd')).toBeNaN();

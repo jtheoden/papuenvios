@@ -277,6 +277,7 @@ export const CurrencyProvider = ({ children }) => {
     } finally {
       clearTimeout(timer);
       refreshingRef.current = false;
+      setConversionLoading(false); // a request that never answered must not leave the spinner on
     }
   };
   useVisiblePolling(ratesPollKey, preloadConversionRates, {
