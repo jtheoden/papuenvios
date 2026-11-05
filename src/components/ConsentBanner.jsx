@@ -95,19 +95,19 @@ const ConsentBanner = ({ suppressed = false, onNavigate }) => {
               aria-expanded={expanded}
               aria-controls={detailsId}
               onClick={() => setExpanded((value) => !value)}
-              className="font-medium text-blue-700 underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+              // 44px touch target; the negative margin keeps the text line (and the banner) at its compact height
+              className="-my-3 inline-flex min-h-[44px] items-center font-medium text-blue-700 underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
             >
               {t('cookieConsent.moreInfo')}
             </button>
           </div>
-          {expanded && (
-            <p id={detailsId} className="mt-1">
-              {t('cookieConsent.description')}{' '}
-              <LegalLink page="privacy" onNavigate={onNavigate} className="underline text-blue-700">
-                {t('cookieConsent.privacyLink')}
-              </LegalLink>
-            </p>
-          )}
+          {/* Always rendered so aria-controls points at an existing id; hidden while collapsed */}
+          <p id={detailsId} className="mt-1" hidden={!expanded}>
+            {t('cookieConsent.description')}{' '}
+            <LegalLink page="privacy" onNavigate={onNavigate} className="underline text-blue-700">
+              {t('cookieConsent.privacyLink')}
+            </LegalLink>
+          </p>
           {consent.gpc && <p className="mt-1 font-medium">{t('cookieConsent.gpcNote')}</p>}
           {reopened && consent.decided && (
             <p className="mt-1" aria-live="polite">

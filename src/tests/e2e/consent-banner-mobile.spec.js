@@ -54,6 +54,8 @@ test.describe('consent banner at 320x568', () => {
       expect(Math.abs(accept.width - reject.width)).toBeLessThanOrEqual(1);
       expect(accept.height).toBeGreaterThanOrEqual(44);
       expect(reject.height).toBeGreaterThanOrEqual(44);
+      const more = await banner.getByRole('button', { name: dict.cookieConsent.moreInfo }).boundingBox();
+      expect(more.height).toBeGreaterThanOrEqual(44);
     });
   }
 

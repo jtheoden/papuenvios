@@ -16,9 +16,6 @@ vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({ t: translate, language: lang.current }),
 }));
 
-// Footer imports the WhatsApp helpers, which import the Supabase client.
-vi.mock('@/lib/supabase', () => ({ supabase: {} }));
-
 vi.mock('@/contexts/BusinessContext', () => ({
   useBusiness: () => ({ visualSettings: {} }),
 }));
@@ -56,17 +53,22 @@ describe('ConsentBanner', () => {
     const region = screen.getByRole('region', { name: ES.cookieConsent.title });
     const toggle = within(region).getByRole('button', { name: ES.cookieConsent.moreInfo });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(within(region).queryByText(ES.cookieConsent.description, { exact: false })).toBeNull();
+    expect(toggle.className).toMatch(/min-h-\[44px\]/);
+    // aria-controls always points at an element that exists; it is just hidden while collapsed
+    const details = document.getElementById(toggle.getAttribute('aria-controls'));
+    expect(details).not.toBeNull();
+    expect(region.contains(details)).toBe(true);
+    expect(details).not.toBeVisible();
 
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    const details = document.getElementById(toggle.getAttribute('aria-controls'));
-    expect(region.contains(details)).toBe(true);
+    expect(details).toBeVisible();
     expect(within(details).getByText(ES.cookieConsent.description, { exact: false })).toBeInTheDocument();
     expect(within(details).getByRole('link', { name: ES.cookieConsent.privacyLink })).toHaveAttribute('href', '/privacy');
 
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(details).not.toBeVisible();
   });
 
   it('writes nothing to storage while it is merely displayed', () => {
