@@ -1,10 +1,14 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('@/lib/supabase', () => ({ supabase: {} }));
+const singleMock = vi.fn();
+vi.mock('@/lib/supabase', () => ({
+  supabase: { from: () => ({ select: () => ({ limit: () => ({ single: singleMock }) }) }) },
+}));
 
 import { resolveHeroLayout, HERO_LAYOUTS, DEFAULT_HERO_LAYOUT } from '@/lib/heroLayout';
-import { DEFAULT_VISUAL_SETTINGS } from '@/lib/businessVisualSettingsService';
+import { DEFAULT_VISUAL_SETTINGS, loadVisualSettings } from '@/lib/businessVisualSettingsService';
 import { BRAND_PRESET } from '@/lib/brandPalette';
+import { LOCAL_CACHE_KEY } from '@/lib/constants';
 
 // Spec (hero layout S1): a closed enumeration. Anything that is not exactly 'classic' or 'spaced' resolves to
 // 'spaced' (what production shows today), and the stored value is never echoed back.
@@ -42,12 +46,42 @@ describe('resolveHeroLayout', () => {
   });
 });
 
+// heroLayout is an opt-in choice of the super admin. It must NOT be a default: every setVisualSettings / save /
+// "restablecer" spreads DEFAULT_VISUAL_SETTINGS, so a default would be written to the row (and overwrite a stored
+// 'classic'). The absence of the key already resolves to 'spaced'.
 describe('heroLayout in the visual settings', () => {
-  it('is a default of the settings, so every merged row carries it', () => {
-    expect(DEFAULT_VISUAL_SETTINGS.heroLayout).toBe('spaced');
+  beforeEach(() => {
+    localStorage.clear();
+    singleMock.mockReset();
+  });
+
+  it('is not a default of the settings, so nothing that spreads the defaults can persist it', () => {
+    expect(DEFAULT_VISUAL_SETTINGS).not.toHaveProperty('heroLayout');
+    expect({ ...DEFAULT_VISUAL_SETTINGS }).not.toHaveProperty('heroLayout');
   });
 
   it('is not part of the brand preset: applying the palette must not touch it', () => {
     expect(BRAND_PRESET).not.toHaveProperty('heroLayout');
+  });
+
+  it('a production row without the key loads without it and resolves to spaced', async () => {
+    singleMock.mockResolvedValue({ data: { settings: { primaryColor: '#3499dc', useGradient: true } }, error: null });
+    const settings = await loadVisualSettings();
+    expect(settings).not.toHaveProperty('heroLayout');
+    expect(resolveHeroLayout(settings)).toBe('spaced');
+    // what the app caches (and later saves back) does not carry it either
+    const cached = localStorage.getItem(LOCAL_CACHE_KEY);
+    expect(cached).toContain('primaryColor'); // the cache really was written
+    expect(cached).not.toContain('heroLayout');
+  });
+
+  it('a stored choice survives the merge with the defaults', async () => {
+    singleMock.mockResolvedValue({ data: { settings: { heroLayout: 'classic' } }, error: null });
+    expect(resolveHeroLayout(await loadVisualSettings())).toBe('classic');
+  });
+
+  it('with no row at all the defaults resolve to spaced', async () => {
+    singleMock.mockResolvedValue({ data: null, error: { code: 'PGRST116' } });
+    expect(resolveHeroLayout(await loadVisualSettings())).toBe('spaced');
   });
 });
