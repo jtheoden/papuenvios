@@ -19,6 +19,7 @@ vi.mock('@/lib/recipientService', () => ({
 }));
 
 import MyRecipientsPage from '@/components/MyRecipientsPage';
+import { updateRecipient } from '@/lib/recipientService';
 
 const pending = () => {
   let resolve;
@@ -61,5 +62,22 @@ describe('MyRecipientsPage loading state', () => {
     render(<MyRecipientsPage />);
     await load.reject(new Error('boom'));
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+  // A reload with the list already on screen (realtime/after an action) must keep it visible: no skeleton.
+  it('keeps the list visible and shows no skeleton while it reloads after toggling a favourite', async () => {
+    const recipient = { id: 'r-1', full_name: 'Ana Pérez', phone: '5355555555', addresses: [] };
+    const first = pending();
+    render(<MyRecipientsPage />);
+    await first.resolve([recipient]);
+
+    updateRecipient.mockResolvedValue({ success: true });
+    const reload = pending();
+    const favourite = screen.getByText('Ana Pérez').closest('.glass-effect').querySelector('button');
+    await act(async () => { favourite.click(); });
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    expect(mocks.getMyRecipients).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('Ana Pérez')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    await reload.resolve([recipient]);
   });
 });

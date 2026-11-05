@@ -33,6 +33,7 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 import AdminOffersTab from '@/components/AdminOffersTab';
+import { useRealtimeOffers } from '@/hooks/useRealtimeSubscription';
 
 const pending = () => {
   let resolve;
@@ -86,5 +87,19 @@ describe('AdminOffersTab loading state', () => {
     const card = (code) => screen.getAllByText(code).find(el => el.tagName === 'CODE').closest('.border-l-4');
     expect(card('PAPU10').parentElement).toHaveClass('space-y-3');
     expect(card('PAPU20').parentElement).toBe(card('PAPU10').parentElement);
+  });
+  // A reload with the list already on screen (realtime/after an action) must keep it visible: no skeleton.
+  it('keeps the offers visible and shows no skeleton while a realtime reload runs', async () => {
+    const first = pending();
+    render(<AdminOffersTab />);
+    await first.rows([OFFER]);
+
+    const reload = pending();
+    const { onUpdate } = useRealtimeOffers.mock.calls.at(-1)[0];
+    await act(async () => { onUpdate({}); });
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    expect(screen.getAllByText('PAPU10').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    await reload.rows([OFFER]);
   });
 });

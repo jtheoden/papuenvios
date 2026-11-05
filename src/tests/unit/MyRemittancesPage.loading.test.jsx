@@ -63,6 +63,7 @@ vi.mock('@/lib/remittanceService', () => ({
 }));
 
 import MyRemittancesPage from '@/components/MyRemittancesPage';
+import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 
 const pending = () => {
   let resolve;
@@ -105,5 +106,20 @@ describe('MyRemittancesPage loading state', () => {
     render(<MyRemittancesPage onNavigate={vi.fn()} />);
     await load.reject(new Error('boom'));
     expect(busy()).toBeFalsy();
+  });
+  // A reload with the list already on screen (realtime/after an action) must keep it visible: no skeleton.
+  it('keeps the list visible and shows no skeleton while a realtime reload runs', async () => {
+    const first = pending();
+    render(<MyRemittancesPage onNavigate={vi.fn()} />);
+    await first.resolve([row('payment_pending')]);
+    expect(screen.getByText('REM-1')).toBeInTheDocument();
+
+    const reload = pending();
+    const { onUpdate } = useRealtimeRemittances.mock.calls.at(-1)[0];
+    act(() => { onUpdate({ eventType: 'INSERT', new: {} }); });
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    expect(screen.getByText('REM-1')).toBeInTheDocument();
+    expect(busy()).toBeFalsy();
+    await reload.resolve([row('payment_pending')]);
   });
 });

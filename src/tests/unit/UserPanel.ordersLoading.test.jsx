@@ -31,6 +31,7 @@ vi.mock('@/components/admin/AdminWorkTabs', () => ({ default: ({ children }) => 
 vi.mock('@/components/ui/use-toast', () => ({ toast: vi.fn() }));
 
 import UserPanel from '@/components/UserPanel';
+import { useRealtimeOrders } from '@/hooks/useRealtimeSubscription';
 
 const pending = () => {
   let resolve;
@@ -74,5 +75,20 @@ describe('UserPanel orders loading state', () => {
     await load.resolve([{ id: 'o-1', order_number: 'ORD-LOADED-1', status: 'pending', payment_status: 'pending', created_at: '2026-01-01T00:00:00Z', total_amount: 10, subtotal: 10, order_items: [] }]);
     expect(ordersStatus()).toBeFalsy();
     expect(screen.getAllByText(/ORD-LOADED-1/).length).toBeGreaterThan(0);
+  });
+  // A reload with the list already on screen (realtime/after an action) must keep it visible: no skeleton.
+  it('keeps the orders visible and shows no skeleton while a realtime reload runs', async () => {
+    const order = { id: 'o-1', order_number: 'ORD-LOADED-1', status: 'pending', payment_status: 'pending', created_at: '2026-01-01T00:00:00Z', total_amount: 10, subtotal: 10, order_items: [] };
+    const first = pending();
+    render(<UserPanel onNavigate={vi.fn()} />);
+    await first.resolve([order]);
+
+    const reload = pending();
+    const { onUpdate } = useRealtimeOrders.mock.calls.at(-1)[0];
+    act(() => { onUpdate({ new: { id: 'other' }, old: { id: 'other' } }); });
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    expect(screen.getAllByText(/ORD-LOADED-1/).length).toBeGreaterThan(0);
+    expect(ordersStatus()).toBeFalsy();
+    await reload.resolve([order]);
   });
 });

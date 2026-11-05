@@ -23,7 +23,7 @@ vi.mock('@/contexts/BusinessContext', () => ({
   useBusiness: () => ({ visualSettings: {} }),
 }));
 vi.mock('@/lib/styleUtils', () => ({ getPrimaryButtonStyle: () => '' }));
-vi.mock('@/hooks/useRealtimeSubscription', () => ({ useRealtimeRemittances: () => {} }));
+vi.mock('@/hooks/useRealtimeSubscription', () => ({ useRealtimeRemittances: vi.fn() }));
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 vi.mock('@/components/ui/use-toast', () => ({ toast: vi.fn() }));
 vi.mock('@/components/ImageProofModal', () => ({ default: () => null }));
@@ -53,6 +53,7 @@ vi.mock('@/lib/remittanceService', () => ({
 }));
 
 import AdminRemittancesTab from '@/components/AdminRemittancesTab';
+import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 
 const pending = () => {
   let resolve;
@@ -94,5 +95,19 @@ describe('AdminRemittancesTab loading state', () => {
     render(<AdminRemittancesTab />);
     await load.reject(new Error('boom'));
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+  // A reload with the list already on screen (realtime/after an action) must keep it visible: no skeleton.
+  it('keeps the list visible and shows no skeleton while a realtime reload runs', async () => {
+    const first = pending();
+    render(<AdminRemittancesTab />);
+    await first.resolve(REMITTANCES);
+
+    const reload = pending();
+    const { onUpdate } = useRealtimeRemittances.mock.calls.at(-1)[0];
+    act(() => { onUpdate({ eventType: 'INSERT', new: {} }); });
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    expect(screen.queryAllByText('REM-PENDING').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    await reload.resolve(REMITTANCES);
   });
 });
