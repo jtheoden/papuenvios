@@ -1585,7 +1585,7 @@ const CartPage = ({ onNavigate }) => {
                       </div>
 
                       {/* Quantity Controls + Remove: below the text under sm, inline from sm */}
-                      <div className="flex items-center justify-between gap-4 sm:justify-start">
+                      <div className="flex items-center justify-between gap-4 sm:items-start sm:justify-start">
                         <div className="flex items-center space-x-2 flex-shrink-0">
                           <Button
                             size="icon"

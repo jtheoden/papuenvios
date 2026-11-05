@@ -398,7 +398,7 @@ const DashboardPage = ({ onNavigate }) => {
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-wrap justify-between items-start gap-4 mb-8"
+          className="flex flex-wrap sm:flex-nowrap justify-between items-start gap-4 mb-8"
         >
           <div className="min-w-0">
             <h1 className="text-4xl font-bold mb-2" style={getHeadingStyle(visualSettings)}>
