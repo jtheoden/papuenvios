@@ -6,6 +6,8 @@ import { UNAVAILABLE } from '@/lib/numberFormat';
 
 // Cached rates expire so a stale rate is never shown indefinitely; they are refreshed in the background.
 const RATE_TTL_MS = 10 * 60 * 1000;
+/** Background refresh (visible tab). requestBudget caches the rates read for at most half of it. */
+export const RATE_REFRESH_MS = RATE_TTL_MS / 2;
 
 const CurrencyContext = createContext();
 
@@ -267,7 +269,7 @@ export const CurrencyProvider = ({ children }) => {
   };
   useVisiblePolling(ratesPollKey, preloadConversionRates, {
     enabled: Boolean(selectedCurrency) && currencies.length > 0,
-    intervalMs: RATE_TTL_MS / 2
+    intervalMs: RATE_REFRESH_MS
   });
 
   // Drop cached rates whenever rates are saved elsewhere (Settings → Financial) and load them again

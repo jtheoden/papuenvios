@@ -16,7 +16,8 @@
 import { logError } from '@/lib/errorHandler';
 
 export const API_CACHE_STORAGE_KEY = 'papuenvios-api-cache';
-export const API_CACHE_TTL_MS = 5 * 60_000;
+// At most half of CurrencyContext's RATE_REFRESH_MS: a forced refresh never reads an answer older than one interval.
+export const API_CACHE_TTL_MS = 2.5 * 60_000;
 // Only an explicit allowlist of DISPLAY selects is cached (table -> select as PostgREST receives it, no spaces):
 //  - exchange_rates: all active rates at once (getConversionRate -> CurrencyContext) and the pair list that decides
 //    which currencies the selector shows (getCurrenciesWithRates);
