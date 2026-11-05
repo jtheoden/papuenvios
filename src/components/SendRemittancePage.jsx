@@ -43,8 +43,11 @@ import PaymentProofForm from '@/components/shared/PaymentProofForm';
 import PaymentMethodsUnavailable from '@/components/PaymentMethodsUnavailable';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { isPaymentMethodEnabled, isPaymentMethodDisabledError, PAYMENT_FLOWS } from '@/lib/paymentMethodsService';
+import { ERROR_CODES } from '@/lib/errorHandler';
 import RegulatoryNotice from '@/components/RegulatoryNotice';
 import LegalConsentLine from '@/components/LegalConsentLine';
+
+const getValidRate = (rate) => (Number.isFinite(rate) && rate > 0 ? rate : null);
 
 const SendRemittancePage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
@@ -192,8 +195,8 @@ const SendRemittancePage = ({ onNavigate }) => {
     setAmount(value);
     if (selectedType && value) {
       const numValue = parseFloat(value) || 0;
-      if (numValue > 0) {
-        const rate = selectedType.currentRate || selectedType.exchange_rate || 1;
+      const rate = getValidRate(selectedType.currentRate);
+      if (numValue > 0 && rate) {
         const receiveValue = numValue * rate;
         setDesiredReceiveAmount(receiveValue.toFixed(2));
       }
@@ -204,8 +207,8 @@ const SendRemittancePage = ({ onNavigate }) => {
     setDesiredReceiveAmount(value);
     if (selectedType && value) {
       const numValue = parseFloat(value) || 0;
-      if (numValue > 0) {
-        const rate = selectedType.currentRate || selectedType.exchange_rate || 1;
+      const rate = getValidRate(selectedType.currentRate);
+      if (numValue > 0 && rate) {
         const sendValue = numValue / rate;
         setAmount(sendValue.toFixed(2));
       }
@@ -221,8 +224,9 @@ const SendRemittancePage = ({ onNavigate }) => {
 
   // Live calculation effect with debounce
   useEffect(() => {
-    if (!selectedType) {
+    if (!selectedType || selectedType.rateUnavailable) {
       setLiveCalc(null);
+      setIsCalculatingLive(false);
       return;
     }
 
@@ -357,15 +361,15 @@ const SendRemittancePage = ({ onNavigate }) => {
             return {
               ...type,
               currentRate: rate,
-              rateSource: source, // 'configured' or 'fallback'
-              // Keep original exchange_rate as fallback reference
+              rateSource: source,
+              rateUnavailable: false
             };
-          } catch (err) {
-            console.warn(`[loadTypes] Error getting rate for ${type.name}:`, err);
+          } catch {
             return {
               ...type,
-              currentRate: type.exchange_rate,
-              rateSource: 'fallback'
+              currentRate: null,
+              rateSource: 'unavailable',
+              rateUnavailable: true
             };
           }
         })
@@ -391,15 +395,14 @@ const SendRemittancePage = ({ onNavigate }) => {
     if (previousType && type.id !== previousType.id) {
       const currentAmount = calcMode === 'send' ? parseFloat(amount) : parseFloat(desiredReceiveAmount);
 
-      if (currentAmount > 0) {
-        // Recalculate with new type's rate
+      const rate = getValidRate(type.currentRate);
+      if (currentAmount > 0 && rate) {
+        // Recalculate with the new type's valid rate.
         if (calcMode === 'send') {
-          // User entered send amount - recalculate receive amount with new rate
-          const newReceive = currentAmount * type.currentRate;
+          const newReceive = currentAmount * rate;
           setDesiredReceiveAmount(newReceive.toFixed(2));
         } else {
-          // User entered receive amount - recalculate send amount with new rate
-          const newSend = currentAmount / type.currentRate;
+          const newSend = currentAmount / rate;
           setAmount(newSend.toFixed(2));
         }
       }
@@ -454,7 +457,9 @@ const SendRemittancePage = ({ onNavigate }) => {
       console.error('Error calculating remittance:', error);
       toast({
         title: t('common.error'),
-        description: error?.message || t('remittances.wizard.errorCalculating'),
+        description: error?.code === ERROR_CODES.EXCHANGE_RATE_UNAVAILABLE
+          ? t('remittances.wizard.rateUnavailable')
+          : (error?.message || t('remittances.wizard.errorCalculating')),
         variant: 'destructive'
       });
     } finally {
@@ -610,7 +615,9 @@ const SendRemittancePage = ({ onNavigate }) => {
         title: t('common.error'),
         description: isPaymentMethodDisabledError(error)
           ? t('paymentMethods.checkout.rejected')
-          : (error?.message || t('remittances.wizard.errorCreatingRemittance')),
+          : error?.code === ERROR_CODES.EXCHANGE_RATE_UNAVAILABLE
+            ? t('remittances.wizard.rateUnavailable')
+            : (error?.message || t('remittances.wizard.errorCreatingRemittance')),
         variant: 'destructive'
       });
     } finally {
@@ -801,6 +808,13 @@ const SendRemittancePage = ({ onNavigate }) => {
                     </option>
                   ))}
                 </select>
+
+                {selectedType?.rateUnavailable && (
+                  <div role="alert" className="flex items-start gap-2 rounded-lg border-2 border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">
+                    <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                    {t('remittances.wizard.rateUnavailable')}
+                  </div>
+                )}
 
                 {/* Selected type details card */}
                {/*  {selectedType && (
@@ -1047,7 +1061,7 @@ const SendRemittancePage = ({ onNavigate }) => {
             <div className="flex justify-end mt-6">
               <button
                 onClick={handleCalculate}
-                disabled={!selectedType || !amount || calculating || !amountValidation.isValid || zelleRemittancesBlocked}
+                disabled={!selectedType || selectedType.rateUnavailable || !amount || calculating || !amountValidation.isValid || zelleRemittancesBlocked}
                 className={`${getPrimaryButtonStyle()} flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none ${!calculating && selectedType && amount && amountValidation.isValid ? 'animate-pulse ring-2 ring-blue-300 ring-offset-2' : ''}`}
               >
                 {calculating ? t('remittances.wizard.calculating') : t('remittances.wizard.continue')}

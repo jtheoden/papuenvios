@@ -224,7 +224,8 @@ describe('admin writes: RETURNING carries an explicit public list, never an empt
   });
 
   it('createCombo / updateCombo / setComboActiveState', async () => {
-    recorder.results.products = () => ({ data: [{ id: 'p1', base_price: 4 }], error: null });
+    recorder.results.products = () => ({ data: [{ id: 'p1', base_price: 4, base_currency_id: 'usd' }], error: null });
+    recorder.results.currencies = () => ({ data: [{ id: 'usd' }], error: null }); // combo currency guard reads the base currency
     recorder.results.combo_products = () => ({ data: { id: 'c1' }, error: null });
     await createCombo({ name: 'C', productsWithQuantities: [{ productId: 'p1', quantity: 1 }] });
     await updateCombo('c1', { name: 'C', productsWithQuantities: [{ productId: 'p1', quantity: 1 }] });
