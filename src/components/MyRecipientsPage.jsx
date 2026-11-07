@@ -318,7 +318,7 @@ const MyRecipientsPage = ({ onNavigate }) => {
             </p>
             <button
               onClick={() => handleOpenForm()}
-              className="text-blue-600 hover:underline"
+              className="text-theme-link hover:underline"
             >
               {t('recipients.createFirstRecipient')}
             </button>

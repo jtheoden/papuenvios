@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { LogIn, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/use-toast';
 import LegalConsentLine from '@/components/LegalConsentLine';
+import BrandLogo from '@/components/BrandLogo';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 
 const LoginPage = ({ onNavigate }) => {
@@ -47,8 +48,8 @@ const LoginPage = ({ onNavigate }) => {
       >
         {/* Header */}
         <div className="text-center">
-          <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mb-4">
-            <LogIn className="w-8 h-8 text-white" />
+          <div className="flex justify-center mb-4">
+            <BrandLogo settings={visualSettings} className="text-2xl sm:text-3xl" />
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold" style={getHeadingStyle(visualSettings)}>
             {t('auth.loginTitle')}

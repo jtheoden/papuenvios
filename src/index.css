@@ -37,8 +37,6 @@
 
 
 :root {
-  --primary: 220 90% 56%;
-  --primary-foreground: 0 0% 100%;
   --secondary: 220 14.3% 95.9%;
   --secondary-foreground: 220 8.9% 46.1%;
   --muted: 220 14.3% 95.9%;
@@ -49,7 +47,6 @@
   --destructive-foreground: 0 0% 98%;
   --border: 220 13% 91%;
   --input: 220 13% 91%;
-  --ring: 220 90% 56%;
   --background: 0 0% 100%;
   --foreground: 220 8.9% 46.1%;
   --card: 0 0% 100%;
@@ -84,6 +81,10 @@
   --t-page-from: 250 247 240; /* ivory */
   --t-page-via: 250 247 240; /* ivory */
   --t-page-to: 250 247 240; /* ivory */
+  /* shadcn tokens (RGB channels, see tailwind.config.js) follow the look: Button default, focus rings. */
+  --primary: var(--t-focus);
+  --primary-foreground: 255 255 255;
+  --ring: var(--t-focus);
 }
 
 /* Classic look (useGradient on): exactly the Tailwind tones the screens used before the tokens. */
@@ -105,6 +106,10 @@
   --t-page-from: 248 250 252; /* slate-50 */
   --t-page-via: 239 246 255; /* blue-50 */
   --t-page-to: 224 231 255; /* indigo-100 */
+  /* The exact colour the shadcn tokens had here (hsl(220 90% 56%)), so classic does not move. */
+  --primary: 42 109 244;
+  --primary-foreground: 255 255 255;
+  --ring: 42 109 244;
 }
 
 body {
@@ -124,6 +129,115 @@ body {
 /* Brand links are charcoal, so they are underlined to stay recognisable (never orange text). Classic keeps blue. */
 :root:not([data-theme="classic"]) :is(.text-theme-link, .text-theme-link-strong):not(.no-underline) {
   text-decoration-line: underline;
+}
+
+/* Recipient/order/remittance chrome keeps its original Classic utility colours as the baseline. These scoped
+   overrides apply only to the PapuEnvios look, so switching themes remains pixel-identical to the pre-token UI. */
+:root:not([data-theme="classic"]) .recipient-theme-card,
+:root:not([data-theme="classic"]) .recipient-theme-address {
+  border-color: rgb(var(--t-accent-line));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-card:hover:not(.recipient-theme-card-selected),
+:root:not([data-theme="classic"]) .recipient-theme-address:hover:not(.recipient-theme-address-selected) {
+  border-color: rgb(var(--t-accent) / 0.6);
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-card-selected {
+  border-color: rgb(var(--t-accent));
+  background-color: rgb(var(--t-accent-soft));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-address-selected {
+  border-color: rgb(var(--t-accent));
+  background-color: rgb(var(--t-accent-soft));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-card:focus-visible,
+:root:not([data-theme="classic"]) .recipient-theme-address:focus-visible,
+:root:not([data-theme="classic"]) .recipient-theme-add:focus-visible,
+:root:not([data-theme="classic"]) .recipient-theme-primary:focus-visible,
+:root:not([data-theme="classic"]) .recipient-theme-secondary:focus-visible {
+  outline: 2px solid rgb(var(--t-focus));
+  outline-offset: 2px;
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-control,
+:root:not([data-theme="classic"]) .recipient-theme-search,
+:root:not([data-theme="classic"]) .recipient-theme-select {
+  border-color: rgb(var(--t-accent-line));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-control:focus,
+:root:not([data-theme="classic"]) .recipient-theme-search:focus,
+:root:not([data-theme="classic"]) .recipient-theme-select:focus {
+  border-color: rgb(var(--t-focus));
+  --tw-ring-color: rgb(var(--t-focus));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-control:focus-visible {
+  outline: 2px solid rgb(var(--t-focus));
+  outline-offset: 2px;
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-detail,
+:root:not([data-theme="classic"]) .recipient-theme-create-panel {
+  border-color: rgb(var(--t-accent-line));
+  background-color: rgb(var(--t-accent-soft) / 0.5);
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-add {
+  border-color: rgb(var(--t-accent));
+  color: rgb(var(--t-link));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-add:hover {
+  background-color: rgb(var(--t-accent-soft));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-primary {
+  background-color: rgb(var(--t-accent));
+  color: rgb(var(--t-on-accent));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-primary:hover {
+  background-color: rgb(var(--t-accent-hover));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-secondary {
+  border: 1px solid rgb(var(--t-accent-line));
+  background-color: rgb(var(--t-accent-soft));
+  color: rgb(var(--t-link-strong));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-secondary:hover {
+  background-color: rgb(var(--t-accent-soft-2));
+}
+
+:root:not([data-theme="classic"]) .orders-recipient-theme-shell,
+:root:not([data-theme="classic"]) .remittance-recipient-theme-shell {
+  border: 2px solid rgb(var(--t-accent-line));
+  background-color: rgb(var(--t-accent-soft) / 0.2);
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-icon {
+  color: rgb(var(--t-link));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-loading {
+  background-color: rgb(var(--t-accent-soft) / 0.4);
+}
+
+/* Native checkbox / radio / range follow the look (charcoal in the brand look, blue-500 in classic). :where keeps the
+   specificity at zero so an explicit accent-* utility still wins. */
+:where(input[type="checkbox"], input[type="radio"], input[type="range"]) {
+  accent-color: rgb(var(--t-focus));
+}
+
+/* The default Button hovers with bg-primary/90, which is barely visible on the charcoal brand primary: darker step
+   for the brand look only (classic keeps its blue and the class string stays byte-identical). */
+:root:not([data-theme="classic"]) .hover\:bg-primary\/90:hover {
+  background-color: rgb(var(--primary) / 0.8);
 }
 
 .loading-spinner {

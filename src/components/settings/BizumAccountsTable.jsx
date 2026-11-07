@@ -179,7 +179,7 @@ const BizumAccountsTable = ({ accounts, error, defaultLimit, onChanged, onRetry 
               event.stopPropagation();
               openEdit(account);
             }}
-            className="min-h-11 text-left font-medium text-blue-900 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+            className="min-h-11 text-left font-medium text-theme-link-strong underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-focus"
           >
             {value}
           </button>

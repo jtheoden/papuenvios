@@ -104,7 +104,7 @@ const ConsentBanner = ({ suppressed = false, onNavigate }) => {
           {/* Always rendered so aria-controls points at an existing id; hidden while collapsed */}
           <p id={detailsId} className="mt-1" hidden={!expanded}>
             {t('cookieConsent.description')}{' '}
-            <LegalLink page="privacy" onNavigate={onNavigate} className="underline text-blue-700">
+            <LegalLink page="privacy" onNavigate={onNavigate} className="underline text-theme-link-strong">
               {t('cookieConsent.privacyLink')}
             </LegalLink>
           </p>

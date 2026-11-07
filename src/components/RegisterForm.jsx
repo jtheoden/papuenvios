@@ -241,7 +241,7 @@ export function RegisterForm() {
         <button
           type="button"
           onClick={() => navigate('/auth/login')}
-          className="text-blue-600 hover:text-blue-700 font-semibold"
+          className="text-theme-link hover:text-theme-link-strong font-semibold"
         >
           Inicia sesión
         </button>

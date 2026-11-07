@@ -43,11 +43,14 @@ export const pickNewKeys = (settings = {}) =>
 
 /**
  * What "Aplicar paleta PapuEnvios" writes into the form. Only existing/new settings keys.
- * primaryColor/secondaryColor are left alone: ~30 admin and user screens use them for text.
+ * Identity colours are readable on the brand surfaces; they only persist after an explicit form save.
  * The gradient flags go off because Header (nav active), HomePage CTA and getHeadingStyle
  * OR them with useGradient, so a solid brand colour would otherwise be ignored.
  */
 export const BRAND_PRESET = {
+  primaryColor: charcoal,
+  secondaryColor: warmGray,
+  headerGradientColor: warmGray,
   pageBgColor: ivory,
   cardBgColor: white,
   accentColor: gold,
@@ -98,9 +101,13 @@ export const LOOK_IDS = ['classic', 'papuenvios'];
 
 const sameValue = (a, b) => (typeof a === 'string' && typeof b === 'string' ? a.toLowerCase() === b.toLowerCase() : a === b);
 
-/** True when every brand preset key holds the brand value (HEX compared case-insensitively). */
+// Identity keys were not in the original preset. Ignore them for legacy look inference, otherwise an
+// existing brand row with the old blue/purple identity would suddenly load the Classic look.
+const IDENTITY_KEYS = ['primaryColor', 'secondaryColor', 'headerGradientColor'];
+
+/** True when every original brand look key holds the brand value (HEX compared case-insensitively). */
 const matchesBrandPreset = (settings) =>
-  Object.keys(BRAND_PRESET).every((key) => sameValue(settings?.[key], BRAND_PRESET[key]));
+  Object.keys(BRAND_PRESET).filter((key) => !IDENTITY_KEYS.includes(key)).every((key) => sameValue(settings?.[key], BRAND_PRESET[key]));
 
 /**
  * Look of the site: 'classic' or 'papuenvios'. Single source for the `data-theme` on <html> (the --t-* tokens in

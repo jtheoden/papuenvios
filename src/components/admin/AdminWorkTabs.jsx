@@ -147,8 +147,8 @@ const AdminWorkTabsInner = ({ ordersCount, onNavigate, children, currentUserId =
               aria-controls={ids(tab).panel}
               tabIndex={selected ? 0 : -1}
               onClick={() => selectTab(tab)}
-              className={`inline-flex items-center min-h-[44px] px-4 rounded-xl text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-600 ${
-                selected ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'
+              className={`inline-flex items-center min-h-[44px] px-4 rounded-xl text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[rgb(var(--t-link))] ${
+                selected ? 'bg-theme-accent text-theme-on-accent' : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
               {labels[tab]}

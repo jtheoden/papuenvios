@@ -89,6 +89,48 @@ describe('AuthLoadingScreen (S4)', () => {
     });
   });
 
+  describe('cached logo', () => {
+    const LOGO = 'data:image/png;base64,iVBORw0KGgo=';
+
+    it('shows the logo the app cached, capped in height, with the company name as alt', () => {
+      store({ ...PRESET, logo: LOGO, companyName: 'Acme Envios', logoMaxHeight: 200 });
+      const { container } = render(<AuthLoadingScreen />);
+      const img = container.querySelector('img');
+      expect(img).toHaveAttribute('src', LOGO);
+      expect(img).toHaveAttribute('alt', 'Acme Envios');
+      expect(img.style.maxHeight).toBe('48px');
+    });
+
+    it.each([
+      ['no cache', undefined],
+      ['no logo', { ...PRESET, logo: '' }],
+      ['an unsafe logo', { ...PRESET, logo: 'javascript:alert(1)' }],
+    ])('shows no image but the company wordmark with %s', (_name, settings) => {
+      if (settings) store(settings);
+      const { container } = render(<AuthLoadingScreen />);
+      expect(container.querySelector('img')).toBeNull();
+      expect(container.querySelector('[aria-hidden="true"]')).toHaveTextContent(/PapuEnvios|Acme/);
+    });
+
+    it('prefers its own loader image over the site logo and falls back to the logo when it is unsafe', () => {
+      const OWN = 'data:image/webp;base64,UklGRg==';
+      store({ ...PRESET, logo: LOGO, loaderImage: OWN });
+      const first = render(<AuthLoadingScreen />);
+      expect(first.container.querySelector('img')).toHaveAttribute('src', OWN);
+      first.unmount();
+      localStorage.clear();
+      store({ ...PRESET, logo: LOGO, loaderImage: 'javascript:x' });
+      const { container } = render(<AuthLoadingScreen />);
+      expect(container.querySelector('img')).toHaveAttribute('src', LOGO);
+    });
+
+    it('keeps the logo out of the spoken status text', () => {
+      store({ ...PRESET, logo: LOGO, companyName: 'Acme Envios' });
+      render(<AuthLoadingScreen />);
+      expect(screen.getByRole('status')).not.toHaveTextContent('Acme Envios');
+    });
+  });
+
   describe('colours from the visual settings', () => {
     it('without stored settings (first visit) paints the brand ivory, like the static splash', () => {
       render(<AuthLoadingScreen />);
@@ -101,6 +143,16 @@ describe('AuthLoadingScreen (S4)', () => {
       const status = screen.getByRole('status');
       expect(status.style.getPropertyValue('--ld-bg')).toBe('#FAF7F0');
       expect(status.style.getPropertyValue('--ld-accent')).toBe('#171717');
+    });
+
+    it('paints the admin-chosen loader background; an invalid one is ignored (theme tokens)', () => {
+      store({ ...PRESET, loaderBgColor: '#123456' });
+      const first = render(<AuthLoadingScreen />);
+      expect(first.container.firstChild.style.getPropertyValue('--ld-bg')).toBe('#123456');
+      first.unmount();
+      localStorage.clear();
+      store({ ...PRESET, loaderBgColor: 'red' });
+      expect(render(<AuthLoadingScreen />).container.firstChild.style.getPropertyValue('--ld-bg')).toBe('#FAF7F0');
     });
 
     it('with the production row (gradient on) keeps the shipped gradient: nothing changes until the preset is applied', () => {

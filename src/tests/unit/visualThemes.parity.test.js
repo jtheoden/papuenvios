@@ -4,7 +4,7 @@ vi.mock('@/lib/supabase', () => ({ supabase: { from: vi.fn() } }));
 
 import { DEFAULT_VISUAL_SETTINGS } from '@/lib/businessVisualSettingsService';
 import { BRAND_PRESET } from '@/lib/brandPalette';
-import { selectTheme, resolveThemeId } from '@/lib/visualThemes';
+import { selectTheme, resolveThemeId, THEME_PRESETS } from '@/lib/visualThemes';
 import { buildHeaderTheme } from '@/lib/headerTheme';
 import { buildFooterTheme } from '@/lib/footerTheme';
 import { buildLoadingTheme } from '@/lib/loadingTheme';
@@ -81,8 +81,8 @@ describe('the real production row (brand values, no activeTheme)', () => {
     expect(resolve(selectTheme(real, 'papuenvios'))).toEqual(resolve(real));
   });
 
-  it('selecting classic on it resolves like the classic look (non-preset keys untouched)', () => {
-    expect(resolve(selectTheme(real, 'classic'))).toEqual(resolve(CLASSIC));
+  it('selecting classic without a snapshot uses its code-default palette (non-preset keys untouched)', () => {
+    expect(resolve(selectTheme(real, 'classic'))).toEqual(resolve({ ...CLASSIC, ...THEME_PRESETS.classic }));
   });
 
   it('going classic and back to papuenvios returns to the brand resolution', () => {

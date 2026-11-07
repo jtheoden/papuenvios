@@ -66,8 +66,8 @@ describe('theme ids and defaults', () => {
     expect(THEME_PRESETS.papuenvios.useGradient).toBe(false);
   });
 
-  it('classic preset reproduces the production row values for those keys', () => {
-    expect(THEME_PRESETS.classic).toEqual(only(classicForm()));
+  it('classic preset uses code defaults; the historical custom primary is retained through snapshots', () => {
+    expect(THEME_PRESETS.classic).toEqual({ ...only(classicForm()), primaryColor: DEFAULT_VISUAL_SETTINGS.primaryColor, headerGradientColor: DEFAULT_VISUAL_SETTINGS.headerGradientColor });
   });
 });
 
@@ -104,10 +104,10 @@ describe('selectTheme', () => {
     expect(next.classicSnapshot.buttonBgColor).toBe('#abcdef');
   });
 
-  it('never touches keys outside the preset (primary/secondary colours, logo, texts)', () => {
+  it('never touches keys outside the preset (logo, texts and gradient direction)', () => {
     const form = { ...classicForm(), logo: 'data:logo', companyName: 'Acme' };
     const next = selectTheme(form, 'papuenvios');
-    for (const key of ['primaryColor', 'secondaryColor', 'logo', 'companyName', 'headerGradientColor', 'gradientDirection']) {
+    for (const key of ['logo', 'companyName', 'gradientDirection']) {
       expect(next[key], key).toBe(form[key]);
     }
   });

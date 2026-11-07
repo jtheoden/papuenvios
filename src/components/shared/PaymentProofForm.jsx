@@ -204,7 +204,7 @@ const PaymentProofForm = ({
           <button
             type="button"
             onClick={onUploadLater}
-            className="text-blue-600 hover:text-blue-800 underline text-sm"
+            className="text-theme-link hover:text-theme-link-strong underline text-sm"
           >
             {t('uploadLater')}
           </button>

@@ -77,7 +77,7 @@ vi.mock('@/lib/whatsappService', () => ({
 vi.mock('@/lib/notificationSettingsService', () => ({ getFreshGuidedWhatsappPhone: vi.fn() }));
 vi.mock('@/lib/orderDiscountService', () => ({ validateRemittanceOffer: vi.fn() }));
 vi.mock('@/components/ui/use-toast', () => ({ toast: vi.fn() }));
-vi.mock('@/lib/styleUtils', () => ({ getHeadingStyle: () => '', getPrimaryButtonStyle: () => '' }));
+vi.mock('@/lib/styleUtils', () => ({ getHeadingStyle: () => ({}), getPrimaryButtonStyle: () => ({}) }));
 
 vi.mock('@/components/RecipientSelector', async () => {
   const React = await import('react');

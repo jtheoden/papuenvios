@@ -61,7 +61,7 @@ const getAgeLevel = (createdAt) => {
   return 'ok';
 };
 
-const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-600';
+const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-theme-focus';
 
 const AGE_CLASSES = {
   ok: 'text-gray-600',
@@ -507,7 +507,7 @@ const AdminRemittancesInbox = ({
         <a
           href={VIEW_ALL_PATH}
           onClick={handleViewAll}
-          className={`rounded text-sm font-medium text-blue-700 underline hover:text-blue-900 ${FOCUS_RING}`}
+          className={`rounded text-sm font-medium text-theme-link-strong underline hover:decoration-2 ${FOCUS_RING}`}
         >
           {t('adminInbox.viewAll')}
         </a>

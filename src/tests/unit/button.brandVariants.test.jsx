@@ -60,8 +60,15 @@ describe('tailwind brand colours', () => {
     }
   });
 
-  it('leaves the shadcn globals untouched', () => {
-    expect(tailwindConfig.theme.extend.colors.primary.DEFAULT).toBe('hsl(var(--primary))');
-    expect(tailwindConfig.theme.extend.colors.ring).toBe('hsl(var(--ring))');
+  it('maps the shadcn primary and ring to RGB channels (the look tokens), keeping the alpha modifier', () => {
+    const { primary, ring } = tailwindConfig.theme.extend.colors;
+    expect(primary.DEFAULT).toBe('rgb(var(--primary) / <alpha-value>)');
+    expect(primary.foreground).toBe('rgb(var(--primary-foreground) / <alpha-value>)');
+    expect(ring).toBe('rgb(var(--ring) / <alpha-value>)');
+  });
+
+  it('the link variant uses the link token, not the primary', () => {
+    expect(buttonVariants({ variant: 'link' })).toContain('text-theme-link');
+    expect(buttonVariants({ variant: 'link' })).not.toContain('text-primary');
   });
 });

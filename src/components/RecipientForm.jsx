@@ -78,7 +78,7 @@ const RecipientForm = ({
             type="text"
             value={formData.full_name || ''}
             onChange={e => handleChange('full_name', e.target.value)}
-            className="input-style w-full"
+            className="input-style w-full recipient-theme-control"
             placeholder={language === 'es' ? 'Juan Pérez' : 'John Doe'}
             required
           />
@@ -95,7 +95,7 @@ const RecipientForm = ({
             type="tel"
             value={formData.phone || ''}
             onChange={e => handleChange('phone', e.target.value)}
-            className="input-style w-full"
+            className="input-style w-full recipient-theme-control"
             placeholder="+53 5555 5555"
             required
           />
@@ -112,7 +112,7 @@ const RecipientForm = ({
             type="email"
             value={formData.email || ''}
             onChange={e => handleChange('email', e.target.value)}
-            className="input-style w-full"
+            className="input-style w-full recipient-theme-control"
             placeholder="john@example.com"
           />
         </div>
@@ -128,7 +128,7 @@ const RecipientForm = ({
             type="text"
             value={formData.id_number || ''}
             onChange={e => handleChange('id_number', e.target.value)}
-            className="input-style w-full"
+            className="input-style w-full recipient-theme-control"
             placeholder="12345678901"
           />
         </div>
@@ -177,7 +177,7 @@ const RecipientForm = ({
             type="text"
             value={formData.address_line_1 || ''}
             onChange={e => handleChange('address_line_1', e.target.value)}
-            className="input-style w-full"
+            className="input-style w-full recipient-theme-control"
             placeholder={language === 'es' ? 'Calle 23, entre L y M' : 'Street address'}
             required
           />
@@ -186,7 +186,7 @@ const RecipientForm = ({
               type="text"
               value={formData.address_line_2}
               onChange={e => handleChange('address_line_2', e.target.value)}
-              className="input-style w-full mt-2"
+              className="input-style w-full mt-2 recipient-theme-control"
               placeholder={language === 'es' ? 'Apartamento, suite, etc (opcional)' : 'Apartment, suite, etc (optional)'}
             />
           )}
@@ -202,7 +202,7 @@ const RecipientForm = ({
           <textarea
             value={formData.notes || ''}
             onChange={e => handleChange('notes', e.target.value)}
-            className="input-style w-full"
+            className="input-style w-full recipient-theme-control"
             rows="3"
             placeholder={language === 'es' ? 'Información adicional...' : 'Additional information...'}
           />
@@ -218,7 +218,7 @@ const RecipientForm = ({
               onClick={onSubmit}
               disabled={submitting}
               aria-busy={submitting}
-              className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+              className="recipient-theme-primary flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {submitLabel}
             </button>
@@ -226,7 +226,7 @@ const RecipientForm = ({
           {onCancel && (
             <button
               onClick={onCancel}
-              className="flex-1 bg-gray-300 text-gray-800 py-2 rounded-lg hover:bg-gray-400 transition-colors font-medium"
+              className="recipient-theme-secondary flex-1 bg-gray-300 text-gray-800 py-2 rounded-lg hover:bg-gray-400 transition-colors font-medium"
             >
               {language === 'es' ? 'Cancelar' : 'Cancel'}
             </button>

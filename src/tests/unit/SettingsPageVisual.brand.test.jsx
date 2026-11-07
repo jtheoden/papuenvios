@@ -136,13 +136,14 @@ describe('SettingsPageVisual - preset lifecycle', () => {
     expect(screen.queryByText(`${P}undoPreset`)).not.toBeInTheDocument();
   });
 
-  it('clears the applied notice and undo after Restore theme', async () => {
+  it('keeps the pending notice and undo after Restore theme until Save', () => {
     setup();
     selectPapuenvios();
     fireEvent.click(screen.getByRole('button', { name: 'settings.visual.restoreTheme' }));
     fireEvent.click(screen.getByRole('button', { name: `${P}reset.confirm` }));
-    await waitFor(() => expect(screen.queryByText(`${P}undoPreset`)).not.toBeInTheDocument());
-    expect(screen.queryByTestId('brand-preset-applied')).not.toBeInTheDocument();
+    expect(screen.getByText(`${P}undoPreset`)).toBeInTheDocument();
+    expect(screen.getByTestId('brand-preset-applied')).toBeInTheDocument();
+    expect(saveVisualSettings).not.toHaveBeenCalled();
   });
 
   it('keeps the preset in the form when visualSettings is refreshed externally', () => {

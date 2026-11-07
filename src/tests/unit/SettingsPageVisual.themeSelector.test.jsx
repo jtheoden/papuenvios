@@ -158,10 +158,9 @@ describe('theme selector - what Save persists', () => {
     const payload = setVisualSettings.mock.calls[0][0];
     expect(payload).toMatchObject(BRAND_PRESET);
     expect(payload.activeTheme).toBe('papuenvios');
-    expect(payload.classicSnapshot).toEqual(THEME_PRESETS.classic);
-    // custom values outside the preset survive
-    expect(payload.primaryColor).toBe('#3499dc');
-    expect(payload.secondaryColor).toBe('#9333ea');
+    expect(payload.classicSnapshot).toEqual(Object.fromEntries(Object.keys(BRAND_PRESET).map((key) => [key, PROD[key]])));
+    expect(payload.primaryColor).toBe('#171717');
+    expect(payload.secondaryColor).toBe('#605B52');
   });
 
   it('classic round trip: unsaved papuenvios -> classic saves the original values and no snapshot', () => {
@@ -238,12 +237,12 @@ describe('theme selector - hand-edited colours notice', () => {
   const notice = () => screen.queryByTestId('theme-customized');
 
   it('is silent while the form equals the preset of its theme', () => {
-    setup();
+    setup(THEME_PRESETS.classic);
     expect(notice()).not.toBeInTheDocument();
   });
 
   it('appears when a preset colour is edited by hand, and goes away when the edit is undone', () => {
-    setup();
+    setup(THEME_PRESETS.classic);
     fireEvent.change(screen.getByLabelText('settings.visual.brand.cartBadgeBg'), { target: { value: '#123456' } });
     expect(notice()).toHaveAttribute('role', 'status');
     expect(notice()).toHaveTextContent(`${T}customized`);
@@ -259,7 +258,7 @@ describe('theme selector - hand-edited colours notice', () => {
   });
 });
 
-describe('Restore theme (destructive reset to the code defaults)', () => {
+describe('Restore theme (form-only reset to the code defaults)', () => {
   const STORED = {
     ...BRAND_PRESET,
     activeTheme: 'papuenvios',
@@ -311,8 +310,11 @@ describe('Restore theme (destructive reset to the code defaults)', () => {
     const { setVisualSettings } = setup(STORED);
     fireEvent.click(restoreButton());
     fireEvent.click(confirmButton());
-    await waitFor(() => expect(saveVisualSettings).toHaveBeenCalledTimes(1));
-    const saved = saveVisualSettings.mock.calls[0][0];
+    expect(saveVisualSettings).not.toHaveBeenCalled();
+    expect(setVisualSettings).not.toHaveBeenCalled();
+    save();
+    expect(setVisualSettings).toHaveBeenCalledTimes(1);
+    const saved = setVisualSettings.mock.calls[0][0];
     expect(saved).toMatchObject(THEME_PRESETS.classic);
     expect(saved.primaryColor).toBe(DEFAULT_VISUAL_SETTINGS.primaryColor);
     expect(saved.activeTheme).toBe('classic');

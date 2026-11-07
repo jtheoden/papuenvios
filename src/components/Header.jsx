@@ -14,17 +14,12 @@ import { useRealtimeOrders, useRealtimeRemittances } from '@/hooks/useRealtimeSu
 import { semanticColors } from '@/lib/colorTokens';
 import RoleUnresolvedBanner from '@/components/RoleUnresolvedBanner';
 import { buildHeaderTheme } from '@/lib/headerTheme';
+import HeaderBrand, { NAV_IDLE, ACTIVE_CUE, NAV_ACTIVE } from '@/components/HeaderBrand';
 
 // Colours come from CSS variables set on the header root (see buildHeaderTheme). Hover and focus
 // are classes, so no inline style can override them.
 const ICON_FOCUS = 'focus-visible:ring-brand-focus';
 const NAV_BASE = `flex items-center space-x-2 motion-reduce:transition-none motion-reduce:active:scale-100 ${ICON_FOCUS}`;
-// shortcut: legacy wordmark gradient (see buildHeaderTheme), until S5 brings the official logo.
-const MARK_GRADIENT = 'bg-[linear-gradient(to_right,var(--hdr-mark-from),var(--hdr-mark-to))]';
-const NAV_IDLE = 'text-[color:var(--hdr-text)] hover:bg-[color:var(--hdr-hover-bg)] hover:text-[color:var(--hdr-hover-text)]';
-// The active state does not rely on colour alone: bold + underline (WCAG 1.4.1).
-const ACTIVE_CUE = 'font-semibold underline decoration-2 underline-offset-4';
-const NAV_ACTIVE = `${ACTIVE_CUE} [background:var(--hdr-active-background)] text-[color:var(--hdr-active-text)] hover:bg-[color:var(--hdr-active-bg)] hover:text-[color:var(--hdr-active-text)]`;
 const PILL_IDLE = 'bg-[color:var(--hdr-pill-bg)] border-[color:var(--hdr-pill-border)] text-[color:var(--hdr-pill-text)] hover:bg-[color:var(--hdr-hover-bg)] hover:text-[color:var(--hdr-hover-text)]';
 const MENU_IDLE = 'text-[color:var(--hdr-menu-text)] hover:bg-[color:var(--hdr-hover-bg)] hover:text-[color:var(--hdr-hover-text)]';
 const MENU_ACTIVE = `${ACTIVE_CUE} bg-[color:var(--hdr-menu-active-bg)] text-[color:var(--hdr-menu-active-text)] hover:bg-[color:var(--hdr-menu-active-bg)] hover:text-[color:var(--hdr-menu-active-text)]`;
@@ -252,28 +247,7 @@ const Header = ({ currentPage, onNavigate }) => {
             className="flex items-center gap-1 sm:gap-2 cursor-pointer min-w-0 flex-shrink-0"
             onClick={() => handleNavClick('home')}
           >
-            {visualSettings.logo ? (
-              <img
-                src={visualSettings.logo}
-                alt={visualSettings.companyName || 'Logo'}
-                className="object-contain flex-shrink-0"
-                style={{
-                  maxHeight: `${visualSettings.logoMaxHeight || 40}px`,
-                  width: 'auto'
-                }}
-              />
-            ) : legacyMark && (
-              <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${MARK_GRADIENT}`}>
-                <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-              </div>
-            )}
-            {(visualSettings.showCompanyName !== false) && (
-              <span
-                className={`text-sm sm:text-xl font-bold truncate max-w-[100px] sm:max-w-none ${legacyMark ? `${MARK_GRADIENT} bg-clip-text text-transparent` : ''}`}
-              >
-                {visualSettings?.companyName || 'PapuEnvíos'}
-              </span>
-            )}
+            <HeaderBrand settings={visualSettings} legacyMark={legacyMark} />
           </motion.div>
 
           {/* Desktop Navigation */}
