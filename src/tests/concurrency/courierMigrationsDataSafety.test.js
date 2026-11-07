@@ -19,8 +19,9 @@ const EXISTING = ['orders', 'order_items', 'remittances', 'remittance_types', 's
   'remittance_status_history', 'courier_accruals', 'messenger_payment_types'];
 const strip = (sql) => sql.replace(/^\s*(BEGIN|COMMIT);\s*$/gm, '');
 const ALL = ['m1', 'm2', 'm3'];
-// phase A alters messenger_payment_types (a module table, empty in production): it is checked on its own, then chained last
-const CHAIN = [...ALL, 'a'];
+// phase A alters messenger_payment_types (a module table, empty in production): it is checked on its own, then chained;
+// phase B (subscriptions) goes on top of A and is rolled back first
+const CHAIN = [...ALL, 'a', 'b'];
 
 describe('static: additive only', () => {
   it.each(ALL)('%s migration has no DROP / TRUNCATE / DELETE / mass UPDATE on existing tables', (k) => {
@@ -135,7 +136,7 @@ describeDb('data safety on realistic rows (local Postgres)', () => {
     expect(await fingerprint()).toEqual(before);
   });
 
-  it('rolling back A -> M3 -> M2 -> M1 and re-applying M1 -> A leaves existing data untouched and restores the objects', async () => {
+  it('rolling back B -> A -> M3 -> M2 -> M1 and re-applying M1 -> B leaves existing data untouched and restores the objects', async () => {
     const before = await fingerprint();
     await admin.query('BEGIN');
     let during;
@@ -166,6 +167,7 @@ describeDb('data safety on realistic rows (local Postgres)', () => {
     await admin.query('BEGIN');
     let during;
     try {
+      await admin.query(strip(readSql(ROLLBACKS.b))); // phase B sits on top of A: its down file goes first
       await admin.query(strip(readSql(MIGRATIONS.a)));
       await admin.query(strip(readSql(ROLLBACKS.a)));
       const cols = (await admin.query(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name = 'messenger_payment_types' AND column_name IN ('currency','fixed_amount')`)).rows[0].n;
@@ -223,7 +225,7 @@ describeDb('data safety on realistic rows (local Postgres)', () => {
   it('the phase A rollback refuses to run while phase B is applied (its down file goes first)', async () => {
     await admin.query('BEGIN');
     try {
-      await admin.query('CREATE TABLE public.courier_payment_type_subscriptions (id int)');
+      await admin.query('CREATE TABLE IF NOT EXISTS public.courier_payment_type_subscriptions (id int)'); // B may already be applied
       const e = await admin.query(strip(readSql(ROLLBACKS.a))).then(() => null, (err) => err);
       expect(e?.code).toBe('55000');
       expect(e?.message).toMatch(/phase B/);
@@ -244,8 +246,10 @@ describeDb('data safety on realistic rows (local Postgres)', () => {
       await kit.setRule(c, rule);
       await admin.query('BEGIN');
       try {
+        await admin.query(strip(readSql(ROLLBACKS.b))); // so the refusal below is the rule guard, not the phase B guard
         const e = await admin.query(strip(readSql(ROLLBACKS.a))).then(() => null, (err) => err);
         expect(e?.code, JSON.stringify(rule)).toBe('55000');
+        expect(e?.message).toMatch(/phase A rules/);
       } finally {
         await admin.query('ROLLBACK');
       }

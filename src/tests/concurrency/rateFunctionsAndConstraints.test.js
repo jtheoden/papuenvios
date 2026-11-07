@@ -442,7 +442,13 @@ describeDb('rate functions fix + exchange_rates constraints', () => {
         // courier accruals only READ the active USD->CUP exchange_rates row (CUP -> USD conversion); they redefine none of them
         && f !== '20261031110000_delivery_assignments_and_accruals.sql'
         // courier phase A also only READS the active USD->CUP row, live, inside the accrual (checked just below)
-        && f !== '20261105150000_courier_payment_types_currency_ranges.sql');
+        && f !== '20261105150000_courier_payment_types_currency_ranges.sql'
+        // courier phase B carries the phase A accrual body (+ via_subscription): same live READ only (checked just below)
+        && f !== '20261105160000_courier_payment_type_subscriptions.sql');
+      const phaseB = readFileSync('supabase/migrations/20261105160000_courier_payment_type_subscriptions.sql', 'utf8')
+        .split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+      expect(phaseB).not.toMatch(/\b(DELETE\s+FROM|UPDATE|INSERT\s+INTO|TRUNCATE|ALTER\s+TABLE)\s+(public\.)?exchange_rates/i);
+      expect(phaseB).not.toMatch(/get_order_exchange_rate|get_market_exchange_rate|recalculate_remittance_at_current_rate/);
       const phaseA = readFileSync('supabase/migrations/20261105150000_courier_payment_types_currency_ranges.sql', 'utf8')
         .split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
       // its one DDL on exchange_rates is the production-drift column rate_type, behind a catalog check (no lock in production)

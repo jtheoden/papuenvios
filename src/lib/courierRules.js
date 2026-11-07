@@ -124,6 +124,16 @@ export const coverageGapsFromError = (error) => {
   }
 };
 
+/** Number of couriers named by a stale_subscribers refusal (DETAIL = JSON); 0 when it is another error. */
+export const staleCouriersFromError = (error) => {
+  if (!String(error?.message || '').includes('stale_subscribers')) return 0;
+  try {
+    return (JSON.parse(error.details).couriers || []).length || 1;
+  } catch {
+    return 1;
+  }
+};
+
 /** Ids in logs/UI are truncated (no full identifier of a person or operation leaves the screen). */
 export const shortId = (id) => (typeof id === 'string' && id ? id.slice(0, 8) : '');
 
@@ -284,9 +294,15 @@ export const courierErrorKey = (error) => {
   if (code === '42501') return message.includes('super administrator') ? 'couriers.errors.superAdminOnly' : 'couriers.errors.forbidden';
   if (code === '22023') {
     if (message.includes('coverage_gap')) return 'couriers.errors.coverageGap';
+    if (message.includes('stale_subscribers')) return 'couriers.errors.staleSubscribers';
     if (message.includes('mixed_currency_scope')) return 'couriers.errors.mixedCurrency';
     if (/at most \d+ decimals/.test(message)) return 'couriers.errors.decimals';
     if (message.includes('at most 9999999999.99')) return 'couriers.errors.amountMax';
+    if (message.includes('belongs to another courier')) return 'couriers.errors.ownedByOther';
+    if (message.includes('no active version')) return 'couriers.errors.noActiveVersion';
+    if (message.includes('subscribed by another courier')) return 'couriers.errors.subscribedElsewhere';
+    if (message.includes('courier not found or inactive')) return 'couriers.errors.courierInactive';
+    if (message.includes('still has active subscriptions')) return 'couriers.errors.staleSubscriptions';
     if (message.includes('cannot be in the past')) return 'couriers.errors.pastDate';
     if (message.includes('every accrual must be')) return 'couriers.errors.notPayable';
     if (message.includes('unknown amount can be recalculated')) return 'couriers.errors.notRecalculable';

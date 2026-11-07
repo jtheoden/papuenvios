@@ -131,6 +131,42 @@ describe('writes never degrade and carry a typed error', () => {
   });
 });
 
+describe('courier subscriptions to payment types (phase B)', () => {
+  it('lists the ACTIVE subscriptions with their columns', async () => {
+    db.tables.courier_payment_type_subscriptions = { data: [{ id: 's1', courier_id: 'c1', payment_type_code: 'g' }], error: null };
+    expect(await svc.listSubscriptions()).toEqual({ available: true, items: [{ id: 's1', courier_id: 'c1', payment_type_code: 'g' }] });
+    const calls = db.calls.filter(([table]) => table === 'courier_payment_type_subscriptions');
+    expect(calls.find(([, m]) => m === 'select')[2]).toMatch(/courier_id, payment_type_code/);
+    expect(calls).toContainEqual(['courier_payment_type_subscriptions', 'eq', 'is_active', true]);
+  });
+  it('a missing subscriptions table hides only that section: the rest of the module keeps working', async () => {
+    db.tables.courier_payment_type_subscriptions = missing('42P01');
+    expect(await svc.listSubscriptions()).toEqual({ available: false, items: [] });
+    expect(logError).not.toHaveBeenCalled();
+    db.tables.couriers = { data: [{ id: 'c1' }], error: null };
+    expect(await svc.listCouriers()).toEqual({ available: true, items: [{ id: 'c1' }] });
+  });
+  it('subscribe / unsubscribe call the RPCs with the exact argument names (code trimmed)', async () => {
+    db.rpc.mockResolvedValue({ data: 's1', error: null });
+    expect(await svc.subscribeCourier('c1', ' g ')).toBe('s1');
+    expect(db.rpc).toHaveBeenLastCalledWith('admin_subscribe_courier_payment_type', { p_courier_id: 'c1', p_code: 'g', p_accept_gaps: false });
+    await svc.subscribeCourier('c1', 'g', { acceptGaps: true });
+    expect(db.rpc).toHaveBeenLastCalledWith('admin_subscribe_courier_payment_type', { p_courier_id: 'c1', p_code: 'g', p_accept_gaps: true });
+    db.rpc.mockResolvedValue({ data: 1, error: null });
+    expect(await svc.unsubscribeCourier('c1', 'g')).toBe(1);
+    expect(db.rpc).toHaveBeenLastCalledWith('admin_unsubscribe_courier_payment_type', { p_courier_id: 'c1', p_code: 'g' });
+  });
+  it('a coverage_gap refusal carries its gaps (cents); an overlap carries the overlap key and no gaps', async () => {
+    const details = '{"currency":"USD","gaps":[{"kind":"remittance","from":100,"to":200}]}';
+    db.rpc.mockResolvedValue({ data: null, error: { code: '22023', message: 'coverage_gap: x', details } });
+    await expect(svc.subscribeCourier('c1', 'g')).rejects.toMatchObject({
+      i18nKey: 'couriers.errors.coverageGap', gaps: [{ kind: 'remittance', from: 10000, to: 20000 }]
+    });
+    db.rpc.mockResolvedValue({ data: null, error: { code: '23P01', message: 'overlapping_rule: x' } });
+    await expect(svc.subscribeCourier('c1', 'g')).rejects.toMatchObject({ i18nKey: 'couriers.errors.overlap', gaps: null });
+  });
+});
+
 describe('assignDeliveryCourier (called BEFORE the delivery transition)', () => {
   it('does nothing without a selection', async () => {
     await svc.assignDeliveryCourier('remittance', 'r1', '');

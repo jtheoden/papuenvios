@@ -265,6 +265,13 @@ describe('courierErrorKey: typed RPC errors', () => {
     expect(key({ code: '22023', message: 'invalid_argument: percent accepts at most 3 decimals and cup_per_usd at most 4 decimals' })).toBe('couriers.errors.decimals');
     expect(key({ code: '22023', message: 'invalid_argument: amounts accept at most 9999999999.99' })).toBe('couriers.errors.amountMax');
     expect(key({ code: '22023', message: 'invalid_argument: NaN is not a valid amount, rate or percentage' })).toBe('couriers.errors.invalid');
+    // phase B: subscriptions
+    expect(key({ code: '22023', message: 'invalid_argument: this payment type belongs to another courier' })).toBe('couriers.errors.ownedByOther');
+    expect(key({ code: '22023', message: 'invalid_argument: unknown payment type code or no active version' })).toBe('couriers.errors.noActiveVersion');
+    expect(key({ code: '22023', message: 'invalid_argument: this payment type is subscribed by another courier; unsubscribe it first' })).toBe('couriers.errors.subscribedElsewhere');
+    expect(key({ code: '22023', message: 'invalid_argument: courier not found or inactive' })).toBe('couriers.errors.courierInactive');
+    expect(key({ code: '22023', message: 'invalid_argument: this deactivated code still has active subscriptions; unsubscribe them before recreating it' })).toBe('couriers.errors.staleSubscriptions');
+    expect(key({ code: '22023', message: 'stale_subscribers: couriers subscribed to this expired code start paying with it again; confirm to save' })).toBe('couriers.errors.staleSubscribers');
     expect(key({ code: '22023', message: 'something else' })).toBe('couriers.errors.invalid');
     expect(key({ code: '55P03' })).toBe('couriers.errors.generic');
     expect(key(null)).toBe('couriers.errors.generic');

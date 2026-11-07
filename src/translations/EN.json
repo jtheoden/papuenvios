@@ -3037,6 +3037,22 @@
       "empty": "There are no couriers yet.",
       "saved": "Courier saved."
     },
+    "subscriptions": {
+      "title": "Subscribed payment types",
+      "intro": "A subscribed payment type applies to this courier with the priority of its own rule. For the other couriers it keeps applying as a general type. It only affects future deliveries: delivered ones keep their cost.",
+      "empty": "This courier has no subscribed payment types.",
+      "type": "Payment type",
+      "noneAvailable": "There are no current payment types available to subscribe.",
+      "add": "Subscribe",
+      "remove": "Remove",
+      "added": "Payment type subscribed.",
+      "removed": "Subscription removed. Deliveries already made do not change.",
+      "gapWarning": "With this subscription, the ranges of this courier leave values without a rule (unknown cost):",
+      "acceptGaps": "I understand those values will have no rule and want to subscribe anyway.",
+      "inert": "No current version (not applied)",
+      "confirmRemove": "Remove the subscription to \"{name}\"? It only affects future deliveries: delivered ones keep their cost.",
+      "confirmRemoveYes": "Yes, remove"
+    },
     "errors": {
       "generic": "The operation could not be completed. Please try again.",
       "unavailable": "The courier module is not available yet.",
@@ -3053,7 +3069,13 @@
       "coverageGap": "The ranges of this scope leave values without a rule. Review the gaps and confirm if you want to save anyway.",
       "mixedCurrency": "The ranges of this scope already use another currency. Use the same currency or define another scope.",
       "decimals": "Amounts accept at most 2 decimals; the percentage, 3; CUP per USD, 4.",
-      "amountMax": "Amounts cannot exceed 9999999999.99."
+      "amountMax": "Amounts cannot exceed 9999999999.99.",
+      "ownedByOther": "That payment type belongs to another courier.",
+      "noActiveVersion": "That payment type does not exist or has no current version.",
+      "subscribedElsewhere": "That payment type is subscribed by another courier. Remove that subscription before assigning it to a specific courier.",
+      "courierInactive": "The courier does not exist or is inactive.",
+      "staleSubscriptions": "This deactivated code still has active subscriptions. Remove them before recreating it.",
+      "staleSubscribers": "This code expired and subscribed couriers will be paid with this version again."
     },
     "validation": {
       "required": "This field is required.",
@@ -3186,7 +3208,8 @@
       },
       "gapWarning": "With this range, these values are left without a rule of this scope. A delivery in a gap is not blocked: its cost stays unknown.",
       "acceptGaps": "I understand there are gaps and want to save anyway",
-      "acceptGapsRequired": "Confirm that you accept the gaps before saving."
+      "acceptGapsRequired": "Confirm that you accept the gaps before saving.",
+      "staleSubscribers": "{count} courier(s) subscribed to this expired code will be paid with this version again, with courier priority. Confirm to save."
     },
     "payable": {
       "title": "Payable",

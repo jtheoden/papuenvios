@@ -11,13 +11,15 @@ export const MIGRATIONS = {
   m1: 'supabase/migrations/20261031100000_couriers_and_payment_types.sql',
   m2: 'supabase/migrations/20261031110000_delivery_assignments_and_accruals.sql',
   m3: 'supabase/migrations/20261031120000_courier_payments_and_report.sql',
-  a: 'supabase/migrations/20261105150000_courier_payment_types_currency_ranges.sql'
+  a: 'supabase/migrations/20261105150000_courier_payment_types_currency_ranges.sql',
+  b: 'supabase/migrations/20261105160000_courier_payment_type_subscriptions.sql'
 };
 export const ROLLBACKS = {
   m1: 'supabase/rollbacks/20261031100000_couriers_and_payment_types_down.sql',
   m2: 'supabase/rollbacks/20261031110000_delivery_assignments_and_accruals_down.sql',
   m3: 'supabase/rollbacks/20261031120000_courier_payments_and_report_down.sql',
-  a: 'supabase/rollbacks/20261105150000_courier_payment_types_currency_ranges_down.sql'
+  a: 'supabase/rollbacks/20261105150000_courier_payment_types_currency_ranges_down.sql',
+  b: 'supabase/rollbacks/20261105160000_courier_payment_type_subscriptions_down.sql'
 };
 
 export const failure = async (promise) => {
@@ -160,6 +162,12 @@ export const makeKit = (admin, actors) => {
     return rows[0].id;
   };
 
+  /** Phase B RPCs: subscribe returns the subscription id, unsubscribe the number of rows closed. */
+  const subscribe = async (client, courierId, code, acceptGaps = false) =>
+    (await client.query('SELECT public.admin_subscribe_courier_payment_type($1::uuid, $2, $3::boolean) AS id', [courierId, code, acceptGaps])).rows[0].id;
+  const unsubscribe = async (client, courierId, code) =>
+    (await client.query('SELECT public.admin_unsubscribe_courier_payment_type($1::uuid, $2) AS n', [courierId, code])).rows[0].n;
+
   const cleanup = async () => {
     await clients.splice(0).reduce((p, c) => p.then(() => c.end().catch(() => {})), Promise.resolve());
     const { cleanup: fixturesCleanup } = await import('./fixtures');
@@ -170,6 +178,8 @@ export const makeKit = (admin, actors) => {
     await admin.query(`DELETE FROM public.delivery_assignments`).catch(() => {});
     await wipeTable(admin, 'courier_payments', 'courier_payments_immutable').catch(() => {});
     await wipeTable(admin, 'messenger_payment_types', 'messenger_payment_types_guard').catch(() => {});
+    // phase B: subscriptions reference couriers (ON DELETE RESTRICT), so they go first
+    await wipeTable(admin, 'courier_payment_type_subscriptions', 'courier_payment_type_subscriptions_guard').catch(() => {});
     await admin.query('DELETE FROM public.couriers').catch(() => {});
     await admin.query(`UPDATE public.courier_margin_settings SET warning_pct = NULL, critical_pct = NULL, target_pct = NULL, updated_by = NULL`).catch(() => {});
     if (types.length) await admin.query('DELETE FROM public.remittance_types WHERE id = ANY($1)', [types.splice(0)]);
@@ -180,6 +190,6 @@ export const makeKit = (admin, actors) => {
 
   return {
     as, setRole, restoreActors, call, seedType, seedZone, seedUsdCupRate, seedRemittance, seedDispatchedOrder,
-    deliverRemittance, deliverOrder, accruals, makeCourier, setRule, cleanup, clients
+    deliverRemittance, deliverOrder, accruals, makeCourier, setRule, subscribe, unsubscribe, cleanup, clients
   };
 };
