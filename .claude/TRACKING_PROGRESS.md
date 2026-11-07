@@ -735,7 +735,7 @@ Rama `feat/zelle-contact-type` (desde `origin/main`). Sin commit, sin push, migr
 
 ## Theme-token follow-up — local verification 2026-11-07
 
-Uncommitted follow-up on `feat/theme-controls-links-logo`; no production data changes, commits or pushes.
+Follow-up committed on `feat/theme-controls-links-logo` in five new commits (no amend) and pushed to PR #182; no production data changes.
 
 - Visual Settings: theme-token chrome; charcoal/warm-gray identity suggestions; Apply/Restore are form-only until Save. Legacy snapshot and late-refresh regressions have tests. Initial focused verification: 188 tests; mobile/tablet/desktop browser fixture: 6/6. Round 2 adversarial review found an Undo ownership edge case; correction/re-judgment pending.
 - Categories + administrative work tabs: exact-token controls, semantic badges preserved. 32 tests passed; both adversarial reviewers CLEAN.
@@ -743,7 +743,7 @@ Uncommitted follow-up on `feat/theme-controls-links-logo`; no production data ch
 - Build passed. Full-suite baseline attempt: 4841 passed / 7 failed; failures include newly-added red regression, known font dependency test and sandbox subprocess checks. Isolated codemod (29 tests) and secret scanner (6 tests) pass outside sandbox. Do not claim full-suite green.
 - Remaining requested scope: shared configurable tab fallbacks/gradients, Blog, Products, UserPanel, Cart; unmatched exact Classic shades and remittance/category leftovers. Cart screenshot shows purple COMBO badges and low-contrast gold price text on white. Avoid blanket status/category recoloring and `text-theme-link` for non-links (global underline).
 - CodeGraph synced and Engram updated after verified slices. Browser tests use local placeholder Supabase and block external requests.
-- Review checkpoint: two corrective iterations completed; final Undo-focused regression run 48/48. Round 3: Judge B CLEAN; Judge A identifies the opposite event ordering (Apply → fresh props skipped → Undo) still needing replay of fresh settings. JUDGMENT: ESCALATED for authorization to continue a third corrective iteration. Palette is not approved for release. Categories/admin and remittance slices retain dual CLEAN verdicts.
+- Historical review checkpoint: Round 3 found the opposite event ordering (Apply → fresh props skipped → Undo) still needed replay of fresh settings; this was subsequently fixed, red-first tested, and approved by both Round-4 reviewers below.
 
 ## P1 — Analyze intermittent one-cent remittance amount discrepancy (2026-11-07)
 
@@ -790,3 +790,9 @@ Uncommitted follow-up on `feat/theme-controls-links-logo`; no production data ch
 - Fixed the remaining event order: Apply → refreshed props arrive while the draft owns the form → Undo now restores the latest external settings rather than stale values.
 - Red-first regression reproduced the failure; corrected focused suite passed 50/50. Blind Round-4 reviewers both CLEAN. Combined release verification passed 24 test files / 244 tests, production build, ESLint on modified code, and `git diff --check`.
 - This supersedes the Round-3 escalation above for release status: palette is now approved. Still do not treat unimplemented areas/audit or the financial-cent discrepancy backlog as included in this release.
+
+## CI follow-up — first pushed candidate 2026-11-07
+
+- PR #182 head `495a5c6c` passed lint but CI coverage had 1 failing test (4,875 passed): `themeCompliance.test.js` requires the inline first-paint `index.html` preset to exactly match `BRAND_PRESET`.
+- The corresponding local `index.html` change adds the new identity keys but excludes them from legacy-brand inference, matching the `brandPalette.js` behavior. Focused `themeCompliance.test.js`: 26/26 passed. Both blind reviewers CLEAN. This change must be committed/pushed, then the full PR CI rerun must pass before merge.
+- Vercel preview was BUILDING at time of check; production has not been updated.
