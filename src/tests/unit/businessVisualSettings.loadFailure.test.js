@@ -63,6 +63,23 @@ describe('visual settings load failures keep the look', () => {
     expect(html().dataset.theme).toBe('papuenvios');
   });
 
+  it('unverified failure defaults do not touch any DOM styles or cache', async () => {
+    singleMock.mockResolvedValue({ data: null, error: { code: '503' } });
+    const { loadVisualSettings, applyVisualSettingsToDOM } = await loadService();
+    html().style.setProperty('--color-primary', '#FFA500');
+    html().style.setProperty('--brand-ink', '#171717');
+    document.body.style.backgroundColor = '#FAF7F0';
+    const rootStyle = html().getAttribute('style');
+    const bodyStyle = document.body.getAttribute('style');
+    const cacheWrite = vi.spyOn(Storage.prototype, 'setItem');
+    const settings = await loadVisualSettings();
+    applyVisualSettingsToDOM(settings);
+    expect(html().getAttribute('style')).toBe(rootStyle);
+    expect(document.body.getAttribute('style')).toBe(bodyStyle);
+    expect(cacheWrite).not.toHaveBeenCalled();
+    expect(localStorage.getItem(LOCAL_CACHE_KEY)).toBeNull();
+  });
+
   it('a real change after the failure still switches the look (settings saved by an admin)', async () => {
     singleMock.mockResolvedValue({ data: null, error: { code: '500', message: 'boom' } });
     const { loadVisualSettings, applyVisualSettingsToDOM } = await loadService();

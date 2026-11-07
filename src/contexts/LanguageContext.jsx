@@ -9,10 +9,12 @@ const translations = { es: ES, en: EN };
 export const LanguageProvider = ({ children }) => {
   const [language, setLanguage] = useState(() => {
     // Load language preference from localStorage on initial mount
-    if (typeof window !== 'undefined') {
-      const savedLanguage = localStorage.getItem('preferredLanguage');
-      return savedLanguage || 'es';
-    }
+    try {
+      if (typeof window !== 'undefined') {
+        const savedLanguage = localStorage.getItem('preferredLanguage');
+        return savedLanguage || 'es';
+      }
+    } catch (error) { /* Storage may be blocked; keep the default language. */ }
     return 'es';
   });
 

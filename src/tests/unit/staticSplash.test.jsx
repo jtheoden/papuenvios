@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createRoot } from 'react-dom/client';
@@ -72,5 +72,65 @@ describe('React takes over #root', () => {
     expect(container.innerHTML).toBe('<p>app</p>');
     reactRoot.unmount();
     container.remove();
+  });
+});
+
+
+describe('static splash startup escape hatch', () => {
+  let page, reload;
+  const start = (storage = localStorage) => {
+    page = new DOMParser().parseFromString(html, 'text/html');
+    reload = vi.fn();
+    const scripts = Array.from(page.querySelectorAll('script:not([src])')).map((script) => script.textContent).join('\n');
+    // Inject only browser dependencies: reload is otherwise non-configurable in jsdom.
+    new Function('document', 'localStorage', 'window', 'setTimeout', scripts)(page, storage, { location: { reload } }, setTimeout);
+  };
+  beforeEach(() => {
+    vi.useFakeTimers();
+    localStorage.clear();
+  });
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it.each([
+    [null, 'La carga está tardando demasiado.', 'Recargar', 'es'],
+    ['en', 'Loading is taking too long.', 'Reload', 'en'],
+  ])('offers a localized reload after 20 seconds (preference: %s)', async (preference, message, label, lang) => {
+    if (preference) localStorage.setItem('preferredLanguage', preference);
+    start();
+    await vi.advanceTimersByTimeAsync(19999);
+    expect(page.querySelector('#ps button')).toBeNull();
+    await vi.advanceTimersByTimeAsync(1);
+    const splash = page.getElementById('ps');
+    expect(splash.getAttribute('role')).toBe('status');
+    expect(splash.textContent).toContain(message);
+    expect(splash.querySelector('.ps-sr')).toBeNull();
+    expect(splash.getAttribute('lang')).toBe(lang);
+    const button = splash.querySelector('button');
+    expect(button.textContent).toBe(label);
+    expect(button.type).toBe('button');
+    button.click();
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it('still offers Spanish recovery when all storage access is blocked', async () => {
+    start({ getItem: () => { throw new Error('blocked'); } });
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(page.querySelector('#ps button')?.textContent).toBe('Recargar');
+  });
+
+  it('does nothing if React has already removed the static splash', async () => {
+    start();
+    page.getElementById('root').textContent = 'app';
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(page.getElementById('root').textContent).toBe('app');
+    expect(page.querySelector('button')).toBeNull();
+  });
+
+  it('uses no dynamic HTML or network dependencies in the escape hatch', () => {
+    const scripts = Array.from(doc.querySelectorAll('script:not([src])')).map((script) => script.textContent).join('\n');
+    expect(scripts).not.toMatch(/innerHTML|insertAdjacentHTML|fetch\(|XMLHttpRequest/);
   });
 });

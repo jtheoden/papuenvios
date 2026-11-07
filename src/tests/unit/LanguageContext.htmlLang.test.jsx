@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
 
@@ -13,6 +13,15 @@ describe('LanguageContext keeps <html lang> in sync', () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.setAttribute('lang', 'xx');
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('falls back to Spanish when storage reads are blocked', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+    render(<LanguageProvider><Switch /></LanguageProvider>);
+    expect(document.documentElement.lang).toBe('es');
+    expect(screen.getByRole('button', { name: 'en' })).toBeTruthy();
   });
 
   it('sets the default language on mount and follows a change', () => {

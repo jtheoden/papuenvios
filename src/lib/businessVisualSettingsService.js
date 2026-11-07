@@ -166,6 +166,9 @@ function getCachedSettings(ignoreTtl = false) {
 
 // Last settings that really came from the database/cache/an admin save, for failed reloads in the same session.
 let lastGoodSettings = null;
+// A late request cannot replace a newer verified load/cache hit/admin save.
+let settingsRevision = 0;
+let lastGoodRevision = 0;
 // Code defaults handed out because a load FAILED (nothing better known): applyVisualSettingsToDOM must not let them
 // pick the look, since the defaults are classic and the stored (production) row is the brand.
 const unverifiedSettings = new WeakSet();
@@ -208,37 +211,50 @@ export function clearVisualSettingsCache() {
 /**
  * Load visual settings from database
  * Falls back to defaults on error
- * @returns {Promise<Object>} Visual settings object
+ * @param {Object} options - Optional late-success handler and consumer lifetime/change guard
+ * @returns {Promise<Object>} Visual settings object (the startup wait is bounded, not the request)
  */
-export async function loadVisualSettings() {
+export async function loadVisualSettings({ onLateSettings, isCurrent = () => true } = {}) {
+  const revision = ++settingsRevision;
+  let timedOut = false;
   try {
     // Check cache first
     const cached = getCachedSettings();
     if (cached) {
       lastGoodSettings = { ...DEFAULT_VISUAL_SETTINGS, ...cached };
+      lastGoodRevision = revision;
       return lastGoodSettings;
     }
 
-    const { data, error } = await withTimeout(
-      supabase.from('business_visual_settings').select('settings').limit(1).single(),
+    // Observe the underlying request, not just the race: slow connections can still deliver a verified row later.
+    const request = Promise.resolve(
+      supabase.from('business_visual_settings').select('settings').limit(1).single()
+    ).then(({ data, error }) => {
+      if (error) {
+        // Missing rows/tables retain the existing foreground default behavior, but are NOT a verified late row.
+        if (error.code === 'PGRST116' || error.code === '42P01') return DEFAULT_VISUAL_SETTINGS;
+        throw error;
+      }
+
+      if (!isCurrent() || revision < lastGoodRevision) return settingsAfterFailure();
+      if (timedOut && (!data?.settings || typeof data.settings !== 'object' || Array.isArray(data.settings))) {
+        return settingsAfterFailure();
+      }
+      const settings = { ...DEFAULT_VISUAL_SETTINGS, ...(data?.settings || {}) };
+      setCachedSettings(settings);
+      lastGoodSettings = settings;
+      lastGoodRevision = revision;
+      if (timedOut) onLateSettings?.(settings);
+      return settings;
+    });
+
+    return await withTimeout(
+      request,
       VISUAL_SETTINGS_TIMEOUT_MS,
       'business_visual_settings'
     );
-
-    if (error) {
-      // If table doesn't exist or no rows, return defaults
-      if (error.code === 'PGRST116' || error.code === '42P01') {
-        return DEFAULT_VISUAL_SETTINGS;
-      }
-      console.error('[BusinessVisualSettings] Load error:', error);
-      return settingsAfterFailure();
-    }
-
-    const settings = { ...DEFAULT_VISUAL_SETTINGS, ...(data?.settings || {}) };
-    setCachedSettings(settings);
-    lastGoodSettings = settings;
-    return settings;
   } catch (err) {
+    timedOut = true;
     console.error('[BusinessVisualSettings] Load exception:', err);
     // Timeout (withTimeout) or network failure: same fallback as a DB error.
     return settingsAfterFailure();
@@ -288,6 +304,7 @@ export async function saveVisualSettings(settings) {
     // Re-cache with new settings
     setCachedSettings(settings);
     lastGoodSettings = settings;
+    lastGoodRevision = ++settingsRevision;
 
     return { success: true };
   } catch (err) {
@@ -301,11 +318,12 @@ export async function saveVisualSettings(settings) {
  * @param {Object} settings - Visual settings object
  */
 export function applyVisualSettingsToDOM(settings) {
+  // Failed-load defaults are not a theme: preserve ALL first-paint tokens, body styles and metadata.
+  if (unverifiedSettings.has(settings)) return;
   try {
     // First on purpose: it switches the --t-* tokens, so nothing below may keep it from running. The try/catch is
     // the guard for environments without a document.
-    // Defaults handed out after a failed load do not pick the look: keep what the inline script / cache set.
-    if (!unverifiedSettings.has(settings)) document.documentElement.dataset.theme = resolveLookId(settings);
+    document.documentElement.dataset.theme = resolveLookId(settings);
 
     // Update document title
     if (settings.siteTitle) {

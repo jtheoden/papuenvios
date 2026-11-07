@@ -24,6 +24,23 @@
 					document.documentElement.dataset.theme = d.activeTheme === 'classic' ? 'classic' : d.activeTheme === 'papuenvios' || brand ? 'papuenvios' : 'classic';
 				}
 			} catch (e) {}
+			// Recovery must not depend on the module loading or React committing successfully.
+			setTimeout(function () {
+				var splash = document.getElementById('ps');
+				if (!splash) return;
+				var english = false;
+				try { english = localStorage.getItem('preferredLanguage') === 'en'; } catch (e) {}
+				splash.lang = english ? 'en' : 'es';
+				splash.textContent = '';
+				var message = document.createElement('p');
+				message.textContent = english ? 'Loading is taking too long.' : 'La carga está tardando demasiado.';
+				var button = document.createElement('button');
+				button.type = 'button';
+				button.textContent = english ? 'Reload' : 'Recargar';
+				button.addEventListener('click', function () { window.location.reload(); });
+				splash.appendChild(message);
+				splash.appendChild(button);
+			}, 20000);
 		</script>
 		<!-- Static splash: painted before any JS loads; React replaces #root content on its first commit. -->
 		<style>
