@@ -186,17 +186,17 @@ describe('computeRemittanceCourierTotals', () => {
     expect(t.yearlyRemittanceCourierCost).toBe(4);
   });
 
-  it('ignores remittances without a delivery zone, not validated ones and validations outside the window', () => {
+  it('includes known costs without a zone, but ignores not validated remittances and validations outside the window', () => {
     const rows = [
       rem('nozone', { shipping_zone_id: null, delivery_cost: '0' }),
       rem('pending', { status: 'payment_pending' }),
       rem('old', { payment_validated_at: hoursAgo(24 * 60) })
     ];
     const t = computeRemittanceCourierTotals(rows, new Map([['nozone', 9], ['pending', 9], ['old', 9]]), NOW, hoursAgo(5));
-    expect(t.dailyRemittanceCourierCost).toBe(0);
+    expect(t.dailyRemittanceCourierCost).toBe(9);
     expect(t.dailyRemittanceCourierUnrecorded).toBe(0);
-    expect(t.monthlyRemittanceCourierCost).toBe(0);
-    expect(t.yearlyRemittanceCourierCost).toBe(9); // only 'old' falls in the year
+    expect(t.monthlyRemittanceCourierCost).toBe(9);
+    expect(t.yearlyRemittanceCourierCost).toBe(18); // nozone + old; pending never counts
   });
 
   it('separates "no tariff recorded" from a cost of zero: the difference is null (n/a)', () => {

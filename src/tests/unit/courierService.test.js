@@ -186,3 +186,33 @@ describe('assignDeliveryCourier (called BEFORE the delivery transition)', () => 
     await expect(svc.assignDeliveryCourier('order', 'o1', 'c1')).rejects.toMatchObject({ i18nKey: 'couriers.errors.alreadyDelivered' });
   });
 });
+
+describe('retroactive assignment', () => {
+  it('previews without confirmation, confirms with the server quote token, and selects the operation id', async () => {
+    db.rpc.mockResolvedValue({ data: { amount_cup: 800, preview_token: 'quote' }, error: null });
+    expect(await svc.previewCourierAfterDelivery('order', 'op', 'c', '  reason long enough  ')).toMatchObject({ preview_token: 'quote' });
+    expect(db.rpc).toHaveBeenLastCalledWith('admin_assign_courier_after_delivery', {
+      p_kind: 'order', p_id: 'op', p_courier_id: 'c', p_reason: 'reason long enough', p_confirm: false, p_preview_token: null
+    });
+    await svc.confirmCourierAfterDelivery('order', 'op', 'c', 'reason long enough', 'quote');
+    expect(db.rpc).toHaveBeenLastCalledWith('admin_assign_courier_after_delivery', expect.objectContaining({ p_confirm: true, p_preview_token: 'quote' }));
+    await svc.listAccruals();
+    expect(db.calls.find(([table, method]) => table === 'courier_accruals' && method === 'select')[2]).toContain('source_id');
+  });
+  it('does not swallow permission or missing-backend refusals for a preview', async () => {
+    db.rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'insufficient_privilege' } });
+    await expect(svc.previewCourierAfterDelivery('order', 'op', 'c', 'long enough reason')).rejects.toMatchObject({ i18nKey: 'couriers.errors.forbidden' });
+    db.rpc.mockResolvedValue(missing('PGRST202'));
+    await expect(svc.previewCourierAfterDelivery('order', 'op', 'c', 'long enough reason')).rejects.toMatchObject({ i18nKey: 'couriers.errors.unavailable' });
+  });
+});
+
+describe('retroactive quote refusals', () => {
+  it.each([
+    ['preview_changed', 'previewChanged'], ['preview_required', 'previewRequired'], ['already_assigned', 'alreadyAssigned'],
+    ['invalid_reason', 'invalidReason'], ['no_amount: no_rule', 'noAmount']
+  ])('maps %s for a user-visible explanation', async (message, key) => {
+    db.rpc.mockResolvedValue({ data: null, error: { code: '22023', message: message + ': refused' } });
+    await expect(svc.confirmCourierAfterDelivery('order', 'op', 'c', 'long enough reason', 'stale')).rejects.toMatchObject({ i18nKey: 'couriers.errors.' + key });
+  });
+});

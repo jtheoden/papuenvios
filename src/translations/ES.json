@@ -933,7 +933,7 @@
       "sales": "Ventas (bruto de pedidos)",
       "salesDef": "Total bruto de los pedidos con pago validado y estado activo, incluido el envío cobrado y el costo de la mercadería. No incluye remesas. Fecha: validación del pago.",
       "netIncome": "Ingreso neto",
-      "netIncomeDef": "Lo que se queda el negocio: ganancia estimada de pedidos (margen por producto menos descuentos, sin envío) más la comisión neta de remesas. Fecha: validación del pago.",
+      "netIncomeDef": "Ganancia estimada de productos + diferencia de envíos de pedidos con costo conocido + comisiones y cargos de entrega de remesas − costo de mensajería de remesas. Los costos desconocidos de pedidos se excluyen de la diferencia; asignaciones retroactivas cambian meses anteriores.",
       "collected": "Cobrado (flujo de caja)",
       "collectedDef": "Dinero que entró: total de pedidos con pago validado más el monto enviado de las remesas con pago validado. No es ingreso: incluye lo que luego se paga a destinatarios y al courier."
     },
@@ -1018,6 +1018,7 @@
     "yearlyProfit": "Ganancia Estimada Anual",
     "shippingCollected": "Envío cobrado a clientes",
     "courier": {
+      "unknownCostCount": "Pedidos con costo de mensajería desconocido (excluidos del neto de envíos)",
       "title": "Costo de mensajería",
       "collected": "Envío cobrado (todos)",
       "collectedCompared": "Cobrado con tarifa",
@@ -3069,6 +3070,11 @@
       "confirmRemoveYes": "Sí, quitar"
     },
     "errors": {
+      "invalidReason": "Ingrese un motivo de asignación de 10 a 500 caracteres.",
+      "noAmount": "No se pudo calcular el costo. Revise el motivo de la vista previa y corrija la regla, la tasa de cambio o los datos de cálculo antes de reintentar. No se asignó el mensajero.",
+      "previewChanged": "La tarifa o los datos cambiaron. Obtén y revisa una nueva vista previa antes de confirmar.",
+      "previewRequired": "Revisa la vista previa del servidor antes de confirmar.",
+      "alreadyAssigned": "Esta entrega ya tiene mensajero; no se modificó su costo.",
       "generic": "No se pudo completar la operación. Inténtelo de nuevo.",
       "unavailable": "El módulo de mensajería aún no está disponible.",
       "overlap": "Ya existe una regla vigente que se solapa con esta (mismo alcance y período). Ajuste la vigencia o el alcance.",
@@ -3227,6 +3233,40 @@
       "staleSubscribers": "{count} mensajero(s) suscrito(s) a este código expirado volverán a cobrar con esta versión, con prioridad de mensajero. Confirme para guardar."
     },
     "payable": {
+      "filter": "Filtrar entregas",
+      "allPending": "Todos los pendientes",
+      "deliveredUnassigned": "Entregadas sin mensajero",
+      "assignAfterDelivery": "Asignar mensajero",
+      "courier": "Mensajero",
+      "preview": "Obtener vista previa",
+      "confirmAssignment": "Confirmar asignación retroactiva",
+      "assignedOk": "Mensajero asignado y costo registrado.",
+      "retroactive": "Retroactivo",
+      "pastMonthsWarning": "Asignar un mensajero a una entrega pasada usa las reglas vigentes hoy y cambia las cifras de meses anteriores: el costo se atribuye a la fecha de la operación. No hay cierres congelados.",
+      "previewAmount": "Costo calculado",
+      "previewRule": "Regla vigente hoy",
+      "precedence": "Precedencia de la regla",
+      "previewRate": "Tasa USD → CUP y origen",
+      "fxOrigin": {
+        "remittance": "Tasa congelada de la remesa",
+        "exchange_rates": "Tasa actual",
+        "none": "Sin tasa disponible"
+      },
+      "precedenceValue": {
+        "courier": "Mensajero (propia o suscrita)",
+        "zone": "Zona",
+        "type": "Tipo de remesa",
+        "tier": "Rango",
+        "general": "General",
+        "none": "Sin regla"
+      },
+      "pricingWarning": {
+        "no_rule": "No hay una regla de pago activa aplicable hoy; cree o habilite una regla primero.",
+        "no_tier_match": "Ningún rango coincide: el costo sigue desconocido.",
+        "no_fx": "Falta la tasa de conversión: el costo o su equivalente USD sigue desconocido.",
+        "amount_out_of_range": "Costo fuera de rango: sigue desconocido.",
+        "no_amount_basis": "Falta una base para calcular el costo."
+      },
       "title": "Por pagar",
       "empty": "No hay pagos pendientes a mensajeros.",
       "adjustment": "ajuste",
