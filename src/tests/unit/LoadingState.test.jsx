@@ -1,0 +1,163 @@
+import React from 'react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, act } from '@testing-library/react';
+
+vi.mock('@/contexts/LanguageContext', () => ({
+  useLanguage: () => ({ t: (key) => key })
+}));
+
+import LoadingState, { SkeletonBox, SHOW_DELAY_MS, MIN_VISIBLE_MS } from '@/components/ui/LoadingState';
+import { loadingTiming } from '@/components/ui/loadingTiming';
+
+const skeleton = <SkeletonBox className="h-10" />;
+const ui = (loading) => (
+  <LoadingState loading={loading} skeleton={skeleton}>
+    <p>content</p>
+  </LoadingState>
+);
+
+const advance = (ms) => act(() => { vi.advanceTimersByTime(ms); });
+
+describe('LoadingState', () => {
+  // The test setup shortens the timing for every other suite: this one checks the real values.
+  const saved = { ...loadingTiming };
+  beforeEach(() => {
+    vi.useFakeTimers();
+    Object.assign(loadingTiming, { showDelayMs: SHOW_DELAY_MS, minVisibleMs: MIN_VISIBLE_MS });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    Object.assign(loadingTiming, saved);
+  });
+
+  it('uses a short show delay and a minimum visible time', () => {
+    expect(SHOW_DELAY_MS).toBe(300);
+    expect(MIN_VISIBLE_MS).toBe(400);
+  });
+
+  it('renders the content right away when it is not loading at mount', () => {
+    render(ui(false));
+    expect(screen.getByText('content')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('reserves the skeleton invisibly before the delay, then shows it with the label', () => {
+    render(ui(true));
+    const status = screen.getByRole('status');
+    expect(status).toHaveAttribute('aria-busy', 'true');
+    expect(status).toHaveAttribute('aria-live', 'polite');
+    expect(status).toHaveAttribute('data-state', 'waiting');
+    expect(status).toHaveClass('opacity-0');
+    expect(screen.queryByText('common.loading')).not.toBeInTheDocument();
+    expect(screen.queryByText('content')).not.toBeInTheDocument();
+
+    advance(SHOW_DELAY_MS);
+    expect(status).toHaveAttribute('data-state', 'visible');
+    expect(status).toHaveClass('opacity-100');
+    expect(screen.getByText('common.loading')).toBeVisible();
+  });
+
+  it('shows the content without any skeleton flash on a fast load', () => {
+    const { rerender } = render(ui(true));
+    advance(SHOW_DELAY_MS - 50);
+    rerender(ui(false));
+    expect(screen.getByText('content')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByText('content').parentElement).not.toHaveClass('motion-safe:animate-fade-in');
+  });
+
+  it('keeps a shown skeleton for the minimum time, then fades the content in', () => {
+    const { rerender } = render(ui(true));
+    advance(SHOW_DELAY_MS + 50);
+    rerender(ui(false));
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.queryByText('content')).not.toBeInTheDocument();
+
+    advance(MIN_VISIBLE_MS - 60);
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    advance(20);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByText('content').parentElement).toHaveClass('motion-safe:animate-fade-in');
+  });
+
+  it('shows the content immediately once the skeleton was already visible long enough', () => {
+    const { rerender } = render(ui(true));
+    advance(SHOW_DELAY_MS + MIN_VISIBLE_MS + 100);
+    rerender(ui(false));
+    expect(screen.getByText('content')).toBeInTheDocument();
+  });
+
+  it('only animates under prefers-reduced-motion: no-preference (motion-safe classes)', () => {
+    render(ui(true));
+    const box = screen.getByRole('status').querySelector('[data-skeleton]');
+    expect(box.className).toContain('motion-safe:animate-skeleton');
+    expect(box.className.split(' ')).not.toContain('animate-skeleton');
+    // Theme token a step darker than bg-muted, so the skeleton reads on glass/ivory surfaces.
+    expect(box).toHaveClass('bg-theme-accent-line/70');
+    expect(box).not.toHaveClass('bg-muted');
+    expect(screen.getByRole('status').className).toContain('motion-safe:transition-opacity');
+  });
+
+  it('pauses the skeleton pulse while the tab is hidden', () => {
+    render(ui(true));
+    const status = screen.getByRole('status');
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(status).toHaveAttribute('data-paused');
+
+    visibility.mockReturnValue('visible');
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(status).not.toHaveAttribute('data-paused');
+  });
+
+  it('uses a custom label when given one', () => {
+    render(<LoadingState loading skeleton={skeleton} label="Loading offers">x</LoadingState>);
+    advance(SHOW_DELAY_MS);
+    expect(screen.getByText('Loading offers')).toBeInTheDocument();
+  });
+
+  it('renders the same content DOM on a fast and on a slow load (only the fade class differs)', () => {
+    const list = (loading) => (
+      <LoadingState loading={loading} skeleton={skeleton} contentClassName="space-y-3">
+        <p>one</p>
+        <p>two</p>
+      </LoadingState>
+    );
+    const fast = render(list(true));
+    fast.rerender(list(false));
+    const fastHtml = fast.container.innerHTML;
+    fast.unmount();
+
+    const slow = render(list(true));
+    advance(SHOW_DELAY_MS + MIN_VISIBLE_MS);
+    slow.rerender(list(false));
+    advance(MIN_VISIBLE_MS);
+    const slowHtml = slow.container.innerHTML;
+
+    expect(slowHtml).toContain('motion-safe:animate-fade-in');
+    expect(slowHtml.replace(' motion-safe:animate-fade-in', '')).toBe(fastHtml);
+    // Siblings stay direct children of the spaced container in both cases.
+    expect(screen.getByText('one').parentElement).toHaveClass('space-y-3');
+    expect(screen.getByText('two').parentElement).toBe(screen.getByText('one').parentElement);
+  });
+
+  it('announces once when several lists load at the same time (one live region, all busy)', () => {
+    const { container } = render(
+      <>
+        <LoadingState loading skeleton={skeleton}>a</LoadingState>
+        <LoadingState loading skeleton={skeleton}>b</LoadingState>
+      </>
+    );
+    advance(SHOW_DELAY_MS);
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(container.querySelectorAll('[aria-busy="true"]')).toHaveLength(2);
+    expect(container.querySelectorAll('[aria-live]')).toHaveLength(1);
+  });
+
+  it('hands the live region to a later list once the first one is gone', () => {
+    const first = render(<LoadingState loading skeleton={skeleton}>a</LoadingState>);
+    first.unmount();
+    render(<LoadingState loading skeleton={skeleton}>b</LoadingState>);
+    expect(screen.getByRole('status')).toBeInTheDocument();
+  });
+});
