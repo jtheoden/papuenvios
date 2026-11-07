@@ -16,16 +16,33 @@ export const inferZelleContactType = ({ show_email, show_phone } = {}) => {
   return 'both';
 };
 
-/** Require the visible contact(s); validate a hidden contact only when supplied. */
-export const validateZelleContact = ({ contactType = 'phone', phone, email } = {}) => {
+/** Normalize contact payloads without clearing filled optional/legacy contacts. */
+export const normalizeZelleAccountPayload = (data) => {
+  const payload = { ...data };
+  for (const field of ['email', 'phone']) {
+    if (Object.prototype.hasOwnProperty.call(data, field)) {
+      payload[field] = typeof data[field] === 'string' ? data[field].trim() || null : data[field];
+    }
+  }
+  const contactType = inferZelleContactType(data);
+  // Both-visible legacy accounts keep their existing database type.
+  delete payload.contact_type;
+  if (contactType !== 'both') payload.contact_type = contactType;
+  return payload;
+};
+
+/** Validate visible contacts and optional contacts actually changed by the admin. */
+export const validateZelleContact = ({ contactType = 'phone', phone, email, originalAccount } = {}) => {
   const phoneValue = typeof phone === 'string' ? phone.trim() : '';
   const emailValue = typeof email === 'string' ? email.trim() : '';
   if (contactType !== 'email' && !phoneValue) return { valid: false, error: 'phoneRequired' };
   if (contactType !== 'phone' && !emailValue) return { valid: false, error: 'emailRequired' };
-  if (phoneValue && (!/^[\d +()-]{7,30}$/.test(phoneValue) || !/\d/.test(phoneValue))) {
+  const phoneChanged = phoneValue !== (originalAccount?.phone || '').trim();
+  const emailChanged = emailValue !== (originalAccount?.email || '').trim();
+  if ((contactType !== 'email' || phoneChanged) && phoneValue && (!/^[\d +()-]{7,30}$/.test(phoneValue) || !/\d/.test(phoneValue))) {
     return { valid: false, error: 'invalidPhone' };
   }
-  if (emailValue && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
+  if ((contactType !== 'phone' || emailChanged) && emailValue && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
     return { valid: false, error: 'invalidEmail' };
   }
   return { valid: true };

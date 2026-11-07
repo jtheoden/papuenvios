@@ -16,7 +16,7 @@ import {
 } from '@/lib/errorHandler';
 import { createZelleDeactivationAlerts } from '@/lib/userAlertService';
 import { getBusinessWindows } from '@/lib/dashboardMetrics';
-import { inferZelleContactType, validateZelleContact, validateZelleVisibility } from '@/lib/zelleVisibility';
+import { inferZelleContactType, normalizeZelleAccountPayload, validateZelleContact, validateZelleVisibility } from '@/lib/zelleVisibility';
 
 // ============================================================================
 // ZELLE STATUS CONSTANTS
@@ -47,7 +47,7 @@ export const ZELLE_TRANSACTION_TYPES = {
  * @param {object} data - Account data
  * @throws {AppError} If validation fails
  */
-const validateAccountData = (data) => {
+const validateAccountData = (data, originalAccount) => {
   const errors = {};
 
   if (!data.account_name || typeof data.account_name !== 'string' || data.account_name.trim().length === 0) {
@@ -58,7 +58,7 @@ const validateAccountData = (data) => {
     errors.account_holder = 'Holder name is required and must be a non-empty string';
   }
 
-  const contactValidation = validateZelleContact({ ...data, contactType: inferZelleContactType(data) });
+  const contactValidation = validateZelleContact({ ...data, contactType: inferZelleContactType(data), originalAccount });
   if (!contactValidation.valid) errors.contact = contactValidation.error;
   if (!validateZelleVisibility(data).valid) errors.visibility = 'At least one contact must be visible';
 
@@ -790,7 +790,7 @@ export const createZelleAccount = async (accountData) => {
     // Insert new account
     const { data, error } = await supabase
       .from('zelle_accounts')
-      .insert([accountData])
+      .insert([normalizeZelleAccountPayload(accountData)])
       .select()
       .single();
 
@@ -822,6 +822,7 @@ export const createZelleAccount = async (accountData) => {
  *
  * @param {string} accountId - ID of the account to update
  * @param {object} updates - Fields to update (partial)
+ * @param {object} [originalAccount] - Original edit values used to detect changed hidden contacts
  * @returns {Promise<object>} Updated account record
  * @throws {AppError} If unauthorized, validation fails, or database error
  *
@@ -831,7 +832,7 @@ export const createZelleAccount = async (accountData) => {
  *   daily_limit: 3000
  * });
  */
-export const updateZelleAccount = async (accountId, updates) => {
+export const updateZelleAccount = async (accountId, updates, originalAccount) => {
   try {
     if (!accountId || typeof accountId !== 'string') {
       throw createValidationError({ accountId: 'Must be a non-empty string' }, 'Invalid account ID');
@@ -848,14 +849,14 @@ export const updateZelleAccount = async (accountId, updates) => {
     }
 
     // Validate updates if they contain account data fields
-    if (Object.keys(updates).some(key => ['account_name', 'phone_number', 'holder_name', 'daily_limit', 'monthly_limit', 'priority_order', 'is_active'].includes(key))) {
-      validateAccountData({ ...updates });
+    if (Object.keys(updates).some(key => ['account_name', 'account_holder', 'phone', 'email', 'show_phone', 'show_email', 'phone_number', 'holder_name', 'daily_limit', 'monthly_limit', 'priority_order', 'is_active'].includes(key))) {
+      validateAccountData({ ...updates }, originalAccount);
     }
 
     // Update account
     const { data, error } = await supabase
       .from('zelle_accounts')
-      .update(updates)
+      .update(normalizeZelleAccountPayload(updates))
       .eq('id', accountId)
       .select()
       .single();

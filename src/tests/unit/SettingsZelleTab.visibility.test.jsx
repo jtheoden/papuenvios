@@ -86,7 +86,7 @@ describe('SettingsZelleTab account identifier', () => {
     save();
     await waitFor(() => expect(serviceMock.createZelleAccount).toHaveBeenCalledTimes(1));
     const payload = serviceMock.createZelleAccount.mock.calls[0][0];
-    expect(payload).toMatchObject({ phone: '+15550001', email: '', show_email: false, show_phone: true });
+    expect(payload).toMatchObject({ phone: '+15550001', email: null, contact_type: 'phone', show_email: false, show_phone: true });
     expect(payload).not.toHaveProperty('contactType');
   });
 
@@ -101,7 +101,7 @@ describe('SettingsZelleTab account identifier', () => {
     fireEvent.change(screen.getByLabelText('Email *'), { target: { value: 'pay@example.com' } });
     save();
     await waitFor(() => expect(serviceMock.createZelleAccount).toHaveBeenCalledWith(
-      expect.objectContaining({ phone: '', email: 'pay@example.com', show_email: true, show_phone: false })
+      expect.objectContaining({ phone: null, email: 'pay@example.com', contact_type: 'email', show_email: true, show_phone: false })
     ));
   });
 
@@ -125,7 +125,7 @@ describe('SettingsZelleTab account identifier', () => {
     expect(screen.getByRole('combobox', { name: 'Account identified by' })).toHaveValue(type);
     expect(screen.getByLabelText(optionalLabel)).not.toBeRequired();
     save();
-    await waitFor(() => expect(serviceMock.updateZelleAccount).toHaveBeenCalledWith('legacy', expect.objectContaining({ ...flags, phone: flags.phone === null ? '' : legacyAccount.phone })));
+    await waitFor(() => expect(serviceMock.updateZelleAccount).toHaveBeenCalledWith('legacy', expect.objectContaining({ ...flags, phone: flags.phone === null ? null : legacyAccount.phone, contact_type: type }), expect.any(Object)));
   });
 
   it('editing a legacy both-visible account keeps both checkboxes and values', async () => {
@@ -136,7 +136,8 @@ describe('SettingsZelleTab account identifier', () => {
     save();
     await waitFor(() => expect(serviceMock.updateZelleAccount).toHaveBeenCalledWith('legacy', expect.objectContaining({
       show_email: true, show_phone: true, phone: '+15550001', email: 'a@b.com'
-    })));
+    }), expect.any(Object)));
+    expect(serviceMock.updateZelleAccount.mock.calls[0][1]).not.toHaveProperty('contact_type');
   });
 
   it('keeps legacy checkboxes after toggling and blocks both off', async () => {
@@ -149,8 +150,41 @@ describe('SettingsZelleTab account identifier', () => {
     fireEvent.click(screen.getByLabelText(EN.zelle.showPhone));
     save();
     await waitFor(() => expect(serviceMock.updateZelleAccount).toHaveBeenCalledWith('legacy', expect.objectContaining({
-      show_email: false, show_phone: true
-    })));
+      show_email: false, show_phone: true, contact_type: 'phone'
+    }), expect.any(Object)));
+  });
+
+  it('preserves an unchanged hidden legacy phone during an unrelated edit', async () => {
+    await openEdit({ show_phone: false, phone: '555.123.4567' });
+    change(EN.zelle.accountNamePlaceholder, 'Renamed');
+    save();
+    await waitFor(() => expect(serviceMock.updateZelleAccount).toHaveBeenCalledWith('legacy', expect.objectContaining({
+      account_name: 'Renamed', contact_type: 'email', phone: '555.123.4567'
+    }), expect.objectContaining({ phone: '555.123.4567' })));
+  });
+
+  it('blocks a malformed hidden phone that the admin changed', async () => {
+    await openEdit({ show_phone: false, phone: '555.123.4567' });
+    change(EN.zelle.phoneNumberPlaceholder, '555.999.1234');
+    save();
+    expect(serviceMock.updateZelleAccount).not.toHaveBeenCalled();
+    expect(toastMock).toHaveBeenLastCalledWith(expect.objectContaining({ description: EN.zelle.invalidPhone }));
+  });
+
+  it.each([
+    [{ show_email: false, email: null }, 'email', 'phone', EN.zelle.emailRequired, 'Email (optional)', 'pay@example.com'],
+    [{ show_phone: false, phone: null }, 'phone', 'email', EN.zelle.phoneRequired, 'Phone Number (optional)', '+15550001']
+  ])('requires the new contact before switching type while editing: %s', async (flags, next, current, message, label, value) => {
+    await openEdit(flags);
+    const selector = screen.getByRole('combobox', { name: 'Account identified by' });
+    fireEvent.change(selector, { target: { value: next } });
+    expect(selector).toHaveValue(current);
+    expect(toastMock).toHaveBeenLastCalledWith(expect.objectContaining({ description: message }));
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    fireEvent.change(selector, { target: { value: next } });
+    expect(selector).toHaveValue(next);
+    save();
+    await waitFor(() => expect(serviceMock.updateZelleAccount).toHaveBeenCalledWith('legacy', expect.objectContaining({ contact_type: next }), expect.any(Object)));
   });
 
   it('shows the optional label in natural Spanish', async () => {

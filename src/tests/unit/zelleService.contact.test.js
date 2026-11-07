@@ -30,17 +30,17 @@ describe('Zelle service contact validation', () => {
   it.each([
     ['phone', account],
     ['email', { ...account, phone: '', email: 'pay@example.com', show_email: true, show_phone: false }]
-  ])('creates %s-only accounts without requiring the other contact', async (_, data) => {
+  ])('creates %s-only accounts without requiring the other contact', async (type, data) => {
     await expect(createZelleAccount(data)).resolves.toEqual({ id: 'account' });
-    expect(insertMock).toHaveBeenCalledWith([data]);
+    expect(insertMock).toHaveBeenCalledWith([{ ...data, contact_type: type, ...(type === 'phone' ? { email: null } : { phone: null }) }]);
   });
 
   it.each([
     ['phone', account],
     ['email', { ...account, phone: '', email: 'pay@example.com', show_email: true, show_phone: false }]
-  ])('updates %s-only accounts without requiring the other contact', async (_, data) => {
+  ])('updates %s-only accounts without requiring the other contact', async (type, data) => {
     await expect(updateZelleAccount('account', data)).resolves.toEqual({ id: 'account' });
-    expect(updateMock).toHaveBeenCalledWith(data);
+    expect(updateMock).toHaveBeenCalledWith({ ...data, contact_type: type, ...(type === 'phone' ? { email: null } : { phone: null }) });
   });
 
   it.each([
@@ -53,6 +53,25 @@ describe('Zelle service contact validation', () => {
   ])('rejects invalid contact/required fields before insert: %j', async (overrides) => {
     await expect(createZelleAccount({ ...account, email: 'pay@example.com', ...overrides })).rejects.toThrow('Invalid Zelle account data');
     expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it('does not revalidate an unchanged hidden legacy phone during an email edit', async () => {
+    const original = { ...account, phone: '555.123.4567', email: 'pay@example.com', show_email: true, show_phone: false };
+    await expect(updateZelleAccount('account', { ...original, account_name: 'Renamed' }, original)).resolves.toEqual({ id: 'account' });
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({ contact_type: 'email', phone: '555.123.4567' }));
+  });
+
+  it('rejects a changed hidden phone', async () => {
+    const original = { ...account, email: 'pay@example.com', show_email: true, show_phone: false };
+    await expect(updateZelleAccount('account', { ...original, phone: 'bad-phone' }, original)).rejects.toThrow('Invalid Zelle account data');
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('omits contact_type when updating a legacy both-visible account', async () => {
+    const data = { ...account, email: 'pay@example.com', show_email: true, contact_type: 'email' };
+    await updateZelleAccount('account', data);
+    const { contact_type: ignored, ...expected } = data;
+    expect(updateMock).toHaveBeenCalledWith(expected);
   });
 
   it('preserves both-visible legacy behavior', async () => {

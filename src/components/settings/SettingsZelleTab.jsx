@@ -15,7 +15,7 @@ import { toast } from '@/components/ui/use-toast';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import TableDetailModal from '@/components/modals/TableDetailModal';
 import { zelleService } from '@/lib/zelleService';
-import { deriveZelleVisibility, inferZelleContactType, validateZelleContact, validateZelleVisibility } from '@/lib/zelleVisibility';
+import { deriveZelleVisibility, inferZelleContactType, normalizeZelleAccountPayload, validateZelleContact, validateZelleVisibility } from '@/lib/zelleVisibility';
 import { getZelleTableColumns, getZelleModalColumns } from './ZelleAccountTableConfig';
 
 const SettingsZelleTab = () => {
@@ -191,6 +191,18 @@ const SettingsZelleTab = () => {
     setShowFormModal(true);
   };
 
+  const handleContactTypeChange = (nextType) => {
+    if (selectedAccount && !formData[nextType]?.trim()) {
+      toast({
+        title: t('zelle.errorRequiredFields'),
+        description: t(`zelle.${nextType}Required`),
+        variant: 'destructive'
+      });
+      return;
+    }
+    setFormData({ ...formData, ...deriveZelleVisibility(nextType) });
+  };
+
   const handleSubmitForm = async () => {
     if (!formData.account_name.trim() || !formData.account_holder.trim()) {
       toast({
@@ -212,7 +224,7 @@ const SettingsZelleTab = () => {
       return;
     }
 
-    const contactValidation = validateZelleContact({ ...formData, contactType });
+    const contactValidation = validateZelleContact({ ...formData, contactType, originalAccount: selectedAccount });
     if (!contactValidation.valid) {
       toast({
         title: t('zelle.errorRequiredFields'),
@@ -226,14 +238,14 @@ const SettingsZelleTab = () => {
     try {
       if (selectedAccount) {
         // Update existing account
-        await zelleService.updateZelleAccount(selectedAccount.id, formData);
+        await zelleService.updateZelleAccount(selectedAccount.id, normalizeZelleAccountPayload(formData), selectedAccount);
         toast({
           title: t('zelle.accountUpdated') || 'Success',
           description: language === 'es' ? 'Cuenta actualizada' : 'Account updated'
         });
       } else {
         // Create new account
-        await zelleService.createZelleAccount(formData);
+        await zelleService.createZelleAccount(normalizeZelleAccountPayload(formData));
         toast({
           title: t('zelle.accountCreated') || 'Success',
           description: language === 'es' ? 'Cuenta creada' : 'Account created'
@@ -480,7 +492,7 @@ const SettingsZelleTab = () => {
                   <select
                     id="zelle-identifier"
                     value={contactType}
-                    onChange={(e) => setFormData({ ...formData, ...deriveZelleVisibility(e.target.value) })}
+                    onChange={(e) => handleContactTypeChange(e.target.value)}
                     className="input-style w-full"
                   >
                     <option value="phone">{t('zelle.phoneIdentifier')}</option>

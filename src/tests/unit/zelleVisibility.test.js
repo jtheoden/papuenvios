@@ -100,6 +100,20 @@ describe('Zelle account identifier', () => {
   });
 
   it.each([
+    ['email', '555.123.4567', 'pay@example.com'],
+    ['phone', '+15551234567', 'legacy-email']
+  ])('allows an unchanged hidden legacy contact for %s', (contactType, phone, email) => {
+    expect(validateZelleContact({ contactType, phone, email, originalAccount: { phone, email } })).toEqual({ valid: true });
+  });
+
+  it.each([
+    ['email', '555.123.4567', 'pay@example.com', 'invalidPhone'],
+    ['phone', '+15551234567', 'invalid', 'invalidEmail']
+  ])('validates a changed hidden contact for %s', (contactType, phone, email, error) => {
+    expect(validateZelleContact({ contactType, phone, email, originalAccount: { phone: '1234567', email: 'old@example.com' } })).toEqual({ valid: false, error });
+  });
+
+  it.each([
     ['phone', ' ', '', 'phoneRequired'],
     ['email', '', ' ', 'emailRequired'],
     ['both', '', 'pay@example.com', 'phoneRequired'],

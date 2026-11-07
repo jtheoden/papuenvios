@@ -16,27 +16,35 @@ describe('prepared Zelle phone-first migration safety (static SQL contract)', ()
     expect(sql).toContain("SET LOCAL lock_timeout = '5s';");
   });
 
-  it('backs up all original flags before updating and restricts backup access', () => {
+  it('backs up flags, nullable contact_type, and whether each account was migrated; restricts backup access', () => {
     const sql = body(readSql('up'));
-    expect(sql).toMatch(/CREATE TABLE (?:IF NOT EXISTS )?public\.zelle_accounts_visibility_backup_20261107\s*\(\s*account_id uuid PRIMARY KEY,\s*show_email boolean NOT NULL,\s*show_phone boolean NOT NULL,\s*backed_up_at timestamptz NOT NULL DEFAULT now\(\)\s*\)/i);
+    expect(sql).toMatch(/contact_type text(?: NULL)?[,\s]/i);
+    expect(sql).toMatch(/was_migrated boolean NOT NULL/i);
     expect(sql).toContain(`ALTER TABLE ${backup} ENABLE ROW LEVEL SECURITY;`);
-    expect(sql).toMatch(/REVOKE ALL ON (?:TABLE )?public\.zelle_accounts_visibility_backup_20261107 FROM PUBLIC, anon, authenticated;/);
-    expect(sql).toMatch(/INSERT INTO public\.zelle_accounts_visibility_backup_20261107\s*\(account_id, show_email, show_phone\)\s*SELECT id, show_email, show_phone FROM public\.zelle_accounts\s*ON CONFLICT (?:\(account_id\) )?DO NOTHING;/);
-    expect(sql.indexOf('INSERT INTO')).toBeLessThan(sql.indexOf('UPDATE public.zelle_accounts'));
+    expect(sql).toContain(`REVOKE ALL ON TABLE ${backup} FROM PUBLIC, anon, authenticated;`);
+    expect(sql).toContain(`GRANT ALL ON TABLE ${backup} TO service_role;`);
+    expect(sql).toMatch(/ON CONFLICT \(account_id\) DO NOTHING\s+RETURNING account_id, was_migrated/);
   });
 
-  it('only changes visibility on accounts with a usable phone', () => {
+  it('only updates freshly backed-up usable-phone accounts, with drifted contact_type behind dynamic SQL', () => {
     const sql = body(readSql('up'));
-    expect(sql).toMatch(/UPDATE public\.zelle_accounts\s*SET show_email = false, show_phone = true\s*WHERE phone IS NOT NULL AND btrim\(phone\) <> '';/i);
+    expect(sql).toMatch(/information_schema\.columns[\s\S]*column_name = 'contact_type'[\s\S]*THEN\s+EXECUTE/);
+    expect(sql).toMatch(/regexp_replace\(phone, '\[\[:space:\] \]', '', 'g'\) ~ '\\d'/);
+    expect(sql).toMatch(/SET show_email = false, show_phone = true, contact_type = 'phone'/);
+    expect(sql).toMatch(/WHERE[\s\S]*was_migrated/);
     expect(sql).not.toMatch(/DELETE|DROP|CREATE (?:OR REPLACE )?FUNCTION/i);
-    expect(sql.match(/UPDATE /g)).toHaveLength(1);
+    expect(sql).not.toMatch(/SET (?:email|phone)\s*=/i);
   });
 
-  it('guards a missing backup and restores flags by id before dropping it', () => {
+  it('guards missing backup and restores only still-matching migrated rows before dropping it', () => {
     const sql = body(readSql('down'));
     expect(sql).toContain(`to_regclass('${backup}') IS NULL`);
     expect(sql).toMatch(/RAISE EXCEPTION '[^']*backup[^']*missing[^']*'/i);
-    expect(sql).toMatch(/UPDATE public\.zelle_accounts AS za\s*SET show_email = backup\.show_email, show_phone = backup\.show_phone\s*FROM public\.zelle_accounts_visibility_backup_20261107 AS backup\s*WHERE za\.id = backup\.account_id;/);
+    expect(sql).toMatch(/information_schema\.columns[\s\S]*column_name = 'contact_type'[\s\S]*THEN\s+EXECUTE/);
+    expect(sql).toContain('contact_type = backup.contact_type');
+    expect(sql).toContain('backup.was_migrated');
+    expect(sql).toContain("za.contact_type = 'phone'");
+    expect(sql).toMatch(/za\.show_email = false AND za\.show_phone = true/);
     expect(sql).toContain(`DROP TABLE ${backup};`);
     expect(sql.indexOf('RAISE EXCEPTION')).toBeLessThan(sql.indexOf('UPDATE public.zelle_accounts'));
     expect(sql.indexOf('UPDATE public.zelle_accounts')).toBeLessThan(sql.indexOf('DROP TABLE'));
