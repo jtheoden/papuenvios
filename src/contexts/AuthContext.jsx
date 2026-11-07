@@ -7,12 +7,18 @@ import { TIMEOUTS, RETRY_CONFIG, AUTH_STORAGE_KEY } from '@/lib/constants';
 import { getUserCategory } from '@/lib/userCategorizationService';
 import { flushQueuedActivityLogs, logActivity } from '@/lib/activityLogger';
 import { clearRefreshBlock, getRefreshBlockRemainingMs, isRefreshBlocked, subscribeRefreshBlock } from '@/lib/refreshGuard';
+import { dropApiCaches } from '@/lib/requestBudget';
 
 const AuthContext = createContext();
 
 // Waits between session-recovery attempts (the refresh guard's cooldown, when longer, wins).
 const SESSION_RECOVERY_DELAYS = [5000, 15000, 30000, 60000];
 const SESSION_RECOVERY_JITTER = 0.2;
+// Token refreshes (hourly) and the SIGNED_IN that auth-js re-emits when the tab regains focus re-read the profile of an
+// already resolved user at most every PROFILE_RECHECK_MS: a disabled or demoted account is still noticed, even in a tab
+// that is never hidden, without a user_profiles request per event.
+const PROFILE_RECHECK_MS = 5 * 60_000;
+const PROFILE_RECHECK_EVENTS = new Set(['TOKEN_REFRESHED', 'SIGNED_IN', 'INITIAL_SESSION']);
 const isRetryableAuthError = (error) => error?.name === 'AuthRetryableFetchError';
 // auth-js refreshes a token this close to its expiry (EXPIRY_MARGIN_MS = AUTO_REFRESH_TICK_THRESHOLD (3)
 // x AUTO_REFRESH_TICK_DURATION_MS (30 s) in @supabase/auth-js/src/lib/constants.ts), so a session with
@@ -109,6 +115,7 @@ export const AuthProvider = ({ children }) => {
   const updateSeqRef = useRef(0); // only the latest updateUserState call may apply its result
   const sessionRef = useRef(null);
   const resolvedUidRef = useRef(null);
+  const profileReadAtRef = useRef(0);
   const retryRef = useRef(null);
   const explicitSignOutRef = useRef(false); // SIGNED_OUT that the person asked for is not an expiry
 
@@ -312,6 +319,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     resolvedUidRef.current = uid;
+    profileReadAtRef.current = Date.now();
     setUser(mergedUser);
     setUserRole(profile.role || 'user');
     setIsEnabled(true);
@@ -411,6 +419,7 @@ export const AuthProvider = ({ children }) => {
         const expired = Boolean(sessionRef.current) && !explicitSignOutRef.current;
         explicitSignOutRef.current = false;
         clearRefreshBlock(); // nothing left to refresh: do not carry the cooldown into the next session
+        dropApiCaches(); // the next person on this browser starts with no cached answer of this one
         resetAuthState();
         setSessionRecovering(false);
         setSessionExpired((previous) => expired || previous); // the storage handler may have flagged it first
@@ -440,6 +449,13 @@ export const AuthProvider = ({ children }) => {
       if (session) {
         // A session about to expire proves nothing yet; one with life left means we are back.
         if (hasLifeLeft(session)) markSessionHealthy();
+        // Same person, profile read less than PROFILE_RECHECK_MS ago: keep the new token, skip the request (egress).
+        const sameResolvedUser = Boolean(session.user?.id) && session.user.id === resolvedUidRef.current;
+        const recentlyRead = Date.now() - profileReadAtRef.current < PROFILE_RECHECK_MS;
+        if (sameResolvedUser && PROFILE_RECHECK_EVENTS.has(event) && recentlyRead) {
+          sessionRef.current = session;
+          return;
+        }
         updateUserState(session);
       }
     });

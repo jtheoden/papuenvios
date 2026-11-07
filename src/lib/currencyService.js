@@ -9,6 +9,7 @@ import {
   ERROR_CODES
 } from './errorHandler';
 import { rateAgeHours } from './rateAge';
+import { subscribeApiWrites, dropApiCaches } from './requestBudget';
 
 const ratesChangedListeners = new Set();
 
@@ -49,6 +50,21 @@ const notifyRatesChanged = () => {
     }
   });
 };
+
+/**
+ * The rates changed (or the caller saw a priced amount differ from the displayed one): drop every cached rate read and
+ * tell the rate caches (CurrencyContext reloads).
+ */
+export const invalidateRateCaches = () => {
+  dropApiCaches();
+  notifyRatesChanged();
+};
+
+// Any write to rates or currencies through the client (including the Settings save paths that update the table
+// directly) invalidates the rate caches.
+subscribeApiWrites((path) => {
+  if (/^\/rest\/v1\/(exchange_rates|currencies)\b/.test(path)) notifyRatesChanged();
+});
 
 /**
  * Currency Service - Manages currency CRUD operations and rate conversions
@@ -319,42 +335,29 @@ export const getConversionRate = async (fromCurrencyId, toCurrencyId) => {
       }, 'Missing currency IDs');
     }
 
-    // 1. Try to get defined rate
-    const { data: rateData, error: rateError } = await supabase
+    // One query for every pair (same URL -> deduped and cached by requestBudget): the latest active row of each pair.
+    const { data: rows, error: rateError } = await supabase
       .from('exchange_rates')
-      .select('rate')
-      .eq('from_currency_id', fromCurrencyId)
-      .eq('to_currency_id', toCurrencyId)
+      .select('from_currency_id, to_currency_id, rate, effective_date')
       .eq('is_active', true)
-      .order('effective_date', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .order('effective_date', { ascending: false });
 
     if (rateError) {
       throw parseSupabaseError(rateError);
     }
 
-    if (rateData && rateData.rate) {
-      return parseFloat(rateData.rate);
+    const latestRate = (from, to) => (rows || []).find((r) => r.from_currency_id === from && r.to_currency_id === to)?.rate;
+
+    // 1. Defined rate
+    const direct = latestRate(fromCurrencyId, toCurrencyId);
+    if (direct) {
+      return parseFloat(direct);
     }
 
-    // 2. Fallback: Try inverse rate
-    const { data: inverseRateData, error: invError } = await supabase
-      .from('exchange_rates')
-      .select('rate')
-      .eq('from_currency_id', toCurrencyId)
-      .eq('to_currency_id', fromCurrencyId)
-      .eq('is_active', true)
-      .order('effective_date', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (invError) {
-      throw parseSupabaseError(invError);
-    }
-
-    if (inverseRateData && inverseRateData.rate) {
-      return 1 / parseFloat(inverseRateData.rate);
+    // 2. Fallback: inverse rate
+    const inverse = latestRate(toCurrencyId, fromCurrencyId);
+    if (inverse) {
+      return 1 / parseFloat(inverse);
     }
 
     // 3. No active pair: fail closed, never invent a rate
@@ -375,6 +378,43 @@ export const getConversionRate = async (fromCurrencyId, toCurrencyId) => {
     logError(appError, { operation: 'getConversionRate', from: fromCurrencyId, to: toCurrencyId });
     throw appError;
   }
+};
+
+/** Latest active rate of a directed pair read from the server (never cached), or null. */
+const readActivePairRate = async (fromCurrencyId, toCurrencyId) => {
+  const { data, error } = await supabase
+    .from('exchange_rates')
+    .select('rate')
+    .eq('from_currency_id', fromCurrencyId)
+    .eq('to_currency_id', toCurrencyId)
+    .eq('is_active', true)
+    .order('effective_date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw parseSupabaseError(error);
+  }
+  return data?.rate ? parseFloat(data.rate) : null;
+};
+
+/**
+ * Conversion rate read live from the server (direct pair, else the inverse of the opposite pair; fail closed), for
+ * every amount that is SAVED (order lines, product prices, remittances). getConversionRate is the cached display read.
+ * @throws {AppError} SERVICE_UNAVAILABLE if no active rate exists
+ */
+export const getLiveConversionRate = async (fromCurrencyId, toCurrencyId) => {
+  if (fromCurrencyId === toCurrencyId) return 1;
+  const direct = await readActivePairRate(fromCurrencyId, toCurrencyId);
+  if (direct) return direct;
+  const inverse = await readActivePairRate(toCurrencyId, fromCurrencyId);
+  if (inverse) return 1 / inverse;
+  throw new AppError(
+    'No active exchange rate for this currency pair',
+    ERROR_CODES.SERVICE_UNAVAILABLE,
+    503,
+    { from: fromCurrencyId, to: toCurrencyId }
+  );
 };
 
 /**
@@ -507,7 +547,8 @@ export const getExchangeRate = async (fromCurrencyCode, toCurrencyCode) => {
     const fromCurrency = currencies.find(c => c.code === fromCurrencyCode);
     const toCurrency = currencies.find(c => c.code === toCurrencyCode);
 
-    return await getConversionRate(fromCurrency.id, toCurrency.id);
+    // Prices an operation (remittance confirmation, cart): live pair reads, never the cached all-rates read.
+    return await getLiveConversionRate(fromCurrency.id, toCurrency.id);
 
   } catch (error) {
     if (error.code) throw error;

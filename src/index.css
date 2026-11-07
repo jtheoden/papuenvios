@@ -159,11 +159,29 @@ body {
 }
 
 .hover-lift {
-  transition: transform 0.2s ease-in-out;
+  transition: transform var(--motion-duration) var(--motion-ease);
 }
 
-.hover-lift:hover {
+.hover-lift:hover,
+.hover-lift:focus-visible {
   transform: translateY(-2px);
+}
+
+.hover-lift:active {
+  transform: scale(0.98);
+}
+
+/* Motion tokens for the micro-animations (tailwind.config.js: animate-fade-in, animate-enter, duration-motion). */
+:root {
+  --motion-duration: 200ms;
+  --motion-duration-slow: 300ms;
+  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
+  --motion-stagger: 40ms;
+}
+
+/* LoadingState pauses its skeleton pulse while the tab is hidden or the skeleton is off screen. */
+[data-paused] * {
+  animation-play-state: paused;
 }
 
 .shimmer {
@@ -186,7 +204,9 @@ body {
     transition: none;
   }
 
-  .hover-lift:hover {
+  .hover-lift:hover,
+  .hover-lift:focus-visible,
+  .hover-lift:active {
     transform: none;
   }
 }

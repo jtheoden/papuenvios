@@ -144,15 +144,64 @@ describe('AuthProvider — slow / failing profile fetch', () => {
     singleMock
       .mockReturnValueOnce(new Promise((r) => { resolveOld = r; }))
       .mockReturnValueOnce(new Promise((r) => { resolveNew = r; }));
+    // USER_UPDATED (metadata changed) re-reads the profile; token refreshes do not (see below)
     await act(async () => {
-      authStateCallback('SIGNED_IN', SESSION);
-      authStateCallback('TOKEN_REFRESHED', SESSION);
+      authStateCallback('USER_UPDATED', SESSION);
+      authStateCallback('USER_UPDATED', SESSION);
     });
 
     await act(async () => { resolveNew(profile('admin')); });
     await act(async () => { resolveOld(profile('user')); });
 
     expect(probe()).toBe('admin|resolved|user');
+  });
+
+  it('egress: token refreshes and the SIGNED_IN re-emitted on focus do not re-read an already loaded profile', async () => {
+    singleMock.mockResolvedValueOnce(profile('admin'));
+    await mountApp();
+    expect(probe()).toBe('admin|resolved|user');
+    singleMock.mockClear();
+
+    await act(async () => {
+      authStateCallback('TOKEN_REFRESHED', SESSION);
+      authStateCallback('SIGNED_IN', SESSION);
+      authStateCallback('TOKEN_REFRESHED', SESSION);
+    });
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    await advance(60_000);
+
+    expect(singleMock).not.toHaveBeenCalled();
+    expect(probe()).toBe('admin|resolved|user');
+  });
+
+  it('a SIGNED_IN on focus more than 5 min after the last read re-reads the profile (a demotion is seen)', async () => {
+    singleMock.mockResolvedValueOnce(profile('admin'));
+    await mountApp();
+    expect(probe()).toBe('admin|resolved|user');
+
+    singleMock.mockClear();
+    singleMock.mockResolvedValue(profile('user'));
+    await advance(5 * 60_000 + 1_000);
+    await act(async () => { authStateCallback('SIGNED_IN', SESSION); });
+    await advance(0);
+    expect(singleMock).toHaveBeenCalledTimes(1);
+    expect(probe()).toBe('user|resolved|user');
+  });
+
+  it('a TOKEN_REFRESHED (hourly, tab always visible) re-reads a profile older than 5 min: a disabled admin is seen', async () => {
+    singleMock.mockResolvedValueOnce(profile('admin'));
+    await mountApp();
+    singleMock.mockClear();
+
+    await act(async () => { authStateCallback('TOKEN_REFRESHED', SESSION); }); // fresh profile: no request
+    expect(singleMock).not.toHaveBeenCalled();
+
+    singleMock.mockResolvedValue(profile('user'));
+    await advance(5 * 60_000 + 1_000);
+    await act(async () => { authStateCallback('TOKEN_REFRESHED', SESSION); });
+    await advance(0);
+    expect(singleMock).toHaveBeenCalledTimes(1);
+    expect(probe()).toBe('user|resolved|user');
   });
 
   it('(d) retries immediately on "online" and when the tab becomes visible', async () => {

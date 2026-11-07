@@ -17,6 +17,16 @@ vi.mock('@/lib/supabase', () => {
       const key = `${filters.from_currency_id}>${filters.to_currency_id}`;
       return Promise.resolve({ data: db.rows[`${table}:${key}`] ?? null, error: null });
     };
+    // getConversionRate reads every active pair at once (one cached request for all pairs)
+    chain.then = (resolve, reject) => Promise.resolve({
+      data: Object.entries(db.rows)
+        .filter(([key]) => key.startsWith(`${table}:`))
+        .map(([key, row]) => {
+          const [from, to] = key.slice(table.length + 1).split('>');
+          return { from_currency_id: from, to_currency_id: to, ...row };
+        }),
+      error: null
+    }).then(resolve, reject);
     return chain;
   };
   return {

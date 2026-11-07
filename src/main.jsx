@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { MotionConfig } from 'framer-motion';
 import App from '@/App';
 import '@/index.css';
 
@@ -16,6 +17,9 @@ if (rootElement.innerHTML.trim() !== '') {
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
-    <App />
+    {/* framer-motion honours prefers-reduced-motion app-wide: transform/layout animations are skipped */}
+    <MotionConfig reducedMotion="user">
+      <App />
+    </MotionConfig>
   </React.StrictMode>
 );
