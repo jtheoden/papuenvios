@@ -43,7 +43,7 @@ vi.mock('@/contexts/ModalContext', () => ({ useModal: () => modal }));
 vi.mock('@/hooks/useRealtimeSubscription', () => ({ useRealtimeRemittances: vi.fn() }));
 const toast = vi.hoisted(() => vi.fn());
 vi.mock('@/components/ui/use-toast', () => ({ toast }));
-vi.mock('@/lib/styleUtils', () => ({ getHeadingStyle: () => ({}), getPrimaryButtonStyle: () => '' }));
+vi.mock('@/lib/styleUtils', () => ({ getHeadingStyle: () => ({}), getPrimaryButtonStyle: () => ({}) }));
 vi.mock('@/lib/notificationSettingsService', () => ({ getFreshGuidedWhatsappPhone: vi.fn() }));
 vi.mock('@/lib/whatsappService', () => ({
   ADMIN_NOTIFICATION_LANGUAGE: 'es',

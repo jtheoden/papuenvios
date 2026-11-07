@@ -55,7 +55,7 @@ const SendRemittancePage = ({ onNavigate }) => {
   const { user, isAdmin, isSuperAdmin } = useAuth();
   const { ensureAccepted } = useLegalAcceptance();
   const { showModal } = useModal();
-  const { notificationSettings } = useBusiness();
+  const { notificationSettings, visualSettings } = useBusiness();
   const { methods: paymentMethods, refresh: refreshPaymentMethods, isMethodEnabled } = usePaymentMethods();
   // Fails open: stays false until the status is known (the DB trigger is the real guard)
   const zelleRemittancesBlocked = !isMethodEnabled('zelle', PAYMENT_FLOWS.REMITTANCES);
@@ -669,7 +669,7 @@ const SendRemittancePage = ({ onNavigate }) => {
           <div
             className={`flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all ${
               step >= stepNum
-                ? 'bg-blue-600 border-blue-600 text-white'
+                ? 'bg-theme-accent border-theme-accent text-theme-on-accent'
                 : 'bg-white border-gray-300 text-gray-400'
             }`}
           >
@@ -682,7 +682,7 @@ const SendRemittancePage = ({ onNavigate }) => {
           {stepNum < 4 && (
             <div
               className={`h-0.5 w-16 transition-all ${
-                step > stepNum ? 'bg-blue-600' : 'bg-gray-300'
+                step > stepNum ? 'bg-theme-accent' : 'bg-gray-300'
               }`}
             />
           )}
@@ -694,7 +694,7 @@ const SendRemittancePage = ({ onNavigate }) => {
   if (loading) {
     return (
       <div className="flex justify-center items-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-theme-accent"></div>
       </div>
     );
   }
@@ -707,7 +707,7 @@ const SendRemittancePage = ({ onNavigate }) => {
         onSelectNewAccount={() => setStep(4)}
       />
 
-      <h1 className={`${getHeadingStyle()} text-3xl mb-2 text-center`}>
+      <h1 style={getHeadingStyle(visualSettings)} className="font-bold text-3xl mb-2 text-center">
         {t('remittances.wizard.pageTitle')}
       </h1>
       <p className="text-gray-600 text-center mb-8">
@@ -736,12 +736,12 @@ const SendRemittancePage = ({ onNavigate }) => {
           >
             <div className="glass-effect p-6 rounded-xl">
               <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <DollarSign className="h-6 w-6 text-blue-600" />
+                <DollarSign className="h-6 w-6 text-[rgb(var(--t-link))]" />
                 {t('remittances.wizard.step1Title')}
               </h2>
 
               {/* Calculator Mode Toggle + Amount Input */}
-              <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border-2 border-blue-200">
+              <div className="mb-6 p-4 bg-gradient-to-r from-theme-accent-soft to-theme-accent-2-soft rounded-xl border-2 border-theme-accent-line">
                 {/* Toggle Tabs */}
                 <div className="flex mb-4 bg-white rounded-lg p-1 border border-gray-200">
                   <button
@@ -761,7 +761,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                     }}
                     className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-md text-sm font-semibold transition-all ${
                       calcMode === 'send'
-                        ? 'bg-blue-600 text-white shadow-md'
+                        ? 'bg-theme-accent text-theme-on-accent shadow-md'
                         : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
@@ -804,7 +804,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                     const type = types.find(t => t.id === e.target.value);
                     if (type) handleSelectType(type);
                   }}
-                  className="w-full p-3 border-2 border-gray-200 rounded-lg bg-white text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                  className="w-full p-3 border-2 border-gray-200 rounded-lg bg-white text-gray-900 font-medium focus:ring-2 focus:ring-theme-focus focus:border-theme-focus transition-all"
                 >
                   <option value="">{t('remittances.wizard.selectType')}</option>
                   {types.map((type) => (
@@ -823,7 +823,7 @@ const SendRemittancePage = ({ onNavigate }) => {
 
                 {/* Selected type details card */}
                {/*  {selectedType && (
-                  <div className="p-4 rounded-xl border-2 border-blue-200 bg-gradient-to-r from-blue-50 to-purple-50">
+                  <div className="p-4 rounded-xl border-2 border-theme-accent-line bg-gradient-to-r from-theme-accent-soft to-theme-accent-2-soft">
                     <div className="flex justify-between items-start">
                       <div>
                         <div className="flex items-center gap-2">
@@ -833,17 +833,17 @@ const SendRemittancePage = ({ onNavigate }) => {
                           )}
                         </div>
                         {selectedType.description && (
-                          <p className="text-sm mt-1 text-blue-700">{selectedType.description}</p>
+                          <p className="text-sm mt-1 text-[rgb(var(--t-link-strong))]">{selectedType.description}</p>
                         )}
                         <div className="mt-2 text-sm">
-                          <span className="text-blue-700">{t('remittances.wizard.rate')}: </span>
+                          <span className="text-[rgb(var(--t-link-strong))]">{t('remittances.wizard.rate')}: </span>
                           <span className="font-semibold text-blue-900">
                             1 {selectedType.currency_code} = {selectedType.currentRate || selectedType.exchange_rate} {selectedType.delivery_currency}
                           </span>
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-xs text-blue-600">{t('remittances.wizard.limits')}</p>
+                        <p className="text-xs text-[rgb(var(--t-link))]">{t('remittances.wizard.limits')}</p>
                         <p className="text-sm font-semibold text-blue-900">
                           {selectedType.min_amount} - {selectedType.max_amount || '∞'} {selectedType.currency_code}
                         </p>
@@ -866,7 +866,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                 <div className="relative">
                   {calcMode === 'send' ? (
                     <DollarSign className={`absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 ${
-                      !selectedType ? 'text-gray-400' : !amountValidation.isValid ? 'text-red-500' : 'text-blue-600'
+                      !selectedType ? 'text-gray-400' : !amountValidation.isValid ? 'text-red-500' : 'text-[rgb(var(--t-link))]'
                     }`} />
                   ) : (
                     <Target className={`absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 ${
@@ -891,7 +891,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                         : !amountValidation.isValid
                           ? 'border-red-400 focus:ring-red-500 focus:border-red-500 bg-red-50'
                           : calcMode === 'send'
-                            ? 'border-blue-300 focus:ring-blue-500 focus:border-blue-500'
+                            ? 'border-blue-300 focus:ring-theme-focus focus:border-theme-focus'
                             : 'border-green-300 focus:ring-green-500 focus:border-green-500'
                     }`}
                     placeholder={!selectedType
@@ -917,7 +917,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                     className={`mt-4 p-4 rounded-xl border-2 ${
                       calcMode === 'send'
                         ? 'bg-green-50 border-green-200'
-                        : 'bg-blue-50 border-blue-200'
+                        : 'bg-theme-accent-soft border-theme-accent-line'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-3">
@@ -980,7 +980,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                               <span className="text-sm font-semibold text-gray-700">
                                 {t('remittances.wizard.youMustSend')}:
                               </span>
-                              <span className="text-xl font-bold text-blue-600">
+                              <span className="text-xl font-bold text-[rgb(var(--t-link))]">
                                 ${liveCalc.amountToSend.toFixed(2)} {liveCalc.currency}
                               </span>
                             </div>
@@ -1030,14 +1030,14 @@ const SendRemittancePage = ({ onNavigate }) => {
                           value={couponCode}
                           onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                           placeholder={t('remittances.wizard.couponPlaceholder')}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-theme-focus focus:border-theme-focus"
                           onKeyDown={(e) => e.key === 'Enter' && handleApplyCoupon()}
                         />
                         <button
                           type="button"
                           onClick={handleApplyCoupon}
                           disabled={!couponCode.trim() || validatingCoupon}
-                          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          className="px-4 py-2 bg-theme-accent text-theme-on-accent text-sm font-medium rounded-lg hover:bg-theme-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                           {validatingCoupon ? '...' : t('remittances.wizard.applyCoupon')}
                         </button>
@@ -1067,7 +1067,7 @@ const SendRemittancePage = ({ onNavigate }) => {
               <button
                 onClick={handleCalculate}
                 disabled={!selectedType || selectedType.rateUnavailable || !amount || calculating || !amountValidation.isValid || zelleRemittancesBlocked}
-                className={`${getPrimaryButtonStyle()} flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none ${!calculating && selectedType && amount && amountValidation.isValid ? 'animate-pulse ring-2 ring-blue-300 ring-offset-2' : ''}`}
+                style={getPrimaryButtonStyle(visualSettings)} className={`rounded-lg flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none ${!calculating && selectedType && amount && amountValidation.isValid ? 'animate-pulse ring-2 ring-blue-300 ring-offset-2' : ''}`}
               >
                 {calculating ? t('remittances.wizard.calculating') : t('remittances.wizard.continue')}
                 <ArrowRight className="h-6 w-6" />
@@ -1086,9 +1086,9 @@ const SendRemittancePage = ({ onNavigate }) => {
             className="space-y-6"
           >
             {/* Calculation Summary */}
-            <div className="glass-effect p-6 rounded-xl bg-gradient-to-r from-blue-50 to-purple-50">
+            <div className="glass-effect p-6 rounded-xl bg-gradient-to-r from-theme-accent-soft to-theme-accent-2-soft">
               <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <Calculator className="h-5 w-5 text-blue-600" />
+                <Calculator className="h-5 w-5 text-[rgb(var(--t-link))]" />
                 {t('remittances.wizard.calculationSummary')}
               </h3>
               <div className="grid grid-cols-2 gap-4">
@@ -1115,7 +1115,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                     </div>
                   </div>
                 )}
-                <div className="col-span-2 pt-4 border-t-2 border-blue-200">
+                <div className="col-span-2 pt-4 border-t-2 border-theme-accent-line">
                   <p className="text-sm text-gray-600 mb-1">{t('remittances.wizard.recipientReceives')}</p>
                   <p className="text-3xl font-bold text-green-600">
                     {calculation.amountToDeliver.toFixed(2)} {calculation.deliveryCurrency}
@@ -1127,7 +1127,7 @@ const SendRemittancePage = ({ onNavigate }) => {
             {/* Zelle Account Selector - First */}
             <div className="glass-effect p-6 rounded-xl">
               <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <DollarSign className="h-6 w-6 text-blue-600" />
+                <DollarSign className="h-6 w-6 text-[rgb(var(--t-link))]" />
                 {t('zelle.selectAccount')}
               </h2>
               <ZelleAccountSelector
@@ -1140,9 +1140,9 @@ const SendRemittancePage = ({ onNavigate }) => {
             </div>
 
             {/* Recipient Selector - Second */}
-            <div className="glass-effect p-6 rounded-xl">
+            <div className="recipient-theme-shell remittance-recipient-theme-shell glass-effect p-6 rounded-xl">
               <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <User className="h-6 w-6 text-blue-600" />
+                <User className="h-6 w-6 text-[rgb(var(--t-link))]" />
                 {t('remittances.wizard.step2Title')}
               </h2>
               <RecipientSelector
@@ -1214,7 +1214,7 @@ const SendRemittancePage = ({ onNavigate }) => {
               <button
                 onClick={handleRecipientSubmit}
                 disabled={deliveryZoneBlocked}
-                className={`${getPrimaryButtonStyle()} flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed`}
+                style={getPrimaryButtonStyle(visualSettings)} className="rounded-lg flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {t('remittances.wizard.continue')}
                 <ArrowRight className="h-6 w-6" />
@@ -1234,7 +1234,7 @@ const SendRemittancePage = ({ onNavigate }) => {
           >
             <div className="glass-effect p-6 rounded-xl">
               <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-                <FileText className="h-6 w-6 text-blue-600" />
+                <FileText className="h-6 w-6 text-[rgb(var(--t-link))]" />
                 {t('remittances.wizard.step3Title')}
               </h2>
 
@@ -1246,7 +1246,7 @@ const SendRemittancePage = ({ onNavigate }) => {
 
                 <div>
                   <h3 className="font-semibold mb-2">{t('remittances.wizard.youSend')}</h3>
-                  <p className="text-2xl font-bold text-blue-600">
+                  <p className="text-2xl font-bold text-[rgb(var(--t-link))]">
                     {calculation.amount} {calculation.currency}
                   </p>
                 </div>
@@ -1258,7 +1258,7 @@ const SendRemittancePage = ({ onNavigate }) => {
                       +{previewDeliveryCost.toFixed(2)} {calculation.currency}
                     </p>
                     <h3 className="font-semibold mt-3 mb-2">{t('remittances.wizard.totalToPay')}</h3>
-                    <p className="text-2xl font-bold text-blue-600">
+                    <p className="text-2xl font-bold text-[rgb(var(--t-link))]">
                       {previewTotalToPay.toFixed(2)} {calculation.currency}
                     </p>
                   </div>
@@ -1289,10 +1289,10 @@ const SendRemittancePage = ({ onNavigate }) => {
                 {selectedType?.delivery_method !== 'cash' && selectedBankAccountDetails && (
                   <div className="pt-4 border-t">
                     <h3 className="font-semibold mb-3 flex items-center gap-2">
-                      <CreditCard className="h-5 w-5 text-blue-600" />
+                      <CreditCard className="h-5 w-5 text-[rgb(var(--t-link))]" />
                       {t('remittances.wizard.destinationBankAccount')}
                     </h3>
-                    <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 space-y-2">
+                    <div className="bg-theme-accent-soft border-2 border-theme-accent-line rounded-lg p-4 space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-700">
                           {t('remittances.wizard.bankLabel')}:
@@ -1370,7 +1370,7 @@ const SendRemittancePage = ({ onNavigate }) => {
               <button
                 onClick={handleConfirmRemittance}
                 disabled={submitting || zelleRemittancesBlocked}
-                className={`${getPrimaryButtonStyle()} flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:shadow-none`}
+                style={getPrimaryButtonStyle(visualSettings)} className="rounded-lg flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:shadow-none"
               >
                 {submitting ? t('remittances.wizard.creating') : t('remittances.wizard.confirmAndCreate')}
                 <CheckCircle className="h-6 w-6" />

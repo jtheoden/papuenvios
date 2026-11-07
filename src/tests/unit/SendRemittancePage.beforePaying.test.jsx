@@ -55,7 +55,7 @@ vi.mock('@/lib/orderDiscountService', () => ({
   validateRemittanceOffer: vi.fn(async () => ({ valid: true, offer: { id: 'of1', code: 'MENOS1' } })),
 }));
 vi.mock('@/components/ui/use-toast', () => ({ toast: vi.fn() }));
-vi.mock('@/lib/styleUtils', () => ({ getHeadingStyle: () => '', getPrimaryButtonStyle: () => '' }));
+vi.mock('@/lib/styleUtils', () => ({ getHeadingStyle: () => ({}), getPrimaryButtonStyle: () => ({}) }));
 vi.mock('@/components/RecipientSelector', async () => {
   const React = await import('react');
   return {
