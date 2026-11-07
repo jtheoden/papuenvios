@@ -16,6 +16,7 @@ import {
 } from '@/lib/errorHandler';
 import { createZelleDeactivationAlerts } from '@/lib/userAlertService';
 import { getBusinessWindows } from '@/lib/dashboardMetrics';
+import { inferZelleContactType, normalizeZelleAccountPayload, validateZelleContact, validateZelleVisibility } from '@/lib/zelleVisibility';
 
 // ============================================================================
 // ZELLE STATUS CONSTANTS
@@ -46,26 +47,20 @@ export const ZELLE_TRANSACTION_TYPES = {
  * @param {object} data - Account data
  * @throws {AppError} If validation fails
  */
-const validateAccountData = (data) => {
+const validateAccountData = (data, originalAccount) => {
   const errors = {};
 
   if (!data.account_name || typeof data.account_name !== 'string' || data.account_name.trim().length === 0) {
     errors.account_name = 'Account name is required and must be a non-empty string';
   }
 
-  if (!data.phone || typeof data.phone !== 'string' || data.phone.trim().length === 0) {
-    errors.phone = 'Phone number is required and must be a non-empty string';
-  }
-
   if (!data.account_holder || typeof data.account_holder !== 'string' || data.account_holder.trim().length === 0) {
     errors.account_holder = 'Holder name is required and must be a non-empty string';
   }
 
-  if (!data.email || typeof data.email !== 'string' || data.email.trim().length === 0) {
-    errors.email = 'Email is required and must be a non-empty string';
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
-    errors.email = 'Email must be a valid email address';
-  }
+  const contactValidation = validateZelleContact({ ...data, contactType: inferZelleContactType(data), originalAccount });
+  if (!contactValidation.valid) errors.contact = contactValidation.error;
+  if (!validateZelleVisibility(data).valid) errors.visibility = 'At least one contact must be visible';
 
   if (data.daily_limit !== undefined && (typeof data.daily_limit !== 'number' || data.daily_limit < 0)) {
     errors.daily_limit = 'Daily limit must be a non-negative number';
@@ -795,7 +790,7 @@ export const createZelleAccount = async (accountData) => {
     // Insert new account
     const { data, error } = await supabase
       .from('zelle_accounts')
-      .insert([accountData])
+      .insert([normalizeZelleAccountPayload(accountData)])
       .select()
       .single();
 
@@ -827,6 +822,7 @@ export const createZelleAccount = async (accountData) => {
  *
  * @param {string} accountId - ID of the account to update
  * @param {object} updates - Fields to update (partial)
+ * @param {object} [originalAccount] - Original edit values used to detect changed hidden contacts
  * @returns {Promise<object>} Updated account record
  * @throws {AppError} If unauthorized, validation fails, or database error
  *
@@ -836,7 +832,7 @@ export const createZelleAccount = async (accountData) => {
  *   daily_limit: 3000
  * });
  */
-export const updateZelleAccount = async (accountId, updates) => {
+export const updateZelleAccount = async (accountId, updates, originalAccount) => {
   try {
     if (!accountId || typeof accountId !== 'string') {
       throw createValidationError({ accountId: 'Must be a non-empty string' }, 'Invalid account ID');
@@ -853,14 +849,14 @@ export const updateZelleAccount = async (accountId, updates) => {
     }
 
     // Validate updates if they contain account data fields
-    if (Object.keys(updates).some(key => ['account_name', 'phone_number', 'holder_name', 'daily_limit', 'monthly_limit', 'priority_order', 'is_active'].includes(key))) {
-      validateAccountData({ ...updates });
+    if (Object.keys(updates).some(key => ['account_name', 'account_holder', 'phone', 'email', 'show_phone', 'show_email', 'phone_number', 'holder_name', 'daily_limit', 'monthly_limit', 'priority_order', 'is_active'].includes(key))) {
+      validateAccountData({ ...updates }, originalAccount);
     }
 
     // Update account
     const { data, error } = await supabase
       .from('zelle_accounts')
-      .update(updates)
+      .update(normalizeZelleAccountPayload(updates))
       .eq('id', accountId)
       .select()
       .single();

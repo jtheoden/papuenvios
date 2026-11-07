@@ -2424,6 +2424,13 @@
     "updateButton": "Actualizar Destinatario"
   },
   "zelle": {
+    "identifiedBy": "Cuenta identificada por",
+    "phoneIdentifier": "Teléfono",
+    "optionalContact": "(opcional)",
+    "phoneRequired": "El número de teléfono es obligatorio para esta cuenta.",
+    "emailRequired": "El correo electrónico es obligatorio para esta cuenta.",
+    "invalidPhone": "Introduce un número de teléfono de 7 a 30 caracteres con dígitos, espacios, +, (, ) o -.",
+    "invalidEmail": "Introduce una dirección de correo electrónico válida.",
     "showEmail": "Mostrar email a los clientes",
     "showPhone": "Mostrar teléfono a los clientes",
     "atLeastOneVisible": "Al menos uno de email o teléfono debe estar visible para los clientes",

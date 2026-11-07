@@ -2416,6 +2416,13 @@
     "updateButton": "Update Recipient"
   },
   "zelle": {
+    "identifiedBy": "Account identified by",
+    "phoneIdentifier": "Phone",
+    "optionalContact": "(optional)",
+    "phoneRequired": "Phone number is required for this account.",
+    "emailRequired": "Email is required for this account.",
+    "invalidPhone": "Enter a phone number of 7–30 characters using digits, spaces, +, (, ), or -.",
+    "invalidEmail": "Enter a valid email address.",
     "showEmail": "Show email to customers",
     "showPhone": "Show phone to customers",
     "atLeastOneVisible": "At least one of email or phone must be visible to customers",
