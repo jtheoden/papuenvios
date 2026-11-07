@@ -8,6 +8,9 @@ vi.mock('@/hooks/useRealtimeSubscription', () => {
 });
 
 import { useRefundQueue } from '@/hooks/useRefundQueue';
+import { createRequestBudgetFetch } from '@/lib/requestBudget';
+import { subscribePoll } from '@/lib/visiblePolling';
+import { ADMIN_PENDING_KEY } from '@/lib/adminPollKeys';
 
 const hours = (h) => new Date(Date.now() + h * 3600 * 1000).toISOString();
 const item = (id, over = {}) => ({
@@ -26,6 +29,7 @@ describe('useRefundQueue', () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('loads everything once and derives the actionable and overdue counts from the clock', async () => {
@@ -82,13 +86,46 @@ describe('useRefundQueue', () => {
     expect(result.current.newCount).toBe(1);
   });
 
-  it('polls every 30 seconds', async () => {
+  it('polls every 15 minutes as a safety net (realtime via the badge and own writes reload it at once)', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.spyOn(Math, 'random').mockReturnValue(0.5); // no jitter
     listRefunds.mockResolvedValue({ total: 0, items: [] });
     renderHook(() => useRefundQueue({ enabled: true }));
     await vi.advanceTimersByTimeAsync(0);
     const first = listRefunds.mock.calls.length;
-    await vi.advanceTimersByTimeAsync(30000);
+    await vi.advanceTimersByTimeAsync(899_000);
+    expect(listRefunds.mock.calls.length).toBe(first);
+    await vi.advanceTimersByTimeAsync(1_000);
     expect(listRefunds.mock.calls.length).toBe(first + 1);
+  });
+
+  it('parity: resolving a refund (own RPC write) reloads the list at once', async () => {
+    listRefunds.mockResolvedValue({ total: 1, items: [item('a')] });
+    const { result } = renderHook(() => useRefundQueue({ enabled: true }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const before = listRefunds.mock.calls.length;
+    listRefunds.mockResolvedValue({ total: 1, items: [item('a', { status: 'refunded' })] });
+    await act(async () => {
+      await createRequestBudgetFetch(async () => new Response('{}'))('https://x.supabase.co/rest/v1/rpc/admin_resolve_refund', { method: 'POST', body: '{}' });
+    });
+    await waitFor(() => expect(result.current.refunds[0].status).toBe('refunded'));
+    expect(listRefunds.mock.calls.length).toBe(before + 1);
+  });
+
+  it('a new refund seen by the header badge (realtime) reloads the list; an unchanged count does not', async () => {
+    listRefunds.mockResolvedValue({ total: 0, items: [] });
+    const { result } = renderHook(() => useRefundQueue({ enabled: true }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    let counts = { actionable: 0, onHold: 0 };
+    const off = subscribePoll(ADMIN_PENDING_KEY, async () => ({ orders: 0, remittances: 0, refunds: counts }), { intervalMs: 300_000 });
+    await waitFor(() => expect(listRefunds).toHaveBeenCalledTimes(1));
+    const { refreshPoll } = await import('@/lib/visiblePolling');
+    await act(async () => { await refreshPoll(ADMIN_PENDING_KEY); });
+    expect(listRefunds).toHaveBeenCalledTimes(1);
+    counts = { actionable: 0, onHold: 1 };
+    listRefunds.mockResolvedValue({ total: 1, items: [item('n', { eligible_at: hours(40) })] });
+    await act(async () => { await refreshPoll(ADMIN_PENDING_KEY); });
+    await waitFor(() => expect(result.current.total).toBe(1));
+    off();
   });
 });

@@ -48,6 +48,11 @@ vi.mock('@/components/ui/use-toast', () => ({ toast: vi.fn() }));
 vi.mock('@/components/ui/user-avatar', () => ({ UserAvatar: () => <span data-testid="avatar" /> }));
 
 import Header from '@/components/Header';
+import { createRequestBudgetFetch } from '@/lib/requestBudget';
+import { getPendingOrdersCount } from '@/lib/orderService';
+
+const ownWrite = (path, method = 'PATCH') =>
+  createRequestBudgetFetch(async () => new Response('{}', { status: 200 }))(`https://x.supabase.co${path}`, { method, body: '{}' });
 
 describe('Header pending badge', () => {
   beforeEach(() => {
@@ -175,6 +180,33 @@ describe('Header pending badge', () => {
       });
       await waitFor(() => expect(screen.getByText('4')).toBeTruthy());
       expect(screen.getByText('!')).toBeTruthy();
+    });
+  });
+
+  describe('parity: an own action updates the badge at once (no waiting for the poll or realtime)', () => {
+    it('an order validated by this admin (PATCH orders) refreshes the badge immediately', async () => {
+      render(<Header currentPage="home" onNavigate={() => {}} />);
+      await screen.findByText('3');
+      state.orders = 1;
+      await act(async () => { await ownWrite('/rest/v1/orders?id=eq.1'); });
+      await waitFor(() => expect(screen.getByText('2')).toBeTruthy());
+    });
+
+    it('a mutating RPC (e.g. resolving a refund) refreshes the badge immediately', async () => {
+      state.refunds = { actionable: 2, overdue: 0 };
+      render(<Header currentPage="home" onNavigate={() => {}} />);
+      await screen.findByText('5');
+      state.refunds = { actionable: 1, overdue: 0 };
+      await act(async () => { await ownWrite('/rest/v1/rpc/admin_resolve_refund', 'POST'); });
+      await waitFor(() => expect(screen.getByText('4')).toBeTruthy());
+    });
+
+    it('unrelated writes (a page visit) do not cost a badge refresh', async () => {
+      render(<Header currentPage="home" onNavigate={() => {}} />);
+      await screen.findByText('3');
+      const before = getPendingOrdersCount.mock.calls.length;
+      await act(async () => { await ownWrite('/rest/v1/site_visits', 'POST'); });
+      expect(getPendingOrdersCount.mock.calls.length).toBe(before);
     });
   });
 });

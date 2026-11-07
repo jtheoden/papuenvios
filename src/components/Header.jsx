@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useId } from 'react';
+import React, { useState, useEffect, useRef, useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, ShoppingBag, Globe, DollarSign, BarChart3, Settings, ShoppingCart, User as UserIcon, LogIn, LogOut, ShieldCheck, Users, LayoutDashboard, ChevronDown, Crown, Zap, Star, Home, Package, Banknote, BookOpen } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/user-avatar';
@@ -7,13 +7,12 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/use-toast';
-import { getPendingOrdersCount } from '@/lib/orderService';
-import { getPendingRemittancesCount } from '@/lib/remittanceService';
-import { getRefundCounts, REFUNDS_CHANGED_EVENT } from '@/lib/refundService';
+import { REFUNDS_CHANGED_EVENT } from '@/lib/refundService';
+import { ADMIN_PENDING_KEY, affectsAdminPending, loadAdminPendingCounts } from '@/lib/adminPendingCounts';
+import { useVisiblePolling, POLL_REALTIME_FALLBACK_MS } from '@/lib/visiblePolling';
 import { useRealtimeOrders, useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import { semanticColors } from '@/lib/colorTokens';
 import RoleUnresolvedBanner from '@/components/RoleUnresolvedBanner';
-import { isRefreshBlocked } from '@/lib/refreshGuard';
 import { buildHeaderTheme } from '@/lib/headerTheme';
 
 // Colours come from CSS variables set on the header root (see buildHeaderTheme). Hover and focus
@@ -180,41 +179,30 @@ const Header = ({ currentPage, onNavigate }) => {
 
   const isAdminRole = userRole === 'admin' || userRole === 'super_admin';
 
-  // Pending work for admins: orders + remittances + refunds that can be paid today (past the 48 h hold).
-  // A failing source counts as 0 without hiding the others.
-  // While the token refresh is blocked the requests would go out anonymous and read as 0: keep the last badge.
-  const loadPendingCount = useCallback(async () => {
-    if (isRefreshBlocked()) return;
-    const [orders, remittances, refunds] = await Promise.all([
-      getPendingOrdersCount().catch((error) => {
-        console.error('Error loading pending orders:', error);
-        return 0;
-      }),
-      getPendingRemittancesCount(),
-      getRefundCounts().catch(() => ({ actionable: 0, overdue: 0 }))
-    ]);
-    setPendingCount((orders || 0) + (remittances || 0) + (refunds?.actionable || 0));
-    setOverdueRefunds(refunds?.overdue || 0);
-  }, []);
+  // Pending work for admins: orders + remittances + refunds that can be paid today (past the 48 h hold), one shared
+  // resource (see adminPendingCounts). Realtime and own writes refresh it at once; the poll is only a safety net and
+  // stops while the tab is hidden. While the token refresh is blocked the poller keeps the last badge (anonymous
+  // requests would read as 0).
+  const refreshPendingCount = useVisiblePolling(ADMIN_PENDING_KEY, loadAdminPendingCounts, {
+    enabled: isAdminRole,
+    intervalMs: POLL_REALTIME_FALLBACK_MS,
+    refreshOnWrite: affectsAdminPending,
+    onData: ({ orders, remittances, refunds }) => {
+      setPendingCount(orders + remittances + (refunds?.actionable || 0));
+      setOverdueRefunds(refunds?.overdue || 0);
+    }
+  });
 
-  // Initial load + 30s polling as a safety net in case a realtime event is missed
+  // The refunds screen announces a resolution so the badge drops without waiting for the poll
   useEffect(() => {
     if (!isAdminRole) return undefined;
-    loadPendingCount();
-    const interval = setInterval(loadPendingCount, 30000);
-    return () => clearInterval(interval);
-  }, [isAdminRole, loadPendingCount]);
-
-  // The refunds screen announces a resolution so the badge drops without waiting for the 30 s poll
-  useEffect(() => {
-    if (!isAdminRole) return undefined;
-    window.addEventListener(REFUNDS_CHANGED_EVENT, loadPendingCount);
-    return () => window.removeEventListener(REFUNDS_CHANGED_EVENT, loadPendingCount);
-  }, [isAdminRole, loadPendingCount]);
+    window.addEventListener(REFUNDS_CHANGED_EVENT, refreshPendingCount);
+    return () => window.removeEventListener(REFUNDS_CHANGED_EVENT, refreshPendingCount);
+  }, [isAdminRole, refreshPendingCount]);
 
   // Real time: any change in orders/remittances (e.g. a new remittance registered) refreshes the badge
-  useRealtimeOrders({ onUpdate: loadPendingCount, enabled: isAdminRole });
-  useRealtimeRemittances({ onUpdate: loadPendingCount, enabled: isAdminRole });
+  useRealtimeOrders({ onUpdate: refreshPendingCount, enabled: isAdminRole });
+  useRealtimeRemittances({ onUpdate: refreshPendingCount, enabled: isAdminRole });
 
   const getCategoryIndicatorConfig = (categoryName) => {
     const normalized = categoryName || 'regular';
