@@ -15,7 +15,7 @@ import { toast } from '@/components/ui/use-toast';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import TableDetailModal from '@/components/modals/TableDetailModal';
 import { zelleService } from '@/lib/zelleService';
-import { validateZelleVisibility } from '@/lib/zelleVisibility';
+import { deriveZelleVisibility, inferZelleContactType, validateZelleContact, validateZelleVisibility } from '@/lib/zelleVisibility';
 import { getZelleTableColumns, getZelleModalColumns } from './ZelleAccountTableConfig';
 
 const SettingsZelleTab = () => {
@@ -56,9 +56,13 @@ const SettingsZelleTab = () => {
     is_active: true,
     for_products: true,
     for_remittances: true,
-    show_email: true,
+    show_email: false,
     show_phone: true
   });
+
+  const contactType = inferZelleContactType(formData);
+  // Keep independent controls throughout a legacy edit, even after a flag changes.
+  const hasLegacyVisibility = selectedAccount && inferZelleContactType(selectedAccount) === 'both';
 
   // Load accounts on mount
   useEffect(() => {
@@ -159,7 +163,7 @@ const SettingsZelleTab = () => {
       is_active: true,
       for_products: true,
       for_remittances: true,
-      show_email: true,
+      show_email: false,
       show_phone: true
     });
     setSelectedAccount(null);
@@ -170,7 +174,7 @@ const SettingsZelleTab = () => {
     setSelectedAccount(account);
     setFormData({
       account_name: account.account_name,
-      phone: account.phone,
+      phone: account.phone || '',
       account_holder: account.account_holder,
       email: account.email || '',
       daily_limit: account.daily_limit,
@@ -188,7 +192,7 @@ const SettingsZelleTab = () => {
   };
 
   const handleSubmitForm = async () => {
-    if (!formData.account_name || !formData.phone || !formData.account_holder || !formData.email) {
+    if (!formData.account_name.trim() || !formData.account_holder.trim()) {
       toast({
         title: t('zelle.errorRequiredFields') || 'Required fields',
         description: language === 'es'
@@ -203,6 +207,16 @@ const SettingsZelleTab = () => {
       toast({
         title: t('zelle.errorRequiredFields') || 'Required fields',
         description: t('zelle.atLeastOneVisible'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const contactValidation = validateZelleContact({ ...formData, contactType });
+    if (!contactValidation.valid) {
+      toast({
+        title: t('zelle.errorRequiredFields'),
+        description: t(`zelle.${contactValidation.error}`),
         variant: 'destructive'
       });
       return;
@@ -460,10 +474,26 @@ const SettingsZelleTab = () => {
             </div>
 
             <div className="p-4 sm:p-6 space-y-4">
+              {!hasLegacyVisibility && (
+                <div>
+                  <label htmlFor="zelle-identifier" className="block text-sm font-medium mb-1">{t('zelle.identifiedBy')}</label>
+                  <select
+                    id="zelle-identifier"
+                    value={contactType}
+                    onChange={(e) => setFormData({ ...formData, ...deriveZelleVisibility(e.target.value) })}
+                    className="input-style w-full"
+                  >
+                    <option value="phone">{t('zelle.phoneIdentifier')}</option>
+                    <option value="email">{t('common.email')}</option>
+                  </select>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1 truncate">{t('zelle.accountName')} *</label>
+                  <label htmlFor="zelle-account-name" className="block text-sm font-medium mb-1 truncate">{t('zelle.accountName')} *</label>
                   <input
+                    id="zelle-account-name"
+                    required
                     type="text"
                     value={formData.account_name}
                     onChange={(e) => setFormData({...formData, account_name: e.target.value})}
@@ -472,8 +502,10 @@ const SettingsZelleTab = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1 truncate">{t('zelle.phoneNumber')} *</label>
+                  <label htmlFor="zelle-phone" className="block text-sm font-medium mb-1 truncate">{t('zelle.phoneNumber')} {formData.show_phone ? '*' : t('zelle.optionalContact')}</label>
                   <input
+                    id="zelle-phone"
+                    required={formData.show_phone}
                     type="tel"
                     value={formData.phone}
                     onChange={(e) => setFormData({...formData, phone: e.target.value})}
@@ -482,8 +514,10 @@ const SettingsZelleTab = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1 truncate">{t('zelle.holderName')} *</label>
+                  <label htmlFor="zelle-account-holder" className="block text-sm font-medium mb-1 truncate">{t('zelle.holderName')} *</label>
                   <input
+                    id="zelle-account-holder"
+                    required
                     type="text"
                     value={formData.account_holder}
                     onChange={(e) => setFormData({...formData, account_holder: e.target.value})}
@@ -492,8 +526,10 @@ const SettingsZelleTab = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1 truncate">{t('common.email')} *</label>
+                  <label htmlFor="zelle-email" className="block text-sm font-medium mb-1 truncate">{t('common.email')} {formData.show_email ? '*' : t('zelle.optionalContact')}</label>
                   <input
+                    id="zelle-email"
+                    required={formData.show_email}
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({...formData, email: e.target.value})}
@@ -573,24 +609,28 @@ const SettingsZelleTab = () => {
                   />
                   <span className="text-sm">{t('zelle.forRemittances')}</span>
                 </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={formData.show_email}
-                    onChange={(e) => setFormData({...formData, show_email: e.target.checked})}
-                    className="rounded"
-                  />
-                  <span className="text-sm">{t('zelle.showEmail')}</span>
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={formData.show_phone}
-                    onChange={(e) => setFormData({...formData, show_phone: e.target.checked})}
-                    className="rounded"
-                  />
-                  <span className="text-sm">{t('zelle.showPhone')}</span>
-                </label>
+                {hasLegacyVisibility && (
+                  <>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={formData.show_email}
+                        onChange={(e) => setFormData({...formData, show_email: e.target.checked})}
+                        className="rounded"
+                      />
+                      <span className="text-sm">{t('zelle.showEmail')}</span>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={formData.show_phone}
+                        onChange={(e) => setFormData({...formData, show_phone: e.target.checked})}
+                        className="rounded"
+                      />
+                      <span className="text-sm">{t('zelle.showPhone')}</span>
+                    </label>
+                  </>
+                )}
               </div>
             </div>
 

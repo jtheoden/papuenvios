@@ -16,6 +16,7 @@ import {
 } from '@/lib/errorHandler';
 import { createZelleDeactivationAlerts } from '@/lib/userAlertService';
 import { getBusinessWindows } from '@/lib/dashboardMetrics';
+import { inferZelleContactType, validateZelleContact, validateZelleVisibility } from '@/lib/zelleVisibility';
 
 // ============================================================================
 // ZELLE STATUS CONSTANTS
@@ -53,19 +54,13 @@ const validateAccountData = (data) => {
     errors.account_name = 'Account name is required and must be a non-empty string';
   }
 
-  if (!data.phone || typeof data.phone !== 'string' || data.phone.trim().length === 0) {
-    errors.phone = 'Phone number is required and must be a non-empty string';
-  }
-
   if (!data.account_holder || typeof data.account_holder !== 'string' || data.account_holder.trim().length === 0) {
     errors.account_holder = 'Holder name is required and must be a non-empty string';
   }
 
-  if (!data.email || typeof data.email !== 'string' || data.email.trim().length === 0) {
-    errors.email = 'Email is required and must be a non-empty string';
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
-    errors.email = 'Email must be a valid email address';
-  }
+  const contactValidation = validateZelleContact({ ...data, contactType: inferZelleContactType(data) });
+  if (!contactValidation.valid) errors.contact = contactValidation.error;
+  if (!validateZelleVisibility(data).valid) errors.visibility = 'At least one contact must be visible';
 
   if (data.daily_limit !== undefined && (typeof data.daily_limit !== 'number' || data.daily_limit < 0)) {
     errors.daily_limit = 'Daily limit must be a non-negative number';

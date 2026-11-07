@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
+  deriveZelleVisibility,
+  inferZelleContactType,
+  validateZelleContact,
   validateZelleVisibility,
   getZelleAccountPublicContact
 } from '@/lib/zelleVisibility';
@@ -63,5 +66,53 @@ describe('getZelleAccountPublicContact', () => {
       phone: '+1'
     });
     expect(getZelleAccountPublicContact(null)).toEqual({ email: null, phone: null });
+  });
+});
+
+describe('Zelle account identifier', () => {
+  it.each([
+    [undefined, { show_phone: true, show_email: false }],
+    ['phone', { show_phone: true, show_email: false }],
+    ['email', { show_phone: false, show_email: true }],
+    ['both', { show_phone: true, show_email: true }]
+  ])('derives visibility for %s', (contactType, flags) => {
+    expect(deriveZelleVisibility(contactType)).toEqual(flags);
+  });
+
+  it.each([
+    [{ show_phone: true, show_email: false }, 'phone'],
+    [{ show_phone: false, show_email: true }, 'email'],
+    [{ show_phone: true, show_email: true }, 'both'],
+    [{}, 'both']
+  ])('infers the identifier without losing legacy flags: %j', (flags, type) => {
+    expect(inferZelleContactType(flags)).toBe(type);
+  });
+
+  it.each([
+    ['phone', '+1 (555) 123-4567', ''],
+    ['phone', '1234567', null],
+    ['email', '', 'pay@example.com'],
+    ['email', null, 'pay@example.com'],
+    ['both', '1234567', 'pay@example.com'],
+    ['phone', '1'.repeat(30), ' pay@example.com ']
+  ])('accepts required contact and optional blank: %s / %s / %s', (contactType, phone, email) => {
+    expect(validateZelleContact({ contactType, phone, email })).toEqual({ valid: true });
+  });
+
+  it.each([
+    ['phone', ' ', '', 'phoneRequired'],
+    ['email', '', ' ', 'emailRequired'],
+    ['both', '', 'pay@example.com', 'phoneRequired'],
+    ['both', '1234567', '', 'emailRequired'],
+    ['phone', '123456', '', 'invalidPhone'],
+    ['phone', '1'.repeat(31), '', 'invalidPhone'],
+    ['phone', '-------', '', 'invalidPhone'],
+    ['phone', '123abc456', '', 'invalidPhone'],
+    ['phone', '1234567', 'invalid@', 'invalidEmail'],
+    ['email', 'bad-phone', 'pay@example.com', 'invalidPhone'],
+    ['email', '123\t4567', 'pay@example.com', 'invalidPhone'],
+    ['email', '', 'a@@example.com', 'invalidEmail']
+  ])('rejects missing or malformed contact: %s / %s / %s', (contactType, phone, email, error) => {
+    expect(validateZelleContact({ contactType, phone, email })).toEqual({ valid: false, error });
   });
 });
