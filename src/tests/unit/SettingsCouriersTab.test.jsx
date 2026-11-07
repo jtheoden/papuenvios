@@ -52,7 +52,7 @@ describe('module not deployed yet (front before migrations)', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(screen.getByTestId('couriers-unavailable')).toBeTruthy();
     expect(svc.listCouriers).toHaveBeenCalledTimes(1);
-    await act(async () => { await vi.advanceTimersByTimeAsync(5 * 60 * 1000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5.5 * 60 * 1000); }); // 5 min ± 10 % jitter
     expect(svc.listCouriers).toHaveBeenCalledTimes(2);
     expect(screen.getByRole('tablist')).toBeTruthy();
   });

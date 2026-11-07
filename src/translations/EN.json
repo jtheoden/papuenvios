@@ -346,6 +346,14 @@
       "viewDetails": "View Details",
       "rejectReason": "Rejection reason",
       "rejectReasonPlaceholder": "E.g.: Illegible proof, incorrect data...",
+      "cancelRemittance": "Cancel remittance",
+      "confirmCancelMessage": "Cancel remittance {number}? The customer has not uploaded a payment proof yet, but that does not mean they have not paid. Check the Zelle account that no payment was received before cancelling: no refund request will be created. This cannot be undone.",
+      "cancelReason": "Cancellation reason",
+      "cancelReasonPlaceholder": "E.g.: the customer never paid, duplicate request...",
+      "remittanceCancelled": "Remittance cancelled",
+      "cancelFailed": "The remittance could not be cancelled",
+      "cancelReasonInvalid": "A reason is required and must be at most 500 characters.",
+      "cancelUnavailable": "Admin cancellation is not available on the server yet. Please try again later.",
       "validationNotes": "Validation notes",
       "validationNotesPlaceholder": "Add notes about the validation...",
       "deliveryNotes": "Delivery notes",
@@ -1789,6 +1797,8 @@
     }
   },
   "cart": {
+    "pricesUpdated": "Exchange rates were updated and a price in your cart changed. Please review the total and confirm again.",
+    "rateCheckFailed": "The exchange rate could not be verified. Please try again in a few seconds.",
     "clearAll": {
       "button": "Empty cart",
       "title": "Empty your cart?",
@@ -2850,6 +2860,7 @@
     "noProof": "No proof",
     "validate": "Validate",
     "reject": "Reject",
+    "cancelRemittance": "Cancel",
     "startProcessing": "Process",
     "confirmDelivery": "Confirm delivery",
     "loading": "Loading remittances",

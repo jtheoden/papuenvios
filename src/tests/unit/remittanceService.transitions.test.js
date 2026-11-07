@@ -82,7 +82,8 @@ import {
   rejectPayment,
   startProcessing,
   confirmDelivery,
-  completeRemittance
+  completeRemittance,
+  adminCancelRemittance
 } from '@/lib/remittanceService';
 
 const png = { name: 'p.png', type: 'image/png', size: 10 };
@@ -110,6 +111,16 @@ describe('each function calls its RPC', () => {
     expect(lastRpc()).toEqual(['remittance_cancel', { p_remittance_id: 'rem-1', p_reason: 'changed my mind' }]);
     await cancelRemittance('rem-1');
     expect(lastRpc()).toEqual(['remittance_cancel', { p_remittance_id: 'rem-1', p_reason: null }]);
+  });
+
+  it('adminCancelRemittance -> remittance_admin_cancel with the trimmed reason (required), no direct write', async () => {
+    await adminCancelRemittance('rem-1', '  never paid ');
+    expect(lastRpc()).toEqual(['remittance_admin_cancel', { p_remittance_id: 'rem-1', p_reason: 'never paid' }]);
+    expect(state.directWrites).toEqual([]);
+    const calls = state.rpcCalls.length;
+    await expect(adminCancelRemittance('rem-1', '   ')).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    await expect(adminCancelRemittance('', 'x')).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    expect(state.rpcCalls).toHaveLength(calls);
   });
 
   it('validatePayment -> remittance_validate_payment, then syncs Zelle', async () => {

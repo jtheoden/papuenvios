@@ -346,6 +346,14 @@
       "viewDetails": "Ver Detalles",
       "rejectReason": "Razón del rechazo",
       "rejectReasonPlaceholder": "Ej: Comprobante ilegible, datos incorrectos...",
+      "cancelRemittance": "Cancelar remesa",
+      "confirmCancelMessage": "¿Cancelar la remesa {number}? El cliente aún no ha subido el comprobante de pago, pero eso no significa que no haya pagado. Verifica en la cuenta Zelle que no se haya recibido el pago antes de cancelar: no se creará ninguna solicitud de reembolso. Esta acción no se puede deshacer.",
+      "cancelReason": "Motivo de la cancelación",
+      "cancelReasonPlaceholder": "Ej: el cliente no realizó el pago, solicitud duplicada...",
+      "remittanceCancelled": "Remesa cancelada",
+      "cancelFailed": "No se pudo cancelar la remesa",
+      "cancelReasonInvalid": "El motivo es obligatorio y debe tener como máximo 500 caracteres.",
+      "cancelUnavailable": "La cancelación por administrador aún no está disponible en el servidor. Inténtalo más tarde.",
       "validationNotes": "Notas de validación",
       "validationNotesPlaceholder": "Añadir notas sobre la validación...",
       "deliveryNotes": "Notas de entrega",
@@ -1797,6 +1805,8 @@
     }
   },
   "cart": {
+    "pricesUpdated": "Las tasas de cambio se actualizaron y algún precio del carrito cambió. Revise el total y vuelva a confirmar.",
+    "rateCheckFailed": "No se pudo verificar la tasa de cambio. Inténtelo de nuevo en unos segundos.",
     "clearAll": {
       "button": "Vaciar carrito",
       "title": "¿Vaciar el carrito?",
@@ -2858,6 +2868,7 @@
     "noProof": "Sin comprobante",
     "validate": "Validar",
     "reject": "Rechazar",
+    "cancelRemittance": "Cancelar",
     "startProcessing": "Procesar",
     "confirmDelivery": "Confirmar entrega",
     "loading": "Cargando remesas",

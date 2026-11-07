@@ -22,6 +22,7 @@ export const ModalProvider = ({ children }) => {
     confirmText: 'Confirmar',
     cancelText: 'Cancelar',
     required: false,
+    maxLength: undefined,
     resolve: null
   });
 
@@ -38,6 +39,7 @@ export const ModalProvider = ({ children }) => {
         confirmText: config.confirmText || 'Confirmar',
         cancelText: config.cancelText || 'Cancelar',
         required: config.required || false,
+        maxLength: config.maxLength,
         resolve
       });
     });
@@ -80,6 +82,7 @@ const ModalComponent = ({
   confirmText,
   cancelText,
   required,
+  maxLength,
   onConfirm,
   onCancel
 }) => {
@@ -176,6 +179,7 @@ const ModalComponent = ({
                       placeholder={inputPlaceholder}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
                       rows="3"
+                      maxLength={maxLength}
                       autoFocus
                     />
                   </div>

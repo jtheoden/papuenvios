@@ -20,6 +20,8 @@ vi.mock('@/contexts/CurrencyContext', () => ({
   })
 }));
 vi.mock('@/components/ui/use-toast', () => ({ toast: (...a) => mocks.toast(...a) }));
+// Saved prices are converted with the live rate (currencyService), not the display cache
+vi.mock('@/lib/currencyService', () => ({ getLiveConversionRate: vi.fn(async () => 1) }));
 vi.mock('@/lib/imageUtils', () => ({ validateAndProcessImage: vi.fn() }));
 vi.mock('@/lib/imageStorage', () => ({
   isImageUploadError: () => false,

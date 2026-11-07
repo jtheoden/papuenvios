@@ -1,4 +1,4 @@
-import { transitionMessage } from '@/lib/statusConflict';
+import { adminCancelMessage, transitionMessage } from '@/lib/statusConflict';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -28,6 +28,7 @@ import {
   startProcessing,
   confirmDelivery,
   completeRemittance,
+  adminCancelRemittance,
   calculateDeliveryAlert,
   generateProofSignedUrl,
   getRemittanceBankAccountDetails,
@@ -44,6 +45,18 @@ async function decryptData(encryptedBase64) {
   return data.decrypted;
 }
 import { toast } from '@/components/ui/use-toast';
+import LoadingState, { SkeletonBox } from '@/components/ui/LoadingState';
+
+// Footprint of the filters bar, the stat cards and the first rows.
+const AdminRemittancesSkeleton = () => (
+  <div className="space-y-6">
+    <SkeletonBox className="h-20 w-full rounded-xl" />
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      {Array.from({ length: 4 }, (_, i) => <SkeletonBox key={i} className="h-24 rounded-xl" />)}
+    </div>
+    {Array.from({ length: 3 }, (_, i) => <SkeletonBox key={i} className="h-32 w-full rounded-xl" />)}
+  </div>
+);
 import ImageProofModal from './ImageProofModal';
 import TooltipButton from './TooltipButton';
 import RecipientLocation from './RecipientLocation';
@@ -467,6 +480,40 @@ const AdminRemittancesTab = () => {
     }
   };
 
+  const handleAdminCancel = async (remittance) => {
+    const reason = await showModal({
+      title: t('remittances.admin.cancelRemittance'),
+      message: t('remittances.admin.confirmCancelMessage', { number: remittance.remittance_number }),
+      input: true,
+      inputLabel: t('remittances.admin.cancelReason'),
+      inputPlaceholder: t('remittances.admin.cancelReasonPlaceholder'),
+      confirmText: t('remittances.admin.cancelRemittance'),
+      cancelText: t('common.cancel'),
+      type: 'danger',
+      required: true,
+      maxLength: 500
+    });
+
+    if (!reason) return;
+
+    try {
+      await adminCancelRemittance(remittance.id, reason);
+      toast({
+        title: t('common.success'),
+        description: t('remittances.admin.remittanceCancelled')
+      });
+      setSelectedRemittance(null);
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: adminCancelMessage(t, error),
+        variant: 'destructive'
+      });
+    }
+    // Refresh on failure too: a refusal usually means the remittance moved (e.g. the customer uploaded the proof).
+    await loadRemittances();
+  };
+
   const handleStartProcessing = async (remittance) => {
     const confirmed = await showModal({
       title: t('remittances.admin.process'),
@@ -697,6 +744,19 @@ const AdminRemittancesTab = () => {
       );
     }
     switch (remittance.status) {
+      case REMITTANCE_STATUS.PAYMENT_PENDING:
+        return (
+          <TooltipButton
+            tooltipText={t('remittances.admin.cancelRemittance')}
+            className="flex items-center gap-1 px-2 sm:px-3 py-1 border border-red-300 text-red-700 bg-white rounded-lg hover:bg-red-50 transition-colors text-sm"
+            onClick={() => handleAdminCancel(remittance)}
+            title={t('remittances.admin.cancelRemittance')}
+          >
+            <XCircle className="h-4 w-4" />
+            <span className="hidden sm:inline">{t('remittances.admin.cancelRemittance')}</span>
+          </TooltipButton>
+        );
+
       case REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED:
         return (
           <div className="flex gap-2">
@@ -814,15 +874,9 @@ const AdminRemittancesTab = () => {
     );
   }
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
   return (
+    // Skeleton only for the first load: reloads after an action keep the list on screen
+    <LoadingState loading={loading && remittances.length === 0} skeleton={<AdminRemittancesSkeleton />}>
     <div className="space-y-6">
       {/* Filters */}
       <div className="glass-effect p-4 rounded-xl">
@@ -1590,6 +1644,7 @@ const AdminRemittancesTab = () => {
         />
       )}
     </div>
+    </LoadingState>
   );
 };
 

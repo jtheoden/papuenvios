@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, act } from '@testing-library/react';
 
 const PINNED_NOW = new Date('2026-10-14T21:00:00Z');
 
@@ -98,6 +98,32 @@ describe('DashboardPage visits (server-side counts)', () => {
     state.visits = Array.from({ length: 4158 }, () => hoursAgo(1));
     render(<DashboardPage onNavigate={() => {}} />);
     await waitFor(() => expect(within(tile('dashboard.visits.allTime')).getByText('4158')).toBeTruthy());
+  });
+
+  // Egress: a dashboard left open polled 9 full lists every 30 s (~80 kB each), ~3.5 GB in 10 days.
+  it('polls every 5 minutes and skips the poll while the tab is hidden', async () => {
+    // visiblePolling schedules with setTimeout and measures freshness with Date.now
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'], shouldAdvanceTime: true });
+    vi.spyOn(Math, 'random').mockReturnValue(0.5); // no jitter
+    state.visits = [hoursAgo(1)];
+    render(<DashboardPage onNavigate={() => {}} />);
+    await waitFor(() => expect(state.visitCalls).toHaveLength(4));
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(state.visitCalls).toHaveLength(4);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(270_000); });
+    await waitFor(() => expect(state.visitCalls).toHaveLength(8));
+
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    await act(async () => { await vi.advanceTimersByTimeAsync(300_000); });
+    expect(state.visitCalls).toHaveLength(8);
+
+    hidden.mockReturnValue(false);
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    await waitFor(() => expect(state.visitCalls).toHaveLength(12));
+    hidden.mockRestore();
+    Math.random.mockRestore();
   });
 
   it('says the visits are unavailable instead of showing zeros when the counts fail', async () => {
