@@ -67,12 +67,13 @@ describe('BRAND_PRESET', () => {
     expect(BRAND_PRESET.useHeaderGradient).toBe(false);
   });
 
-  it('keeps every colour value a valid HEX and leaves primary/secondary untouched', () => {
+  it('defines coherent identity colours and a palette-derived header gradient endpoint', () => {
     for (const [key, value] of Object.entries(BRAND_PRESET)) {
       if (typeof value === 'string') expect(isHexColor(value), key).toBe(true);
     }
-    expect(BRAND_PRESET).not.toHaveProperty('primaryColor');
-    expect(BRAND_PRESET).not.toHaveProperty('secondaryColor');
+    expect(BRAND_PRESET.primaryColor).toBe(BRAND_PALETTE.charcoal);
+    expect(BRAND_PRESET.secondaryColor).toBe(BRAND_PALETTE.warmGray);
+    expect(BRAND_PRESET.headerGradientColor).toBe(BRAND_PRESET.secondaryColor);
   });
 
   it('passes the AA contrast check on every pair it defines', () => {

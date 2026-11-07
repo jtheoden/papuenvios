@@ -148,6 +148,9 @@ describe('resolveLookId / data-theme per settings row', () => {
     classicMarkedBrand: { ...classicRow, activeTheme: 'papuenvios' },
     brandInvalidMarker: { ...brandRow, activeTheme: '<img src=x>' },
     brandUpperCase: { ...DEFAULT_VISUAL_SETTINGS, ...Object.fromEntries(Object.entries(BRAND_PRESET).map(([k, v]) => [k, typeof v === 'string' ? v.toUpperCase() : v])) },
+    // Before step 7 these identity fields were not part of the preset; stored rows must keep their look.
+    legacyBrandIdentity: { ...brandRow, primaryColor: '#3499dc', secondaryColor: '#9333ea', headerGradientColor: '#9333ea' },
+    legacyBrandWithoutIdentity: Object.fromEntries(Object.entries(BRAND_PRESET).filter(([key]) => !['primaryColor', 'secondaryColor', 'headerGradientColor'].includes(key))),
     brandMissingOneKey: (({ footerLinkHoverColor, ...rest }) => ({ ...DEFAULT_VISUAL_SETTINGS, ...rest, footerLinkHoverColor: '#123456' }))(brandRow),
     empty: {},
   };
@@ -259,6 +262,14 @@ const BASELINE_OLD_PALETTE_CLASSES = 729;
 const MIGRATED_FILES = ['src/components/ui/Checkbox.jsx'];
 
 describe('old palette ratchet', () => {
+  it('Visual Settings chrome and child previews use theme tokens, not fixed blue/purple utilities', () => {
+    for (const file of ['SettingsPageVisual', 'HeaderPreview', 'FooterPreview', 'LoaderPreview']) {
+      const source = fs.readFileSync(path.join(ROOT, `src/components/settings/${file}.jsx`), 'utf8');
+      // Colour pickers may display stored HEX values; that does not exempt the surrounding UI chrome.
+      expect(source, file).not.toMatch(/\b(?:bg|text|border|ring|from|via|to)-(?:blue|purple|indigo|violet|sky|cyan)-\d{2,3}\b/);
+    }
+  });
+
   const files = listSourceFiles('src', ROOT).filter((file) => !file.startsWith('src/tests/'));
   const countOf = (file) => countOldPalette(fs.readFileSync(path.join(ROOT, file), 'utf8'), file);
 

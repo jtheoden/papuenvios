@@ -8,13 +8,12 @@ import { getPrimaryButtonStyle, getHeadingStyle } from '@/lib/styleUtils';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { isImageUploadError, getImageUploadMessageKey } from '@/lib/imageStorage';
-import { clearVisualSettingsCache, saveVisualSettings, applyVisualSettingsToDOM } from '@/lib/businessVisualSettingsService';
 import { pickNewKeys, getContrastIssues, isHexColor, toLongHex } from '@/lib/brandPalette';
 import { showNameWithLogo, getLoaderConfig } from '@/lib/brandingDisplay';
 import HeaderPreview from '@/components/settings/HeaderPreview';
 import LoaderPreview from '@/components/settings/LoaderPreview';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import { THEME_IDS, THEME_PRESETS, resolveThemeId, pickThemeKeys, selectTheme, restoreThemeDefaults, getThemeDeviations } from '@/lib/visualThemes';
+import { THEME_IDS, THEME_PRESETS, resolveThemeId, pickThemeKeys, selectTheme, restoreThemeDefaults, getThemeDeviations, getThemeFormDefaults, applyThemePalette } from '@/lib/visualThemes';
 import {
   getCarouselSlides, createCarouselSlide, updateCarouselSlide,
   hardDeleteCarouselSlide, toggleCarouselSlideActive
@@ -28,7 +27,12 @@ const SWATCH_KEYS = ['buttonBgColor', 'headerMenuActiveBgColor', 'pageBgColor', 
 // canChangeTheme: only a super admin may pick the default theme (the tab itself is open to admins)
 const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVisualSettings, canChangeTheme = false }) => {
   const { t, language } = useLanguage();
-  const [livePreview, setLivePreview] = useState(true); // Toggle for live preview
+  const hasPaletteSuggestions = Object.keys(getThemeFormDefaults(visualSettings)).length > 0;
+  const [livePreview, setLivePreview] = useState(!hasPaletteSuggestions);
+  // Suggestions lock preview too, but only user-owned drafts block external settings refreshes.
+  const [paletteDraft, setPaletteDraft] = useState(hasPaletteSuggestions);
+  const intentionalPaletteDraft = useRef(false);
+  const [settingsReplay, setSettingsReplay] = useState(0);
   const isUserEditing = useRef(false); // Track if user is actively editing
   const originalSettings = useRef(null); // Store original settings for cancel functionality
   const [hasChanges, setHasChanges] = useState(false); // Track if there are unsaved changes
@@ -112,7 +116,8 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     // Brand refresh keys
     ...pickNewKeys(visualSettings),
     // Selectable default theme (activeTheme + classic snapshot)
-    ...pickThemeKeys(visualSettings)
+    ...pickThemeKeys(visualSettings),
+    ...getThemeFormDefaults(visualSettings)
   });
   const [logoPreview, setLogoPreview] = useState(visualSettings.logo || '');
   const [faviconPreview, setFaviconPreview] = useState(visualSettings.favicon || '');
@@ -140,7 +145,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
   // Sync appearance state when visualSettings changes from external source (DB load)
   // Skip if user is actively editing to avoid overwriting their changes
   useEffect(() => {
-    if (isUserEditing.current) return;
+    if (isUserEditing.current || intentionalPaletteDraft.current) return;
 
     const newAppearance = {
       companyName: visualSettings.companyName || 'PapuEnvíos',
@@ -212,42 +217,51 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       carouselAutoplaySpeed: visualSettings.carouselAutoplaySpeed || 5000,
       carouselTransitionSpeed: visualSettings.carouselTransitionSpeed || 1000,
       ...pickNewKeys(visualSettings),
-      ...pickThemeKeys(visualSettings)
+      ...pickThemeKeys(visualSettings),
+      ...getThemeFormDefaults(visualSettings)
     };
     setAppearance(newAppearance);
     setLogoPreview(visualSettings.logo || '');
     setFaviconPreview(visualSettings.favicon || '');
     setHasChanges(false);
-  }, [visualSettings]);
+    setPaletteDraft(hasPaletteSuggestions);
+    if (hasPaletteSuggestions) {
+      setLivePreview(false);
+    }
+  }, [visualSettings, settingsReplay]);
 
   const selectedThemeId = resolveThemeId(appearance);
   const savedThemeId = resolveThemeId(visualSettings);
   const themePending = selectedThemeId !== savedThemeId; // chosen in the form, not saved yet
+  const previewLocked = themePending || paletteDraft;
   const themeDeviations = getThemeDeviations(appearance); // preset colours edited by hand
 
   // Update appearance with live preview
   const patchAppearance = useCallback((patch) => {
     isUserEditing.current = true;
+    if (previewLocked) intentionalPaletteDraft.current = true;
     setHasChanges(true);
     const newAppearance = { ...appearance, ...patch };
     setAppearance(newAppearance);
 
     // Apply live preview to the entire system (never while a theme choice is unsaved: it would persist it)
-    if (livePreview && !themePending) {
+    if (livePreview && !previewLocked) {
       setVisualSettings({ ...visualSettings, ...newAppearance });
     }
 
     // Reset editing flag after a delay
     setTimeout(() => { isUserEditing.current = false; }, 1000);
-  }, [appearance, visualSettings, setVisualSettings, livePreview, themePending]);
+  }, [appearance, visualSettings, setVisualSettings, livePreview, previewLocked]);
   const updateAppearance = useCallback((key, value) => patchAppearance({ [key]: value }), [patchAppearance]);
 
   // Theme selector: fills the FORM only. Live preview goes off (and stays locked while the choice is
   // unsaved) because updateAppearance would otherwise persist the whole form on the next edit.
-  const handleSelectTheme = (themeId) => {
-    if (!canChangeTheme || themeId === selectedThemeId) return;
-    setPresetUndo(prev => prev ?? { appearance, livePreview }); // undo goes back to before the first choice
-    setAppearance(selectTheme(appearance, themeId));
+  const stagePalette = (nextAppearance) => {
+    const priorIntentionalDraft = intentionalPaletteDraft.current;
+    setPresetUndo(prev => prev ?? { appearance, livePreview, paletteDraft, intentionalPaletteDraft: priorIntentionalDraft, visualSettings });
+    intentionalPaletteDraft.current = true;
+    setAppearance(nextAppearance);
+    setPaletteDraft(true);
     setLivePreview(false);
     setHasChanges(true);
     // Same guard as updateAppearance: an external visualSettings refresh must not wipe the choice.
@@ -255,10 +269,23 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     setTimeout(() => { isUserEditing.current = false; }, 1000);
   };
 
+  const handleSelectTheme = (themeId) => {
+    if (!canChangeTheme || themeId === selectedThemeId) return;
+    stagePalette(selectTheme(appearance, themeId));
+  };
+
   const handleUndoBrandPreset = () => {
     if (!presetUndo) return;
     setAppearance(presetUndo.appearance);
     setLivePreview(presetUndo.livePreview);
+    setPaletteDraft(presetUndo.paletteDraft);
+    intentionalPaletteDraft.current = presetUndo.intentionalPaletteDraft;
+    // A refresh may already have arrived while this draft blocked syncing. Releasing an
+    // unowned baseline must replay it even when visualSettings will not change again.
+    if (!presetUndo.intentionalPaletteDraft && presetUndo.visualSettings !== visualSettings) {
+      isUserEditing.current = false;
+      setSettingsReplay(prev => prev + 1);
+    }
     setPresetUndo(null);
     setHasChanges(true);
   };
@@ -281,6 +308,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
         return;
       }
 
+      if (previewLocked) intentionalPaletteDraft.current = true;
       setLogoPreview(result.base64);
       setAppearance(prev => ({ ...prev, logo: result.base64 }));
 
@@ -353,6 +381,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
         return;
       }
 
+      if (previewLocked) intentionalPaletteDraft.current = true;
       setFaviconPreview(result.base64);
       setAppearance(prev => ({ ...prev, favicon: result.base64 }));
       setHasChanges(true);
@@ -393,59 +422,19 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     originalSettings.current = { ...newSettings };
     setHasChanges(false);
     setPresetUndo(null);
+    setPaletteDraft(false);
+    intentionalPaletteDraft.current = false;
     toast({
       title: t('settings.saveSuccess'),
       description: t('settings.visual.changesSaved')
     });
   };
 
-  // Restore theme: theme/colour keys go back to the code defaults (classic look), saved at once. Content
-  // (logo, favicon, texts, home features, carousel) is kept. Only for users who may change the theme.
-  const handleRestoreTheme = async () => {
+  // Restore only the form. Like Apply palette, persistence requires Save Personalization.
+  const handleRestoreTheme = () => {
     if (!canChangeTheme) return;
     setResetOpen(false);
-    try {
-      clearVisualSettingsCache();
-      // Also clear any legacy cache keys that might exist
-      localStorage.removeItem('visual_settings_cache');
-      localStorage.removeItem('visualSettings');
-
-      const restored = restoreThemeDefaults(visualSettings);
-      const result = await saveVisualSettings(restored);
-      if (!result.success) {
-        console.error('[RestoreTheme] Failed to save defaults to DB:', result.error);
-        toast({
-          title: t('common.error'),
-          description: result.error || t('settings.visual.brand.reset.error'),
-          variant: 'destructive'
-        });
-        return;
-      }
-
-      // Unsaved content edits in the form stay; the theme keys follow the restored settings
-      setAppearance(prev => restoreThemeDefaults(prev));
-
-      // Propagate to the whole app and the DOM
-      setVisualSettings(restored);
-      applyVisualSettingsToDOM(restored);
-
-      originalSettings.current = { ...restored };
-      setHasChanges(false);
-      setPresetUndo(null);
-
-      toast({
-        title: t('settings.visual.changesDiscarded'),
-        description: t('settings.visual.settingsRestored')
-      });
-
-    } catch (err) {
-      console.error('[RestoreTheme] Exception:', err);
-      toast({
-        title: t('common.error'),
-        description: err.message,
-        variant: 'destructive'
-      });
-    }
+    stagePalette(restoreThemeDefaults(appearance));
   };
 
   // ===== CAROUSEL HANDLERS =====
@@ -664,23 +653,23 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
   return (
     <>
       {/* Appearance Customization */}
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-effect p-8 rounded-2xl">
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-effect p-4 sm:p-8 rounded-2xl">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <h2 className="text-2xl font-semibold flex items-center">
-            <Palette className="mr-3 text-purple-600" />
+            <Palette className="mr-3 text-theme-accent-2" />
             {t('settings.visual.appearance')}
           </h2>
           {/* Live Preview Toggle */}
-          <label className="flex items-center gap-2 cursor-pointer bg-blue-50 px-3 py-2 rounded-lg border border-blue-200">
-            <Eye className={`h-4 w-4 ${livePreview ? 'text-blue-600' : 'text-gray-400'}`} />
+          <label className="flex items-center gap-2 cursor-pointer bg-theme-accent-soft px-3 py-2 rounded-lg border border-theme-accent-line">
+            <Eye className={`h-4 w-4 ${livePreview ? 'text-theme-link' : 'text-gray-400'}`} />
             <input
               type="checkbox"
               checked={livePreview}
-              disabled={themePending}
+              disabled={previewLocked}
               onChange={e => setLivePreview(e.target.checked)}
               className="rounded"
             />
-            <span className={`text-sm font-medium ${livePreview ? 'text-blue-700' : 'text-gray-500'}`}>
+            <span className={`text-sm font-medium ${livePreview ? 'text-theme-link-strong' : 'text-gray-500'}`}>
               {t('settings.visual.livePreview')}
             </span>
           </label>
@@ -988,9 +977,13 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
         {/* SECTION 1: Brand & Global Colors                           */}
         {/* ═══════════════════════════════════════════════════════════ */}
         <div className="mb-8 p-4 bg-gray-50/50 rounded-xl border border-gray-100">
-          <h3 className="text-lg font-semibold mb-4 text-gray-800">
-            {t('settings.visual.brandIdentity')}
-          </h3>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h3 className="text-lg font-semibold text-gray-800">{t('settings.visual.brandIdentity')}</h3>
+            <Button type="button" variant="outline" size="sm" onClick={() => stagePalette(applyThemePalette(appearance))} className="h-auto whitespace-normal text-left">
+              {t('settings.visual.brand.applyPalette')}
+            </Button>
+          </div>
+          {paletteDraft && <p role="status" className="text-sm text-theme-link mb-3">{t('settings.visual.brand.paletteDraft')}</p>}
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             {[
               { key: 'primaryColor', label: t('settings.visual.primaryColor') },
@@ -999,8 +992,8 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
               { key: 'pageBgColor', label: t('settings.visual.pageBackground') }
             ].map(({ key, label }) => (
               <div key={key}>
-                <label className="block text-xs font-medium mb-1.5 text-gray-600">{label}</label>
-                <input type="color" value={appearance[key]} onChange={e => updateAppearance(key, e.target.value)} className="w-full h-9 rounded-lg cursor-pointer border border-gray-300" />
+                <label htmlFor={`identity-${key}`} className="block text-xs font-medium mb-1.5 text-gray-600">{label}</label>
+                <input id={`identity-${key}`} type="color" value={appearance[key]} onChange={e => updateAppearance(key, e.target.value)} className="w-full h-9 rounded-lg cursor-pointer border border-gray-300" />
               </div>
             ))}
           </div>
@@ -1022,7 +1015,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
             </label>
             <div className="flex items-center gap-3">
               <input type="range" min="0" max="360" step="5" value={appearance.gradientDirection} onChange={e => updateAppearance('gradientDirection', e.target.value)} className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
-              <div className="w-9 h-9 rounded-lg flex-shrink-0 border border-gray-200" style={{ background: `linear-gradient(${appearance.gradientDirection}deg, ${appearance.primaryColor}, ${appearance.secondaryColor})` }} />
+              <div data-testid="brand-gradient-preview" aria-hidden="true" className="w-9 h-9 rounded-lg flex-shrink-0 border border-gray-200" style={{ background: `linear-gradient(${appearance.gradientDirection}deg, ${appearance.primaryColor}, ${appearance.secondaryColor})` }} />
             </div>
             <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
               <span>0°</span><span>90°</span><span>180°</span><span>270°</span><span>360°</span>
@@ -1483,7 +1476,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
               type="checkbox"
               checked={appearance.carouselEnabled}
               onChange={e => updateAppearance('carouselEnabled', e.target.checked)}
-              className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="w-5 h-5 rounded border-gray-300 text-theme-link focus:ring-theme-focus"
             />
             <span className="text-sm font-medium">{t('settings.visual.carouselEnabled')}</span>
           </label>
@@ -1586,7 +1579,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
 
                     {/* Save indicators */}
                     {savingSlide === slide.id && (
-                      <RefreshCw className="h-4 w-4 animate-spin text-blue-500 flex-shrink-0" />
+                      <RefreshCw className="h-4 w-4 animate-spin text-theme-focus flex-shrink-0" />
                     )}
                     {savedSlide === slide.id && savingSlide !== slide.id && (
                       <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
@@ -1601,7 +1594,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
                         type="checkbox"
                         checked={slide.is_active}
                         onChange={() => handleToggleSlideActive(slide.id, slide.is_active)}
-                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        className="w-4 h-4 rounded border-gray-300 text-theme-link focus:ring-theme-focus"
                       />
                       <span className={`hidden sm:inline text-xs font-medium ${slide.is_active ? 'text-green-600' : 'text-gray-400'}`}>
                         {slide.is_active ? t('settings.visual.slideActive') : t('settings.visual.slideInactive')}
@@ -1681,7 +1674,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
                           type="file"
                           accept="image/jpeg,image/png,image/webp"
                           onChange={(e) => handleSlideImageUpload(slide.id, e)}
-                          className="w-full text-sm text-gray-500 file:mr-4 file:py-1 file:px-3 sm:file:py-2 sm:file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                          className="w-full text-sm text-gray-500 file:mr-4 file:py-1 file:px-3 sm:file:py-2 sm:file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-theme-accent-soft file:text-theme-link-strong hover:file:bg-theme-accent-soft-2"
                         />
                       </div>
 

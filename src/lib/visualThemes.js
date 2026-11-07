@@ -32,12 +32,39 @@ const matchesPreset = (settings, preset) => PRESET_KEYS.every((key) => sameValue
  */
 export const resolveThemeId = resolveLookId;
 
+/** Suggested FORM values only: loading settings elsewhere must never replace stored colours. */
+export const getThemeFormDefaults = (settings = {}) => {
+  if (resolveThemeId(settings) !== 'papuenvios') return {};
+  const legacy = {
+    primaryColor: [DEFAULT_VISUAL_SETTINGS.primaryColor, '#3499dc'],
+    secondaryColor: [DEFAULT_VISUAL_SETTINGS.secondaryColor],
+    headerGradientColor: ['#9333ea'],
+    accentColor: [DEFAULT_VISUAL_SETTINGS.accentColor],
+    pageBgColor: [DEFAULT_VISUAL_SETTINGS.pageBgColor],
+  };
+  return Object.fromEntries(Object.entries(legacy)
+    .filter(([key, values]) => !settings[key] || values.some((value) => sameValue(settings[key], value)))
+    .map(([key]) => [key, BRAND_PRESET[key]]));
+};
+
+/** Explicitly fill the current theme's palette, even when already selected; preserve content/snapshots. */
+export const applyThemePalette = (form) => ({ ...form, ...THEME_PRESETS[resolveThemeId(form)] });
+
 const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 /** The theme-related keys a form copies from the stored settings. */
 export const pickThemeKeys = (settings = {}) => ({
   activeTheme: resolveThemeId(settings),
-  classicSnapshot: isPlainObject(settings?.classicSnapshot) ? settings.classicSnapshot : null,
+  classicSnapshot: isPlainObject(settings?.classicSnapshot)
+    ? {
+        // Pre-step-7 snapshots predate these preset keys. Capture the stored identity before
+        // form-only suggestions replace it, without overwriting explicit snapshot values.
+        ...Object.fromEntries(['primaryColor', 'secondaryColor', 'headerGradientColor']
+          .filter((key) => Object.hasOwn(settings, key))
+          .map((key) => [key, settings[key]])),
+        ...settings.classicSnapshot,
+      }
+    : null,
 });
 
 /**
@@ -57,7 +84,7 @@ const sanitizeSnapshot = (raw) =>
  * - classic -> papuenvios: keeps the current values of the preset keys in `classicSnapshot` (unless they already are
  *   the brand values) and applies the brand preset.
  * - papuenvios -> classic: restores that snapshot over the classic preset and drops it.
- * Keys outside the preset (primary/secondary colours, logo, texts, carousel...) are never touched.
+ * Keys outside the preset (logo, texts, carousel...) are never touched.
  */
 export const selectTheme = (form, targetId) => {
   if (!THEME_IDS.includes(targetId) || resolveThemeId(form) === targetId) return form;

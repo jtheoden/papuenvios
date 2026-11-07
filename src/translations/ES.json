@@ -1306,18 +1306,20 @@
             "description": "La paleta de la marca: botones dorados, texto carbón, fondo marfil y bordes beige, sin degradados."
           },
           "inUse": "En uso",
-          "changes": "Al elegir un tema se reemplazan los colores de cabecera, menús, pestañas, botones, pie de página, fondo, insignia del carrito y bordes. Los colores de ese grupo que haya editado a mano se pierden; solo se recuerdan los valores de Clásico para poder volver a ellos. No cambian el logo, los textos, los colores primario y secundario, ni el carrusel.",
+          "changes": "Al cambiar de tema se reemplazan sus colores y estilos, incluidos los colores primario, secundario y del degradado de cabecera. Se recuerdan los valores del tema Clásico para poder volver a ellos. El logo, los textos y el carrusel no cambian.",
           "restricted": "Solo un super administrador puede cambiar el tema por defecto.",
           "customized": "Algunos colores del formulario difieren del tema elegido porque se editaron a mano. Si cambia de tema, esas ediciones se reemplazarán.",
           "pending": "Tema aplicado al formulario. La vista previa en vivo se desactivó y nada se ha guardado todavía; presione \"Guardar Personalización\" para confirmar."
         },
         "reset": {
           "title": "¿Restablecer el tema de fábrica?",
-          "description": "Los colores, degradados y sombras volverán a los valores por defecto del código (aspecto Clásico) y se perderán sus personalizaciones de color, incluidas las ya guardadas. El cambio se guarda de inmediato y no se puede deshacer. No se modifican el logo, el favicon, los textos, las tarjetas de inicio ni el carrusel.",
-          "confirm": "Restablecer y guardar",
+          "description": "Los colores, degradados y sombras del formulario volverán a los valores de fábrica (tema Clásico). No se guarda nada hasta pulsar Guardar Personalización. El logo, favicon, textos, tarjetas de inicio y carrusel no cambian.",
+          "confirm": "Restaurar en el formulario",
           "cancel": "Cancelar",
           "error": "No se pudo restablecer el tema"
         },
+        "applyPalette": "Aplicar paleta del tema",
+        "paletteDraft": "Paleta propuesta en el formulario. No se guarda nada hasta pulsar Guardar Personalización.",
         "undoPreset": "Deshacer elección de tema",
         "sectionTitle": "Marca y acentos",
         "sectionHint": "Colores de la insignia del carrito, el punto activo del carrusel, bordes, texto secundario, acento suave y anillo de foco.",

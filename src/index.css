@@ -131,6 +131,103 @@ body {
   text-decoration-line: underline;
 }
 
+/* Recipient/order/remittance chrome keeps its original Classic utility colours as the baseline. These scoped
+   overrides apply only to the PapuEnvios look, so switching themes remains pixel-identical to the pre-token UI. */
+:root:not([data-theme="classic"]) .recipient-theme-card,
+:root:not([data-theme="classic"]) .recipient-theme-address {
+  border-color: rgb(var(--t-accent-line));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-card:hover:not(.recipient-theme-card-selected),
+:root:not([data-theme="classic"]) .recipient-theme-address:hover:not(.recipient-theme-address-selected) {
+  border-color: rgb(var(--t-accent) / 0.6);
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-card-selected {
+  border-color: rgb(var(--t-accent));
+  background-color: rgb(var(--t-accent-soft));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-address-selected {
+  border-color: rgb(var(--t-accent));
+  background-color: rgb(var(--t-accent-soft));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-card:focus-visible,
+:root:not([data-theme="classic"]) .recipient-theme-address:focus-visible,
+:root:not([data-theme="classic"]) .recipient-theme-add:focus-visible,
+:root:not([data-theme="classic"]) .recipient-theme-primary:focus-visible,
+:root:not([data-theme="classic"]) .recipient-theme-secondary:focus-visible {
+  outline: 2px solid rgb(var(--t-focus));
+  outline-offset: 2px;
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-control,
+:root:not([data-theme="classic"]) .recipient-theme-search,
+:root:not([data-theme="classic"]) .recipient-theme-select {
+  border-color: rgb(var(--t-accent-line));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-control:focus,
+:root:not([data-theme="classic"]) .recipient-theme-search:focus,
+:root:not([data-theme="classic"]) .recipient-theme-select:focus {
+  border-color: rgb(var(--t-focus));
+  --tw-ring-color: rgb(var(--t-focus));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-control:focus-visible {
+  outline: 2px solid rgb(var(--t-focus));
+  outline-offset: 2px;
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-detail,
+:root:not([data-theme="classic"]) .recipient-theme-create-panel {
+  border-color: rgb(var(--t-accent-line));
+  background-color: rgb(var(--t-accent-soft) / 0.5);
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-add {
+  border-color: rgb(var(--t-accent));
+  color: rgb(var(--t-link));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-add:hover {
+  background-color: rgb(var(--t-accent-soft));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-primary {
+  background-color: rgb(var(--t-accent));
+  color: rgb(var(--t-on-accent));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-primary:hover {
+  background-color: rgb(var(--t-accent-hover));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-secondary {
+  border: 1px solid rgb(var(--t-accent-line));
+  background-color: rgb(var(--t-accent-soft));
+  color: rgb(var(--t-link-strong));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-secondary:hover {
+  background-color: rgb(var(--t-accent-soft-2));
+}
+
+:root:not([data-theme="classic"]) .orders-recipient-theme-shell,
+:root:not([data-theme="classic"]) .remittance-recipient-theme-shell {
+  border: 2px solid rgb(var(--t-accent-line));
+  background-color: rgb(var(--t-accent-soft) / 0.2);
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-icon {
+  color: rgb(var(--t-link));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-loading {
+  background-color: rgb(var(--t-accent-soft) / 0.4);
+}
+
 /* Native checkbox / radio / range follow the look (charcoal in the brand look, blue-500 in classic). :where keeps the
    specificity at zero so an explicit accent-* utility still wins. */
 :where(input[type="checkbox"], input[type="radio"], input[type="range"]) {
