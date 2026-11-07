@@ -170,12 +170,12 @@ export const computeCourierCostTotals = (orders, costByOrder, now = new Date(), 
 
 /**
  * Shared bucket logic of the courier cost cards (orders and remittances). Rows must already be the
- * business-recognized ones; `hasZone(row)` false rows are not courier deliveries when `skipNoZone` is set.
+ * business-recognized ones; no-zone rows with a known cost always count, including retroactive assignments.
  */
 function buildCourierTotals({ rows, dateOf, chargedOf, costByKey, hasZone, now, recordingStart, prefix, skipNoZone = false }) {
   const w = getBusinessWindows(now);
   const startMs = recordingStart ? Date.parse(recordingStart) : NaN;
-  const included = skipNoZone ? rows.filter(hasZone) : rows;
+  const included = skipNoZone ? rows.filter((r) => hasZone(r) || costByKey.get(r.id) != null) : rows;
   const amountOf = (r) => {
     const amount = costByKey.get(r.id);
     return amount === null || amount === undefined ? null : toNumber(amount);
@@ -195,6 +195,7 @@ function buildCourierTotals({ rows, dateOf, chargedOf, costByKey, hasZone, now, 
       [`${name}${prefix}Cost`]: cost,
       [`${name}${prefix}Collected`]: collected,
       [`${name}${prefix}Difference`]: count(since, 'tariff') === 0 ? null : roundMoney(collected - cost),
+      [`${name}${prefix}UnknownCount`]: count(since, 'unrecorded') + count(since, 'missingRow'),
       [`${name}${prefix}Unrecorded`]: count(since, 'unrecorded'),
       [`${name}${prefix}MissingRow`]: count(since, 'missingRow')
     };
@@ -204,7 +205,7 @@ function buildCourierTotals({ rows, dateOf, chargedOf, costByKey, hasZone, now, 
 
 /**
  * Courier (transport) cost of remittances delivered in cash, same buckets as the orders card. Only validated
- * remittances WITH a delivery zone are courier deliveries; they are dated by payment_validated_at.
+ * remittances WITH a delivery zone OR a known courier cost are courier deliveries; they are dated by payment_validated_at.
  * `costByRemittance` is remittance id -> USD amount | null (service listRemittanceCourierCosts).
  */
 export const computeRemittanceCourierTotals = (remittances, costByRemittance, now = new Date(), recordingStart = null) =>
@@ -260,14 +261,14 @@ export const computeZelleTotals = (transactions, now = new Date()) => {
 
 /**
  * Headline figures of one window (D1). Sales and net income are different things, so they are not added:
- * net income = order profit + remittance commission + remittance delivery charge (delivery_cost, income per the
+ * net income = order profit + known-cost order courier Difference + remittance commission + remittance delivery charge (delivery_cost, income per the
  * owner) - remittance courier cost (transport, only where a snapshot exists); collected = cash in (orders total +
  * remittance amount_sent + delivery charge, which the customer pays on top of amount_sent).
  */
-export const computeHeadline = ({ orderRevenue, orderProfit, remittanceCommission, remittanceVolume, remittanceDeliveryCharge, remittanceCourierCost } = {}) => ({
+export const computeHeadline = ({ orderRevenue, orderProfit, remittanceCommission, remittanceVolume, remittanceDeliveryCharge, remittanceCourierCost, orderCourierDifference } = {}) => ({
   sales: roundMoney(toNumber(orderRevenue)),
   netIncome: roundMoney(
-    toNumber(orderProfit) + toNumber(remittanceCommission) + toNumber(remittanceDeliveryCharge) - toNumber(remittanceCourierCost)
+    toNumber(orderProfit) + toNumber(orderCourierDifference) + toNumber(remittanceCommission) + toNumber(remittanceDeliveryCharge) - toNumber(remittanceCourierCost)
   ),
   collected: roundMoney(toNumber(orderRevenue) + toNumber(remittanceVolume) + toNumber(remittanceDeliveryCharge)),
   deliveryCharge: roundMoney(toNumber(remittanceDeliveryCharge))

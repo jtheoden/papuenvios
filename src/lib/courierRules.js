@@ -293,6 +293,11 @@ export const courierErrorKey = (error) => {
   if (code === '23505') return 'couriers.errors.duplicateName';
   if (code === '42501') return message.includes('super administrator') ? 'couriers.errors.superAdminOnly' : 'couriers.errors.forbidden';
   if (code === '22023') {
+    if (message.includes('invalid_reason')) return 'couriers.errors.invalidReason';
+    if (message.includes('no_amount')) return 'couriers.errors.noAmount';
+    if (message.includes('preview_changed')) return 'couriers.errors.previewChanged';
+    if (message.includes('preview_required')) return 'couriers.errors.previewRequired';
+    if (message.includes('already_assigned')) return 'couriers.errors.alreadyAssigned';
     if (message.includes('coverage_gap')) return 'couriers.errors.coverageGap';
     if (message.includes('stale_subscribers')) return 'couriers.errors.staleSubscribers';
     if (message.includes('mixed_currency_scope')) return 'couriers.errors.mixedCurrency';

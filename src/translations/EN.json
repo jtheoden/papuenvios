@@ -925,7 +925,7 @@
       "sales": "Sales (gross orders)",
       "salesDef": "Gross total of orders with a validated payment and an active status, including the shipping charged and the cost of goods. Remittances are not included. Dated by payment validation.",
       "netIncome": "Net income",
-      "netIncomeDef": "What the business keeps: estimated order profit (margin per product minus discounts, without shipping) plus the net remittance commission. Dated by payment validation.",
+      "netIncomeDef": "Estimated product profit + shipping Difference for orders with known cost + remittance commissions and delivery charges − remittance courier cost. Unknown order costs are excluded from shipping Difference; retroactive assignments change past months.",
       "collected": "Collected (cash flow)",
       "collectedDef": "Money that came in: validated order totals plus the amount sent of remittances with a validated payment. It is not income: it includes what is later paid out to recipients and to the courier."
     },
@@ -1010,6 +1010,7 @@
     "yearlyProfit": "Estimated Yearly Profit",
     "shippingCollected": "Shipping charged to customers",
     "courier": {
+      "unknownCostCount": "Orders with unknown courier cost (excluded from shipping net)",
       "title": "Courier cost",
       "collected": "Shipping charged (all)",
       "collectedCompared": "Charged, with tariff",
@@ -3061,6 +3062,11 @@
       "confirmRemoveYes": "Yes, remove"
     },
     "errors": {
+      "invalidReason": "Enter an assignment reason of 10 to 500 characters.",
+      "noAmount": "The cost could not be calculated. Review the preview reason and correct the rule, exchange rate or calculation data before trying again. Nothing was assigned.",
+      "previewChanged": "Pricing or inputs changed. Get and review a new preview before confirming.",
+      "previewRequired": "Review a server preview before confirming.",
+      "alreadyAssigned": "This delivery already has a courier; its cost was not changed.",
       "generic": "The operation could not be completed. Please try again.",
       "unavailable": "The courier module is not available yet.",
       "overlap": "An active rule already overlaps this one (same scope and period). Adjust the validity or the scope.",
@@ -3219,6 +3225,40 @@
       "staleSubscribers": "{count} courier(s) subscribed to this expired code will be paid with this version again, with courier priority. Confirm to save."
     },
     "payable": {
+      "filter": "Filter deliveries",
+      "allPending": "All pending accruals",
+      "deliveredUnassigned": "Delivered without a courier",
+      "assignAfterDelivery": "Assign courier",
+      "courier": "Courier",
+      "preview": "Get server preview",
+      "confirmAssignment": "Confirm retroactive assignment",
+      "assignedOk": "Courier assigned and cost recorded.",
+      "retroactive": "Retroactive",
+      "pastMonthsWarning": "Assigning a courier to a past delivery uses today's rules and changes past-month figures: the cost belongs to the operation date. There are no frozen closings.",
+      "previewAmount": "Computed cost",
+      "previewRule": "Rule in force today",
+      "precedence": "Rule precedence",
+      "previewRate": "USD → CUP rate and origin",
+      "fxOrigin": {
+        "remittance": "Frozen remittance rate",
+        "exchange_rates": "Current rate",
+        "none": "No rate available"
+      },
+      "precedenceValue": {
+        "courier": "Courier (own or subscribed)",
+        "zone": "Zone",
+        "type": "Remittance type",
+        "tier": "Range",
+        "general": "General",
+        "none": "No rule"
+      },
+      "pricingWarning": {
+        "no_rule": "No active payment rule applies today; create or enable a rule first.",
+        "no_tier_match": "No matching range: cost remains unknown.",
+        "no_fx": "Missing conversion rate: the cost or its USD equivalent remains unknown.",
+        "amount_out_of_range": "Cost out of range: remains unknown.",
+        "no_amount_basis": "No basis available to calculate the cost."
+      },
       "title": "Payable",
       "empty": "There are no pending courier payments.",
       "adjustment": "adjustment",
