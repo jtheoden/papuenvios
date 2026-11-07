@@ -278,10 +278,17 @@ export const ProductProvider = ({ children }) => {
 
   // Initial data load: everything runs in parallel; combos only need the
   // products once both are in, so the stock check is computed after the join.
+  // `loading` covers the catalog only (products + combos): categories, testimonials and the carousel
+  // load in parallel but never hold the catalog skeleton (each handles its own errors).
   useEffect(() => {
     const loadInitialData = async () => {
       setLoading(true);
       setCatalogError(null);
+      const secondary = Promise.all([
+        refreshCategories(),
+        refreshTestimonials(false),
+        refreshCarouselSlides(false)
+      ]);
       const [productsData, rawCombos] = await Promise.all([
         loadPublicProducts().catch(err => {
           console.error('Error loading products:', err);
@@ -292,15 +299,13 @@ export const ProductProvider = ({ children }) => {
           console.error('Error refreshing combos:', err);
           recordCatalogFailure(err);
           return [];
-        }),
-        refreshCategories(),
-        refreshTestimonials(false),
-        refreshCarouselSlides(false)
+        })
       ]);
       commitProducts(productsData || []);
       rawCombosRef.current = rawCombos || [];
       setCombos(buildCombos(rawCombos, toProductsMap(productsData)));
       setLoading(false);
+      await secondary;
     };
 
     loadInitialData();

@@ -29,7 +29,8 @@ const BLOCKED = /admin_self_dealing_not_allowed/;
 // prosrc md5 of the LIVE functions that this change must never replace (captured from production, 2026-10-26).
 const PINNED_MD5 = {
   _order_transition: '28a851a304798873113426d51f2296b9',
-  _remittance_transition: 'ebbd27fe90d583f269b76884e65f18ba',
+  // 20261105100000_remittance_admin_cancel (was ebbd27fe90d583f269b76884e65f18ba, the live body before it).
+  _remittance_transition: '6ef3def2be8c7f48f778c55ca545dad9',
   admin_set_remittance_commission: '61f882648c9208a969a8e21fc26a2135',
   remittance_accept_commission: '5dc1bee0b20cab832c62dd7a2ff7ddf5',
   guard_status_via_rpc: '07f199e8ac086c0e37f488832bdab0e1',

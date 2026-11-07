@@ -3,6 +3,51 @@
  * Flags default to visible when missing so legacy rows keep their behavior.
  */
 
+/** Map a form identifier to the existing database visibility flags. */
+export const deriveZelleVisibility = (contactType = 'phone') => ({
+  show_phone: contactType !== 'email',
+  show_email: contactType !== 'phone'
+});
+
+/** Missing flags retain legacy visibility, including the both-visible edit mode. */
+export const inferZelleContactType = ({ show_email, show_phone } = {}) => {
+  if (show_phone !== false && show_email === false) return 'phone';
+  if (show_email !== false && show_phone === false) return 'email';
+  return 'both';
+};
+
+/** Normalize contact payloads without clearing filled optional/legacy contacts. */
+export const normalizeZelleAccountPayload = (data) => {
+  const payload = { ...data };
+  for (const field of ['email', 'phone']) {
+    if (Object.prototype.hasOwnProperty.call(data, field)) {
+      payload[field] = typeof data[field] === 'string' ? data[field].trim() || null : data[field];
+    }
+  }
+  const contactType = inferZelleContactType(data);
+  // Both-visible legacy accounts keep their existing database type.
+  delete payload.contact_type;
+  if (contactType !== 'both') payload.contact_type = contactType;
+  return payload;
+};
+
+/** Validate visible contacts and optional contacts actually changed by the admin. */
+export const validateZelleContact = ({ contactType = 'phone', phone, email, originalAccount } = {}) => {
+  const phoneValue = typeof phone === 'string' ? phone.trim() : '';
+  const emailValue = typeof email === 'string' ? email.trim() : '';
+  if (contactType !== 'email' && !phoneValue) return { valid: false, error: 'phoneRequired' };
+  if (contactType !== 'phone' && !emailValue) return { valid: false, error: 'emailRequired' };
+  const phoneChanged = phoneValue !== (originalAccount?.phone || '').trim();
+  const emailChanged = emailValue !== (originalAccount?.email || '').trim();
+  if ((contactType !== 'email' || phoneChanged) && phoneValue && (!/^[\d +()-]{7,30}$/.test(phoneValue) || !/\d/.test(phoneValue))) {
+    return { valid: false, error: 'invalidPhone' };
+  }
+  if ((contactType !== 'phone' || emailChanged) && emailValue && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
+    return { valid: false, error: 'invalidEmail' };
+  }
+  return { valid: true };
+};
+
 /**
  * Admin-side guard: at least one of email/phone must be visible to customers.
  * Mirrors the DB CHECK (show_email OR show_phone).

@@ -346,6 +346,14 @@
       "viewDetails": "View Details",
       "rejectReason": "Rejection reason",
       "rejectReasonPlaceholder": "E.g.: Illegible proof, incorrect data...",
+      "cancelRemittance": "Cancel remittance",
+      "confirmCancelMessage": "Cancel remittance {number}? The customer has not uploaded a payment proof yet, but that does not mean they have not paid. Check the Zelle account that no payment was received before cancelling: no refund request will be created. This cannot be undone.",
+      "cancelReason": "Cancellation reason",
+      "cancelReasonPlaceholder": "E.g.: the customer never paid, duplicate request...",
+      "remittanceCancelled": "Remittance cancelled",
+      "cancelFailed": "The remittance could not be cancelled",
+      "cancelReasonInvalid": "A reason is required and must be at most 500 characters.",
+      "cancelUnavailable": "Admin cancellation is not available on the server yet. Please try again later.",
       "validationNotes": "Validation notes",
       "validationNotesPlaceholder": "Add notes about the validation...",
       "deliveryNotes": "Delivery notes",
@@ -1789,6 +1797,8 @@
     }
   },
   "cart": {
+    "pricesUpdated": "Exchange rates were updated and a price in your cart changed. Please review the total and confirm again.",
+    "rateCheckFailed": "The exchange rate could not be verified. Please try again in a few seconds.",
     "clearAll": {
       "button": "Empty cart",
       "title": "Empty your cart?",
@@ -2406,6 +2416,13 @@
     "updateButton": "Update Recipient"
   },
   "zelle": {
+    "identifiedBy": "Account identified by",
+    "phoneIdentifier": "Phone",
+    "optionalContact": "(optional)",
+    "phoneRequired": "Phone number is required for this account.",
+    "emailRequired": "Email is required for this account.",
+    "invalidPhone": "Enter a phone number of 7–30 characters using digits, spaces, +, (, ), or -.",
+    "invalidEmail": "Enter a valid email address.",
     "showEmail": "Show email to customers",
     "showPhone": "Show phone to customers",
     "atLeastOneVisible": "At least one of email or phone must be visible to customers",
@@ -2850,6 +2867,7 @@
     "noProof": "No proof",
     "validate": "Validate",
     "reject": "Reject",
+    "cancelRemittance": "Cancel",
     "startProcessing": "Process",
     "confirmDelivery": "Confirm delivery",
     "loading": "Loading remittances",
@@ -3026,6 +3044,22 @@
       "empty": "There are no couriers yet.",
       "saved": "Courier saved."
     },
+    "subscriptions": {
+      "title": "Subscribed payment types",
+      "intro": "A subscribed payment type applies to this courier with the priority of its own rule. For the other couriers it keeps applying as a general type. It only affects future deliveries: delivered ones keep their cost.",
+      "empty": "This courier has no subscribed payment types.",
+      "type": "Payment type",
+      "noneAvailable": "There are no current payment types available to subscribe.",
+      "add": "Subscribe",
+      "remove": "Remove",
+      "added": "Payment type subscribed.",
+      "removed": "Subscription removed. Deliveries already made do not change.",
+      "gapWarning": "With this subscription, the ranges of this courier leave values without a rule (unknown cost):",
+      "acceptGaps": "I understand those values will have no rule and want to subscribe anyway.",
+      "inert": "No current version (not applied)",
+      "confirmRemove": "Remove the subscription to \"{name}\"? It only affects future deliveries: delivered ones keep their cost.",
+      "confirmRemoveYes": "Yes, remove"
+    },
     "errors": {
       "generic": "The operation could not be completed. Please try again.",
       "unavailable": "The courier module is not available yet.",
@@ -3038,7 +3072,17 @@
       "notRecalculable": "This item cannot be recalculated.",
       "alreadyDelivered": "This operation is already delivered: the courier cannot be changed from here.",
       "invalid": "Some data is not valid. Review it and try again.",
-      "required": "Fill in the required fields."
+      "required": "Fill in the required fields.",
+      "coverageGap": "The ranges of this scope leave values without a rule. Review the gaps and confirm if you want to save anyway.",
+      "mixedCurrency": "The ranges of this scope already use another currency. Use the same currency or define another scope.",
+      "decimals": "Amounts accept at most 2 decimals; the percentage, 3; CUP per USD, 4.",
+      "amountMax": "Amounts cannot exceed 9999999999.99.",
+      "ownedByOther": "That payment type belongs to another courier.",
+      "noActiveVersion": "That payment type does not exist or has no current version.",
+      "subscribedElsewhere": "That payment type is subscribed by another courier. Remove that subscription before assigning it to a specific courier.",
+      "courierInactive": "The courier does not exist or is inactive.",
+      "staleSubscriptions": "This deactivated code still has active subscriptions. Remove them before recreating it.",
+      "staleSubscribers": "This code expired and subscribed couriers will be paid with this version again."
     },
     "validation": {
       "required": "This field is required.",
@@ -3047,7 +3091,9 @@
       "nonNegative": "It must be a number greater than or equal to zero.",
       "percentRange": "The percentage must be between 0 and 100.",
       "tierOrder": "The maximum amount must be greater than the minimum.",
-      "windowOrder": "The end of the validity must be after its start."
+      "windowOrder": "The end of the validity must be after its start.",
+      "money": "Enter an amount greater than or equal to zero with up to 2 decimals (for example 100.50).",
+      "moneyMax": "The amount cannot exceed 9999999999.99."
     },
     "margin": {
       "ok": "Margin ok",
@@ -3068,18 +3114,23 @@
     "simulator": {
       "title": "Simulator",
       "intro": "Enter a case to see the cost and margin this rule would give. Nothing is saved.",
-      "sent": "Amount sent (USD)",
+      "sent": "Operation value (USD sent or order subtotal)",
       "commission": "Commission charged (USD)",
       "deliveryCharge": "Delivery charged to the customer (USD)",
       "rate": "Rate (CUP per USD)",
       "toDeliver": "Delivered equivalent (CUP)",
       "completeForm": "Complete the form to simulate.",
       "cost": "Courier cost",
-      "unknownBasis": "The calculation base is missing: the cost stays unknown, not zero.",
       "margin": "Margin",
       "belowWarning": "falls below the warning threshold",
       "belowCritical": "falls below the critical threshold",
-      "noThresholds": "No thresholds are set: alerts are not evaluated."
+      "noThresholds": "No thresholds are set: alerts are not evaluated.",
+      "reasons": {
+        "no_rule": "No rule: the cost stays unknown, not zero.",
+        "no_amount_basis": "Calculation base data is missing: the cost stays unknown, not zero.",
+        "no_fx": "The exchange rate needed to convert is missing: the cost stays unknown, not zero.",
+        "no_tier_match": "The value is outside the range of this rule: the cost stays unknown, not zero."
+      }
     },
     "types": {
       "title": "Payment types",
@@ -3102,7 +3153,8 @@
       "methods": {
         "fixed_cup": "Fixed amount in CUP",
         "per_usd_delivered": "CUP per USD delivered",
-        "percent_of_base": "Percentage of a base"
+        "percent_of_base": "Percentage of a base",
+        "fixed_amount": "Fixed amount (in the chosen currency)"
       },
       "fixedCup": "Amount (CUP)",
       "cupPerUsd": "CUP per USD",
@@ -3110,18 +3162,19 @@
       "base": "Calculation base",
       "bases": {
         "per_usd_delivered": {
-          "nominal_usd": "Nominal USD sent",
+          "nominal_usd": "Nominal USD (sent or order subtotal)",
           "delivered_cup": "Delivered equivalent in CUP"
         },
         "percent_of_base": {
-          "nominal_usd": "Nominal USD sent",
+          "nominal_usd": "Nominal USD (sent or order subtotal)",
           "delivered_cup": "Delivered equivalent in CUP"
         }
       },
       "summary": {
         "fixed_cup": "{value} CUP fixed per delivery",
         "per_usd_delivered": "{value} CUP per USD ({base})",
-        "percent_of_base": "{value}% of {base}"
+        "percent_of_base": "{value}% of {base}",
+        "fixed_amount": "{value} {currency} fixed per delivery"
       },
       "scope": "Scope (optional)",
       "courier": "Courier",
@@ -3130,9 +3183,6 @@
       "anyZone": "Any zone",
       "remittanceType": "Remittance type",
       "anyType": "Any type",
-      "amountFrom": "Amount from (USD, exclusive)",
-      "amountTo": "Amount up to (USD, inclusive)",
-      "tierHint": "Tier (from, to]. Leave empty for any amount.",
       "validFrom": "Valid from",
       "validFromHint": "Empty means from now. It cannot be in the past.",
       "validTo": "Valid until",
@@ -3143,7 +3193,30 @@
       "empty": "There are no current payment types.",
       "closed": "Closed",
       "newVersion": "New version",
-      "versionNote": "Earlier versions are kept for audit and cannot be deleted."
+      "versionNote": "Earlier versions are kept for audit and cannot be deleted.",
+      "fixedAmount": "Fixed amount",
+      "currency": "Currency",
+      "currencyHint": "Currency of the fixed amount and of the range comparison. An operation in another currency is converted at the current rate; with no rate, the cost stays unknown.",
+      "rangeOp": "Operation value",
+      "rangeOps": {
+        "none": "Any value",
+        "gt": "More than X",
+        "lte": "Up to Y (included)",
+        "between": "More than X and up to Y"
+      },
+      "rangeX": "X (not included)",
+      "rangeY": "Y (included)",
+      "rangeHelp": "Ranges are compared in {currency} with 2 decimals. \"More than X\" does not include X; \"Up to Y\" does include Y. To chain ranges without gaps or overlaps, start each range where the previous one ended: up to 100 → more than 100 and up to 200 → more than 200.",
+      "range": {
+        "any": "any value",
+        "gt": "more than {x} {currency}",
+        "lte": "up to {y} {currency} (included)",
+        "between": "more than {x} and up to {y} {currency}"
+      },
+      "gapWarning": "With this range, these values are left without a rule of this scope. A delivery in a gap is not blocked: its cost stays unknown.",
+      "acceptGaps": "I understand there are gaps and want to save anyway",
+      "acceptGapsRequired": "Confirm that you accept the gaps before saving.",
+      "staleSubscribers": "{count} courier(s) subscribed to this expired code will be paid with this version again, with courier priority. Confirm to save."
     },
     "payable": {
       "title": "Payable",

@@ -2,6 +2,9 @@ import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 
+// Saved prices are converted with the live rate (currencyService), not the display cache
+const liveRate = vi.hoisted(() => vi.fn(async () => 1));
+vi.mock('@/lib/currencyService', () => ({ getLiveConversionRate: (...args) => liveRate(...args) }));
 vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({ t: (k) => k, language: 'en' })
 }));

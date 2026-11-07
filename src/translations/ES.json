@@ -346,6 +346,14 @@
       "viewDetails": "Ver Detalles",
       "rejectReason": "Razón del rechazo",
       "rejectReasonPlaceholder": "Ej: Comprobante ilegible, datos incorrectos...",
+      "cancelRemittance": "Cancelar remesa",
+      "confirmCancelMessage": "¿Cancelar la remesa {number}? El cliente aún no ha subido el comprobante de pago, pero eso no significa que no haya pagado. Verifica en la cuenta Zelle que no se haya recibido el pago antes de cancelar: no se creará ninguna solicitud de reembolso. Esta acción no se puede deshacer.",
+      "cancelReason": "Motivo de la cancelación",
+      "cancelReasonPlaceholder": "Ej: el cliente no realizó el pago, solicitud duplicada...",
+      "remittanceCancelled": "Remesa cancelada",
+      "cancelFailed": "No se pudo cancelar la remesa",
+      "cancelReasonInvalid": "El motivo es obligatorio y debe tener como máximo 500 caracteres.",
+      "cancelUnavailable": "La cancelación por administrador aún no está disponible en el servidor. Inténtalo más tarde.",
       "validationNotes": "Notas de validación",
       "validationNotesPlaceholder": "Añadir notas sobre la validación...",
       "deliveryNotes": "Notas de entrega",
@@ -1797,6 +1805,8 @@
     }
   },
   "cart": {
+    "pricesUpdated": "Las tasas de cambio se actualizaron y algún precio del carrito cambió. Revise el total y vuelva a confirmar.",
+    "rateCheckFailed": "No se pudo verificar la tasa de cambio. Inténtelo de nuevo en unos segundos.",
     "clearAll": {
       "button": "Vaciar carrito",
       "title": "¿Vaciar el carrito?",
@@ -2414,6 +2424,13 @@
     "updateButton": "Actualizar Destinatario"
   },
   "zelle": {
+    "identifiedBy": "Cuenta identificada por",
+    "phoneIdentifier": "Teléfono",
+    "optionalContact": "(opcional)",
+    "phoneRequired": "El número de teléfono es obligatorio para esta cuenta.",
+    "emailRequired": "El correo electrónico es obligatorio para esta cuenta.",
+    "invalidPhone": "Introduce un número de teléfono de 7 a 30 caracteres con dígitos, espacios, +, (, ) o -.",
+    "invalidEmail": "Introduce una dirección de correo electrónico válida.",
     "showEmail": "Mostrar email a los clientes",
     "showPhone": "Mostrar teléfono a los clientes",
     "atLeastOneVisible": "Al menos uno de email o teléfono debe estar visible para los clientes",
@@ -2858,6 +2875,7 @@
     "noProof": "Sin comprobante",
     "validate": "Validar",
     "reject": "Rechazar",
+    "cancelRemittance": "Cancelar",
     "startProcessing": "Procesar",
     "confirmDelivery": "Confirmar entrega",
     "loading": "Cargando remesas",
@@ -3034,6 +3052,22 @@
       "empty": "Todavía no hay mensajeros registrados.",
       "saved": "Mensajero guardado."
     },
+    "subscriptions": {
+      "title": "Tipos de pago suscritos",
+      "intro": "Un tipo de pago suscrito se aplica a este mensajero con prioridad de regla propia. A los demás mensajeros les sigue aplicando como tipo general. Solo afecta a entregas futuras: las ya entregadas conservan su costo.",
+      "empty": "Este mensajero no tiene tipos de pago suscritos.",
+      "type": "Tipo de pago",
+      "noneAvailable": "No hay tipos de pago vigentes disponibles para suscribir.",
+      "add": "Suscribir",
+      "remove": "Quitar",
+      "added": "Tipo de pago suscrito.",
+      "removed": "Suscripción quitada. Las entregas ya realizadas no cambian.",
+      "gapWarning": "Con esta suscripción, los rangos de este mensajero dejan valores sin regla (costo desconocido):",
+      "acceptGaps": "Entiendo que esos valores quedarán sin regla y deseo suscribir igualmente.",
+      "inert": "Sin versión vigente (no se aplica)",
+      "confirmRemove": "¿Quitar la suscripción a «{name}»? Solo afecta a entregas futuras: las ya entregadas conservan su costo.",
+      "confirmRemoveYes": "Sí, quitar"
+    },
     "errors": {
       "generic": "No se pudo completar la operación. Inténtelo de nuevo.",
       "unavailable": "El módulo de mensajería aún no está disponible.",
@@ -3046,7 +3080,17 @@
       "notRecalculable": "Este concepto no se puede recalcular.",
       "alreadyDelivered": "Esta operación ya fue entregada: no se puede cambiar el mensajero desde aquí.",
       "invalid": "Alguno de los datos no es válido. Revíselos e inténtelo de nuevo.",
-      "required": "Complete los campos obligatorios."
+      "required": "Complete los campos obligatorios.",
+      "coverageGap": "Los rangos de este alcance dejan valores sin regla. Revise los huecos y confirme si desea guardar igualmente.",
+      "mixedCurrency": "Los rangos de este alcance ya usan otra moneda. Use la misma moneda o defina otro alcance.",
+      "decimals": "Los montos admiten como máximo 2 decimales; el porcentaje, 3; los CUP por USD, 4.",
+      "amountMax": "Los montos no pueden superar 9999999999.99.",
+      "ownedByOther": "Ese tipo de pago pertenece a otro mensajero.",
+      "noActiveVersion": "Ese tipo de pago no existe o no tiene una versión vigente.",
+      "subscribedElsewhere": "Ese tipo de pago está suscrito por otro mensajero. Quite esa suscripción antes de asignarlo a un mensajero concreto.",
+      "courierInactive": "El mensajero no existe o está inactivo.",
+      "staleSubscriptions": "Este código desactivado aún tiene suscripciones activas. Quítelas antes de volver a crearlo.",
+      "staleSubscribers": "Este código expiró y hay mensajeros suscritos que volverán a cobrar con esta versión."
     },
     "validation": {
       "required": "Este campo es obligatorio.",
@@ -3055,7 +3099,9 @@
       "nonNegative": "Debe ser un número mayor o igual a cero.",
       "percentRange": "El porcentaje debe estar entre 0 y 100.",
       "tierOrder": "El monto máximo debe ser mayor que el mínimo.",
-      "windowOrder": "La vigencia final debe ser posterior a la inicial."
+      "windowOrder": "La vigencia final debe ser posterior a la inicial.",
+      "money": "Indique un monto mayor o igual a cero con hasta 2 decimales (por ejemplo 100.50).",
+      "moneyMax": "El monto no puede superar 9999999999.99."
     },
     "margin": {
       "ok": "Margen correcto",
@@ -3076,18 +3122,23 @@
     "simulator": {
       "title": "Simulador",
       "intro": "Ingrese un caso para ver el costo y el margen que resultaría con esta regla. No se guarda nada.",
-      "sent": "Monto enviado (USD)",
+      "sent": "Valor de la operación (USD enviados o subtotal del pedido)",
       "commission": "Comisión cobrada (USD)",
       "deliveryCharge": "Entrega cobrada al cliente (USD)",
       "rate": "Tasa (CUP por USD)",
       "toDeliver": "Equivalente entregado (CUP)",
       "completeForm": "Complete el formulario para simular.",
       "cost": "Costo del mensajero",
-      "unknownBasis": "Faltan datos de la base de cálculo: el costo queda desconocido, no cero.",
       "margin": "Margen",
       "belowWarning": "queda bajo el umbral de alerta",
       "belowCritical": "queda bajo el umbral crítico",
-      "noThresholds": "No hay umbrales configurados: no se evalúan alertas."
+      "noThresholds": "No hay umbrales configurados: no se evalúan alertas.",
+      "reasons": {
+        "no_rule": "Sin regla: el costo queda desconocido, no cero.",
+        "no_amount_basis": "Faltan datos de la base de cálculo: el costo queda desconocido, no cero.",
+        "no_fx": "Falta la tasa de cambio para convertir: el costo queda desconocido, no cero.",
+        "no_tier_match": "El valor no entra en el rango de esta regla: el costo queda desconocido, no cero."
+      }
     },
     "types": {
       "title": "Tipos de pago",
@@ -3110,7 +3161,8 @@
       "methods": {
         "fixed_cup": "Monto fijo en CUP",
         "per_usd_delivered": "CUP por cada USD entregado",
-        "percent_of_base": "Porcentaje de una base"
+        "percent_of_base": "Porcentaje de una base",
+        "fixed_amount": "Monto fijo (en la moneda elegida)"
       },
       "fixedCup": "Monto (CUP)",
       "cupPerUsd": "CUP por USD",
@@ -3118,18 +3170,19 @@
       "base": "Base de cálculo",
       "bases": {
         "per_usd_delivered": {
-          "nominal_usd": "USD nominales enviados",
+          "nominal_usd": "USD nominales (enviados o subtotal del pedido)",
           "delivered_cup": "Equivalente entregado en CUP"
         },
         "percent_of_base": {
-          "nominal_usd": "USD nominales enviados",
+          "nominal_usd": "USD nominales (enviados o subtotal del pedido)",
           "delivered_cup": "Equivalente entregado en CUP"
         }
       },
       "summary": {
         "fixed_cup": "{value} CUP fijos por entrega",
         "per_usd_delivered": "{value} CUP por USD ({base})",
-        "percent_of_base": "{value}% de {base}"
+        "percent_of_base": "{value}% de {base}",
+        "fixed_amount": "{value} {currency} fijos por entrega"
       },
       "scope": "Alcance (opcional)",
       "courier": "Mensajero",
@@ -3138,9 +3191,6 @@
       "anyZone": "Cualquier zona",
       "remittanceType": "Tipo de remesa",
       "anyType": "Cualquier tipo",
-      "amountFrom": "Monto desde (USD, excluido)",
-      "amountTo": "Monto hasta (USD, incluido)",
-      "tierHint": "Tramo (desde, hasta]. Déjelo vacío para cualquier monto.",
       "validFrom": "Vigente desde",
       "validFromHint": "Vacío significa desde ahora. No puede quedar en el pasado.",
       "validTo": "Vigente hasta",
@@ -3151,7 +3201,30 @@
       "empty": "No hay tipos de pago vigentes.",
       "closed": "Cerrado",
       "newVersion": "Nueva versión",
-      "versionNote": "Las versiones anteriores se conservan para auditoría y no se pueden borrar."
+      "versionNote": "Las versiones anteriores se conservan para auditoría y no se pueden borrar.",
+      "fixedAmount": "Monto fijo",
+      "currency": "Moneda",
+      "currencyHint": "Moneda del monto fijo y de la comparación de rangos. Si la operación está en otra moneda se convierte con la tasa vigente; sin tasa, el costo queda desconocido.",
+      "rangeOp": "Valor de la operación",
+      "rangeOps": {
+        "none": "Cualquier valor",
+        "gt": "Más de X",
+        "lte": "Hasta Y (incluido)",
+        "between": "Más de X y hasta Y"
+      },
+      "rangeX": "X (no incluido)",
+      "rangeY": "Y (incluido)",
+      "rangeHelp": "Los rangos se comparan en {currency} con 2 decimales. \"Más de X\" no incluye X; \"Hasta Y\" sí incluye Y. Para encadenar rangos sin huecos ni solapes, empiece cada rango donde terminó el anterior: hasta 100 → más de 100 y hasta 200 → más de 200.",
+      "range": {
+        "any": "cualquier valor",
+        "gt": "más de {x} {currency}",
+        "lte": "hasta {y} {currency} (incluido)",
+        "between": "más de {x} y hasta {y} {currency}"
+      },
+      "gapWarning": "Con este rango, estos valores quedan sin regla de este alcance. Una entrega en un hueco no se bloquea: su costo queda desconocido.",
+      "acceptGaps": "Entiendo que quedan huecos y quiero guardar igualmente",
+      "acceptGapsRequired": "Confirme que acepta los huecos antes de guardar.",
+      "staleSubscribers": "{count} mensajero(s) suscrito(s) a este código expirado volverán a cobrar con esta versión, con prioridad de mensajero. Confirme para guardar."
     },
     "payable": {
       "title": "Por pagar",

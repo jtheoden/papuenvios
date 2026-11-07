@@ -96,14 +96,19 @@ describeDb('M1: couriers, payment types, thresholds (local Postgres)', () => {
     );
 
     it('RPCs are authenticated-only; a customer and a disabled admin are refused (42501), admin and super_admin pass', async () => {
-      const fns = ['admin_upsert_courier', 'admin_set_messenger_payment_type', 'admin_deactivate_messenger_payment_type', 'admin_set_margin_thresholds'];
+      const fns = ['admin_upsert_courier', 'admin_set_messenger_payment_type_v2', 'admin_deactivate_messenger_payment_type', 'admin_set_margin_thresholds'];
       const { rows } = await admin.query(
         `SELECT proname, prosecdef, has_function_privilege('anon', p.oid, 'EXECUTE') AS anon,
                 has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth
            FROM pg_proc p WHERE pronamespace = 'public'::regnamespace AND proname = ANY($1)`, [fns]);
       expect(rows).toHaveLength(fns.length);
       for (const r of rows) expect({ d: r.prosecdef, a: r.anon, u: r.auth }).toEqual({ d: true, a: false, u: true });
-      for (const fn of ['_courier_rule_resolve', '_operation_margin']) {
+      // phase A: the 15-argument v1 is kept (rollback) but closed to API roles; the client calls v2
+      const { rows: v1 } = await admin.query(
+        `SELECT prosecdef, has_function_privilege('anon', p.oid, 'EXECUTE') AS anon, has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth
+           FROM pg_proc p WHERE pronamespace = 'public'::regnamespace AND proname = 'admin_set_messenger_payment_type'`);
+      expect(v1).toEqual([{ prosecdef: true, anon: false, auth: false }]);
+      for (const fn of ['_courier_rule_resolve', '_courier_rule_resolve_v2', '_courier_rule_coverage', '_operation_margin']) {
         const { rows: h } = await admin.query(
           `SELECT has_function_privilege('anon', p.oid, 'EXECUTE') AS anon, has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth
              FROM pg_proc p WHERE pronamespace = 'public'::regnamespace AND proname = $1`, [fn]);
@@ -241,7 +246,8 @@ describeDb('M1: couriers, payment types, thresholds (local Postgres)', () => {
         `INSERT INTO public.messenger_payment_types (code, name, version, applies_to, method, fixed_cup, cup_per_usd, percent, base, valid_from)
          VALUES ('t','t',1,$1,$2,$3,$4,$5,$6, now())`, cols);
       expect((await failure(insert(['remittance', 'fixed_cup', null, null, null, null]))).code).toBe('23514');
-      expect((await failure(insert(['order', 'percent_of_base', null, null, 5, 'nominal_usd']))).code).toBe('23514');
+      // phase A: percent of the nominal USD is valid for orders; delivered_cup stays remittance-only (base_scope_chk)
+      expect((await failure(insert(['order', 'percent_of_base', null, null, 5, 'delivered_cup']))).code).toBe('23514');
       expect((await failure(insert(['remittance', 'percent_of_base', null, null, 101, 'nominal_usd']))).code).toBe('23514');
       expect((await failure(insert(['both', 'fixed_cup', 5, 1, null, null]))).code).toBe('23514');
     });
@@ -352,7 +358,7 @@ describeDb('M1: couriers, payment types, thresholds (local Postgres)', () => {
     it('two admins creating overlapping rules at the same instant: exactly one wins', async () => {
       const a = await kit.as(actors.adminId);
       const b = await kit.as(actors.adminId);
-      const call = (code) => `public.admin_set_messenger_payment_type('${code}','n','remittance','fixed_cup',5,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL)`;
+      const call = (code) => `public.admin_set_messenger_payment_type_v2('${code}','n','remittance','fixed_cup',5,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL)`;
       const res = await fireTogether([{ client: a, sql: call('x1') }, { client: b, sql: call('x2') }]);
       expect(res.filter((r) => r.error).length).toBe(1);
       expect(res.find((r) => r.error).error.code).toBe('23P01');
@@ -418,6 +424,225 @@ describeDb('M1: couriers, payment types, thresholds (local Postgres)', () => {
     });
   });
 
+  describe('phase A: currency, fixed_amount and amount ranges (20261105150000)', () => {
+    const resolve2 = async (kind, { courier = null, zone = null, type = null, amount = 100, currency = 'USD', fx = null } = {}) => {
+      const { rows } = await admin.query(
+        `SELECT m.code, r.reason FROM public._courier_rule_resolve_v2($1, $2::uuid, $3::uuid, $4::uuid, $5::numeric, $6, $7::numeric) r
+           LEFT JOIN public.messenger_payment_types m ON m.id = r.rule_id`, [kind, courier, zone, type, amount, currency, fx]);
+      expect(rows).toHaveLength(1);
+      return rows[0];
+    };
+    const bad = async (o, code = '22023') => {
+      const c = await kit.as(actors.adminId);
+      expect((await failure(kit.setRule(c, o))).code).toBe(code);
+    };
+    const fixed = (o) => ({ method: 'fixed_amount', fixed_cup: null, fixed_amount: 5, ...o });
+    // reference ladder in USD: R1 "up to 100" -> [0,100]; R2 "more than 100 and up to 200" -> (100,200]; R3 "more than 200"
+    const ladder = async (c, r2 = { amount_from: 100, amount_to: 200 }, accept = true) => {
+      await kit.setRule(c, fixed({ code: 'R1', amount_to: 100, accept_gaps: true }));
+      await kit.setRule(c, fixed({ code: 'R3', amount_from: 200, accept_gaps: true }));
+      return kit.setRule(c, fixed({ code: 'R2', ...r2, accept_gaps: accept }));
+    };
+
+    it('schema: currency NOT NULL DEFAULT USD in (USD, CUP); fixed_amount numeric(12,2) >= 0; fixed_cup kept', async () => {
+      const { rows } = await admin.query(
+        `SELECT column_name, data_type, is_nullable, column_default, numeric_precision, numeric_scale FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'messenger_payment_types' AND column_name IN ('currency','fixed_amount','fixed_cup')
+          ORDER BY column_name`);
+      expect(rows.map((r) => r.column_name)).toEqual(['currency', 'fixed_amount', 'fixed_cup']);
+      expect(rows[0]).toMatchObject({ data_type: 'text', is_nullable: 'NO' });
+      expect(rows[0].column_default).toMatch(/'USD'/);
+      expect(rows[1]).toMatchObject({ numeric_precision: 12, numeric_scale: 2, is_nullable: 'YES' });
+      const insert = (cur, amount) => admin.query(
+        `INSERT INTO public.messenger_payment_types (code, name, version, applies_to, method, fixed_amount, currency, valid_from)
+         VALUES ('t','t',1,'order','fixed_amount',$2,$1, now())`, [cur, amount]);
+      expect((await failure(insert('EUR', 5))).code).toBe('23514');
+      expect((await failure(insert('USD', -1))).code).toBe('23514');
+      expect((await failure(insert('USD', null))).code).toBe('23514');
+    });
+
+    it('fixed_amount: any scope, the chosen currency, no other parameter; currency outside USD/CUP refused', async () => {
+      const c = await kit.as(actors.adminId);
+      await bad(fixed({ fixed_amount: null }));
+      await bad(fixed({ fixed_amount: -1 }));
+      await bad(fixed({ fixed_cup: 5 }));
+      await bad(fixed({ percent: 1 }));
+      await bad(fixed({ base: 'nominal_usd' }));
+      await bad(fixed({ currency: 'EUR' }));
+      await bad(fixed({ currency: null }));
+      await bad({ fixed_cup: 5, fixed_amount: 5 });
+      await expect(kit.setRule(c, fixed({ code: 'fo', applies_to: 'order', currency: 'USD' }))).resolves.toBeTruthy();
+      await expect(kit.setRule(c, fixed({ code: 'fr', applies_to: 'remittance', currency: 'CUP', fixed_amount: 250 }))).resolves.toBeTruthy();
+      const row = (await rules()).find((r) => r.code === 'fr');
+      expect(row).toMatchObject({ method: 'fixed_amount', currency: 'CUP', fixed_amount: '250.00', fixed_cup: null });
+    });
+
+    it('percent_of_base on the nominal USD is allowed for orders and both; delivered_cup / per_usd stay remittance-only', async () => {
+      const c = await kit.as(actors.adminId);
+      const pct = { method: 'percent_of_base', fixed_cup: null, percent: 2, base: 'nominal_usd' };
+      await expect(kit.setRule(c, { ...pct, code: 'po', applies_to: 'order' })).resolves.toBeTruthy();
+      await bad({ ...pct, base: 'delivered_cup', applies_to: 'order' });
+      await bad({ ...pct, base: 'delivered_cup', applies_to: 'both' });
+      await bad({ method: 'per_usd_delivered', fixed_cup: null, cup_per_usd: 1, base: 'nominal_usd', applies_to: 'order' });
+    });
+
+    it('NaN is refused for every numeric parameter (22023) and no row is left; the table CHECKs refuse it too', async () => {
+      for (const o of [
+        fixed({ fixed_amount: 'NaN' }), fixed({ amount_from: 'NaN' }), fixed({ amount_to: 'NaN' }), { fixed_cup: 'NaN' },
+        { method: 'per_usd_delivered', fixed_cup: null, cup_per_usd: 'NaN', base: 'nominal_usd' },
+        { method: 'percent_of_base', fixed_cup: null, percent: 'NaN', base: 'nominal_usd' }
+      ]) {
+        const c = await kit.as(actors.adminId);
+        const e = await failure(kit.setRule(c, o));
+        expect(e.code, JSON.stringify(o)).toBe('22023');
+        expect(e.message).toMatch(/NaN/);
+      }
+      expect(await rules()).toEqual([]);
+      const insert = (col, method, extra = '') => admin.query(
+        `INSERT INTO public.messenger_payment_types (code, name, version, applies_to, method, ${col}, valid_from${extra ? `, ${extra.split('=')[0]}` : ''})
+         VALUES ('t','t',1,'remittance',$1,'NaN'::numeric, now()${extra ? `, '${extra.split('=')[1]}'` : ''})`, [method]);
+      for (const [col, method, extra] of [['fixed_amount', 'fixed_amount'], ['fixed_cup', 'fixed_cup'],
+        ['cup_per_usd', 'per_usd_delivered', 'base=nominal_usd'], ['percent', 'percent_of_base', 'base=nominal_usd']]) {
+        expect((await failure(insert(col, method, extra))).code, col).toBe('23514');
+      }
+      const tier = (col) => admin.query(
+        `INSERT INTO public.messenger_payment_types (code, name, version, applies_to, method, fixed_cup, ${col}, valid_from)
+         VALUES ('t','t',1,'remittance','fixed_cup',1,'NaN'::numeric, now())`);
+      expect((await failure(tier('amount_from'))).code).toBe('23514');
+      expect((await failure(tier('amount_to'))).code).toBe('23514');
+    });
+
+    it('percent (3 decimals) and cup_per_usd (4 decimals) beyond their column scale are refused, never rounded', async () => {
+      const pct = { method: 'percent_of_base', fixed_cup: null, base: 'nominal_usd' };
+      const per = { method: 'per_usd_delivered', fixed_cup: null, base: 'nominal_usd' };
+      for (const o of [{ ...pct, percent: 1.2345 }, { ...per, cup_per_usd: 1.23456 }]) {
+        const c = await kit.as(actors.adminId);
+        const e = await failure(kit.setRule(c, o));
+        expect(e.code, JSON.stringify(o)).toBe('22023');
+        expect(e.message).toMatch(/decimals/);
+      }
+      expect(await rules()).toEqual([]);
+      const c = await kit.as(actors.adminId);
+      await kit.setRule(c, { ...pct, code: 'p', percent: 1.235 });
+      await kit.setRule(c, { ...per, code: 'q', cup_per_usd: 1.2346, type_id: await kit.seedType() });
+      expect((await rules()).map((r) => [r.code, r.percent, r.cup_per_usd])).toEqual([['p', '1.235', null], ['q', null, '1.2346']]);
+    });
+
+    it('amounts above the column maximum (9999999999.99) are a typed 22023, not a raw overflow', async () => {
+      for (const o of [fixed({ fixed_amount: 10000000000 }), fixed({ amount_from: 10000000000 }), fixed({ amount_to: 1e11 }), { fixed_cup: 10000000000 }]) {
+        const c = await kit.as(actors.adminId);
+        const e = await failure(kit.setRule(c, o));
+        expect(e.code, JSON.stringify(o)).toBe('22023');
+        expect(e.message).toMatch(/at most 9999999999\.99/);
+      }
+      const c = await kit.as(actors.adminId);
+      await expect(kit.setRule(c, fixed({ fixed_amount: 9999999999.99 }))).resolves.toBeTruthy();
+    });
+
+    it('amounts with more than 2 decimals are refused (never silently rounded); from = to refused', async () => {
+      await bad(fixed({ amount_to: 100.005 }));
+      await bad(fixed({ amount_from: 0.001 }));
+      await bad(fixed({ fixed_amount: 1.005 }));
+      await bad(fixed({ amount_from: 100, amount_to: 100 }));
+      expect(await rules()).toEqual([]);
+    });
+
+    it('reference boundaries (a,b] in exact cents: 0, 99.99, 100 -> R1; 100.01, 200 -> R2; 200.01 -> R3', async () => {
+      const c = await kit.as(actors.adminId);
+      await ladder(c, undefined, false); // the third rule closes every gap: saved without accepting anything
+      for (const [amount, code] of [[0, 'R1'], [99.99, 'R1'], [100, 'R1'], [100.01, 'R2'], [200, 'R2'], [200.01, 'R3'], [1e9, 'R3']]) {
+        expect(await resolve2('remittance', { amount }), String(amount)).toEqual({ code, reason: null });
+      }
+      // "up to Y" is stored with an open lower bound (covers 0.00), "more than X" with an open upper one
+      const byCode = Object.fromEntries((await rules()).map((r) => [r.code, [r.amount_from, r.amount_to]]));
+      expect(byCode).toEqual({ R1: [null, '100.00'], R2: ['100.00', '200.00'], R3: ['200.00', null] });
+    });
+
+    it('a ladder with a hole is a coverage_gap (22023, JSON detail) until accepted; the acceptance is audited', async () => {
+      const c = await kit.as(actors.adminId);
+      const e = await failure(ladder(c, { amount_from: 100.01, amount_to: 200 }, false));
+      expect(e.code).toBe('22023');
+      expect(e.message).toMatch(/^coverage_gap/);
+      expect(JSON.parse(e.detail)).toEqual({ currency: 'USD', gaps: [{ kind: 'remittance', from: 100, to: 100.01 }] });
+      expect((await rules()).map((r) => r.code).sort()).toEqual(['R1', 'R3']); // the refused rule left nothing behind
+      const id = await kit.setRule(c, fixed({ code: 'R2', amount_from: 100.01, amount_to: 200, accept_gaps: true }));
+      const { rows } = await admin.query(
+        `SELECT new_value FROM public.financial_audit_log WHERE table_name = 'messenger_payment_types' AND row_id = $1 AND column_name = 'created'`, [id]);
+      expect(JSON.parse(rows[0].new_value)).toMatchObject({
+        accept_gaps: true, currency: 'USD', method: 'fixed_amount', fixed_amount: 5,
+        gaps: [{ kind: 'remittance', from: 100, to: 100.01 }]
+      });
+      expect(await resolve2('remittance', { amount: 100.01 })).toEqual({ code: null, reason: 'no_tier_match' });
+    });
+
+    it('a ladder whose rule starts below the previous end is an overlap (23P01), not a gap', async () => {
+      const c = await kit.as(actors.adminId);
+      expect((await failure(ladder(c, { amount_from: 99.99, amount_to: 200 }, true))).code).toBe('23P01');
+    });
+
+    it('gaps at the start, between and at the end are all reported; a rule without tramo in the same scope covers them', async () => {
+      const c = await kit.as(actors.adminId);
+      const e = await failure(kit.setRule(c, fixed({ code: 'mid', amount_from: 50, amount_to: 60, applies_to: 'both', accept_gaps: false })));
+      expect(JSON.parse(e.detail).gaps).toEqual([
+        { kind: 'remittance', from: null, to: 50 }, { kind: 'remittance', from: 60, to: null },
+        { kind: 'order', from: null, to: 50 }, { kind: 'order', from: 60, to: null }
+      ]);
+      await kit.setRule(c, fixed({ code: 'flat', applies_to: 'both' }));
+      await expect(kit.setRule(c, fixed({ code: 'mid', amount_from: 50, amount_to: 60, applies_to: 'both', accept_gaps: false }))).resolves.toBeTruthy();
+      // a rule of ANOTHER scope does not cover this one
+      const zone = await kit.seedZone();
+      expect((await failure(kit.setRule(c, fixed({ code: 'z', zone_id: zone, amount_from: 10, accept_gaps: false })))).message).toMatch(/coverage_gap/);
+    });
+
+    it('one currency per tiered scope (22023 mixed_currency_scope); another scope may use another currency', async () => {
+      const c = await kit.as(actors.adminId);
+      await kit.setRule(c, fixed({ code: 'u', amount_to: 100 }));
+      const e = await failure(kit.setRule(c, fixed({ code: 'k', amount_from: 100, currency: 'CUP' })));
+      expect(e.code).toBe('22023');
+      expect(e.message).toMatch(/^mixed_currency_scope/);
+      const zone = await kit.seedZone();
+      await expect(kit.setRule(c, fixed({ code: 'k', amount_from: 100, currency: 'CUP', zone_id: zone }))).resolves.toBeTruthy();
+      // a rule without tramo has no range to compare: its currency never conflicts
+      await expect(kit.setRule(c, fixed({ code: 'flat', currency: 'CUP', fixed_amount: 300 }))).resolves.toBeTruthy();
+    });
+
+    it('resolver v2 converts the value to each candidate currency with the given live rate (no rate => no_fx, no fallback)', async () => {
+      const c = await kit.as(actors.adminId);
+      await kit.setRule(c, fixed({ code: 'flat' })); // lower precedence than any tramo of the same scope
+      await kit.setRule(c, fixed({ code: 'low', currency: 'CUP', amount_to: 8300 }));
+      await kit.setRule(c, fixed({ code: 'high', currency: 'CUP', amount_from: 8300 }));
+      expect(await resolve2('remittance', { amount: 100, fx: 83 })).toEqual({ code: 'low', reason: null }); // 8300.00
+      expect(await resolve2('remittance', { amount: 100.01, fx: 83 })).toEqual({ code: 'high', reason: null }); // 8300.83
+      expect(await resolve2('remittance', { amount: 8300, currency: 'CUP' })).toEqual({ code: 'low', reason: null }); // same currency: no rate needed
+      expect(await resolve2('remittance', { amount: 100, fx: null })).toEqual({ code: null, reason: 'no_fx' }); // never 'flat'
+      expect(await resolve2('remittance', { amount: 100, currency: 'EUR', fx: 83 })).toEqual({ code: null, reason: 'no_fx' });
+    });
+
+    it('resolver v2: USD tramo with a CUP value divides by the rate; no_tier_match vs no_rule', async () => {
+      const c = await kit.as(actors.adminId);
+      expect(await resolve2('order', { amount: 5 })).toEqual({ code: null, reason: 'no_rule' });
+      await kit.setRule(c, fixed({ code: 'u', applies_to: 'order', amount_to: 100 }));
+      expect(await resolve2('order', { amount: 8300, currency: 'CUP', fx: 83 })).toEqual({ code: 'u', reason: null });
+      expect(await resolve2('order', { amount: 8300.83, currency: 'CUP', fx: 83 })).toEqual({ code: null, reason: 'no_tier_match' });
+      expect(await resolve2('order', { amount: 8300, currency: 'CUP', fx: null })).toEqual({ code: null, reason: 'no_fx' });
+      expect(await resolve2('remittance', { amount: 5 })).toEqual({ code: null, reason: 'no_rule' });
+    });
+
+    it('resolver v2 keeps the precedence of v1 (courier > zone > type > tramo > general)', async () => {
+      const c = await kit.as(actors.adminId);
+      const zone = await kit.seedZone();
+      const courier = await kit.makeCourier();
+      await kit.setRule(c, { code: 'general' });
+      await kit.setRule(c, { code: 'tramo', amount_from: 50, amount_to: 200 });
+      await kit.setRule(c, { code: 'zone', zone_id: zone });
+      await kit.setRule(c, { code: 'courier', courier_id: courier });
+      expect((await resolve2('remittance', { amount: 100 })).code).toBe('tramo');
+      expect((await resolve2('remittance', { amount: 50 })).code).toBe('general');
+      expect((await resolve2('remittance', { zone, amount: 100 })).code).toBe('zone');
+      expect((await resolve2('remittance', { courier, zone, amount: 100 })).code).toBe('courier');
+    });
+  });
+
   describe('margin thresholds', () => {
     it('admin sets them per kind; ordering critical <= warning <= target is enforced; each may stay NULL', async () => {
       const c = await kit.as(actors.adminId);
@@ -471,7 +696,7 @@ describeDb('M1: couriers, payment types, thresholds (local Postgres)', () => {
 describeDb('rollback of M1 (executed inside a transaction that is rolled back)', () => {
   it('drops every M1 object', async () => {
     const admin = await connectAdmin();
-    const body = ['m3', 'm2', 'm1'].map((k) => readSql(ROLLBACKS[k]).replace(/^\s*(BEGIN|COMMIT);\s*$/gm, '')).join('\n');
+    const body = ['b', 'm3', 'm2', 'm1'].map((k) => readSql(ROLLBACKS[k]).replace(/^\s*(BEGIN|COMMIT);\s*$/gm, '')).join('\n');
     try {
       await admin.query('BEGIN');
       await admin.query(`SET LOCAL app.confirm_courier_rollback = 'yes'`);

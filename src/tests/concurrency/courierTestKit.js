@@ -10,12 +10,16 @@ import { seedOrder } from './fixtures';
 export const MIGRATIONS = {
   m1: 'supabase/migrations/20261031100000_couriers_and_payment_types.sql',
   m2: 'supabase/migrations/20261031110000_delivery_assignments_and_accruals.sql',
-  m3: 'supabase/migrations/20261031120000_courier_payments_and_report.sql'
+  m3: 'supabase/migrations/20261031120000_courier_payments_and_report.sql',
+  a: 'supabase/migrations/20261105150000_courier_payment_types_currency_ranges.sql',
+  b: 'supabase/migrations/20261105160000_courier_payment_type_subscriptions.sql'
 };
 export const ROLLBACKS = {
   m1: 'supabase/rollbacks/20261031100000_couriers_and_payment_types_down.sql',
   m2: 'supabase/rollbacks/20261031110000_delivery_assignments_and_accruals_down.sql',
-  m3: 'supabase/rollbacks/20261031120000_courier_payments_and_report_down.sql'
+  m3: 'supabase/rollbacks/20261031120000_courier_payments_and_report_down.sql',
+  a: 'supabase/rollbacks/20261105150000_courier_payment_types_currency_ranges_down.sql',
+  b: 'supabase/rollbacks/20261105160000_courier_payment_type_subscriptions_down.sql'
 };
 
 export const failure = async (promise) => {
@@ -139,21 +143,30 @@ export const makeKit = (admin, actors) => {
     return (await call(c, 'admin_upsert_courier', [null, name, null, null, true]))[0].admin_upsert_courier;
   };
 
-  /** admin_set_messenger_payment_type with named defaults; returns the new row id. */
+  /**
+   * admin_set_messenger_payment_type_v2 with named defaults; returns the new row id. `accept_gaps` defaults to TRUE here so
+   * the older suites (single tramos) keep testing what they test; the coverage tests pass `accept_gaps: false` explicitly.
+   */
   const setRule = async (client, o = {}) => {
     const p = {
       code: `r-${randomUUID().slice(0, 8)}`, name: 'Rule', applies_to: 'remittance', method: 'fixed_cup',
       fixed_cup: 200, cup_per_usd: null, percent: null, base: null,
       courier_id: null, zone_id: null, type_id: null, amount_from: null, amount_to: null,
-      valid_from: null, valid_to: null, ...o
+      valid_from: null, valid_to: null, currency: 'USD', fixed_amount: null, accept_gaps: true, ...o
     };
     const { rows } = await client.query(
-      `SELECT public.admin_set_messenger_payment_type($1,$2,$3,$4,$5::numeric,$6::numeric,$7::numeric,$8,$9::uuid,$10::uuid,$11::uuid,$12::numeric,$13::numeric,$14::timestamptz,$15::timestamptz) AS id`,
+      `SELECT public.admin_set_messenger_payment_type_v2($1,$2,$3,$4,$5::numeric,$6::numeric,$7::numeric,$8,$9::uuid,$10::uuid,$11::uuid,$12::numeric,$13::numeric,$14::timestamptz,$15::timestamptz,$16,$17::numeric,$18::boolean) AS id`,
       [p.code, p.name, p.applies_to, p.method, p.fixed_cup, p.cup_per_usd, p.percent, p.base, p.courier_id, p.zone_id, p.type_id,
-        p.amount_from, p.amount_to, p.valid_from, p.valid_to]
+        p.amount_from, p.amount_to, p.valid_from, p.valid_to, p.currency, p.fixed_amount, p.accept_gaps]
     );
     return rows[0].id;
   };
+
+  /** Phase B RPCs: subscribe returns the subscription id, unsubscribe the number of rows closed. */
+  const subscribe = async (client, courierId, code, acceptGaps = false) =>
+    (await client.query('SELECT public.admin_subscribe_courier_payment_type($1::uuid, $2, $3::boolean) AS id', [courierId, code, acceptGaps])).rows[0].id;
+  const unsubscribe = async (client, courierId, code) =>
+    (await client.query('SELECT public.admin_unsubscribe_courier_payment_type($1::uuid, $2) AS n', [courierId, code])).rows[0].n;
 
   const cleanup = async () => {
     await clients.splice(0).reduce((p, c) => p.then(() => c.end().catch(() => {})), Promise.resolve());
@@ -165,6 +178,8 @@ export const makeKit = (admin, actors) => {
     await admin.query(`DELETE FROM public.delivery_assignments`).catch(() => {});
     await wipeTable(admin, 'courier_payments', 'courier_payments_immutable').catch(() => {});
     await wipeTable(admin, 'messenger_payment_types', 'messenger_payment_types_guard').catch(() => {});
+    // phase B: subscriptions reference couriers (ON DELETE RESTRICT), so they go first
+    await wipeTable(admin, 'courier_payment_type_subscriptions', 'courier_payment_type_subscriptions_guard').catch(() => {});
     await admin.query('DELETE FROM public.couriers').catch(() => {});
     await admin.query(`UPDATE public.courier_margin_settings SET warning_pct = NULL, critical_pct = NULL, target_pct = NULL, updated_by = NULL`).catch(() => {});
     if (types.length) await admin.query('DELETE FROM public.remittance_types WHERE id = ANY($1)', [types.splice(0)]);
@@ -175,6 +190,6 @@ export const makeKit = (admin, actors) => {
 
   return {
     as, setRole, restoreActors, call, seedType, seedZone, seedUsdCupRate, seedRemittance, seedDispatchedOrder,
-    deliverRemittance, deliverOrder, accruals, makeCourier, setRule, cleanup, clients
+    deliverRemittance, deliverOrder, accruals, makeCourier, setRule, subscribe, unsubscribe, cleanup, clients
   };
 };

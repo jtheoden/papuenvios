@@ -21,6 +21,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import { noteRemoteChange } from '@/lib/requestBudget';
 
 export const useRealtimeSubscription = ({
   table,
@@ -88,6 +89,7 @@ export const useRealtimeSubscription = ({
             'postgres_changes',
             changeOptions,
             (payload) => {
+              noteRemoteChange(); // the refetches below must not get an answer cached before this change
               setLastUpdate(new Date());
 
               // Call specific handlers based on event type
