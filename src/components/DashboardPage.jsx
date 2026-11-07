@@ -340,9 +340,9 @@ const DashboardPage = ({ onNavigate }) => {
 
   // Headlines per window (D1): sales, net income and cash collected are never added together.
   const headlines = {
-    daily: computeHeadline({ orderRevenue: stats.dailyRevenue, orderProfit: dailyProfit, remittanceCommission: stats.dailyRemittanceIncome, remittanceVolume: stats.dailyRemittanceVolume, remittanceDeliveryCharge: stats.dailyRemittanceDeliveryCharge, remittanceCourierCost: remittanceCourierCost('daily') }),
-    monthly: computeHeadline({ orderRevenue: stats.monthlyRevenue, orderProfit: monthlyProfit, remittanceCommission: stats.monthlyRemittanceIncome, remittanceVolume: stats.monthlyRemittanceVolume, remittanceDeliveryCharge: stats.monthlyRemittanceDeliveryCharge, remittanceCourierCost: remittanceCourierCost('monthly') }),
-    yearly: computeHeadline({ orderRevenue: stats.yearlyRevenue, orderProfit: yearlyProfit, remittanceCommission: stats.yearlyRemittanceIncome, remittanceVolume: stats.yearlyRemittanceVolume, remittanceDeliveryCharge: stats.yearlyRemittanceDeliveryCharge, remittanceCourierCost: remittanceCourierCost('yearly') })
+    daily: computeHeadline({ orderRevenue: stats.dailyRevenue, orderProfit: dailyProfit, remittanceCommission: stats.dailyRemittanceIncome, remittanceVolume: stats.dailyRemittanceVolume, remittanceDeliveryCharge: stats.dailyRemittanceDeliveryCharge, remittanceCourierCost: remittanceCourierCost('daily'), orderCourierDifference: courier.totals?.dailyCourierDifference }),
+    monthly: computeHeadline({ orderRevenue: stats.monthlyRevenue, orderProfit: monthlyProfit, remittanceCommission: stats.monthlyRemittanceIncome, remittanceVolume: stats.monthlyRemittanceVolume, remittanceDeliveryCharge: stats.monthlyRemittanceDeliveryCharge, remittanceCourierCost: remittanceCourierCost('monthly'), orderCourierDifference: courier.totals?.monthlyCourierDifference }),
+    yearly: computeHeadline({ orderRevenue: stats.yearlyRevenue, orderProfit: yearlyProfit, remittanceCommission: stats.yearlyRemittanceIncome, remittanceVolume: stats.yearlyRemittanceVolume, remittanceDeliveryCharge: stats.yearlyRemittanceDeliveryCharge, remittanceCourierCost: remittanceCourierCost('yearly'), orderCourierDifference: courier.totals?.yearlyCourierDifference })
   };
   const orderCosts = {
     daily: computeOrderCosts(stats.dailyRevenue, stats.dailyShippingCost, dailyProfit),
@@ -472,6 +472,7 @@ const DashboardPage = ({ onNavigate }) => {
                       className="mb-8"
                     >
                       <p className="text-xs text-gray-500 mb-2">{t('dashboard.timeZoneNote')}</p>
+                      <p className="mb-3 text-sm" role="note">{t('couriers.payable.pastMonthsWarning')}</p>
                       <div className="grid md:grid-cols-3 gap-4">
                         {HEADLINE_PERIODS.map(({ key, titleKey, Icon, border, iconBg, iconColor, netColor }) => (
                           <div key={key} className={`glass-effect rounded-2xl p-5 border-t-4 ${border}`}>
@@ -495,6 +496,11 @@ const DashboardPage = ({ onNavigate }) => {
                                   <p data-testid={`headline-${key}-${row}`} className={`text-xl font-bold ${valueClass}`}>
                                     {money(value)} <span className="text-xs font-normal text-gray-500">{currencyCode}</span>
                                   </p>
+                                  {row === 'netIncome' && (
+                                    <p className="text-xs" data-testid={`courier-unknown-${key}`}>
+                                      {t('dashboard.courier.unknownCostCount')}: {courier.totals?.[`${key}CourierUnknownCount`] ?? t('dashboard.courier.notAvailable')}
+                                    </p>
+                                  )}
                                   {row === 'collected' && (
                                     <p data-testid={`headline-${key}-deliveryCharge`} className="text-xs text-gray-500">
                                       {t('dashboard.headline.deliveryCharge')}: {money(headlines[key].deliveryCharge)}

@@ -1,12 +1,14 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAsyncResource } from '@/hooks/useAsyncResource';
 import {
-  listAccruals, registerPayment, voidAccrual, adjustAccrual, recalculateAccrual, listDeliveriesWithoutAccrual, backfillMissingAccruals
+  listAccruals, registerPayment, voidAccrual, adjustAccrual, recalculateAccrual, listDeliveriesWithoutAccrual, backfillMissingAccruals,
+  previewCourierAfterDelivery, confirmCourierAfterDelivery
 } from '@/lib/courierService';
 import { shortId } from '@/lib/courierRules';
-import { Btn, Field, Notice, errorText, inputCls, formatCup } from './courierUi';
+import { Btn, Field, Notice, errorText, inputCls, formatCup, formatUsd } from './courierUi';
 
 const pad = (n) => String(n).padStart(2, '0');
 const nowLocalInput = () => {
@@ -19,6 +21,9 @@ const PayablePanel = ({ couriers }) => {
   const { isSuperAdmin } = useAuth();
   const pending = useAsyncResource(useCallback(() => listAccruals({ status: 'calculated' }), []));
   const paid = useAsyncResource(useCallback(() => listAccruals({ status: 'paid', limit: 50 }), []));
+  const [filter, setFilter] = useState('all');
+  const [assignment, setAssignment] = useState(null);
+  const [quote, setQuote] = useState(null);
   const [selected, setSelected] = useState(() => new Set());
   const [pay, setPay] = useState(null); // { courierId, ids, method, reference, paidAt, notes }
   const [action, setAction] = useState(null); // { kind: 'void'|'adjust', id, reason, amount }
@@ -29,7 +34,8 @@ const PayablePanel = ({ couriers }) => {
   const [message, setMessage] = useState(null);
 
   const courierName = (id) => couriers.find((c) => c.id === id)?.name ?? t('couriers.common.unassigned');
-  const items = pending.data?.items ?? [];
+  const items = useMemo(() => (pending.data?.items ?? []).filter((a) => filter !== 'unassigned'
+    || (a.component === 'delivery' && a.courier_id === null && a.amount_cup === null && a.amount_usd == null)), [pending.data, filter]);
   const groups = useMemo(() => {
     const map = new Map();
     items.forEach((a) => {
@@ -103,6 +109,33 @@ const PayablePanel = ({ couriers }) => {
     if (ok) { setGaps(null); setConfirmBackfill(false); }
   };
 
+  const openAssignment = (row) => {
+    setQuote(null);
+    setAssignment({ row, courierId: '', reason: '' });
+  };
+  const changeAssignment = (values) => {
+    setQuote(null);
+    setAssignment({ ...assignment, ...values });
+  };
+  const previewAssignment = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setQuote(null);
+    setMessage(null);
+    try {
+      setQuote(await previewCourierAfterDelivery(assignment.row.source_kind, assignment.row.source_id, assignment.courierId, assignment.reason));
+    } catch (error) {
+      setMessage({ tone: 'error', text: errorText(t, error) });
+    } finally { setBusy(false); }
+  };
+  const confirmAssignment = async () => {
+    const ok = await run(() => confirmCourierAfterDelivery(
+      assignment.row.source_kind, assignment.row.source_id, assignment.courierId, assignment.reason, quote.preview_token
+    ), 'couriers.payable.assignedOk');
+    if (ok) { setAssignment(null); setQuote(null); }
+    else setQuote(null); // a refusal requires reviewing a fresh server quote
+  };
+
   const superOnlyReason = t('couriers.payable.superAdminOnlyReason');
 
   if (pending.error && !pending.data) return <Notice tone="error">{errorText(t, pending.error)}</Notice>;
@@ -110,7 +143,14 @@ const PayablePanel = ({ couriers }) => {
   return (
     <section className="space-y-5" aria-labelledby="payable-heading">
       <h3 id="payable-heading" className="text-lg font-semibold">{t('couriers.payable.title')}</h3>
-      <div aria-live="polite">{message && <Notice tone={message.tone}>{message.text}</Notice>}</div>
+      <div aria-live="polite">{message && !assignment && <Notice tone={message.tone}>{message.text}</Notice>}</div>
+
+      <Field label={t('couriers.payable.filter')}>
+        {(p) => <select {...p} className={inputCls} value={filter} onChange={(e) => setFilter(e.target.value)}>
+          <option value="all">{t('couriers.payable.allPending')}</option>
+          <option value="unassigned">{t('couriers.payable.deliveredUnassigned')}</option>
+        </select>}
+      </Field>
 
       {groups.length === 0 && <p className="text-sm text-gray-700" data-testid="payable-empty">{t('couriers.payable.empty')}</p>}
 
@@ -140,6 +180,9 @@ const PayablePanel = ({ couriers }) => {
                   {unknown.map((a) => (
                     <li key={a.id} className="flex flex-wrap items-center gap-3 text-sm">
                       <span>{new Date(a.delivered_at).toLocaleDateString()} · {t(`couriers.common.kind.${a.source_kind}`)} · {t('couriers.common.unknown')}</span>
+                      {isSuperAdmin && a.component === 'delivery' && a.courier_id === null && a.amount_usd == null && (
+                        <Btn disabled={busy} onClick={() => openAssignment(a)} aria-label={`${t('couriers.payable.assignAfterDelivery')} ${shortId(a.id)}`}>{t('couriers.payable.assignAfterDelivery')}</Btn>
+                      )}
                       <Btn disabled={busy} onClick={() => run(() => recalculateAccrual(a.id), 'couriers.payable.recalculatedOk')} aria-label={`${t('couriers.payable.recalculate')} ${shortId(a.id)}`}>
                         {t('couriers.payable.recalculate')}
                       </Btn>
@@ -156,6 +199,52 @@ const PayablePanel = ({ couriers }) => {
           </div>
         );
       })}
+
+      {isSuperAdmin && assignment && (
+        <Dialog.Root open onOpenChange={(open) => { if (!open && !busy) { setAssignment(null); setQuote(null); } }}>
+          <Dialog.Portal>
+            <Dialog.Overlay className="fixed inset-0 z-50 bg-background/80" />
+            <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 space-y-3 overflow-y-auto rounded-xl border border-border bg-background p-5 text-foreground shadow-lg" onEscapeKeyDown={(e) => { if (busy) e.preventDefault(); }} onPointerDownOutside={(e) => { if (busy) e.preventDefault(); }}>
+              <Dialog.Title className="text-lg font-semibold">{t('couriers.payable.assignAfterDelivery')}</Dialog.Title>
+              <Dialog.Description className="text-sm">{t('couriers.payable.pastMonthsWarning')}</Dialog.Description>
+              <p className="text-sm">{t(`couriers.common.kind.${assignment.row.source_kind}`)} · {shortId(assignment.row.source_id)} · {new Date(assignment.row.delivered_at).toLocaleDateString()}</p>
+              {message?.tone === 'error' && <Notice tone="error">{message.text}</Notice>}
+              <form onSubmit={previewAssignment} className="space-y-3">
+                <Field label={t('couriers.payable.courier')}>
+                  {(p) => <select {...p} required className={inputCls} value={assignment.courierId} disabled={busy} onChange={(e) => changeAssignment({ courierId: e.target.value })}>
+                    <option value="">{t('couriers.common.unassigned')}</option>
+                    {couriers.filter((c) => c.is_active).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>}
+                </Field>
+                <Field label={t('couriers.payable.reason')} hint={t('couriers.payable.reasonHint')}>
+                  {(p) => <textarea {...p} required minLength={10} maxLength={500} className={inputCls} value={assignment.reason} disabled={busy} onChange={(e) => changeAssignment({ reason: e.target.value })} />}
+                </Field>
+                <Btn type="submit" disabled={busy || !assignment.courierId || assignment.reason.trim().length < 10}>{t('couriers.payable.preview')}</Btn>
+              </form>
+              {quote && (
+                <div className="space-y-2" aria-live="polite">
+                  <strong className="rounded border border-border px-2 py-1 text-sm">{t('couriers.payable.retroactive')}</strong>
+                  <dl className="space-y-1 text-sm">
+                    <dt>{t('couriers.payable.previewAmount')}</dt>
+                    <dd>{formatCup(quote.amount_cup) ?? t('couriers.common.unknown')} · {formatUsd(quote.amount_usd) ?? t('couriers.common.unknown')}</dd>
+                    <dt>{t('couriers.payable.previewRule')}</dt>
+                    <dd>{quote.rule?.name ?? t('couriers.common.unknown')}</dd>
+                    <dt>{t('couriers.payable.precedence')}</dt>
+                    <dd>{t(`couriers.payable.precedenceValue.${quote.precedence}`)}</dd>
+                    <dt>{t('couriers.payable.previewRate')}</dt>
+                    <dd>{quote.fx_used ?? t('couriers.common.unknown')} · <span>{t(`couriers.payable.fxOrigin.${quote.fx_source}`)}</span></dd>
+                  </dl>
+                  {[...new Set([...(quote.warnings ?? []), ...(quote.reason ? [quote.reason] : [])])].filter((warning) => warning !== 'past_months_change').map((warning) => (
+                    <Notice key={warning} tone="warn">{t(`couriers.payable.pricingWarning.${warning}`)}</Notice>
+                  ))}
+                  <Btn tone="primary" onClick={confirmAssignment} disabled={busy || quote.amount_cup == null}>{t('couriers.payable.confirmAssignment')}</Btn>
+                </div>
+              )}
+              <Btn onClick={() => { setAssignment(null); setQuote(null); }} disabled={busy}>{t('couriers.common.cancel')}</Btn>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
+      )}
 
       {pay && (
         <form className="space-y-3 rounded-xl border-2 border-blue-300 bg-white p-4" aria-label={t('couriers.payable.markPaid')} onSubmit={submitPay}>

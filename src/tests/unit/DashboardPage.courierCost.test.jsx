@@ -227,3 +227,23 @@ describe('DashboardPage courier cost card', () => {
     expect(within(card).queryByText('dashboard.courier.difference')).toBeNull();
   });
 });
+
+describe('DashboardPage retroactive net headline', () => {
+  it('adds known-cost shipping Difference, subtracts no-zone remittance cost and shows the unknown count and past-month warning', async () => {
+    tables.errors = {};
+    tables.data = {
+      ...base(),
+      orders: [order('known', 'delivered', hoursAgo(1), '10'), order('unknown', 'delivered', hoursAgo(1), '50')],
+      order_courier_costs: [{ order_id: 'known', amount_usd: '3' }],
+      remittances: [{ id: 'r', status: 'delivered', payment_validated_at: hoursAgo(1), commission_total: '5', delivery_cost: '0', shipping_zone_id: null }],
+      remittance_courier_costs: [{ remittance_id: 'r', amount_usd: '2' }]
+    };
+    render(<DashboardPage onNavigate={() => {}} />);
+    await waitFor(() => {
+      const row = screen.getAllByText('dashboard.headline.netIncome').find((node) => node.closest('tr')).closest('tr');
+      expect(within(row).getAllByText('$10.00')).toHaveLength(3);
+      expect(within(screen.getByTestId('headline-monthly-netIncome').parentElement).getByTestId('courier-unknown-monthly')).toHaveTextContent('1');
+    });
+    expect(screen.getByText('couriers.payable.pastMonthsWarning')).toBeTruthy();
+  });
+});

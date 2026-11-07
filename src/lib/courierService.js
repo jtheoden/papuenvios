@@ -62,7 +62,7 @@ const numOrNull = (v) => (v === '' || v === null || v === undefined || !Number.i
 
 const COURIER_COLS = 'id, name, phone, notes, is_active, created_at';
 const RULE_COLS = 'id, code, name, version, applies_to, method, fixed_cup, cup_per_usd, percent, base, courier_id, shipping_zone_id, remittance_type_id, amount_from, amount_to, valid_from, valid_to, is_active, created_at, currency, fixed_amount';
-const ACCRUAL_COLS = 'id, source_kind, component, courier_id, amount_cup, amount_usd, fx_used, status, delivered_at, margin_status, payment_id, adjusts_accrual_id';
+const ACCRUAL_COLS = 'id, source_kind, source_id, component, courier_id, amount_cup, amount_usd, fx_used, status, delivered_at, margin_status, payment_id, adjusts_accrual_id';
 
 // ---------------------------------------------------------------------------------------------- reads
 export const listCouriers = async () => {
@@ -217,3 +217,13 @@ export const assignDeliveryCourier = async (kind, operationId, courierId) => {
   }
   return undefined;
 };
+
+/** Phase C quotes are server-computed and never silently degraded. Confirmation binds to the reviewed quote. */
+export const previewCourierAfterDelivery = (kind, id, courierId, reason) =>
+  write('previewCourierAfterDelivery', 'admin_assign_courier_after_delivery', {
+    p_kind: kind, p_id: id, p_courier_id: courierId, p_reason: String(reason ?? '').trim(), p_confirm: false, p_preview_token: null
+  });
+export const confirmCourierAfterDelivery = (kind, id, courierId, reason, previewToken) =>
+  write('confirmCourierAfterDelivery', 'admin_assign_courier_after_delivery', {
+    p_kind: kind, p_id: id, p_courier_id: courierId, p_reason: String(reason ?? '').trim(), p_confirm: true, p_preview_token: previewToken
+  });
