@@ -34,6 +34,14 @@ import { useCurrency } from '@/contexts/CurrencyContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { toast } from '@/components/ui/use-toast';
+import LoadingState, { SkeletonBox } from '@/components/ui/LoadingState';
+
+// Footprint of the offer rows.
+const OffersSkeleton = () => (
+  <div className="space-y-3">
+    {Array.from({ length: 3 }, (_, i) => <SkeletonBox key={i} className="h-28 w-full rounded-lg" />)}
+  </div>
+);
 import { supabase } from '@/lib/supabase';
 import { logActivity } from '@/lib/activityLogger';
 import { useRealtimeOffers } from '@/hooks/useRealtimeSubscription';
@@ -57,7 +65,8 @@ const AdminOffersTab = () => {
     activeOffers: 0,
     topOffers: []
   });
-  const [loading, setLoading] = useState(false);
+  // true from the start: the first render must not show "no offers" before the load begins
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterActive, setFilterActive] = useState('all'); // all, active, inactive
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -850,11 +859,8 @@ const AdminOffersTab = () => {
 
       {/* Offers List */}
       <div className="space-y-3">
-        {loading ? (
-          <div className="text-center py-8 text-gray-500">
-            {language === 'es' ? 'Cargando ofertas...' : 'Loading offers...'}
-          </div>
-        ) : filteredOffers.length === 0 ? (
+        <LoadingState loading={loading && Boolean(user) && offers.length === 0} skeleton={<OffersSkeleton />} contentClassName="space-y-3">
+        {filteredOffers.length === 0 ? (
           <div className="text-center py-8 bg-gray-50 rounded-lg">
             <AlertCircle className="h-8 w-8 text-gray-400 mx-auto mb-2" />
             <p className="text-gray-600">
@@ -1170,6 +1176,7 @@ const AdminOffersTab = () => {
             </motion.div>
           ))
         )}
+        </LoadingState>
       </div>
     </div>
   );

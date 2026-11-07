@@ -34,6 +34,23 @@ import { formatQuantityWithUnit } from '@/lib/productUnits';
 import { useOrderItemLines } from '@/hooks/useOrderItemLines';
 import { usePaymentProofUrl } from '@/hooks/usePaymentProofUrl';
 import MyOperationRefund from '@/components/refunds/MyOperationRefund';
+import LoadingState, { SkeletonBox } from '@/components/ui/LoadingState';
+
+// Same footprint as the order rows (p-4 bordered cards).
+const OrdersSkeleton = () => (
+  <div className="space-y-4">
+    {Array.from({ length: 3 }, (_, i) => (
+      <div key={i} className="space-y-3 rounded-lg border p-4">
+        <div className="flex justify-between gap-4">
+          <SkeletonBox className="h-5 w-32" />
+          <SkeletonBox className="h-6 w-24 rounded-full" />
+        </div>
+        <SkeletonBox className="h-4 w-1/2" />
+        <SkeletonBox className="h-5 w-24" />
+      </div>
+    ))}
+  </div>
+);
 
 // Constante de paginación fuera del componente para evitar recreación
 const ORDERS_PER_PAGE = 20;
@@ -968,11 +985,9 @@ const UserPanel = ({ onNavigate }) => {
             )}
           </div>
 
-          {loading ? (
-            <div className="flex justify-center items-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin" style={{ color: visualSettings.primaryColor }} />
-            </div>
-          ) : filteredOrders.length > 0 ? (
+          {/* Skeleton only for the first load: realtime reloads keep the current list on screen */}
+          <LoadingState loading={loading && orders.length === 0} skeleton={<OrdersSkeleton />}>
+          {filteredOrders.length > 0 ? (
             <div className="space-y-4" ref={ordersContainerRef}>
               {/* Contador de órdenes */}
               <div className="flex items-center justify-between text-sm" style={getTextStyle(visualSettings, 'muted')}>
@@ -1182,6 +1197,7 @@ const UserPanel = ({ onNavigate }) => {
               </p>
             </div>
           )}
+          </LoadingState>
         </motion.div>
         </AdminWorkTabs>
 

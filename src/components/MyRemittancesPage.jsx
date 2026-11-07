@@ -30,7 +30,29 @@ import CancelRefundMessage from '@/components/CancelRefundMessage';
 import FileUploadWithPreview from '@/components/FileUploadWithPreview';
 import TooltipButton from './TooltipButton';
 import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
-import SkeletonCard from '@/components/ui/SkeletonCard';
+import LoadingState, { SkeletonBox } from '@/components/ui/LoadingState';
+
+// Footprint of the remittance cards (header, two detail rows, footer action).
+const RemittancesSkeleton = () => (
+  <div className="space-y-4">
+    {Array.from({ length: 3 }, (_, i) => (
+      <div key={i} className="glass-effect space-y-3 rounded-xl p-4">
+        <div className="flex items-start justify-between">
+          <div className="space-y-2">
+            <SkeletonBox className="h-4 w-32" />
+            <SkeletonBox className="h-5 w-24" />
+          </div>
+          <SkeletonBox className="h-6 w-20 rounded-full" />
+        </div>
+        <SkeletonBox className="h-4 w-2/3" />
+        <SkeletonBox className="h-4 w-1/2" />
+        <div className="flex justify-end">
+          <SkeletonBox className="h-8 w-20 rounded-lg" />
+        </div>
+      </div>
+    ))}
+  </div>
+);
 import SearchFilterBar from '@/components/ui/SearchFilterBar';
 import RemittanceTimeline from '@/components/ui/RemittanceTimeline';
 import MyOperationRefund from '@/components/refunds/MyOperationRefund';
@@ -720,14 +742,6 @@ const MyRemittancesPage = ({ onNavigate }) => {
     return langLabels[method] || method;
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-6xl mx-auto py-8 px-4">
       <div className="flex justify-between items-center mb-8">
@@ -796,13 +810,9 @@ const MyRemittancesPage = ({ onNavigate }) => {
         </motion.div>
       )}
 
-      {loading ? (
-        <div className="space-y-4">
-          <SkeletonCard variant="remittance" />
-          <SkeletonCard variant="remittance" />
-          <SkeletonCard variant="remittance" />
-        </div>
-      ) : remittances.length === 0 ? (
+      {/* Skeleton only for the first load: realtime reloads keep the current list on screen */}
+      <LoadingState loading={loading && remittances.length === 0} skeleton={<RemittancesSkeleton />}>
+      {remittances.length === 0 ? (
         <div className="text-center py-12 glass-effect rounded-xl">
           <DollarSign className="h-16 w-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-xl font-bold text-gray-700 mb-2">
@@ -1082,6 +1092,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
           })}
         </div>
       )}
+      </LoadingState>
 
       {/* Upload Proof Modal */}
       {showUploadModal && selectedRemittance && (
