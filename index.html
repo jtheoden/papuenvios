@@ -46,6 +46,7 @@
 		<style>
 			#ps{position:fixed;inset:0;display:flex;flex-direction:column;gap:16px;align-items:center;justify-content:center;background:#FAF7F0;color:#171717;font:16px system-ui,sans-serif}
 			#ps svg{width:min(240px,70vw);height:auto}
+			#ps img{max-width:min(240px,70vw);object-fit:contain}
 			/* data-theme comes from the inline script above: classic matches AuthLoadingScreen's classic backdrop (buildLoadingTheme). */
 			[data-theme="classic"] #ps{background:linear-gradient(to right, #2563eb, #9333ea);color:#fff}
 			[data-theme="classic"] #ps text{fill:#fff}
@@ -57,6 +58,48 @@
 	</head>
 	<body>
 		<div id="root"><div id="ps" role="status"><span class="ps-sr" lang="es">Cargando PapuEnvíos…</span><noscript lang="es">PapuEnvíos necesita JavaScript activado.</noscript><!-- Text wordmark on purpose: the brand SVG in src/assets/brand/ weighs ~19 KB and does not fit the inline HTML budget (4 KB). --><svg viewBox="0 0 240 72" aria-hidden="true" focusable="false"><text x="20" y="42" textLength="200" lengthAdjust="spacingAndGlyphs" font-family="system-ui,-apple-system,'Segoe UI',Roboto,sans-serif" font-size="38" font-weight="700" fill="#171717">PapuEnvíos</text><path class="ps-arrow" d="M24 58h180m-9-7 9 7-9 7" fill="none" stroke="#FFA500" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
+		<script>
+			// Cached branding on the splash (mirrors BrandLogo / getLoaderConfig): same cache and TTL policy as the look script
+			// above. The image is the loader image, else the logo: only an image data URL or https URL is accepted, and the <img>
+			// is built with DOM APIs. The background is a strict hex colour or nothing (theme background). No HTML strings.
+			(function () {
+				try {
+					var s = (JSON.parse(localStorage.getItem('business_visual_settings_cache')) || {}).data || {};
+					var splash = document.getElementById('ps');
+					var wordmark = splash && splash.querySelector('svg');
+					if (!wordmark) return;
+					var SAFE = /^(?:data:image\/(?:png|jpe?g|gif|webp|avif|svg\+xml);base64,[A-Za-z0-9+\/=]+|https:\/\/\S+)$/i;
+					var src = typeof s.loaderImage === 'string' && SAFE.test(s.loaderImage) ? s.loaderImage : typeof s.logo === 'string' && SAFE.test(s.logo) ? s.logo : '';
+					if (src) {
+						var img = document.createElement('img');
+						var h = Number(s.logoMaxHeight);
+						img.src = src;
+						img.alt = ''; // decorative: the .ps-sr label already announces the splash
+						img.style.maxHeight = Math.min(h > 0 ? h : 40, 64) + 'px';
+						img.style.width = 'auto';
+						// Fail-open: the wordmark is only hidden once the image has really loaded.
+						img.onload = function () { wordmark.style.display = 'none'; };
+						img.onerror = function () { img.remove(); wordmark.style.display = ''; };
+						splash.insertBefore(img, wordmark);
+					}
+					var bg = s.loaderBgColor;
+					if (typeof bg === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(bg)) {
+						var hexv = bg.length === 4 ? bg.charAt(1) + bg.charAt(1) + bg.charAt(2) + bg.charAt(2) + bg.charAt(3) + bg.charAt(3) : bg.slice(1);
+						var lum = 0;
+						[0, 2, 4].forEach(function (i, k) {
+							var c = parseInt(hexv.substr(i, 2), 16) / 255;
+							lum += [0.2126, 0.7152, 0.0722][k] * (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+						});
+						// white on dark, charcoal on light: whichever has the higher WCAG contrast with the background
+						var ink = 1.05 / (lum + 0.05) > (lum + 0.05) / 0.0586 ? '#ffffff' : '#171717';
+						splash.style.background = bg;
+						splash.style.color = ink;
+						var label = wordmark.querySelector('text');
+						if (label) label.style.fill = ink;
+					}
+				} catch (e) {}
+			})();
+		</script>
 		<script type="module" src="/src/main.jsx"></script>
 	</body>
 </html>

@@ -1314,7 +1314,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                             href={proofSignedUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="mt-4 text-blue-600 hover:underline text-xs sm:text-sm"
+                            className="mt-4 text-theme-link hover:underline text-xs sm:text-sm"
                           >
                             {t('remittances.user.openInNewTab')}
                           </a>
@@ -1395,7 +1395,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                                 href={deliveryProofSignedUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="mt-4 text-blue-600 hover:underline text-xs sm:text-sm"
+                                className="mt-4 text-theme-link hover:underline text-xs sm:text-sm"
                               >
                                 {t('remittances.user.openInNewTab')}
                               </a>

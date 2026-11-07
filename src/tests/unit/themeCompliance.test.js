@@ -7,7 +7,7 @@ import loadConfig from 'tailwindcss/loadConfig';
 import colors from 'tailwindcss/colors';
 import { BRAND_PALETTE, BRAND_PRESET, resolveLookId } from '@/lib/brandPalette';
 import { LOCAL_CACHE_KEY } from '@/lib/constants';
-import { countOldPalette, listSourceFiles } from '../../../scripts/theme-codemod.mjs';
+import { countOldPalette, isExempt, listSourceFiles } from '../../../scripts/theme-codemod.mjs';
 
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 
@@ -95,6 +95,42 @@ describe('theme tokens (index.css)', () => {
       expect(css, token).toContain(`rgb(var(--t-${token}) / 0.3)`);
       expect(css, token).toContain(`.text-theme-${token}`);
     }
+  });
+});
+
+describe('controls follow the look (index.css)', () => {
+  const css = indexCss.replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({ selector: selector.trim(), body }));
+  // Body of the rule whose selector is exactly `selector` and that declares --primary.
+  const blockOf = (selector) => rules.find((rule) => rule.selector === selector && rule.body.includes('--primary:'))?.body ?? '';
+
+  it('native checkbox, radio and range take their accent colour from --t-focus (charcoal in the brand look)', () => {
+    const rule = rules.find((r) => /accent-color:\s*rgb\(var\(--t-focus\)\)/.test(r.body))?.selector ?? '';
+    for (const type of ['checkbox', 'radio', 'range']) expect(rule, type).toContain(`input[type="${type}"]`);
+  });
+
+  it('--primary, --primary-foreground and --ring come from the theme tokens in the brand look', () => {
+    const brand = blockOf(':root');
+    expect(brand).toMatch(/--primary:\s*var\(--t-focus\);/);
+    expect(brand).toMatch(/--primary-foreground:\s*255 255 255;/);
+    expect(brand).toMatch(/--ring:\s*var\(--t-focus\);/);
+  });
+
+  it('classic keeps the exact blue the shadcn tokens had (hsl 220 90% 56% = 42 109 244) and a white foreground', () => {
+    const classic = blockOf(':root[data-theme="classic"]');
+    expect(classic).toMatch(/--primary:\s*42 109 244;/);
+    expect(classic).toMatch(/--primary-foreground:\s*255 255 255;/);
+    expect(classic).toMatch(/--ring:\s*42 109 244;/);
+  });
+
+  it('the default Button hover stays visible on the charcoal brand primary, without touching classic', () => {
+    const rule = rules.find((r) => r.selector === ':root:not([data-theme="classic"]) .hover\\:bg-primary\\/90:hover');
+    expect(rule?.body).toMatch(/background-color:\s*rgb\(var\(--primary\) \/ 0\.8\)/);
+    expect(rules.some((r) => r.selector.includes('[data-theme="classic"]') && !r.selector.includes(':not(') && r.selector.includes('bg-primary'))).toBe(false);
+  });
+
+  it('the Visual settings sliders no longer hardcode a blue accent', () => {
+    expect(fs.readFileSync(path.join(ROOT, 'src/components/settings/SettingsPageVisual.jsx'), 'utf8')).not.toMatch(/accent-blue-/);
   });
 });
 
@@ -219,8 +255,8 @@ describe('inline first-paint script (index.html)', () => {
 // Ratchet: slices migrate screens to the `theme-*` utilities and lower the baseline; it can never go up.
 // MIGRATED_FILES grows with every slice: a migrated file must stay free of the old palette.
 // Measured with the codemod's own counter (tests and exempt files excluded) on the T0 base.
-const BASELINE_OLD_PALETTE_CLASSES = 769;
-const MIGRATED_FILES = [];
+const BASELINE_OLD_PALETTE_CLASSES = 729;
+const MIGRATED_FILES = ['src/components/ui/Checkbox.jsx'];
 
 describe('old palette ratchet', () => {
   const files = listSourceFiles('src', ROOT).filter((file) => !file.startsWith('src/tests/'));
@@ -233,5 +269,46 @@ describe('old palette ratchet', () => {
 
   it.each(MIGRATED_FILES.map((file) => [file]))('%s stays free of the old palette', (file) => {
     expect(countOf(file)).toBe(0);
+  });
+
+  // Links: a link-like element is an <a> / <LegalLink> / <Link> tag, or a class string that is underlined or has a
+  // text hover. Its text colour must be text-theme-link(-strong), never the old blue palette (charcoal in the brand look).
+  const OLD_TEXT = /(?<![\w-])(?:[a-z-]+:)*text-(?:blue|indigo|sky|cyan)-\d{2,3}(?![\w-])/;
+  const LINK_TAG = /<(?:a|LegalLink|Link)\b(?:[^<>{}]|\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})*>/g;
+  const CLASS_STRING = /(['"`])((?:(?!\1)[^\n])*?)\1/g;
+  const isLinkLike = (classes) => OLD_TEXT.test(classes) && /(?<![\w-])(?:underline|hover:underline|hover:text-)/.test(classes);
+  // The focus ring of a link-like element is theme-focus too; and a hover that no longer changes the colour keeps a cue.
+  const OLD_RING = /(?<![\w-])(?:[a-z-]+:)*ring-(?:blue|indigo|sky|cyan)-\d{2,3}(?![\w-])/;
+  const LINK_STRING = /(?<![\w-])(?:underline|hover:underline)(?![\w-])/;
+  const noHoverCue = (classes) => /(?<![\w:-])text-theme-link-strong(?![\w-])/.test(classes) && /(?<![\w-])hover:text-theme-link-strong(?![\w-])/.test(classes);
+  const linkOffenders = (file, source) => {
+    const found = [];
+    for (const [tag] of source.matchAll(LINK_TAG)) if (OLD_TEXT.test(tag) || OLD_RING.test(tag)) found.push(tag.replace(/\s+/g, ' ').slice(0, 90));
+    for (const [, , body] of source.matchAll(CLASS_STRING)) {
+      if (isLinkLike(body) || (LINK_STRING.test(body) && OLD_RING.test(body)) || noHoverCue(body)) found.push(body.slice(0, 90));
+    }
+    return found.map((snippet) => `${file}: ${snippet}`);
+  };
+
+  it('no link-like element uses the old palette for its text colour', () => {
+    const offenders = files
+      .filter((file) => !isExempt(file))
+      .flatMap((file) => linkOffenders(file, fs.readFileSync(path.join(ROOT, file), 'utf8')));
+    expect(offenders, 'use text-theme-link / text-theme-link-strong on links').toEqual([]);
+  });
+
+  it('the link rule flags what it should and spares what it should not', () => {
+    expect(linkOffenders('x', '<a href="/x" className="text-blue-600 underline">y</a>').length).toBeGreaterThan(0);
+    expect(linkOffenders('x', '<LegalLink\n page="terms"\n className="font-medium text-blue-700"\n>')).toHaveLength(1);
+    expect(linkOffenders('x', "const c = 'underline text-blue-700 hover:text-blue-900';")).toHaveLength(1);
+    expect(linkOffenders('x', '<button className="text-blue-600 hover:text-blue-700">y</button>')).toHaveLength(1);
+    expect(linkOffenders('x', '<a href="/x" className="text-theme-link underline">y</a>')).toHaveLength(0);
+    expect(linkOffenders('x', '<a href="/x" className="text-theme-link underline focus-visible:ring-blue-700">y</a>').length).toBeGreaterThan(0);
+    expect(linkOffenders('x', "const c = 'underline text-theme-link focus-visible:ring-blue-600';").length).toBeGreaterThan(0);
+    expect(linkOffenders('x', "const c = 'underline text-theme-link-strong hover:text-theme-link-strong';").length).toBeGreaterThan(0);
+    expect(linkOffenders('x', "const c = 'underline text-theme-link-strong hover:decoration-2 focus-visible:ring-theme-focus';")).toHaveLength(0);
+    expect(linkOffenders('x', '<input className="rounded focus-visible:ring-blue-600" />')).toHaveLength(0);
+    expect(linkOffenders('x', '<span className="text-blue-600 font-bold">42</span>')).toHaveLength(0);
+    expect(linkOffenders('x', '<Icon className="text-gray-600 group-hover:text-blue-600" />')).toHaveLength(0);
   });
 });

@@ -76,6 +76,99 @@ describe('React takes over #root', () => {
 });
 
 
+describe('static splash cached logo', () => {
+  const LOGO = 'data:image/png;base64,iVBORw0KGgo=';
+  const run = (storage) => {
+    const page = new DOMParser().parseFromString(html, 'text/html');
+    // The logo script is the last inline one, placed after #root so #ps already exists when it runs.
+    const scripts = Array.from(page.querySelectorAll('script:not([src])'));
+    new Function('document', 'localStorage', scripts.at(-1).textContent)(page, storage);
+    return page;
+  };
+  const cache = (data) => ({ getItem: () => JSON.stringify({ data, timestamp: 0 }) });
+
+  it('swaps the wordmark for the cached logo, capped in height, with the company name as alt', () => {
+    const page = run(cache({ logo: LOGO, companyName: 'Acme Envios', logoMaxHeight: 200 }));
+    const img = page.querySelector('#ps img');
+    expect(img.getAttribute('src')).toBe(LOGO);
+    expect(img.getAttribute('alt')).toBe(''); // the .ps-sr label already announces the splash
+    expect(img.style.maxHeight).toBe('64px');
+    img.onload();
+    expect(page.querySelector('#ps svg').style.display).toBe('none');
+  });
+
+  it('keeps the wordmark visible until the image has really loaded (fail-open)', () => {
+    const page = run(cache({ logo: LOGO }));
+    expect(page.querySelector('#ps img')).not.toBeNull();
+    expect(page.querySelector('#ps svg').style.display).toBe('');
+  });
+
+  it('with an image that never loads the wordmark stays and the 20 s escape hatch still replaces the splash', async () => {
+    vi.useFakeTimers();
+    try {
+      const page = new DOMParser().parseFromString(html, 'text/html');
+      const scripts = Array.from(page.querySelectorAll('script:not([src])')).map((script) => script.textContent).join('\n');
+      const storage = { getItem: (key) => (key === 'preferredLanguage' ? null : JSON.stringify({ data: { logo: LOGO }, timestamp: 0 })) };
+      new Function('document', 'localStorage', 'window', 'setTimeout', scripts)(page, storage, { location: { reload: vi.fn() } }, setTimeout);
+      expect(page.querySelector('#ps svg').style.display).toBe('');
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(page.querySelector('#ps button')?.textContent).toBe('Recargar');
+      expect(page.querySelector('#ps img')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses logoMaxHeight when it is below the cap, and 40 when it is not a positive number', () => {
+    expect(run(cache({ logo: LOGO, logoMaxHeight: 30 })).querySelector('#ps img').style.maxHeight).toBe('30px');
+    expect(run(cache({ logo: LOGO, logoMaxHeight: 'x' })).querySelector('#ps img').style.maxHeight).toBe('40px');
+  });
+
+  it('brings the wordmark back if the logo fails to load', () => {
+    const page = run(cache({ logo: LOGO }));
+    page.querySelector('#ps img').onerror();
+    expect(page.querySelector('#ps img')).toBeNull();
+    expect(page.querySelector('#ps svg').style.display).toBe('');
+  });
+
+  it.each([
+    ['unsafe logo', cache({ logo: 'javascript:alert(1)' })],
+    ['no logo', cache({ logo: '' })],
+    ['no cache', { getItem: () => null }],
+    ['corrupt cache', { getItem: () => '{nope' }],
+    ['blocked storage', { getItem: () => { throw new Error('blocked'); } }],
+  ])('keeps the wordmark and never throws with %s', (_name, storage) => {
+    const page = run(storage);
+    expect(page.querySelector('#ps img')).toBeNull();
+    expect(page.querySelector('#ps svg').style.display).toBe('');
+  });
+
+  it('prefers the loader image over the site logo, and falls back to the logo when it is unsafe', () => {
+    const OWN = 'data:image/webp;base64,UklGRg==';
+    expect(run(cache({ logo: LOGO, loaderImage: OWN })).querySelector('#ps img').getAttribute('src')).toBe(OWN);
+    expect(run(cache({ logo: LOGO, loaderImage: 'javascript:x' })).querySelector('#ps img').getAttribute('src')).toBe(LOGO);
+    expect(run(cache({ loaderImage: OWN })).querySelector('#ps img').getAttribute('src')).toBe(OWN);
+  });
+
+  it('paints a valid hex loader background with readable text, and leaves the theme background otherwise', () => {
+    const dark = run(cache({ loaderBgColor: '#123456' })).getElementById('ps');
+    expect(dark.style.backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(dark.style.color).toBe('rgb(255, 255, 255)');
+    expect(dark.querySelector('text').style.fill).toBe('rgb(255, 255, 255)');
+    const light = run(cache({ loaderBgColor: '#fff' })).getElementById('ps');
+    expect(light.style.backgroundColor).toBe('rgb(255, 255, 255)');
+    expect(light.style.color).toBe('rgb(23, 23, 23)');
+    for (const bad of ['red', '#12345', 'url(x)', '#fff;x', 42]) {
+      expect(run(cache({ loaderBgColor: bad })).getElementById('ps').getAttribute('style'), String(bad)).toBeNull();
+    }
+  });
+
+  it('builds the image with DOM APIs only (no dynamic HTML)', () => {
+    const page = new DOMParser().parseFromString(html, 'text/html');
+    expect(Array.from(page.querySelectorAll('script:not([src])')).at(-1).textContent).not.toMatch(/innerHTML|insertAdjacentHTML|document\.write/);
+  });
+});
+
 describe('static splash startup escape hatch', () => {
   let page, reload;
   const start = (storage = localStorage) => {

@@ -392,7 +392,7 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
                       href={paymentProof.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block text-center text-sm text-blue-600 hover:text-blue-700 hover:underline"
+                      className="block text-center text-sm text-theme-link hover:text-theme-link-strong hover:underline"
                     >
                       {t('adminOrders.detail.viewFullSize')} →
                     </a>

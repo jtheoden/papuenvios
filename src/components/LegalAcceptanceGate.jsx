@@ -24,7 +24,7 @@ const todayIso = () => {
 };
 
 const linkClass =
-  'underline text-blue-700 hover:text-blue-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-sm';
+  'underline text-theme-link-strong hover:decoration-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-theme-focus rounded-sm';
 
 /**
  * Modal that collects the explicit acceptance of Terms + Privacy and the date of birth (18+).

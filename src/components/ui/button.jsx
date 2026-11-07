@@ -17,7 +17,7 @@ const buttonVariants = cva(
 				secondary:
           'bg-secondary text-secondary-foreground hover:bg-secondary/80 active:scale-95 shadow-sm hover:shadow-md',
 				ghost: 'hover:bg-accent hover:text-accent-foreground active:scale-95',
-				link: 'text-primary underline-offset-4 hover:underline',
+				link: 'text-theme-link underline-offset-4 hover:underline',
 				// Brand variants: colours come from the Visual settings via the brand-* Tailwind colours.
 				brand:
           'bg-brand text-brand-foreground hover:bg-brand-hover focus-visible:ring-brand-focus active:scale-95 shadow-sm motion-reduce:transition-none motion-reduce:active:scale-100',

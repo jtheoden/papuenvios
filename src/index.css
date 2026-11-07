@@ -37,8 +37,6 @@
 
 
 :root {
-  --primary: 220 90% 56%;
-  --primary-foreground: 0 0% 100%;
   --secondary: 220 14.3% 95.9%;
   --secondary-foreground: 220 8.9% 46.1%;
   --muted: 220 14.3% 95.9%;
@@ -49,7 +47,6 @@
   --destructive-foreground: 0 0% 98%;
   --border: 220 13% 91%;
   --input: 220 13% 91%;
-  --ring: 220 90% 56%;
   --background: 0 0% 100%;
   --foreground: 220 8.9% 46.1%;
   --card: 0 0% 100%;
@@ -84,6 +81,10 @@
   --t-page-from: 250 247 240; /* ivory */
   --t-page-via: 250 247 240; /* ivory */
   --t-page-to: 250 247 240; /* ivory */
+  /* shadcn tokens (RGB channels, see tailwind.config.js) follow the look: Button default, focus rings. */
+  --primary: var(--t-focus);
+  --primary-foreground: 255 255 255;
+  --ring: var(--t-focus);
 }
 
 /* Classic look (useGradient on): exactly the Tailwind tones the screens used before the tokens. */
@@ -105,6 +106,10 @@
   --t-page-from: 248 250 252; /* slate-50 */
   --t-page-via: 239 246 255; /* blue-50 */
   --t-page-to: 224 231 255; /* indigo-100 */
+  /* The exact colour the shadcn tokens had here (hsl(220 90% 56%)), so classic does not move. */
+  --primary: 42 109 244;
+  --primary-foreground: 255 255 255;
+  --ring: 42 109 244;
 }
 
 body {
@@ -124,6 +129,18 @@ body {
 /* Brand links are charcoal, so they are underlined to stay recognisable (never orange text). Classic keeps blue. */
 :root:not([data-theme="classic"]) :is(.text-theme-link, .text-theme-link-strong):not(.no-underline) {
   text-decoration-line: underline;
+}
+
+/* Native checkbox / radio / range follow the look (charcoal in the brand look, blue-500 in classic). :where keeps the
+   specificity at zero so an explicit accent-* utility still wins. */
+:where(input[type="checkbox"], input[type="radio"], input[type="range"]) {
+  accent-color: rgb(var(--t-focus));
+}
+
+/* The default Button hovers with bg-primary/90, which is barely visible on the charcoal brand primary: darker step
+   for the brand look only (classic keeps its blue and the class string stays byte-identical). */
+:root:not([data-theme="classic"]) .hover\:bg-primary\/90:hover {
+  background-color: rgb(var(--primary) / 0.8);
 }
 
 .loading-spinner {

@@ -73,7 +73,7 @@ export const selectTheme = (form, targetId) => {
 
 /** Content that is not part of any theme: a theme reset must never touch it. */
 export const CONTENT_KEYS = [
-  'logo', 'favicon', 'companyName', 'siteTitle', 'showCompanyName', 'logoMaxHeight',
+  'logo', 'favicon', 'companyName', 'siteTitle', 'showCompanyName', 'showCompanyNameWithLogo', 'logoMaxHeight', 'loaderImage', 'loaderBgColor',
   'homeFeatures', 'carouselEnabled', 'carouselAutoplaySpeed', 'carouselTransitionSpeed',
 ];
 

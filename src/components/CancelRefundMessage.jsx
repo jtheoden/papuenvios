@@ -15,7 +15,7 @@ const CancelRefundMessage = ({ question, noteKey }) => {
       <span className="block">{question}</span>
       <span className="block mt-3 text-sm">{t(noteKey, { days: REFUND_BUSINESS_DAYS })}</span>
       <span className="block mt-2 text-sm">
-        <a href={`${pageToPath('terms')}#refunds`} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+        <a href={`${pageToPath('terms')}#refunds`} target="_blank" rel="noopener noreferrer" className="text-theme-link underline">
           {t('remittances.user.cancelTermsLink')}
         </a>
         {' · '}

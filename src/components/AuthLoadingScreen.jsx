@@ -2,13 +2,17 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { buildLoadingTheme, readStoredVisualSettings } from '@/lib/loadingTheme';
+import BrandLogo from '@/components/BrandLogo';
+import { getLoaderConfig } from '@/lib/brandingDisplay';
 
 const AuthLoadingScreen = ({ loadingMessage }) => {
   const { t } = useLanguage();
   const reduceMotion = useReducedMotion();
   const defaultMessage = loadingMessage || t('auth.authenticating');
   // Rendered by AuthProvider, outside BusinessProvider: colours come from the settings the app cached.
-  const theme = useMemo(() => buildLoadingTheme(readStoredVisualSettings()), []);
+  const stored = useMemo(() => readStoredVisualSettings(), []);
+  const { image: loaderImage } = useMemo(() => getLoaderConfig(stored), [stored]);
+  const theme = useMemo(() => buildLoadingTheme(stored), [stored]);
   const [displayMessage, setDisplayMessage] = useState(defaultMessage);
   const [dotCount, setDotCount] = useState(0);
   // Mounted empty and filled after mount: screen readers announce text that CHANGES inside a live region, not text that is already there.
@@ -66,6 +70,9 @@ const AuthLoadingScreen = ({ loadingMessage }) => {
         className="p-8 rounded-2xl shadow-xl max-w-md bg-[color:var(--ld-card-bg)]"
       >
         <div className="flex flex-col items-center space-y-6">
+          {/* Loader image, else the cached site logo, else the company wordmark. */}
+          <BrandLogo settings={{ ...stored, logo: loaderImage }} maxHeightCap={48} className="text-xl" />
+
           {/* Spinner */}
           <div className="w-16 h-16 border-4 border-transparent border-t-[color:var(--ld-accent)] rounded-full animate-spin motion-reduce:animate-none" />
 

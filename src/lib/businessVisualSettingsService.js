@@ -6,6 +6,7 @@
 import { supabase, withTimeout } from '@/lib/supabase';
 import { NEW_KEY_DEFAULTS, BRAND_CSS_VARS, isHexColor, resolveLookId } from '@/lib/brandPalette';
 import { LOCAL_CACHE_KEY } from '@/lib/constants';
+import { normalizeBrandingSettings } from '@/lib/brandingDisplay';
 
 const CACHE_DURATION = 60 * 1000; // 1 minute cache
 // Startup waits for these settings (StartupGate), after auth's own cap: a hung query must not block the app.
@@ -177,7 +178,7 @@ const unverifiedSettings = new WeakSet();
 function settingsAfterFailure() {
   if (lastGoodSettings) return lastGoodSettings;
   const stale = getCachedSettings(true);
-  if (stale) return { ...DEFAULT_VISUAL_SETTINGS, ...stale };
+  if (stale) return { ...DEFAULT_VISUAL_SETTINGS, ...normalizeBrandingSettings(stale) };
   const fallback = { ...DEFAULT_VISUAL_SETTINGS };
   unverifiedSettings.add(fallback);
   return fallback;
@@ -187,13 +188,18 @@ function settingsAfterFailure() {
  * Set cached settings in localStorage
  */
 function setCachedSettings(settings) {
+  const write = (data) => localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify({ data, timestamp: Date.now() }));
   try {
-    localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify({
-      data: settings,
-      timestamp: Date.now()
-    }));
+    write(settings);
   } catch (err) {
     console.warn('[BusinessVisualSettings] Cache write error:', err);
+    // Quota is usually the base64 images: keep the rest cached; if that fails too, drop the entry rather than leave it stale.
+    try {
+      const { logo, loaderImage, ...light } = settings;
+      write(light);
+    } catch {
+      try { localStorage.removeItem(LOCAL_CACHE_KEY); } catch { /* storage unavailable: nothing else to do */ }
+    }
   }
 }
 
@@ -221,7 +227,7 @@ export async function loadVisualSettings({ onLateSettings, isCurrent = () => tru
     // Check cache first
     const cached = getCachedSettings();
     if (cached) {
-      lastGoodSettings = { ...DEFAULT_VISUAL_SETTINGS, ...cached };
+      lastGoodSettings = { ...DEFAULT_VISUAL_SETTINGS, ...normalizeBrandingSettings(cached) };
       lastGoodRevision = revision;
       return lastGoodSettings;
     }
@@ -240,7 +246,7 @@ export async function loadVisualSettings({ onLateSettings, isCurrent = () => tru
       if (timedOut && (!data?.settings || typeof data.settings !== 'object' || Array.isArray(data.settings))) {
         return settingsAfterFailure();
       }
-      const settings = { ...DEFAULT_VISUAL_SETTINGS, ...(data?.settings || {}) };
+      const settings = { ...DEFAULT_VISUAL_SETTINGS, ...normalizeBrandingSettings(data?.settings) };
       setCachedSettings(settings);
       lastGoodSettings = settings;
       lastGoodRevision = revision;
@@ -266,7 +272,8 @@ export async function loadVisualSettings({ onLateSettings, isCurrent = () => tru
  * @param {Object} settings - Visual settings object to save
  * @returns {Promise<{success: boolean, error?: string}>}
  */
-export async function saveVisualSettings(settings) {
+export async function saveVisualSettings(rawSettings) {
+  const settings = normalizeBrandingSettings(rawSettings);
   try {
     // First check if a row exists
     const { data: existing, error: fetchError } = await supabase

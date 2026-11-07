@@ -1,4 +1,5 @@
 import { BRAND_PALETTE, BRAND_PRESET, hex, resolveLookId } from '@/lib/brandPalette';
+import { getLoaderConfig } from '@/lib/brandingDisplay';
 import { LOCAL_CACHE_KEY } from '@/lib/constants';
 
 const { charcoal, warmGray } = BRAND_PALETTE;
@@ -25,7 +26,7 @@ export const readStoredVisualSettings = () => {
  * (it never honoured the stored colours); papuenvios paints the page, card and text from the settings. The accent is charcoal there: the brand gold is 1.97:1 on white,
  * too faint for a spinner. Only the secondary text moved from #9ca3af (2.5:1) to #6b7280 (4.83:1) for AA.
  */
-export const buildLoadingTheme = (s) => {
+const buildBaseLoadingTheme = (s) => {
   const settings = s ?? BRAND_PRESET;
   if (resolveLookId(settings) === 'classic') {
     return {
@@ -45,4 +46,14 @@ export const buildLoadingTheme = (s) => {
     '--ld-text': ink,
     '--ld-muted': hex(settings.mutedTextColor, warmGray),
   };
+};
+
+/**
+ * The look's loading colours, with the admin's optional loader background (a validated hex) painted over the page
+ * background. Unset => exactly the theme tokens above.
+ */
+export const buildLoadingTheme = (s) => {
+  const theme = buildBaseLoadingTheme(s);
+  const { bgColor } = getLoaderConfig(s);
+  return bgColor ? { ...theme, '--ld-bg': bgColor } : theme;
 };

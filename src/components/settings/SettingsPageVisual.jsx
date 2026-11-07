@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Palette, Upload, Plus, Trash2, Check, RefreshCw, Save, Eye, Image, ShoppingBag, ChevronDown, ChevronUp } from 'lucide-react';
+import { Palette, Upload, Plus, Trash2, Check, RefreshCw, Save, Eye, Image, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -9,7 +9,10 @@ import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { isImageUploadError, getImageUploadMessageKey } from '@/lib/imageStorage';
 import { clearVisualSettingsCache, saveVisualSettings, applyVisualSettingsToDOM } from '@/lib/businessVisualSettingsService';
-import { pickNewKeys, getContrastIssues } from '@/lib/brandPalette';
+import { pickNewKeys, getContrastIssues, isHexColor, toLongHex } from '@/lib/brandPalette';
+import { showNameWithLogo, getLoaderConfig } from '@/lib/brandingDisplay';
+import HeaderPreview from '@/components/settings/HeaderPreview';
+import LoaderPreview from '@/components/settings/LoaderPreview';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { THEME_IDS, THEME_PRESETS, resolveThemeId, pickThemeKeys, selectTheme, restoreThemeDefaults, getThemeDeviations } from '@/lib/visualThemes';
 import {
@@ -30,6 +33,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
   const originalSettings = useRef(null); // Store original settings for cancel functionality
   const [hasChanges, setHasChanges] = useState(false); // Track if there are unsaved changes
   const [presetUndo, setPresetUndo] = useState(null); // Form state before the brand preset, null when not applied
+  const [bgDraft, setBgDraft] = useState(null); // loader background text while typing; null = follow the form value
   const [resetOpen, setResetOpen] = useState(false); // Confirmation dialog of "Restore theme"
 
   const [appearance, setAppearance] = useState({
@@ -71,12 +75,15 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     pageBgColor: visualSettings.pageBgColor || '#f9fafb',
     cardBgColor: visualSettings.cardBgColor || '#ffffff',
     showCompanyName: visualSettings.showCompanyName !== undefined ? visualSettings.showCompanyName : true,
+    showCompanyNameWithLogo: showNameWithLogo(visualSettings),
+    loaderImage: visualSettings.loaderImage || '',
+    loaderBgColor: visualSettings.loaderBgColor || '',
     logoMaxHeight: visualSettings.logoMaxHeight || 40,
     // Header interaction states
     headerMenuHoverTextColor: visualSettings.headerMenuHoverTextColor || '#1f2937',
     headerMenuActiveBgColor: visualSettings.headerMenuActiveBgColor || '#eff6ff',
     useHeaderGradient: visualSettings.useHeaderGradient || false,
-    headerGradientColor: visualSettings.headerGradientColor || '#9333ea',
+    headerGradientColor: visualSettings.headerGradientColor || '',
     // Semantic status colors
     successColor: visualSettings.successColor || '#10b981',
     warningColor: visualSettings.warningColor || '#f59e0b',
@@ -167,6 +174,9 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       pageBgColor: visualSettings.pageBgColor || '#f9fafb',
       cardBgColor: visualSettings.cardBgColor || '#ffffff',
       showCompanyName: visualSettings.showCompanyName !== undefined ? visualSettings.showCompanyName : true,
+      showCompanyNameWithLogo: showNameWithLogo(visualSettings),
+      loaderImage: visualSettings.loaderImage || '',
+      loaderBgColor: visualSettings.loaderBgColor || '',
       logoMaxHeight: visualSettings.logoMaxHeight || 40,
       // Nav bar active item
       navBarActiveBgColor: visualSettings.navBarActiveBgColor || '#2563eb',
@@ -175,7 +185,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       headerMenuHoverTextColor: visualSettings.headerMenuHoverTextColor || '#1f2937',
       headerMenuActiveBgColor: visualSettings.headerMenuActiveBgColor || '#eff6ff',
       useHeaderGradient: visualSettings.useHeaderGradient || false,
-      headerGradientColor: visualSettings.headerGradientColor || '#9333ea',
+      headerGradientColor: visualSettings.headerGradientColor || '',
       // Semantic status colors
       successColor: visualSettings.successColor || '#10b981',
       warningColor: visualSettings.warningColor || '#f59e0b',
@@ -216,10 +226,10 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
   const themeDeviations = getThemeDeviations(appearance); // preset colours edited by hand
 
   // Update appearance with live preview
-  const updateAppearance = useCallback((key, value) => {
+  const patchAppearance = useCallback((patch) => {
     isUserEditing.current = true;
     setHasChanges(true);
-    const newAppearance = { ...appearance, [key]: value };
+    const newAppearance = { ...appearance, ...patch };
     setAppearance(newAppearance);
 
     // Apply live preview to the entire system (never while a theme choice is unsaved: it would persist it)
@@ -230,6 +240,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     // Reset editing flag after a delay
     setTimeout(() => { isUserEditing.current = false; }, 1000);
   }, [appearance, visualSettings, setVisualSettings, livePreview, themePending]);
+  const updateAppearance = useCallback((key, value) => patchAppearance({ [key]: value }), [patchAppearance]);
 
   // Theme selector: fills the FORM only. Live preview goes off (and stays locked while the choice is
   // unsaved) because updateAppearance would otherwise persist the whole form on the next edit.
@@ -285,6 +296,46 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
         variant: 'destructive',
       });
     }
+  };
+
+  // Initial loading screen image: same validation and processing as the logo upload.
+  const handleLoaderImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    try {
+      const result = await validateAndProcessImage(file, 'logo');
+      if (!result.success) {
+        toast({
+          title: t('settings.visual.validationError'),
+          description: result.errors.join('\n'),
+          variant: 'destructive',
+        });
+        return;
+      }
+      patchAppearance({ loaderImage: result.base64 });
+      toast({ title: t('settings.visual.loader.imageUploaded') });
+    } catch (error) {
+      console.error('Error processing loader image:', error);
+      toast({
+        title: t('settings.visual.errorProcessingImage'),
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Only a strict hex colour (or empty = theme background) reaches the form; anything else just shows the error.
+  const handleLoaderBgChange = (value) => {
+    setBgDraft(value);
+    if (value === '' || isHexColor(value)) patchAppearance({ loaderBgColor: value });
+  };
+
+  const handleResetLoader = () => {
+    patchAppearance({ loaderImage: '', loaderBgColor: '' });
+    setBgDraft(null);
+    toast({ title: t('settings.visual.loader.resetDone') });
   };
 
   const handleFaviconUpload = async (e) => {
@@ -785,7 +836,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
                   step="2"
                   value={appearance.logoMaxHeight}
                   onChange={e => updateAppearance('logoMaxHeight', parseInt(e.target.value))}
-                  className="w-full accent-blue-600"
+                  className="w-full"
                 />
                 <div className="flex justify-between text-xs text-gray-400 mt-1">
                   <span>24px</span>
@@ -824,6 +875,18 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
               onChange={e => updateAppearance('companyName', e.target.value)}
               className="input-style w-full"
             />
+            <label className="flex items-center gap-2 mt-2">
+              <input
+                type="checkbox"
+                checked={appearance.showCompanyNameWithLogo}
+                disabled={!appearance.logo}
+                onChange={e => updateAppearance('showCompanyNameWithLogo', e.target.checked)}
+                aria-describedby="company-name-with-logo-hint"
+                className="rounded"
+              />
+              <span className="text-sm font-medium">{t('settings.visual.showCompanyNameWithLogo')}</span>
+            </label>
+            <p id="company-name-with-logo-hint" className="text-xs text-gray-500 mt-1">{t('settings.visual.showCompanyNameWithLogoHint')}</p>
           </div>
           <div>
             <label className="block text-sm font-medium mb-2">
@@ -839,56 +902,87 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
           </div>
         </div>
 
-        {/* Header Preview Mockup */}
+        {/* Header preview: same brand block and colour computation as the real Header (unsaved form state) */}
         <div className="mb-6">
           <label className="flex items-center gap-2 text-sm font-medium mb-3 text-gray-700">
             <Eye className="h-4 w-4" />
             {t('settings.visual.headerPreview')}
           </label>
-          <div
-            className="rounded-xl border border-gray-200 shadow-sm overflow-hidden"
-            style={{ backgroundColor: appearance.headerBgColor }}
-          >
-            <div className="flex items-center gap-2 px-4 py-3">
-              {logoPreview ? (
-                <img
-                  src={logoPreview}
-                  alt="Logo"
-                  className="object-contain flex-shrink-0"
-                  style={{ maxHeight: `${appearance.logoMaxHeight}px`, width: 'auto' }}
-                />
-              ) : (
-                <div
-                  className="rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{
-                    width: `${Math.min(appearance.logoMaxHeight, 32)}px`,
-                    height: `${Math.min(appearance.logoMaxHeight, 32)}px`,
-                    background: appearance.useGradient
-                      ? `linear-gradient(to right, ${appearance.primaryColor}, ${appearance.secondaryColor})`
-                      : appearance.primaryColor
-                  }}
-                >
-                  <ShoppingBag className="w-4 h-4 text-white" />
+          <HeaderPreview settings={{ ...visualSettings, ...appearance }} />
+        </div>
+
+        {/* Initial loading screen: optional image and background; unset => theme tokens, site logo, wordmark */}
+        <section aria-label={t('settings.visual.loader.title')} className="mb-8 p-4 bg-gray-50/50 rounded-xl border border-gray-100">
+          <div className="flex flex-wrap items-start justify-between gap-2 mb-1">
+            <h3 className="text-lg font-semibold text-gray-800">{t('settings.visual.loader.title')}</h3>
+            <Button type="button" variant="outline" size="sm" onClick={handleResetLoader}>
+              <RefreshCw className="h-4 w-4 mr-1" />
+              {t('settings.visual.loader.reset')}
+            </Button>
+          </div>
+          <p className="text-sm text-gray-600 mb-4">{t('settings.visual.loader.description')}</p>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div>
+                <span className="block text-sm font-medium mb-2">{t('settings.visual.loader.image')}</span>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                    <Upload className="h-4 w-4" />
+                    <span>{t('settings.visual.loader.uploadImage')}</span>
+                    <input type="file" accept="image/png,image/svg+xml,image/webp" data-testid="loader-image-input" onChange={handleLoaderImageUpload} className="hidden" />
+                  </label>
+                  {appearance.loaderImage && (
+                    <button
+                      type="button"
+                      onClick={() => patchAppearance({ loaderImage: '' })}
+                      className="flex items-center gap-1 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {t('settings.visual.loader.removeImage')}
+                    </button>
+                  )}
                 </div>
-              )}
-              {appearance.showCompanyName && (
-                <span
-                  className="text-lg font-bold truncate"
-                  style={{
-                    backgroundImage: appearance.useGradient
-                      ? `linear-gradient(to right, ${appearance.primaryColor}, ${appearance.secondaryColor})`
-                      : `linear-gradient(to right, ${appearance.primaryColor}, ${appearance.primaryColor})`,
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                    backgroundClip: 'text'
-                  }}
-                >
-                  {appearance.companyName || 'PapuEnvíos'}
-                </span>
-              )}
+                <p className="text-xs text-gray-500 mt-2">{t('settings.visual.loader.imageHint')}</p>
+                {!appearance.loaderImage && (
+                  <p className="text-xs text-gray-600 mt-1">
+                    {t(appearance.logo ? 'settings.visual.loader.usingLogo' : 'settings.visual.loader.usingWordmark')}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label htmlFor="loader-bg-color" className="block text-sm font-medium mb-2">{t('settings.visual.loader.bgColor')}</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="loader-bg-color"
+                    type="text"
+                    inputMode="text"
+                    maxLength={7}
+                    placeholder={t('settings.visual.loader.usingThemeBg')}
+                    value={bgDraft !== null ? bgDraft : appearance.loaderBgColor}
+                    onChange={e => handleLoaderBgChange(e.target.value.trim())}
+                    aria-invalid={bgDraft !== null && bgDraft !== '' && !isHexColor(bgDraft)}
+                    className="input-style w-40"
+                  />
+                  <input
+                    type="color"
+                    aria-label={t('settings.visual.loader.bgColorPicker')}
+                    value={isHexColor(appearance.loaderBgColor) ? toLongHex(appearance.loaderBgColor) : '#ffffff'}
+                    onChange={e => handleLoaderBgChange(e.target.value)}
+                    className="w-10 h-9 rounded cursor-pointer border border-gray-300"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">{t('settings.visual.loader.bgColorHint')}</p>
+                {bgDraft !== null && bgDraft !== '' && !isHexColor(bgDraft) && (
+                  <p role="alert" className="text-xs text-red-600 mt-1">{t('settings.visual.loader.bgColorInvalid')}</p>
+                )}
+              </div>
+            </div>
+            <div>
+              <span className="block text-sm font-medium mb-2">{t('settings.visual.loader.preview')}</span>
+              <LoaderPreview settings={{ ...visualSettings, ...appearance }} />
             </div>
           </div>
-        </div>
+        </section>
 
         {/* ═══════════════════════════════════════════════════════════ */}
         {/* SECTION 1: Brand & Global Colors                           */}
@@ -927,7 +1021,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
               {t('settings.visual.gradientAngle')}: {appearance.gradientDirection}°
             </label>
             <div className="flex items-center gap-3">
-              <input type="range" min="0" max="360" step="5" value={appearance.gradientDirection} onChange={e => updateAppearance('gradientDirection', e.target.value)} className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+              <input type="range" min="0" max="360" step="5" value={appearance.gradientDirection} onChange={e => updateAppearance('gradientDirection', e.target.value)} className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
               <div className="w-9 h-9 rounded-lg flex-shrink-0 border border-gray-200" style={{ background: `linear-gradient(${appearance.gradientDirection}deg, ${appearance.primaryColor}, ${appearance.secondaryColor})` }} />
             </div>
             <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
@@ -996,52 +1090,14 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
             {appearance.useHeaderGradient && (
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500">{t('settings.visual.gradientEndColor')}</label>
-                <input type="color" value={appearance.headerGradientColor} onChange={e => updateAppearance('headerGradientColor', e.target.value)} className="w-10 h-8 rounded cursor-pointer border border-gray-300" />
+                <input type="color" value={toLongHex(isHexColor(appearance.headerGradientColor) ? appearance.headerGradientColor : appearance.navBarActiveBgColor)} onChange={e => updateAppearance('headerGradientColor', e.target.value)} className="w-10 h-8 rounded cursor-pointer border border-gray-300" />
               </div>
             )}
           </div>
-          {/* Header interactive preview */}
+          {/* Header interactive preview: the real Header's brand block and colours for the unsaved form state */}
           <div className="p-3 bg-white rounded-lg border border-gray-200">
             <p className="text-xs text-gray-500 mb-2">{t('settings.visual.headerPreview')}</p>
-            <div className="rounded-lg overflow-hidden" style={{ backgroundColor: appearance.headerBgColor }}>
-              <div className="flex items-center gap-2 px-3 py-2">
-                <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: appearance.useGradient ? `linear-gradient(${appearance.gradientDirection}deg, ${appearance.primaryColor}, ${appearance.secondaryColor})` : appearance.primaryColor }}>
-                  <ShoppingBag className="w-3 h-3 text-white" />
-                </div>
-                {appearance.showCompanyName && (
-                  <span className="text-sm font-bold" style={{ backgroundImage: appearance.useGradient ? `linear-gradient(${appearance.gradientDirection}deg, ${appearance.primaryColor}, ${appearance.secondaryColor})` : `linear-gradient(0deg, ${appearance.primaryColor}, ${appearance.primaryColor})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
-                    {appearance.companyName || 'PapuEnvíos'}
-                  </span>
-                )}
-                <div className="flex-1" />
-                <div className="flex gap-1">
-                  {['Home', 'Products', 'Admin'].map((label, i) => {
-                    const isActive = i === 2;
-                    const dir = appearance.gradientDirection || 135;
-                    const navActiveBg = appearance.navBarActiveBgColor || appearance.primaryColor;
-                    const navActiveText = appearance.navBarActiveTextColor || '#ffffff';
-                    const useNavGradient = appearance.useHeaderGradient || appearance.useGradient;
-                    const navGradientEnd = appearance.headerGradientColor || appearance.secondaryColor;
-                    return (
-                      <span
-                        key={label}
-                        className="px-2.5 py-1 rounded-md text-xs font-medium cursor-default transition-colors"
-                        style={isActive ? {
-                          background: useNavGradient
-                            ? `linear-gradient(${dir}deg, ${navActiveBg}, ${navGradientEnd})`
-                            : navActiveBg,
-                          color: navActiveText
-                        } : { color: appearance.headerTextColor }}
-                        onMouseEnter={e => { if (!isActive) { e.currentTarget.style.backgroundColor = appearance.headerMenuHoverBgColor; e.currentTarget.style.color = appearance.headerMenuHoverTextColor; }}}
-                        onMouseLeave={e => { if (!isActive) { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = appearance.headerTextColor; }}}
-                      >
-                        {label}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
+            <HeaderPreview settings={{ ...visualSettings, ...appearance }} />
           </div>
         </div>
 
@@ -1446,7 +1502,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
                   step={500}
                   value={appearance.carouselAutoplaySpeed}
                   onChange={e => updateAppearance('carouselAutoplaySpeed', parseInt(e.target.value))}
-                  className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                 />
                 <span className="text-sm font-semibold text-gray-700 min-w-[3rem] text-right">
                   {(appearance.carouselAutoplaySpeed / 1000).toFixed(1)}s
@@ -1467,7 +1523,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
                   step={100}
                   value={appearance.carouselTransitionSpeed}
                   onChange={e => updateAppearance('carouselTransitionSpeed', parseInt(e.target.value))}
-                  className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                 />
                 <span className="text-sm font-semibold text-gray-700 min-w-[3rem] text-right">
                   {(appearance.carouselTransitionSpeed / 1000).toFixed(1)}s
