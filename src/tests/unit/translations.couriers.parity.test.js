@@ -44,10 +44,18 @@ describe('courier translations', () => {
   });
 
   it('defines every dynamic key family (methods, bases, statuses, errors, report columns)', () => {
-    ['fixed_cup', 'per_usd_delivered', 'percent_of_base'].forEach((m) => {
+    ['fixed_amount', 'fixed_cup', 'per_usd_delivered', 'percent_of_base'].forEach((m) => {
       expect(get(ES, `couriers.types.methods.${m}`)).toBeTruthy();
       expect(get(ES, `couriers.types.summary.${m}`)).toBeTruthy();
     });
+    ['none', 'gt', 'lte', 'between'].forEach((op) => expect(get(ES, `couriers.types.rangeOps.${op}`)).toBeTruthy());
+    ['any', 'gt', 'lte', 'between'].forEach((r) => expect(get(EN, `couriers.types.range.${r}`)).toBeTruthy());
+    ['no_rule', 'no_amount_basis', 'no_fx', 'no_tier_match'].forEach((r) => expect(get(ES, `couriers.simulator.reasons.${r}`)).toBeTruthy());
+  });
+
+  it('the range help names the comparison currency and the exact boundary rule in both languages', () => {
+    expect(get(ES, 'couriers.types.rangeHelp')).toBe('Los rangos se comparan en {currency} con 2 decimales. "Más de X" no incluye X; "Hasta Y" sí incluye Y. Para encadenar rangos sin huecos ni solapes, empiece cada rango donde terminó el anterior: hasta 100 → más de 100 y hasta 200 → más de 200.');
+    expect(get(EN, 'couriers.types.rangeHelp')).toMatch(/\{currency\}.*"More than X" does not include X; "Up to Y" does include Y/);
     ['ok', 'warning', 'critical', 'unknown'].forEach((s) => expect(get(ES, `couriers.margin.${s}`)).toBeTruthy());
     ['critical', 'warning', 'unknown', 'unknownAmount'].forEach((s) => expect(get(ES, `dashboard.courierMargin.${s}`)).toBeTruthy());
     ['order', 'remittance'].forEach((k) => expect(get(ES, `couriers.common.kind.${k}`)).toBeTruthy());

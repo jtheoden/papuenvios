@@ -101,10 +101,12 @@ describe('payment type form and simulator', () => {
     const form = await openForm();
     fireEvent.change(within(form).getByLabelText('couriers.types.code'), { target: { value: 'my-rule' } });
     fireEvent.change(within(form).getByLabelText('couriers.types.name'), { target: { value: 'My rule' } });
-    fireEvent.change(within(form).getByLabelText('couriers.types.fixedCup'), { target: { value: '321' } });
+    fireEvent.change(within(form).getByLabelText('couriers.types.fixedAmount'), { target: { value: '321' } });
     fireEvent.click(within(form).getByRole('button', { name: 'couriers.common.save' }));
     await waitFor(() => expect(svc.setPaymentType).toHaveBeenCalled());
-    expect(svc.setPaymentType.mock.calls[0][0]).toMatchObject({ p_code: 'my-rule', p_method: 'fixed_cup', p_fixed_cup: 321, p_percent: null });
+    expect(svc.setPaymentType.mock.calls[0][0]).toMatchObject({
+      p_code: 'my-rule', p_method: 'fixed_amount', p_fixed_amount: 321, p_currency: 'USD', p_fixed_cup: null, p_percent: null, p_accept_gaps: false
+    });
   });
 
   it('shows a typed error for an overlapping rule', async () => {
@@ -112,7 +114,7 @@ describe('payment type form and simulator', () => {
     const form = await openForm();
     fireEvent.change(within(form).getByLabelText('couriers.types.code'), { target: { value: 'r' } });
     fireEvent.change(within(form).getByLabelText('couriers.types.name'), { target: { value: 'R' } });
-    fireEvent.change(within(form).getByLabelText('couriers.types.fixedCup'), { target: { value: '1' } });
+    fireEvent.change(within(form).getByLabelText('couriers.types.fixedAmount'), { target: { value: '1' } });
     fireEvent.click(within(form).getByRole('button', { name: 'couriers.common.save' }));
     expect(await screen.findByText('couriers.errors.overlap')).toBeTruthy();
   });
@@ -121,7 +123,8 @@ describe('payment type form and simulator', () => {
     const form = await openForm();
     fireEvent.change(within(form).getByLabelText('couriers.types.code'), { target: { value: 'r' } });
     fireEvent.change(within(form).getByLabelText('couriers.types.name'), { target: { value: 'R' } });
-    fireEvent.change(within(form).getByLabelText('couriers.types.fixedCup'), { target: { value: '120' } });
+    fireEvent.change(within(form).getByLabelText('couriers.types.currency'), { target: { value: 'CUP' } });
+    fireEvent.change(within(form).getByLabelText('couriers.types.fixedAmount'), { target: { value: '120' } });
     await waitFor(() => expect(svc.getMarginSettings).toHaveBeenCalled());
     fireEvent.change(within(form).getByLabelText('couriers.simulator.sent'), { target: { value: '100' } });
     fireEvent.change(within(form).getByLabelText('couriers.simulator.commission'), { target: { value: '4' } });
@@ -130,6 +133,145 @@ describe('payment type form and simulator', () => {
     const status = await within(form).findByTestId('simulator-status');
     expect(status.textContent).toContain('couriers.margin.critical');
     expect(status.textContent).toContain('couriers.simulator.belowCritical');
+  });
+});
+
+describe('payment type form: currency, range operators, overlaps and gaps (phase A)', () => {
+  const row = (o) => ({ id: o.code, version: 1, name: o.code, is_active: true, valid_from: '2026-10-01T00:00:00Z', valid_to: null,
+    applies_to: 'remittance', method: 'fixed_amount', fixed_amount: '5.00', fixed_cup: null, cup_per_usd: null, percent: null, base: null,
+    currency: 'USD', courier_id: null, shipping_zone_id: null, remittance_type_id: null, amount_from: null, amount_to: null, ...o });
+  const LADDER = [row({ code: 'R1', amount_to: '100.00' }), row({ code: 'R3', amount_from: '200.00' })];
+  const openForm = async (items = []) => {
+    svc.listPaymentTypes.mockResolvedValue({ available: true, items });
+    render(<SettingsCouriersTab />);
+    await screen.findByRole('tablist');
+    goTab('couriers.tabs.types');
+    fireEvent.click(await screen.findByRole('button', { name: 'couriers.types.add' }));
+    const form = await screen.findByRole('form', { name: 'couriers.types.formTitle' });
+    const set = (label, value) => fireEvent.change(within(form).getByLabelText(label), { target: { value } });
+    set('couriers.types.code', 'R2');
+    set('couriers.types.name', 'R2');
+    set('couriers.types.fixedAmount', '5');
+    return { form, set, save: () => fireEvent.click(within(form).getByRole('button', { name: 'couriers.common.save' })) };
+  };
+
+  it('saves a fixed amount in CUP; the help text names the comparison currency', async () => {
+    svc.setPaymentType.mockResolvedValue('id');
+    const { form, set, save } = await openForm();
+    set('couriers.types.currency', 'CUP');
+    expect(within(form).getByText('couriers.types.rangeHelp:{"currency":"CUP"}')).toBeTruthy();
+    save();
+    await waitFor(() => expect(svc.setPaymentType).toHaveBeenCalled());
+    expect(svc.setPaymentType.mock.calls[0][0]).toMatchObject({ p_method: 'fixed_amount', p_fixed_amount: 5, p_currency: 'CUP', p_amount_from: null, p_amount_to: null });
+  });
+
+  it('an operator replaces from/to: "more than X and up to Y" needs X < Y and maps to (X, Y]', async () => {
+    svc.setPaymentType.mockResolvedValue('id');
+    const { form, set, save } = await openForm();
+    expect(within(form).queryByLabelText('couriers.types.rangeX')).toBeNull();
+    set('couriers.types.rangeOp', 'between');
+    set('couriers.types.rangeX', '200');
+    set('couriers.types.rangeY', '100');
+    save();
+    expect(await within(form).findByText('couriers.validation.tierOrder')).toBeTruthy();
+    set('couriers.types.rangeY', '100.005');
+    save();
+    expect(await within(form).findByText('couriers.validation.money')).toBeTruthy();
+    expect(svc.setPaymentType).not.toHaveBeenCalled();
+    set('couriers.types.rangeX', '100');
+    set('couriers.types.rangeY', '200');
+    // alone in its scope, (100, 200] leaves [0, 100] and (200, inf) open: confirmed explicitly
+    fireEvent.click(within(form).getByRole('checkbox', { name: 'couriers.types.acceptGaps' }));
+    save();
+    await waitFor(() => expect(svc.setPaymentType).toHaveBeenCalled());
+    expect(svc.setPaymentType.mock.calls[0][0]).toMatchObject({ p_amount_from: 100, p_amount_to: 200, p_accept_gaps: true });
+  });
+
+  it('a gap needs an explicit confirmation (announced in a live region) before saving with p_accept_gaps', async () => {
+    svc.setPaymentType.mockResolvedValue('id');
+    const { form, set, save } = await openForm(LADDER);
+    set('couriers.types.rangeOp', 'between');
+    set('couriers.types.rangeX', '100.01');
+    set('couriers.types.rangeY', '200');
+    const warning = await within(form).findByTestId('range-gap-warning');
+    expect(warning.closest('[aria-live]')).toBeTruthy();
+    expect(warning.textContent).toContain('couriers.types.range.between:{"x":"100.00","y":"100.01","currency":"USD"}');
+    save();
+    expect(await within(form).findByText('couriers.types.acceptGapsRequired')).toBeTruthy();
+    expect(svc.setPaymentType).not.toHaveBeenCalled();
+    fireEvent.click(within(form).getByRole('checkbox', { name: 'couriers.types.acceptGaps' }));
+    save();
+    await waitFor(() => expect(svc.setPaymentType).toHaveBeenCalled());
+    expect(svc.setPaymentType.mock.calls[0][0]).toMatchObject({ p_amount_from: 100.01, p_amount_to: 200, p_accept_gaps: true });
+  });
+
+  it('one live region per message: notices inside an aria-live container carry no role of their own (no double announcement)', async () => {
+    const { form, set, save } = await openForm(LADDER);
+    set('couriers.types.rangeOp', 'between');
+    set('couriers.types.rangeX', '100.01');
+    set('couriers.types.rangeY', '200');
+    save();
+    expect(await within(form).findByText('couriers.types.acceptGapsRequired')).toBeTruthy();
+    expect(within(form).getByTestId('range-gap-warning')).toBeTruthy();
+    const nested = form.querySelectorAll('[aria-live] [role="status"], [aria-live] [role="alert"], [aria-live] [aria-live]');
+    expect(nested).toHaveLength(0);
+  });
+
+  it('the reference ladder closes every gap: no warning, saved without confirmation', async () => {
+    svc.setPaymentType.mockResolvedValue('id');
+    const { form, set, save } = await openForm(LADDER);
+    set('couriers.types.rangeOp', 'between');
+    set('couriers.types.rangeX', '100');
+    set('couriers.types.rangeY', '200');
+    expect(within(form).queryByTestId('range-gap-warning')).toBeNull();
+    save();
+    await waitFor(() => expect(svc.setPaymentType).toHaveBeenCalled());
+  });
+
+  it('an overlap or another currency in the ladder is blocked in the form (the RPC is never called)', async () => {
+    const { form, set, save } = await openForm(LADDER);
+    set('couriers.types.rangeOp', 'between');
+    set('couriers.types.rangeX', '99.99');
+    set('couriers.types.rangeY', '200');
+    save();
+    expect(await within(form).findByText('couriers.errors.overlap')).toBeTruthy();
+    set('couriers.types.rangeX', '100');
+    set('couriers.types.currency', 'CUP');
+    save();
+    expect(await within(form).findByText('couriers.errors.mixedCurrency')).toBeTruthy();
+    expect(svc.setPaymentType).not.toHaveBeenCalled();
+  });
+
+  it('a coverage_gap refusal of the server shows its gaps and the confirmation; confirming resends with p_accept_gaps', async () => {
+    // the form sees a closed ladder, the server (validity windows) still finds a gap
+    const details = '{"currency":"USD","gaps":[{"kind":"remittance","from":200,"to":null}]}';
+    svc.setPaymentType.mockRejectedValueOnce(Object.assign(new Error('coverage_gap: x'), { i18nKey: 'couriers.errors.coverageGap', details }))
+      .mockResolvedValueOnce('id');
+    const { form, set, save } = await openForm(LADDER);
+    set('couriers.types.rangeOp', 'between');
+    set('couriers.types.rangeX', '100');
+    set('couriers.types.rangeY', '200');
+    save();
+    const warning = await within(form).findByTestId('range-gap-warning');
+    expect(warning.textContent).toContain('couriers.types.range.gt:{"x":"200.00","currency":"USD"}');
+    expect(within(form).getByText('couriers.errors.coverageGap')).toBeTruthy();
+    fireEvent.click(within(form).getByRole('checkbox', { name: 'couriers.types.acceptGaps' }));
+    save();
+    await waitFor(() => expect(svc.setPaymentType).toHaveBeenCalledTimes(2));
+    expect(svc.setPaymentType.mock.calls[0][0].p_accept_gaps).toBe(false);
+    expect(svc.setPaymentType.mock.calls[1][0].p_accept_gaps).toBe(true);
+  });
+
+  it('percent of the nominal USD is offered for orders (base = order subtotal)', async () => {
+    svc.setPaymentType.mockResolvedValue('id');
+    const { set, save } = await openForm();
+    set('couriers.types.appliesTo', 'order');
+    set('couriers.types.method', 'percent_of_base');
+    set('couriers.types.percent', '2');
+    set('couriers.types.base', 'nominal_usd');
+    save();
+    await waitFor(() => expect(svc.setPaymentType).toHaveBeenCalled());
+    expect(svc.setPaymentType.mock.calls[0][0]).toMatchObject({ p_applies_to: 'order', p_method: 'percent_of_base', p_base: 'nominal_usd', p_percent: 2 });
   });
 });
 

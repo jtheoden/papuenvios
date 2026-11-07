@@ -313,11 +313,11 @@ describeDb('M3: payments and report (local Postgres)', () => {
         await admin.query('ROLLBACK');
       }
     });
-    it('M3 -> M2 -> M1 in reverse order leaves none of the courier objects', async () => {
+    it('A -> M3 -> M2 -> M1 in reverse order leaves none of the courier objects', async () => {
       await admin.query('BEGIN');
       try {
         await admin.query(`SET LOCAL app.confirm_courier_rollback = 'yes'`);
-        for (const k of ['m3', 'm2', 'm1']) await admin.query(readSql(ROLLBACKS[k]).replace(/^\s*(BEGIN|COMMIT);\s*$/gm, ''));
+        for (const k of ['a', 'm3', 'm2', 'm1']) await admin.query(readSql(ROLLBACKS[k]).replace(/^\s*(BEGIN|COMMIT);\s*$/gm, ''));
         const { rows } = await admin.query(
           `SELECT count(*)::int AS n FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = 'public' AND c.relname IN ('couriers','messenger_payment_types','courier_margin_settings','delivery_assignments','courier_accruals','courier_payments','v_effective_courier_cost')`);

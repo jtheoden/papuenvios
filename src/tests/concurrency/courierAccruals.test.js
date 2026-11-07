@@ -103,7 +103,8 @@ describeDb('M2: assignments, accruals, effective cost (local Postgres)', () => {
       for (const r of b) expect({ a: r.anon, u: r.auth }).toEqual({ a: false, u: false });
     });
     it('EVERY internal and trigger function of the module is unreachable for anon, authenticated and service_role (catalog check)', async () => {
-      const internals = ['_courier_require_admin', '_courier_audit', '_courier_rule_resolve', '_operation_margin',
+      const internals = ['_courier_require_admin', '_courier_audit', '_courier_rule_resolve', '_courier_rule_resolve_v2',
+        '_courier_rule_coverage', '_operation_margin',
         '_courier_compute_accrual', '_courier_create_accrual', '_courier_accrue_on_delivered',
         'messenger_payment_types_guard', 'courier_payments_immutable'];
       const { rows } = await admin.query(
@@ -316,6 +317,228 @@ describeDb('M2: assignments, accruals, effective cost (local Postgres)', () => {
       await kit.deliverRemittance(b);
       expect((await one(a)).amount_cup).toBe('300.00');
       expect((await one(b)).amount_cup).toBe('100.00');
+    });
+  });
+
+  describe('phase A: fixed amount in USD/CUP, percent of the order subtotal, ranges in the rule currency', () => {
+    // remittance: S=100 USD, own frozen rate 810; order: subtotal 10 (USD). Live USD->CUP rate only when seeded.
+    const fixed = (o) => ({ method: 'fixed_amount', fixed_cup: null, fixed_amount: 5, ...o });
+    const deliverRem = async (remOpts = {}) => {
+      const id = await rem(remOpts);
+      const r = (await kit.deliverRemittance(id))[0];
+      expect(r.status).toBe('delivered'); // accounting never blocks the delivery
+      return one(id);
+    };
+    const deliverOrd = async () => {
+      const id = await kit.seedDispatchedOrder();
+      await kit.deliverOrder(id);
+      return one(id);
+    };
+    const withCupUsdRow = async (fn) => {
+      // an active CUP->USD row (production has one): it must NEVER be used as the USD->CUP rate
+      const cur = (await admin.query(`SELECT (SELECT id FROM public.currencies WHERE code='CUP') AS cup, (SELECT id FROM public.currencies WHERE code='USD') AS usd`)).rows[0];
+      await admin.query(`UPDATE public.exchange_rates SET is_active = false WHERE from_currency_id = $1 AND to_currency_id = $2`, [cur.cup, cur.usd]);
+      const { rows } = await admin.query(
+        `INSERT INTO public.exchange_rates (from_currency_id, to_currency_id, rate, is_active, effective_date) VALUES ($1,$2,0.0012,true,CURRENT_DATE) RETURNING id`,
+        [cur.cup, cur.usd]);
+      try {
+        return await fn();
+      } finally {
+        await admin.query('DELETE FROM public.exchange_rates WHERE id = $1', [rows[0].id]);
+      }
+    };
+
+    it('fixed amount in CUP: amount_cup = fixed, usd at the remittance rate (like fixed_cup)', async () => {
+      await kit.setRule(await adminClient(), fixed({ currency: 'CUP', fixed_amount: 250 }));
+      const a = await deliverRem();
+      expect(a).toMatchObject({ amount_cup: '250.00', fx_used: '810.000000', amount_usd: '0.31' });
+      expect(a.rule_snapshot).toMatchObject({ method: 'fixed_amount', rule: { currency: 'CUP', fixed_amount: 250 } });
+    });
+
+    it('fixed amount in USD is converted to CUP with the LIVE USD->CUP rate at delivery; amount_usd is the fixed figure', async () => {
+      await kit.seedUsdCupRate(830);
+      await kit.setRule(await adminClient(), fixed({ fixed_amount: 2, applies_to: 'both' }));
+      const a = await deliverRem();
+      expect(a).toMatchObject({ amount_cup: '1660.00', fx_used: '830.000000', amount_usd: '2.00' });
+      expect(a.rule_snapshot).toMatchObject({ fx_source: 'exchange_rates', method: 'fixed_amount' });
+      const o = await deliverOrd();
+      expect(o).toMatchObject({ amount_cup: '1660.00', fx_used: '830.000000', amount_usd: '2.00' });
+    });
+
+    it('fixed amount in USD without a live rate fails CLOSED: amount NULL, reason no_fx (never 1.0, never the remittance rate)', async () => {
+      await kit.setRule(await adminClient(), fixed({ fixed_amount: 2, applies_to: 'both' }));
+      await withCupUsdRow(async () => {
+        const a = await deliverRem();
+        expect(a).toMatchObject({ amount_cup: null, amount_usd: null, status: 'calculated' });
+        expect(a.rule_id).not.toBeNull();
+        expect(a.rule_snapshot.reason).toBe('no_fx');
+        const o = await deliverOrd();
+        expect(o).toMatchObject({ amount_cup: null, amount_usd: null });
+        expect(o.rule_snapshot.reason).toBe('no_fx');
+      });
+    });
+
+    it('orders: percent of the nominal USD subtotal, converted with the live rate; no rate => no_fx', async () => {
+      await kit.setRule(await adminClient(), { applies_to: 'order', method: 'percent_of_base', fixed_cup: null, percent: 10, base: 'nominal_usd' });
+      const none = await deliverOrd();
+      expect(none).toMatchObject({ amount_cup: null, amount_usd: null });
+      expect(none.rule_snapshot.reason).toBe('no_fx');
+      await kit.seedUsdCupRate(830);
+      const o = await deliverOrd();
+      expect(o).toMatchObject({ amount_cup: '830.00', fx_used: '830.000000', amount_usd: '1.00' });
+      expect(o.rule_snapshot.inputs).toMatchObject({ amount_sent: 10, currency_sent: 'USD' });
+    });
+
+    it('orders: the range compares the USD subtotal (a,b] (USD ranges need no rate; amounts here are fixed CUP)', async () => {
+      const c = await adminClient();
+      await kit.setRule(c, { code: 'lo', applies_to: 'order', fixed_cup: 100, amount_to: 10 });
+      await kit.setRule(c, { code: 'hi', applies_to: 'order', fixed_cup: 200, amount_from: 10 });
+      expect((await deliverOrd()).amount_cup).toBe('100.00'); // subtotal 10 is in (.., 10]
+      for (const code of ['lo', 'hi']) await kit.call(c, 'admin_deactivate_messenger_payment_type', [code]);
+      await kit.setRule(c, { code: 'lo2', applies_to: 'order', fixed_cup: 100, amount_to: 9.99 });
+      await kit.setRule(c, { code: 'hi2', applies_to: 'order', fixed_cup: 200, amount_from: 9.99 });
+      expect((await deliverOrd()).amount_cup).toBe('200.00');
+    });
+
+    it('orders: a CUP range on the USD subtotal without a live rate is no_fx (fail closed)', async () => {
+      await kit.setRule(await adminClient(), fixed({ applies_to: 'order', currency: 'CUP', fixed_amount: 100, amount_to: 10000 }));
+      const o = await deliverOrd();
+      expect(o).toMatchObject({ amount_cup: null, rule_id: null });
+      expect(o.rule_snapshot.reason).toBe('no_fx');
+    });
+
+    it('a CUP range on a USD remittance uses the LIVE rate, not the remittance frozen rate; none => no_fx', async () => {
+      const c = await adminClient();
+      await kit.setRule(c, fixed({ code: 'flat', currency: 'CUP', fixed_amount: 1 })); // lower precedence: must NOT be the fallback
+      await kit.setRule(c, fixed({ code: 'lo', currency: 'CUP', fixed_amount: 100, amount_to: 83000 }));
+      await kit.setRule(c, fixed({ code: 'hi', currency: 'CUP', fixed_amount: 200, amount_from: 83000 }));
+      const none = await withCupUsdRow(() => deliverRem());
+      expect(none).toMatchObject({ amount_cup: null, rule_id: null });
+      expect(none.rule_snapshot.reason).toBe('no_fx');
+      await kit.seedUsdCupRate(830); // 100 USD * 830 = 83000.00 -> 'lo' ((.., 83000])
+      expect((await deliverRem()).amount_cup).toBe('100.00');
+      await kit.seedUsdCupRate(830.01); // 83001.00 -> 'hi' (the frozen 810 would give 'lo')
+      expect((await deliverRem()).amount_cup).toBe('200.00');
+    });
+
+    it('no tramo matches and no rule without tramo exists: amount NULL, reason no_tier_match; a flat rule is the fallback', async () => {
+      const c = await adminClient();
+      await kit.setRule(c, { code: 't', fixed_cup: 300, amount_to: 50 }); // USD range: no rate needed for a USD remittance
+      const a = await deliverRem({ amount: 100 });
+      expect(a).toMatchObject({ amount_cup: null, rule_id: null });
+      expect(a.rule_snapshot.reason).toBe('no_tier_match');
+      await kit.setRule(c, fixed({ code: 'flat', currency: 'CUP', fixed_amount: 120 }));
+      expect((await deliverRem({ amount: 100 })).amount_cup).toBe('120.00');
+      expect((await deliverRem({ amount: 50 })).amount_cup).toBe('300.00');
+    });
+
+    it('a NaN exchange rate is treated as missing: the accrual is NULL (no_fx), never NaN', async () => {
+      await kit.seedUsdCupRate('NaN');
+      await kit.setRule(await adminClient(), fixed({ fixed_amount: 2, applies_to: 'both' }));
+      const a = await deliverRem();
+      expect(a).toMatchObject({ amount_cup: null, amount_usd: null });
+      expect(a.rule_snapshot.reason).toBe('no_fx');
+      const o = await deliverOrd();
+      expect(o).toMatchObject({ amount_cup: null, amount_usd: null });
+      const { rows } = await admin.query(`SELECT count(*)::int AS n FROM public.courier_accruals WHERE amount_cup = 'NaN' OR amount_usd = 'NaN' OR fx_used = 'NaN'`);
+      expect(rows[0].n).toBe(0);
+    });
+
+    it('an amount that does not fit numeric(12,2) leaves an accrual with amount NULL and reason amount_out_of_range (never no row)', async () => {
+      await kit.seedUsdCupRate(915);
+      await kit.setRule(await adminClient(), fixed({ fixed_amount: 9999999999.99, applies_to: 'both' }));
+      const a = await deliverRem();
+      expect(a).toMatchObject({ amount_cup: null, amount_usd: null, status: 'calculated' });
+      expect(a.rule_id).not.toBeNull();
+      expect(a.rule_snapshot.reason).toBe('amount_out_of_range');
+      const o = await deliverOrd();
+      expect(o.rule_snapshot.reason).toBe('amount_out_of_range');
+    });
+
+    it.each([
+      ['fixed_amount', { method: 'fixed_amount', fixed_cup: null, fixed_amount: 2000000, applies_to: 'both' }, {}],
+      ['fixed_cup', { method: 'fixed_cup', fixed_cup: 1620000000, applies_to: 'both' }, {}],
+      ['percent', { method: 'percent_of_base', fixed_cup: null, percent: 10, base: 'nominal_usd', applies_to: 'both' },
+        { amount: 0.01, commission: 0, deliveryCost: 20000 }]
+    ])('a margin that does not fit numeric(10,4) is stored as unknown, the accrual is ALWAYS written (%s)', async (_m, rule, remOpts) => {
+      await kit.seedUsdCupRate(810);
+      await kit.setRule(await adminClient(), rule);
+      const a = await deliverRem(remOpts);
+      expect(a).toMatchObject({ margin_pct: null, margin_status: 'unknown', status: 'calculated' });
+      expect(a.rule_id).not.toBeNull();
+      const o = await deliverOrd();
+      expect(o.margin_status).toBe('unknown');
+    });
+
+    it('a NaN operation value never matches an open tramo nor pays a percent: the accrual amount is unknown', async () => {
+      await kit.seedUsdCupRate(810);
+      const c = await adminClient();
+      await kit.setRule(c, { code: 'over100', applies_to: 'both', fixed_cup: 300, amount_from: 100 });
+      const a = await deliverRem({ amount: 'NaN' });
+      expect(a).toMatchObject({ amount_cup: null, amount_usd: null, rule_id: null, margin_status: 'unknown' });
+      expect(a.rule_snapshot.reason).toBe('no_tier_match');
+      // orders_money_total_identity_chk refuses a NaN subtotal: compute on it inside a rolled-back transaction
+      const oid = await kit.seedDispatchedOrder();
+      await admin.query('BEGIN');
+      try {
+        await admin.query('ALTER TABLE public.orders DROP CONSTRAINT orders_money_total_identity_chk');
+        await admin.query(`UPDATE public.orders SET subtotal = 'NaN' WHERE id = $1`, [oid]);
+        const [o] = (await admin.query(`SELECT * FROM public._courier_compute_accrual('order', $1, NULL, 'test')`, [oid])).rows;
+        expect(o).toMatchObject({ amount_cup: null, rule_id: null });
+        expect(o.rule_snapshot.reason).toBe('no_tier_match');
+      } finally {
+        await admin.query('ROLLBACK');
+      }
+      await kit.call(c, 'admin_deactivate_messenger_payment_type', ['over100']);
+      await kit.setRule(c, { code: 'pct', method: 'percent_of_base', fixed_cup: null, percent: 10, base: 'nominal_usd' });
+      const p = await deliverRem({ amount: 'NaN' });
+      expect(p).toMatchObject({ amount_cup: null, amount_usd: null });
+      const { rows } = await admin.query(`SELECT count(*)::int AS n FROM public.courier_accruals
+        WHERE amount_cup = 'NaN' OR amount_usd = 'NaN' OR margin_usd = 'NaN' OR margin_pct = 'NaN'`);
+      expect(rows[0].n).toBe(0);
+    });
+
+    it('the live rate prefers rate_type general and breaks ties by id (deterministic even with two active rows)', async () => {
+      // production allows one active USD->CUP row (two unique indexes); drop them inside a rolled-back transaction and
+      // compute directly on this connection (a delivery on another connection would wait on the index lock)
+      await kit.setRule(await adminClient(), fixed({ fixed_amount: 1 }));
+      const id = await rem();
+      const cur = (await admin.query(`SELECT (SELECT id FROM public.currencies WHERE code='USD') AS usd, (SELECT id FROM public.currencies WHERE code='CUP') AS cup`)).rows[0];
+      const fx = async (rows) => {
+        await admin.query('BEGIN');
+        try {
+          await admin.query('DROP INDEX public.exchange_rates_one_active_per_pair');
+          await admin.query('ALTER TABLE public.exchange_rates DROP CONSTRAINT unique_currency_pair_date');
+          await admin.query('UPDATE public.exchange_rates SET is_active = false WHERE from_currency_id = $1 AND to_currency_id = $2', [cur.usd, cur.cup]);
+          for (const [rid, type, rate] of rows) {
+            await admin.query(
+              `INSERT INTO public.exchange_rates (id, from_currency_id, to_currency_id, rate, is_active, effective_date, rate_type)
+               VALUES ($1,$2,$3,$4,true,CURRENT_DATE,$5)`, [rid, cur.usd, cur.cup, rate, type]);
+          }
+          return (await admin.query(`SELECT fx_used FROM public._courier_compute_accrual('remittance', $1, NULL, 'test')`, [id])).rows[0].fx_used;
+        } finally {
+          await admin.query('ROLLBACK');
+        }
+      };
+      const lo = '00000000-0000-4000-8000-000000000001';
+      const hi = 'ffffffff-ffff-4fff-bfff-ffffffffffff';
+      expect(Number(await fx([[lo, 'orders', 900], [hi, 'general', 830]]))).toBe(830);
+      expect(Number(await fx([[hi, 'general', 840], [lo, 'general', 830]]))).toBe(830);
+      expect(Number(await fx([[lo, 'general', 830], [hi, 'general', 840]]))).toBe(830);
+    });
+
+    it('no rule at all keeps reason no_rule (the 16 production accruals use it)', async () => {
+      const a = await deliverRem();
+      expect(a.rule_snapshot.reason).toBe('no_rule');
+    });
+
+    it('the report and the payable list read the same amount_cup for a fixed USD accrual (no new column involved)', async () => {
+      await kit.seedUsdCupRate(830);
+      await kit.setRule(await adminClient(), fixed({ fixed_amount: 2 }));
+      await deliverRem();
+      const c = await adminClient();
+      const [row] = await kit.call(c, 'admin_courier_report', [new Date(Date.now() - 86_400_000).toISOString(), new Date(Date.now() + 86_400_000).toISOString(), null]);
+      expect(row).toMatchObject({ accrued_cup: '1660.00', accrued_usd: '2.00', pending_cup: '1660.00', unknown_amount_count: 0 });
     });
   });
 

@@ -99,6 +99,21 @@ describe('writes never degrade and carry a typed error', () => {
     db.rpc.mockResolvedValue({ data: null, error: { code: '23P01', message: 'overlapping_rule: x' } });
     await expect(svc.setPaymentType({ p_code: 'a' })).rejects.toMatchObject({ i18nKey: 'couriers.errors.overlap' });
   });
+  it('setPaymentType calls the v2 RPC (p_accept_gaps included) and keeps the JSON details of a coverage_gap refusal', async () => {
+    db.rpc.mockResolvedValue({ data: 'id-1', error: null });
+    await svc.setPaymentType({ p_code: 'a', p_accept_gaps: true });
+    expect(db.rpc).toHaveBeenLastCalledWith('admin_set_messenger_payment_type_v2', { p_code: 'a', p_accept_gaps: true });
+    const details = '{"currency":"USD","gaps":[{"kind":"remittance","from":100,"to":100.01}]}';
+    db.rpc.mockResolvedValue({ data: null, error: { code: '22023', message: 'coverage_gap: x', details } });
+    await expect(svc.setPaymentType({ p_code: 'a' })).rejects.toMatchObject({ i18nKey: 'couriers.errors.coverageGap', details });
+  });
+  it('lists the new rule columns (currency, fixed_amount)', async () => {
+    db.tables.messenger_payment_types = { data: [], error: null };
+    await svc.listPaymentTypes();
+    const select = db.calls.find(([table, m]) => table === 'messenger_payment_types' && m === 'select');
+    expect(select[2]).toMatch(/\bcurrency\b/);
+    expect(select[2]).toMatch(/\bfixed_amount\b/);
+  });
   it('a missing backend on a write is reported as unavailable, never as success', async () => {
     db.rpc.mockResolvedValue(missing('42883'));
     await expect(svc.upsertCourier({ name: 'x' })).rejects.toMatchObject({ i18nKey: 'couriers.errors.unavailable' });

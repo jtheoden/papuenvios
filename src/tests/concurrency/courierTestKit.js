@@ -10,12 +10,14 @@ import { seedOrder } from './fixtures';
 export const MIGRATIONS = {
   m1: 'supabase/migrations/20261031100000_couriers_and_payment_types.sql',
   m2: 'supabase/migrations/20261031110000_delivery_assignments_and_accruals.sql',
-  m3: 'supabase/migrations/20261031120000_courier_payments_and_report.sql'
+  m3: 'supabase/migrations/20261031120000_courier_payments_and_report.sql',
+  a: 'supabase/migrations/20261105150000_courier_payment_types_currency_ranges.sql'
 };
 export const ROLLBACKS = {
   m1: 'supabase/rollbacks/20261031100000_couriers_and_payment_types_down.sql',
   m2: 'supabase/rollbacks/20261031110000_delivery_assignments_and_accruals_down.sql',
-  m3: 'supabase/rollbacks/20261031120000_courier_payments_and_report_down.sql'
+  m3: 'supabase/rollbacks/20261031120000_courier_payments_and_report_down.sql',
+  a: 'supabase/rollbacks/20261105150000_courier_payment_types_currency_ranges_down.sql'
 };
 
 export const failure = async (promise) => {
@@ -139,18 +141,21 @@ export const makeKit = (admin, actors) => {
     return (await call(c, 'admin_upsert_courier', [null, name, null, null, true]))[0].admin_upsert_courier;
   };
 
-  /** admin_set_messenger_payment_type with named defaults; returns the new row id. */
+  /**
+   * admin_set_messenger_payment_type_v2 with named defaults; returns the new row id. `accept_gaps` defaults to TRUE here so
+   * the older suites (single tramos) keep testing what they test; the coverage tests pass `accept_gaps: false` explicitly.
+   */
   const setRule = async (client, o = {}) => {
     const p = {
       code: `r-${randomUUID().slice(0, 8)}`, name: 'Rule', applies_to: 'remittance', method: 'fixed_cup',
       fixed_cup: 200, cup_per_usd: null, percent: null, base: null,
       courier_id: null, zone_id: null, type_id: null, amount_from: null, amount_to: null,
-      valid_from: null, valid_to: null, ...o
+      valid_from: null, valid_to: null, currency: 'USD', fixed_amount: null, accept_gaps: true, ...o
     };
     const { rows } = await client.query(
-      `SELECT public.admin_set_messenger_payment_type($1,$2,$3,$4,$5::numeric,$6::numeric,$7::numeric,$8,$9::uuid,$10::uuid,$11::uuid,$12::numeric,$13::numeric,$14::timestamptz,$15::timestamptz) AS id`,
+      `SELECT public.admin_set_messenger_payment_type_v2($1,$2,$3,$4,$5::numeric,$6::numeric,$7::numeric,$8,$9::uuid,$10::uuid,$11::uuid,$12::numeric,$13::numeric,$14::timestamptz,$15::timestamptz,$16,$17::numeric,$18::boolean) AS id`,
       [p.code, p.name, p.applies_to, p.method, p.fixed_cup, p.cup_per_usd, p.percent, p.base, p.courier_id, p.zone_id, p.type_id,
-        p.amount_from, p.amount_to, p.valid_from, p.valid_to]
+        p.amount_from, p.amount_to, p.valid_from, p.valid_to, p.currency, p.fixed_amount, p.accept_gaps]
     );
     return rows[0].id;
   };
