@@ -1461,6 +1461,46 @@ export const cancelRemittance = async (remittanceId, reason = '') => {
   }
 };
 
+/**
+ * Cancel a remittance (Admin / Super Admin)
+ * Only payment_pending (no payment proof yet); the server re-checks role, state and reason.
+ * @param {string} remittanceId - Remittance ID to cancel
+ * @param {string} reason - Cancellation reason (required, 1..500 chars)
+ * @returns {Promise<Object>} Updated cancelled remittance
+ */
+export const adminCancelRemittance = async (remittanceId, reason) => {
+  try {
+    const trimmed = (reason || '').trim();
+    if (!remittanceId || !trimmed) {
+      throw createValidationError({
+        remittanceId: !remittanceId ? 'Remittance ID is required' : undefined,
+        reason: !trimmed ? 'Cancellation reason is required' : undefined
+      }, 'Missing required fields for remittance cancellation');
+    }
+
+    const user = await requireAuthUser('adminCancelRemittance');
+
+    const updatedRemittance = await runRemittanceTransition('remittance_admin_cancel', {
+      p_remittance_id: remittanceId,
+      p_reason: trimmed
+    }, remittanceId);
+
+    await logRemittancePaymentActivity({
+      action: 'remittance_cancelled',
+      remittance: updatedRemittance,
+      performedBy: user?.email || user?.id,
+      description: `Remesa cancelada por admin - ${updatedRemittance?.remittance_number || remittanceId}`,
+      metadata: { remittanceId, cancellationReason: trimmed, cancelledBy: user?.id }
+    });
+
+    return updatedRemittance;
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'adminCancelRemittance', remittanceId });
+    throw appError;
+  }
+};
+
 // ============================================================================
 // GESTIÓN DE REMESAS (ADMIN) - MANAGEMENT & WORKFLOW
 // ============================================================================

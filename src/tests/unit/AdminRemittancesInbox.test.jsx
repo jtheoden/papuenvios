@@ -38,6 +38,7 @@ vi.mock('@/lib/remittanceService', () => {
     rejectPayment: vi.fn(async () => ({})),
     startProcessing: vi.fn(async () => ({})),
     confirmDelivery: vi.fn(async () => ({})),
+    adminCancelRemittance: vi.fn(async () => ({})),
     getCommissionOverride: vi.fn(async () => null)
   };
 });
@@ -53,7 +54,7 @@ vi.mock('@/components/admin/CommissionOverrideModal', () => ({
 }));
 
 import AdminRemittancesInbox from '@/components/admin/AdminRemittancesInbox';
-import { validatePayment, rejectPayment, startProcessing, confirmDelivery, getCommissionOverride } from '@/lib/remittanceService';
+import { validatePayment, rejectPayment, startProcessing, confirmDelivery, getCommissionOverride, adminCancelRemittance } from '@/lib/remittanceService';
 
 const base = {
   currency_sent: 'USD',
@@ -106,6 +107,7 @@ describe('AdminRemittancesInbox', () => {
     rejectPayment.mockClear();
     startProcessing.mockClear();
     confirmDelivery.mockClear();
+    adminCancelRemittance.mockClear();
   });
   afterEach(() => vi.useRealTimers());
 
@@ -189,6 +191,66 @@ describe('AdminRemittancesInbox', () => {
     const row = screen.getAllByRole('listitem').find((li) => li.getAttribute('data-remittance-number') === 'REM-PROOF-OLD');
     fireEvent.click(within(row).getByRole('button', { name: 'adminInbox.reject' }));
     await waitFor(() => expect(rejectPayment).toHaveBeenCalledWith('v-old', 'blurry proof'));
+  });
+
+  it('cancels a pending remittance without proof with a required reason', async () => {
+    showModal.mockResolvedValue('never paid');
+    const { onChanged } = renderInbox();
+    fireEvent.click(screen.getByRole('button', { name: /adminInbox.filter.awaitingCustomer/ }));
+    const row = screen.getAllByRole('listitem').find((li) => li.getAttribute('data-remittance-number') === 'REM-PENDING-OLD');
+    fireEvent.click(within(row).getByRole('button', { name: 'adminInbox.cancelRemittance' }));
+    await waitFor(() => expect(adminCancelRemittance).toHaveBeenCalledWith('p-old', 'never paid'));
+    expect(showModal).toHaveBeenCalledWith(expect.objectContaining({
+      input: true, required: true, type: 'danger', maxLength: 500,
+      inputLabel: 'remittances.admin.cancelReason', message: 'remittances.admin.confirmCancelMessage'
+    }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
+  it('a refused cancel (customer uploaded the proof meanwhile) shows the readable message and refreshes the list', async () => {
+    showModal.mockResolvedValue('never paid');
+    adminCancelRemittance.mockRejectedValueOnce(
+      Object.assign(new Error('Remittance p-old changed state'), { code: 'CONFLICT', context: { reason: 'invalid_transition' } })
+    );
+    const { onChanged } = renderInbox();
+    fireEvent.click(screen.getByRole('button', { name: /adminInbox.filter.awaitingCustomer/ }));
+    const row = screen.getAllByRole('listitem').find((li) => li.getAttribute('data-remittance-number') === 'REM-PENDING-OLD');
+    fireEvent.click(within(row).getByRole('button', { name: 'adminInbox.cancelRemittance' }));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive', description: 'common.statusConflict' }))
+    );
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
+  it('a raw server error is never shown as is', async () => {
+    showModal.mockResolvedValue('never paid');
+    adminCancelRemittance.mockRejectedValueOnce(new Error('PGRST raw internals'));
+    renderInbox();
+    fireEvent.click(screen.getByRole('button', { name: /adminInbox.filter.awaitingCustomer/ }));
+    const row = screen.getAllByRole('listitem').find((li) => li.getAttribute('data-remittance-number') === 'REM-PENDING-OLD');
+    fireEvent.click(within(row).getByRole('button', { name: 'adminInbox.cancelRemittance' }));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive', description: 'remittances.admin.cancelFailed' }))
+    );
+  });
+
+  it('does not cancel when the admin dismisses the reason modal', async () => {
+    showModal.mockResolvedValue(false);
+    renderInbox();
+    fireEvent.click(screen.getByRole('button', { name: /adminInbox.filter.awaitingCustomer/ }));
+    const row = screen.getAllByRole('listitem').find((li) => li.getAttribute('data-remittance-number') === 'REM-PENDING-NEW');
+    fireEvent.click(within(row).getByRole('button', { name: 'adminInbox.cancelRemittance' }));
+    await waitFor(() => expect(showModal).toHaveBeenCalled());
+    expect(adminCancelRemittance).not.toHaveBeenCalled();
+  });
+
+  it('offers cancel only for payment_pending, never in later states', () => {
+    renderInbox();
+    fireEvent.click(screen.getByRole('button', { name: /adminInbox.filter.all/ }));
+    for (const li of screen.getAllByRole('listitem')) {
+      const offered = within(li).queryByRole('button', { name: 'adminInbox.cancelRemittance' }) !== null;
+      expect(offered, li.getAttribute('data-remittance-number')).toBe(li.getAttribute('data-remittance-number').startsWith('REM-PENDING'));
+    }
   });
 
   it('starts processing a validated remittance from the delivery view', async () => {

@@ -31,6 +31,18 @@ const knownKey = (error) => {
  */
 export const transitionErrorKey = (error, fallbackKey = 'common.error') => knownKey(error) ?? fallbackKey;
 
+/**
+ * Toast text for a failed admin cancel of a remittance: always a translation, never the raw RPC message.
+ * PGRST202 = remittance_admin_cancel not deployed yet (front shipped before the migration).
+ */
+export const adminCancelMessage = (t, error) => {
+  const key = knownKey(error);
+  if (key) return t(key);
+  if (error?.code === ERROR_CODES.VALIDATION_FAILED) return t('remittances.admin.cancelReasonInvalid');
+  if (error?.context?.originalError?.code === 'PGRST202') return t('remittances.admin.cancelUnavailable');
+  return t('remittances.admin.cancelFailed');
+};
+
 /** Translated text for a known transition failure, else `fallbackText` (so raw RPC codes are never shown). */
 export const transitionMessage = (t, error, fallbackText) => {
   const key = knownKey(error);

@@ -575,6 +575,22 @@ Rama `feat/courier-payment-types-ranges` (desde `origin/main` 30f8f5da). Sin PR,
 - 🟡 `ALTER TABLE exchange_rates ADD COLUMN IF NOT EXISTS rate_type` tomaba AccessExclusiveLock aunque la columna existiera (hasta el COMMIT: encolaba lecturas de tasas de checkout, cotizaciones y remesas). Ahora va en un `DO` con chequeo de catálogo (`information_schema.columns`): en prod (columna presente) es un no-op real, sin lock; sin la columna la crea con la misma definición y el CHECK `exchange_rates_rate_type_check` de `20261102110000_dual_exchange_rates_for_orders.sql`.
 - Tests: con otra sesión leyendo `exchange_rates` (ACCESS SHARE abierto) la migración ya no espera (antes: 55P03 por lock_timeout) y no deja filas en `pg_locks` sobre la tabla; sin la columna la crea (nullable, default 'general', CHECK con ese nombre). Tests estáticos ajustados a la nueva forma.
 - Verificación: eslint src limpio; vitest unit completo verde; BD local propia `papuenvios_test_codex_fixc` (recreada desde cero) 51 archivos / 1779 verdes + 1 skip preexistente, borrada; build a directorio temporal OK, `dist/` sin tocar.
+## Fix: admin / super_admin pueden cancelar remesas pendientes sin comprobante — 2026-11-05
+
+Rama `fix/admin-cancel-pending-remittance` (desde `origin/main` 30f8f5da). Sin PR. Migración PREPARADA, NO aplicada (requiere «dale»).
+
+- Causa raíz (dos capas): (1) UI: ni `AdminRemittancesTab.renderActionButtons` (payment_pending caía en `default: return null`) ni `AdminRemittancesInbox.renderActions` ofrecían cancelar; (2) RPC: `_remittance_transition` vivo (md5 `ebbd27fe…`, idéntico a `20261025110000`) autoriza `'cancel'` solo al dueño → 42501 para cualquier admin. Logs edge 24 h: 0 llamadas a `rpc/remittance_cancel`. Prod hoy: 9 remesas `payment_pending`, todas sin comprobante.
+- `20261105100000_remittance_admin_cancel.sql`: CREATE OR REPLACE del helper sobre el cuerpo vivo + acción `admin_cancel` (admin/super_admin habilitado, solo `payment_pending`, motivo 1..500 obligatorio, `cancelled_by` = admin, nota de historial «Cancelled by admin: …») y `IF NOT COALESCE(v_ok, false)` (falla cerrado). Wrapper `remittance_admin_cancel(uuid, text)` SECURITY DEFINER, solo `authenticated`. `remittance_cancel` sigue solo-dueño. Rollback `supabase/rollbacks/20261105100000_remittance_admin_cancel_down.sql` (probado en BD local: restaura md5 `ebbd27fe…`).
+- Front: `adminCancelRemittance` (servicio, registra actividad `remittance_cancelled`), botón «Cancelar» con modal de motivo obligatorio en ambas vistas admin, solo en `payment_pending`. i18n ES/EN.
+- Colaterales verificados en BD local: sin `refund_requests` desde payment_pending; límites Zelle orientativos excluyen `cancelled` por cálculo; el guard de self-dealing permite cancelar. Sin aviso al cliente (igual que la cancelación del dueño hoy).
+- Decisión abierta para el dueño: `payment_rejected` (4 en prod, con comprobante) NO se abre a cancelación admin.
+- Orden de despliegue: aplicar la migración ANTES del front (sin ella el botón responde 404/PGRST202).
+
+### Ajustes tras revisión independiente (2026-11-05)
+- Modal: aviso «Verifica en la cuenta Zelle que no se haya recibido el pago antes de cancelar» (sin comprobante ≠ sin pago; no se crea refund_request). `showModal` acepta `maxLength` (textarea a 500) y la etiqueta del motivo ya no lleva doble asterisco.
+- Errores: `adminCancelMessage` (statusConflict.js) traduce invalid_transition → `common.statusConflict`, invalid_argument → `cancelReasonInvalid`, PGRST202 → `cancelUnavailable`, resto → `cancelFailed`; nunca el mensaje crudo. Ambas vistas recargan la lista también tras un fallo.
+- Tests de BD: carrera A (submit_proof con el lock retenido; admin_cancel espera y recibe invalid_transition), carrera B (submit_proof tras cancelar), admin cancelando su propia remesa pendiente, motivo de 500 caracteres, restauración del rol original del fixture.
+- Seguimiento (NO hecho, a decidir): aviso al cliente cuando un admin cancela su remesa, y mostrar en `RemittanceTimeline` quién canceló (admin vs cliente) y el motivo.
 ## Estados de carga en listados + microanimaciones — 2026-11-05
 
 Rama `feat/loading-states-lists` (desde `origin/main` 30f8f5da). Sin PR, sin Supabase remoto ni migraciones.
