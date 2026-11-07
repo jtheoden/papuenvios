@@ -1,4 +1,4 @@
-import { transitionMessage } from '@/lib/statusConflict';
+import { adminCancelMessage, transitionMessage } from '@/lib/statusConflict';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -28,6 +28,7 @@ import {
   startProcessing,
   confirmDelivery,
   completeRemittance,
+  adminCancelRemittance,
   calculateDeliveryAlert,
   generateProofSignedUrl,
   getRemittanceBankAccountDetails,
@@ -479,6 +480,40 @@ const AdminRemittancesTab = () => {
     }
   };
 
+  const handleAdminCancel = async (remittance) => {
+    const reason = await showModal({
+      title: t('remittances.admin.cancelRemittance'),
+      message: t('remittances.admin.confirmCancelMessage', { number: remittance.remittance_number }),
+      input: true,
+      inputLabel: t('remittances.admin.cancelReason'),
+      inputPlaceholder: t('remittances.admin.cancelReasonPlaceholder'),
+      confirmText: t('remittances.admin.cancelRemittance'),
+      cancelText: t('common.cancel'),
+      type: 'danger',
+      required: true,
+      maxLength: 500
+    });
+
+    if (!reason) return;
+
+    try {
+      await adminCancelRemittance(remittance.id, reason);
+      toast({
+        title: t('common.success'),
+        description: t('remittances.admin.remittanceCancelled')
+      });
+      setSelectedRemittance(null);
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: adminCancelMessage(t, error),
+        variant: 'destructive'
+      });
+    }
+    // Refresh on failure too: a refusal usually means the remittance moved (e.g. the customer uploaded the proof).
+    await loadRemittances();
+  };
+
   const handleStartProcessing = async (remittance) => {
     const confirmed = await showModal({
       title: t('remittances.admin.process'),
@@ -709,6 +744,19 @@ const AdminRemittancesTab = () => {
       );
     }
     switch (remittance.status) {
+      case REMITTANCE_STATUS.PAYMENT_PENDING:
+        return (
+          <TooltipButton
+            tooltipText={t('remittances.admin.cancelRemittance')}
+            className="flex items-center gap-1 px-2 sm:px-3 py-1 border border-red-300 text-red-700 bg-white rounded-lg hover:bg-red-50 transition-colors text-sm"
+            onClick={() => handleAdminCancel(remittance)}
+            title={t('remittances.admin.cancelRemittance')}
+          >
+            <XCircle className="h-4 w-4" />
+            <span className="hidden sm:inline">{t('remittances.admin.cancelRemittance')}</span>
+          </TooltipButton>
+        );
+
       case REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED:
         return (
           <div className="flex gap-2">

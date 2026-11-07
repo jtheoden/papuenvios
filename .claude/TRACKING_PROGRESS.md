@@ -540,6 +540,22 @@ Rama `feat/trust-copy-footer-checkout` (desde `origin/main` fac1f5ef). Sin push,
 - W5: el pie ya no lee `notification_settings` (legible por cualquier autenticado, contiene datos del admin). Contacto = nombre de empresa + `VITE_SUPPORT_EMAIL`. Fuente pública futura para un WhatsApp de soporte: una clave pública en `business_visual_settings.settings` (p. ej. `supportWhatsapp`; la app ya la lee para visitantes, falta confirmar su RLS) o una variable `VITE_SUPPORT_WHATSAPP`; no creada.
 - Banner de cookies: párrafo desplegable siempre en el DOM con `hidden` (aria-controls válido) y «Más información» con objetivo de 44 px. Decisión documentada: el enlace a la Política de Privacidad vive solo en la capa desplegada; es aceptable porque la primera capa explica el propósito («Medimos visitas solo si usted acepta»), rechazar pesa igual que aceptar, el enlace está a un clic accesible por teclado, y la Política sigue enlazada en el pie y en «Preferencias de cookies».
 
+## Fix: admin / super_admin pueden cancelar remesas pendientes sin comprobante — 2026-11-05
+
+Rama `fix/admin-cancel-pending-remittance` (desde `origin/main` 30f8f5da). Sin PR. Migración PREPARADA, NO aplicada (requiere «dale»).
+
+- Causa raíz (dos capas): (1) UI: ni `AdminRemittancesTab.renderActionButtons` (payment_pending caía en `default: return null`) ni `AdminRemittancesInbox.renderActions` ofrecían cancelar; (2) RPC: `_remittance_transition` vivo (md5 `ebbd27fe…`, idéntico a `20261025110000`) autoriza `'cancel'` solo al dueño → 42501 para cualquier admin. Logs edge 24 h: 0 llamadas a `rpc/remittance_cancel`. Prod hoy: 9 remesas `payment_pending`, todas sin comprobante.
+- `20261105100000_remittance_admin_cancel.sql`: CREATE OR REPLACE del helper sobre el cuerpo vivo + acción `admin_cancel` (admin/super_admin habilitado, solo `payment_pending`, motivo 1..500 obligatorio, `cancelled_by` = admin, nota de historial «Cancelled by admin: …») y `IF NOT COALESCE(v_ok, false)` (falla cerrado). Wrapper `remittance_admin_cancel(uuid, text)` SECURITY DEFINER, solo `authenticated`. `remittance_cancel` sigue solo-dueño. Rollback `supabase/rollbacks/20261105100000_remittance_admin_cancel_down.sql` (probado en BD local: restaura md5 `ebbd27fe…`).
+- Front: `adminCancelRemittance` (servicio, registra actividad `remittance_cancelled`), botón «Cancelar» con modal de motivo obligatorio en ambas vistas admin, solo en `payment_pending`. i18n ES/EN.
+- Colaterales verificados en BD local: sin `refund_requests` desde payment_pending; límites Zelle orientativos excluyen `cancelled` por cálculo; el guard de self-dealing permite cancelar. Sin aviso al cliente (igual que la cancelación del dueño hoy).
+- Decisión abierta para el dueño: `payment_rejected` (4 en prod, con comprobante) NO se abre a cancelación admin.
+- Orden de despliegue: aplicar la migración ANTES del front (sin ella el botón responde 404/PGRST202).
+
+### Ajustes tras revisión independiente (2026-11-05)
+- Modal: aviso «Verifica en la cuenta Zelle que no se haya recibido el pago antes de cancelar» (sin comprobante ≠ sin pago; no se crea refund_request). `showModal` acepta `maxLength` (textarea a 500) y la etiqueta del motivo ya no lleva doble asterisco.
+- Errores: `adminCancelMessage` (statusConflict.js) traduce invalid_transition → `common.statusConflict`, invalid_argument → `cancelReasonInvalid`, PGRST202 → `cancelUnavailable`, resto → `cancelFailed`; nunca el mensaje crudo. Ambas vistas recargan la lista también tras un fallo.
+- Tests de BD: carrera A (submit_proof con el lock retenido; admin_cancel espera y recibe invalid_transition), carrera B (submit_proof tras cancelar), admin cancelando su propia remesa pendiente, motivo de 500 caracteres, restauración del rol original del fixture.
+- Seguimiento (NO hecho, a decidir): aviso al cliente cuando un admin cancela su remesa, y mostrar en `RemittanceTimeline` quién canceló (admin vs cliente) y el motivo.
 ## Estados de carga en listados + microanimaciones — 2026-11-05
 
 Rama `feat/loading-states-lists` (desde `origin/main` 30f8f5da). Sin PR, sin Supabase remoto ni migraciones.
