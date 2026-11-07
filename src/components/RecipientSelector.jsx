@@ -297,7 +297,7 @@ const RecipientSelector = React.forwardRef((
   };
 
   if (loading) {
-    return <div className="p-4 bg-gray-50 rounded-lg"><p className="text-sm">{t('common.loading')}</p></div>;
+    return <div className="p-4 bg-gray-50 rounded-lg recipient-theme-loading"><p className="text-sm">{t('common.loading')}</p></div>;
   }
 
   return (
@@ -318,7 +318,7 @@ const RecipientSelector = React.forwardRef((
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder={language === 'es' ? 'Buscar por nombre, teléfono o email...' : 'Search by name, phone or email...'}
-                className="w-full pl-10 pr-10 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none text-sm"
+                className="recipient-theme-search w-full pl-10 pr-10 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none text-sm"
               />
               {searchTerm && (
                 <button
@@ -340,11 +340,12 @@ const RecipientSelector = React.forwardRef((
                   <motion.button
                     key={recipient.id}
                     onClick={() => handleRecipientSelect(recipient)}
-                    className={`w-full text-left p-3 rounded-lg border-2 transition-all ${
+                    className={`recipient-theme-card w-full text-left p-3 rounded-lg border-2 transition-all ${
                       selectedRecipient?.id === recipient.id
-                        ? 'border-blue-500 bg-blue-50'
+                        ? 'recipient-theme-card-selected border-blue-500 bg-blue-50'
                         : 'border-gray-200 hover:border-gray-300'
                     }`}
+                    aria-pressed={selectedRecipient?.id === recipient.id}
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
                   >
@@ -372,7 +373,7 @@ const RecipientSelector = React.forwardRef((
                   const recipient = recipients.find(r => r.id === e.target.value);
                   if (recipient) handleRecipientSelect(recipient);
                 }}
-                className="w-full p-3 border-2 border-gray-200 rounded-lg bg-white text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                className="recipient-theme-select w-full p-3 border-2 border-gray-200 rounded-lg bg-white text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               >
                 <option value="">{language === 'es' ? 'Selecciona un destinatario' : 'Select a recipient'}</option>
                 {filteredRecipients.map((recipient) => (
@@ -387,7 +388,7 @@ const RecipientSelector = React.forwardRef((
                 <motion.div
                   initial={{ opacity: 0, y: -5 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="p-3 bg-blue-50 border border-blue-200 rounded-lg"
+                  className="recipient-theme-detail p-3 bg-blue-50 border border-blue-200 rounded-lg"
                 >
                   <p className="font-semibold text-gray-900">{selectedRecipient.full_name}</p>
                   <p className="text-sm text-gray-600">{selectedRecipient.phone}</p>
@@ -412,11 +413,12 @@ const RecipientSelector = React.forwardRef((
               <motion.button
                 key={address.id}
                 onClick={() => handleAddressSelect(address)}
-                className={`w-full text-left p-3 rounded-lg border-2 transition-all ${
+                className={`recipient-theme-address w-full text-left p-3 rounded-lg border-2 transition-all ${
                   selectedAddress?.id === address.id
-                    ? 'border-green-500 bg-green-50'
+                    ? 'recipient-theme-address-selected border-green-500 bg-green-50'
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
+                aria-pressed={selectedAddress?.id === address.id}
                 whileHover={{ scale: 1.01 }}
               >
                 <div className="flex items-start gap-2">
@@ -473,7 +475,7 @@ const RecipientSelector = React.forwardRef((
       {/* Create New Recipient Button */}
       <button
         onClick={() => setShowForm(!showForm)}
-        className="w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-blue-300 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors"
+        className="recipient-theme-add w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-blue-300 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors"
       >
         <Plus className="w-5 h-5" />
         {language === 'es' ? 'Crear Nuevo Destinatario' : 'Create New Recipient'}
@@ -486,7 +488,7 @@ const RecipientSelector = React.forwardRef((
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="p-4 bg-blue-50 rounded-lg border-2 border-blue-200"
+            className="recipient-theme-create-panel p-4 bg-blue-50 rounded-lg border-2 border-blue-200"
           >
             {samePhoneRecipient && (
               <p role="status" className="mb-3 p-2 text-sm bg-yellow-50 border border-yellow-300 rounded-lg text-yellow-800">
