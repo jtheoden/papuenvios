@@ -2,7 +2,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { Helmet, HelmetProvider } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster } from '@/components/ui/toaster';
-import LoadingScreen from '@/components/LoadingScreen';
+import StartupGate from '@/components/StartupGate';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { lazyWithRetry } from '@/lib/lazyWithRetry';
 import { diagnostics } from '@/lib/diagnostics';
@@ -107,7 +107,6 @@ const PageAnalyticsTracker = ({ currentPage }) => {
 };
 
 function App() {
-  const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState('home');
   const [detailParams, setDetailParams] = useState({ itemId: null, itemType: null });
 
@@ -148,10 +147,6 @@ function App() {
       setDetailParams(params);
     }
 
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 2500);
-
     const handlePopState = (event) => {
       const newPath = event?.state?.path || window.location.pathname;
       const { page, params } = resolvePageFromPath(newPath);
@@ -165,7 +160,6 @@ function App() {
     window.addEventListener('popstate', handlePopState);
 
     return () => {
-      clearTimeout(timer);
       window.removeEventListener('popstate', handlePopState);
     };
   }, []);
@@ -254,10 +248,7 @@ function App() {
                   <DynamicVisualSettings />
                   <PageAnalyticsTracker currentPage={currentPage} />
 
-                <AnimatePresence mode="wait">
-                  {isLoading ? (
-                    <LoadingScreen key="loading" />
-                  ) : (
+                <StartupGate>
                     <motion.div
                       key="main"
                       initial={{ opacity: 0 }}
@@ -285,8 +276,7 @@ function App() {
                       </main>
                       {currentPage !== 'auth/callback' && <Footer onNavigate={handleNavigate} showNotice={shouldShowFooterNotice(currentPage)} />}
                     </motion.div>
-                  )}
-                </AnimatePresence>
+                </StartupGate>
 
                 <ConsentBanner suppressed={!shouldShowFooterNotice(currentPage)} onNavigate={handleNavigate} />
                 <Toaster />

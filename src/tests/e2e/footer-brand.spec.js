@@ -251,7 +251,8 @@ test.describe('loading screen', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
   test('preset: ivory page, white card, charcoal spinner, accessible text', async ({ page }) => {
-    const snap = await openLoading(page, { settings: BRAND_PRESET });
+    // The loading screen follows the look (resolveLookId): this partial preset needs the selector's marker to be the brand.
+    const snap = await openLoading(page, { settings: { ...BRAND_PRESET, activeTheme: 'papuenvios' } });
     expect(snap.backgroundColor).toBe('rgb(250, 247, 240)');
     expect(snap.cardColor).toBe('rgb(255, 255, 255)');
     expect(snap.spinnerColor).toBe('rgb(23, 23, 23)');
@@ -266,10 +267,11 @@ test.describe('loading screen', () => {
     expect(snap.cardColor).toBe('rgb(255, 255, 255)');
   });
 
-  test('no cached settings: the shipped gradient', async ({ page }) => {
+  test('no cached settings (first visit): the brand ivory, like the static splash', async ({ page }) => {
     const snap = await openLoading(page, { settings: null });
-    expect(snap.backgroundImage).toMatch(/linear-gradient\(.*rgb\(37, 99, 235\).*rgb\(147, 51, 234\)/);
-    expect(snap.spinnerColor).toBe('rgb(37, 99, 235)');
+    expect(snap.backgroundImage).toBe('none');
+    expect(snap.backgroundColor).toBe('rgb(250, 247, 240)');
+    expect(snap.spinnerColor).toBe('rgb(23, 23, 23)');
   });
 });
 

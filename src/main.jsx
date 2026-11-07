@@ -10,10 +10,7 @@ if (!rootElement) {
   throw new Error('Root element not found');
 }
 
-if (rootElement.innerHTML.trim() !== '') {
-  rootElement.innerHTML = '';
-}
-// DEBUG ONLY
+// #root holds the static splash from index.html; createRoot replaces it on the first commit (no blank frame).
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>

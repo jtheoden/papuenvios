@@ -90,9 +90,9 @@ describe('AuthLoadingScreen (S4)', () => {
   });
 
   describe('colours from the visual settings', () => {
-    it('without stored settings keeps the shipped blue to violet gradient', () => {
+    it('without stored settings (first visit) paints the brand ivory, like the static splash', () => {
       render(<AuthLoadingScreen />);
-      expect(screen.getByRole('status').style.getPropertyValue('--ld-bg')).toBe('linear-gradient(to right, #2563eb, #9333ea)');
+      expect(screen.getByRole('status').style.getPropertyValue('--ld-bg')).toBe('#FAF7F0');
     });
 
     it('reads the settings the app stored (real cache key), even past the cache TTL', () => {

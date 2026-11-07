@@ -47,6 +47,34 @@ SQL; siembra `scripts/e2e-seed.sql` (monedas USD/EUR con tasa, categoria, produc
 de la app (`.e2e-dist`, no toca `dist/`) y ejecuta Playwright; al salir borra usuarios, siembra, `.e2e-dist` y
 `playwright/.auth`.
 
+## Aceptacion del arranque: `npm run test:e2e:startup`
+
+Spec `src/tests/e2e/startup-flow.spec.js`, proyecto `chromium` (+ `setup` para las sesiones), `--retries=0`. Corre sobre el
+bundle de produccion (`vite build` + `vite preview` en :5173, igual que `test:e2e:local`) contra el stack local: sesiones y
+roles reales (QA user/admin), y solo la fila de `business_visual_settings` la responde `page.route` (look y latencia de
+cada escenario). Toda peticion que no sea la app o el API local se aborta; una a `*.supabase.co|in` hace fallar el test.
+
+Paso a paso, en la raiz del repo (los pasos 1-2 solo la primera vez, o tras `supabase stop --no-backup`):
+
+```bash
+npm ci && npx playwright install chromium
+export E2E_DB_PASSWORD=postgres          # BD del stack LOCAL desechable (valor por defecto del CLI)
+supabase start --workdir scripts/e2e-stack \
+  -x studio,imgproxy,vector,logflare,edge-runtime,mailpit,postgres-meta,supavisor,realtime
+bash scripts/e2e-local.sh prepare        # solo en stack fresco
+npm run test:e2e:startup                 # headless
+npm run test:e2e:startup -- --headed     # viendolo en pantalla (anadir --workers=1 para seguirlo de uno en uno)
+npm run test:e2e:startup -- --repeat-each=5   # estabilidad
+```
+
+Escenarios: (a) carga en frio sin cache, marca (splash en el HTML con el JS bloqueado; cada frame marfil, sin blanco ni
+azul/violeta; montaje de React -> cabecera < 2,5 s, la espera fija de main); (b) cache classic (splash degradado, wordmark
+blanco, ningun frame marfil); (c) cliente en `/user-panel` y admin en `/admin` con sesion real (sin "Acceso restringido",
+sin menu Admin para el cliente, navegacion Inicio -> Productos -> Carrito -> atras sin recarga ni splash); (d) `<html lang>`
+es -> en -> se conserva al recargar; (e) ajustes a 1,2 s; (f) ajustes 500 y colgados con cache de marca; (g) 320/414 px sin
+errores de consola/pagina/peticiones y sin scroll horizontal; (h) reduced-motion; (i) Slow 3G (CDP) en Pixel 5.
+Limitacion: el stack corre sin `realtime`; (g) tolera SOLO sus errores de websocket/canal (503).
+
 ## Guards de seguridad
 
 - `playwright.config.js` y `helpers/auth.js` abortan si `VITE_SUPABASE_URL` no es `http://127.0.0.1|localhost`
