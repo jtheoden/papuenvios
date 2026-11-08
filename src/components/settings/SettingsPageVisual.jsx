@@ -14,6 +14,7 @@ import HeaderPreview from '@/components/settings/HeaderPreview';
 import LoaderPreview from '@/components/settings/LoaderPreview';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { THEME_IDS, THEME_PRESETS, resolveThemeId, pickThemeKeys, selectTheme, restoreThemeDefaults, getThemeDeviations, getThemeFormDefaults, applyThemePalette } from '@/lib/visualThemes';
+import { HERO_LAYOUTS, resolveHeroLayout } from '@/lib/heroLayout';
 import {
   getCarouselSlides, createCarouselSlide, updateCarouselSlide,
   hardDeleteCarouselSlide, toggleCarouselSlideActive
@@ -32,6 +33,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
   // Suggestions lock preview too, but only user-owned drafts block external settings refreshes.
   const [paletteDraft, setPaletteDraft] = useState(hasPaletteSuggestions);
   const intentionalPaletteDraft = useRef(false);
+  const heroLayoutOnlyDraft = useRef(false);
   const [settingsReplay, setSettingsReplay] = useState(0);
   const isUserEditing = useRef(false); // Track if user is actively editing
   const originalSettings = useRef(null); // Store original settings for cancel functionality
@@ -39,6 +41,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
   const [presetUndo, setPresetUndo] = useState(null); // Form state before the brand preset, null when not applied
   const [bgDraft, setBgDraft] = useState(null); // loader background text while typing; null = follow the form value
   const [resetOpen, setResetOpen] = useState(false); // Confirmation dialog of "Restore theme"
+  const [heroLayoutDraft, setHeroLayoutDraft] = useState(() => resolveHeroLayout(visualSettings));
 
   const [appearance, setAppearance] = useState({
     companyName: visualSettings.companyName || 'PapuEnvíos',
@@ -223,6 +226,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     setAppearance(newAppearance);
     setLogoPreview(visualSettings.logo || '');
     setFaviconPreview(visualSettings.favicon || '');
+    setHeroLayoutDraft(resolveHeroLayout(visualSettings));
     setHasChanges(false);
     setPaletteDraft(hasPaletteSuggestions);
     if (hasPaletteSuggestions) {
@@ -233,12 +237,15 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
   const selectedThemeId = resolveThemeId(appearance);
   const savedThemeId = resolveThemeId(visualSettings);
   const themePending = selectedThemeId !== savedThemeId; // chosen in the form, not saved yet
-  const previewLocked = themePending || paletteDraft;
+  const savedHeroLayout = resolveHeroLayout(visualSettings);
+  const heroLayoutPending = heroLayoutDraft !== savedHeroLayout;
+  const previewLocked = themePending || paletteDraft || heroLayoutPending;
   const themeDeviations = getThemeDeviations(appearance); // preset colours edited by hand
 
   // Update appearance with live preview
   const patchAppearance = useCallback((patch) => {
     isUserEditing.current = true;
+    heroLayoutOnlyDraft.current = false;
     if (previewLocked) intentionalPaletteDraft.current = true;
     setHasChanges(true);
     const newAppearance = { ...appearance, ...patch };
@@ -257,8 +264,17 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
   // Theme selector: fills the FORM only. Live preview goes off (and stays locked while the choice is
   // unsaved) because updateAppearance would otherwise persist the whole form on the next edit.
   const stagePalette = (nextAppearance) => {
+    const priorHeroLayoutOnlyDraft = heroLayoutOnlyDraft.current;
+    heroLayoutOnlyDraft.current = false;
     const priorIntentionalDraft = intentionalPaletteDraft.current;
-    setPresetUndo(prev => prev ?? { appearance, livePreview, paletteDraft, intentionalPaletteDraft: priorIntentionalDraft, visualSettings });
+    setPresetUndo(prev => prev ?? {
+      appearance,
+      livePreview,
+      paletteDraft,
+      intentionalPaletteDraft: priorIntentionalDraft,
+      heroLayoutOnlyDraft: priorHeroLayoutOnlyDraft,
+      visualSettings,
+    });
     intentionalPaletteDraft.current = true;
     setAppearance(nextAppearance);
     setPaletteDraft(true);
@@ -274,15 +290,48 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     stagePalette(selectTheme(appearance, themeId));
   };
 
+  const handleSelectHeroLayout = (layout) => {
+    if (!canChangeTheme || !HERO_LAYOUTS.includes(layout) || layout === heroLayoutDraft) return;
+    const returningToSavedLayout = layout === savedHeroLayout;
+    const replayLatestSettings = returningToSavedLayout && heroLayoutOnlyDraft.current && !paletteDraft && !themePending;
+    if (replayLatestSettings) {
+      // A Hero-only draft no longer owns the form. Replay settings that may have
+      // arrived while it was pending instead of leaving the sync effect blocked.
+      heroLayoutOnlyDraft.current = false;
+      intentionalPaletteDraft.current = false;
+      isUserEditing.current = false;
+      setSettingsReplay((revision) => revision + 1);
+    } else if (!returningToSavedLayout && !intentionalPaletteDraft.current) {
+      heroLayoutOnlyDraft.current = true;
+    } else {
+      heroLayoutOnlyDraft.current = false;
+    }
+    setHeroLayoutDraft(layout);
+    setLivePreview(false);
+    setHasChanges(true);
+    if (!returningToSavedLayout || paletteDraft || themePending) intentionalPaletteDraft.current = true;
+    if (!replayLatestSettings) {
+      isUserEditing.current = true;
+      setTimeout(() => { isUserEditing.current = false; }, 1000);
+    }
+  };
+
   const handleUndoBrandPreset = () => {
     if (!presetUndo) return;
     setAppearance(presetUndo.appearance);
     setLivePreview(presetUndo.livePreview);
     setPaletteDraft(presetUndo.paletteDraft);
-    intentionalPaletteDraft.current = presetUndo.intentionalPaletteDraft;
+    const restoreHeroLayoutDraft = Boolean(
+      presetUndo.heroLayoutOnlyDraft && heroLayoutDraft !== savedHeroLayout
+    );
+    const restoreIntentionalDraft = Boolean(
+      presetUndo.intentionalPaletteDraft && (!presetUndo.heroLayoutOnlyDraft || restoreHeroLayoutDraft)
+    );
+    intentionalPaletteDraft.current = restoreIntentionalDraft;
+    heroLayoutOnlyDraft.current = restoreHeroLayoutDraft;
     // A refresh may already have arrived while this draft blocked syncing. Releasing an
     // unowned baseline must replay it even when visualSettings will not change again.
-    if (!presetUndo.intentionalPaletteDraft && presetUndo.visualSettings !== visualSettings) {
+    if (!restoreIntentionalDraft && presetUndo.visualSettings !== visualSettings) {
       isUserEditing.current = false;
       setSettingsReplay(prev => prev + 1);
     }
@@ -309,6 +358,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       }
 
       if (previewLocked) intentionalPaletteDraft.current = true;
+      heroLayoutOnlyDraft.current = false;
       setLogoPreview(result.base64);
       setAppearance(prev => ({ ...prev, logo: result.base64 }));
 
@@ -382,6 +432,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       }
 
       if (previewLocked) intentionalPaletteDraft.current = true;
+      heroLayoutOnlyDraft.current = false;
       setFaviconPreview(result.base64);
       setAppearance(prev => ({ ...prev, favicon: result.base64 }));
       setHasChanges(true);
@@ -415,6 +466,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
       ...visualSettings,
       ...appearance
     };
+    if (heroLayoutPending) newSettings.heroLayout = heroLayoutDraft;
     await setVisualSettings(newSettings);
     // Update browser tab title
     document.title = appearance.siteTitle || appearance.companyName;
@@ -424,6 +476,7 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
     setPresetUndo(null);
     setPaletteDraft(false);
     intentionalPaletteDraft.current = false;
+    heroLayoutOnlyDraft.current = false;
     toast({
       title: t('settings.saveSuccess'),
       description: t('settings.visual.changesSaved')
@@ -1407,6 +1460,101 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Hero layout remains a form draft until the shared Save action is used. */}
+        <div className="mb-6 rounded-xl border border-border bg-card p-4 sm:p-5">
+          <h3 id="hero-layout-label" className="text-base font-semibold text-foreground">
+            {t('settings.visual.heroLayout.title')}
+          </h3>
+          <p id="hero-layout-hint" className="mt-1 text-sm text-muted-foreground">
+            {t('settings.visual.heroLayout.hint')}
+          </p>
+          <div
+            role="radiogroup"
+            aria-labelledby="hero-layout-label"
+            aria-describedby="hero-layout-hint"
+            className="mt-3 grid gap-3 sm:grid-cols-2"
+          >
+            {HERO_LAYOUTS.map((layout) => {
+              const selected = heroLayoutDraft === layout;
+              const inUse = savedHeroLayout === layout;
+              const nameId = `hero-layout-${layout}-name`;
+              const descriptionId = `hero-layout-${layout}-description`;
+              const inUseId = `hero-layout-${layout}-in-use`;
+              return (
+                <label
+                  key={layout}
+                  className={`rounded-xl border-2 p-3 transition-colors focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-theme-focus ${
+                    selected ? 'border-theme-accent bg-theme-accent-soft' : 'border-border bg-card'
+                  } ${canChangeTheme ? 'cursor-pointer hover:border-theme-accent' : 'cursor-not-allowed opacity-75'}`}
+                >
+                  <input
+                    type="radio"
+                    name="hero-layout"
+                    value={layout}
+                    checked={selected}
+                    disabled={!canChangeTheme}
+                    onChange={() => handleSelectHeroLayout(layout)}
+                    aria-labelledby={nameId}
+                    aria-describedby={inUse ? `${descriptionId} ${inUseId}` : descriptionId}
+                    data-testid={`hero-layout-option-${layout}`}
+                    className="sr-only accent-theme-focus"
+                  />
+                  <span className="flex items-center justify-between gap-2">
+                    <span id={nameId} className="font-semibold text-foreground">
+                      {t(`settings.visual.heroLayout.${layout}.name`)}
+                    </span>
+                    <span className="flex items-center gap-1 text-xs font-medium">
+                      {selected && <Check className="h-4 w-4 text-theme-accent" aria-hidden="true" />}
+                      {inUse && (
+                        <span id={inUseId} className="rounded-full bg-theme-accent px-2 py-0.5 text-theme-on-accent">
+                          {t('settings.visual.heroLayout.inUse')}
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                  <div
+                    data-testid={`hero-layout-preview-${layout}`}
+                    aria-hidden="true"
+                    className="relative mt-3 h-24 overflow-hidden rounded-lg border border-border"
+                    style={{ backgroundColor: layout === 'cover' ? appearance.pageBgColor : 'rgb(var(--t-page-via))' }}
+                  >
+                    {layout === 'cover' ? (
+                      <>
+                        <div
+                          className="absolute inset-0 opacity-50"
+                          style={{ background: `linear-gradient(120deg, ${appearance.primaryColor}, ${appearance.secondaryColor})` }}
+                        />
+                        <div className="absolute inset-x-2 top-2 h-1 rounded" style={{ backgroundColor: appearance.headingColor }} />
+                        <div className="absolute bottom-2 left-2 h-2 w-1/3 rounded" style={{ backgroundColor: appearance.headingColor }} />
+                        <div className="absolute bottom-2 right-2 h-3 w-12 rounded" style={{ backgroundColor: appearance.buttonBgColor }} />
+                      </>
+                    ) : (
+                      <div className="flex h-full flex-col justify-center gap-1.5 px-2">
+                        <span className="mx-auto h-1 w-10 rounded" style={{ backgroundColor: appearance.headingColor }} />
+                        <div className="mx-auto w-3/4 rounded border border-border bg-card p-1">
+                          <div className="aspect-[3.8/1] rounded opacity-60" style={{ background: `linear-gradient(120deg, ${appearance.primaryColor}, ${appearance.secondaryColor})` }} />
+                          <span className="mx-auto mt-1 block h-1 w-1/2 rounded" style={{ backgroundColor: appearance.mutedTextColor || '#9ca3af' }} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <span id={descriptionId} className="mt-2 block text-sm text-muted-foreground">
+                    {t(`settings.visual.heroLayout.${layout}.description`)}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          {!canChangeTheme && (
+            <p className="mt-3 text-xs text-amber-800">{t('settings.visual.heroLayout.restricted')}</p>
+          )}
+          {heroLayoutPending && (
+            <p data-testid="hero-layout-pending" role="status" className="mt-3 text-sm text-amber-800">
+              {t('settings.visual.heroLayout.pending')}
+            </p>
+          )}
         </div>
 
         <div className="flex justify-end gap-2">
