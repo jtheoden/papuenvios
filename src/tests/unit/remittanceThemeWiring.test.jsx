@@ -8,6 +8,7 @@ import RemittancesPage from '@/components/RemittancesPage';
 
 const traverse = traverseModule.default || traverseModule;
 const business = vi.hoisted(() => ({ visualSettings: {} }));
+vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 vi.mock('@/contexts/BusinessContext', () => ({ useBusiness: () => business }));
 vi.mock('@/contexts/LanguageContext', () => ({ useLanguage: () => ({ t: (key) => key }) }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: null }) }));
