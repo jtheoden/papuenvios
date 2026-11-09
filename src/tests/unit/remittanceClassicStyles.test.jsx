@@ -72,6 +72,10 @@ describe.each(Object.entries(pages))('%s theme-scoped inline styles', (name, Pag
     await settle(container);
     expect(container.querySelector('h1').getAttribute('style') || '').toBe('');
     expect(container.innerHTML).not.toMatch(/linear-gradient|101, 67, 33|#654321/i);
+    // Without inline style the CTAs must still paint themselves: a transparent button must not pass.
+    const ctas = [...container.querySelectorAll('button')].filter((b) => /(?<![\w:-])bg-theme-accent(?![\w-])/.test(b.className));
+    expect(ctas.length).toBeGreaterThan(0);
+    ctas.forEach((b) => expect(b.className).toMatch(/(?<![\w-])text-theme-on-accent(?![\w-])/));
   });
 
   it('brand look keeps the stored heading and button styles', async () => {

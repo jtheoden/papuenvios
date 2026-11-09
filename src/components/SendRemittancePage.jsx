@@ -1070,7 +1070,7 @@ const SendRemittancePage = ({ onNavigate }) => {
               <button
                 onClick={handleCalculate}
                 disabled={!selectedType || selectedType.rateUnavailable || !amount || calculating || !amountValidation.isValid || zelleRemittancesBlocked}
-                style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className={`rounded-lg flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none ${!calculating && selectedType && amount && amountValidation.isValid ? 'animate-pulse ring-2 ring-blue-300 ring-offset-2' : ''}`}
+                style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className={`bg-theme-accent text-theme-on-accent hover:bg-theme-accent-hover rounded-lg flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none ${!calculating && selectedType && amount && amountValidation.isValid ? 'animate-pulse ring-2 ring-blue-300 ring-offset-2' : ''}`}
               >
                 {calculating ? t('remittances.wizard.calculating') : t('remittances.wizard.continue')}
                 <ArrowRight className="h-6 w-6" />
@@ -1217,7 +1217,7 @@ const SendRemittancePage = ({ onNavigate }) => {
               <button
                 onClick={handleRecipientSubmit}
                 disabled={deliveryZoneBlocked}
-                style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="rounded-lg flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="bg-theme-accent text-theme-on-accent hover:bg-theme-accent-hover rounded-lg flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {t('remittances.wizard.continue')}
                 <ArrowRight className="h-6 w-6" />
@@ -1373,7 +1373,7 @@ const SendRemittancePage = ({ onNavigate }) => {
               <button
                 onClick={handleConfirmRemittance}
                 disabled={submitting || zelleRemittancesBlocked}
-                style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="rounded-lg flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:shadow-none"
+                style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="bg-theme-accent text-theme-on-accent hover:bg-theme-accent-hover rounded-lg flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:shadow-none"
               >
                 {submitting ? t('remittances.wizard.creating') : t('remittances.wizard.confirmAndCreate')}
                 <CheckCircle className="h-6 w-6" />

@@ -124,7 +124,7 @@ describe('controls follow the look (index.css)', () => {
   });
 
   it('the default Button hover goes to the darker gold step (charcoal text stays readable), without touching classic', () => {
-    const rule = rules.find((r) => r.selector === ':root:not([data-theme="classic"]) .hover\\:bg-primary\\/90:hover');
+    const rule = rules.find((r) => r.selector === ':root:not([data-theme="classic"]) .hover\\:bg-primary\\/90:hover:not(:disabled)');
     expect(rule?.body).toMatch(/background-color:\s*rgb\(var\(--t-accent-hover\)\)/);
     expect(rules.some((r) => r.selector.includes('[data-theme="classic"]') && !r.selector.includes(':not(') && r.selector.includes('bg-primary'))).toBe(false);
   });

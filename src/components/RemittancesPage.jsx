@@ -43,7 +43,7 @@ const RemittancesPage = ({ onNavigate }) => {
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
             <motion.button
               onClick={() => onNavigate('send-remittance')}
-              style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="rounded-lg font-semibold flex items-center justify-center gap-2 px-8 py-4 text-lg shadow-lg shadow-theme-focus/30 ring-2 ring-blue-400/50 theme-cta-ring"
+              style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="bg-theme-accent text-theme-on-accent hover:bg-theme-accent-hover rounded-lg font-semibold flex items-center justify-center gap-2 px-8 py-4 text-lg shadow-lg shadow-theme-focus/30 ring-2 ring-blue-400/50 theme-cta-ring"
               animate={{
                 scale: [1, 1.02, 1],
                 boxShadow: [
@@ -141,7 +141,7 @@ const RemittancesPage = ({ onNavigate }) => {
             </p>
             <motion.button
               onClick={() => onNavigate('send-remittance')}
-              style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="rounded-lg px-6 py-3 font-semibold inline-flex items-center gap-2 shadow-lg shadow-theme-focus/30"
+              style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="bg-theme-accent text-theme-on-accent hover:bg-theme-accent-hover rounded-lg px-6 py-3 font-semibold inline-flex items-center gap-2 shadow-lg shadow-theme-focus/30"
               animate={{
                 scale: [1, 1.02, 1],
                 boxShadow: [

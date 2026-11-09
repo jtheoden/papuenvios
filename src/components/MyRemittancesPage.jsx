@@ -758,7 +758,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
         </div>
         <button
           onClick={() => onNavigate && onNavigate('send-remittance')}
-          style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="rounded-lg px-6 py-3 font-semibold flex items-center gap-2"
+          style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="bg-theme-accent text-theme-on-accent hover:bg-theme-accent-hover rounded-lg px-6 py-3 font-semibold flex items-center gap-2"
         >
           <DollarSign className="h-5 w-5" />
           {t('remittances.user.newRemittance')}
@@ -826,7 +826,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
           </p>
           <button
             onClick={() => onNavigate && onNavigate('send-remittance')}
-            style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="rounded-lg px-6 py-3 font-semibold inline-flex items-center gap-2"
+            style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="bg-theme-accent text-theme-on-accent hover:bg-theme-accent-hover rounded-lg px-6 py-3 font-semibold inline-flex items-center gap-2"
           >
             <DollarSign className="h-5 w-5" />
             {t('remittances.user.newRemittance')}
@@ -1196,7 +1196,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                 </button>
                 <button
                   type="submit"
-                  style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="flex-1 rounded-lg px-4 py-2 font-semibold text-sm"
+                  style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="bg-theme-accent text-theme-on-accent hover:bg-theme-accent-hover flex-1 rounded-lg px-4 py-2 font-semibold text-sm"
                 >
                   {t('remittances.user.send')}
                 </button>

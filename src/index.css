@@ -236,7 +236,7 @@ body {
 
 /* The default Button hovers with bg-primary/90, which would lighten the gold brand primary: use the darker gold step
    instead, for the brand look only (classic keeps its blue and the class string stays byte-identical). */
-:root:not([data-theme="classic"]) .hover\:bg-primary\/90:hover {
+:root:not([data-theme="classic"]) .hover\:bg-primary\/90:hover:not(:disabled) {
   background-color: rgb(var(--t-accent-hover));
 }
 
