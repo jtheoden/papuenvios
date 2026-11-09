@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart3, TrendingUp, DollarSign, Package, Users, AlertTriangle, Eye, Users2, RefreshCw, FileText, List, Send, Settings, Clock, CheckCircle, Ticket, CreditCard, ShieldCheck, Truck, Tag, Calendar } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -12,6 +12,8 @@ import { classifyAdminCatalogError } from '@/lib/catalogErrors';
 import CatalogLoadError from './CatalogLoadError';
 import RefundsAlertCard from '@/components/admin/RefundsAlertCard';
 import RefundKpiCards from '@/components/admin/RefundKpiCards';
+import ReconnectingNotice from '@/components/ReconnectingNotice';
+import { isRefreshBlocked } from '@/lib/refreshGuard';
 import { getHeadingStyle } from '@/lib/styleUtils';
 import {
   ACTIVE_ORDER_STATUSES,
@@ -58,7 +60,8 @@ const COURIER_PERIOD_KEYS = ['dailyBreakdown', 'monthlyBreakdown', 'yearlyBreakd
 const DashboardPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { products, combos, financialSettings, visualSettings } = useBusiness();
-  const { user, isAdmin, isSuperAdmin } = useAuth();
+  const { user, isAdmin, isSuperAdmin, sessionStatus } = useAuth();
+  const reconnecting = sessionStatus === 'reconnecting';
 
   // Tab state
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' or 'orders'
@@ -152,6 +155,8 @@ const DashboardPage = ({ onNavigate }) => {
       };
 
       const results = await Promise.all([countVisits(since(7)), countVisits(since(30)), countVisits(since(365)), countVisits()]);
+      // Read while the token refresh is blocked = anon key = RLS-empty counts: not data, so show "unavailable".
+      if (isRefreshBlocked()) throw new Error('session refresh paused');
       if (results.some((res) => res.error)) {
         setVisitStats(unavailable);
         return;
@@ -182,6 +187,8 @@ const DashboardPage = ({ onNavigate }) => {
         settleCosts(listComboCosts())
       ]);
 
+      // Read while the token refresh is blocked = anon key = RLS-empty answers: discard them, never show them as zeros.
+      if (isRefreshBlocked()) throw new Error('session refresh paused');
       if (productsRes.error) throw productsRes.error;
       if (combosRes.error) throw combosRes.error;
       if (usersRes.error) throw usersRes.error;
@@ -311,6 +318,16 @@ const DashboardPage = ({ onNavigate }) => {
   });
   useVisiblePolling('dashboard:visits', fetchVisitStats, { enabled: canSeeStats, intervalMs: POLL_STATS_MS });
 
+  // Session back after reconnecting: whatever was shown (or discarded) meanwhile is stale, load it again.
+  const wasReconnectingRef = useRef(false);
+  useEffect(() => {
+    if (wasReconnectingRef.current && !reconnecting) {
+      fetchStats();
+      fetchVisitStats();
+    }
+    wasReconnectingRef.current = reconnecting;
+  }, [reconnecting, fetchStats, fetchVisitStats]);
+
   useRealtimeOrders({
     enabled: isAdmin || isSuperAdmin,
     onUpdate: refreshStats
@@ -431,8 +448,12 @@ const DashboardPage = ({ onNavigate }) => {
               label: 'dashboard.overviewTab',
               icon: <BarChart3 className="h-5 w-5" />,
               content: (
+                reconnecting && !stats.ready ? (
+                  <ReconnectingNotice onRetry={() => { fetchStats(); fetchVisitStats(); }} />
+                ) : (
                 <>
-                  {stats.error && (
+                  {reconnecting && <ReconnectingNotice onRetry={() => { fetchStats(); fetchVisitStats(); }} />}
+                  {stats.error && !reconnecting && (
                     <div data-testid="stats-error" role="alert" className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
                       <p className="text-sm">{stats.ready ? t('dashboard.loadErrorStale') : t('dashboard.loadError')}</p>
                       <button type="button" onClick={fetchStats} disabled={stats.loading} className="px-3 py-1.5 bg-white border border-red-300 rounded-lg text-sm font-medium hover:bg-red-100">
@@ -442,8 +463,8 @@ const DashboardPage = ({ onNavigate }) => {
                   )}
                   <CatalogLoadError error={marginsError} />
                   {/* Pending refunds: what needs action goes before what is read */}
-                  <RefundsAlertCard enabled={Boolean(isAdmin)} onNavigate={onNavigate} />
-                  <RefundKpiCards enabled={Boolean(isAdmin)} />
+                  <RefundsAlertCard enabled={Boolean(isAdmin) && !reconnecting} onNavigate={onNavigate} />
+                  <RefundKpiCards enabled={Boolean(isAdmin) && !reconnecting} />
                   {/* Expiration Warning */}
                   {expiringProducts.length > 0 && (
                     <motion.div
@@ -1003,6 +1024,7 @@ const DashboardPage = ({ onNavigate }) => {
                     </div>
                   </motion.div>
                 </>
+                )
               )
             },
             {

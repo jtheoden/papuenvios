@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { isStaleChunkError } from '@/lib/lazyWithRetry';
+import { reportClientError } from '@/lib/errorHandler';
 import ES from '@/translations/ES.json';
 import EN from '@/translations/EN.json';
 
@@ -26,6 +27,7 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
+    reportClientError(error, 'ErrorBoundary');
   }
 
   render() {

@@ -148,6 +148,15 @@ export const getUserFriendlyMessage = (code, defaultMessage) => {
   return ERROR_MESSAGES[code] || defaultMessage || 'An unexpected error occurred.';
 };
 
+const deviceClass = () =>
+  typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
+
+const MAX_REPORT_MESSAGE = 200;
+const SENSITIVE_TEXT = /[\w.+-]+@[\w-]+\.[\w.-]+|eyJ[\w-]+\.[\w-]+\.[\w-]*/g; // emails and JWTs
+
+/** Error text safe to log: emails/JWTs redacted, at most 200 characters. */
+export const sanitizeMessage = (message) => String(message ?? '').replace(SENSITIVE_TEXT, '[redacted]').slice(0, MAX_REPORT_MESSAGE);
+
 /**
  * Error Logger
  * Logs errors with full context for debugging
@@ -160,8 +169,10 @@ export const logError = (error, context = {}) => {
     code: error.code || 'UNKNOWN',
     context: { ...context, ...error.context },
     stack: error.stack,
-    url: typeof window !== 'undefined' ? window.location.href : null,
-    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null
+    // No PII: the path only (query strings carry codes/ids) and a device class instead of the full user agent.
+    route: typeof window !== 'undefined' ? window.location.pathname : null,
+    device: deviceClass(),
+    appVersion: import.meta.env.VITE_APP_VERSION ?? null
   };
 
   // Console logging
@@ -174,6 +185,14 @@ export const logError = (error, context = {}) => {
 
   return errorLog;
 };
+
+/**
+ * Report an error caught by the UI/auth layer (ErrorBoundary, auth recovery giving up) so field incidents are
+ * diagnosable. No PII: sanitized message, no stack, no user data. Console only: no network, no persistence.
+ * shortcut: nothing persists across sessions; add a sink (e.g. an Edge Function table) in logError if the owner needs history.
+ */
+export const reportClientError = (error, source) =>
+  logError({ name: error?.name || 'Error', message: sanitizeMessage(error?.message ?? error), code: 'CLIENT_ERROR' }, { source });
 
 /**
  * Safe Error Handler

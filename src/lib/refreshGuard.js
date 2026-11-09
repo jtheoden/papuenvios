@@ -159,6 +159,24 @@ export const skipWhileRefreshBlocked = (fn) => (...args) => (isRefreshBlocked() 
 /** Nothing left to refresh (signed out): drop the cooldown so the next session starts clean. */
 export const clearRefreshBlock = clearCooldown;
 
+// GoTrue answers with an absolute `expires_at` (server clock). On a device whose clock runs ahead by more than
+// the token life every fresh token then looks expired, and auth-js refreshes again on each getSession() (a burst of
+// token_refreshed/token_revoked pairs that trips the per-IP rate limit). Dropping it makes auth-js derive the expiry
+// from `expires_in` on the local clock, which is correct whatever the clock offset.
+const relativeExpiry = async (response) => {
+  try {
+    const body = await response.clone().json();
+    if (!body || body.expires_at === undefined || !body.expires_in) return response;
+    delete body.expires_at;
+    const headers = new Headers(response.headers);
+    headers.delete('content-length');
+    headers.delete('content-encoding');
+    return new Response(JSON.stringify(body), { status: response.status, statusText: response.statusText, headers });
+  } catch {
+    return response;
+  }
+};
+
 const pausedError = () =>
   new TypeError(`Token refresh paused: rate limited or unavailable, retry in ${Math.ceil(getRefreshBlockRemainingMs() / 1000)}s`);
 
@@ -172,6 +190,9 @@ export const createRefreshGuardFetch = (baseFetch = (...args) => globalThis.fetc
       startCooldown(response.headers?.get?.('Retry-After'));
       throw pausedError();
     }
-    if (response.ok) clearCooldown();
+    if (response.ok) {
+      clearCooldown();
+      return relativeExpiry(response);
+    }
     return response;
   };
