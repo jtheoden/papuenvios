@@ -36,8 +36,8 @@ describe('remittance visual-settings wiring', () => {
   });
 
   it.each([
-    { headingColor: '#123456', buttonBgColor: '#654321', buttonTextColor: '#ffeecc' },
-    { primaryColor: '#113355', secondaryColor: '#7799bb', useHeadingGradient: true, useButtonGradient: true, gradientDirection: 45 },
+    { activeTheme: 'papuenvios', headingColor: '#123456', buttonBgColor: '#654321', buttonTextColor: '#ffeecc' },
+    { activeTheme: 'papuenvios', primaryColor: '#113355', secondaryColor: '#7799bb', useHeadingGradient: true, useButtonGradient: true, gradientDirection: 45 },
   ])('renders configured heading and CTA styles: %j', (settings) => {
     business.visualSettings = settings;
     const { container } = render(<RemittancesPage onNavigate={vi.fn()} />);

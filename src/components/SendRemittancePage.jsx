@@ -32,6 +32,7 @@ import { getFreshGuidedWhatsappPhone } from '@/lib/notificationSettingsService';
 import { validateRemittanceOffer } from '@/lib/orderDiscountService';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
+import { resolveThemeId } from '@/lib/visualThemes';
 import RecipientSelector from '@/components/RecipientSelector';
 import ZelleAccountSelector from '@/components/ZelleAccountSelector';
 import ZelleAccountAlert from '@/components/ZelleAccountAlert';
@@ -56,6 +57,8 @@ const SendRemittancePage = ({ onNavigate }) => {
   const { ensureAccepted } = useLegalAcceptance();
   const { showModal } = useModal();
   const { notificationSettings, visualSettings } = useBusiness();
+  // Stored heading/button colours are brand-look only; classic keeps its token classes.
+  const themed = resolveThemeId(visualSettings) !== 'classic';
   const { methods: paymentMethods, refresh: refreshPaymentMethods, isMethodEnabled } = usePaymentMethods();
   // Fails open: stays false until the status is known (the DB trigger is the real guard)
   const zelleRemittancesBlocked = !isMethodEnabled('zelle', PAYMENT_FLOWS.REMITTANCES);
@@ -707,7 +710,7 @@ const SendRemittancePage = ({ onNavigate }) => {
         onSelectNewAccount={() => setStep(4)}
       />
 
-      <h1 style={getHeadingStyle(visualSettings)} className="font-bold text-3xl mb-2 text-center">
+      <h1 style={themed ? getHeadingStyle(visualSettings) : undefined} className="font-bold text-3xl mb-2 text-center">
         {t('remittances.wizard.pageTitle')}
       </h1>
       <p className="text-gray-600 text-center mb-8">
@@ -1067,7 +1070,7 @@ const SendRemittancePage = ({ onNavigate }) => {
               <button
                 onClick={handleCalculate}
                 disabled={!selectedType || selectedType.rateUnavailable || !amount || calculating || !amountValidation.isValid || zelleRemittancesBlocked}
-                style={getPrimaryButtonStyle(visualSettings)} className={`rounded-lg flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none ${!calculating && selectedType && amount && amountValidation.isValid ? 'animate-pulse ring-2 ring-blue-300 ring-offset-2' : ''}`}
+                style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className={`rounded-lg flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none ${!calculating && selectedType && amount && amountValidation.isValid ? 'animate-pulse ring-2 ring-blue-300 ring-offset-2' : ''}`}
               >
                 {calculating ? t('remittances.wizard.calculating') : t('remittances.wizard.continue')}
                 <ArrowRight className="h-6 w-6" />
@@ -1214,7 +1217,7 @@ const SendRemittancePage = ({ onNavigate }) => {
               <button
                 onClick={handleRecipientSubmit}
                 disabled={deliveryZoneBlocked}
-                style={getPrimaryButtonStyle(visualSettings)} className="rounded-lg flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="rounded-lg flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {t('remittances.wizard.continue')}
                 <ArrowRight className="h-6 w-6" />
@@ -1370,7 +1373,7 @@ const SendRemittancePage = ({ onNavigate }) => {
               <button
                 onClick={handleConfirmRemittance}
                 disabled={submitting || zelleRemittancesBlocked}
-                style={getPrimaryButtonStyle(visualSettings)} className="rounded-lg flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:shadow-none"
+                style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="rounded-lg flex items-center gap-3 px-8 py-4 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:shadow-none"
               >
                 {submitting ? t('remittances.wizard.creating') : t('remittances.wizard.confirmAndCreate')}
                 <CheckCircle className="h-6 w-6" />

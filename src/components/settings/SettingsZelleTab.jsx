@@ -406,8 +406,7 @@ const SettingsZelleTab = () => {
         </div>
         <Button
           onClick={handleCreateAccount}
-          style={{ backgroundColor: visualSettings.primaryColor || '#2563eb', color: 'white' }}
-          className="hover:opacity-90 h-9 px-3"
+          className="h-9 px-3"
           title={t('zelle.createAccount') || 'Create Account'}
         >
           <Plus className="h-4 w-4 sm:mr-2" />
@@ -654,7 +653,6 @@ const SettingsZelleTab = () => {
               <Button
                 onClick={handleSubmitForm}
                 disabled={actionLoading === 'form'}
-                style={{ backgroundColor: visualSettings.primaryColor || '#2563eb', color: 'white' }}
                 className="h-9 px-3"
               >
                 {actionLoading === 'form' && <Loader className="h-4 w-4 sm:mr-2 animate-spin" />}
@@ -763,7 +761,6 @@ const SettingsZelleTab = () => {
               <Button
                 onClick={handleConfirmReset}
                 disabled={actionLoading === 'reset'}
-                style={{ backgroundColor: visualSettings.primaryColor || '#2563eb', color: 'white' }}
                 className="h-9 px-3"
               >
                 {actionLoading === 'reset' && <Loader className="h-4 w-4 sm:mr-2 animate-spin" />}

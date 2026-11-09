@@ -25,6 +25,7 @@ import {
 } from '@/lib/remittanceService';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
+import { resolveThemeId } from '@/lib/visualThemes';
 import { useModal } from '@/contexts/ModalContext';
 import CancelRefundMessage from '@/components/CancelRefundMessage';
 import FileUploadWithPreview from '@/components/FileUploadWithPreview';
@@ -76,6 +77,8 @@ const MyRemittancesPage = ({ onNavigate }) => {
   const { user, isAdmin, isSuperAdmin } = useAuth();
   const { showModal } = useModal();
   const { notificationSettings, visualSettings } = useBusiness();
+  // Stored heading/button colours are brand-look only; classic keeps its token classes.
+  const themed = resolveThemeId(visualSettings) !== 'classic';
 
   const [remittances, setRemittances] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -746,7 +749,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
     <div className="max-w-6xl mx-auto py-8 px-4">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 style={getHeadingStyle(visualSettings)} className="font-bold text-3xl mb-2">
+          <h1 style={themed ? getHeadingStyle(visualSettings) : undefined} className="font-bold text-3xl mb-2">
             {t('remittances.user.myRemittances')}
           </h1>
           <p className="text-gray-600">
@@ -755,7 +758,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
         </div>
         <button
           onClick={() => onNavigate && onNavigate('send-remittance')}
-          style={getPrimaryButtonStyle(visualSettings)} className="rounded-lg px-6 py-3 font-semibold flex items-center gap-2"
+          style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="rounded-lg px-6 py-3 font-semibold flex items-center gap-2"
         >
           <DollarSign className="h-5 w-5" />
           {t('remittances.user.newRemittance')}
@@ -823,7 +826,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
           </p>
           <button
             onClick={() => onNavigate && onNavigate('send-remittance')}
-            style={getPrimaryButtonStyle(visualSettings)} className="rounded-lg px-6 py-3 font-semibold inline-flex items-center gap-2"
+            style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="rounded-lg px-6 py-3 font-semibold inline-flex items-center gap-2"
           >
             <DollarSign className="h-5 w-5" />
             {t('remittances.user.newRemittance')}
@@ -925,7 +928,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                                     disabled={recalculating === remittance.id}
                                     className={`inline-flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
                                       rateUp
-                                        ? 'bg-theme-accent text-theme-on-accent hover:bg-theme-accent-hover disabled:bg-blue-400'
+                                        ? 'bg-theme-accent text-theme-on-accent hover:bg-theme-accent-hover theme-accent-disabled disabled:bg-blue-400'
                                         : 'bg-amber-600 text-white hover:bg-amber-700 disabled:bg-amber-400'
                                     }`}
                                   >
@@ -1193,7 +1196,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                 </button>
                 <button
                   type="submit"
-                  style={getPrimaryButtonStyle(visualSettings)} className="flex-1 rounded-lg px-4 py-2 font-semibold text-sm"
+                  style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="flex-1 rounded-lg px-4 py-2 font-semibold text-sm"
                 >
                   {t('remittances.user.send')}
                 </button>
