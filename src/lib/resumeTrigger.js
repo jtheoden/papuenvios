@@ -42,7 +42,6 @@ export const subscribeResume = (fn) => {
     if (subscribers.size > 0) return;
     window.removeEventListener('online', schedule);
     document.removeEventListener('visibilitychange', onVisibility);
-    clearTimeout(timer);
-    timer = null;
+    // The pending timer is kept: a subscriber that re-subscribes in the same tick still gets this resume.
   };
 };

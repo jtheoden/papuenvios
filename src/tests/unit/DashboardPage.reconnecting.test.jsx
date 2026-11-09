@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
-const state = vi.hoisted(() => ({ productCalls: 0 }));
+const state = vi.hoisted(() => ({ productCalls: 0, gate: null }));
 const stable = vi.hoisted(() => ({
   auth: { user: { id: 'su' }, isAdmin: true, isSuperAdmin: true, sessionStatus: 'ok' },
   business: { products: [], combos: [], financialSettings: { productProfit: 40 }, visualSettings: {} }
@@ -31,7 +31,9 @@ vi.mock('@/lib/supabase', () => {
     if (table === 'products') state.productCalls += 1;
     const chain = {};
     ['select', 'eq', 'in', 'order', 'range', 'gte'].forEach((m) => { chain[m] = () => chain; });
-    chain.then = (resolve) => resolve({ data: [], count: 0, error: null });
+    // state.gate (a promise) holds a products read open, like a read queued behind auth-js's lock
+    chain.then = (resolve) => (table === 'products' && state.gate ? state.gate : Promise.resolve())
+      .then(() => resolve({ data: [], count: 0, error: null }));
     return chain;
   };
   return { supabase: { from: (table) => emptyChain(table), rpc: async () => ({ data: [], error: null }) } };
@@ -46,6 +48,7 @@ const block = () => createRefreshGuardFetch(async () => new Response('{}', { sta
 describe('DashboardPage while the session is reconnecting', () => {
   beforeEach(() => {
     state.productCalls = 0;
+    state.gate = null;
     stable.auth.sessionStatus = 'ok';
     localStorage.clear();
     resetRefreshGuard();
@@ -90,6 +93,35 @@ describe('DashboardPage while the session is reconnecting', () => {
 
     await waitFor(() => expect(screen.queryByTestId('reconnecting-notice')).toBeNull());
     await waitFor(() => expect(state.productCalls).toBeGreaterThan(before));
+    expect(await screen.findByText('dashboard.stats.totalProducts')).toBeTruthy();
+  });
+
+  it('a read that STARTED during the cooldown is discarded even if the cooldown expired before it returned, and a reload follows', async () => {
+    stable.auth.sessionStatus = 'reconnecting';
+    await block();
+    const { rerender } = render(<DashboardPage onNavigate={() => {}} />);
+    await screen.findByTestId('reconnecting-notice');
+
+    let release;
+    state.gate = new Promise((resolve) => { release = resolve; });
+    fireEvent.click(screen.getByRole('button', { name: 'dashboard.retry' }));
+    await waitFor(() => expect(state.productCalls).toBeGreaterThan(0));
+    const before = state.productCalls;
+
+    resetRefreshGuard(); // cooldown expires while the read is still waiting
+    state.gate = null;
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByText('dashboard.stats.totalProducts')).toBeNull(); // anon-key rows are not data
+
+    stable.auth.sessionStatus = 'ok';
+    rerender(<DashboardPage onNavigate={() => {}} />);
+    await waitFor(() => expect(state.productCalls).toBeGreaterThan(before));
+    expect((await screen.findAllByText('dashboard.stats.totalProducts')).length).toBeGreaterThan(0);
+  });
+
+  it('a read that starts and ends with the refresh unblocked is shown', async () => {
+    render(<DashboardPage onNavigate={() => {}} />);
     expect(await screen.findByText('dashboard.stats.totalProducts')).toBeTruthy();
   });
 });

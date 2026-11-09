@@ -147,6 +147,7 @@ const DashboardPage = ({ onNavigate }) => {
   const fetchVisitStats = useCallback(async () => {
     const unavailable = { weekly: 0, monthly: 0, yearly: 0, total: 0, loading: false, unavailable: true };
     try {
+      const wasBlocked = isRefreshBlocked(); // a read that started blocked used the anon key even if the cooldown ends before it returns
       const nowMs = Date.now();
       const since = (days) => new Date(nowMs - days * 24 * 60 * 60 * 1000).toISOString();
       const countVisits = (from) => {
@@ -156,7 +157,7 @@ const DashboardPage = ({ onNavigate }) => {
 
       const results = await Promise.all([countVisits(since(7)), countVisits(since(30)), countVisits(since(365)), countVisits()]);
       // Read while the token refresh is blocked = anon key = RLS-empty counts: not data, so show "unavailable".
-      if (isRefreshBlocked()) throw new Error('session refresh paused');
+      if (wasBlocked || isRefreshBlocked()) throw new Error('session refresh paused');
       if (results.some((res) => res.error)) {
         setVisitStats(unavailable);
         return;
@@ -172,6 +173,7 @@ const DashboardPage = ({ onNavigate }) => {
   const fetchStats = useCallback(async () => {
 
     try {
+      const wasBlocked = isRefreshBlocked(); // see fetchVisitStats
       setStats(prev => ({ ...prev, loading: true }));
 
       // Get counts
@@ -188,7 +190,7 @@ const DashboardPage = ({ onNavigate }) => {
       ]);
 
       // Read while the token refresh is blocked = anon key = RLS-empty answers: discard them, never show them as zeros.
-      if (isRefreshBlocked()) throw new Error('session refresh paused');
+      if (wasBlocked || isRefreshBlocked()) throw new Error('session refresh paused');
       if (productsRes.error) throw productsRes.error;
       if (combosRes.error) throw combosRes.error;
       if (usersRes.error) throw usersRes.error;

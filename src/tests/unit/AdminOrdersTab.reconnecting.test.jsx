@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
-const state = vi.hoisted(() => ({ orders: [], auth: { user: { id: 'admin-1' }, sessionStatus: 'ok' } }));
+const state = vi.hoisted(() => ({ orders: [], gate: null, auth: { user: { id: 'admin-1' }, sessionStatus: 'ok' } }));
 
 vi.mock('@/contexts/LanguageContext', () => ({ useLanguage: () => ({ t: (key) => key, language: 'es' }) }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => state.auth }));
@@ -11,7 +11,7 @@ vi.mock('@/hooks/useRealtimeSubscription', () => ({ useRealtimeOrders: vi.fn() }
 vi.mock('@/lib/styleUtils', () => ({ getPrimaryButtonStyle: () => ({}) }));
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 vi.mock('@/lib/orderService', () => ({
-  getAllOrders: vi.fn(async () => state.orders),
+  getAllOrders: vi.fn(async () => { if (state.gate) await state.gate; return state.orders; }),
   startProcessingOrder: vi.fn(),
   markOrderAsDispatched: vi.fn(),
   markOrderAsDelivered: vi.fn(),
@@ -59,6 +59,7 @@ describe('AdminOrdersTab while the session is reconnecting', () => {
     localStorage.clear();
     resetRefreshGuard();
     state.orders = [];
+    state.gate = null;
     state.auth.sessionStatus = 'ok';
   });
 
@@ -98,5 +99,40 @@ describe('AdminOrdersTab while the session is reconnecting', () => {
     expect(getAllOrders.mock.calls.length).toBe(before + 1);
     expect(screen.getByTestId('rows').textContent).toBe('1');
     expect(screen.queryByTestId('reconnecting-notice')).toBeNull();
+  });
+
+  it('a read that STARTED during the cooldown is discarded even if the cooldown expired before it returned, and a reload follows', async () => {
+    state.orders = [ORDER];
+    const { rerender } = await mount();
+    expect(screen.getByTestId('rows').textContent).toBe('1');
+
+    await block();
+    state.auth.sessionStatus = 'reconnecting';
+    rerender(<AdminOrdersTab />);
+    let release;
+    state.gate = new Promise((resolve) => { release = resolve; });
+    state.orders = []; // what the anon-key read returns
+    await act(async () => { fireEvent.click(screen.getByTitle('dashboard.refresh')); });
+
+    resetRefreshGuard(); // cooldown expires while the read is still waiting
+    state.gate = null;
+    await act(async () => { release(); });
+    expect(screen.getByTestId('rows').textContent).toBe('1'); // not wiped
+
+    const before = getAllOrders.mock.calls.length;
+    state.orders = [ORDER, { ...ORDER, id: 'o2' }];
+    state.auth.sessionStatus = 'ok';
+    rerender(<AdminOrdersTab />);
+    await act(async () => {});
+    expect(getAllOrders.mock.calls.length).toBe(before + 1);
+    expect(screen.getByTestId('rows').textContent).toBe('2');
+  });
+
+  it('a read that starts and ends with the refresh unblocked replaces the list', async () => {
+    state.orders = [ORDER];
+    await mount();
+    state.orders = [];
+    await act(async () => { fireEvent.click(screen.getByTitle('dashboard.refresh')); });
+    expect(screen.getByTestId('rows').textContent).toBe('0');
   });
 });

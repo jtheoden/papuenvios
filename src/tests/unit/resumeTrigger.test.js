@@ -90,4 +90,17 @@ describe('subscribeResume (one debounced trigger for visibilitychange + online)'
     offBad();
     offGood();
   });
+
+  it('a resume scheduled before the last subscriber left is not lost when another subscribes in the same tick', async () => {
+    const offOld = subscribeResume(vi.fn());
+    visibilityChange();
+    offOld();
+    const next = vi.fn();
+    const offNext = subscribeResume(next); // re-subscribe (e.g. effect cleanup + re-run)
+
+    await vi.advanceTimersByTimeAsync(MAX_WAIT);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    offNext();
+  });
 });

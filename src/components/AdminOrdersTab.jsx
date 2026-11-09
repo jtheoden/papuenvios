@@ -199,6 +199,7 @@ const AdminOrdersTab = () => {
   });
 
   const loadOrders = async () => {
+    const wasBlocked = isRefreshBlocked(); // a read that started blocked used the anon key even if the cooldown ends before it returns
     setLoading(true);
     setError(null);
 
@@ -240,7 +241,7 @@ const AdminOrdersTab = () => {
 
       const orders = await getAllOrders(apiFilters);
       // Read while the token refresh is blocked = anon key = RLS-empty list: never let it replace what is shown.
-      if (isRefreshBlocked()) throw new Error('session refresh paused');
+      if (wasBlocked || isRefreshBlocked()) throw new Error('session refresh paused');
       setOrders(orders || []);
     } catch (err) {
       console.error('Error loading orders:', err);
