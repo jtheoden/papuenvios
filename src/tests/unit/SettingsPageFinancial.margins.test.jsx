@@ -40,6 +40,7 @@ vi.mock('@/lib/currencyService', () => ({
 vi.mock('@/lib/supabase', () => ({ supabase: { from: vi.fn() } }));
 
 import SettingsPageFinancial from '@/components/settings/SettingsPageFinancial';
+vi.mock('@/components/ui/ConfirmDialog', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) })); // these tests do not exercise confirmations
 
 const renderPage = (financial = { productProfit: 45, comboProfit: 30 }) =>
   render(<SettingsPageFinancial localFinancial={financial} setLocalFinancial={vi.fn()} />);

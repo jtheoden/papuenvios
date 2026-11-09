@@ -19,6 +19,7 @@ import { DEFAULT_VISUAL_SETTINGS, saveVisualSettings, applyVisualSettingsToDOM }
 import { BRAND_PRESET } from '@/lib/brandPalette';
 import ES from '@/translations/ES.json';
 import EN from '@/translations/EN.json';
+vi.mock('@/components/ui/ConfirmDialog', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) })); // these tests do not exercise confirmations
 
 const K = 'settings.visual.';
 const legacyBrand = {

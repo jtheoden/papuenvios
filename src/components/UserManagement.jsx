@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Users, Shield, Trash2, AlertCircle, BarChart3, Settings, Edit, Save, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -20,6 +21,7 @@ import UserStatusAction from '@/components/admin/UserStatusAction';
 
 const UserManagement = () => {
   const { t } = useLanguage();
+  const confirm = useConfirm();
   const { user, isSuperAdmin } = useAuth();
   const { visualSettings } = useBusiness();
   const [users, setUsers] = useState([]);
@@ -219,7 +221,12 @@ const UserManagement = () => {
 
     // Confirm deletion
     const confirmMessage = t('users.confirmDelete', { email: targetUser?.email });
-    if (!window.confirm(confirmMessage)) {
+    if (!(await confirm({
+      title: t('common.confirmDialog.deleteTitle'),
+      description: confirmMessage,
+      confirmLabel: t('common.confirmDialog.delete'),
+      variant: 'destructive'
+    }))) {
       logUserManagementAction('delete_user_cancelled', { userId });
       return;
     }

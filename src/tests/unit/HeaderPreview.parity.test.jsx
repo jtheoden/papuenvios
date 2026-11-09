@@ -56,6 +56,7 @@ import { DEFAULT_VISUAL_SETTINGS } from '@/lib/businessVisualSettingsService';
 import { BRAND_PRESET } from '@/lib/brandPalette';
 import { buildHeaderTheme } from '@/lib/headerTheme';
 import { CLASSIC_ROW } from '../fixtures/classicVisualRow';
+vi.mock('@/components/ui/ConfirmDialog', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) })); // these tests do not exercise confirmations
 
 // What the Header receives in production: the stored row merged over the code defaults (loadVisualSettings does the same).
 // Row without headerGradientColor: its gradient end only exists through the DEFAULT merge.

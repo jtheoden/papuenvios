@@ -610,6 +610,7 @@ export const getAllExchangeRates = async () => {
         effective_date,
         updated_at,
         is_active,
+        market_rate,
         from_currency_id,
         to_currency_id,
         from_currency:from_currency_id(id, code, name_es, name_en, symbol),
@@ -717,6 +718,19 @@ export const getActiveRatesMap = async () => {
  * @returns {Promise<Object>} Created or updated exchange rate object
  * @throws {AppError} VALIDATION_FAILED if required fields missing, DB_ERROR on failure
  */
+/**
+ * Optional internal reference rate: undefined when not provided (the column is then left untouched), else a
+ * positive finite number. Anything else is a validation error.
+ */
+const parseMarketRate = (value) => {
+  if (value === null || value === undefined || value === '') return undefined;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    throw createValidationError({ marketRate: 'Market rate must be a positive finite number' }, 'Invalid market rate');
+  }
+  return numeric;
+};
+
 export const saveExchangeRate = async (rateData) => {
   try {
     // Input validation
@@ -739,7 +753,8 @@ export const saveExchangeRate = async (rateData) => {
         to_currency_id: rateData.toCurrencyId,
         rate: parseFloat(rateData.rate),
         effective_date: rateData.effectiveDate || new Date().toISOString().split('T')[0],
-        is_active: true
+        is_active: true,
+        ...(rateData.marketRate !== undefined && { market_rate: rateData.marketRate })
       }, {
         onConflict: 'from_currency_id,to_currency_id,effective_date'
       })
@@ -775,30 +790,32 @@ export const saveExchangeRate = async (rateData) => {
  * same-day row, deactivated when it created one. If that compensation fails too, EXCHANGE_RATE_PAIR_PARTIAL
  * tells the caller the pair is half written.
  */
-export const saveExchangeRatePair = async ({ fromCurrencyId, toCurrencyId, rate, effectiveDate }) => {
+export const saveExchangeRatePair = async ({ fromCurrencyId, toCurrencyId, rate, effectiveDate, marketRate }) => {
   const numericRate = Number(rate);
   if (!Number.isFinite(numericRate) || numericRate <= 0) {
     throw createValidationError({ rate: 'Rate must be a positive finite number' }, 'Invalid rate');
   }
+  const market = parseMarketRate(marketRate);
   const effDate = effectiveDate || new Date().toISOString().split('T')[0];
 
   // The upsert overwrites a same-day row (active or not): remember it to be able to put it back.
   const { data: previousRows, error: previousError } = await supabase
     .from('exchange_rates')
-    .select('id, rate, is_active')
+    .select('id, rate, is_active, market_rate')
     .eq('from_currency_id', fromCurrencyId)
     .eq('to_currency_id', toCurrencyId)
     .eq('effective_date', effDate);
   if (previousError) throw parseSupabaseError(previousError);
   const previous = previousRows?.[0];
 
-  const direct = await saveExchangeRate({ fromCurrencyId, toCurrencyId, rate: numericRate, effectiveDate: effDate });
+  const direct = await saveExchangeRate({ fromCurrencyId, toCurrencyId, rate: numericRate, effectiveDate: effDate, marketRate: market });
   try {
     const inverse = await saveExchangeRate({
       fromCurrencyId: toCurrencyId,
       toCurrencyId: fromCurrencyId,
       rate: 1 / numericRate,
-      effectiveDate: effDate
+      effectiveDate: effDate,
+      marketRate: market === undefined ? undefined : 1 / market
     });
     return { direct, inverse };
   } catch (inverseError) {
@@ -807,7 +824,11 @@ export const saveExchangeRatePair = async ({ fromCurrencyId, toCurrencyId, rate,
       if (previous) {
         const { data, error } = await supabase
           .from('exchange_rates')
-          .update({ rate: previous.rate, is_active: previous.is_active })
+          .update({
+            rate: previous.rate,
+            is_active: previous.is_active,
+            ...(market !== undefined && previous.market_rate != null && { market_rate: previous.market_rate })
+          })
           .eq('id', previous.id)
           .select('id');
         if (error) throw parseRateWriteError(error);
@@ -912,7 +933,7 @@ const updateActiveRateRow = async (fromCurrencyId, toCurrencyId, values) => {
  * @returns {Promise<{updatedCount: number}>} Number of rates updated
  * @throws {AppError} DB_ERROR on failure
  */
-export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRate, effectiveDate) => {
+export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRate, effectiveDate, options = {}) => {
   try {
     if (!fromCurrencyId || !toCurrencyId) {
       throw createValidationError({
@@ -927,11 +948,12 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
 
     const rate = parseFloat(newRate);
     const inverseRate = 1 / rate;
+    const market = parseMarketRate(options?.marketRate);
     const effDate = effectiveDate || new Date().toISOString().split('T')[0];
 
     const { data: previousDirectRows, error: previousDirectError } = await supabase
       .from('exchange_rates')
-      .select('id, from_currency_id, to_currency_id, rate, effective_date')
+      .select('id, from_currency_id, to_currency_id, rate, effective_date, market_rate')
       .eq('from_currency_id', fromCurrencyId)
       .eq('to_currency_id', toCurrencyId)
       .eq('is_active', true);
@@ -941,7 +963,8 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
 
     // Update direct rate (from→to)
     const { data: directRows, error: directError } = await updateActiveRateRow(
-      fromCurrencyId, toCurrencyId, { rate: rate, effective_date: effDate }
+      fromCurrencyId, toCurrencyId,
+      { rate: rate, effective_date: effDate, ...(market !== undefined && { market_rate: market }) }
     );
 
     if (directError) {
@@ -955,7 +978,8 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
 
     // Update inverse rate (to→from)
     const { data: inverseRows, error: inverseError } = await updateActiveRateRow(
-      toCurrencyId, fromCurrencyId, { rate: inverseRate, effective_date: effDate }
+      toCurrencyId, fromCurrencyId,
+      { rate: inverseRate, effective_date: effDate, ...(market !== undefined && { market_rate: 1 / market }) }
     );
 
     // An inverse that errors or matches no active row leaves the pair inconsistent: put the direct rate back.
@@ -973,7 +997,11 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
           const { data: restoredRows, error: restoreError } = await updateActiveRateRow(
             fromCurrencyId,
             toCurrencyId,
-            { rate: previousDirect.rate, effective_date: previousDirect.effective_date }
+            {
+              rate: previousDirect.rate,
+              effective_date: previousDirect.effective_date,
+              ...(market !== undefined && previousDirect.market_rate != null && { market_rate: previousDirect.market_rate })
+            }
           );
           if (restoreError) throw parseRateWriteError(restoreError);
           restored = Boolean(restoredRows && restoredRows.length > 0);
