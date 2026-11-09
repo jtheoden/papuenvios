@@ -8,6 +8,8 @@ import { getUserCategory } from '@/lib/userCategorizationService';
 import { flushQueuedActivityLogs, logActivity } from '@/lib/activityLogger';
 import { clearRefreshBlock, getRefreshBlockRemainingMs, isRefreshBlocked, subscribeRefreshBlock } from '@/lib/refreshGuard';
 import { dropApiCaches } from '@/lib/requestBudget';
+import { subscribeResume } from '@/lib/resumeTrigger';
+import { reportClientError } from '@/lib/errorHandler';
 
 const AuthContext = createContext();
 
@@ -148,28 +150,9 @@ export const AuthProvider = ({ children }) => {
         return false;
       }
 
-      // Check token expiration
-      const expiresAt = session.expires_at;
-      const now = Math.floor(Date.now() / 1000);
-      const timeUntilExpiry = expiresAt - now;
-
-      if (timeUntilExpiry < 60) {
-        console.warn('[Auth] Token expiring soon, attempting refresh...');
-        const { data, error: refreshError } = await supabase.auth.refreshSession();
-
-        if (refreshError) {
-          // No sign-out here: auth-js already ends the session (SIGNED_OUT) when the refresh
-          // token is really invalid; a rate limit or network failure must keep it.
-          console.error('[Auth] Token refresh failed:', refreshError.message);
-          return false;
-        }
-
-        if (data?.session) {
-          await updateUserState(data.session);
-          return true;
-        }
-      }
-
+      // No explicit refreshSession() here: getSession() above already refreshed the token if it was inside
+      // auth-js's expiry margin (single-flight, under its lock). A forced refresh ignores both and, with several
+      // triggers (tabs, resume events), multiplies /auth/v1/token calls against a per-IP rate limit.
       return true;
     } catch (err) {
       console.error('[Auth] Session check error:', err);
@@ -418,6 +401,7 @@ export const AuthProvider = ({ children }) => {
       if (event === 'SIGNED_OUT') {
         const expired = Boolean(sessionRef.current) && !explicitSignOutRef.current;
         explicitSignOutRef.current = false;
+        if (expired) reportClientError({ name: 'AuthSessionEnded', message: 'Signed out without a sign-out request' }, 'auth.sessionEnded');
         clearRefreshBlock(); // nothing left to refresh: do not carry the cooldown into the next session
         dropApiCaches(); // the next person on this browser starts with no cached answer of this one
         resetAuthState();
@@ -592,6 +576,7 @@ export const AuthProvider = ({ children }) => {
       clearTimeout(timer);
       if (cancelled) return;
       if (attempts >= RETRY_CONFIG.PROFILE_RECOVERY_MAX_ATTEMPTS) {
+        reportClientError({ name: 'AuthRecoveryExhausted', message: 'Role resolution gave up after the retry budget' }, 'auth.roleRecoveryExhausted');
         setRoleRetryExhausted(true);
         return;
       }
@@ -619,14 +604,10 @@ export const AuthProvider = ({ children }) => {
       scheduleNext();
     };
 
-    const onOnline = () => attempt(true);
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') attempt(true);
-    };
+    // `online` / tab visible again: one debounced trigger shared with the session recovery loop.
+    const unsubscribeResume = subscribeResume(() => attempt(true));
 
     retryRef.current = () => attempt(true);
-    window.addEventListener('online', onOnline);
-    document.addEventListener('visibilitychange', onVisibility);
     // Before the first failure only the manual/online/visibility triggers are armed: a timer-driven
     // retry would supersede the first fetch still in flight and delay the failure banner.
     if (profileFailed) scheduleNext();
@@ -635,8 +616,7 @@ export const AuthProvider = ({ children }) => {
       cancelled = true;
       clearTimeout(timer);
       retryRef.current = null;
-      window.removeEventListener('online', onOnline);
-      document.removeEventListener('visibilitychange', onVisibility);
+      unsubscribeResume();
     };
   }, [user?.id, roleStatus, recoveryActive, profileFailed, sessionRecovering]);
 
@@ -689,18 +669,13 @@ export const AuthProvider = ({ children }) => {
       schedule();
     };
 
-    const onOnline = () => { if (!isRefreshBlocked()) attempt(); };
-    const onVisibility = () => { if (document.visibilityState === 'visible' && !isRefreshBlocked()) attempt(); };
-
-    window.addEventListener('online', onOnline);
-    document.addEventListener('visibilitychange', onVisibility);
+    const unsubscribeResume = subscribeResume(() => { if (!isRefreshBlocked()) attempt(); });
     schedule();
 
     return () => {
       cancelled = true;
       clearTimeout(timer);
-      window.removeEventListener('online', onOnline);
-      document.removeEventListener('visibilitychange', onVisibility);
+      unsubscribeResume();
     };
   }, [sessionRecovering]);
 

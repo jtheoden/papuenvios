@@ -410,6 +410,7 @@ describe('AuthProvider — refresh rate limit (429) and session recovery', () =>
   });
 
   it('a SIGNED_OUT that the person did not ask for is reported as expired', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     singleMock.mockResolvedValue(profile('admin'));
     await mountApp();
 
@@ -417,6 +418,9 @@ describe('AuthProvider — refresh rate limit (429) and session recovery', () =>
 
     expect(probe()).toBe('null|resolved|anon');
     expect(sessionStatus()).toBe('expired');
+    const reports = errorSpy.mock.calls.filter(([label, entry]) => label === '[ERROR]' && entry?.context?.source === 'auth.sessionEnded');
+    expect(reports).toHaveLength(1); // diagnosable, and no email/id in it
+    expect(JSON.stringify(reports[0][1])).not.toContain('u1@test.com');
   });
 
   it('an explicit logout is not reported as an expired session', async () => {
@@ -447,17 +451,73 @@ describe('AuthProvider — refresh rate limit (429) and session recovery', () =>
     expect(probe()).toBe('admin|resolved|user');
   });
 
-  it('checkAndRefreshSession never signs the person out because a refresh failed (auth-js already ends truly dead sessions)', async () => {
+  it('checkAndRefreshSession never forces a refresh of its own: getSession() lets auth-js refresh when due (single-flight, under its lock)', async () => {
     singleMock.mockResolvedValue(profile('admin'));
     supabase.auth.getSession.mockResolvedValue({ data: { session: { ...SESSION, expires_at: Math.floor(Date.now() / 1000) + 10 } }, error: null });
     supabase.auth.refreshSession.mockResolvedValue({ data: { session: null }, error: retryableError });
     await mountApp();
 
     await act(async () => { fireEvent.click(screen.getByText('check-session')); });
+    await act(async () => { fireEvent.click(screen.getByText('check-session')); });
 
-    expect(supabase.auth.refreshSession).toHaveBeenCalledTimes(1);
+    expect(supabase.auth.refreshSession).not.toHaveBeenCalled();
     expect(supabase.auth.signOut).not.toHaveBeenCalled();
     expect(probe()).toBe('admin|resolved|user');
+  });
+
+  describe('resume triggers (visibilitychange / online) while reconnecting', () => {
+    const stuck = { data: { session: null }, error: retryableError };
+    const setVisible = () => Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+
+    // Cooldown over but the session is still not back: the loop has just made its own attempt.
+    const reconnectingWithCooldownOver = async () => {
+      singleMock.mockResolvedValue(profile('admin'));
+      await mountApp();
+      await rateLimitTheRefresh();
+      supabase.auth.getSession.mockResolvedValue(stuck);
+      await advance(getRefreshBlockRemainingMs() + 1);
+      supabase.auth.getSession.mockClear();
+    };
+
+    it('visibilitychange followed by online a moment later makes ONE session attempt, not one per event', async () => {
+      setVisible();
+      await reconnectingWithCooldownOver();
+
+      document.dispatchEvent(new Event('visibilitychange'));
+      await advance(100);
+      window.dispatchEvent(new Event('online'));
+      await advance(100);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await advance(2000);
+
+      expect(supabase.auth.getSession).toHaveBeenCalledTimes(1);
+      expect(sessionStatus()).toBe('reconnecting');
+    });
+
+    it('a burst of triggers INSIDE the cooldown reaches neither the session API nor the network, keeps the session, and one retry after the cooldown recovers', async () => {
+      setVisible();
+      singleMock.mockResolvedValue(profile('admin'));
+      await mountApp();
+      await rateLimitTheRefresh();
+      supabase.auth.getSession.mockClear();
+
+      for (let i = 0; i < 6; i += 1) {
+        document.dispatchEvent(new Event('visibilitychange'));
+        window.dispatchEvent(new Event('online'));
+        await advance(300);
+      }
+      await advance(2000);
+
+      expect(supabase.auth.getSession).not.toHaveBeenCalled();
+      expect(supabase.auth.signOut).not.toHaveBeenCalled();
+      expect(probe()).toBe('admin|resolved|user');
+      expect(sessionStatus()).toBe('reconnecting');
+
+      await advance(getRefreshBlockRemainingMs() + 1000);
+
+      expect(supabase.auth.getSession).toHaveBeenCalledTimes(1);
+      expect(sessionStatus()).toBe('ok');
+    });
   });
 
   it('does not poll the session on a timer of its own (auth-js already refreshes every 30 s)', async () => {

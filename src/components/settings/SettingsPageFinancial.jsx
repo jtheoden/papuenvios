@@ -12,6 +12,7 @@ import {
   getAllExchangeRates, saveExchangeRatePair, deleteExchangeRate, deleteExchangeRatePair, updateExchangeRatePair
 } from '@/lib/currencyService';
 import { supabase } from '@/lib/supabase';
+import { refreshSessionOnce } from '@/lib/sessionRefresh';
 import { saveMarginSettings } from '@/lib/financialSettingsService';
 import { ERROR_CODES, isSessionExpiredError } from '@/lib/errorHandler';
 import { formatDateTime } from '@/lib/numberFormat';
@@ -473,11 +474,13 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   const handleRetryAfterSessionExpired = async () => {
     setRefreshingSession(true);
     try {
-      const { data, error } = await supabase.auth.refreshSession();
+      const { data, error } = await refreshSessionOnce(supabase.auth);
       if (error || !data?.session) {
+        // During a refresh cooldown the helper answers with a retryable network error: the session is not lost.
+        const reconnecting = error?.name === 'AuthRetryableFetchError';
         toast({
           title: t('common.error'),
-          description: t('settings.financial.sessionExpiredSignIn'),
+          description: reconnecting ? t('auth.sessionReconnecting') : t('settings.financial.sessionExpiredSignIn'),
           variant: 'destructive'
         });
         return;

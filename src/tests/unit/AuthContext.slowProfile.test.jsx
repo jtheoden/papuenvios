@@ -213,6 +213,7 @@ describe('AuthProvider — slow / failing profile fetch', () => {
     singleMock.mockClear();
     singleMock.mockResolvedValue(profile('admin'));
     await act(async () => { window.dispatchEvent(new Event('online')); });
+    await advance(1000); // resume triggers are debounced (500-1000 ms)
     expect(singleMock).toHaveBeenCalledTimes(1);
     expect(probe()).toBe('admin|resolved|user');
   });
@@ -228,10 +229,12 @@ describe('AuthProvider — slow / failing profile fetch', () => {
       Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => value });
     setVisibility('hidden');
     await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    await advance(1000);
     expect(singleMock).not.toHaveBeenCalled();
 
     setVisibility('visible');
     await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    await advance(1000);
     expect(singleMock).toHaveBeenCalledTimes(1);
     expect(probe()).toBe('admin|resolved|user');
   });
@@ -397,6 +400,19 @@ describe('AuthProvider — slow / failing profile fetch', () => {
     singleMock.mockResolvedValue(profile('admin'));
     await advance(2000);
     expect(screen.getByTestId('failed').textContent).toBe('false');
+  });
+
+  it('reports (once, no PII) when the role recovery gives up', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    singleMock.mockResolvedValue({ data: null, error: { message: 'boom' } });
+    await mountApp();
+    await advance(400);
+    await advance(900000);
+
+    expect(screen.getByTestId('exhausted').textContent).toBe('true');
+    const reports = errorSpy.mock.calls.filter(([label, entry]) => label === '[ERROR]' && entry?.context?.source === 'auth.roleRecoveryExhausted');
+    expect(reports).toHaveLength(1);
+    expect(JSON.stringify(reports[0][1])).not.toContain('u1@test.com');
   });
 
   it('a success on the very last recovery attempt does not leave roleRetryExhausted set', async () => {

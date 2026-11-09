@@ -59,6 +59,17 @@ describe('ErrorBoundary', () => {
     expect(screen.queryByText(ES.errorBoundary.staleVersion)).not.toBeInTheDocument();
   });
 
+  it('reports the caught error through the error handler (source + sanitized message, no stack)', () => {
+    renderBoom('Something exploded for juan@example.com');
+
+    const reported = console.error.mock.calls.find(([label]) => label === '[ERROR]')?.[1];
+    expect(reported).toBeDefined();
+    expect(reported.name).toBe('TypeError');
+    expect(reported.context.source).toBe('ErrorBoundary');
+    expect(reported.message).toBe('Something exploded for [redacted]');
+    expect(reported.stack).toBeUndefined();
+  });
+
   it('reloads the page from the button', () => {
     const reload = vi.fn();
     vi.stubGlobal('location', { ...window.location, reload });
