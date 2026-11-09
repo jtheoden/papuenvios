@@ -670,6 +670,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       rate: pair.directRate.rate,
       originalRate: pair.directRate.rate,
       marketRate: pair.directRate.market_rate ?? '',
+      originalMarketRate: pair.directRate.market_rate ?? '',
       effectiveDate: pair.effectiveDate || new Date().toISOString().split('T')[0],
       fromCurrency: pair.fromCurrency,
       toCurrency: pair.toCurrency
@@ -720,8 +721,9 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         pair.toCurrencyId,
         pair.rate,
         pair.effectiveDate,
-        // Only a typed value is sent: an empty field leaves the stored market rate untouched.
+        // Only a changed, non-empty value is sent: untouched or cleared leaves the stored market rate (and the inverse row's) alone.
         ...(pair.marketRate !== undefined && pair.marketRate !== '' && pair.marketRate !== null
+          && String(pair.marketRate) !== String(pair.originalMarketRate ?? '')
           ? [{ marketRate: pair.marketRate }]
           : [])
       );

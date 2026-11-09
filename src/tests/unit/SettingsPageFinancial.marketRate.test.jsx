@@ -98,6 +98,25 @@ describe('super_admin', () => {
     ));
   });
 
+  it('does not send marketRate when only the rate is edited (keeps a hand-entered inverse market rate)', async () => {
+    await renderPage();
+    fireEvent.click(screen.getByTitle('Edit rate pair'));
+    await screen.findByLabelText(MARKET_LABEL);
+    fireEvent.change(screen.getByDisplayValue('915'), { target: { value: '916' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save Changes/ }));
+    await waitFor(() => expect(svc.updateExchangeRatePair).toHaveBeenCalled());
+    expect(svc.updateExchangeRatePair.mock.calls[0]).toHaveLength(4);
+  });
+
+  it('does not send marketRate when the field is cleared', async () => {
+    await renderPage();
+    fireEvent.click(screen.getByTitle('Edit rate pair'));
+    fireEvent.change(await screen.findByLabelText(MARKET_LABEL), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save Changes/ }));
+    await waitFor(() => expect(svc.updateExchangeRatePair).toHaveBeenCalled());
+    expect(svc.updateExchangeRatePair.mock.calls[0]).toHaveLength(4);
+  });
+
   it('offers the optional field in the create form and sends marketRate when typed', async () => {
     svc.getAllExchangeRates.mockResolvedValue([]); // no existing pair, so the duplicate guard stays out of the way
     render(<SettingsPageFinancial localFinancial={{ productProfit: 40, comboProfit: 30 }} setLocalFinancial={vi.fn()} />, { wrapper: ConfirmWrapper });
