@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { makeRealT } from './helpers/realTranslator';
+import { ConfirmWrapper, answerConfirm } from './helpers/confirmDialog';
 
 const toastMock = vi.fn();
 const svc = vi.hoisted(() => ({
@@ -78,7 +79,7 @@ const reference = (overrides = {}) => ({
 });
 
 const renderPage = () =>
-  render(<SettingsPageFinancial localFinancial={{ productProfit: 40, comboProfit: 30 }} setLocalFinancial={vi.fn()} />);
+  render(<SettingsPageFinancial localFinancial={{ productProfit: 40, comboProfit: 30 }} setLocalFinancial={vi.fn()} />, { wrapper: ConfirmWrapper });
 const useReference = async () => fireEvent.click(await screen.findByRole('button', { name: 'Use as rate' }));
 const newRateForm = () => screen.getByText('Add New Exchange Rate').parentElement;
 const editForm = () => screen.getByText('Edit Rate Pair').closest('div.bg-amber-50');
@@ -372,14 +373,14 @@ describe('Financial: deleting a rate pair that no longer exists', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('reloads the list after a NOT_FOUND (the message promises it) and shows the not-found text, not a permissions one', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     svc.getAllExchangeRates.mockResolvedValue(cupPair());
     svc.deleteExchangeRatePair.mockRejectedValue(Object.assign(new Error('raw'), { code: 'NOT_FOUND', context: { reason: 'no_rows' } }));
     renderPage();
     await screen.findByText('1 USD = 790.0000 CUP');
     const loadsBefore = svc.getAllExchangeRates.mock.calls.length;
 
-    fireEvent.click(screen.getByTitle('Delete rate pair'));
+    fireEvent.click(screen.getByTitle('Deactivate rate pair'));
+    await answerConfirm(true);
 
     await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({
       variant: 'destructive',

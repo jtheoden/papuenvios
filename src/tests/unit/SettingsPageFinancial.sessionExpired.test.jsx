@@ -37,6 +37,7 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 import SettingsPageFinancial from '@/components/settings/SettingsPageFinancial';
+vi.mock('@/components/ui/ConfirmDialog', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) })); // these tests do not exercise confirmations
 
 const permissionDenied = Object.assign(new Error('permission denied for table exchange_rates'), { code: '42501' });
 

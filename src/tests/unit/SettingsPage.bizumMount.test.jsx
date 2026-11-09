@@ -44,6 +44,7 @@ vi.mock('@/lib/paymentFxService', async (importOriginal) => ({
 
 import SettingsPage from '@/components/SettingsPage';
 import { toBizumError } from '@/lib/bizumErrors';
+vi.mock('@/components/ui/ConfirmDialog', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) })); // these tests do not exercise confirmations
 
 // The tab is labelled Zelle, Pagos or Payments depending on the build/language: match any.
 const openPaymentsTab = () => fireEvent.click(screen.getByText(/^(Zelle|Pagos|Payments)$/));

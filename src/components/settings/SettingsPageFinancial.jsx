@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DollarSign, Save, Plus, Edit, Trash2, AlertTriangle, ArrowRightLeft, Info, Power, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -142,6 +143,12 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
  */
 const RATES_NOTE_ID = 'rates-super-admin-only-note';
 const CURRENCY_DELETE_NOTE_ID = 'currency-delete-super-admin-only-note';
+/** Informational gap of the operative rate over the market reference, e.g. 915 vs 900 -> "+1.7 %". */
+const formatMarketDifference = (rate, market) => {
+  const pct = (Number(rate) / Number(market) - 1) * 100;
+  return `${pct >= 0 ? '+' : '-'}${Math.abs(pct).toFixed(1)} %`;
+};
+
 const SuperOnlyNote = ({ id, children }) => (
   <p id={id} role="note" className="mb-4 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
     <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
@@ -151,6 +158,7 @@ const SuperOnlyNote = ({ id, children }) => (
 
 const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   const { t, language } = useLanguage();
+  const confirm = useConfirm();
   const { visualSettings, applyMarginSettings } = useBusiness();
   const { isSuperAdmin } = useAuth();
   const canWriteRates = Boolean(isSuperAdmin);
@@ -372,7 +380,12 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
 
   const handleRemoveCurrency = async (currencyId) => {
     if (!canWriteRates) return;
-    if (!confirm(t('settings.financial.confirmDeleteCurrency'))) {
+    if (!(await confirm({
+      title: t('common.confirmDialog.deleteTitle'),
+      description: t('settings.financial.confirmDeleteCurrency'),
+      confirmLabel: t('common.confirmDialog.delete'),
+      variant: 'destructive'
+    }))) {
       return;
     }
 
@@ -582,7 +595,12 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
 
   const handleDeleteRate = async (rateId) => {
     if (!canWriteRates) return;
-    if (!confirm(t('settings.financial.confirmDeleteRate'))) {
+    if (!(await confirm({
+      title: t('common.confirmDialog.deleteTitle'),
+      description: t('settings.financial.confirmDeleteRate'),
+      confirmLabel: t('common.confirmDialog.delete'),
+      variant: 'destructive'
+    }))) {
       return;
     }
 
@@ -610,11 +628,17 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   // Delete exchange rate pair (both direct and inverse)
   const handleDeleteRatePair = async (fromCurrencyId, toCurrencyId) => {
     if (!canWriteRates) return;
-    const confirmMessage = language === 'es'
-      ? '¿Eliminar este par de tasas de cambio? Se eliminarán ambas direcciones (directa e inversa).'
-      : 'Delete this exchange rate pair? Both directions (direct and inverse) will be removed.';
+    // "Delete" only deactivates (soft delete): say so, name the pair and state the consequence.
+    const fromCode = currencies.find(c => c.id === fromCurrencyId)?.code ?? '?';
+    const toCode = currencies.find(c => c.id === toCurrencyId)?.code ?? '?';
+    const confirmMessage = t('settings.financial.deactivatePairConfirm', { pair: `${fromCode} <-> ${toCode}` });
 
-    if (!confirm(confirmMessage)) {
+    if (!(await confirm({
+      title: t('common.confirmDialog.deactivateTitle'),
+      description: confirmMessage,
+      confirmLabel: t('common.confirmDialog.deactivate'),
+      variant: 'destructive'
+    }))) {
       return;
     }
 
@@ -624,10 +648,8 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
 
       await loadExchangeRates();
       toast({
-        title: language === 'es' ? 'Par de tasas eliminado' : 'Rate pair deleted',
-        description: language === 'es'
-          ? `Se eliminaron ${result.deletedCount} tasas de cambio`
-          : `${result.deletedCount} exchange rates removed`
+        title: t('settings.financial.pairDeactivated'),
+        description: t('settings.financial.pairDeactivatedDesc', { count: result.deletedCount })
       });
     } catch (error) {
       if (handleSessionExpired(error)) return;
@@ -650,6 +672,8 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       toCurrencyId: pair.directRate.to_currency_id,
       rate: pair.directRate.rate,
       originalRate: pair.directRate.rate,
+      marketRate: pair.directRate.market_rate ?? '',
+      originalMarketRate: pair.directRate.market_rate ?? '',
       effectiveDate: pair.effectiveDate || new Date().toISOString().split('T')[0],
       fromCurrency: pair.fromCurrency,
       toCurrency: pair.toCurrency
@@ -699,7 +723,12 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         pair.fromCurrencyId,
         pair.toCurrencyId,
         pair.rate,
-        pair.effectiveDate
+        pair.effectiveDate,
+        // Only a changed, non-empty value is sent: untouched or cleared leaves the stored market rate (and the inverse row's) alone.
+        ...(pair.marketRate !== undefined && pair.marketRate !== '' && pair.marketRate !== null
+          && String(pair.marketRate) !== String(pair.originalMarketRate ?? '')
+          ? [{ marketRate: pair.marketRate }]
+          : [])
       );
       if (result.error) throw result.error;
 
@@ -1106,6 +1135,24 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                   className="input-style w-full"
                 />
               </div>
+              {canWriteRates && (
+                <div>
+                  <label htmlFor="new-market-rate" className="block text-sm font-medium mb-1">
+                    {t('settings.financial.marketRate')}
+                  </label>
+                  <input
+                    id="new-market-rate"
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    value={newRate.marketRate ?? ''}
+                    onChange={e => setNewRate({ ...newRate, marketRate: e.target.value })}
+                    aria-describedby="new-market-rate-hint"
+                    className="input-style w-full"
+                  />
+                  <p id="new-market-rate-hint" className="text-xs text-gray-500 mt-1">{t('settings.financial.marketRateHint')}</p>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium mb-1">
                   {t('settings.financial.effectiveDate')}
@@ -1194,6 +1241,24 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                   className="input-style w-full"
                 />
               </div>
+              {canWriteRates && (
+                <div>
+                  <label htmlFor="edit-market-rate" className="block text-sm font-medium mb-1">
+                    {t('settings.financial.marketRate')}
+                  </label>
+                  <input
+                    id="edit-market-rate"
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    value={editingRatePair.marketRate ?? ''}
+                    onChange={e => setEditingRatePair({ ...editingRatePair, marketRate: e.target.value })}
+                    aria-describedby="edit-market-rate-hint"
+                    className="input-style w-full"
+                  />
+                  <p id="edit-market-rate-hint" className="text-xs text-gray-500 mt-1">{t('settings.financial.marketRateHint')}</p>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium mb-1">
                   {t('settings.financial.effectiveDate')}
@@ -1325,6 +1390,14 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                       )}
                     </div>
 
+                    {canWriteRates && Number(pair.directRate.market_rate) > 0 && (
+                      <div data-testid="market-rate-info" className="mt-2 text-xs text-gray-600">
+                        {t('settings.financial.marketRateInfo', {
+                          market: `${Number(pair.directRate.market_rate).toFixed(4)} ${pair.toCurrency?.code ?? ''}`.trim(),
+                          diff: formatMarketDifference(pair.directRate.rate, pair.directRate.market_rate)
+                        })}
+                      </div>
+                    )}
                     <div className="mt-2 text-xs text-gray-500">
                       {language === 'es' ? 'Vigente desde: ' : 'Effective: '}
                       {new Date(pair.effectiveDate).toLocaleDateString()}
@@ -1355,12 +1428,12 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                       size="sm"
                       className={LOCKED_STYLE}
                       onClick={() => handleDeleteRatePair(pair.directRate.from_currency_id, pair.directRate.to_currency_id)}
-                      title={language === 'es' ? 'Eliminar par de tasas' : 'Delete rate pair'}
+                      title={t('settings.financial.deactivatePairTitle')}
                       {...ratesLock()}
                     >
                       <Trash2 className="h-4 w-4 mr-1" />
                       <span className="hidden sm:inline">
-                        {language === 'es' ? 'Eliminar' : 'Delete'}
+                        {t('settings.financial.deactivatePair')}
                       </span>
                     </Button>
                   </div>

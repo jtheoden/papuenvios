@@ -25,6 +25,7 @@ vi.mock('@/lib/businessVisualSettingsService', async (importOriginal) => ({
 import SettingsPageVisual from '@/components/settings/SettingsPageVisual';
 import { DEFAULT_VISUAL_SETTINGS, saveVisualSettings } from '@/lib/businessVisualSettingsService';
 import { BRAND_PRESET } from '@/lib/brandPalette';
+vi.mock('@/components/ui/ConfirmDialog', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) })); // these tests do not exercise confirmations
 
 const P = 'settings.visual.brand.';
 const NEW_CONTROLS = {

@@ -30,6 +30,7 @@ import {
   Activity
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBusiness } from '@/contexts/BusinessContext';
@@ -50,6 +51,7 @@ import { normalizeDiscountType } from '@/lib/offerRules';
 
 const AdminOffersTab = () => {
   const { t, language } = useLanguage();
+  const confirm = useConfirm();
   const { currencySymbol } = useCurrency();
   const { user } = useAuth();
   const { visualSettings } = useBusiness();
@@ -323,7 +325,12 @@ const AdminOffersTab = () => {
   };
 
   const handleDeleteOffer = async (offerId) => {
-    if (!window.confirm(language === 'es' ? '¿Eliminar esta oferta?' : 'Delete this offer?')) {
+    if (!(await confirm({
+      title: t('common.confirmDialog.deleteTitle'),
+      description: language === 'es' ? '¿Eliminar esta oferta?' : 'Delete this offer?',
+      confirmLabel: t('common.confirmDialog.delete'),
+      variant: 'destructive'
+    }))) {
       return;
     }
 

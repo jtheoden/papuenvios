@@ -27,6 +27,7 @@ import { DEFAULT_VISUAL_SETTINGS, saveVisualSettings } from '@/lib/businessVisua
 import { BRAND_PRESET } from '@/lib/brandPalette';
 import { THEME_PRESETS } from '@/lib/visualThemes';
 import { CLASSIC_ROW } from '../fixtures/classicVisualRow';
+vi.mock('@/components/ui/ConfirmDialog', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) })); // these tests do not exercise confirmations
 
 const T = 'settings.visual.brand.theme.';
 const PROD = { ...DEFAULT_VISUAL_SETTINGS, ...CLASSIC_ROW };

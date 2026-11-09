@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import EN from '@/translations/EN.json';
 import ES from '@/translations/ES.json';
+import { ConfirmWrapper, findConfirmDialog, answerConfirm } from './helpers/confirmDialog';
 
 const auth = vi.hoisted(() => ({ isSuperAdmin: false }));
 const svc = vi.hoisted(() => ({
@@ -59,7 +60,7 @@ const NOTE_ID = 'rates-super-admin-only-note';
 const CURRENCY_NOTE_ID = 'currency-delete-super-admin-only-note';
 
 const renderPage = async () => {
-  render(<SettingsPageFinancial localFinancial={{ productProfit: 40, comboProfit: 30 }} setLocalFinancial={vi.fn()} />);
+  render(<SettingsPageFinancial localFinancial={{ productProfit: 40, comboProfit: 30 }} setLocalFinancial={vi.fn()} />, { wrapper: ConfirmWrapper });
   await screen.findByText('1 USD = 915.0000 CUP');
 };
 
@@ -106,7 +107,7 @@ describe('plain admin (not super_admin): rates are read-only with the reason vis
     await renderPage();
     const newRate = screen.getByRole('button', { name: /New Rate/ });
     const edit = screen.getByRole('button', { name: /Edit/ });
-    const del = screen.getByTitle('Delete rate pair');
+    const del = screen.getByTitle('Deactivate rate pair');
     [newRate, edit, del].forEach((button) => expectLocked(button, NOTE_ID));
   });
 
@@ -143,8 +144,35 @@ describe('super_admin keeps the full editor', () => {
     expect(document.getElementById(CURRENCY_NOTE_ID)).toBeNull();
     expect(screen.getByRole('button', { name: /New Rate/ })).not.toBeDisabled();
     expect(screen.getByRole('button', { name: /Edit/ })).not.toBeDisabled();
-    expect(screen.getByTitle('Delete rate pair')).not.toBeDisabled();
+    expect(screen.getByTitle('Deactivate rate pair')).not.toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: /Edit/ }));
     return waitFor(() => expect(screen.getByText('Edit Rate Pair')).toBeInTheDocument());
+  });
+
+  it('"delete pair" is honest: it deactivates, names the pair and states the consequence, only after confirming', async () => {
+    svc.deleteExchangeRatePair.mockResolvedValue({ deletedCount: 2 });
+    await renderPage();
+    fireEvent.click(screen.getByTitle('Deactivate rate pair'));
+    const dialog = await findConfirmDialog();
+    expect(dialog).toHaveTextContent('USD <-> CUP');
+    expect(dialog).toHaveTextContent(/no operations can be quoted with this rate/i);
+    expect(svc.deleteExchangeRatePair).not.toHaveBeenCalled();
+    await answerConfirm(true);
+    await waitFor(() => expect(svc.deleteExchangeRatePair).toHaveBeenCalledWith('usd', 'cup'));
+    expect(screen.queryByTitle('Delete rate pair')).toBeNull();
+  });
+
+  it('does not deactivate the pair when the confirmation is cancelled', async () => {
+    await renderPage();
+    fireEvent.click(screen.getByTitle('Deactivate rate pair'));
+    await answerConfirm(false);
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(svc.deleteExchangeRatePair).not.toHaveBeenCalled();
+  });
+
+  it.each([['EN', EN], ['ES', ES]])('%s has the deactivation strings', (_n, dict) => {
+    ['deactivatePair', 'deactivatePairConfirm', 'pairDeactivated', 'pairDeactivatedDesc'].forEach((key) => {
+      expect(dict.settings.financial[key]).toEqual(expect.any(String));
+    });
   });
 });
