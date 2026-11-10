@@ -899,7 +899,19 @@
       "addProductsFirst": "Add products to the combo first",
       "componentCurrencyMismatch": "All products in a combo must be priced in the base currency. Remove or replace the products in another currency.",
       "userSavings": "Customer savings",
-      "individualTotal": "Individual purchase"
+      "individualTotal": "Individual purchase",
+      "priceWarningTitle": "This combo costs more than its products bought separately",
+      "priceWarningComboPrice": "Combo price",
+      "priceWarningIndividualTotal": "Products bought separately",
+      "priceWarningDifference": "The combo is more expensive by",
+      "priceWarningMaxMargin": "Use a margin of up to {value}% to avoid this.",
+      "priceWarningApply": "Apply {value}%",
+      "priceWarningUnavailable": "Could not compare with the products bought separately: an exchange rate is missing.",
+      "priceWarningNote": "This is only a warning: you can still save the combo.",
+      "confirmMoreExpensive": "This combo is more expensive than the sum of its products bought separately. Customers would pay {amount} more by buying the combo. Save anyway?",
+      "saveAnyway": "Save anyway",
+      "moreExpensiveBadge": "Above separate price",
+      "moreExpensiveBadgeDetail": "{amount} above the separate price"
     },
     "management": {
       "title": "General Management",
