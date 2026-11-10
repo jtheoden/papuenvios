@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, ShoppingBag, Globe, DollarSign, BarChart3, Settings, ShoppingCart, User as UserIcon, LogIn, LogOut, ShieldCheck, Users, LayoutDashboard, ChevronDown, Crown, Zap, Star, Home, Package, Banknote, BookOpen } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { Button } from '@/components/ui/button';
+import HelpCenter from '@/components/help/HelpCenter';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -309,6 +310,13 @@ const Header = ({ currentPage, onNavigate }) => {
           </nav>
 
           <div className="flex items-center gap-0.5 sm:gap-2 flex-shrink-0">
+            {isAdmin && (
+              <HelpCenter
+                userRole={userRole}
+                language={language}
+                t={t}
+              />
+            )}
             {/* Desktop language selector */}
             <Button
               variant="brand-outline"

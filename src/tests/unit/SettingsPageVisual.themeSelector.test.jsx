@@ -34,7 +34,7 @@ const PROD = { ...DEFAULT_VISUAL_SETTINGS, ...CLASSIC_ROW };
 
 const setup = (overrides = {}, props = {}) => {
   const setVisualSettings = vi.fn();
-  render(
+  const view = render(
     <SettingsPageVisual
       localVisual={{}}
       setLocalVisual={vi.fn()}
@@ -44,10 +44,11 @@ const setup = (overrides = {}, props = {}) => {
       {...props}
     />
   );
-  return { setVisualSettings };
+  return { setVisualSettings, ...view };
 };
 
 const radio = (id) => screen.getByRole('radio', { name: `${T}${id}.name` });
+const heroRadio = (layout) => screen.getByRole('radio', { name: `settings.visual.heroLayout.${layout}.name` });
 const legacyInput = (labelKey) => screen.getByText(labelKey).parentElement.querySelector('input');
 const livePreview = () => screen.getByLabelText('settings.visual.livePreview');
 const save = () => fireEvent.click(screen.getByText('settings.visual.saveCustomization'));
@@ -75,7 +76,7 @@ describe('theme selector - accessibility', () => {
   it('selects papuenvios when it is the saved theme, and says so in text (not only by colour)', () => {
     setup({ activeTheme: 'papuenvios' });
     expect(radio('papuenvios')).toBeChecked();
-    const group = screen.getByRole('radiogroup');
+    const group = screen.getByRole('radiogroup', { name: `${T}title` });
     expect(within(group).getAllByText(`${T}inUse`)).toHaveLength(1);
     expect(radio('papuenvios').closest('label')).toHaveTextContent(`${T}inUse`);
     expect(radio('classic').closest('label')).not.toHaveTextContent(`${T}inUse`);
@@ -326,5 +327,127 @@ describe('Restore theme (form-only reset to the code defaults)', () => {
     expect(setVisualSettings).toHaveBeenCalledWith(saved);
     await waitFor(() => expect(radio('classic')).toBeChecked());
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+});
+
+describe('Hero layout selector', () => {
+  it('shows both accessible layouts and defaults an absent setting to the current spaced composition', () => {
+    setup();
+    const group = screen.getByRole('radiogroup', { name: 'settings.visual.heroLayout.title' });
+    expect(within(group).getAllByRole('radio')).toHaveLength(2);
+    expect(heroRadio('spaced')).toBeChecked();
+    expect(heroRadio('cover')).not.toBeChecked();
+    expect(heroRadio('cover')).toHaveAccessibleDescription('settings.visual.heroLayout.cover.description');
+    expect(heroRadio('spaced')).toHaveAccessibleDescription('settings.visual.heroLayout.spaced.description settings.visual.heroLayout.inUse');
+    expect(screen.getByTestId('hero-layout-preview-cover')).toBeInTheDocument();
+    expect(screen.getByTestId('hero-layout-preview-spaced')).toBeInTheDocument();
+  });
+
+  it('keeps the choice as a draft, locks live preview, and persists cover only on Save', () => {
+    const { setVisualSettings } = setup();
+    fireEvent.click(heroRadio('cover'));
+
+    expect(heroRadio('cover')).toBeChecked();
+    expect(screen.getByTestId('hero-layout-pending')).toHaveTextContent('settings.visual.heroLayout.pending');
+    expect(screen.getByLabelText('settings.visual.livePreview')).not.toBeChecked();
+    expect(screen.getByLabelText('settings.visual.livePreview')).toBeDisabled();
+    expect(setVisualSettings).not.toHaveBeenCalled();
+    expect(saveVisualSettings).not.toHaveBeenCalled();
+
+    save();
+    expect(setVisualSettings).toHaveBeenCalledTimes(1);
+    expect(setVisualSettings.mock.calls[0][0].heroLayout).toBe('cover');
+  });
+
+  it('does not add a default heroLayout key to unrelated saves', () => {
+    const { setVisualSettings } = setup();
+    save();
+    expect(setVisualSettings.mock.calls[0][0]).not.toHaveProperty('heroLayout');
+  });
+
+  it('preserves the saved selection and restricts changes to super admins', () => {
+    setup({ heroLayout: 'cover' }, { canChangeTheme: false });
+    expect(heroRadio('cover')).toBeChecked();
+    expect(heroRadio('cover')).toBeDisabled();
+    expect(heroRadio('spaced')).toBeDisabled();
+    expect(screen.getByText('settings.visual.heroLayout.restricted')).toBeInTheDocument();
+    fireEvent.click(heroRadio('spaced'));
+    expect(heroRadio('cover')).toBeChecked();
+  });
+
+  it('saves hero layout and theme together without overwriting either selection', () => {
+    const { setVisualSettings } = setup();
+    fireEvent.click(radio('papuenvios'));
+    fireEvent.click(heroRadio('cover'));
+    save();
+
+    expect(setVisualSettings.mock.calls[0][0]).toMatchObject({
+      activeTheme: 'papuenvios',
+      heroLayout: 'cover',
+    });
+  });
+
+  it('releases a reverted Hero-only draft and replays newer visual settings', async () => {
+    const { setVisualSettings, rerender } = setup();
+    fireEvent.click(heroRadio('cover'));
+    fireEvent.click(heroRadio('spaced'));
+
+    rerender(
+      <SettingsPageVisual
+        localVisual={{}}
+        setLocalVisual={vi.fn()}
+        visualSettings={{ ...PROD, companyName: 'Updated business name' }}
+        setVisualSettings={setVisualSettings}
+        canChangeTheme
+      />
+    );
+
+    await waitFor(() => expect(legacyInput('settings.visual.companyName').value).toBe('Updated business name'));
+    save();
+    expect(setVisualSettings.mock.calls.at(-1)[0].companyName).toBe('Updated business name');
+  });
+
+  it('preserves Hero-only ownership across Apply Palette then Undo', async () => {
+    const { setVisualSettings, rerender } = setup();
+    fireEvent.click(heroRadio('cover'));
+    fireEvent.click(radio('papuenvios'));
+    fireEvent.click(screen.getByText('settings.visual.brand.undoPreset'));
+
+    rerender(
+      <SettingsPageVisual
+        localVisual={{}}
+        setLocalVisual={vi.fn()}
+        visualSettings={{ ...PROD, companyName: 'Updated after palette undo' }}
+        setVisualSettings={setVisualSettings}
+        canChangeTheme
+      />
+    );
+
+    fireEvent.click(heroRadio('spaced'));
+    await waitFor(() => expect(legacyInput('settings.visual.companyName').value).toBe('Updated after palette undo'));
+    save();
+    expect(setVisualSettings.mock.calls.at(-1)[0].companyName).toBe('Updated after palette undo');
+  });
+
+  it('does not restore stale Hero ownership when reverting before palette Undo', async () => {
+    const { setVisualSettings, rerender } = setup();
+    fireEvent.click(heroRadio('cover'));
+    fireEvent.click(radio('papuenvios'));
+    fireEvent.click(heroRadio('spaced'));
+
+    rerender(
+      <SettingsPageVisual
+        localVisual={{}}
+        setLocalVisual={vi.fn()}
+        visualSettings={{ ...PROD, companyName: 'Updated before palette undo' }}
+        setVisualSettings={setVisualSettings}
+        canChangeTheme
+      />
+    );
+    fireEvent.click(screen.getByText('settings.visual.brand.undoPreset'));
+
+    await waitFor(() => expect(legacyInput('settings.visual.companyName').value).toBe('Updated before palette undo'));
+    save();
+    expect(setVisualSettings.mock.calls.at(-1)[0].companyName).toBe('Updated before palette undo');
   });
 });

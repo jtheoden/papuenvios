@@ -1,4 +1,16 @@
 {
+  "helpCenter": {
+    "trigger": "Ayuda para administración",
+    "shortLabel": "Ayuda",
+    "title": "Ayuda de administración",
+    "description": "Respuestas rápidas sobre tareas y precauciones",
+    "topics": "Temas de ayuda",
+    "close": "Cerrar ayuda",
+    "searchLabel": "Buscar en esta sección",
+    "searchPlaceholder": "Buscar una respuesta…",
+    "noResults": "No encontramos respuestas para esa búsqueda.",
+    "disclaimer": "Ayuda informativa estática; no ejecuta acciones ni reemplaza los procedimientos oficiales."
+  },
   "common": {
     "confirmDialog": {
       "title": "Confirmar",
@@ -1398,6 +1410,23 @@
       "logo": "Logo del Sitio",
       "favicon": "Favicon",
       "slides": "Diapositivas de Portada",
+      "heroLayout": {
+        "title": "Composición del Hero",
+        "hint": "Elija cómo se presenta el carrusel de la portada. La elección solo se guarda al pulsar «Guardar Personalización».",
+        "cover": {
+          "name": "Portada a ancho completo",
+          "description": "La imagen ocupa todo el ancho, con el texto y la acción superpuestos."
+        },
+        "spaced": {
+          "name": "Carrusel enmarcado",
+          "description": "El título y las tarjetas quedan separados; el carrusel aparece más estrecho y enmarcado."
+        },
+        "inUse": "En uso",
+        "restricted": "Solo un super administrador puede cambiar la composición del Hero.",
+        "pending": "Composición seleccionada en el formulario. Aún no se guarda; pulse «Guardar Personalización» para aplicarla.",
+        "previewTitle": "Envíos, remesas y más",
+        "previewAction": "Ver productos"
+      },
       "addSlide": "Agregar Diapositiva",
       "image": "Imagen (URL o Archivo)",
       "imageType": "Tipo de Imagen",

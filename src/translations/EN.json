@@ -1,4 +1,16 @@
 {
+  "helpCenter": {
+    "trigger": "Admin help",
+    "shortLabel": "Help",
+    "title": "Administration help",
+    "description": "Quick answers about workflows and safeguards",
+    "topics": "Help topics",
+    "close": "Close help",
+    "searchLabel": "Search this section",
+    "searchPlaceholder": "Search for an answer…",
+    "noResults": "No answers found for that search.",
+    "disclaimer": "Static informational help; it does not perform actions or replace official procedures."
+  },
   "common": {
     "confirmDialog": {
       "title": "Please confirm",
@@ -1390,6 +1402,23 @@
       "logo": "Site Logo",
       "favicon": "Favicon",
       "slides": "Hero Slides",
+      "heroLayout": {
+        "title": "Hero composition",
+        "hint": "Choose how the homepage carousel is presented. This selection is saved only when you click “Save Customization.”",
+        "cover": {
+          "name": "Full-width cover",
+          "description": "The image spans the full width, with the text and action overlaid."
+        },
+        "spaced": {
+          "name": "Framed carousel",
+          "description": "The heading and cards remain separate; the carousel is narrower and framed."
+        },
+        "inUse": "In use",
+        "restricted": "Only a super administrator can change the Hero composition.",
+        "pending": "Composition selected in the form. It is not saved yet; click “Save Customization” to apply it.",
+        "previewTitle": "Shipping, remittances, and more",
+        "previewAction": "View products"
+      },
       "addSlide": "Add Slide",
       "image": "Image (URL or File)",
       "imageType": "Image Type",
