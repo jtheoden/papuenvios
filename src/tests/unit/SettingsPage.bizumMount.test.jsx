@@ -82,13 +82,14 @@ describe('SettingsPage payments tab', () => {
     expect(await screen.findAllByRole('alert')).not.toHaveLength(0);
   });
 
-  it('keeps Zelle and shows neither a Bizum tab nor a Bizum section when the schema is not deployed', async () => {
+  it('keeps the planned IBAN tab but shows no Bizum tab or section when the Bizum schema is not deployed', async () => {
     svc.settings.mockRejectedValue(toBizumError({ code: 'PGRST202', message: 'Could not find the function' }));
     render(<SettingsPage />);
     openPaymentsTab();
     await waitFor(() => expect(svc.settings).toHaveBeenCalled());
     expect(screen.getByText('zelle-tab-content')).toBeInTheDocument();
-    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.getByRole('tab', { name: 'settings.payments.tabs.iban' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'settings.payments.tabs.bizum' })).toBeNull();
     expect(screen.queryByText('settings.bizum.title')).toBeNull();
     expect(svc.fx).not.toHaveBeenCalled();
     expect(svc.accounts).not.toHaveBeenCalled();
@@ -127,13 +128,14 @@ describe('SettingsPage payments tab', () => {
     expect(screen.getByRole('tab', { name: 'settings.payments.tabs.bizum' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('shows the FX state badge in the Bizum section header and links the rate card to Settings > Financial', async () => {
+  it('keeps the detailed FX card without a duplicate header badge and links to Settings > Financial', async () => {
     svc.fx.mockResolvedValue({ state: 'warn', id: 'r1', mid_rate: 0.92, spread_pct: 1.5, effective_rate: 0.93, age_hours: 30, created_at: '2026-10-15T10:00:00Z', fx_warn_hours: 24, fx_block_hours: 96 });
     render(<SettingsPage />);
     openPaymentsTab();
     await openBizumTab();
 
-    expect(await screen.findByTestId('fx-badge')).toHaveAttribute('data-state', 'warn');
+    expect(await screen.findByText('settings.fxRate.title')).toBeInTheDocument();
+    expect(screen.queryByTestId('fx-badge')).toBeNull();
     expect(svc.fx).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('financial-tab-content')).toBeNull();
 
@@ -141,23 +143,26 @@ describe('SettingsPage payments tab', () => {
     expect(await screen.findByText('financial-tab-content')).toBeInTheDocument();
   });
 
-  it('shows only Zelle, with no tablist, when the catalog has no Bizum row', () => {
+  it('shows Zelle and the planned IBAN tab when the catalog has no Bizum row', () => {
     catalog.methods = [{ code: 'zelle' }];
     render(<SettingsPage />);
     openPaymentsTab();
 
-    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.getByRole('tablist')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'settings.payments.tabs.iban' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'settings.payments.tabs.bizum' })).toBeNull();
     expect(screen.getByText('zelle-tab-content')).toBeInTheDocument();
     expect(svc.settings).not.toHaveBeenCalled();
   });
 
-  it('hides the Bizum tab when the catalog read says the schema is not deployed', () => {
+  it('keeps IBAN visible and hides Bizum when the catalog read says the schema is not deployed', () => {
     catalog.methods = null;
     catalog.error = Object.assign(new Error('schema cache'), { context: { schemaMissing: true } });
     render(<SettingsPage />);
     openPaymentsTab();
 
-    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.getByRole('tab', { name: 'settings.payments.tabs.iban' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'settings.payments.tabs.bizum' })).toBeNull();
     expect(screen.getByText('zelle-tab-content')).toBeInTheDocument();
   });
 

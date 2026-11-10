@@ -19,23 +19,21 @@ import { getPaymentFxStatus } from '@/lib/paymentFxService';
 import { isBizumSchemaMissing } from '@/lib/bizumErrors';
 import BizumErrorBoundary from '@/components/settings/BizumErrorBoundary';
 import PaymentFxRateCard from '@/components/settings/PaymentFxRateCard';
-import PaymentFxBadge from '@/components/settings/PaymentFxBadge';
+import EurPaymentRateBadges from '@/components/settings/EurPaymentRateBadges';
+import PaymentMethodOverview from '@/components/settings/PaymentMethodOverview';
 import BizumSettingsCard from '@/components/settings/BizumSettingsCard';
 import BizumAccountsTable from '@/components/settings/BizumAccountsTable';
 
-const SectionShell = ({ badge = null, children }) => {
+const SectionShell = ({ children }) => {
   const { t } = useLanguage();
   return (
     <section aria-labelledby="bizum-section-title" className="space-y-6">
-      <div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <h2 id="bizum-section-title" className="text-xl font-semibold text-gray-900 sm:text-2xl">
-            {t('settings.bizum.title')}
-          </h2>
-          {badge}
-        </div>
-        <p className="mt-1 text-sm text-gray-700">{t('settings.bizum.intro')}</p>
-      </div>
+      <PaymentMethodOverview
+        id="bizum-section-title"
+        title={t('settings.bizum.title')}
+        description={t('settings.bizum.intro')}
+        rates={<EurPaymentRateBadges />}
+      />
       {children}
     </section>
   );
@@ -56,9 +54,18 @@ const BizumPanel = ({ onGoToFinancial }) => {
   if (!enabled || isInitialLoad(fx) || isInitialLoad(accounts)) return null;
 
   return (
-    <SectionShell badge={isMissing(fx) ? null : <PaymentFxBadge status={fx.data} />}>
+    <SectionShell>
       {!isMissing(fx) && (
         <PaymentFxRateCard status={fx.data} error={fx.error} onRetry={fx.reload} onGoToFinancial={onGoToFinancial} />
+      )}
+      {!isMissing(accounts) && (
+        <BizumAccountsTable
+          accounts={accounts.data ?? []}
+          error={accounts.error}
+          defaultLimit={settings.data?.default_per_operation_limit}
+          onChanged={accounts.reload}
+          onRetry={accounts.reload}
+        />
       )}
       <BizumSettingsCard
         settings={settings.data}
@@ -70,15 +77,6 @@ const BizumPanel = ({ onGoToFinancial }) => {
         }}
         onRetry={settings.reload}
       />
-      {!isMissing(accounts) && (
-        <BizumAccountsTable
-          accounts={accounts.data ?? []}
-          error={accounts.error}
-          defaultLimit={settings.data?.default_per_operation_limit}
-          onChanged={accounts.reload}
-          onRetry={accounts.reload}
-        />
-      )}
     </SectionShell>
   );
 };
