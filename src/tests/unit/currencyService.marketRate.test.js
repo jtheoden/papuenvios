@@ -1,7 +1,10 @@
 /**
  * market_rate (internal reference, super-admin only in the UI) per exchange-rate pair.
  * Optional everywhere: when not provided it is never written (the DB trigger fills it on insert and an update
- * must never overwrite it); when provided it must be a positive finite number, the inverse row stores 1 / market.
+ * must never overwrite it); when provided it must be a positive finite number.
+ * The DB enforces rate >= market_rate on EVERY row (constraint rate_higher_than_market): the operative reference
+ * (market_rate) can never exceed the rate users see. The pair writes the inverse row with its own rate as reference,
+ * otherwise 1/market would exceed 1/rate for any rate above the market and the inverse leg would always be rejected.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -32,6 +35,9 @@ vi.mock('@/lib/errorHandler', async (orig) => ({ ...(await orig()), logError: vi
 import { getAllExchangeRates, saveExchangeRatePair, updateExchangeRatePair } from '@/lib/currencyService';
 
 const ok = (data) => ({ data, error: null });
+// numeric(14,6): both columns round the same way
+const round6 = (n) => Math.round(n * 1e6) / 1e6;
+const violatesDbCheck = (values) => values.market_rate !== undefined && round6(values.rate) < round6(values.market_rate);
 const USD = '11111111-1111-4111-8111-111111111111';
 const CUP = '22222222-2222-4222-8222-222222222222';
 
@@ -55,12 +61,30 @@ describe('saveExchangeRatePair market rate', () => {
     upserts().forEach((u) => expect(u.values).not.toHaveProperty('market_rate'));
   });
 
-  it('stores market_rate on the direct row and 1/market on the inverse', async () => {
+  it('stores market_rate on the direct row and the inverse rate itself on the inverse row', async () => {
     db.responses = [ok([]), ok({ id: 'd' }), ok({ id: 'i' })];
     await saveExchangeRatePair({ ...base, marketRate: '900' });
     expect(upserts()[0].values.market_rate).toBe(900);
-    expect(upserts()[1].values.market_rate).toBeCloseTo(1 / 900, 12);
+    expect(upserts()[1].values.market_rate).toBe(upserts()[1].values.rate);
   });
+
+  it.each([['915', '900'], ['910', '900'], ['900', '900'], ['900.05', '900'], ['1000', '860']])(
+    'rate %s with market %s: neither row violates rate >= market_rate',
+    async (rate, market) => {
+      db.responses = [ok([]), ok({ id: 'd' }), ok({ id: 'i' })];
+      await saveExchangeRatePair({ ...base, rate, marketRate: market });
+      expect(upserts()).toHaveLength(2);
+      upserts().forEach((u) => expect(violatesDbCheck(u.values)).toBe(false));
+    }
+  );
+
+  it.each([['860', '880'], ['899.99', '900']])(
+    'rate %s below the market %s is refused before any write (the rate users see cannot be below the operative one)',
+    async (rate, market) => {
+      await expect(saveExchangeRatePair({ ...base, rate, marketRate: market })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+      expect(db.ops).toHaveLength(0);
+    }
+  );
 
   it.each([['0'], ['-5'], ['abc'], [Infinity]])('rejects an invalid market rate (%s) before any write', async (bad) => {
     await expect(saveExchangeRatePair({ ...base, marketRate: bad })).rejects.toBeDefined();
@@ -86,11 +110,26 @@ describe('updateExchangeRatePair market rate', () => {
     updates().forEach((u) => expect(u.values).not.toHaveProperty('market_rate'));
   });
 
-  it('writes market_rate to the direct row and 1/market to the inverse when provided', async () => {
+  it('writes market_rate to the direct row and the inverse rate itself to the inverse row when provided', async () => {
     script();
     await updateExchangeRatePair(USD, CUP, '915', '2026-11-04', { marketRate: '900' });
     expect(updates()[0].values).toMatchObject({ rate: 915, market_rate: 900 });
-    expect(updates()[1].values.market_rate).toBeCloseTo(1 / 900, 12);
+    expect(updates()[1].values.market_rate).toBe(updates()[1].values.rate);
+  });
+
+  it.each([['915', '900'], ['910', '900'], ['900', '900'], ['1000', '860']])(
+    'rate %s with market %s: neither row violates rate >= market_rate',
+    async (rate, market) => {
+      script();
+      await updateExchangeRatePair(USD, CUP, rate, '2026-11-04', { marketRate: market });
+      expect(updates()).toHaveLength(2);
+      updates().forEach((u) => expect(violatesDbCheck(u.values)).toBe(false));
+    }
+  );
+
+  it.each([['860', '880'], ['899.99', '900']])('rate %s below the market %s is refused before any write', async (rate, market) => {
+    await expect(updateExchangeRatePair(USD, CUP, rate, '2026-11-04', { marketRate: market })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    expect(db.ops).toHaveLength(0);
   });
 
   it.each([['0'], ['-1'], ['x'], [Infinity]])('rejects an invalid market rate (%s) before any write', async (bad) => {

@@ -560,6 +560,10 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
     if (error?.context?.requiredRole === 'super_admin') return t('settings.financial.ratesSuperAdminOnly');
     if (error?.code === 'EXCHANGE_RATE_PAIR_PARTIAL') return t('settings.financial.ratePairPartial');
     if (error?.code === 'EXCHANGE_RATE_PAIR_INCOMPLETE') return t('settings.financial.ratePairIncomplete');
+    // The service refuses it up front; the DB constraint (rate >= market_rate) is the backstop when the market field was left untouched
+    if (error?.context?.fieldErrors?.marketRate || /rate_higher_than_market/.test(error?.message || '')) {
+      return t('settings.financial.marketAboveRate');
+    }
     if (error?.code === 'NOT_FOUND' && error?.context?.reason === 'no_rows') {
       return canWriteRates ? t('settings.financial.rateNotFound') : t('settings.financial.ratesSuperAdminOnly');
     }
