@@ -9,6 +9,7 @@ import {
   ERROR_CODES
 } from './errorHandler';
 import { rateAgeHours } from './rateAge';
+import { invalidateCatalog } from './catalogCache';
 import { subscribeApiWrites, dropApiCaches } from './requestBudget';
 
 const ratesChangedListeners = new Set();
@@ -1082,3 +1083,62 @@ export const deleteExchangeRatePair = async (fromCurrencyId, toCurrencyId) => {
     throw appError;
   }
 };
+
+// ===== Catalog repricing (USD<->CUP rate flow) =====
+// The migration may not be applied yet: a missing RPC/table answers { unavailable: true } and never throws,
+// so saving a rate keeps working exactly as before. Other failures come back as { error }.
+const REPRICE_UNAVAILABLE_CODES = new Set(['PGRST202', 'PGRST205', '42883', '42P01']);
+const REPRICE_UNAVAILABLE_MESSAGE = /could not find the (function|table)|schema cache|(function|relation) .* does not exist/i;
+// supabase-js puts the PostgREST code/message on the error, not an HTTP status; status 404 is kept for other clients.
+const isRepriceUnavailable = (error) => REPRICE_UNAVAILABLE_CODES.has(error?.code)
+  || error?.status === 404
+  || REPRICE_UNAVAILABLE_MESSAGE.test(error?.message ?? '');
+
+const runRepriceCall = async (operation, call) => {
+  try {
+    const { data, error } = await call();
+    if (error) {
+      if (isRepriceUnavailable(error)) return { unavailable: true };
+      if (/rate_changed/.test(error.message ?? '')) return { rateChanged: true };
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation });
+      return { error: appError };
+    }
+    return { data };
+  } catch (error) {
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation });
+    logError(appError, { operation });
+    return { error: appError };
+  }
+};
+
+/** Dry run of the repricing at `rate` (USD->CUP); null/undefined uses the active rate. */
+export const previewCatalogReprice = async (rate = null) => {
+  const numeric = rate === null ? null : Number(rate);
+  if (numeric !== null && (!Number.isFinite(numeric) || numeric <= 0)) {
+    throw createValidationError({ rate: 'Rate must be a positive finite number' }, 'Invalid rate');
+  }
+  return runRepriceCall('previewCatalogReprice', () => supabase.rpc('preview_catalog_reprice', { p_rate: numeric }));
+};
+
+/**
+ * Applies the repricing at the active USD->CUP rate. `confirmLarge` acknowledges a change above 10%;
+ * `expectedRate` is the rate the caller confirmed: if the active one differs the server refuses (-> { rateChanged: true }).
+ */
+export const applyCatalogReprice = async (confirmLarge = false, expectedRate = null) => {
+  const expected = expectedRate === null || expectedRate === undefined ? null : Number(expectedRate);
+  if (expected !== null && (!Number.isFinite(expected) || expected <= 0)) {
+    throw createValidationError({ expectedRate: 'Expected rate must be a positive finite number' }, 'Invalid rate');
+  }
+  const result = await runRepriceCall('applyCatalogReprice', () => (
+    supabase.rpc('apply_catalog_reprice', { p_confirm_large: Boolean(confirmLarge), p_expected_rate: expected })
+  ));
+  // Prices moved: catalog, vendor and cart must not serve the old ones for up to the cache TTL.
+  if (Number(result.data?.products_updated) > 0 || Number(result.data?.combos_updated) > 0) invalidateCatalog();
+  return result;
+};
+
+/** Last repricing run ({ rate, applied_at }) or data null when none happened yet. */
+export const getCatalogRepriceStatus = async () => runRepriceCall('getCatalogRepriceStatus', () => (
+  supabase.from('catalog_reprice_runs').select('rate, applied_at').order('applied_at', { ascending: false }).limit(1).maybeSingle()
+));

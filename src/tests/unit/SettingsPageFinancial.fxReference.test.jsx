@@ -37,7 +37,11 @@ vi.mock('@/lib/currencyService', () => ({
   saveExchangeRatePair: (...a) => svc.saveExchangeRatePair(...a),
   deleteExchangeRate: vi.fn(),
   deleteExchangeRatePair: (...a) => svc.deleteExchangeRatePair(...a),
-  updateExchangeRatePair: (...a) => svc.updateExchangeRatePair(...a)
+  updateExchangeRatePair: (...a) => svc.updateExchangeRatePair(...a),
+  // Catalog repricing migration not applied: the rate flow is the plain one
+  previewCatalogReprice: vi.fn().mockResolvedValue({ unavailable: true }),
+  applyCatalogReprice: vi.fn().mockResolvedValue({ unavailable: true }),
+  getCatalogRepriceStatus: vi.fn().mockResolvedValue({ unavailable: true })
 }));
 vi.mock('@/lib/fxReference', async (importOriginal) => ({
   ...(await importOriginal()),

@@ -10,7 +10,8 @@ import { getPrimaryButtonStyle, getHeadingStyle } from '@/lib/styleUtils';
 import { toast } from '@/components/ui/use-toast';
 import {
   getCurrencies, getAllCurrencies, createCurrency, updateCurrency, deleteCurrency,
-  getAllExchangeRates, saveExchangeRatePair, deleteExchangeRate, deleteExchangeRatePair, updateExchangeRatePair
+  getAllExchangeRates, saveExchangeRatePair, deleteExchangeRate, deleteExchangeRatePair, updateExchangeRatePair,
+  previewCatalogReprice, applyCatalogReprice, getCatalogRepriceStatus
 } from '@/lib/currencyService';
 import { supabase } from '@/lib/supabase';
 import { refreshSessionOnce } from '@/lib/sessionRefresh';
@@ -149,6 +150,16 @@ const formatMarketDifference = (rate, market) => {
   return `${pct >= 0 ? '+' : '-'}${Math.abs(pct).toFixed(1)} %`;
 };
 
+// ----- Catalog repricing helpers (USD<->CUP rate flow) -----
+const REPRICE_RATE_TOLERANCE = 1e-6; // catalog_reprice_runs.rate has 6 decimals
+const isUsdCupPair = (a, b) => {
+  const codes = new Set([a, b].map((code) => String(code ?? '').toUpperCase()));
+  return codes.size === 2 && codes.has('USD') && codes.has('CUP');
+};
+// USD->CUP equivalent of a from->to rate of the pair
+const toUsdCupRate = (fromCode, rate) => (String(fromCode ?? '').toUpperCase() === 'USD' ? Number(rate) : 1 / Number(rate));
+const formatPct = (value) => Number(value ?? 0).toFixed(1);
+
 const SuperOnlyNote = ({ id, children }) => (
   <p id={id} role="note" className="mb-4 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
     <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
@@ -197,6 +208,10 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   const [rateChangeConfirm, setRateChangeConfirm] = useState({ isOpen: false, pair: null });
   const rateFormRef = useRef(null);
   const [preloadTick, setPreloadTick] = useState(0);
+  // Catalog repricing: rate of the last run, and whether the last apply failed (drives the stale-prices banner)
+  const [lastRunRate, setLastRunRate] = useState(null);
+  const [repriceFailed, setRepriceFailed] = useState(false);
+  const [retryingReprice, setRetryingReprice] = useState(false);
 
   // Check if exchange rate pair already exists (including inverse)
   const duplicateRateInfo = useMemo(() => {
@@ -273,6 +288,27 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
     loadCurrencies();
     loadExchangeRates();
   }, []);
+
+  // Last repricing run, to flag prices that no longer match the active rate. The service never throws
+  // (unavailable/error = no banner); the guard only protects the screen from a missing export in partial mocks.
+  useEffect(() => {
+    if (!canWriteRates) return;
+    (async () => {
+      try {
+        const status = await getCatalogRepriceStatus();
+        if (status?.data?.rate != null) setLastRunRate(Number(status.data.rate));
+      } catch {
+        /* never block the screen for an advisory indicator */
+      }
+    })();
+  }, [canWriteRates]);
+
+  const activeUsdCupRate = useMemo(() => {
+    const row = exchangeRates.find((r) => r.is_active !== false && r.from_currency?.code === 'USD' && r.to_currency?.code === 'CUP');
+    return row ? Number(row.rate) : null;
+  }, [exchangeRates]);
+  const showStaleBanner = canWriteRates && (repriceFailed
+    || (lastRunRate !== null && activeUsdCupRate !== null && Math.abs(activeUsdCupRate - lastRunRate) > REPRICE_RATE_TOLERANCE));
 
   // After preloading the form from the reference, bring it into view and focus the rate field.
   useEffect(() => {
@@ -516,6 +552,142 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
     return error.message;
   };
 
+  // ----- Catalog repricing: one confirmation before saving a USD<->CUP rate, apply right after -----
+  const affectedCounts = (data) => ({ products: Number(data?.products_affected ?? 0), combos: Number(data?.combos_affected ?? 0) });
+
+  // Rates and skipped-products lines shared by both confirmation dialogs.
+  const repriceRateDetails = (data) => {
+    const next = Number(data?.rate);
+    if (!Number.isFinite(next)) return null;
+    const previous = data.previous_rate == null ? null : Number(data.previous_rate);
+    const pct = data.rate_pct_change ?? (previous ? ((next - previous) / previous) * 100 : null);
+    const skipped = Array.isArray(data.skipped_products) ? data.skipped_products.length : 0;
+    return (
+      <>
+        <span className="mt-2 block">
+          {previous === null || pct === null
+            ? t('settings.financial.repricing.ratesNew', { next })
+            : t('settings.financial.repricing.rates', { previous, next, pct: formatPct(pct) })}
+        </span>
+        {skipped > 0 && <span className="mt-2 block">{t('settings.financial.repricing.skippedProducts', { count: skipped })}</span>}
+      </>
+    );
+  };
+
+  // Resolves to { apply, confirmLarge, confirmed, expectedRate } or null when the owner cancelled.
+  const askRepriceConfirmation = async (data, expectedRate) => {
+    const { products, combos } = affectedCounts(data);
+    const large = Boolean(data.requires_extra_confirmation);
+    const accepted = await confirm({
+      title: t('settings.financial.repricing.confirmTitle'),
+      description: (
+        <>
+          <span className="block">
+            {t('settings.financial.repricing.summary', {
+              products, combos, avg: formatPct(data.avg_pct_change), max: formatPct(data.max_abs_pct_change)
+            })}
+          </span>
+          {repriceRateDetails(data)}
+          {large && (
+            <span className="mt-2 block font-semibold text-destructive">{t('settings.financial.repricing.largeWarning')}</span>
+          )}
+        </>
+      ),
+      confirmLabel: t('settings.financial.repricing.confirmAction'),
+      variant: large ? 'warning' : 'default'
+    });
+    if (!accepted) return null;
+    if (large && !(await confirm({
+      title: t('settings.financial.repricing.secondTitle'),
+      description: (
+        <>
+          <span className="block">{t('settings.financial.repricing.secondMessage', { products, combos })}</span>
+          {repriceRateDetails(data)}
+        </>
+      ),
+      confirmLabel: t('settings.financial.repricing.secondAction'),
+      variant: 'destructive'
+    }))) return null;
+    return { apply: true, confirmLarge: large, confirmed: true, expectedRate };
+  };
+
+  // Previews the repricing for the rate about to be saved. null = cancelled (save nothing); apply:false = save as today.
+  // markStale: the rate is saved without repricing, so the stale-prices banner must appear afterwards.
+  const planCatalogReprice = async (fromCode, toCode, rate) => {
+    const saveAsToday = { apply: false, confirmLarge: false, confirmed: false };
+    if (!canWriteRates || !isUsdCupPair(fromCode, toCode)) return saveAsToday;
+    const usdCup = toUsdCupRate(fromCode, rate);
+    if (!Number.isFinite(usdCup) || usdCup <= 0) return saveAsToday;
+    const preview = await previewCatalogReprice(usdCup);
+    if (preview?.error) {
+      // The effect on prices is unknown: let the owner decide instead of blocking the rate.
+      const saveWithoutPrices = await confirm({
+        title: t('settings.financial.repricing.previewErrorTitle'),
+        description: t('settings.financial.repricing.previewErrorMessage'),
+        confirmLabel: t('settings.financial.repricing.previewErrorAction'),
+        variant: 'warning'
+      });
+      return saveWithoutPrices ? { ...saveAsToday, markStale: true } : null;
+    }
+    const { products, combos } = affectedCounts(preview?.data);
+    if (!preview?.data || products + combos === 0) return saveAsToday;
+    return askRepriceConfirmation(preview.data, usdCup);
+  };
+
+  // Runs after the rate is saved. Never reverts the rate: a failure leaves the stale banner.
+  const applyRepricing = async (plan) => {
+    if (plan?.markStale) {
+      setRepriceFailed(true);
+      return;
+    }
+    if (!plan?.apply) return;
+    const result = await applyCatalogReprice(plan.confirmLarge, plan.expectedRate);
+    if (!result?.data) {
+      setRepriceFailed(true);
+      // rate_changed: the active rate moved after the owner confirmed. Never retry blindly: Retry re-previews.
+      toast({
+        title: t(result?.rateChanged ? 'settings.financial.repricing.rateChanged' : 'settings.financial.repricing.applyFailed'),
+        description: t(result?.rateChanged ? 'settings.financial.repricing.rateChangedDesc' : 'settings.financial.repricing.applyFailedDesc'),
+        variant: 'destructive'
+      });
+      return;
+    }
+    setRepriceFailed(false);
+    if (result.data.rate != null) setLastRunRate(Number(result.data.rate));
+    toast({
+      title: t('settings.financial.repricing.applied'),
+      description: t('settings.financial.repricing.appliedDesc', {
+        products: Number(result.data.products_updated ?? 0), combos: Number(result.data.combos_updated ?? 0)
+      })
+    });
+  };
+
+  // Banner "Retry": same preview -> confirm -> apply at the active rate.
+  const handleRetryReprice = async () => {
+    if (!canWriteRates || retryingReprice) return;
+    setRetryingReprice(true);
+    try {
+      const preview = await previewCatalogReprice(null);
+      if (preview?.unavailable) {
+        setRepriceFailed(false);
+        return;
+      }
+      if (preview?.error || !preview?.data) {
+        toast({ title: t('common.error'), description: t('settings.financial.repricing.previewFailed'), variant: 'destructive' });
+        return;
+      }
+      const { products, combos } = affectedCounts(preview.data);
+      const expectedRate = preview.data.rate == null ? null : Number(preview.data.rate);
+      // Nothing to change: apply only records the run (no prices move), so no question is needed.
+      const plan = products + combos === 0
+        ? { apply: true, confirmLarge: Boolean(preview.data.requires_extra_confirmation), expectedRate }
+        : await askRepriceConfirmation(preview.data, expectedRate);
+      if (plan) await applyRepricing(plan);
+    } finally {
+      setRetryingReprice(false);
+    }
+  };
+
   const handleSaveRate = async () => {
     if (!canWriteRates) return;
     if (!newRate.fromCurrencyId || !newRate.toCurrencyId || !newRate.rate) {
@@ -566,6 +738,9 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       return;
     }
 
+    const reprice = await planCatalogReprice(fromCurrency?.code, toCurrency?.code, newRate.rate);
+    if (!reprice) return;
+
     try {
       const result = await saveExchangeRatePair(newRate);
       if (result.error) throw result.error;
@@ -580,6 +755,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       toast({
         title: t('settings.financial.ratesSaved')
       });
+      await applyRepricing(reprice);
     } catch (error) {
       if (!handleSessionExpired(error)) {
         console.error('Error saving rate:', error);
@@ -740,6 +916,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
           ? 'Se actualizaron ambas tasas (directa e inversa)'
           : 'Both rates updated (direct and inverse)'
       });
+      await applyRepricing(pair.reprice);
     } catch (error) {
       if (handleSessionExpired(error)) return;
       toast({
@@ -774,12 +951,17 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       }
     }
 
-    if (requiresChangeConfirmation(editingRatePair.originalRate, editingRatePair.rate)) {
-      setRateChangeConfirm({ isOpen: true, pair: editingRatePair });
+    const reprice = await planCatalogReprice(editingRatePair.fromCurrency?.code, editingRatePair.toCurrency?.code, editingRatePair.rate);
+    if (!reprice) return;
+    const pair = { ...editingRatePair, reprice };
+
+    // The repricing dialog already warned about a large change: do not ask the same thing twice.
+    if (!reprice.confirmed && requiresChangeConfirmation(editingRatePair.originalRate, editingRatePair.rate)) {
+      setRateChangeConfirm({ isOpen: true, pair });
       return;
     }
 
-    await commitRatePairUpdate(editingRatePair);
+    await commitRatePairUpdate(pair);
   };
 
   const handleCloseRateChangeConfirm = () => setRateChangeConfirm({ isOpen: false, pair: null });
@@ -1054,6 +1236,19 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
             <span className="hidden sm:inline">{t('settings.financial.newRate')}</span>
           </Button>
         </div>
+
+        {showStaleBanner && (
+          <div role="status" className="mb-4 flex flex-wrap items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">{t('settings.financial.repricing.staleTitle')}</p>
+              <p className="break-words">{t('settings.financial.repricing.staleMessage')}</p>
+            </div>
+            <Button type="button" size="sm" variant="outline" onClick={handleRetryReprice} disabled={retryingReprice}>
+              {t('settings.financial.repricing.retry')}
+            </Button>
+          </div>
+        )}
 
         {!canWriteRates && <SuperOnlyNote id={RATES_NOTE_ID}>{t('settings.financial.ratesSuperAdminOnly')}</SuperOnlyNote>}
 

@@ -16,7 +16,7 @@ const ROLLBACK_A = 'supabase/rollbacks/20261016160000_phase0b_admin_cost_read_rp
 const ROLLBACK_B = 'supabase/rollbacks/20261016160100_phase0b_contract_revoke_cost_columns_down.sql';
 
 const HIDDEN = {
-  products: ['base_price', 'cost_price', 'profit_margin'],
+  products: ['base_price', 'cost_price', 'cost_cup', 'profit_margin'],
   combo_products: ['base_total_price', 'profit_margin'],
   product_categories: ['profit_margin'],
   inventory: ['cost_per_unit', 'supplier_reference'],
