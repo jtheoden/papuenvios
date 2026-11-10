@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { getBankAccountsForRecipient, linkBankAccountToRecipient } from '@/lib/recipientService';
+import { getBankAccountsForRecipient, linkBankAccountToRecipient, getBankAccountsByUser } from '@/lib/recipientService';
 import BankAccountForm from '@/components/BankAccountForm';
 import { CreditCard, Plus, AlertCircle, Loader } from 'lucide-react';
 
@@ -27,6 +27,7 @@ const BankAccountSelector = ({
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
+  const [myAccounts, setMyAccounts] = useState([]);
 
   // Filter accounts by remittance type's delivery currency
   const filteredAccounts = useMemo(() => {
@@ -48,11 +49,27 @@ const BankAccountSelector = ({
   // Count of accounts that don't match the currency (for showing info message)
   const hiddenAccountsCount = accounts.length - filteredAccounts.length;
 
+  // The customer's own saved accounts that this recipient does not have yet (holder may be anyone)
+  const reusableAccounts = useMemo(() => {
+    const linkedIds = new Set(accounts.map(a => a.bank_account?.id));
+    const targetCurrency = selectedRemittanceType?.delivery_currency?.toUpperCase();
+    return myAccounts.filter(a =>
+      !linkedIds.has(a.id) && (!targetCurrency || a.currency?.code?.toUpperCase() === targetCurrency)
+    );
+  }, [myAccounts, accounts, selectedRemittanceType?.delivery_currency]);
+
   useEffect(() => {
     if (recipientId) {
       loadBankAccounts();
     }
   }, [recipientId]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    getBankAccountsByUser(user.id)
+      .then(setMyAccounts)
+      .catch((error) => console.error('Error loading saved accounts:', error));
+  }, [user?.id]);
 
   const loadBankAccounts = async () => {
     setLoading(true);
@@ -108,10 +125,11 @@ const BankAccountSelector = ({
     }
   };
 
+  // Used for both a freshly created account and one of the customer's saved accounts
   const handleAccountCreated = async (newAccount) => {
     setCreatingAccount(true);
     try {
-      // Link the newly created account to the recipient
+      // Link the account to the recipient
       // linkBankAccountToRecipient returns link data directly or throws exception
       await linkBankAccountToRecipient(
         recipientId,
@@ -124,7 +142,7 @@ const BankAccountSelector = ({
       const refreshedAccounts = await getBankAccountsForRecipient(recipientId);
       setAccounts(refreshedAccounts || []);
 
-      // Find and select the newly created account
+      // Find and select the linked account
       const newLinkedAccount = refreshedAccounts?.find(
         a => a.bank_account?.id === newAccount.id
       );
@@ -325,6 +343,26 @@ const BankAccountSelector = ({
                 : 'This recipient has no linked bank accounts. Create a new one.'}
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Saved accounts of this customer that the recipient does not have yet */}
+      {showCreateButton && reusableAccounts.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-semibold">
+            {language === 'es' ? 'O usa una de tus cuentas guardadas' : 'Or use one of your saved accounts'}
+          </p>
+          {reusableAccounts.map((account) => (
+            <button
+              key={account.id}
+              type="button"
+              disabled={creatingAccount}
+              onClick={() => handleAccountCreated(account)}
+              className="w-full p-3 rounded-lg border-2 border-gray-200 hover:border-blue-300 text-left text-sm disabled:opacity-50"
+            >
+              {language === 'es' ? 'Usar cuenta' : 'Use account'}: {account.bank?.name} ****{account.account_number_last4} ({account.currency?.code}) · {language === 'es' ? 'Titular:' : 'Holder:'} {account.account_holder_name}
+            </button>
+          ))}
         </div>
       )}
 
