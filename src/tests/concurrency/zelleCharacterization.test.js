@@ -667,6 +667,7 @@ describeDb('live Zelle / payment-method behavior (characterization)', () => {
     it('remittances BEFORE INSERT: the payment-method check runs BEFORE the owner guard (phase 1.5 S2 adds guard_remittance_pricing after it; S4 adds guard_remittance_offer_id before the owner guard)', async () => {
       expect(await triggers('remittances', 'before', 'insert')).toEqual([
         'guard_payment_method_enabled',
+        'guard_remittance_bank_account',
         'guard_remittance_offer_id',
         'guard_remittance_owner_insert',
         'guard_remittance_pricing',
