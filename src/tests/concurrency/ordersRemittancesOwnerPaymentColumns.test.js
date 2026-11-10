@@ -68,7 +68,9 @@ describeDb('RB-01: user_id and payment-routing columns are RPC-only', () => {
     const { rows } = await admin.query(
       `INSERT INTO public.remittance_types (name, currency_code, delivery_currency, exchange_rate,
                                             commission_percentage, commission_fixed, min_amount, delivery_method)
-       VALUES ($1, 'USD', 'CUP', 800, 2.5, 0, 0.01, 'transfer') RETURNING id`, [`rb01-${randomUUID().slice(0, 8)}`]);
+       -- cash: these tests are about payment-routing columns; a non-cash customer INSERT also needs a linked recipient
+       -- bank account (guard_remittance_bank_account), which is covered in remittanceBankAccountGuard.test.js
+       VALUES ($1, 'USD', 'CUP', 800, 2.5, 0, 0.01, 'cash') RETURNING id`, [`rb01-${randomUUID().slice(0, 8)}`]);
     types.push(rows[0].id);
     return rows[0].id;
   };
