@@ -9,7 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getPrimaryButtonStyle, getHeadingStyle } from '@/lib/styleUtils';
 import { toast } from '@/components/ui/use-toast';
 import {
-  getCurrencies, getAllCurrencies, createCurrency, updateCurrency, deleteCurrency,
+  getCurrencies, getAllCurrencies, createCurrency, updateCurrency, deleteCurrency, setCurrencyShowInSelector,
   getAllExchangeRates, saveExchangeRatePair, deleteExchangeRate, deleteExchangeRatePair, updateExchangeRatePair
 } from '@/lib/currencyService';
 import { supabase } from '@/lib/supabase';
@@ -409,6 +409,20 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         description: error.message,
         variant: 'destructive'
       });
+    }
+  };
+
+  // Selector visibility: the base currency and the last visible one must stay in the public selector.
+  const isInSelector = (c) => c.is_active && c.show_in_selector !== false;
+  const visibleSelectorCount = currencies.filter(isInSelector).length;
+
+  const handleToggleShowInSelector = async (currency) => {
+    try {
+      await setCurrencyShowInSelector(currency.id, currency.show_in_selector === false);
+      await loadCurrencies();
+    } catch (error) {
+      console.error('Error updating selector visibility:', error);
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
     }
   };
 
@@ -894,6 +908,16 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                   </span>
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2 ml-auto">
+                  <label className="flex items-center gap-1 text-xs whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={currency.show_in_selector !== false}
+                      disabled={currency.is_base || (isInSelector(currency) && visibleSelectorCount <= 1)}
+                      onChange={() => handleToggleShowInSelector(currency)}
+                      aria-label={`${t('settings.financial.showInSelector')}: ${currency.code}`}
+                    />
+                    {t('settings.financial.showInSelector')}
+                  </label>
                   {/* Inactive badge */}
                   {!currency.is_active && (
                     <span className="text-xs bg-gray-300 text-gray-600 px-2 py-1 rounded font-semibold whitespace-nowrap">
