@@ -1,6 +1,6 @@
 -- ============================================================================
 -- Per-currency "show in selector" flag.
---   PREPARED, NOT APPLIED
+--   APPLIED to production on 2026-11-10 (apply_migration name: currencies_show_in_selector)
 -- ============================================================================
 -- WHY: the owner almost always wants CUP out of the public currency selector, but CUP must keep converting, pricing and
 --   being eligible when authoring prices. Hiding is a display choice, not deactivation.

@@ -43,13 +43,22 @@ const IN_PROGRESS_ORDER_STATUSES = [
 // byte-identical copy of the base64 `image_url` (doubling the payload), and every cost column.
 // Consumers fall back `image_url || image_file`, so omitting it is safe.
 
+/**
+ * cost_cup is sent only when defined (undefined = key omitted, null = clear it).
+ * Deploy order: apply migration 20261110100000_catalog_cost_cup_reprice.sql BEFORE this code. The vendor form only
+ * defines costCup when loaded admin rows carry the cost_cup key (present only after the migration), so a front
+ * deployed early keeps saving exactly as before.
+ */
+const costCupField = (productData) =>
+  productData.costCup === undefined ? {} : { cost_cup: productData.costCup };
+
 /** Admin rows: base_price and profit_margin come from the admin RPC, not from the table. */
 const withProductCosts = async (rows) => {
   if (rows.length === 0) return rows;
   const costs = await listProductCosts();
   return rows.map(row => {
     const cost = costs.get(row.id);
-    return cost ? { ...row, base_price: cost.base_price, profit_margin: cost.profit_margin } : row;
+    return cost ? { ...row, base_price: cost.base_price, profit_margin: cost.profit_margin, ...('cost_cup' in cost ? { cost_cup: cost.cost_cup } : {}) } : row;
   });
 };
 
@@ -341,6 +350,7 @@ export const createProduct = withCatalogInvalidation(async (productData) => {
         base_price: parseFloat(productData.basePrice),
         base_currency_id: productData.base_currency_id,
         profit_margin: resolveMarginInput(productData.profitMargin, DEFAULTS.PRODUCT_PROFIT_MARGIN),
+        ...costCupField(productData),
         min_stock_alert: productData.min_stock_alert ? parseInt(productData.min_stock_alert) : DEFAULTS.MIN_STOCK_ALERT,
         image_url: imageUrl || null,
         unit: normalizeUnitCode(productData.unit),
@@ -410,9 +420,11 @@ export const updateProduct = withCatalogInvalidation(async (productId, productDa
       description_es: productData.description_es || '',
       description_en: productData.description_en || '',
       category_id: productData.category_id,
-      base_price: parseFloat(productData.basePrice),
-      base_currency_id: productData.base_currency_id,
+      // undefined price/currency = unchanged cost: do not touch base_price (no silent repricing)
+      ...(productData.basePrice === undefined ? {} : { base_price: parseFloat(productData.basePrice) }),
+      ...(productData.base_currency_id === undefined ? {} : { base_currency_id: productData.base_currency_id }),
       profit_margin: resolveMarginInput(productData.profitMargin, DEFAULTS.PRODUCT_PROFIT_MARGIN),
+      ...costCupField(productData),
       min_stock_alert: productData.min_stock_alert !== undefined ? parseInt(productData.min_stock_alert) : DEFAULTS.MIN_STOCK_ALERT,
       unit: normalizeUnitCode(productData.unit),
       updated_at: getCurrentTimestamp()

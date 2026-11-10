@@ -29,7 +29,7 @@ const skipReason = await dbSuiteSkipReason({
 const describeDb = skipReason ? describe.skip : describe;
 
 const SENSITIVE = {
-  products: ['base_price', 'cost_price', 'profit_margin'],
+  products: ['base_price', 'cost_price', 'cost_cup', 'profit_margin'],
   combo_products: ['base_total_price', 'profit_margin'],
   product_categories: ['profit_margin'],
   inventory: ['cost_per_unit', 'supplier_reference'],

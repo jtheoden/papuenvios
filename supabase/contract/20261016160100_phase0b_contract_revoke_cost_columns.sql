@@ -22,7 +22,7 @@
 --
 -- Not touched: INSERT / UPDATE / DELETE privileges and every RLS policy. Admin writes stay direct under RLS and
 -- must name their RETURNING columns (`RETURNING *` and an empty .select() now fail with 42501).
--- Cost and margin are readable by admins only through migration A's admin_list_* RPCs.
+-- Cost and margin (including products.cost_cup, added by 20261110100000) are readable by admins only through migration A's admin_list_* RPCs.
 -- combo_items has no sensitive column and keeps its table-level SELECT.
 --
 -- Also closed here (no caller in src/ or supabase/functions/):
@@ -38,7 +38,7 @@
 -- immediately, no front revert needed, tested up/down/up by src/tests/concurrency/phase0bContract.test.js).
 -- ============================================================================
 
--- products: hidden = base_price, cost_price, profit_margin
+-- products: hidden = base_price, cost_price, cost_cup, profit_margin
 REVOKE SELECT ON public.products FROM anon, authenticated;
 GRANT SELECT (
   id,
