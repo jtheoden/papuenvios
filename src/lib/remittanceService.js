@@ -241,12 +241,15 @@ export const getRemittanceExchangeRate = async (fromCurrencyCode, toCurrencyCode
   );
 
   try {
+    const numericTypeRate = Number(typeRate);
+
     // Same currency = 1:1 rate, without querying any external configuration.
+    // The type's own rate is not applied there: admins use it as the reference that derives the commission
+    // (market 1.03 / delivery 1.00 -> 2.91%), which is stored in commission_percentage.
     if (fromCurrencyCode === toCurrencyCode) {
       return { rate: 1, source: 'configured' };
     }
 
-    const numericTypeRate = Number(typeRate);
     if (Number.isFinite(numericTypeRate) && numericTypeRate > 0) {
       return { rate: numericTypeRate, source: 'type' };
     }
@@ -269,6 +272,35 @@ export const getRemittanceExchangeRate = async (fromCurrencyCode, toCurrencyCode
 // ============================================================================
 // GESTIÓN DE TIPOS DE REMESAS (ADMIN)
 // ============================================================================
+
+/**
+ * Card / transfer / moneypocket deliveries are paid into the recipient's account: it must be linked to the selected
+ * recipient, active (link and bank account, not deleted) and in the delivery currency.
+ * @throws {AppError} VALIDATION_FAILED when the account is missing or unusable
+ */
+const assertRecipientBankAccount = async ({ recipientId, recipientBankAccountId, deliveryCurrency }) => {
+  const invalid = (message) => createValidationError({ recipient_bank_account_id: message }, 'Bank account required for this delivery method');
+
+  if (!recipientId || !recipientBankAccountId) {
+    throw invalid('Select the recipient and one of their bank accounts or cards');
+  }
+
+  const { data: link, error } = await supabase
+    .from('recipient_bank_accounts')
+    .select('id, recipient_id, is_active, bank_account:bank_accounts!bank_account_id(is_active, deleted_at, currency:currencies!currency_id(code))')
+    .eq('id', recipientBankAccountId)
+    .eq('recipient_id', recipientId)
+    .eq('is_active', true)
+    .single();
+
+  // PGRST116 = no row: the account is not linked to this recipient or is inactive. Anything else is a real failure.
+  if (error && error.code !== 'PGRST116') throw parseSupabaseError(error);
+
+  const account = link?.bank_account;
+  if (!account || account.is_active === false || account.deleted_at || account.currency?.code !== deliveryCurrency) {
+    throw invalid(`The selected account is not an active ${deliveryCurrency} account of this recipient`);
+  }
+};
 
 /**
  * Get all remittance types (Admin)
@@ -924,8 +956,14 @@ export const createRemittance = async (remittanceData) => {
       recipient_address_id,
       recipient_bank_account_id,
       offer_id,
-      discount_amount: passedDiscountAmount
+      discount_amount: passedDiscountAmount,
+      expectedQuote
     } = remittanceData;
+
+    // The customer pays and the recipient gets exactly what the form showed: the quote shown is mandatory
+    if (!expectedQuote) {
+      throw createValidationError({ expectedQuote: 'The quote shown to the customer is required' }, 'Missing displayed quote');
+    }
 
     // Validate required fields
     if (!remittance_type_id || !amount || !recipient_name || !recipient_phone) {
@@ -968,6 +1006,23 @@ export const createRemittance = async (remittanceData) => {
       deliveryCurrency,
       deliveryMethod
     } = calculation;
+
+    // Live numbers must equal the displayed ones to the cent (rate at its stored 4 decimals); otherwise nothing is stored
+    const actualQuote = { amountSent, amountToDeliver, exchangeRate, commissionTotal: totalCommission };
+    const sameQuote = Object.keys(actualQuote).every((key) => Number(expectedQuote[key]) === actualQuote[key]);
+    if (!sameQuote) {
+      throw new AppError(
+        'The amounts changed since the quote was shown.',
+        ERROR_CODES.REMITTANCE_QUOTE_CHANGED,
+        409,
+        // the discount is not compared (it follows the commission) but the review step must show the live one
+        { expected: expectedQuote, actual: { ...actualQuote, discountAmount: calcDiscountAmount } }
+      );
+    }
+
+    if (deliveryMethod !== DELIVERY_METHODS.CASH) {
+      await assertRecipientBankAccount({ recipientId: recipient_id, recipientBankAccountId: recipient_bank_account_id, deliveryCurrency });
+    }
 
     // Cash deliveries add the destination's shipping cost to what the sender pays (D2).
     // The cost is never deducted from amountToDeliver. shippingService is the only source.
