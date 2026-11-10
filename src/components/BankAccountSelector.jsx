@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { getBankAccountsForRecipient, linkBankAccountToRecipient, getBankAccountsByUser } from '@/lib/recipientService';
+import { getBankAccountsForRecipient, linkBankAccountToRecipient } from '@/lib/recipientService';
 import BankAccountForm from '@/components/BankAccountForm';
 import { CreditCard, Plus, AlertCircle, Loader } from 'lucide-react';
 
@@ -27,7 +27,8 @@ const BankAccountSelector = ({
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
-  const [myAccounts, setMyAccounts] = useState([]);
+  // Account the customer is linking that other recipients already hold: waits for their confirmation
+  const [pendingShare, setPendingShare] = useState(null);
 
   // Filter accounts by remittance type's delivery currency
   const filteredAccounts = useMemo(() => {
@@ -49,30 +50,11 @@ const BankAccountSelector = ({
   // Count of accounts that don't match the currency (for showing info message)
   const hiddenAccountsCount = accounts.length - filteredAccounts.length;
 
-  // The customer's own saved accounts that this recipient does not have yet (holder may be anyone)
-  const reusableAccounts = useMemo(() => {
-    const linkedIds = new Set(accounts.map(a => a.bank_account?.id));
-    const targetCurrency = selectedRemittanceType?.delivery_currency?.toUpperCase();
-    return myAccounts.filter(a =>
-      !linkedIds.has(a.id) && (!targetCurrency || a.currency?.code?.toUpperCase() === targetCurrency)
-    );
-  }, [myAccounts, accounts, selectedRemittanceType?.delivery_currency]);
-
-  // The saved-accounts list is only rendered with the create button, so the notices must match it
-  const canReuse = showCreateButton && reusableAccounts.length > 0;
-
   useEffect(() => {
     if (recipientId) {
       loadBankAccounts();
     }
   }, [recipientId]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    getBankAccountsByUser(user.id)
-      .then(setMyAccounts)
-      .catch((error) => console.error('Error loading saved accounts:', error));
-  }, [user?.id]);
 
   const loadBankAccounts = async () => {
     setLoading(true);
@@ -128,8 +110,7 @@ const BankAccountSelector = ({
     }
   };
 
-  // Used for both a freshly created account and one of the customer's saved accounts
-  const handleAccountCreated = async (newAccount) => {
+  const handleAccountCreated = async (newAccount, confirmShared = false) => {
     setCreatingAccount(true);
     try {
       // Link the account to the recipient
@@ -137,8 +118,10 @@ const BankAccountSelector = ({
       await linkBankAccountToRecipient(
         recipientId,
         newAccount.id,
-        accounts.length === 0 // Set as default if it's the first account
+        accounts.length === 0, // Set as default if it's the first account
+        { confirmShared }
       );
+      setPendingShare(null);
 
       // Reload all accounts from database to get complete data with joins
       // This ensures we have all nested relationships (bank, currency, account_type)
@@ -163,6 +146,12 @@ const BankAccountSelector = ({
 
       setShowForm(false);
     } catch (error) {
+      // Not a failure: other recipients already hold this account, so the customer decides (warning, never a block)
+      if (error?.context?.reason === 'BANK_ACCOUNT_SHARED') {
+        setPendingShare({ account: newAccount, names: error.context.recipientNames || [] });
+        setShowForm(false);
+        return;
+      }
       console.error('Error linking account:', error);
       toast({
         title: language === 'es' ? 'Error' : 'Error',
@@ -198,13 +187,9 @@ const BankAccountSelector = ({
               {language === 'es' ? 'Sin Cuentas Compatibles' : 'No Compatible Accounts'}
             </p>
             <p className="text-sm text-amber-700 mt-1">
-              {canReuse
-                ? (language === 'es'
-                  ? `Este destinatario tiene ${accounts.length} cuenta(s), pero ninguna es en ${selectedRemittanceType.delivery_currency}. Elige una de tus cuentas guardadas en ${selectedRemittanceType.delivery_currency} o agrega una nueva.`
-                  : `This recipient has ${accounts.length} account(s), but none are in ${selectedRemittanceType.delivery_currency}. Choose one of your saved ${selectedRemittanceType.delivery_currency} accounts or add a new one.`)
-                : (language === 'es'
-                  ? `Este destinatario tiene ${accounts.length} cuenta(s), pero ninguna es en ${selectedRemittanceType.delivery_currency}. Crea una nueva cuenta compatible.`
-                  : `This recipient has ${accounts.length} account(s), but none are in ${selectedRemittanceType.delivery_currency}. Create a compatible account.`)}
+              {language === 'es'
+                ? `Este destinatario tiene ${accounts.length} cuenta(s), pero ninguna es en ${selectedRemittanceType.delivery_currency}. Crea una nueva cuenta compatible.`
+                : `This recipient has ${accounts.length} account(s), but none are in ${selectedRemittanceType.delivery_currency}. Create a compatible account.`}
             </p>
           </div>
         </div>
@@ -346,35 +331,48 @@ const BankAccountSelector = ({
               {language === 'es' ? 'Sin Cuentas Bancarias' : 'No Bank Accounts'}
             </p>
             <p className="text-sm text-yellow-700 mt-1">
-              {canReuse
-                ? (language === 'es'
-                  ? 'Este destinatario aún no tiene cuentas vinculadas. Elige una de tus cuentas guardadas o agrega una nueva.'
-                  : 'This recipient has no linked bank accounts yet. Choose one of your saved accounts or add a new one.')
-                : (language === 'es'
-                  ? 'Este destinatario no tiene cuentas bancarias vinculadas. Crea una nueva.'
-                  : 'This recipient has no linked bank accounts. Create a new one.')}
+              {language === 'es'
+                ? 'Este destinatario no tiene cuentas bancarias vinculadas. Crea una nueva.'
+                : 'This recipient has no linked bank accounts. Create a new one.'}
             </p>
           </div>
         </div>
       )}
 
-      {/* Saved accounts of this customer that the recipient does not have yet */}
-      {showCreateButton && reusableAccounts.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-sm font-semibold">
-            {language === 'es' ? 'O usa una de tus cuentas guardadas' : 'Or use one of your saved accounts'}
-          </p>
-          {reusableAccounts.map((account) => (
+      {/* Warning: the account is already held by other recipients; the customer decides whether to share it */}
+      {pendingShare && (
+        <div role="alert" className="p-4 bg-amber-50 rounded-lg border-2 border-amber-200 space-y-3">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-semibold text-amber-800">
+                {language === 'es' ? 'Esta cuenta ya está asociada a otro destinatario' : 'This account is already linked to another recipient'}
+              </p>
+              <p className="text-sm text-amber-700 mt-1">
+                {language === 'es'
+                  ? `La cuenta ya está asociada a: ${pendingShare.names.join(', ')}. Normalmente una cuenta pertenece a un solo destinatario. ¿Estás seguro de asociarla también a este destinatario?`
+                  : `The account is already linked to: ${pendingShare.names.join(', ')}. An account normally belongs to a single recipient. Are you sure you want to link it to this recipient too?`}
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
             <button
-              key={account.id}
               type="button"
               disabled={creatingAccount}
-              onClick={() => handleAccountCreated(account)}
-              className="w-full p-3 rounded-lg border-2 border-gray-200 hover:border-blue-300 text-left text-sm disabled:opacity-50"
+              onClick={() => handleAccountCreated(pendingShare.account, true)}
+              className="flex-1 p-2 rounded-lg bg-amber-600 text-white text-sm font-medium disabled:opacity-50"
             >
-              {language === 'es' ? 'Usar cuenta' : 'Use account'}: {account.bank?.name} ****{account.account_number_last4} ({account.currency?.code}) · {language === 'es' ? 'Titular:' : 'Holder:'} {account.account_holder_name}
+              {language === 'es' ? 'Sí, asociarla también' : 'Yes, link it too'}
             </button>
-          ))}
+            <button
+              type="button"
+              disabled={creatingAccount}
+              onClick={() => setPendingShare(null)}
+              className="flex-1 p-2 rounded-lg border-2 border-gray-200 text-sm font-medium disabled:opacity-50"
+            >
+              {language === 'es' ? 'Cancelar' : 'Cancel'}
+            </button>
+          </div>
         </div>
       )}
 
