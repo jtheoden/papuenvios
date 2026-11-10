@@ -408,13 +408,19 @@ describeDb('rate functions fix + exchange_rates constraints', () => {
         await admin.query(`UPDATE public.exchange_rates SET is_active = true WHERE id = $1`, [old.id]);
       });
 
-      it('an admin through RLS (authenticated role) can still do the in-place edit', async () => {
+      it('a super_admin through RLS (authenticated role) can still do the in-place edit; a plain admin cannot (DEC-10)', async () => {
         await setRate(ids.usd, ids.cup, 790, { daysAgo: 3 });
+        const sql = `UPDATE public.exchange_rates SET rate = 795, effective_date = CURRENT_DATE
+            WHERE from_currency_id = $1 AND to_currency_id = $2 AND is_active = true RETURNING rate`;
         const c = await as(actors.adminId);
-        const res = await c.query(
-          `UPDATE public.exchange_rates SET rate = 795, effective_date = CURRENT_DATE
-            WHERE from_currency_id = $1 AND to_currency_id = $2 AND is_active = true RETURNING rate`, [ids.usd, ids.cup]);
-        expect(Number(res.rows[0].rate)).toBe(795);
+        try {
+          expect((await c.query(sql, [ids.usd, ids.cup])).rowCount).toBe(0);
+          await admin.query(`UPDATE public.user_profiles SET role = 'super_admin' WHERE id = $1`, [actors.adminId]);
+          const res = await c.query(sql, [ids.usd, ids.cup]);
+          expect(Number(res.rows[0].rate)).toBe(795);
+        } finally {
+          await admin.query(`UPDATE public.user_profiles SET role = 'admin' WHERE id = $1`, [actors.adminId]);
+        }
       });
     });
   });
@@ -444,7 +450,19 @@ describeDb('rate functions fix + exchange_rates constraints', () => {
         // courier phase A also only READS the active USD->CUP row, live, inside the accrual (checked just below)
         && f !== '20261105150000_courier_payment_types_currency_ranges.sql'
         // courier phase B carries the phase A accrual body (+ via_subscription): same live READ only (checked just below)
-        && f !== '20261105160000_courier_payment_type_subscriptions.sql');
+        && f !== '20261105160000_courier_payment_type_subscriptions.sql'
+        // courier assign-after-delivery only READS the active USD->CUP row inside the accrual (SELECT ... FROM exchange_rates)
+        && f !== '20261105170000_courier_assign_after_delivery.sql'
+        // adds a BEFORE INSERT trigger on exchange_rates that fills a NULL market_rate; it redefines none of these functions
+        && f !== '20261109120000_exchange_rates_market_rate_fallback.sql'
+        // catalog repricing only READS the active USD->CUP rates (SELECT ... FROM exchange_rates) to recompute base_price
+        && f !== '20261110100000_catalog_cost_cup_reprice.sql'
+        // DEC-10 only swaps the exchange_rates WRITE policy to is_super_admin(); it touches none of these functions
+        // (restored in F3 under the prod version 20261103124844)
+        && f !== '20261103124844_exchange_rates_super_admin_write.sql'
+        // F3 (financialDbHardeningF3.test.js): a remittance_types guard, an AFTER history trigger, a VALIDATE of the
+        // distinct-currencies check and an anon REVOKE on the prod-only rate readers; none redefines these objects
+        && !/^20261111120[0-3]00_/.test(f));
       const phaseB = readFileSync('supabase/migrations/20261105160000_courier_payment_type_subscriptions.sql', 'utf8')
         .split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
       expect(phaseB).not.toMatch(/\b(DELETE\s+FROM|UPDATE|INSERT\s+INTO|TRUNCATE|ALTER\s+TABLE)\s+(public\.)?exchange_rates/i);
