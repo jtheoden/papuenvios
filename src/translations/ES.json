@@ -1869,7 +1869,21 @@
       "tabs": {
         "label": "Métodos de pago",
         "zelle": "Zelle",
-        "bizum": "Bizum"
+        "bizum": "Bizum",
+        "iban": "IBAN"
+      },
+      "ibanStatus": {
+        "title": "Transferencia IBAN (SEPA)",
+        "description": "Estado de preparación del cobro en euros para pedidos y remesas.",
+        "unavailable": "No disponible",
+        "blocker": "Para habilitarlo deben existir tasas activas EUR→USD y EUR→CUP, y completarse la configuración segura de cuentas IBAN, la recepción y la conciliación. El método permanece desactivado para pedidos y remesas."
+      },
+      "ibanAccounts": {
+        "title": "Cuentas receptoras IBAN y límites",
+        "description": "Aquí se administrarán las cuentas de cobro de PapuEnvios (no las cuentas de los beneficiarios en Cuba).",
+        "limits": "Límites mínimo y máximo por transferencia, configurables por cuenta.",
+        "routing": "Prioridad de recepción y uso independiente para pedidos y remesas.",
+        "unavailable": "La configuración aún no está disponible: falta el almacenamiento seguro y la conciliación de transferencias. No introduzca datos bancarios aquí."
       }
     }
   },
@@ -2585,7 +2599,8 @@
     "flowLabel": "Flujo",
     "methods": {
       "zelle": "Zelle",
-      "bizum": "Bizum"
+      "bizum": "Bizum",
+      "iban": "IBAN"
     },
     "flows": {
       "orders": "Pedidos",

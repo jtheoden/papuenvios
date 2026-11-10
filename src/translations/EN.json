@@ -1861,7 +1861,21 @@
       "tabs": {
         "label": "Payment methods",
         "zelle": "Zelle",
-        "bizum": "Bizum"
+        "bizum": "Bizum",
+        "iban": "IBAN"
+      },
+      "ibanStatus": {
+        "title": "IBAN transfer (SEPA)",
+        "description": "EUR collection readiness for orders and remittances.",
+        "unavailable": "Unavailable",
+        "blocker": "Activation requires active EUR→USD and EUR→CUP rates, secure IBAN account setup, transfer receipt, and reconciliation. This method remains disabled for orders and remittances."
+      },
+      "ibanAccounts": {
+        "title": "IBAN receiving accounts and limits",
+        "description": "PapuEnvios collection accounts will be managed here (not Cuban beneficiary payout accounts).",
+        "limits": "Per-transfer minimum and maximum limits, configurable per account.",
+        "routing": "Collection priority and independent use for orders and remittances.",
+        "unavailable": "Configuration is not available yet: secure account storage and transfer reconciliation are not implemented. Do not enter bank details here."
       }
     }
   },
@@ -2577,7 +2591,8 @@
     "flowLabel": "Flow",
     "methods": {
       "zelle": "Zelle",
-      "bizum": "Bizum"
+      "bizum": "Bizum",
+      "iban": "IBAN"
     },
     "flows": {
       "orders": "Orders",

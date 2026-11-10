@@ -796,3 +796,10 @@ Follow-up committed on `feat/theme-controls-links-logo` in five new commits (no 
 - PR #182 head `495a5c6c` passed lint but CI coverage had 1 failing test (4,875 passed): `themeCompliance.test.js` requires the inline first-paint `index.html` preset to exactly match `BRAND_PRESET`.
 - The corresponding local `index.html` change adds the new identity keys but excludes them from legacy-brand inference, matching the `brandPalette.js` behavior. Focused `themeCompliance.test.js`: 26/26 passed. Both blind reviewers CLEAN. This change must be committed/pushed, then the full PR CI rerun must pass before merge.
 - Vercel preview was BUILDING at time of check; production has not been updated.
+
+## S1 — IBAN/SEPA "unavailable" + shared payment-method overview 2026-11-11
+
+- Registers `iban` as a disabled payment method (migration `20261111100000_iban_sepa_unavailable.sql` + rollback, PREPARED, NOT APPLIED; widens `payment_methods_code_check` to zelle/bizum/iban). No IBAN data is collected; the IBAN tab is read-only status.
+- UI: IBAN tab always present in Settings > Payments; shared `PaymentMethodOverview` header (Zelle + Bizum) with EUR→USD / EUR→CUP rate badges; Bizum drops its single header FX badge and lists accounts before parameters; `PaymentMethodsStatusCard` shows a disabled IBAN placeholder row when an older catalog lacks it.
+- `PaymentFxBadge` is now unused by app code (only its own and two FxRateCard tests reference it); left in place.
+- Red-first: slice tests failed before implementation (8 files), then passed. Apply the migration only with explicit owner approval.
