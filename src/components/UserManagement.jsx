@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Shield, UserCheck, UserX, Trash2, AlertCircle, BarChart3, Settings, Edit, Save, X } from 'lucide-react';
+import { Users, Shield, Trash2, AlertCircle, BarChart3, Settings, Edit, Save, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -16,9 +17,11 @@ import { getUserTableColumns, getUserModalColumns } from '@/components/admin/Use
 import { getCategoryRules, getCategoryDiscounts, recalculateAllCategories, updateCategoryDiscount, updateCategoryRule } from '@/lib/userCategorizationService';
 import { ICON_MAP } from '@/components/CategoryBadge';
 import SlideToConfirm from '@/components/ui/SlideToConfirm';
+import UserStatusAction from '@/components/admin/UserStatusAction';
 
 const UserManagement = () => {
   const { t } = useLanguage();
+  const confirm = useConfirm();
   const { user, isSuperAdmin } = useAuth();
   const { visualSettings } = useBusiness();
   const [users, setUsers] = useState([]);
@@ -64,7 +67,7 @@ const UserManagement = () => {
     try {
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('id, email, role, is_enabled, full_name, avatar_url, created_at')
+        .select('id, email, role, is_enabled, disabled_reason, disabled_at, disabled_by, full_name, avatar_url, created_at')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -201,42 +204,6 @@ const UserManagement = () => {
     }
   };
 
-  const handleToggleUserStatus = async (userId, isEnabled) => {
-    try {
-      const targetUser = users.find(u => u.id === userId);
-
-      if (targetUser?.role === 'super_admin') {
-        console.warn('[handleToggleUserStatus] BLOCKED - Cannot modify super admin:', targetUser?.email);
-        throw new Error(t('users.cannotModifySuperAdmin'));
-      }
-
-      logUserManagementAction('toggle_user_status_start', { userId, enable: isEnabled });
-
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({ is_enabled: isEnabled })
-        .eq('id', userId);
-
-      if (error) throw error;
-
-      await fetchUsers();
-      logUserManagementAction('toggle_user_status_success', { userId, enable: isEnabled });
-      toast({
-        title: isEnabled ? t('users.userEnabled') : t('users.userDisabled'),
-        description: t('users.statusUpdateSuccess'),
-      });
-    } catch (error) {
-      console.error('[handleToggleUserStatus] ERROR:', error);
-      console.error('[handleToggleUserStatus] Error details:', { message: error?.message, code: error?.code, userId, isEnabled });
-      logUserManagementAction('toggle_user_status_error', { userId, message: error.message });
-      toast({
-        title: t('users.statusUpdateError'),
-        description: error.message,
-        variant: "destructive",
-      });
-    }
-  };
-
   const handleDeleteUser = async (userId) => {
     const targetUser = users.find(u => u.id === userId);
 
@@ -254,7 +221,12 @@ const UserManagement = () => {
 
     // Confirm deletion
     const confirmMessage = t('users.confirmDelete', { email: targetUser?.email });
-    if (!window.confirm(confirmMessage)) {
+    if (!(await confirm({
+      title: t('common.confirmDialog.deleteTitle'),
+      description: confirmMessage,
+      confirmLabel: t('common.confirmDialog.delete'),
+      variant: 'destructive'
+    }))) {
       logUserManagementAction('delete_user_cancelled', { userId });
       return;
     }
@@ -605,25 +577,12 @@ const UserManagement = () => {
             }
             return (
               <div className="flex items-center justify-end gap-1 sm:gap-2">
-                <Button
-                  variant={row.is_enabled ? "outline" : "default"}
-                  size="sm"
-                  className="h-8 px-2 sm:px-3"
-                  onClick={() => handleToggleUserStatus(row.id, !row.is_enabled)}
-                  title={row.is_enabled ? t('users.disableUser') : t('users.enableUser')}
-                >
-                  {row.is_enabled ? (
-                    <>
-                      <UserX className="w-4 h-4 sm:mr-1" />
-                      <span className="hidden sm:inline">{t('users.disable')}</span>
-                    </>
-                  ) : (
-                    <>
-                      <UserCheck className="w-4 h-4 sm:mr-1" />
-                      <span className="hidden sm:inline">{t('users.enable')}</span>
-                    </>
-                  )}
-                </Button>
+                <UserStatusAction
+                  targetUser={row}
+                  currentUserId={user?.id}
+                  isSuperAdmin={isSuperAdmin}
+                  onChanged={fetchUsers}
+                />
                 <Button
                   variant="outline"
                   size="sm"
@@ -652,7 +611,7 @@ const UserManagement = () => {
     }
 
     return baseColumns;
-  }, [t, isSuperAdmin, user?.email, visualSettings, categoryRules, handleRoleChange, handleCategoryChange, handleToggleUserStatus, handleDeleteUser]);
+  }, [t, isSuperAdmin, user?.email, visualSettings, categoryRules, handleRoleChange, handleCategoryChange, fetchUsers, handleDeleteUser]);
 
   const renderUsersTab = () => (
     <>
@@ -861,8 +820,30 @@ const UserManagement = () => {
                 <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
                   selectedUser.is_enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                 }`}>
-                  {selectedUser.is_enabled ? t('users.table.active') : t('users.table.inactive')}
+                  {selectedUser.is_enabled ? t('users.table.active') : t('users.table.disabled')}
                 </span>
+                {!selectedUser.is_enabled && (
+                  <dl className="mt-2 space-y-1 text-sm text-gray-700">
+                    {selectedUser.disabled_reason && (
+                      <div>
+                        <dt className="inline font-medium">{t('users.disabledReason')}: </dt>
+                        <dd className="inline break-words">{selectedUser.disabled_reason}</dd>
+                      </div>
+                    )}
+                    {selectedUser.disabled_at && (
+                      <div>
+                        <dt className="inline font-medium">{t('users.disabledAt')}: </dt>
+                        <dd className="inline">{new Date(selectedUser.disabled_at).toLocaleString()}</dd>
+                      </div>
+                    )}
+                    {selectedUser.disabled_by && (
+                      <div>
+                        <dt className="inline font-medium">{t('users.disabledBy')}: </dt>
+                        <dd className="inline">{users.find(u => u.id === selectedUser.disabled_by)?.email || selectedUser.disabled_by}</dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
               </div>
 
               {/* Created At */}
@@ -879,27 +860,17 @@ const UserManagement = () => {
             {/* Action Buttons */}
             {isSuperAdmin && selectedUser.role !== 'super_admin' && (
               <div className="mt-6 pt-4 border-t flex flex-wrap gap-2">
-                <Button
-                  variant={selectedUser.is_enabled ? "outline" : "default"}
-                  size="sm"
+                <UserStatusAction
+                  targetUser={selectedUser}
+                  currentUserId={user?.id}
+                  isSuperAdmin={isSuperAdmin}
+                  showLabel
                   className="flex-1 min-w-[120px]"
-                  onClick={() => {
-                    handleToggleUserStatus(selectedUser.id, !selectedUser.is_enabled);
-                    setSelectedUser(prev => ({ ...prev, is_enabled: !prev.is_enabled }));
+                  onChanged={async () => {
+                    await fetchUsers();
+                    setShowUserModal(false);
                   }}
-                >
-                  {selectedUser.is_enabled ? (
-                    <>
-                      <UserX className="w-4 h-4 mr-2" />
-                      {t('users.disable')}
-                    </>
-                  ) : (
-                    <>
-                      <UserCheck className="w-4 h-4 mr-2" />
-                      {t('users.enable')}
-                    </>
-                  )}
-                </Button>
+                />
                 <Button
                   variant="outline"
                   size="sm"
@@ -997,7 +968,7 @@ const UserManagement = () => {
               {t('users.categories.recalculateDesc')}
             </p>
             {lastRecalculateTime && (
-              <p className="text-xs text-blue-700 mt-2">
+              <p className="text-xs text-[rgb(var(--t-link-strong))] mt-2">
                 {t('users.categories.lastRecalculate')}: {new Date(lastRecalculateTime).toLocaleString()}
               </p>
             )}
@@ -1005,7 +976,7 @@ const UserManagement = () => {
           <Button
             onClick={() => setShowRecalculateSlider(prev => !prev)}
             disabled={recalculatingAll}
-            className="bg-blue-600 hover:bg-blue-700 text-white h-9 px-3"
+            className="bg-theme-accent hover:bg-theme-accent-hover text-theme-on-accent h-9 px-3"
             title={t('users.categories.recalculate')}
           >
             <BarChart3 className={`w-4 h-4 sm:mr-2 ${recalculatingAll ? 'animate-spin' : ''}`} />
@@ -1034,7 +1005,7 @@ const UserManagement = () => {
       >
         <div className="p-4 border-b border-gray-200 bg-gray-50">
           <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-blue-600" />
+            <BarChart3 className="w-5 h-5 text-[rgb(var(--t-link))]" />
             {t('users.categories.rulesTitle')}
           </h3>
         </div>
@@ -1236,7 +1207,7 @@ const UserManagement = () => {
       >
         <div className="p-4 border-b border-gray-200 bg-gray-50">
           <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-            <Settings className="w-5 h-5 text-purple-600" />
+            <Settings className="w-5 h-5 text-theme-accent-2" />
             {t('users.categories.discountsTitle')}
           </h3>
         </div>
@@ -1284,7 +1255,7 @@ const UserManagement = () => {
                                 ...editingDiscountData,
                                 discount_percentage: parseFloat(e.target.value) || 0
                               })}
-                              className="w-20 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                              className="w-20 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-theme-focus"
                             />
                           ) : (
                             <span className="font-semibold text-green-600">
@@ -1301,7 +1272,7 @@ const UserManagement = () => {
                                 ...editingDiscountData,
                                 discount_description: e.target.value
                               })}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-theme-focus"
                               placeholder={t('users.categories.description')}
                             />
                           ) : (

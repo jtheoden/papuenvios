@@ -4,10 +4,17 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useModal } from '@/contexts/ModalContext';
+import CancelRefundMessage from '@/components/CancelRefundMessage';
 import { ShoppingBag, Clock, CheckCircle, XCircle, Package, DollarSign, Loader2, X, Eye, MessageCircle, Star, FileText, Send, ArrowRight, Users, Crown, TrendingDown, Gift, Truck, Upload, EyeOff, Filter, ChevronDown, BookOpen } from 'lucide-react';
 import { getPaymentConfirmationBlocker } from '@/lib/orderPayerPhone';
 import { isValidPayerPhone, normalizePayerPhone, PAYER_PHONE_MAX_LENGTH } from '@/lib/payerPhone';
-import { getUserOrders, getOrderById, getAllOrders, validatePayment, rejectPayment, cancelOrderByUser, uploadPaymentProof, markOrderAsDispatched, markOrderAsDelivered, completeOrder, reopenOrder, ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderService';
+import { isInsufficientStockError } from '@/lib/stockErrors';
+import { isStatusConflictError, transitionErrorKey, transitionMessage } from '@/lib/statusConflict';
+import { isOwnOperation } from '@/lib/selfDealing';
+import { getOrderTotalWarning } from '@/lib/orderTotalCoherence';
+
+const OWN_REASON_ID = 'own-operation-reason';
+import { getUserOrders, getOrderById, getAllOrders, getPendingOrdersCount, validatePayment, rejectPayment, cancelOrderByUser, uploadPaymentProof, markOrderAsDispatched, markOrderAsDelivered, completeOrder, reopenOrder, ORDER_STATUS, PAYMENT_STATUS } from '@/lib/orderService';
 import { getUserTestimonial, createTestimonial } from '@/lib/testimonialService';
 import { getMyRemittances, generateProofSignedUrl } from '@/lib/remittanceService';
 import { getPublications } from '@/lib/publicationService';
@@ -15,13 +22,65 @@ import { getHeadingStyle, getTextStyle, getPillStyle, getStatusStyle } from '@/l
 import { generateWhatsAppURL } from '@/lib/whatsappService';
 import { getActiveWhatsappRecipient } from '@/lib/notificationSettingsService';
 import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/use-toast';
 import CategoryBadge from '@/components/CategoryBadge';
 import { derivePercentFromAmount } from '@/lib/discountDisplayService';
 import { useUserDiscounts } from '@/hooks/useUserDiscounts';
 import { useRealtimeRemittances, useRealtimeOrders } from '@/hooks/useRealtimeSubscription';
+import AdminWorkTabs from '@/components/admin/AdminWorkTabs';
+import DeliveryProofModal from '@/components/admin/modals/DeliveryProofModal';
+import OrderComboComponents from '@/components/OrderComboComponents';
+import { formatQuantityWithUnit } from '@/lib/productUnits';
+import { useOrderItemLines } from '@/hooks/useOrderItemLines';
+import { usePaymentProofUrl } from '@/hooks/usePaymentProofUrl';
+import MyOperationRefund from '@/components/refunds/MyOperationRefund';
+import LoadingState, { SkeletonBox } from '@/components/ui/LoadingState';
+
+// Same footprint as the order rows (p-4 bordered cards).
+const OrdersSkeleton = () => (
+  <div className="space-y-4">
+    {Array.from({ length: 3 }, (_, i) => (
+      <div key={i} className="space-y-3 rounded-lg border p-4">
+        <div className="flex justify-between gap-4">
+          <SkeletonBox className="h-5 w-32" />
+          <SkeletonBox className="h-6 w-24 rounded-full" />
+        </div>
+        <SkeletonBox className="h-4 w-1/2" />
+        <SkeletonBox className="h-5 w-24" />
+      </div>
+    ))}
+  </div>
+);
 
 // Constante de paginación fuera del componente para evitar recreación
 const ORDERS_PER_PAGE = 20;
+
+// Payment proofs live in a private bucket: show them through a short-lived signed URL.
+const OrderPaymentProof = ({ value, language, borderColor }) => {
+  const { url, error } = usePaymentProofUrl(value);
+  if (error) {
+    return (
+      <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+        {language === 'es'
+          ? 'No se pudo cargar el comprobante. Intenta de nuevo.'
+          : 'The payment proof could not be loaded. Please try again.'}
+      </p>
+    );
+  }
+  if (!url) return <Loader2 className="h-5 w-5 animate-spin mx-auto" aria-hidden="true" />;
+  return (
+    <div
+      className="rounded-lg border overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+      style={{ borderColor }}
+      onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
+    >
+      <img src={url} alt="Payment proof" className="w-full h-auto object-contain max-h-[600px] bg-gray-50" />
+    </div>
+  );
+};
+
+const notifyError = (t, key) =>
+  toast({ title: t('common.error'), description: t(key), variant: 'destructive' });
 
 const UserPanel = ({ onNavigate }) => {
   const { user, userRole, userCategory } = useAuth();
@@ -32,6 +91,9 @@ const UserPanel = ({ onNavigate }) => {
   const { showModal } = useModal();
   const { categoryDiscountPercent } = useUserDiscounts();
   const isRegularUser = userRole === 'user';
+  const isAdminRole = userRole === 'admin' || userRole === 'super_admin';
+  // null = unknown yet (or failed to load); drives the admin "orders to process" tab count
+  const [pendingOrdersCount, setPendingOrdersCount] = useState(null);
   const [orders, setOrders] = useState([]);
   const [remittances, setRemittances] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -47,7 +109,7 @@ const UserPanel = ({ onNavigate }) => {
   const [rejectionReason, setRejectionReason] = useState('');
   const [actionOrderId, setActionOrderId] = useState(null);
   const [trackingInfo, setTrackingInfo] = useState('');
-  const [deliveryProofFile, setDeliveryProofFile] = useState(null);
+  const [showDeliveryDialog, setShowDeliveryDialog] = useState(false);
   const [retryProofFile, setRetryProofFile] = useState(null);
   const [retryProofReference, setRetryProofReference] = useState('');
   const [retryPayerPhone, setRetryPayerPhone] = useState('');
@@ -61,6 +123,7 @@ const UserPanel = ({ onNavigate }) => {
   const [visibleOrdersCount, setVisibleOrdersCount] = useState(ORDERS_PER_PAGE);
   const [loadingMore, setLoadingMore] = useState(false);
   const ordersContainerRef = useRef(null);
+  const { lines: selectedOrderLines, comboLookupDone: selectedOrderComboLookupDone } = useOrderItemLines(selectedOrder, language);
   const selectedOrderSubtotal = selectedOrder ? (parseFloat(selectedOrder.subtotal) || 0) : 0;
   const selectedOrderTotal = selectedOrder ? (parseFloat(selectedOrder.total_amount) || 0) : 0;
   const selectedOrderDiscountTotal = selectedOrder ? (parseFloat(selectedOrder.discount_amount) || 0) : 0;
@@ -163,7 +226,7 @@ const UserPanel = ({ onNavigate }) => {
         setRemittances(result.remittances || []);
       }
     } catch (error) {
-      console.error('Error loading remittances:', error);
+      notifyError(t, 'userPanel.loadRemittancesError');
     }
   }, [user?.id]);
 
@@ -215,12 +278,13 @@ const UserPanel = ({ onNavigate }) => {
         // This includes: proof_uploaded (needs validation), pending (waiting for proof), rejected (needs retry)
         const orders = await getAllOrders();
         setOrders(orders || []);
+        getPendingOrdersCount().then(setPendingOrdersCount).catch(() => setPendingOrdersCount(null));
       } else {
         const userOrders = await getUserOrders(user.id);
         setOrders(userOrders || []);
       }
     } catch (error) {
-      console.error('Error loading orders:', error);
+      notifyError(t, 'userPanel.loadOrdersError');
     } finally {
       setLoading(false);
     }
@@ -251,14 +315,14 @@ const UserPanel = ({ onNavigate }) => {
     setLoadingDetails(true);
     setShowOrderDetails(true);
     setTrackingInfo('');
-    setDeliveryProofFile(null);
+    setShowDeliveryDialog(false);
     setRetryProofFile(null);
 
     try {
       const order = await getOrderById(orderId);
       setSelectedOrder(order);
     } catch (error) {
-      console.error('Error loading order details:', error);
+      notifyError(t, 'userPanel.loadOrderDetailsError');
     } finally {
       setLoadingDetails(false);
     }
@@ -280,7 +344,7 @@ const UserPanel = ({ onNavigate }) => {
         setSelectedOrder(null);
       }
     } catch (error) {
-      console.error('Error validating payment:', error);
+      notifyError(t, transitionErrorKey(error, 'userPanel.validatePaymentError'));
     } finally {
       setLoadingDetails(false);
       setActionOrderId(null);
@@ -306,7 +370,7 @@ const UserPanel = ({ onNavigate }) => {
         setSelectedOrder(null);
       }
     } catch (error) {
-      console.error('Error rejecting payment:', error);
+      notifyError(t, transitionErrorKey(error, 'userPanel.rejectPaymentError'));
     } finally {
       setLoadingDetails(false);
       setActionOrderId(null);
@@ -314,16 +378,35 @@ const UserPanel = ({ onNavigate }) => {
     }
   };
 
-  const handleCancelOrderUser = async (orderId) => {
-    if (!orderId) return;
+  const handleCancelOrderUser = async (order) => {
+    if (!order?.id) return;
+    // Always confirm. A proof already sent means the customer may have paid: add how the refund works (Terms, section 9)
+    const withRefundNotice = order.payment_status === 'proof_uploaded';
+    const question = t('userPanel.cancelOrderQuestion');
+    const confirmed = await showModal({
+      title: t('userPanel.cancelOrderTitle'),
+      message: withRefundNotice
+        ? <CancelRefundMessage question={question} noteKey="userPanel.cancelProofUploadedWarning" />
+        : question,
+      type: 'danger',
+      confirmText: t('userPanel.cancelOrderConfirm'),
+      cancelText: t('common.back')
+    });
+    if (!confirmed) return;
     setProcessingAction(true);
     try {
-      await cancelOrderByUser(orderId, user.id, 'cancelled_by_user');
+      await cancelOrderByUser(order.id, user.id, 'cancelled_by_user');
       await loadUserOrders();
       setShowOrderDetails(false);
       setSelectedOrder(null);
     } catch (error) {
-      console.error('Error cancelling order:', error);
+      notifyError(t, transitionErrorKey(error, 'userPanel.cancelOrderError'));
+      if (isStatusConflictError(error)) {
+        // Someone else already moved the order: show its real state instead of a stale detail
+        await loadUserOrders();
+        setShowOrderDetails(false);
+        setSelectedOrder(null);
+      }
     } finally {
       setProcessingAction(false);
     }
@@ -366,7 +449,9 @@ const UserPanel = ({ onNavigate }) => {
       console.error('Error reopening order:', error);
       await showModal({
         title: t('common.error'),
-        message: error.message || t('userPanel.reopenOrderError'),
+        message: isInsufficientStockError(error)
+          ? t('userPanel.reopenInsufficientStock')
+          : transitionMessage(t, error, error.message || t('userPanel.reopenOrderError')),
         type: 'danger',
         confirmText: t('common.ok'),
         cancelText: null
@@ -385,22 +470,28 @@ const UserPanel = ({ onNavigate }) => {
       const refreshed = await getOrderById(selectedOrder.id);
       setSelectedOrder(refreshed);
     } catch (error) {
-      console.error('Error marking order as dispatched:', error);
+      notifyError(t, transitionErrorKey(error, 'userPanel.markDispatchedError'));
     } finally {
       setProcessingAction(false);
     }
   };
 
-  const handleMarkDelivered = async () => {
-    if (!selectedOrder?.id || !deliveryProofFile) return;
+  // Called by the delivery dialog with { file } (file may be null: the photo is optional). Errors propagate so the
+  // dialog shows them with its "retry / confirm without photo" options.
+  const handleMarkDelivered = async ({ file }) => {
+    if (!selectedOrder?.id) return;
     setProcessingAction(true);
     try {
-      await markOrderAsDelivered(selectedOrder.id, deliveryProofFile, user.id);
-      await loadUserOrders();
-      const refreshed = await getOrderById(selectedOrder.id);
-      setSelectedOrder(refreshed);
-    } catch (error) {
-      console.error('Error marking order as delivered:', error);
+      await markOrderAsDelivered(selectedOrder.id, file, user.id);
+      // The delivery is done: close the dialog first. A failing refresh below is a refresh problem, not a delivery
+      // failure (retrying the delivery would only hit invalid_transition).
+      setShowDeliveryDialog(false);
+      try {
+        await loadUserOrders();
+        setSelectedOrder(await getOrderById(selectedOrder.id));
+      } catch {
+        notifyError(t, 'userPanel.loadOrderDetailsError');
+      }
     } finally {
       setProcessingAction(false);
     }
@@ -415,7 +506,7 @@ const UserPanel = ({ onNavigate }) => {
       const refreshed = await getOrderById(selectedOrder.id);
       setSelectedOrder(refreshed);
     } catch (error) {
-      console.error('Error completing order:', error);
+      notifyError(t, transitionErrorKey(error, 'userPanel.completeOrderError'));
     } finally {
       setProcessingAction(false);
     }
@@ -810,6 +901,13 @@ const UserPanel = ({ onNavigate }) => {
           </motion.div>
         )}
 
+        <AdminWorkTabs
+          enabled={isAdminRole}
+          ordersCount={pendingOrdersCount}
+          onNavigate={onNavigate}
+          currentUserId={user?.id ?? null}
+          isSuperAdmin={userRole === 'super_admin'}
+        >
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -829,8 +927,8 @@ const UserPanel = ({ onNavigate }) => {
                 >
                   <ShoppingBag className="h-5 w-5 text-white" />
                 </div>
-                {(userRole === 'admin' || userRole === 'super_admin')
-                  ? (language === 'es' ? 'Pedidos Pendientes' : 'Pending Orders')
+                {isAdminRole
+                  ? t('adminInbox.ordersHeading')
                   : t('userPanel.myOrders')
                 }
               </h2>
@@ -887,11 +985,9 @@ const UserPanel = ({ onNavigate }) => {
             )}
           </div>
 
-          {loading ? (
-            <div className="flex justify-center items-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin" style={{ color: visualSettings.primaryColor }} />
-            </div>
-          ) : filteredOrders.length > 0 ? (
+          {/* Skeleton only for the first load: realtime reloads keep the current list on screen */}
+          <LoadingState loading={loading && orders.length === 0} skeleton={<OrdersSkeleton />}>
+          {filteredOrders.length > 0 ? (
             <div className="space-y-4" ref={ordersContainerRef}>
               {/* Contador de órdenes */}
               <div className="flex items-center justify-between text-sm" style={getTextStyle(visualSettings, 'muted')}>
@@ -1101,7 +1197,9 @@ const UserPanel = ({ onNavigate }) => {
               </p>
             </div>
           )}
+          </LoadingState>
         </motion.div>
+        </AdminWorkTabs>
 
         {/* Testimonials Form (Regular users only) */}
         {userRole !== 'admin' && userRole !== 'super_admin' && (
@@ -1281,6 +1379,7 @@ const UserPanel = ({ onNavigate }) => {
                   </div>
                 ) : selectedOrder ? (
                   <div className="space-y-6">
+                    <MyOperationRefund kind="order" operationId={selectedOrder.id} />
                     {/* User Info (Admin only) */}
                     {(userRole === 'admin' || userRole === 'super_admin') && selectedOrder.user_profiles && (
                       <div className="p-4 rounded-lg border" style={{ borderColor: visualSettings.borderColor || '#e5e7eb', backgroundColor: `${visualSettings.primaryColor}10` }}>
@@ -1423,7 +1522,7 @@ const UserPanel = ({ onNavigate }) => {
                         {language === 'es' ? 'Artículos' : 'Items'}
                       </h4>
                       <div className="space-y-3">
-                        {selectedOrder.order_items?.map((item, index) => (
+                        {selectedOrderLines.map(({ item }, index) => (
                           <div
                             key={index}
                             className="p-3 rounded-lg border"
@@ -1450,12 +1549,13 @@ const UserPanel = ({ onNavigate }) => {
                                     {getItemTypeName(item.item_type)}
                                   </span>
                                   <span>
-                                    {language === 'es' ? 'Cantidad' : 'Qty'}: {item.quantity}
+                                    {language === 'es' ? 'Cantidad' : 'Qty'}: {formatQuantityWithUnit(item.quantity, selectedOrderLines[index]?.unit, language)}
                                   </span>
                                 </div>
                                 <p className="text-xs" style={getTextStyle(visualSettings, 'muted')}>
                                   ${parseFloat(item.unit_price).toFixed(2)} × {item.quantity}
                                 </p>
+                                <OrderComboComponents line={selectedOrderLines[index]} lookupDone={selectedOrderComboLookupDone} t={t} language={language} />
                               </div>
 
                               {/* Item Total */}
@@ -1606,21 +1706,11 @@ const UserPanel = ({ onNavigate }) => {
                             <h4 className="text-lg font-semibold mb-3" style={getTextStyle(visualSettings, 'primary')}>
                               {language === 'es' ? 'Comprobante de Pago' : 'Payment Proof'}
                             </h4>
-                            <div
-                              className="rounded-lg border overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
-                              style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}
-                              onClick={() => window.open(selectedOrder.payment_proof_url, '_blank')}
-                            >
-                              <img
-                                src={selectedOrder.payment_proof_url}
-                                alt="Payment proof"
-                                className="w-full h-auto object-contain max-h-[600px] bg-gray-50"
-                                onError={(e) => {
-                                  console.error('[UserPanel] Error loading payment proof image:', selectedOrder.payment_proof_url);
-                                  e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect fill="%23f3f4f6" width="400" height="300"/><text x="50%" y="50%" font-family="Arial" font-size="16" fill="%236b7280" text-anchor="middle">Error al cargar imagen</text></svg>';
-                                }}
-                              />
-                            </div>
+                            <OrderPaymentProof
+                              value={selectedOrder.payment_proof_url}
+                              language={language}
+                              borderColor={visualSettings.borderColor || '#e5e7eb'}
+                            />
                             <p className="text-xs text-center mt-2" style={getTextStyle(visualSettings, 'muted')}>
                               {language === 'es' ? 'Click para ver en tamaño completo' : 'Click to view full size'}
                             </p>
@@ -1632,6 +1722,14 @@ const UserPanel = ({ onNavigate }) => {
                               {language === 'es' ? 'Sin comprobante de pago' : 'No payment proof'}
                             </p>
                           </div>
+                        )}
+
+                        {/* Delivery without a photo (it is optional): the customer still sees the delivery date */}
+                        {!selectedOrder.delivery_proof_url && selectedOrder.delivered_at && ['delivered', 'completed'].includes(selectedOrder.status) && (
+                          <p className="mt-6 text-sm text-green-700 font-medium flex items-center gap-2">
+                            <Truck className="h-4 w-4" />
+                            {language === 'es' ? 'Entregado el' : 'Delivered on'}: {new Date(selectedOrder.delivered_at).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US')}
+                          </p>
                         )}
 
                         {/* Delivery Proof Section - Show when admin has uploaded delivery evidence */}
@@ -1697,11 +1795,11 @@ const UserPanel = ({ onNavigate }) => {
                       </div>
                     )}
 
-                    {/* User actions: cancel pending order */}
-                    {isRegularUser && selectedOrder.status === 'pending' && selectedOrder.payment_status === 'pending' && (
+                    {/* User actions: cancel a pending order until its payment is validated */}
+                    {isRegularUser && selectedOrder.status === 'pending' && selectedOrder.payment_status !== 'validated' && (
                       <div className="flex gap-3 pt-4 border-t" style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}>
                         <Button
-                          onClick={() => handleCancelOrderUser(selectedOrder.id)}
+                          onClick={() => handleCancelOrderUser(selectedOrder)}
                           disabled={processingAction}
                           variant="destructive"
                           className="flex-1"
@@ -1823,12 +1921,26 @@ const UserPanel = ({ onNavigate }) => {
                       </motion.div>
                     )}
 
+                    {isAdminRole && isOwnOperation(selectedOrder, user?.id) && (
+                      <div id={OWN_REASON_ID} role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                        <span className="font-semibold">{t('common.ownOperation')}. </span>
+                        {t('common.ownOperationReason')}
+                      </div>
+                    )}
+
+                    {isAdminRole && ['pending', 'proof_uploaded'].includes(selectedOrder.payment_status) && getOrderTotalWarning(selectedOrder) && (
+                      <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                        {t(`adminOrders.totalWarning.${getOrderTotalWarning(selectedOrder)}`)}
+                      </div>
+                    )}
+
                     {/* Admin Action Buttons */}
                     {(userRole === 'admin' || userRole === 'super_admin') && ['pending', 'proof_uploaded'].includes(selectedOrder.payment_status) && (
                       <div className="flex gap-3 pt-4 border-t" style={{ borderColor: visualSettings.borderColor || '#e5e7eb' }}>
                         <Button
                           onClick={() => handleValidatePayment(selectedOrder.id)}
-                          disabled={loadingDetails}
+                          disabled={loadingDetails || isOwnOperation(selectedOrder, user?.id)}
+                          aria-describedby={isOwnOperation(selectedOrder, user?.id) ? OWN_REASON_ID : undefined}
                           className="flex-1 bg-green-600 hover:bg-green-700 text-white"
                         >
                           <CheckCircle className="h-4 w-4 mr-2" />
@@ -1836,7 +1948,8 @@ const UserPanel = ({ onNavigate }) => {
                         </Button>
                         <Button
                           onClick={() => handleRejectPayment(selectedOrder.id)}
-                          disabled={loadingDetails}
+                          disabled={loadingDetails || isOwnOperation(selectedOrder, user?.id)}
+                          aria-describedby={isOwnOperation(selectedOrder, user?.id) ? OWN_REASON_ID : undefined}
                           variant="destructive"
                           className="flex-1"
                         >
@@ -1860,7 +1973,8 @@ const UserPanel = ({ onNavigate }) => {
                         />
                         <Button
                           onClick={handleMarkDispatched}
-                          disabled={processingAction}
+                          disabled={processingAction || isOwnOperation(selectedOrder, user?.id)}
+                          aria-describedby={isOwnOperation(selectedOrder, user?.id) ? OWN_REASON_ID : undefined}
                           className="bg-blue-600 hover:bg-blue-700 text-white"
                         >
                           {processingAction ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Truck className="h-4 w-4 mr-2" />}
@@ -1874,19 +1988,14 @@ const UserPanel = ({ onNavigate }) => {
                         <p className="font-semibold mb-2" style={getTextStyle(visualSettings, 'primary')}>
                           {language === 'es' ? 'Confirmar entrega' : 'Confirm delivery'}
                         </p>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => setDeliveryProofFile(e.target.files?.[0] || null)}
-                          className="mb-3"
-                        />
                         <Button
-                          onClick={handleMarkDelivered}
-                          disabled={processingAction || !deliveryProofFile}
+                          onClick={() => setShowDeliveryDialog(true)}
+                          disabled={processingAction || isOwnOperation(selectedOrder, user?.id)}
+                          aria-describedby={isOwnOperation(selectedOrder, user?.id) ? OWN_REASON_ID : undefined}
                           className="bg-green-600 hover:bg-green-700 text-white"
                         >
                           {processingAction ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
-                          {language === 'es' ? 'Marcar como entregado' : 'Mark delivered'}
+                          {t('adminOrders.action.markAsDelivered')}
                         </Button>
                       </div>
                     )}
@@ -1898,7 +2007,8 @@ const UserPanel = ({ onNavigate }) => {
                         </p>
                         <Button
                           onClick={handleCompleteOrder}
-                          disabled={processingAction}
+                          disabled={processingAction || isOwnOperation(selectedOrder, user?.id)}
+                          aria-describedby={isOwnOperation(selectedOrder, user?.id) ? OWN_REASON_ID : undefined}
                           className="bg-purple-600 hover:bg-purple-700 text-white"
                         >
                           {processingAction ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
@@ -2027,6 +2137,20 @@ const UserPanel = ({ onNavigate }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {showDeliveryDialog && selectedOrder && (
+        <DeliveryProofModal
+          summary={[
+            { label: 'adminOrders.deliveryModal.orderLabel', value: selectedOrder.order_number },
+            { label: 'adminOrders.deliveryModal.customerLabel', value: selectedOrder.user_profiles?.full_name || selectedOrder.user_profiles?.email || '' }
+          ]}
+          onClose={() => setShowDeliveryDialog(false)}
+          onConfirm={handleMarkDelivered}
+          courierKind="order"
+          courierOperationId={selectedOrder.id}
+          t={t}
+        />
+      )}
     </div>
   );
 };

@@ -44,6 +44,7 @@ const RecipientForm = ({
   submitLabel = 'Guardar',
   onSubmit,
   onCancel,
+  submitting = false, // true while the parent is saving: blocks double submits
   deliveryMethod = 'cash', // 'cash' | 'transfer' | 'card' | 'moneypocket'
   recipientId = null, // Required if deliveryMethod is not 'cash'
   fields = {
@@ -77,7 +78,7 @@ const RecipientForm = ({
             type="text"
             value={formData.full_name || ''}
             onChange={e => handleChange('full_name', e.target.value)}
-            className="input-style w-full"
+            className="input-style w-full recipient-theme-control"
             placeholder={language === 'es' ? 'Juan Pérez' : 'John Doe'}
             required
           />
@@ -94,7 +95,7 @@ const RecipientForm = ({
             type="tel"
             value={formData.phone || ''}
             onChange={e => handleChange('phone', e.target.value)}
-            className="input-style w-full"
+            className="input-style w-full recipient-theme-control"
             placeholder="+53 5555 5555"
             required
           />
@@ -111,7 +112,7 @@ const RecipientForm = ({
             type="email"
             value={formData.email || ''}
             onChange={e => handleChange('email', e.target.value)}
-            className="input-style w-full"
+            className="input-style w-full recipient-theme-control"
             placeholder="john@example.com"
           />
         </div>
@@ -127,7 +128,7 @@ const RecipientForm = ({
             type="text"
             value={formData.id_number || ''}
             onChange={e => handleChange('id_number', e.target.value)}
-            className="input-style w-full"
+            className="input-style w-full recipient-theme-control"
             placeholder="12345678901"
           />
         </div>
@@ -137,14 +138,24 @@ const RecipientForm = ({
       {deliveryMethod !== 'cash' ? (
         // Bank Account Selector for non-cash remittances (allows create new or select existing)
         <div className="border-t pt-4">
-          <BankAccountSelector
-            recipientId={recipientId}
-            onSelect={(account) => {
-              setSelectedBankAccount(account);
-              onChange({ ...formData, bank_account_id: account.bank_account_id });
-            }}
-            showCreateButton={true}
-          />
+          {recipientId ? (
+            <BankAccountSelector
+              recipientId={recipientId}
+              onSelect={(account) => {
+                setSelectedBankAccount(account);
+                onChange({ ...formData, bank_account_id: account?.bank_account_id });
+              }}
+              showCreateButton={true}
+            />
+          ) : (
+            // A new recipient has no id until it is saved: nothing to list or link yet. Once saved, the
+            // recipient is auto-selected and the selector below the list lets the customer add the account.
+            <p className="text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
+              {language === 'es'
+                ? 'Guarda el destinatario para vincular su cuenta bancaria: justo después podrás agregarla o elegir una existente.'
+                : 'Save the recipient to link their bank account: right after you can add one or pick an existing one.'}
+            </p>
+          )}
         </div>
       ) : (
         // Province & Municipality for cash deliveries
@@ -176,7 +187,7 @@ const RecipientForm = ({
             type="text"
             value={formData.address_line_1 || ''}
             onChange={e => handleChange('address_line_1', e.target.value)}
-            className="input-style w-full"
+            className="input-style w-full recipient-theme-control"
             placeholder={language === 'es' ? 'Calle 23, entre L y M' : 'Street address'}
             required
           />
@@ -185,7 +196,7 @@ const RecipientForm = ({
               type="text"
               value={formData.address_line_2}
               onChange={e => handleChange('address_line_2', e.target.value)}
-              className="input-style w-full mt-2"
+              className="input-style w-full mt-2 recipient-theme-control"
               placeholder={language === 'es' ? 'Apartamento, suite, etc (opcional)' : 'Apartment, suite, etc (optional)'}
             />
           )}
@@ -201,7 +212,7 @@ const RecipientForm = ({
           <textarea
             value={formData.notes || ''}
             onChange={e => handleChange('notes', e.target.value)}
-            className="input-style w-full"
+            className="input-style w-full recipient-theme-control"
             rows="3"
             placeholder={language === 'es' ? 'Información adicional...' : 'Additional information...'}
           />
@@ -215,7 +226,9 @@ const RecipientForm = ({
           {onSubmit && (
             <button
               onClick={onSubmit}
-              className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              disabled={submitting}
+              aria-busy={submitting}
+              className="recipient-theme-primary flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {submitLabel}
             </button>
@@ -223,7 +236,7 @@ const RecipientForm = ({
           {onCancel && (
             <button
               onClick={onCancel}
-              className="flex-1 bg-gray-300 text-gray-800 py-2 rounded-lg hover:bg-gray-400 transition-colors font-medium"
+              className="recipient-theme-secondary flex-1 bg-gray-300 text-gray-800 py-2 rounded-lg hover:bg-gray-400 transition-colors font-medium"
             >
               {language === 'es' ? 'Cancelar' : 'Cancel'}
             </button>

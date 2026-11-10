@@ -1,7 +1,10 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 
+// Saved prices are converted with the live rate (currencyService), not the display cache
+const liveRate = vi.hoisted(() => vi.fn(async () => 1));
+vi.mock('@/lib/currencyService', () => ({ getLiveConversionRate: (...args) => liveRate(...args) }));
 vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({ t: (k) => k, language: 'en' })
 }));
@@ -16,6 +19,10 @@ vi.mock('@/contexts/CurrencyContext', () => ({
 }));
 vi.mock('@/components/ui/use-toast', () => ({ toast: vi.fn() }));
 vi.mock('@/lib/imageUtils', () => ({ validateAndProcessImage: vi.fn() }));
+vi.mock('@/lib/imageStorage', () => ({
+  isImageUploadError: () => false,
+  getImageUploadMessageKey: () => 'images.uploadFailed'
+}));
 vi.mock('@/lib/productService', () => ({
   createProduct: vi.fn(),
   deleteProduct: vi.fn(),
@@ -27,7 +34,6 @@ vi.mock('@/lib/bulkDeleteService', () => ({
   previewBulkDeleteProducts: vi.fn()
 }));
 vi.mock('@/lib/activityLogger', () => ({ logActivity: vi.fn() }));
-vi.mock('@/hooks/useRealtimeSubscription', () => ({ useRealtimeProducts: vi.fn() }));
 vi.mock('@/components/tables/BulkDeleteBar', () => ({ default: () => null }));
 vi.mock('@/components/vendor/ProductTableConfig', () => ({
   getTableColumns: () => [],
@@ -44,6 +50,7 @@ vi.mock('@/components/tables/ResponsiveTableWrapper', () => ({
 }));
 
 import VendorInventoryTab from '@/components/vendor/VendorInventoryTab';
+import { updateProduct } from '@/lib/productService';
 
 const currencies = [{ id: 'usd', code: 'USD', symbol: '$', is_base: true }];
 
@@ -70,7 +77,7 @@ const makeProduct = (overrides = {}) => ({
   ...overrides
 });
 
-const renderTab = (products = []) =>
+const renderTab = (products = [], financialSettings = { productProfit: GLOBAL, comboProfit: 35 }) =>
   render(
     <VendorInventoryTab
       products={products}
@@ -80,7 +87,7 @@ const renderTab = (products = []) =>
       baseCurrencyId="usd"
       selectedCurrency="usd"
       exchangeRates={[]}
-      financialSettings={{ productProfit: GLOBAL, comboProfit: 35 }}
+      financialSettings={financialSettings}
       onSelectedCurrencyChange={vi.fn()}
       onProductsRefresh={vi.fn()}
     />
@@ -191,5 +198,22 @@ describe('VendorInventoryTab margin precedence (product > category > global)', (
       fireEvent.click(screen.getAllByText(/vendor.addProduct.profitBySellPrice/)[0].closest('button'));
       expect(screen.getByDisplayValue('12.50')).toBeTruthy();
     });
+  });
+});
+
+describe('VendorInventoryTab zero margin', () => {
+  it('submits a 0% margin as 0 instead of the 40% default', async () => {
+    updateProduct.mockClear();
+    updateProduct.mockResolvedValue({ id: 'p1' });
+    openEditForm(makeProduct({ profit_margin: 0 }));
+    fireEvent.click(screen.getByText('vendor.addProduct.save').closest('button'));
+    await waitFor(() => expect(updateProduct).toHaveBeenCalled());
+    expect(updateProduct.mock.calls[0][1].profitMargin).toBe(0);
+  });
+
+  it('uses a configured global default of 0 to pre-fill a new product', () => {
+    renderTab([], { productProfit: 0, comboProfit: 35 });
+    fireEvent.click(screen.getByText('vendor.actions.addProduct').closest('button'));
+    expect(marginInput().value).toBe('0');
   });
 });

@@ -17,7 +17,12 @@ const buttonVariants = cva(
 				secondary:
           'bg-secondary text-secondary-foreground hover:bg-secondary/80 active:scale-95 shadow-sm hover:shadow-md',
 				ghost: 'hover:bg-accent hover:text-accent-foreground active:scale-95',
-				link: 'text-primary underline-offset-4 hover:underline',
+				link: 'text-theme-link underline-offset-4 hover:underline',
+				// Brand variants: colours come from the Visual settings via the brand-* Tailwind colours.
+				brand:
+          'bg-brand text-brand-foreground hover:bg-brand-hover focus-visible:ring-brand-focus active:scale-95 shadow-sm motion-reduce:transition-none motion-reduce:active:scale-100',
+				'brand-outline':
+          'border border-brand-border bg-transparent text-brand-ink hover:bg-brand-soft focus-visible:ring-brand-focus active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100',
 			},
 			size: {
 				default: 'h-10 px-4 py-2',
@@ -39,7 +44,7 @@ const buttonVariants = cva(
  * Button Component
  * Enhanced with loading state, disabled styling, and better focus states
  *
- * @prop {string} variant - Button variant (default, destructive, outline, secondary, ghost, link)
+ * @prop {string} variant - Button variant (default, destructive, outline, secondary, ghost, link, brand, brand-outline)
  * @prop {string} size - Button size (default, sm, lg, xl, icon, icon-sm)
  * @prop {boolean} loading - Show loading spinner and disable interaction
  * @prop {boolean} disabled - Disable button

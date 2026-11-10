@@ -6,12 +6,15 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { toast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/supabase';
+import { getActiveRatesMap } from '@/lib/currencyService';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import TabsResponsive from './TabsResponsive';
 import VendorCategoriesTab from './vendor/VendorCategoriesTab';
 import VendorCombosTab from './vendor/VendorCombosTab';
 import VendorManagementTab from './vendor/VendorManagementTab';
 import VendorInventoryTab from './vendor/VendorInventoryTab';
+import { loadAdminCatalog } from '@/lib/adminCatalogLoader';
+import CatalogLoadError from './CatalogLoadError';
 
 const VendorPage = () => {
   const { t, language } = useLanguage();
@@ -21,7 +24,8 @@ const VendorPage = () => {
     categories, refreshCategories,
     combos, refreshCombos,
     testimonials, refreshTestimonials,
-    visualSettings
+    visualSettings,
+    adminCatalogError
   } = useBusiness();
 
   // Load currency IDs for products
@@ -56,24 +60,7 @@ const VendorPage = () => {
         }
 
         // Load exchange rates
-        const { data: ratesData, error: ratesError } = await supabase
-          .from('exchange_rates')
-          .select('*')
-          .eq('is_active', true);
-
-        if (ratesError) {
-          console.error('[fetchCurrencies] ERROR fetching exchange rates:', ratesError);
-          console.error('[fetchCurrencies] Error details:', { message: ratesError?.message, code: ratesError?.code });
-          throw ratesError;
-        }
-
-        if (ratesData) {
-          const ratesMap = {};
-          ratesData.forEach(rate => {
-            ratesMap[`${rate.from_currency_id}-${rate.to_currency_id}`] = rate.rate;
-          });
-          setExchangeRates(ratesMap);
-        }
+        setExchangeRates(await getActiveRatesMap());
 
       } catch (error) {
         console.error('[fetchCurrencies] FATAL ERROR:', error);
@@ -83,13 +70,8 @@ const VendorPage = () => {
 
     const fetchAdminData = async () => {
       try {
-        await refreshProducts(true);
-
-        // Load testimonials with admin view
-        await refreshTestimonials(true);
-
-        // Load all combos including inactive ones for admin view
-        await refreshCombos(true);
+        // Products, testimonials (admin view) and all combos (including inactive) in parallel
+        await loadAdminCatalog({ refreshProducts, refreshTestimonials, refreshCombos });
 
         // Load all carousel slides
         // await refreshCarouselSlides(false); // Will implement when updating HomePage
@@ -111,6 +93,8 @@ const VendorPage = () => {
         <h1 className="text-4xl font-bold mb-4" style={getHeadingStyle(visualSettings)}>{t('vendor.title')}</h1>
         <p className="text-xl text-gray-600 max-w-2xl mx-auto">{t('vendor.subtitle')}</p>
       </motion.div>
+
+      <CatalogLoadError error={adminCatalogError} />
 
       <TabsResponsive
         tabs={[

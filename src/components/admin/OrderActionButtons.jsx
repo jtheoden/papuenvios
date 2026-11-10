@@ -1,5 +1,5 @@
-import React from 'react';
-import { Eye, Play, Truck, Camera, Check, Ban, CheckCircle, XCircle } from 'lucide-react';
+import React, { useId } from 'react';
+import { Eye, Play, Truck, Check, Ban, CheckCircle, XCircle, Undo2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 /**
@@ -17,10 +17,16 @@ const OrderActionButtons = ({
   onUploadDeliveryProof,
   onCompleteOrder,
   onCancelOrder,
-  actionLoading
+  onRestockOrder,
+  actionLoading,
+  ownOperation = false
 }) => {
   const { t, language } = useLanguage();
   const isLoading = actionLoading === order.id;
+  // Separation of duties: the admin is the customer of this order; the server refuses these actions, so show them disabled with the reason.
+  // The reason is visible text (role="note") that the disabled buttons reference with aria-describedby; a title alone is not accessible.
+  const reasonId = useId();
+  const guarded = (button) => (ownOperation ? { ...button, disabled: true, describedBy: reasonId } : button);
 
   // Determine primary action button based on order status
   const getPrimaryAction = () => {
@@ -54,12 +60,12 @@ const OrderActionButtons = ({
 
     if (status === 'dispatched') {
       return {
-        icon: <Camera className="h-4 w-4" />,
-        label: t('adminOrders.action.uploadProof'),
+        icon: <CheckCircle className="h-4 w-4" />,
+        label: t('adminOrders.action.markAsDelivered'),
         onClick: () => onUploadDeliveryProof(order),
         disabled: isLoading,
         color: 'bg-purple-500 hover:bg-purple-600 text-white',
-        tooltip: t('adminOrders.action.uploadProof')
+        tooltip: t('adminOrders.action.markAsDelivered')
       };
     }
 
@@ -77,7 +83,9 @@ const OrderActionButtons = ({
     return null;
   };
 
-  const primaryAction = getPrimaryAction();
+  const cancelBlockedByOwnership = ownOperation && !(order.status === 'pending' && order.payment_status !== 'validated');
+  const rawPrimaryAction = getPrimaryAction();
+  const primaryAction = rawPrimaryAction && guarded(rawPrimaryAction);
 
   const paymentActions =
     order.status === 'pending' && order.payment_status === 'proof_uploaded'
@@ -100,6 +108,7 @@ const OrderActionButtons = ({
           }
         ]
       : [];
+  const guardedPaymentActions = paymentActions.map(guarded);
 
   // Helper function to render individual button with styling
   const renderButton = (button) => (
@@ -108,6 +117,7 @@ const OrderActionButtons = ({
       onClick={button.onClick}
       disabled={button.disabled}
       title={button.tooltip}
+      aria-describedby={button.describedBy}
       className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all duration-200 text-sm ${
         button.color || 'bg-blue-500 hover:bg-blue-600 text-white'
       } ${button.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer shadow-sm'}`}
@@ -119,6 +129,13 @@ const OrderActionButtons = ({
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
+      {ownOperation && (
+        <div id={reasonId} role="note" className="w-full rounded-lg bg-amber-50 border border-amber-200 px-2 py-1 text-xs text-amber-900">
+          <span className="font-semibold">{t('common.ownOperation')}. </span>
+          {t('common.ownOperationReason')}
+        </div>
+      )}
+
       {/* View Details Button - Always visible */}
       {renderButton({
         icon: <Eye className="h-4 w-4" />,
@@ -130,7 +147,7 @@ const OrderActionButtons = ({
       })}
 
       {/* Payment actions when proof has been uploaded */}
-      {paymentActions.map(renderButton)}
+      {guardedPaymentActions.map(renderButton)}
 
       {/* Primary Action Button - Status dependent */}
       {primaryAction && renderButton(primaryAction)}
@@ -140,9 +157,22 @@ const OrderActionButtons = ({
         icon: <Ban className="h-4 w-4" />,
         label: t('common.cancel'),
         onClick: () => onCancelOrder(order),
-        disabled: isLoading,
+        // an admin-owner can only cancel what a customer could (pending, payment not validated)
+        disabled: isLoading || cancelBlockedByOwnership,
+        describedBy: cancelBlockedByOwnership ? reasonId : undefined,
         color: 'bg-red-500 hover:bg-red-600 text-white',
         tooltip: t('adminOrders.action.cancelOrder')
+      })}
+
+      {/* Return consumed units to the inventory: only cancelled orders that really consumed stock
+          (authoritative flag from order_stock_allocations, loaded by getAllOrders) */}
+      {order.status === 'cancelled' && order.has_consumed_stock === true && onRestockOrder && renderButton({
+        icon: <Undo2 className="h-4 w-4" />,
+        label: t('adminOrders.action.restock'),
+        onClick: () => onRestockOrder(order),
+        disabled: isLoading,
+        color: 'bg-amber-500 hover:bg-amber-600 text-white',
+        tooltip: t('adminOrders.action.restock')
       })}
     </div>
   );

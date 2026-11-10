@@ -1,7 +1,22 @@
 {
   "common": {
+    "confirmDialog": {
+      "title": "Confirmar",
+      "deleteTitle": "Confirmar eliminación",
+      "deactivateTitle": "Confirmar desactivación",
+      "cancel": "Cancelar",
+      "confirm": "Confirmar",
+      "delete": "Eliminar",
+      "deactivate": "Desactivar"
+    },
     "success": "Éxito",
     "error": "Error",
+    "statusSelfDealing": "Esta operación es suya. Otro administrador debe realizar esta acción.",
+    "ownOperation": "Operación propia",
+    "ownOperationReason": "Es una operación suya: otro administrador debe validarla, procesarla o entregarla.",
+    "statusNotAuthorized": "No tienes permiso para realizar esta acción.",
+    "statusUserDisabled": "Tu cuenta está deshabilitada. Contacta a soporte.",
+    "statusConflict": "El estado cambió mientras actuabas (otra persona ya lo procesó). Recarga la lista e inténtalo de nuevo.",
     "cancel": "Cancelar",
     "loading": "Cargando...",
     "loadingPlatform": "Cargando tu plataforma de comercio digital...",
@@ -52,6 +67,9 @@
     "dashboard": "Panel de Control",
     "settings": "Configuración",
     "cart": "Carrito",
+    "openMenu": "Abrir menú",
+    "closeMenu": "Cerrar menú",
+    "userMenu": "Menú de usuario",
     "userPanel": "Mi Panel",
     "userManagement": "Gestión de Usuarios",
     "blog": "Blog"
@@ -62,7 +80,31 @@
       "subtitle": "Envía productos y dinero a Cuba de forma rápida, segura y confiable",
       "cta": {
         "products": "Ver Productos"
+      },
+      "cards": {
+        "combos": {
+          "title": "Combos de comida",
+          "description": "Arme un combo de alimentos y envíelo a su familia en Cuba.",
+          "cta": "Ver combos"
+        },
+        "remittances": {
+          "title": "Remesas a Cuba",
+          "description": "Envíe dinero a Cuba desde Estados Unidos.",
+          "cta": "Enviar remesa"
+        }
       }
+    },
+    "carousel": {
+      "label": "Carrusel de anuncios",
+      "roleDescription": "carrusel",
+      "slide": "diapositiva",
+      "slideOf": "{count} de {total}",
+      "slideStatus": "Anuncio {count} de {total}",
+      "previous": "Anuncio anterior",
+      "next": "Anuncio siguiente",
+      "pause": "Pausar carrusel",
+      "play": "Reanudar carrusel",
+      "goTo": "Ir al anuncio {count}"
     },
     "features": {
       "title": "Funcionalidades Principales",
@@ -73,7 +115,7 @@
       },
       "remittances": {
         "title": "Remesas a Cuba",
-        "description": "Envía dinero a Cuba desde USA y España de forma rápida y segura"
+        "description": "Envía dinero a Cuba desde Estados Unidos de forma rápida y segura"
       },
       "analytics": {
         "title": "Panel de Ganancias",
@@ -116,13 +158,16 @@
   },
   "footer": {
     "date": "Hoy es {date}",
-    "developedBy": "Desarrollado por {name} ({email})",
+    "developedBy": "Desarrollado por {name}",
+    "identity": {
+      "label": "Contacto del negocio"
+    },
     "to": "Para",
     "copyright": "Todos los derechos reservados"
   },
   "products": {
     "title": "Catálogo de Productos",
-    "subtitle": "Descubre productos y combos para enviar a Cuba con precios competitivos",
+    "subtitle": "Productos y combos para enviar a Cuba.",
     "preview": "Vista previa",
     "searchPlaceholder": "Buscar productos...",
     "specialCombos": "Combos Especiales",
@@ -171,13 +216,20 @@
     },
     "disabled": "Desactivado",
     "notAvailable": "No disponible",
+    "priceUnavailable": "Precio no disponible",
+    "catalogError": {
+      "permission": "El catálogo no se pudo cargar porque esta versión de la página quedó desactualizada. Recarga la página para continuar.",
+      "load": "No pudimos cargar el catálogo. Revisa tu conexión y recarga la página.",
+      "adminCosts": "No se pudieron cargar los datos de costo y margen porque falta una función de la base de datos. Pide al desarrollador que aplique la actualización pendiente y recarga la página.",
+      "reload": "Recargar página"
+    },
     "saveBadge": "AHORRA",
     "discount": "Descuento",
     "userCategoryLabel": "Categoría: {category}"
   },
   "remittances": {
     "title": "Remesas a Cuba",
-    "subtitle": "Envía dinero a Cuba desde USA y España de forma rápida y segura",
+    "subtitle": "Envíe dinero a Cuba desde Estados Unidos. Puede seguir el estado y ver el comprobante de entrega en Mis remesas.",
     "calculator": "Calculadora de Remesas",
     "amount": "Cantidad a Enviar (USD)",
     "country": "País de Destino",
@@ -192,6 +244,20 @@
     "sendNew": "Nueva Remesa",
     "myRemittances": "Mis Remesas",
     "howItWorks": "¿Cómo Funciona?",
+    "features": {
+      "rates": {
+        "title": "Tasa visible antes de pagar",
+        "description": "Le mostramos la tasa, la comisión y el total antes de que pague."
+      },
+      "delivery": {
+        "title": "Plazo según la zona",
+        "description": "Entrega estimada, no garantizada; el plazo depende de la zona."
+      },
+      "tracking": {
+        "title": "Seguimiento en Mis remesas",
+        "description": "Puede seguir el estado y ver el comprobante de entrega en Mis remesas."
+      }
+    },
     "step1": {
       "title": "Selecciona el País",
       "description": "Elige el país de destino y la cantidad a enviar"
@@ -272,6 +338,8 @@
       "typeCreated": "Tipo de remesa creado",
       "typeUpdated": "Tipo de remesa actualizado",
       "typeDeleted": "Tipo de remesa eliminado",
+      "currencyChangeWarning": "Cambio de Moneda Detectado",
+      "currencyChangeMessage": "Este tipo pasa de {from} a {to}. Todas las cotizaciones nuevas usarán las monedas nuevas. Confirma solo si es intencional.",
       "rateChangeWarning": "Cambio de Tasa Detectado",
       "rateChangeAffected": "Hay {count} remesa(s) pendiente(s) creada(s) con la tasa anterior. Los usuarios serán notificados del cambio en su sección 'Mis Remesas'.",
       "typeActivated": "Tipo activado",
@@ -289,6 +357,14 @@
       "viewDetails": "Ver Detalles",
       "rejectReason": "Razón del rechazo",
       "rejectReasonPlaceholder": "Ej: Comprobante ilegible, datos incorrectos...",
+      "cancelRemittance": "Cancelar remesa",
+      "confirmCancelMessage": "¿Cancelar la remesa {number}? El cliente aún no ha subido el comprobante de pago, pero eso no significa que no haya pagado. Verifica en la cuenta Zelle que no se haya recibido el pago antes de cancelar: no se creará ninguna solicitud de reembolso. Esta acción no se puede deshacer.",
+      "cancelReason": "Motivo de la cancelación",
+      "cancelReasonPlaceholder": "Ej: el cliente no realizó el pago, solicitud duplicada...",
+      "remittanceCancelled": "Remesa cancelada",
+      "cancelFailed": "No se pudo cancelar la remesa",
+      "cancelReasonInvalid": "El motivo es obligatorio y debe tener como máximo 500 caracteres.",
+      "cancelUnavailable": "La cancelación por administrador aún no está disponible en el servidor. Inténtalo más tarde.",
       "validationNotes": "Notas de validación",
       "validationNotesPlaceholder": "Añadir notas sobre la validación...",
       "deliveryNotes": "Notas de entrega",
@@ -306,13 +382,18 @@
       "paymentRejected": "Pago rechazado",
       "processingStarted": "Procesamiento iniciado",
       "deliveryConfirmed": "Entrega confirmada",
+      "deliveryConfirmedNoPhoto": "Entrega confirmada sin foto",
+      "deliveryModal": {
+        "remittanceLabel": "Remesa:",
+        "recipientLabel": "Destinatario:",
+        "amountLabel": "A entregar:"
+      },
       "remittanceCompleted": "Remesa completada",
       "paymentValidationFailed": "Error al validar el pago",
       "paymentRejectionFailed": "Error al rechazar el pago",
       "processingFailed": "Error al iniciar procesamiento",
       "deliveryConfirmationFailed": "Error al confirmar entrega",
       "completionFailed": "Error al completar remesa",
-      "deliveryProofRequired": "Evidencia de entrega requerida. Por favor, solicite al usuario que suba la foto o documento de prueba de entrega en la sección \"Mi Remesa\".",
       "uploadDeliveryProof": "Subir Evidencia",
       "changeDeliveryProof": "Cambiar Evidencia",
       "proofUploaded": "Evidencia subida",
@@ -325,6 +406,37 @@
       "deliveryCost": "Costo de entrega:",
       "totalPaid": "Total pagado:",
       "toDeliver": "A Entregar:",
+      "commissionOverride": {
+        "commission": "Comisión:",
+        "adjustedNote": "Comisión ajustada por un administrador (estándar {standard} {currency}). Motivo:",
+        "adjustButton": "Ajustar comisión",
+        "modalTitle": "Ajustar comisión",
+        "modalIntro": "Fija una comisión distinta para esta remesa antes de que empiece la entrega. El monto a entregar se recalcula con la tasa ya aplicada. El motivo y quién lo registró se guardan en una tabla restringida a administradores: el cliente no puede consultarlos. El cambio queda auditado.",
+        "standardCommission": "Comisión estándar",
+        "currentCommission": "Comisión actual",
+        "newCommission": "Nueva comisión",
+        "reason": "Motivo (no visible para el cliente)",
+        "reasonHelp": "Entre {min} y {max} caracteres.",
+        "differenceHigher": "{amount} {currency} por encima de la estándar",
+        "differenceLower": "{amount} {currency} por debajo de la estándar",
+        "differenceNone": "Igual a la estándar",
+        "deliverNow": "A entregar hoy",
+        "deliverAfter": "A entregar con el ajuste",
+        "higherWarning": "La nueva comisión es mayor que la estándar: el destinatario recibirá menos de lo que vio el cliente.",
+        "confirm": "Guardar ajuste",
+        "saving": "Guardando...",
+        "cancel": "Cancelar",
+        "errorCommissionRange": "La comisión debe estar entre 0 y el monto enviado (sin incluirlo), con hasta 2 decimales.",
+        "errorReasonLength": "El motivo debe tener entre {min} y {max} caracteres.",
+        "saveError": "No se pudo guardar el ajuste de comisión",
+        "errorInvalidStatus": "Esta remesa ya no admite ajustes: la comisión solo se puede cambiar mientras el pago está pendiente o rechazado, antes de que el cliente suba el comprobante. Actualiza la lista.",
+        "frozenAfterPayment": "Comisión congelada tras el pago: ya no se puede ajustar.",
+        "disabledReason": "La comisión solo se puede ajustar mientras el pago está pendiente o rechazado, antes de que el cliente suba el comprobante.",
+        "currentStatus": "Estado actual",
+        "saved": "Comisión ajustada correctamente",
+        "savedAwaitingCustomer": "Comisión ajustada. El cliente fue notificado y deberá aceptarla antes de poder pagar.",
+        "savedCustomerInformed": "Comisión ajustada. El cliente fue notificado; no necesita aceptar."
+      },
       "recipientInfoTitle": "Información del Destinatario",
       "recipientName": "Nombre:",
       "recipientPhone": "Teléfono:",
@@ -345,7 +457,7 @@
       "paymentProofSection": "Comprobante de Pago",
       "noPaymentProof": "Sin comprobante de pago",
       "deliveryProofSection": "Evidencia de Entrega",
-      "noPendingDeliveryProof": "Evidencia de entrega pendiente",
+      "noDeliveryPhoto": "Sin foto de entrega",
       "conversion": "Conversión",
       "limits": "Límites",
       "commission": "Comisión",
@@ -359,7 +471,9 @@
       "deliveryRateHint": "Lo que el destinatario recibe por cada unidad enviada",
       "marketRate": "Tasa de Mercado",
       "marketRateHint": "Tasa de cambio real del mercado",
+      "rateFieldsSuperAdminOnly": "Solo un super administrador puede crear tipos de remesa o modificar su tasa y su comisión. Usted puede editar el resto de los campos.",
       "calculatedCommission": "Comisión calculada",
+      "effectiveDeliveryRate": "Tasa de entrega efectiva",
       "marginPerUnit": "Margen por unidad",
       "deliveryRateTooHigh": "La tasa de entrega no puede ser mayor a la tasa de mercado",
       "advancedCommission": "Comisión fija adicional (Avanzado)",
@@ -380,8 +494,14 @@
         "perSent": "por cada",
         "sent": "enviado",
         "enterValidRate": "Ingrese una tasa de cambio válida",
+        "calculationUnavailable": "No se puede simular con estos valores (revise la tasa y la comisión).",
         "enterValidAmount": "Ingrese un monto de prueba válido",
         "mustSend": "Debe enviar"
+      },
+      "commissionProposal": {
+        "pending": "Esperando al cliente",
+        "pendingHelp": "El cliente debe aceptar la nueva comisión antes de poder subir el comprobante.",
+        "informed": "Cliente informado de la baja"
       }
     },
     "user": {
@@ -391,7 +511,7 @@
       "trackYourRemittances": "Consulte el estado de sus envíos de dinero",
       "trackRemittances": "Consulte el estado de sus envíos de dinero",
       "noRemittances": "No tiene remesas registradas",
-      "noRemittancesDesc": "Envíe su primera remesa de forma rápida y segura",
+      "noRemittancesDesc": "Envíe su primera remesa. Puede seguir el estado y ver el comprobante de entrega en Mis remesas.",
       "remittanceNumber": "Número de Remesa",
       "amountSent": "Enviado",
       "toDeliver": "A Entregar",
@@ -407,6 +527,9 @@
       "viewProof": "Ver Comprobante",
       "viewDetails": "Ver Detalles",
       "proofUploaded": "Comprobante subido exitosamente",
+      "cancelProofWarning": "Si ya realizó el pago, se reembolsa el monto total pagado de forma manual al mismo método Zelle en {days} días hábiles.",
+      "cancelTermsLink": "Más información en los Términos",
+      "cancelContactPrefix": "Contacto:",
       "remittanceCancelled": "Remesa cancelada",
       "confirmCancelMessage": "¿Está seguro que desea cancelar la remesa {number}?",
       "cancelReasonPlaceholder": "Motivo de la cancelación...",
@@ -456,12 +579,7 @@
       "deliveryEvidenceTitle": "Evidencia de Entrega",
       "deliveryEvidenceUploaded": "Evidencia de entrega subida exitosamente",
       "deliveryEvidenceLoading": "Cargando evidencia...",
-      "deliveryEvidencePending": "Remesa entregada, evidencia pendiente",
-      "uploadDeliveryProof": "Suba la foto de entrega para confirmar",
-      "uploadDeliveryProofButton": "Subir Evidencia de Entrega",
-      "uploadDeliveryProofTitle": "Subir Evidencia de Entrega",
-      "deliveryPhotoLabel": "Foto de evidencia de entrega *",
-      "deliveryPhotoTip": "💡 Consejo: Suba una foto clara mostrando el paquete entregado al destinatario para confirmar la entrega.",
+      "deliveredOn": "Entregada el {date}",
       "selectEvidencePhoto": "Por favor seleccione una foto de evidencia",
       "evidenceUploadError": "Error al subir foto de evidencia",
       "noResults": "Sin resultados",
@@ -472,8 +590,6 @@
       "rateChangedBannerPendingHint": "Las remesas pendientes pueden ser actualizadas a la nueva tasa.",
       "rateChangedBannerLockedHint": "Las remesas en proceso están bloqueadas a la tasa original.",
       "rateChangedFrom": "Tasa cambió",
-      "newAmountWouldBe": "Nuevo monto a entregar",
-      "was": "era",
       "updateToNewRate": "Actualizar a nueva tasa",
       "keepCurrentRate": "Mantener tasa actual",
       "rateLockedNote": "Tu remesa está bloqueada a la tasa al momento de su creación",
@@ -519,9 +635,11 @@
       "importantNote": "Importante",
       "proofNote": "Su remesa será procesada una vez validemos el comprobante de pago. Recibirá una notificación cuando esto ocurra.",
       "pageTitle": "Enviar Remesa",
-      "pageSubtitle": "Envía dinero de forma rápida y segura",
+      "pageSubtitle": "Pague con Zelle. Puede seguir el estado y ver el comprobante de entrega en Mis remesas.",
       "selectTypeRequired": "Seleccione el tipo de remesa *",
       "rate": "Tasa",
+      "rateUnavailable": "La tasa de cambio para este tipo de remesa no está disponible en este momento. Por favor, inténtelo más tarde o contacte con soporte.",
+      "quoteChanged": "Los montos cambiaron desde que se mostró la cotización. No se creó la remesa: revisa los nuevos montos y confirma de nuevo.",
       "calculating": "Calculando...",
       "continue": "Continuar",
       "back": "Atrás",
@@ -575,7 +693,7 @@
       "paymentInstructions": "Ahora realiza el pago y sube el comprobante para completar el proceso.",
       "proofSubmittedSuccess": "¡Comprobante enviado exitosamente!",
       "submitProofAndComplete": "Enviar Comprobante y Completar",
-      "estimatedDeliveryTime": "24-72 horas",
+      "estimatedDeliveryTime": "Entrega estimada, no garantizada; el plazo depende de la zona.",
       "couponLabel": "Cupón de descuento (opcional)",
       "couponPlaceholder": "Ingresa tu código",
       "applyCoupon": "Aplicar",
@@ -584,11 +702,42 @@
       "couponInvalid": "Cupón inválido o expirado",
       "offCommission": "de descuento en comisión",
       "enterAmountFirst": "Ingresa un monto primero"
+    },
+    "commissionChange": {
+      "title": "Cambió la comisión de su remesa {number}",
+      "intro": "La comisión pasó de {oldCommission} a {newCommission} {currency}. Usted paga lo mismo; cambia lo que recibe su destinatario.",
+      "listLabel": "Comparación antes y ahora",
+      "commission": "Comisión",
+      "recipientReceives": "Su destinatario recibe",
+      "before": "Antes",
+      "after": "Ahora",
+      "youPay": "Usted paga",
+      "unchanged": "Sin cambios",
+      "acceptHint": "Acepte la nueva comisión para poder enviar su comprobante de pago, o cancele la remesa.",
+      "accept": "Aceptar nueva comisión",
+      "accepting": "Aceptando...",
+      "decline": "Cancelar remesa",
+      "accepted": "Aceptó la nueva comisión. Ya puede subir su comprobante.",
+      "uploadBlocked": "Acepte la nueva comisión para poder subir el comprobante.",
+      "declinePendingMessage": "¿Cancelar la remesa {number}? Aún no se registró ningún pago.",
+      "declineTitle": "Cancelar remesa",
+      "informedTitle": "Bajamos la comisión de su remesa {number}",
+      "informedBody": "Su destinatario recibirá {amount} {currency}. No tiene que hacer nada.",
+      "dismiss": "Entendido",
+      "errors": {
+        "pendingAcceptance": "Antes de subir el comprobante debe aceptar la nueva comisión de esta remesa.",
+        "notOpen": "El ajuste cambió mientras lo revisaba. Le mostramos la propuesta actualizada.",
+        "stale": "La comisión cambió mientras la revisaba. Le mostramos el valor actualizado.",
+        "invalidTransition": "La remesa ya no está en un estado que permita aceptar la comisión. Actualizamos la lista.",
+        "notAuthorized": "No tiene permiso para responder a este ajuste.",
+        "generic": "No se pudo registrar su respuesta. Inténtelo de nuevo."
+      }
     }
   },
   "vendor": {
     "title": "Gestión de la Plataforma",
     "subtitle": "Gestiona productos, categorías, combos y más.",
+    "adminDataPending": "Los datos de administración aún se están cargando. Inténtalo de nuevo en unos segundos.",
     "tabs": {
       "inventory": "Inventario",
       "categories": "Categorías",
@@ -623,6 +772,9 @@
       "sellPriceLabel": "Precio de Venta en {symbol}",
       "profitPreview": "Vista previa de ganancia",
       "basePriceRequired": "Ingrese el precio base primero",
+      "unit": "Unidad de medida",
+      "unitNone": "Sin unidad",
+      "unitHelp": "Opcional. Se muestra junto a la cantidad en el detalle de los pedidos.",
       "sellPriceTooLow": "Precio de venta inválido",
       "sellPriceTooLowDesc": "El precio de venta no puede ser menor que el precio base",
       "profitInBase": "ganancia en moneda base",
@@ -652,6 +804,18 @@
       "batchNumber": "Número de Lote",
       "productDetails": "Detalles del Producto",
       "minStock": "Stock Mínimo",
+      "viewPricesIn": "Ver precios de la lista en:",
+      "listPricesCue": "Precios de la lista en {code}",
+      "priceCurrencyLabel": "Moneda del precio ingresado",
+      "costCupLabel": "Costo en CUP",
+      "costTooLow": "El costo es demasiado bajo: el precio resultante en USD sería menor que 0.01. Ingresa un costo mayor.",
+      "priceCurrencyHelp": "El precio base se guarda en {base}. Si elige otra moneda, la cifra se interpretará en esa moneda y se convertirá a {base} al guardar.",
+      "priceConvertedNote": "El precio se convirtió a {code}; verifique la cifra.",
+      "priceRateMissing": "No hay tasa de cambio para {code}; revise el precio",
+      "priceConverting": "Convirtiendo el precio...",
+      "productNotFound": "No se encontró el producto; es posible que haya sido eliminado. Actualice la lista.",
+      "previewUnavailable": "No se pudo calcular el equivalente en moneda base.",
+      "conversionToBaseFailed": "No se pudo convertir el precio a la moneda base. El producto no se guardó; revise las tasas de cambio.",
       "displayCurrency": "Moneda de visualización",
       "active": "Activo",
       "inactive": "Inactivo",
@@ -665,6 +829,8 @@
       "deleteConfirmTitle": "Confirmar eliminación",
       "deleteConfirmMessage": "¿Seguro que deseas eliminar el producto \"{name}\"? Esta acción lo desactivará para los usuarios.",
       "productDeleted": "Producto eliminado",
+      "productAlreadyDeleted": "El producto ya no existe (probablemente lo eliminó otro usuario). Lista actualizada.",
+      "refreshFailed": "No se pudo actualizar la lista. Recarga la página.",
       "searchPlaceholder": "Buscar por nombre...",
       "filters": "Filtros",
       "filterByCategory": "Categoría",
@@ -676,7 +842,8 @@
       "expiryNone": "Sin fecha",
       "clearFilters": "Limpiar filtros",
       "showingResults": "Mostrando {count} de {total} productos",
-      "noProducts": "No se encontraron productos"
+      "noProducts": "No se encontraron productos",
+      "stockBelowReserved": "El stock no puede ser menor que las unidades reservadas por pedidos abiertos. Cancela o valida esos pedidos primero."
     },
     "categories": {
       "manage": "Gestionar Categorías",
@@ -697,6 +864,15 @@
       "paid": "Pagado",
       "shippingCost": "Costo de Envío",
       "products": "Productos en el Combo",
+      "searchProducts": "Buscar productos",
+      "searchProductsPlaceholder": "Buscar por nombre o SKU...",
+      "clearSearch": "Limpiar búsqueda",
+      "selectedProducts": "Seleccionados",
+      "removeProduct": "Quitar {name} del combo",
+      "onlySelected": "Solo seleccionados",
+      "resultsCount": "Mostrando {shown} de {total}",
+      "noProductResults": "Ningún producto coincide con la búsqueda",
+      "quantity": "Cant.",
       "addProduct": "Agregar Producto",
       "basePrice": "Precio Base Total",
       "finalPrice": "Precio Final",
@@ -717,6 +893,7 @@
       "sellPriceTooLow": "Precio de venta inválido",
       "sellPriceTooLowDesc": "El precio de venta no puede ser menor que el costo de productos",
       "addProductsFirst": "Agregue productos al combo primero",
+      "componentCurrencyMismatch": "Todos los productos de un combo deben tener su precio en la moneda base. Quite o reemplace los productos en otra moneda.",
       "userSavings": "Ahorro del cliente",
       "individualTotal": "Compra individual",
       "priceWarningTitle": "El combo cuesta más que sus productos por separado",
@@ -725,6 +902,7 @@
       "priceWarningDifference": "El combo es más caro por",
       "priceWarningMaxMargin": "Use un margen de hasta {value}% para evitarlo.",
       "priceWarningApply": "Aplicar {value}%",
+      "priceWarningUnavailable": "No se pudo comparar con los productos por separado: falta una tasa de cambio.",
       "priceWarningNote": "Es solo una advertencia: puede guardar el combo igualmente.",
       "confirmMoreExpensive": "Este combo es más caro que la suma de sus productos por separado. El cliente pagaría {amount} más comprando el combo. ¿Guardar de todos modos?",
       "saveAnyway": "Guardar de todos modos",
@@ -770,11 +948,33 @@
     "privateAccess": "Acceso Privado",
     "adminOnly": "Esta sección es solo para administradores.",
     "refresh": "Actualizar",
+    "timeZoneNote": "Hoy, este mes y este año son períodos de calendario en hora de Nueva York (America/New_York).",
+    "remittanceCourier": {
+      "cost": "Costo de mensajería de remesas (transporte)",
+      "unavailable": "No se pudo leer el costo de mensajería de remesas: el ingreso neto no lo descuenta hasta que se pueda leer.",
+      "unrecorded": "{count} entrega(s) en efectivo sin tarifa de mensajería registrada: su costo no se descuenta."
+    },
+    "headline": {
+      "deliveryCharge": "Cargo de entrega en efectivo (remesas, incluido en Cobrado)",
+      "sales": "Ventas (bruto de pedidos)",
+      "salesDef": "Total bruto de los pedidos con pago validado y estado activo, incluido el envío cobrado y el costo de la mercadería. No incluye remesas. Fecha: validación del pago.",
+      "netIncome": "Ingreso neto",
+      "netIncomeDef": "Ganancia estimada de productos + diferencia de envíos de pedidos con costo conocido + comisiones y cargos de entrega de remesas − costo de mensajería de remesas. Los costos desconocidos de pedidos se excluyen de la diferencia; asignaciones retroactivas cambian meses anteriores.",
+      "collected": "Cobrado (flujo de caja)",
+      "collectedDef": "Dinero que entró: total de pedidos con pago validado más el monto enviado de las remesas con pago validado. No es ingreso: incluye lo que luego se paga a destinatarios y al courier."
+    },
+    "loadError": "No se pudieron cargar las métricas. Revisá tu conexión y reintentá.",
+    "loadErrorStale": "No se pudieron actualizar las métricas: las cifras mostradas pueden estar desactualizadas.",
+    "retry": "Reintentar",
+    "remittancePendingDelivery": "Pendiente de entregar",
+    "remittancePendingDeliveryDef": "Remesas con pago validado que todavía no se entregaron al destinatario (validadas y en proceso): monto enviado menos comisión. Es dinero cobrado que se debe entregar.",
+    "paymentMethodsPeriod": "histórico, pedidos activos y remesas validadas",
+    "shippingRow": "Envío cobrado (pasa al courier)",
     "stats": {
       "dailyRevenue": "Ingresos Diarios",
       "monthlyRevenue": "Ingresos Mensuales",
-      "dailyProfit": "Ganancia Diaria",
-      "monthlyProfit": "Ganancia Mensual",
+      "dailyProfit": "Ganancia Estimada Diaria",
+      "monthlyProfit": "Ganancia Estimada Mensual",
       "totalProducts": "Total de Productos",
       "totalCombos": "Total de Combos",
       "pendingOrders": "Pedidos Pendientes",
@@ -791,8 +991,8 @@
       "totalOrders": "Total de Órdenes",
       "dailyOrderRevenue": "Ingresos Órdenes (Hoy)",
       "monthlyOrderRevenue": "Ingresos Órdenes (Mes)",
-      "dailyOrderProfit": "Ganancia Órdenes (Hoy)",
-      "monthlyOrderProfit": "Ganancia Órdenes (Mes)"
+      "dailyOrderProfit": "Ganancia Est. Órdenes (Hoy)",
+      "monthlyOrderProfit": "Ganancia Est. Órdenes (Mes)"
     },
     "remittancesMetrics": "Métricas de Remesas",
     "ordersMetrics": "Métricas de Órdenes",
@@ -802,6 +1002,9 @@
     "grossRevenue": "Ingresos Brutos",
     "costs": "Costos",
     "netProfit": "Ganancia Neta",
+    "estimatedProfit": "Ganancia estimada",
+    "estimatedNetProfit": "Ganancia neta estimada",
+    "profitFallbackNote": "{count} línea(s) de pedido sin producto conocido usan el margen por defecto ({margin}%)",
     "profitMargin": "Margen de Ganancia",
     "orderSummary": "Resumen de Pedidos",
     "ordersBreakdown": "Desglose de Órdenes",
@@ -817,10 +1020,11 @@
     "remittancesTab": "Remesas",
     "offersTab": "Ofertas y Cupones",
     "remittancesKindTab": "Tipos de Remesas",
-    "zelleHistoryTab": "Historial de Pagos Zelle",
+    "zelleHistoryTab": "Historial de Pagos",
     "activityLogTab": "Registro de Actividad",
     "orderStatus": {
       "paymentPending": "Pago Pendiente",
+      "proofToReview": "Comprobante por validar",
       "paymentValidated": "Pago Validado",
       "processing": "En Procesamiento",
       "dispatched": "Despachado",
@@ -837,8 +1041,22 @@
     },
     "yearlyBreakdown": "Desglose Anual",
     "yearlyRevenue": "Ingresos Anuales",
-    "yearlyProfit": "Ganancia Anual",
-    "transportCosts": "Costos de Transporte",
+    "yearlyProfit": "Ganancia Estimada Anual",
+    "shippingCollected": "Envío cobrado a clientes",
+    "courier": {
+      "unknownCostCount": "Pedidos con costo de mensajería desconocido (excluidos del neto de envíos)",
+      "title": "Costo de mensajería",
+      "collected": "Envío cobrado (todos)",
+      "collectedCompared": "Cobrado con tarifa",
+      "cost": "Costo de mensajería",
+      "difference": "Diferencia (con tarifa)",
+      "notAvailable": "n/d",
+      "unrecorded": "Pedidos sin tarifa",
+      "missingRow": "Sin registro desde la activación: posible fallo",
+      "unavailable": "No se pudo leer el costo de mensajería. Recargue el panel para reintentar; no se muestran valores para no inducir a error.",
+      "loading": "Cargando costo de mensajería…",
+      "note": "El costo es la tarifa de mensajería del municipio vigente al crear el pedido (USD). La diferencia compara solo los pedidos con tarifa registrada (cobrado con tarifa menos costo); si ninguno la tiene, se muestra n/d. Los municipios sin tarifa figuran como sin tarifa, no como costo cero. Los pedidos anteriores a la activación del registro figuran como sin tarifa; los posteriores a esa fecha con zona pero sin registro (posible fallo al registrar) se cuentan aparte. Solo pedidos activos. Importes en USD sin conversión."
+    },
     "dailyShipping": "Envio Diario",
     "monthlyShipping": "Envio Mensual",
     "yearlyShipping": "Envio Anual",
@@ -852,7 +1070,7 @@
     "yearlyDiscounts": "Descuentos Anuales",
     "paymentMethods": "Metodos de Pago",
     "remittanceVolumeSent": "Volumen Enviado",
-    "remittancePayout": "Monto a Entregar",
+    "remittancePayout": "Entregado a destinatarios",
     "remittanceCommission": "Ganancia (Comision)",
     "yearlyRemittanceIncome": "Ingreso Remesas (Anual)",
     "visits": {
@@ -864,10 +1082,20 @@
       "thisWeek": "Esta Semana",
       "thisMonth": "Este Mes",
       "thisYear": "Este Año",
-      "allTime": "Histórico"
+      "allTime": "Histórico",
+      "unavailable": "No se pudieron leer las visitas; se muestran como no disponibles."
+    },
+    "courierMargin": {
+      "title": "Margen en riesgo (mes actual)",
+      "critical": "Margen crítico",
+      "warning": "Margen en alerta",
+      "unknown": "Margen desconocido",
+      "unknownAmount": "Costo de mensajero desconocido",
+      "note": "Según los umbrales que usted fijó en Configuración. Lo desconocido se muestra aparte y nunca como cero."
     }
   },
   "activityLog": {
+    "paymentSource": "Origen del pago",
     "title": "Registro de actividad",
     "subtitle": "Auditoría completa de eventos del sistema y seguridad",
     "timestamp": "Fecha y hora",
@@ -898,7 +1126,48 @@
       "inventory": "Inventario",
       "offer": "Oferta",
       "coupon": "Cupón",
-      "payment": "Pago"
+      "payment": "Pago",
+      "user_management": "Gestión de usuarios",
+      "cart": "Carrito",
+      "category": "Categoría",
+      "system_config": "Configuración del sistema",
+      "refund_request": "Solicitud de reembolso",
+      "bizum_settings": "Ajustes de Bizum",
+      "payment_fx_rate": "Tasa de cambio de pagos",
+      "payment_method": "Método de pago",
+      "user_profile": "Perfil de usuario",
+      "orders": "Pedidos",
+      "remittances": "Remesas"
+    },
+    "userManagementAction": "Gestión de usuarios: {detail}",
+    "userManagementActions": {
+      "delete_user_blocked_super_admin": "eliminación bloqueada (super admin)",
+      "delete_user_cancelled": "eliminación de usuario cancelada",
+      "delete_user_error": "error al eliminar usuario",
+      "delete_user_start": "inicio de eliminación de usuario",
+      "delete_user_success": "usuario eliminado",
+      "edit_discount_cancelled": "edición de descuento cancelada",
+      "edit_discount_start": "inicio de edición de descuento",
+      "fetch_categories_error": "error al cargar categorías",
+      "fetch_categories_success": "categorías cargadas",
+      "fetch_users_error": "error al cargar usuarios",
+      "fetch_users_start": "inicio de carga de usuarios",
+      "fetch_users_success": "usuarios cargados",
+      "open_user_modal": "detalle de usuario abierto",
+      "recalculate_all_cancelled": "recálculo de categorías cancelado",
+      "recalculate_all_error": "error al recalcular categorías",
+      "recalculate_all_start": "inicio de recálculo de categorías",
+      "recalculate_all_success": "categorías recalculadas",
+      "save_discount_error": "error al guardar descuento",
+      "save_discount_start": "inicio de guardado de descuento",
+      "save_discount_success": "descuento guardado",
+      "tab_change": "cambio de pestaña",
+      "update_category_error": "error al actualizar categoría",
+      "update_category_start": "inicio de actualización de categoría",
+      "update_category_success": "categoría actualizada",
+      "update_role_error": "error al actualizar rol",
+      "update_role_start": "inicio de actualización de rol",
+      "update_role_success": "rol actualizado"
     },
     "actions": {
       "create": "Crear",
@@ -907,7 +1176,51 @@
       "login": "Inicio de sesión",
       "status_change": "Cambio de estado",
       "validate": "Validar",
-      "reject": "Rechazar"
+      "reject": "Rechazar",
+      "order_created": "Pedido creado",
+      "order_submitted": "Pedido enviado",
+      "order_dispatched": "Pedido despachado",
+      "order_delivered": "Pedido entregado",
+      "order_completed": "Pedido completado",
+      "order_cancelled": "Pedido cancelado",
+      "order_reopened": "Pedido reabierto",
+      "checkout_initiated": "Compra iniciada",
+      "payment_proof_uploaded": "Comprobante de pago subido",
+      "payment_proof_upload_failed": "Falló la subida del comprobante de pago",
+      "payment_validated": "Pago validado",
+      "payment_rejected": "Pago rechazado",
+      "coupon_applied": "Cupón aplicado",
+      "coupon_removed": "Cupón quitado",
+      "coupon_validation_blocked": "Validación de cupón bloqueada",
+      "coupon_validation_failed": "Validación de cupón fallida",
+      "offer_usage_recorded": "Uso de oferta registrado",
+      "category_created": "Categoría creada",
+      "category_updated": "Categoría actualizada",
+      "category_deleted": "Categoría eliminada",
+      "combo_created": "Combo creado",
+      "combo_updated": "Combo actualizado",
+      "combo_activated": "Combo activado",
+      "combo_deactivated": "Combo desactivado",
+      "combo_deleted": "Combo eliminado",
+      "product_created": "Producto creado",
+      "product_updated": "Producto actualizado",
+      "product_activated": "Producto activado",
+      "product_deactivated": "Producto desactivado",
+      "product_deleted": "Producto eliminado",
+      "remittance_pricing_guard_mode_changed": "Modo de control de precios de remesas modificado",
+      "order_items_pricing_guard_mode_changed": "Modo de control de precios de pedidos modificado",
+      "offer_id_guard_mode_changed": "Modo de control de ofertas modificado",
+      "stock_policy_updated": "Política de reserva de stock actualizada",
+      "stock_policy_reset": "Política de reserva de stock restablecida",
+      "bizum_settings_updated": "Ajustes de Bizum actualizados",
+      "payment_fx_rate_set": "Tasa de cambio de pagos definida",
+      "payment_method_toggled": "Método de pago activado o desactivado",
+      "user_enabled": "Usuario habilitado",
+      "user_disabled": "Usuario deshabilitado",
+      "refund_resolved": "Reembolso resuelto",
+      "refund_event_failed": "Falló el registro de un evento de reembolso",
+      "refund_capture_failed": "Falló la creación automática del reembolso",
+      "refund_close_failed": "Falló el cierre automático del reembolso"
     }
   },
   "settings": {
@@ -933,6 +1246,9 @@
       "currencyCreated": "Moneda creada",
       "currencyUpdated": "Moneda actualizada",
       "currencyDeleted": "Moneda eliminada",
+      "sessionExpired": "Tu sesión expiró. Inicia sesión nuevamente o reintenta para renovarla.",
+      "sessionExpiredRetry": "Reintentar",
+      "sessionExpiredSignIn": "No se pudo renovar la sesión. Cierra sesión e inicia sesión nuevamente.",
       "errorLoadingCurrencies": "Error al cargar monedas",
       "fillAllFields": "Por favor complete todos los campos",
       "currencyUpdatedSuccess": "La moneda se actualizó exitosamente",
@@ -950,13 +1266,22 @@
       "shippingInfoFixed": "✓ Tarifa fija: Se cobrará el mismo monto de envío en todos los pedidos",
       "shippingInfoUndetermined": "⚠ Por determinar: El costo de envío se mostrará como \"Por determinar\" y se calculará según la ubicación del destinatario",
       "shippingInfoCalculated": "⚠ Calculado: Envío gratis si el pedido supera el umbral, de lo contrario se determinará según ubicación",
-      "loadOfficialRates": "Cargar Tasas Oficiales",
-      "officialRatesReference": "Tasas Oficiales (Referencia)",
       "editCurrency": "Editar Moneda",
       "newCurrency": "Nueva Moneda",
       "baseCurrency": "Moneda Base",
       "base": "Base",
+      "showInSelector": "Mostrar en el selector",
       "exchangeRates": "Tasas de Cambio",
+      "ratesSuperAdminOnly": "Solo un super administrador puede crear, editar o eliminar tasas de cambio. Puede consultarlas, pero no modificarlas.",
+      "currencyDeleteSuperAdminOnly": "Eliminar una moneda también desactiva sus tasas de cambio, y eso solo lo puede hacer un super administrador.",
+      "deactivatePair": "Desactivar",
+      "deactivatePairTitle": "Desactivar par de tasas",
+      "deactivatePairConfirm": "¿Desactivar el par de tasas {pair}? Se desactivarán ambas direcciones (directa e inversa) y no se podrán cotizar operaciones con esta tasa hasta crear o reactivar una nueva.",
+      "pairDeactivated": "Par de tasas desactivado",
+      "pairDeactivatedDesc": "Se desactivaron {count} tasas de cambio",
+      "ratePairPartial": "El par de tasas se guardó solo en parte y puede quedar inconsistente. Se recargó la lista: revise ambas tasas e inténtelo de nuevo.",
+      "ratePairIncomplete": "La tasa inversa falta o está inactiva, por lo que el par no se modificó (se restauró la tasa directa). Desactive el par y créelo de nuevo.",
+      "rateNotFound": "Esta tasa de cambio ya no existe o ya fue modificada. Se recargó la lista.",
       "newRate": "Nueva Tasa",
       "addNewExchangeRate": "Agregar Nueva Tasa de Cambio",
       "fromCurrency": "De Moneda",
@@ -981,7 +1306,43 @@
       "currencyActivated": "Moneda activada",
       "currencyDeactivated": "Moneda desactivada",
       "activate": "Activar",
-      "deactivate": "Desactivar"
+      "deactivate": "Desactivar",
+      "rateOutOfBand": "La tasa USD a EUR debe estar entre {min} y {max}.",
+      "rateUpdatedAt": "Última actualización: {date}",
+      "marketRate": "Tasa de mercado (referencia)",
+      "marketRateHint": "Referencia interna para medir el margen; no se usa para cotizar.",
+      "marketAboveRate": "La tasa de mercado (referencia) no puede ser mayor que la tasa que ven los usuarios. Sube la tasa o baja la de mercado.",
+      "marketRateInfo": "Tasa de mercado (referencia): {market} · la tasa operativa está {diff} frente al mercado (informativo)",
+      "rateChangeConfirmTitle": "Confirmar cambio grande de tasa",
+      "rateChangeConfirmMessage": "La tasa USD a EUR cambia de {previous} a {next} ({percent}%). Las cotizaciones de Bizum usan esta tasa; verifique que el nuevo valor sea correcto.",
+      "rateChangeConfirmMessageGeneric": "La tasa {from} a {to} cambia de {previous} a {next} ({percent}%). Verifique que el nuevo valor sea correcto.",
+      "rateChangeConfirmAction": "Guardar de todos modos",
+      "pairNotAllowed": "Solo se pueden usar monedas activas en una tasa, salvo un EUR inactivo como destino de una tasa desde USD.",
+      "repricing": {
+        "confirmTitle": "¿Actualizar los precios del catálogo?",
+        "summary": "Se recalcularán {products} productos y {combos} combos con la nueva tasa. Variación media {avg} %, mayor {max} %.",
+        "confirmAction": "Guardar tasa y actualizar precios",
+        "largeWarning": "Cambio grande: supera el 10 % de la última tasa aplicada (o es la primera vez que se aplican precios). Los precios se moverán de forma notable.",
+        "secondTitle": "Confirmar cambio grande de precios",
+        "secondMessage": "Va a aplicar un cambio grande de precios a {products} productos y {combos} combos. Los pedidos existentes conservan sus importes.",
+        "secondAction": "Sí, aplicar cambio grande",
+        "applied": "Precios actualizados",
+        "appliedDesc": "Se recalcularon {products} productos y {combos} combos.",
+        "applyFailed": "Tasa guardada, pero los precios no se actualizaron",
+        "applyFailedDesc": "La nueva tasa está guardada. Use Reintentar en el aviso para actualizar los precios.",
+        "previewFailed": "No se pudo calcular el cambio de precios. Inténtelo de nuevo.",
+        "rates": "Tasa: {previous} → {next} ({pct} %).",
+        "ratesNew": "Tasa nueva: {next}.",
+        "skippedProducts": "{count} productos omitidos (el precio quedaría en 0.00).",
+        "rateChanged": "La tasa cambió antes de aplicar los precios",
+        "rateChangedDesc": "Los precios no se actualizaron. Revise la tasa vigente y use Reintentar en el aviso.",
+        "previewErrorTitle": "Efecto en precios desconocido",
+        "previewErrorMessage": "No se pudo calcular el efecto en precios. ¿Guardar la tasa sin actualizar precios?",
+        "previewErrorAction": "Guardar solo la tasa",
+        "staleTitle": "Precios desactualizados",
+        "staleMessage": "La tasa USD a CUP cambió y los precios del catálogo aún no coinciden con ella.",
+        "retry": "Reintentar"
+      }
     },
     "zelle": {
       "title": "Cuentas Zelle",
@@ -994,6 +1355,57 @@
       "active": "Activa"
     },
     "visual": {
+      "brand": {
+        "theme": {
+          "title": "Tema por defecto del sitio",
+          "hint": "Elija el aspecto con el que se muestra el sitio a todos los usuarios. El cambio se previsualiza en el formulario y no se aplica hasta que presione \"Guardar Personalización\".",
+          "classic": {
+            "name": "Clásico (azul y morado)",
+            "description": "El aspecto original: botones azules, acentos morados, degradados y fondo gris claro."
+          },
+          "papuenvios": {
+            "name": "PapuEnvíos (dorado y marfil)",
+            "description": "La paleta de la marca: botones dorados, texto carbón, fondo marfil y bordes beige, sin degradados."
+          },
+          "inUse": "En uso",
+          "changes": "Al cambiar de tema se reemplazan sus colores y estilos, incluidos los colores primario, secundario y del degradado de cabecera. Se recuerdan los valores del tema Clásico para poder volver a ellos. El logo, los textos y el carrusel no cambian.",
+          "restricted": "Solo un super administrador puede cambiar el tema por defecto.",
+          "customized": "Algunos colores del formulario difieren del tema elegido porque se editaron a mano. Si cambia de tema, esas ediciones se reemplazarán.",
+          "pending": "Tema aplicado al formulario. La vista previa en vivo se desactivó y nada se ha guardado todavía; presione \"Guardar Personalización\" para confirmar."
+        },
+        "reset": {
+          "title": "¿Restablecer el tema de fábrica?",
+          "description": "Los colores, degradados y sombras del formulario volverán a los valores de fábrica (tema Clásico). No se guarda nada hasta pulsar Guardar Personalización. El logo, favicon, textos, tarjetas de inicio y carrusel no cambian.",
+          "confirm": "Restaurar en el formulario",
+          "cancel": "Cancelar",
+          "error": "No se pudo restablecer el tema"
+        },
+        "applyPalette": "Aplicar paleta del tema",
+        "paletteDraft": "Paleta propuesta en el formulario. No se guarda nada hasta pulsar Guardar Personalización.",
+        "undoPreset": "Deshacer elección de tema",
+        "sectionTitle": "Marca y acentos",
+        "sectionHint": "Colores de la insignia del carrito, el punto activo del carrusel, bordes, texto secundario, acento suave y anillo de foco.",
+        "cartBadgeBg": "Fondo de la insignia del carrito",
+        "cartBadgeText": "Texto de la insignia del carrito",
+        "carouselDotActive": "Punto activo del carrusel",
+        "border": "Bordes y separadores",
+        "mutedText": "Texto secundario",
+        "softAccent": "Acento suave (avisos y etiquetas)",
+        "focusRing": "Anillo de foco del teclado",
+        "contrastWarning": "Estos pares de colores no alcanzan el contraste mínimo recomendado (4.5:1) y podrían ser difíciles de leer. Puede guardar igualmente.",
+        "pair": {
+          "header": "Texto y fondo de la barra superior",
+          "navActive": "Elemento activo de la barra de navegación",
+          "menuActive": "Elemento activo del menú desplegable",
+          "tab": "Pestaña activa",
+          "button": "Texto y fondo del botón principal",
+          "cartBadge": "Insignia del carrito",
+          "footerText": "Texto del pie de página",
+          "footerLink": "Enlaces del pie de página",
+          "footerLinkHover": "Enlace del pie de página al pasar el cursor",
+          "footerBrand": "Nombre de la empresa en el pie de página"
+        }
+      },
       "title": "Ajustes Visuales",
       "logo": "Logo del Sitio",
       "favicon": "Favicon",
@@ -1093,8 +1505,29 @@
       "changesSaved": "Los cambios visuales se han guardado y sincronizado",
       "changesDiscarded": "Tema restaurado",
       "settingsRestored": "Se restauró la configuración visual a valores de fábrica",
-      "restoreTheme": "Restaurar Tema",
+      "restoreTheme": "Restablecer tema de fábrica",
       "showCompanyName": "Mostrar nombre de empresa en header",
+      "showCompanyNameWithLogo": "Mostrar el nombre junto al logo",
+      "showCompanyNameWithLogoHint": "Desmarcalo si tu logo ya incluye el nombre de la empresa. Sin logo, el nombre se muestra siempre.",
+      "loader": {
+        "title": "Pantalla de carga inicial",
+        "description": "Lo que se ve mientras la app arranca. Si no configurás nada, se usan los colores del tema y el logo del sitio.",
+        "image": "Imagen de la pantalla de carga",
+        "uploadImage": "Subir imagen",
+        "removeImage": "Quitar imagen",
+        "imageUploaded": "Imagen de carga cargada",
+        "imageHint": "PNG, SVG o WebP. Máx 2MB. Sin imagen propia se usa el logo del sitio y, sin logo, el nombre.",
+        "usingLogo": "Sin imagen propia: se usa el logo del sitio.",
+        "usingWordmark": "Sin imagen ni logo: se usa el nombre de la empresa.",
+        "bgColor": "Color de fondo",
+        "bgColorHint": "Opcional. Sin color se usa el fondo del tema.",
+        "bgColorPicker": "Selector de color de fondo",
+        "bgColorInvalid": "Ingresá un color hexadecimal válido (por ejemplo #FAF7F0).",
+        "usingThemeBg": "Fondo del tema",
+        "preview": "Vista previa de la pantalla de carga",
+        "reset": "Restablecer al tema",
+        "resetDone": "Pantalla de carga restablecida (guardá para aplicar)"
+      },
       "logoMaxHeight": "Tamaño del logo en header",
       "headerPreview": "Vista previa del Header",
       "removeLogo": "Quitar Logo",
@@ -1188,16 +1621,302 @@
       "pubVideoUrl": "URL del video (YouTube/Vimeo)",
       "pubCategory": "Categoría",
       "pubSaved": "Publicaciones guardadas",
-      "pubRemoved": "Publicación eliminada"
+      "pubRemoved": "Publicación eliminada",
+      "pubSaveFailed": "No se pudieron guardar {n} publicación(es). Revise el formulario e intente nuevamente.",
+      "pubSaveFailedList": "Afectadas: {titles}.",
+      "pubMissingOnServer": "No se encontraron o no tiene permiso para modificar estas publicaciones: {titles}. Se conservaron en el formulario.",
+      "pubLoadFailed": "No se pudo actualizar la lista de publicaciones. Se conservaron los datos del formulario.",
+      "pubUntitled": "(sin título)"
     },
-    "saveSuccess": "Ajustes guardados exitosamente"
+    "saveSuccess": "Ajustes guardados exitosamente",
+    "bizum": {
+      "title": "Bizum",
+      "intro": "Configura los parámetros de Bizum, la tasa EUR y las cuentas receptoras. Activar o desactivar Bizum se hace con los interruptores de métodos de pago.",
+      "retry": "Reintentar",
+      "loadError": "No se pudo cargar la sección Bizum. La gestión de Zelle no se ve afectada.",
+      "range": "Rango: {min} – {max}",
+      "defaultValue": "Recomendado: {default}",
+      "restore": "Restaurar valor recomendado",
+      "units": {
+        "percent": "%",
+        "minutes": "minutos",
+        "hours": "horas",
+        "count": "unidades",
+        "years": "años",
+        "eur": "EUR"
+      },
+      "fields": {
+        "default_spread_pct": {
+          "label": "Margen por defecto",
+          "help": "Margen Bizum que se suma a la tasa central USD → EUR de Ajustes Financieros. Es el único margen: al cambiarlo se mueven de inmediato las cotizaciones nuevas."
+        },
+        "quote_validity_minutes": {
+          "label": "Validez de la cotización",
+          "help": "Tiempo durante el cual el cliente puede pagar con la tasa cotizada."
+        },
+        "quote_grace_hours": {
+          "label": "Gracia tras vencer la cotización",
+          "help": "Horas posteriores al vencimiento en las que el pago se marca como tardío en lugar de rechazarse."
+        },
+        "fx_warn_hours": {
+          "label": "Aviso de tasa antigua",
+          "help": "Horas desde la fecha efectiva (día en que se guardó la tasa en Ajustes Financieros, contado desde las 00:00 UTC) a partir de las cuales se muestra el aviso ámbar. Volver a guardar la tasa hoy la renueva; reactivar una tasa antigua no. Debe ser menor que el bloqueo."
+        },
+        "fx_block_hours": {
+          "label": "Bloqueo por tasa antigua",
+          "help": "Horas desde la fecha efectiva (día en que se guardó la tasa en Ajustes Financieros, contado desde las 00:00 UTC) a partir de las cuales Bizum deja de ofrecerse. Volver a guardar la tasa hoy la renueva; reactivar una tasa antigua no. Debe ser mayor que el aviso."
+        },
+        "fx_max_change_pct": {
+          "label": "Variación máxima sin confirmar",
+          "help": "Ya no se aplica: la tasa se carga en Ajustes Financieros y esa carga no tiene confirmación por variación. Se conserva por compatibilidad."
+        },
+        "default_per_operation_limit": {
+          "label": "Límite por operación sugerido",
+          "help": "Valor sugerido al crear una cuenta; el límite real se define en cada cuenta."
+        },
+        "remittance_warn_hours": {
+          "label": "Aviso de remesa sin comprobante",
+          "help": "Horas sin comprobante tras las cuales se avisa. Debe ser menor que la expiración."
+        },
+        "remittance_expire_hours": {
+          "label": "Expiración de remesa sin comprobante",
+          "help": "Horas sin comprobante tras las cuales la remesa Bizum expira. Debe ser mayor que el aviso."
+        },
+        "max_unpaid_ops_per_user": {
+          "label": "Operaciones sin pagar por usuario",
+          "help": "Máximo de operaciones Bizum pendientes de pago por usuario."
+        },
+        "max_open_quotes_per_user": {
+          "label": "Cotizaciones abiertas por usuario",
+          "help": "Máximo de cotizaciones vigentes por usuario."
+        },
+        "max_quotes_per_hour": {
+          "label": "Cotizaciones por hora",
+          "help": "Máximo de cotizaciones que un usuario puede generar por hora."
+        },
+        "proof_retention_years": {
+          "label": "Conservación de comprobantes",
+          "help": "Solo informativo: ningún proceso borra comprobantes automáticamente."
+        }
+      },
+      "validation": {
+        "required": "Este campo es obligatorio.",
+        "range": "Debe estar entre {min} y {max}.",
+        "integer": "Debe ser un número entero.",
+        "decimals": "Admite como máximo {decimals} decimales.",
+        "windowOrder": "Debe ser mayor que el valor de aviso."
+      },
+      "settings": {
+        "title": "Parámetros de Bizum",
+        "intro": "Cada valor se valida en el servidor. Solo se envían los parámetros que cambies.",
+        "save": "Guardar parámetros",
+        "saving": "Guardando...",
+        "saved": "Parámetros guardados",
+        "savedDescription": "Los nuevos valores ya están vigentes."
+      },
+      "accounts": {
+        "title": "Cuentas Bizum",
+        "intro": "Cuentas receptoras de pagos. No se pueden eliminar: se desactivan para conservar el histórico.",
+        "create": "Nueva cuenta",
+        "edit": "Editar",
+        "empty": "No hay cuentas Bizum configuradas. Crea una para comenzar.",
+        "activate": "Activar",
+        "deactivate": "Desactivar",
+        "active": "Activa",
+        "inactive": "Inactiva",
+        "createTitle": "Nueva cuenta Bizum",
+        "editTitle": "Editar cuenta Bizum",
+        "formDescription": "El teléfono debe estar en formato internacional, por ejemplo +34612345678.",
+        "limitHelp": "0 significa sin tope. Importe máximo por operación en EUR.",
+        "phoneHelp": "Formato E.164: signo + y entre 8 y 15 dígitos.",
+        "forProducts": "Disponible para productos",
+        "forRemittances": "Disponible para remesas",
+        "saving": "Guardando...",
+        "saved": "Cuenta guardada",
+        "statusChanged": "Estado de la cuenta actualizado",
+        "fields": {
+          "account_name": "Nombre de la cuenta",
+          "holder_name": "Titular",
+          "phone": "Teléfono",
+          "bank_name": "Banco",
+          "is_active": "Cuenta activa",
+          "for_products": "Para productos",
+          "for_remittances": "Para remesas",
+          "priority_order": "Prioridad (menor primero)",
+          "per_operation_limit": "Límite por operación (EUR)",
+          "notes": "Notas",
+          "noCap": "Sin tope"
+        },
+        "validation": {
+          "required": "Este campo es obligatorio.",
+          "tooLong": "El texto es demasiado largo.",
+          "invalid": "Introduce un teléfono en formato internacional, por ejemplo +34612345678.",
+          "integer": "Debe ser un número entero.",
+          "range": "Debe ser un importe entre 0 y 99999999.99.",
+          "decimals": "Admite como máximo 2 decimales."
+        },
+        "deactivateConfirm": {
+          "title": "Desactivar cuenta",
+          "message": "La cuenta dejará de asignarse a nuevos pagos. Las operaciones existentes conservan su histórico. Podrás activarla de nuevo.",
+          "confirm": "Desactivar"
+        },
+        "activateConfirm": {
+          "title": "Activar cuenta",
+          "message": "La cuenta volverá a poder asignarse a nuevos pagos.",
+          "confirm": "Activar"
+        },
+        "discardDraftWarning": "Tienes cambios sin guardar en esta cuenta; se descartarán al desactivarla."
+      },
+      "errors": {
+        "forbidden": "No tienes permiso para esta acción.",
+        "invalidPatch": "No hay cambios válidos que guardar.",
+        "unknownKey": "Se envió un parámetro desconocido.",
+        "outOfRange": "El valor está fuera del rango permitido.",
+        "settingsMissing": "Faltan los parámetros de Bizum en la base de datos. Contacta con soporte.",
+        "accountNoDelete": "Las cuentas Bizum no se pueden eliminar; desactívala en su lugar.",
+        "accountImmutable": "Ese dato de la cuenta no se puede modificar.",
+        "phoneDuplicate": "Ya existe una cuenta con ese teléfono.",
+        "phoneInvalid": "El teléfono no tiene un formato internacional válido.",
+        "limitInvalid": "El límite por operación no puede ser negativo.",
+        "accountNameLength": "El nombre de la cuenta debe tener entre 1 y 120 caracteres.",
+        "holderNameLength": "El titular debe tener entre 1 y 120 caracteres.",
+        "bankNameLength": "El banco admite como máximo 120 caracteres.",
+        "notesLength": "Las notas admiten como máximo 500 caracteres.",
+        "unknown": "No se pudo completar la operación. Inténtalo de nuevo."
+      },
+      "renderError": "La sección Bizum no pudo mostrarse. El resto de los ajustes sigue disponible."
+    },
+    "fxRate": {
+      "title": "Tipo EUR",
+      "intro": "Tasa USD → EUR con la que se cotiza Bizum. Es la tasa central de Ajustes Financieros más el margen Bizum de los parámetros; aquí solo se consulta.",
+      "state": {
+        "none": "Sin tasa",
+        "ok": "Vigente",
+        "warn": "Antigua: actualizar pronto",
+        "blocked": "Bloqueada: Bizum no disponible"
+      },
+      "noneHelp": "No hay una tasa USD → EUR activa. Carga una y actívala en Ajustes Financieros (tasas de cambio) para poder ofrecer Bizum.",
+      "warnHelp": "La tasa tiene {hours} h de antigüedad. Actualízala pronto en Ajustes Financieros.",
+      "badge": {
+        "ok": "Tasa EUR: vigente",
+        "warn": "Tasa EUR: antigua",
+        "blocked": "Tasa EUR: bloqueada",
+        "none": "Tasa EUR: sin tasa"
+      },
+      "sourceCentral": "Tasa central (Ajustes Financieros)",
+      "goToFinancial": "Ir a Ajustes > Financiero",
+      "blockedHelp": "La tasa no es utilizable (demasiado antigua o fuera del rango admitido) y Bizum está bloqueado hasta que se corrija en Ajustes Financieros.",
+      "labels": {
+        "source": "Fuente",
+        "mid": "Tasa media",
+        "spread": "Margen",
+        "effective": "Tasa efectiva",
+        "age": "Antigüedad",
+        "thresholds": "Umbrales"
+      },
+      "age": "{hours} h",
+      "thresholds": "Aviso desde {warn} h · bloqueo desde {block} h",
+      "errors": {
+        "forbidden": "No tienes permiso para cargar la tasa.",
+        "invalidRate": "La tasa media debe estar entre 0.5 y 1.5 con hasta 6 decimales.",
+        "invalidSpread": "El margen debe estar entre 0 y 10 con hasta 2 decimales.",
+        "invalidSource": "El origen de la tasa no es válido.",
+        "noteTooLong": "La nota admite como máximo 500 caracteres.",
+        "largeChange": "El cambio de tasa requiere confirmación.",
+        "appendOnly": "Las tasas registradas no se pueden modificar.",
+        "managedCentrally": "La tasa USD → EUR se gestiona solo en Ajustes Financieros."
+      },
+      "managedCentrally": "La tasa USD → EUR se gestiona solo en Ajustes Financieros (tasas de cambio). El margen y los umbrales de antigüedad se ajustan en los parámetros de Bizum.",
+      "generic": {
+        "title": "Tipo de cambio {from} → {to}",
+        "intro": "Tasa vigente de referencia {from} → {to}. Es la tasa central de Ajustes Financieros; aquí solo se consulta.",
+        "state": {
+          "none": "Sin tasa",
+          "ok": "Vigente",
+          "warn": "Antigua: actualice pronto",
+          "blocked": "Bloqueada: no utilizable"
+        },
+        "noneHelp": "No hay una tasa {from} → {to} activa. Cárguela en Ajustes Financieros (tasas de cambio).",
+        "warnHelp": "La tasa tiene {hours} h de antigüedad. Actualícela en Ajustes Financieros.",
+        "blockedHelp": "La tasa {from} → {to} es demasiado antigua para usarse. Actualícela en Ajustes Financieros.",
+        "ageNote": "Tasa de hace {hours} h. Si necesita otra, cárguela en Ajustes Financieros.",
+        "loadError": "No se pudo cargar la tasa {from} → {to}. Reintente; si el problema continúa, compruebe su conexión.",
+        "retry": "Reintentar",
+        "labels": {
+          "rate": "Tasa"
+        },
+        "managedCentrally": "Solo lectura: la tasa {from} → {to} se gestiona únicamente en Ajustes Financieros (tasas de cambio).",
+        "badge": {
+          "ok": "Tasa {from} → {to}: vigente",
+          "warn": "Tasa {from} → {to}: antigua",
+          "blocked": "Tasa {from} → {to}: bloqueada",
+          "none": "Tasa {from} → {to}: sin tasa"
+        }
+      }
+    },
+    "fxReference": {
+      "title": "Referencia externa (informativa)",
+      "check": "Consultar",
+      "refresh": "Actualizar",
+      "retry": "Reintentar",
+      "idle": "Aún no se consultó. Use \"Consultar\" para pedir el dato a la fuente externa.",
+      "loading": "Consultando la fuente externa...",
+      "source": "Fuente: {name} ({domain})",
+      "providerUpdated": "Actualizado por el proveedor: {local} (UTC: {utc})",
+      "providerDate": "Fecha del proveedor: {date}",
+      "providerUnknown": "El proveedor no informó cuándo actualizó esta tasa.",
+      "fetchedAt": "Consultado: {time} (hora local)",
+      "age": "El dato del proveedor tiene {hours} h de antigüedad",
+      "value": "Referencia: 1 USD = {rate} EUR (no es la tasa operativa)",
+      "use": "Usar como tasa",
+      "useHint": "Solo precarga el formulario de abajo; no se guarda nada.",
+      "staleTitle": "Dato antiguo",
+      "stale": "El dato del proveedor tiene {hours} h (límite {limit} h). No se puede precargar; consulte de nuevo más tarde.",
+      "staleUnknown": "El proveedor no indicó cuándo actualizó el dato, por lo que no se puede precargar.",
+      "refreshFailed": "No se pudo actualizar. Se muestra el resultado anterior.",
+      "missingCurrencies": "Cree las monedas USD y EUR antes de precargar la tasa.",
+      "error": {
+        "network": "No se pudo contactar a la fuente externa.",
+        "timeout": "La fuente externa no respondió a tiempo.",
+        "invalid_payload": "La fuente externa devolvió datos que no son confiables.",
+        "out_of_band": "La fuente externa devolvió una tasa fuera del rango esperado."
+      }
+    },
+    "payments": {
+      "tabs": {
+        "label": "Métodos de pago",
+        "zelle": "Zelle",
+        "bizum": "Bizum",
+        "iban": "IBAN"
+      },
+      "ibanStatus": {
+        "title": "Transferencia IBAN (SEPA)",
+        "description": "Estado de preparación del cobro en euros para pedidos y remesas.",
+        "unavailable": "No disponible",
+        "blocker": "Para habilitarlo deben existir tasas activas EUR→USD y EUR→CUP, y completarse la configuración segura de cuentas IBAN, la recepción y la conciliación. El método permanece desactivado para pedidos y remesas."
+      },
+      "ibanAccounts": {
+        "title": "Cuentas receptoras IBAN y límites",
+        "description": "Aquí se administrarán las cuentas de cobro de PapuEnvios (no las cuentas de los beneficiarios en Cuba).",
+        "limits": "Límites mínimo y máximo por transferencia, configurables por cuenta.",
+        "routing": "Prioridad de recepción y uso independiente para pedidos y remesas.",
+        "unavailable": "La configuración aún no está disponible: falta el almacenamiento seguro y la conciliación de transferencias. No introduzca datos bancarios aquí."
+      }
+    }
   },
   "cart": {
+    "pricesUpdated": "Las tasas de cambio se actualizaron y algún precio del carrito cambió. Revise el total y vuelva a confirmar.",
+    "rateCheckFailed": "No se pudo verificar la tasa de cambio. Inténtelo de nuevo en unos segundos.",
     "clearAll": {
       "button": "Vaciar carrito",
       "title": "¿Vaciar el carrito?",
       "message": "Se quitarán todos los productos del carrito. Esta acción no se puede deshacer.",
       "confirm": "Sí, vaciar"
+    },
+    "item": {
+      "decrease": "Disminuir la cantidad de {name}",
+      "increase": "Aumentar la cantidad de {name}",
+      "remove": "Quitar {name} del carrito"
     },
     "title": "Tu Carrito de Compras",
     "empty": "Tu carrito está vacío.",
@@ -1209,6 +1928,11 @@
     "total": "Total",
     "checkout": "Proceder al Pago",
     "shippingUnavailable": "No realizamos envíos a este destino por ahora. Elige otro municipio o provincia, o contacta a soporte.",
+    "invalidItems": "Algunos artículos de tu carrito tienen un precio o cantidad inválidos. Quítalos o recarga la página para continuar.",
+    "currencyUnavailable": "No pudimos cargar las monedas ni las tasas de cambio. Recargue la página para continuar.",
+    "rateUnavailable": {
+      "notice": "No hay una tasa de cambio disponible para {currency}; se muestran los importes en USD. Elige USD para continuar con el pago."
+    },
     "shippingUnavailableShort": "No disponible",
     "validation": {
       "selectRecipient": "Selecciona un destinatario",
@@ -1276,11 +2000,18 @@
       "contactWhatsapp": "Contactar por WhatsApp",
       "back": "Atrás",
       "processing": "Procesando...",
-      "estimatedDelivery": "24-72 horas"
+      "estimatedDelivery": "Entrega estimada, no garantizada; el plazo depende de la zona."
     },
     "restored": {
       "title": "¡Bienvenido de vuelta!",
       "description": "Continúa con tu compra donde la dejaste."
+    },
+    "stock": {
+      "insufficient": "Uno de los productos de tu pedido ya no tiene stock suficiente. Tu carrito se conserva: revisa las cantidades e inténtalo de nuevo.",
+      "insufficientItem": "\"{name}\" ya no tiene stock suficiente (disponibles: {available}). Tu carrito se conserva: ajusta la cantidad e inténtalo de nuevo.",
+      "invalidItem": "Un producto de tu carrito ya no está disponible. Quítalo del carrito e inténtalo de nuevo.",
+      "tooManyOpen": "Ya tienes demasiados pedidos pendientes de pago con stock reservado. Paga o cancela alguno antes de crear otro.",
+      "emptyOrder": "Tu pedido no tiene productos con inventario que reservar. Revisa tu carrito e inténtalo de nuevo."
     }
   },
   "auth": {
@@ -1302,6 +2033,15 @@
     "paymentProofRequired": "Comprobante de Pago Requerido",
     "paymentProofMessage": "Para completar tu solicitud, deberás subir un comprobante de pago (captura de pantalla o foto de la transferencia Zelle).",
     "authenticating": "Autenticando...",
+    "roleUnresolved": "No pudimos verificar sus permisos; seguimos intentándolo.",
+    "roleRetry": "Reintentar",
+    "sessionReconnecting": "Estamos reconectando su sesión; se recuperará automáticamente.",
+    "sessionReconnectingTitle": "Reconectando su sesión",
+    "sessionReconnectingBody": "No pudimos renovar su sesión por ahora. Su sesión sigue guardada y la recuperaremos automáticamente; no necesita hacer nada. Si lo prefiere, puede iniciar sesión de nuevo.",
+    "sessionExpiredTitle": "Su sesión expiró",
+    "sessionExpiredBody": "Su sesión expiró o se cerró. Inicie sesión de nuevo para continuar.",
+    "signInAgain": "Iniciar sesión de nuevo",
+    "verifyingPermissions": "Verificando permisos",
     "loadingMessages": {
       "connecting": "Conectando con Google...",
       "validating": "Validando credenciales...",
@@ -1325,14 +2065,33 @@
     "reopenOrderTitle": "¿Reabrir orden cancelada?",
     "reopenOrderMessage": "Al reabrir esta orden podrás volver a subir un comprobante de pago y continuar con el proceso de compra.",
     "reopenOrderSuccess": "Orden reabierta exitosamente",
+    "loadRemittancesError": "No se pudieron cargar las remesas",
+    "loadOrdersError": "No se pudieron cargar los pedidos",
+    "loadOrderDetailsError": "No se pudo cargar el detalle del pedido",
+    "validatePaymentError": "No se pudo validar el pago",
+    "rejectPaymentError": "No se pudo rechazar el pago",
+    "cancelOrderTitle": "Cancelar pedido",
+    "cancelOrderQuestion": "¿Está seguro que desea cancelar este pedido?",
+    "cancelOrderConfirm": "Cancelar pedido",
+    "cancelProofUploadedWarning": "Si ya realizó el pago, se reembolsa el monto total pagado de forma manual al mismo método Zelle en {days} días hábiles.",
+    "cancelOrderError": "No se pudo cancelar el pedido",
+    "markDispatchedError": "No se pudo marcar el pedido como despachado",
+    "markDeliveredError": "No se pudo marcar el pedido como entregado",
+    "completeOrderError": "No se pudo completar el pedido",
     "reopenOrderError": "Error al reabrir la orden",
     "orderCancelled": "Orden Cancelada",
     "orderCancelledMessage": "Esta orden fue cancelada. Puedes reabrirla para continuar con el proceso de pago.",
-    "reopenOrderButton": "Reabrir Orden"
+    "reopenOrderButton": "Reabrir Orden",
+    "reopenInsufficientStock": "No se puede reabrir la orden: ya no hay stock suficiente de uno o más productos."
   },
   "adminOrders": {
     "title": "Historial de Órdenes",
     "subtitle": "Gestión completa de todas las órdenes del sistema",
+    "totalWarning": {
+      "items_missing": "El pedido no tiene artículos registrados; verifique antes de validar el pago.",
+      "subtotal_mismatch": "El subtotal del pedido no coincide con la suma de sus artículos; verifique antes de validar el pago.",
+      "total_below_formula": "El total del pedido falta o es menor que subtotal más envío menos descuentos; verifique antes de validar el pago."
+    },
     "stats": {
       "total": "Total",
       "pending": "Pendientes",
@@ -1396,9 +2155,10 @@
       "rejectPayment": "Rechazar Pago",
       "markAsShipped": "Marcar como Enviado",
       "markAsDispatched": "Marcar como Despachado",
-      "uploadProof": "Subir Evidencia",
+      "markAsDelivered": "Marcar como entregado",
       "completeOrder": "Completar Orden",
-      "cancelOrder": "Cancelar Orden"
+      "cancelOrder": "Cancelar Orden",
+      "restock": "Devolver al inventario"
     },
     "detail": {
       "title": "Detalles de la Orden",
@@ -1426,6 +2186,8 @@
       "shippingInfo": "Información de Envío",
       "paymentProof": "Comprobante de Pago",
       "viewFullSize": "Ver en tamaño completo",
+      "noDeliveryPhoto": "Sin foto de entrega",
+      "paymentProofError": "No se pudo cargar el comprobante. Intenta de nuevo.",
       "noPaymentProof": "Sin comprobante de pago",
       "close": "Cerrar",
       "closeOrderDetails": "Cerrar detalles de la orden"
@@ -1445,7 +2207,8 @@
       "startSuccess": "Orden movida a estado \"En Procesamiento\"",
       "dispatchSuccess": "Orden marcada como \"Despachada\"",
       "shipSuccess": "Orden marcada como \"Enviada\"",
-      "deliverSuccess": "Evidencia de entrega subida exitosamente. Orden marcada como \"Entregada\"",
+      "deliverSuccess": "Orden marcada como \"Entregada\"",
+      "deliveredWithoutPhoto": "Entrega confirmada sin foto",
       "completeSuccess": "Orden completada exitosamente",
       "validateSuccess": "Pago validado exitosamente",
       "rejectSuccess": "Pago rechazado y orden regresada a pendiente",
@@ -1453,7 +2216,14 @@
       "selectImage": "Seleccione una imagen de evidencia",
       "invalidImage": "Por favor seleccione una imagen válida",
       "imageTooLarge": "El archivo es muy grande. Máximo 5MB",
-      "onlyDispatchedOrders": "Solo puedes subir evidencia para órdenes despachadas"
+      "onlyDispatchedOrders": "Solo puedes subir evidencia para órdenes despachadas",
+      "validateStockError": "No se pudo validar el pago: no hay stock suficiente para esta orden. La orden quedó sin cambios; revisa el inventario e inténtalo de nuevo.",
+      "restockPrompt": "La orden cancelada ya había descontado su stock. Devuelve las unidades solo si confirmaste que los productos regresaron físicamente al almacén. Si no, elige No: el stock permanece descontado.",
+      "restockSuccess": "Unidades devueltas al inventario",
+      "restockNothing": "No había unidades pendientes de devolver",
+      "restockReasonPrompt": "¿Por qué las unidades de la orden {orderNumber} vuelven al inventario? (por ejemplo: mercancía devuelta por el mensajero). Esta nota queda guardada en el registro de movimientos de stock.",
+      "restockReasonRequired": "Se requiere un motivo para devolver las unidades al inventario",
+      "restockError": "No se pudieron devolver las unidades al inventario. La orden sigue cancelada; inténtalo de nuevo."
     },
     "modals": {
       "startTitle": "Comenzar Procesamiento",
@@ -1463,21 +2233,33 @@
       "completeTitle": "Completar Orden",
       "cancelTitle": "Cancelar Orden",
       "submit": "Enviar",
-      "confirm": "Confirmar"
+      "confirm": "Confirmar",
+      "restockTitle": "¿Devolver las unidades al inventario?",
+      "restockReasonTitle": "Motivo de la devolución"
     },
     "deliveryModal": {
-      "title": "Subir Evidencia de Entrega",
+      "title": "Confirmar entrega",
       "orderLabel": "Orden:",
       "customerLabel": "Cliente:",
-      "selectPhoto": "Seleccionar Foto de Evidencia",
-      "clickToUpload": "Click para subir",
-      "dragHere": "o arrastra aquí",
+      "photoLabel": "Foto de entrega (opcional)",
+      "photoHelp": "Una foto ayuda a resolver reclamos. Puedes confirmar sin ella.",
+      "takeOrChoose": "Tomar o elegir foto",
+      "removePhoto": "Quitar foto",
+      "previewAlt": "Vista previa de la foto de entrega",
       "fileTypes": "PNG, JPG, JPEG (MAX. 5MB)",
-      "imageLoaded": "Imagen cargada. Haga click en \"Subir Evidencia\" para confirmar.",
       "note": "Nota:",
-      "noteText": "Al subir la evidencia, la orden se marcará automáticamente como \"Entregada\". El cliente podrá ver la foto de evidencia.",
-      "submit": "Subir Evidencia",
-      "uploading": "Subiendo..."
+      "noteText": "El cliente verá la entrega como confirmada. Si adjuntas una foto, también podrá verla.",
+      "submit": "Marcar como entregado",
+      "uploading": "Subiendo foto…",
+      "saving": "Guardando…",
+      "reading": "Leyendo la foto…",
+      "uploadFailed": "No se pudo subir la foto.",
+      "saveFailed": "No se pudo confirmar la entrega.",
+      "retry": "Reintentar",
+      "continueWithout": "Confirmar sin foto",
+      "closeLabel": "Cerrar",
+      "notesLabel": "Notas de entrega (opcional)",
+      "notesPlaceholder": "Ej.: entregado a la hermana"
     },
     "days": {
       "singular": "día",
@@ -1571,6 +2353,28 @@
     "deleteUser": "Eliminar usuario",
     "enableUser": "Activar usuario",
     "disableUser": "Desactivar usuario",
+    "userNoun": "usuario",
+    "disabledReason": "Motivo",
+    "disabledAt": "Deshabilitado el",
+    "disabledBy": "Deshabilitado por",
+    "disableDialog": {
+      "title": "Deshabilitar usuario",
+      "description": "{email} no podrá operar en la plataforma hasta que lo vuelvas a habilitar. Indica el motivo.",
+      "reasonLabel": "Motivo de la deshabilitación",
+      "reasonPlaceholder": "Ej.: sospecha de fraude, solicitud del cliente…",
+      "reasonHelp": "Obligatorio, mínimo {min} caracteres.",
+      "cancel": "Cancelar",
+      "confirm": "Deshabilitar"
+    },
+    "statusErrors": {
+      "forbidden": "No tienes permiso para cambiar el estado de usuarios.",
+      "self": "No puedes deshabilitarte a ti mismo.",
+      "lastSuperAdmin": "No se puede deshabilitar al último super administrador.",
+      "reasonRequired": "El motivo es obligatorio (mínimo 3 caracteres).",
+      "reasonTooLong": "El motivo no puede superar los 500 caracteres.",
+      "notFound": "El usuario ya no existe.",
+      "unknown": "No se pudo actualizar el estado del usuario. Inténtalo de nuevo."
+    },
     "userDeleted": "Usuario eliminado",
     "userDeletedSuccess": "El usuario ha sido eliminado exitosamente.",
     "deleteError": "Error al eliminar",
@@ -1609,6 +2413,7 @@
       "actions": "Acciones",
       "active": "Activo",
       "inactive": "Inactivo",
+      "disabled": "Deshabilitado",
       "createdAt": "Fecha de Registro",
       "category": "Categoría",
       "categoryStatus": "Categoría de Usuario",
@@ -1710,6 +2515,8 @@
     "deleteAction": "Eliminar",
     "deleteRecipientConfirm": "Confirmar Eliminación",
     "deleteRecipientMessage": "¿Estás seguro de que deseas eliminar a",
+    "recipientAlreadyExists": "Ya tenías este destinatario, lo seleccionamos",
+    "recipientDuplicateOnEdit": "Ya tienes otro destinatario con el mismo nombre y teléfono",
     "recipientCreated": "Destinatario creado exitosamente",
     "recipientUpdated": "Destinatario actualizado exitosamente",
     "recipientDeleted": "Destinatario eliminado exitosamente",
@@ -1717,6 +2524,13 @@
     "updateButton": "Actualizar Destinatario"
   },
   "zelle": {
+    "identifiedBy": "Cuenta identificada por",
+    "phoneIdentifier": "Teléfono",
+    "optionalContact": "(opcional)",
+    "phoneRequired": "El número de teléfono es obligatorio para esta cuenta.",
+    "emailRequired": "El correo electrónico es obligatorio para esta cuenta.",
+    "invalidPhone": "Introduce un número de teléfono de 7 a 30 caracteres con dígitos, espacios, +, (, ) o -.",
+    "invalidEmail": "Introduce una dirección de correo electrónico válida.",
     "showEmail": "Mostrar email a los clientes",
     "showPhone": "Mostrar teléfono a los clientes",
     "atLeastOneVisible": "Al menos uno de email o teléfono debe estar visible para los clientes",
@@ -1802,7 +2616,8 @@
     "flowLabel": "Flujo",
     "methods": {
       "zelle": "Zelle",
-      "bizum": "Bizum"
+      "bizum": "Bizum",
+      "iban": "IBAN"
     },
     "flows": {
       "orders": "Pedidos",
@@ -1858,7 +2673,7 @@
     }
   },
   "zelleHistory": {
-    "title": "Historial de Pagos Zelle",
+    "title": "Historial de Pagos",
     "date": "Fecha",
     "userName": "Nombre de Usuario",
     "email": "Correo Electrónico",
@@ -1959,5 +2774,807 @@
     "bulkDeletePreviewInventoryMovements": "{count} movimiento(s) de inventario",
     "bulkDeletePreviewProducts": "{count} producto(s) asociado(s)",
     "bulkDeletePreviewNoImpact": "sin elementos relacionados"
+  },
+  "adminRefunds": {
+    "tab": "Devoluciones",
+    "tabCountSr": "{count} devoluciones por hacer",
+    "tabCountOverdueSr": "{count} devoluciones por hacer, {overdue} vencidas",
+    "heading": "Devoluciones",
+    "intro": "Operaciones canceladas que ya tenían pago o comprobante. El reembolso es manual por Zelle: se habilita {hours} horas después de la cancelación y vence {days} días hábiles después.",
+    "summary": {
+      "pending": "Pendientes",
+      "amountUsd": "Monto pendiente (solo USD)",
+      "attention": "Vencen pronto / vencidas",
+      "onHold": "En espera de {hours} h"
+    },
+    "filterLabel": "Filtrar devoluciones",
+    "filter": {
+      "toRefund": "Por devolver",
+      "verify": "Verificar recepción",
+      "onHold": "En espera de {hours} h",
+      "overdue": "Vencidas",
+      "refunded": "Reembolsadas",
+      "notApplicable": "No procede / Reabierto",
+      "all": "Todas"
+    },
+    "typeLabel": "Tipo de operación",
+    "type": {
+      "all": "Todas",
+      "order": "Pedidos",
+      "remittance": "Remesas"
+    },
+    "searchLabel": "Buscar por número o cliente",
+    "searchPlaceholder": "Número, nombre o correo",
+    "level": {
+      "validated": "Devolución debida",
+      "proof_unverified": "Verificar recepción"
+    },
+    "operation": {
+      "order": "Pedido",
+      "remittance": "Remesa"
+    },
+    "deadline": {
+      "onTime": "Quedan {time}",
+      "dueSoon": "Vence en {time}",
+      "overdue": "Vencida hace {time}",
+      "onHold": "Disponible el {date}",
+      "dueBy": "Fecha límite: {date}"
+    },
+    "duration": {
+      "minutes": "{count} min",
+      "hours": "{count} h",
+      "days": "{count} d"
+    },
+    "customer": "Cliente",
+    "payerPhone": "Teléfono del pagador",
+    "zelleAccount": "Cuenta Zelle que recibió el pago",
+    "paymentReference": "Referencia del pago",
+    "unknownCustomer": "Cliente sin nombre",
+    "ownOperation": "Operación propia",
+    "cancelledOn": "Cancelado el {date} {by}",
+    "cancelledBy": {
+      "customer": "por el cliente",
+      "admin": "por un administrador",
+      "system": "automáticamente"
+    },
+    "cancellationReason": "Motivo: {reason}",
+    "refundedLine": "Reembolsado el {date} · ref. {reference}",
+    "notApplicableLine": "No procede: {reason}",
+    "reopenedLine": "Reabierto por el cliente: la solicitud se cerró sola.",
+    "actions": {
+      "markRefunded": "Marcar reembolsado",
+      "markRefundedAria": "Marcar reembolsada la devolución de {number}",
+      "notApplicable": "No procede",
+      "notApplicableAria": "Marcar como no procede la devolución de {number}",
+      "copy": "Copiar datos",
+      "copyAria": "Copiar los datos de la devolución de {number}",
+      "viewProof": "Comprobante",
+      "viewProofAria": "Ver comprobante de pago de {number}",
+      "copied": "Datos copiados",
+      "copyFailed": "No se pudo copiar. Seleccione y copie manualmente.",
+      "onHoldBlocked": "Disponible desde el {date} (espera de {hours} h)",
+      "ownBlocked": "Es una operación suya: otro administrador debe resolver este reembolso."
+    },
+    "modal": {
+      "summary": "{amount} {currency} · {customer}",
+      "refunded": {
+        "title": "Marcar reembolsado",
+        "referenceLabel": "Referencia del reembolso",
+        "referenceHelp": "Código o referencia del Zelle que envió.",
+        "dateLabel": "Fecha del reembolso",
+        "confirmArrived": "Confirmé que el pago llegó a la cuenta Zelle {account}",
+        "dateClamped": "Se registrará con la hora en que se habilitó el reembolso ({date}).",
+        "confirmArrivedNoAccount": "Confirmé que el pago llegó a la cuenta Zelle",
+        "proofLabel": "Comprobante del reembolso",
+        "proofHelp": "Obligatorio. Captura o PDF del reembolso (JPG, PNG, WebP o PDF, máximo 5 MB). Puede contener datos personales: recorte lo que no haga falta. Se elimina automáticamente un año después del reembolso.",
+        "submit": "Guardar reembolso"
+      },
+      "selfResolve": {
+        "confirm": "Esta devolución es de mi propia operación y soy el único administrador disponible para resolverla. Queda registrado."
+      },
+      "notApplicable": {
+        "title": "Marcar como no procede",
+        "reasonLabel": "Motivo",
+        "reasonHelp": "Obligatorio. Queda registrado con su usuario.",
+        "presets": {
+          "neverArrived": "El pago nunca llegó",
+          "outsideApp": "Reembolsado fuera de la app",
+          "duplicate": "Duplicado de otra devolución"
+        },
+        "submit": "Guardar"
+      },
+      "working": "Guardando...",
+      "cancel": "Cancelar"
+    },
+    "states": {
+      "loading": "Cargando devoluciones",
+      "error": "No se pudieron cargar las devoluciones.",
+      "retry": "Reintentar",
+      "stale": "No se pudo actualizar; se muestran los últimos datos cargados.",
+      "emptyPending": "No hay devoluciones pendientes. Cuando se cancele un pedido o una remesa ya pagados, aparecerá aquí con su plazo.",
+      "emptyOnHold": "No hay devoluciones para hacer hoy; {count} en espera de {hours} h.",
+      "showing": "Mostrando {shown} de {total} devoluciones; las resueltas más antiguas no se cargan.",
+      "emptyFilter": "Nada en este filtro.",
+      "liveNew": "{count} devolución(es) nueva(s) pendiente(s)",
+      "conflict": "La devolución cambió; la lista se actualizó."
+    },
+    "errors": {
+      "onHold": "Todavía no se puede reembolsar: la espera de {hours} h termina el {date}.",
+      "alreadyResolved": "Esta devolución ya fue resuelta por otra persona.",
+      "invalidReference": "Ingrese la referencia del reembolso (hasta 200 caracteres).",
+      "invalidDate": "La fecha del reembolso no es válida.",
+      "invalidReason": "Ingrese el motivo (hasta 500 caracteres).",
+      "confirmArrival": "Confirme que el pago llegó a la cuenta Zelle antes de reembolsar.",
+      "proofRequired": "Adjunte el comprobante del reembolso.",
+      "proofInvalid": "El comprobante debe ser JPG, PNG, WebP o PDF de hasta 5 MB.",
+      "proofUploadFailed": "No se pudo subir el comprobante. Intente de nuevo.",
+      "selfResolution": "No puede resolver una devolución de su propia operación. Debe hacerlo otro administrador.",
+      "selfResolveConfirm": "Confirme que resuelve su propia devolución.",
+      "invalidArgument": "Revise los datos ingresados.",
+      "notAuthorized": "No tiene permiso para resolver devoluciones.",
+      "notFound": "La devolución ya no existe.",
+      "generic": "No se pudo guardar. Intente de nuevo."
+    },
+    "success": {
+      "refunded": "Devolución marcada como reembolsada",
+      "notApplicable": "Devolución marcada como no procede"
+    },
+    "badge": {
+      "overdueSr": "{count} devoluciones vencidas"
+    },
+    "dashboard": {
+      "title": "{count} devoluciones por hacer",
+      "titleOnHold": "{count} devoluciones en espera de {hours} h",
+      "amount": "Monto pendiente (solo USD): {amount}",
+      "overdue": "{count} vencidas",
+      "onHold": "{count} en espera de {hours} h",
+      "cta": "Ir a devoluciones"
+    },
+    "copy": {
+      "amount": "Monto a devolver",
+      "customer": "Cliente",
+      "email": "Correo",
+      "phone": "Teléfono del pagador",
+      "paymentReference": "Referencia del pago original",
+      "operation": "Operación"
+    }
+  },
+  "adminInbox": {
+    "tablistLabel": "Trabajo pendiente para administradores",
+    "ordersTab": "Pedidos por procesar",
+    "remittancesTab": "Remesas por procesar",
+    "countSr": "{count} pendientes",
+    "ordersHeading": "Pedidos Pendientes",
+    "remittancesHeading": "Remesas Pendientes",
+    "filterLabel": "Filtrar remesas",
+    "filter": {
+      "toProcess": "Por procesar",
+      "needsValidation": "Validar comprobante",
+      "needsDelivery": "Entregar",
+      "awaitingCustomer": "Esperando pago del cliente",
+      "all": "Todas"
+    },
+    "col": {
+      "number": "Remesa",
+      "sender": "Remitente",
+      "recipient": "Destinatario",
+      "amount": "Monto",
+      "method": "Método de pago",
+      "age": "Antigüedad",
+      "status": "Estado",
+      "actions": "Acciones"
+    },
+    "age": {
+      "overdue": "Vencida",
+      "minutes": "{count} min",
+      "hours": "{count} h",
+      "days": "{count} d"
+    },
+    "unknownSender": "Remitente desconocido",
+    "viewProof": "Comprobante",
+    "viewProofAria": "Ver comprobante de pago de la remesa {number}",
+    "noProof": "Sin comprobante",
+    "validate": "Validar",
+    "reject": "Rechazar",
+    "cancelRemittance": "Cancelar",
+    "startProcessing": "Procesar",
+    "confirmDelivery": "Confirmar entrega",
+    "loading": "Cargando remesas",
+    "emptyToProcess": "Todo al día. No hay remesas por procesar.",
+    "emptyFilter": "No hay remesas en esta vista.",
+    "viewAll": "Ver todas las remesas",
+    "error": "No se pudieron cargar las remesas.",
+    "retry": "Reintentar",
+    "staleWarning": "Mostrando los últimos datos cargados. Falló la actualización; se reintentará automáticamente.",
+    "adjustCommission": "Ajustar comisión",
+    "openFullTab": "Abrir la pestaña completa de remesas",
+    "liveNew": "{count} remesa(s) nueva(s) por procesar",
+    "badgeAria": "{count} elementos pendientes de tu atención"
+  },
+  "stockPolicy": {
+    "title": "Política de reservas de stock",
+    "intro": "Define cuánto tiempo un pedido puede retener stock reservado sin avanzar y cuántos pedidos pendientes puede tener abiertos cada cliente. Los cambios aplican a las reservas nuevas y a la próxima ejecución de la limpieza automática.",
+    "unpaid": {
+      "label": "Pedidos sin comprobante (horas)",
+      "help": "Pedidos sin comprobante de pago o con pago rechazado: tras estas horas se cancelan solos y el stock vuelve al inventario."
+    },
+    "proof": {
+      "label": "Pedidos con comprobante sin revisar (horas)",
+      "help": "Pedidos con comprobante subido que nadie validó ni rechazó: tras estas horas se cancelan solos y el stock vuelve al inventario. No puede ser menor que el plazo de pedidos sin comprobante."
+    },
+    "maxOpen": {
+      "label": "Máximo de reservas abiertas por cliente",
+      "help": "Cuando un cliente ya tiene este número de pedidos pendientes reservando stock, el siguiente pedido se rechaza y se cancela automáticamente. Evita que una sola cuenta bloquee el inventario."
+    },
+    "range": "Rango permitido:",
+    "default": "Por defecto:",
+    "current": "Valor vigente:",
+    "errors": {
+      "range": "Debe ser un número entero entre {min} y {max}.",
+      "belowUnpaid": "No puede ser menor que el plazo de pedidos sin comprobante."
+    },
+    "save": "Guardar cambios",
+    "saving": "Guardando...",
+    "saved": "Política guardada",
+    "savedDescription": "Los nuevos valores ya están vigentes.",
+    "saveError": "No se pudo guardar la política. Inténtalo de nuevo.",
+    "forbidden": "Solo un super administrador puede cambiar esta política.",
+    "loadError": "No se pudo cargar la política de reservas de stock.",
+    "reset": "Restablecer valores por defecto",
+    "resetConfirmTitle": "¿Restablecer valores por defecto?",
+    "resetConfirmMessage": "Se aplicarán los valores por defecto: 48 horas sin comprobante, 168 horas (7 días) con comprobante sin revisar y 5 reservas abiertas por cliente.",
+    "resetConfirm": "Restablecer",
+    "resetDone": "Valores por defecto restablecidos",
+    "scheduleNote": "Una tarea programada cada hora aplica estos valores cancelando los pedidos vencidos y devolviendo su stock. Si la programación no está activa en la base de datos, la expiración no se ejecuta aunque guardes estos valores."
+  },
+  "images": {
+    "uploadFailed": "No se pudo subir la imagen. No se guardó nada; intenta de nuevo.",
+    "invalidImage": "La imagen no es válida. Usa JPG o PNG.",
+    "tooLarge": "La imagen es demasiado grande (máximo 5 MB)."
+  },
+  "orderCombo": {
+    "contains": "Contenido del combo",
+    "modifiedNote": "Composición actual del combo; el combo fue modificado después de este pedido.",
+    "unavailable": "Composición del combo no disponible.",
+    "unknownProduct": "Producto no disponible"
+  },
+  "legal": {
+    "nav": {
+      "label": "Información legal"
+    },
+    "links": {
+      "terms": "Términos de Servicio",
+      "privacy": "Política de Privacidad",
+      "refunds": "Reembolsos"
+    },
+    "consent": {
+      "continue": "Al continuar, aceptas nuestros",
+      "confirm": "Al confirmar, aceptas los",
+      "and": "y"
+    },
+    "gate": {
+      "title": "Antes de continuar",
+      "intro": "Para realizar pedidos y envíos necesitamos que aceptes nuestras condiciones y confirmes que eres mayor de edad.",
+      "birthDateLabel": "Fecha de nacimiento",
+      "birthDateHint": "Solo se usa para verificar que tienes 18 años o más.",
+      "acceptLabel": "He leído y acepto los",
+      "acceptAnd": "y la",
+      "acceptSuffix": "(se abren en una pestaña nueva).",
+      "accept": "Aceptar y continuar",
+      "cancel": "Cancelar",
+      "saving": "Guardando...",
+      "errors": {
+        "birthDateRequired": "Indica tu fecha de nacimiento.",
+        "invalid": "La fecha de nacimiento no es válida.",
+        "underAge": "Debes tener 18 años o más para realizar pedidos y envíos.",
+        "conflict": "Ya corregiste tu fecha de nacimiento el máximo de veces permitido. Contáctanos para ayudarte.",
+        "profileNotFound": "No encontramos tu perfil. Cierra sesión, vuelve a entrar e inténtalo de nuevo.",
+        "versionOutdated": "Los Términos y la Política de Privacidad se actualizaron. Recarga la página e inténtalo de nuevo.",
+        "checkFailed": "No pudimos verificar tu aceptación de los Términos. Revisa tu conexión e inténtalo de nuevo.",
+        "acceptRequired": "Debes aceptar los Términos y la Política de Privacidad para continuar.",
+        "notAuthenticated": "Tu sesión expiró. Inicia sesión de nuevo.",
+        "unknown": "No pudimos guardar tu aceptación. Inténtalo de nuevo."
+      }
+    },
+    "notice": {
+      "title": "Aviso importante",
+      "notBank": "PapuEnvios no es un banco.",
+      "zelleIrreversible": "Los pagos por Zelle son irreversibles.",
+      "deliveryEstimates": "Los tiempos de entrega son estimados.",
+      "ofac": "Los envíos a Cuba están sujetos a regulaciones de EE. UU. (OFAC).",
+      "seeTerms": "Ver Términos de Servicio"
+    }
+  },
+  "beforePaying": {
+    "title": "Antes de pagar",
+    "irreversible": "Los pagos por Zelle no se pueden revertir. Revise los datos del destinatario y el total antes de enviar.",
+    "rate": "Tasa consultada",
+    "rateCheckedAt": "a las {time}",
+    "rateNote": "El monto final se calcula con la tasa vigente al confirmar.",
+    "easternTime": "hora del Este de EE. UU.",
+    "fee": "Comisión (descontada del monto enviado)",
+    "deliveryCost": "Costo de entrega",
+    "total": "Total a pagar",
+    "recipientReceives": "Recibe el destinatario",
+    "estimate": "Entrega estimada, no garantizada; el plazo depende de la zona.",
+    "seeAlso": "Consulte:"
+  },
+  "cookieConsent": {
+    "title": "Privacidad y analítica",
+    "short": "Medimos visitas solo si usted acepta.",
+    "moreInfo": "Más información",
+    "description": "Usamos almacenamiento local estrictamente necesario para que el sitio funcione (por ejemplo, su sesión). Solo si usted lo acepta, registraremos las páginas que visita con fines estadísticos: página, origen, navegador, un identificador de sesión y, si inició sesión, su identificador de usuario.",
+    "accept": "Aceptar",
+    "reject": "Rechazar",
+    "privacyLink": "Política de Privacidad",
+    "statusOn": "Estado actual: analítica activada.",
+    "statusOff": "Estado actual: analítica desactivada.",
+    "gpcNote": "Detectamos la señal Global Privacy Control de su navegador y la respetamos: la analítica permanece desactivada. Puede activarla aquí de forma expresa.",
+    "preferencesLink": "Preferencias de cookies"
+  },
+  "couriers": {
+    "title": "Gestión de mensajería",
+    "loading": "Cargando...",
+    "unavailable": "El módulo de mensajería aún no está disponible. Cuando se active, esta sección se habilitará sola; no necesita hacer nada.",
+    "tabs": {
+      "label": "Secciones de mensajería",
+      "couriers": "Mensajeros",
+      "types": "Tipos de pago",
+      "payable": "Por pagar",
+      "reports": "Reportes"
+    },
+    "common": {
+      "save": "Guardar",
+      "cancel": "Cancelar",
+      "edit": "Editar",
+      "deactivate": "Desactivar",
+      "activate": "Activar",
+      "active": "Activo",
+      "inactive": "Inactivo",
+      "unknown": "Desconocido",
+      "choose": "Seleccione...",
+      "retry": "Reintentar",
+      "unassigned": "Sin mensajero",
+      "kind": {
+        "order": "Pedido",
+        "remittance": "Remesa"
+      }
+    },
+    "couriers": {
+      "title": "Mensajeros",
+      "intro": "Personas que entregan pedidos y remesas. Desactivar un mensajero no borra su historial.",
+      "add": "Agregar mensajero",
+      "addTitle": "Nuevo mensajero",
+      "editTitle": "Editar mensajero",
+      "name": "Nombre",
+      "phone": "Teléfono",
+      "phoneHint": "Opcional. Solo para uso interno.",
+      "notes": "Notas",
+      "empty": "Todavía no hay mensajeros registrados.",
+      "saved": "Mensajero guardado."
+    },
+    "subscriptions": {
+      "title": "Tipos de pago suscritos",
+      "intro": "Un tipo de pago suscrito se aplica a este mensajero con prioridad de regla propia. A los demás mensajeros les sigue aplicando como tipo general. Solo afecta a entregas futuras: las ya entregadas conservan su costo.",
+      "empty": "Este mensajero no tiene tipos de pago suscritos.",
+      "type": "Tipo de pago",
+      "noneAvailable": "No hay tipos de pago vigentes disponibles para suscribir.",
+      "add": "Suscribir",
+      "remove": "Quitar",
+      "added": "Tipo de pago suscrito.",
+      "removed": "Suscripción quitada. Las entregas ya realizadas no cambian.",
+      "gapWarning": "Con esta suscripción, los rangos de este mensajero dejan valores sin regla (costo desconocido):",
+      "acceptGaps": "Entiendo que esos valores quedarán sin regla y deseo suscribir igualmente.",
+      "inert": "Sin versión vigente (no se aplica)",
+      "confirmRemove": "¿Quitar la suscripción a «{name}»? Solo afecta a entregas futuras: las ya entregadas conservan su costo.",
+      "confirmRemoveYes": "Sí, quitar"
+    },
+    "errors": {
+      "invalidReason": "Ingrese un motivo de asignación de 10 a 500 caracteres.",
+      "noAmount": "No se pudo calcular el costo. Revise el motivo de la vista previa y corrija la regla, la tasa de cambio o los datos de cálculo antes de reintentar. No se asignó el mensajero.",
+      "previewChanged": "La tarifa o los datos cambiaron. Obtén y revisa una nueva vista previa antes de confirmar.",
+      "previewRequired": "Revisa la vista previa del servidor antes de confirmar.",
+      "alreadyAssigned": "Esta entrega ya tiene mensajero; no se modificó su costo.",
+      "generic": "No se pudo completar la operación. Inténtelo de nuevo.",
+      "unavailable": "El módulo de mensajería aún no está disponible.",
+      "overlap": "Ya existe una regla vigente que se solapa con esta (mismo alcance y período). Ajuste la vigencia o el alcance.",
+      "duplicateName": "Ya existe un mensajero con ese nombre.",
+      "superAdminOnly": "Solo un super administrador puede realizar esta acción.",
+      "forbidden": "No tiene permisos para realizar esta acción.",
+      "pastDate": "La vigencia no puede comenzar en el pasado. La regla solo aplica a entregas nuevas.",
+      "notPayable": "Alguno de los conceptos seleccionados no se puede pagar (monto desconocido, de otro mensajero, ya pagado o anulado).",
+      "notRecalculable": "Este concepto no se puede recalcular.",
+      "alreadyDelivered": "Esta operación ya fue entregada: no se puede cambiar el mensajero desde aquí.",
+      "invalid": "Alguno de los datos no es válido. Revíselos e inténtelo de nuevo.",
+      "required": "Complete los campos obligatorios.",
+      "coverageGap": "Los rangos de este alcance dejan valores sin regla. Revise los huecos y confirme si desea guardar igualmente.",
+      "mixedCurrency": "Los rangos de este alcance ya usan otra moneda. Use la misma moneda o defina otro alcance.",
+      "decimals": "Los montos admiten como máximo 2 decimales; el porcentaje, 3; los CUP por USD, 4.",
+      "amountMax": "Los montos no pueden superar 9999999999.99.",
+      "ownedByOther": "Ese tipo de pago pertenece a otro mensajero.",
+      "noActiveVersion": "Ese tipo de pago no existe o no tiene una versión vigente.",
+      "subscribedElsewhere": "Ese tipo de pago está suscrito por otro mensajero. Quite esa suscripción antes de asignarlo a un mensajero concreto.",
+      "courierInactive": "El mensajero no existe o está inactivo.",
+      "staleSubscriptions": "Este código desactivado aún tiene suscripciones activas. Quítelas antes de volver a crearlo.",
+      "staleSubscribers": "Este código expiró y hay mensajeros suscritos que volverán a cobrar con esta versión."
+    },
+    "validation": {
+      "required": "Este campo es obligatorio.",
+      "invalid": "Valor no válido.",
+      "remittanceOnly": "Este método solo aplica a remesas.",
+      "nonNegative": "Debe ser un número mayor o igual a cero.",
+      "percentRange": "El porcentaje debe estar entre 0 y 100.",
+      "tierOrder": "El monto máximo debe ser mayor que el mínimo.",
+      "windowOrder": "La vigencia final debe ser posterior a la inicial.",
+      "money": "Indique un monto mayor o igual a cero con hasta 2 decimales (por ejemplo 100.50).",
+      "moneyMax": "El monto no puede superar 9999999999.99."
+    },
+    "margin": {
+      "ok": "Margen correcto",
+      "warning": "Margen en alerta",
+      "critical": "Margen crítico",
+      "unknown": "Margen desconocido"
+    },
+    "thresholds": {
+      "title": "Umbrales de margen",
+      "intro": "Usted fija los porcentajes. Mientras estén vacíos, no se generan alertas de margen.",
+      "saved": "Umbrales guardados.",
+      "remittance": "Remesas",
+      "order": "Pedidos",
+      "targetPct": "Margen objetivo",
+      "warningPct": "Alerta bajo",
+      "criticalPct": "Crítico bajo"
+    },
+    "simulator": {
+      "title": "Simulador",
+      "intro": "Ingrese un caso para ver el costo y el margen que resultaría con esta regla. No se guarda nada.",
+      "sent": "Valor de la operación (USD enviados o subtotal del pedido)",
+      "commission": "Comisión cobrada (USD)",
+      "deliveryCharge": "Entrega cobrada al cliente (USD)",
+      "rate": "Tasa (CUP por USD)",
+      "toDeliver": "Equivalente entregado (CUP)",
+      "completeForm": "Complete el formulario para simular.",
+      "cost": "Costo del mensajero",
+      "margin": "Margen",
+      "belowWarning": "queda bajo el umbral de alerta",
+      "belowCritical": "queda bajo el umbral crítico",
+      "noThresholds": "No hay umbrales configurados: no se evalúan alertas.",
+      "reasons": {
+        "no_rule": "Sin regla: el costo queda desconocido, no cero.",
+        "no_amount_basis": "Faltan datos de la base de cálculo: el costo queda desconocido, no cero.",
+        "no_fx": "Falta la tasa de cambio para convertir: el costo queda desconocido, no cero.",
+        "no_tier_match": "El valor no entra en el rango de esta regla: el costo queda desconocido, no cero."
+      }
+    },
+    "types": {
+      "title": "Tipos de pago",
+      "add": "Agregar tipo de pago",
+      "intro": "Define cuánto se paga a cada mensajero por entrega. Cada cambio crea una versión nueva; las anteriores se conservan.",
+      "noRuleUnknown": "Sin regla aplicable, el costo de la entrega queda como desconocido (no como cero) y se puede recalcular después.",
+      "onlyNewDeliveries": "Aplica solo a entregas nuevas. Las entregas ya registradas no cambian.",
+      "formTitle": "Tipo de pago",
+      "code": "Código",
+      "codeHint": "Identificador interno estable, por ejemplo el nombre corto de la regla.",
+      "codeLocked": "El código no cambia: se guardará una versión nueva.",
+      "name": "Nombre",
+      "appliesTo": "Aplica a",
+      "applies": {
+        "remittance": "Remesas",
+        "order": "Pedidos",
+        "both": "Remesas y pedidos"
+      },
+      "method": "Método de cálculo",
+      "methods": {
+        "fixed_cup": "Monto fijo en CUP",
+        "per_usd_delivered": "CUP por cada USD entregado",
+        "percent_of_base": "Porcentaje de una base",
+        "fixed_amount": "Monto fijo (en la moneda elegida)"
+      },
+      "fixedCup": "Monto (CUP)",
+      "cupPerUsd": "CUP por USD",
+      "percent": "Porcentaje (%)",
+      "base": "Base de cálculo",
+      "bases": {
+        "per_usd_delivered": {
+          "nominal_usd": "USD nominales (enviados o subtotal del pedido)",
+          "delivered_cup": "Equivalente entregado en CUP"
+        },
+        "percent_of_base": {
+          "nominal_usd": "USD nominales (enviados o subtotal del pedido)",
+          "delivered_cup": "Equivalente entregado en CUP"
+        }
+      },
+      "summary": {
+        "fixed_cup": "{value} CUP fijos por entrega",
+        "per_usd_delivered": "{value} CUP por USD ({base})",
+        "percent_of_base": "{value}% de {base}",
+        "fixed_amount": "{value} {currency} fijos por entrega"
+      },
+      "scope": "Alcance (opcional)",
+      "courier": "Mensajero",
+      "anyCourier": "Cualquier mensajero",
+      "zone": "Zona",
+      "anyZone": "Cualquier zona",
+      "remittanceType": "Tipo de remesa",
+      "anyType": "Cualquier tipo",
+      "validFrom": "Vigente desde",
+      "validFromHint": "Vacío significa desde ahora. No puede quedar en el pasado.",
+      "validTo": "Vigente hasta",
+      "saveVersion": "Guardar nueva versión",
+      "saved": "Tipo de pago guardado.",
+      "deactivated": "Tipo de pago desactivado.",
+      "showHistory": "Mostrar versiones anteriores y cerradas",
+      "empty": "No hay tipos de pago vigentes.",
+      "closed": "Cerrado",
+      "newVersion": "Nueva versión",
+      "versionNote": "Las versiones anteriores se conservan para auditoría y no se pueden borrar.",
+      "fixedAmount": "Monto fijo",
+      "currency": "Moneda",
+      "currencyHint": "Moneda del monto fijo y de la comparación de rangos. Si la operación está en otra moneda se convierte con la tasa vigente; sin tasa, el costo queda desconocido.",
+      "rangeOp": "Valor de la operación",
+      "rangeOps": {
+        "none": "Cualquier valor",
+        "gt": "Más de X",
+        "lte": "Hasta Y (incluido)",
+        "between": "Más de X y hasta Y"
+      },
+      "rangeX": "X (no incluido)",
+      "rangeY": "Y (incluido)",
+      "rangeHelp": "Los rangos se comparan en {currency} con 2 decimales. \"Más de X\" no incluye X; \"Hasta Y\" sí incluye Y. Para encadenar rangos sin huecos ni solapes, empiece cada rango donde terminó el anterior: hasta 100 → más de 100 y hasta 200 → más de 200.",
+      "range": {
+        "any": "cualquier valor",
+        "gt": "más de {x} {currency}",
+        "lte": "hasta {y} {currency} (incluido)",
+        "between": "más de {x} y hasta {y} {currency}"
+      },
+      "gapWarning": "Con este rango, estos valores quedan sin regla de este alcance. Una entrega en un hueco no se bloquea: su costo queda desconocido.",
+      "acceptGaps": "Entiendo que quedan huecos y quiero guardar igualmente",
+      "acceptGapsRequired": "Confirme que acepta los huecos antes de guardar.",
+      "staleSubscribers": "{count} mensajero(s) suscrito(s) a este código expirado volverán a cobrar con esta versión, con prioridad de mensajero. Confirme para guardar."
+    },
+    "payable": {
+      "filter": "Filtrar entregas",
+      "allPending": "Todos los pendientes",
+      "deliveredUnassigned": "Entregadas sin mensajero",
+      "assignAfterDelivery": "Asignar mensajero",
+      "courier": "Mensajero",
+      "preview": "Obtener vista previa",
+      "confirmAssignment": "Confirmar asignación retroactiva",
+      "assignedOk": "Mensajero asignado y costo registrado.",
+      "retroactive": "Retroactivo",
+      "pastMonthsWarning": "Asignar un mensajero a una entrega pasada usa las reglas vigentes hoy y cambia las cifras de meses anteriores: el costo se atribuye a la fecha de la operación. No hay cierres congelados.",
+      "previewAmount": "Costo calculado",
+      "previewRule": "Regla vigente hoy",
+      "precedence": "Precedencia de la regla",
+      "previewRate": "Tasa USD → CUP y origen",
+      "fxOrigin": {
+        "remittance": "Tasa congelada de la remesa",
+        "exchange_rates": "Tasa actual",
+        "none": "Sin tasa disponible"
+      },
+      "precedenceValue": {
+        "courier": "Mensajero (propia o suscrita)",
+        "zone": "Zona",
+        "type": "Tipo de remesa",
+        "tier": "Rango",
+        "general": "General",
+        "none": "Sin regla"
+      },
+      "pricingWarning": {
+        "no_rule": "No hay una regla de pago activa aplicable hoy; cree o habilite una regla primero.",
+        "no_tier_match": "Ningún rango coincide: el costo sigue desconocido.",
+        "no_fx": "Falta la tasa de conversión: el costo o su equivalente USD sigue desconocido.",
+        "amount_out_of_range": "Costo fuera de rango: sigue desconocido.",
+        "no_amount_basis": "Falta una base para calcular el costo."
+      },
+      "title": "Por pagar",
+      "empty": "No hay pagos pendientes a mensajeros.",
+      "adjustment": "ajuste",
+      "void": "Anular",
+      "adjust": "Ajustar",
+      "adjustAmount": "Nuevo monto (CUP)",
+      "adjustHint": "Se registra como un ajuste; el pago original no se modifica.",
+      "reason": "Motivo",
+      "reasonHint": "Mínimo 10 caracteres. Queda en la auditoría.",
+      "unknownAmounts": "{count} entrega(s) sin monto definido (no hay regla aplicable). No se pueden pagar hasta recalcular.",
+      "recalculate": "Recalcular",
+      "recalcWarning": "Usa la regla y la tasa de ahora, no las de la fecha de entrega.",
+      "recalculatedOk": "Monto recalculado.",
+      "selectedTotal": "Total seleccionado",
+      "markPaid": "Marcar pagado",
+      "payIntro": "Se marcarán como pagados {count} concepto(s).",
+      "method": "Método de pago",
+      "reference": "Referencia",
+      "paidAt": "Fecha y hora del pago",
+      "confirmPay": "Confirmar pago",
+      "paidOk": "Pago registrado.",
+      "voidedOk": "Concepto anulado.",
+      "adjustedOk": "Ajuste registrado.",
+      "paidTitle": "Pagados recientes",
+      "paidEmpty": "Todavía no hay pagos registrados.",
+      "superAdminOnlyReason": "Anular o ajustar un concepto ya pagado requiere un super administrador.",
+      "gapsTitle": "Entregas sin costo registrado",
+      "gapsIntro": "Entregas anteriores al módulo no se tocan automáticamente. Puede revisarlas y, si lo desea, generarlas de forma explícita.",
+      "gapsFrom": "Revisar desde",
+      "gapsFromHint": "Fecha de inicio obligatoria.",
+      "gapsReview": "Revisar",
+      "gapsNone": "No hay entregas sin costo en ese período.",
+      "gapsCount": "{count} entrega(s) sin costo registrado.",
+      "backfill": "Generar costos faltantes",
+      "backfillConfirm": "Se generarán costos para {count} entrega(s).",
+      "backfillYes": "Sí, generar",
+      "backfillOk": "Costos generados.",
+      "backfillSuperOnly": "Generar costos faltantes requiere un super administrador, porque usa la regla y la tasa de ahora."
+    },
+    "reports": {
+      "title": "Reportes por mensajero",
+      "from": "Desde",
+      "to": "Hasta",
+      "courier": "Mensajero",
+      "allCouriers": "Todos",
+      "run": "Ver reporte",
+      "note": "Los importes desconocidos se cuentan aparte y nunca se suman como cero. No incluye datos personales de clientes.",
+      "empty": "No hay datos en ese período.",
+      "exportCsv": "Exportar CSV",
+      "cols": {
+        "remittance_deliveries": "Entregas de remesas",
+        "order_deliveries": "Entregas de pedidos",
+        "remittance_amount_sent_usd": "USD enviados en remesas",
+        "accrued_cup": "Devengado (CUP)",
+        "accrued_usd": "Devengado (USD)",
+        "paid_cup": "Pagado (CUP)",
+        "pending_cup": "Pendiente (CUP)",
+        "voided_cup": "Anulado (CUP)",
+        "voided_after_payment_cup": "Anulado tras pago (CUP)",
+        "unknown_amount_count": "Entregas con monto desconocido",
+        "margin_warning_count": "Margen en alerta",
+        "margin_critical_count": "Margen crítico",
+        "margin_unknown_count": "Margen desconocido"
+      }
+    },
+    "delivery": {
+      "label": "Quién entregó (opcional)",
+      "none": "Sin especificar",
+      "hint": "Si lo indica, se registra el costo de esta entrega para el mensajero.",
+      "clearedWarning": "Había elegido un mensajero antes: la asignación anterior se mantiene. Puede corregirla después en Mensajería."
+    }
+  },
+  "refundAudit": {
+    "section": {
+      "title": "Reembolso",
+      "loading": "Cargando reembolso...",
+      "none": "Esta operación no tiene reembolsos.",
+      "episode": "Reembolso {index} de {total}",
+      "partial": "Parte de la información no pudo cargarse. Cierre y vuelva a abrir el detalle para reintentar."
+    },
+    "status": {
+      "pending": "Pendiente",
+      "refunded": "Reembolsado",
+      "not_applicable": "No aplica"
+    },
+    "queue": {
+      "on_hold": "En espera de 48 h",
+      "on_time": "A tiempo",
+      "due_soon": "Por vencer",
+      "overdue": "Vencido"
+    },
+    "field": {
+      "amount": "Monto",
+      "cancelledAt": "Cancelado",
+      "eligibleAt": "Reembolsable desde",
+      "dueAt": "Plazo límite",
+      "resolvedAt": "Resuelto",
+      "refundedAt": "Reembolsado el",
+      "proof": "Comprobante",
+      "selfResolved": "Resuelto por el propio cliente administrador"
+    },
+    "proof": {
+      "none": "Sin comprobante",
+      "available": "Comprobante guardado",
+      "expired": "Comprobante eliminado por vencimiento",
+      "expiresAt": "Se conserva hasta {date}"
+    },
+    "timeline": {
+      "title": "Línea de tiempo",
+      "empty": "Sin eventos registrados.",
+      "statusChanged": "Cambio de estado: {from} → {to}",
+      "markerEligible": "El reembolso pasó a ser elegible",
+      "markerDue": "Fecha límite del reembolso",
+      "event": {
+        "created": "Reembolso solicitado",
+        "closed_refunded": "Reembolso realizado",
+        "closed_not_applicable": "Cerrado como no aplica",
+        "closed_by_reopen": "Cerrado por reapertura de la operación",
+        "proof_attached": "Comprobante adjuntado",
+        "proof_expired": "Comprobante eliminado por vencimiento",
+        "dispute_opened": "Disputa abierta",
+        "dispute_closed": "Disputa cerrada",
+        "self_resolution_blocked": "Intento de autorresolución bloqueado",
+        "commission_proposed": "Cambio de comisión propuesto",
+        "commission_accepted": "Cambio de comisión aceptado",
+        "commission_rejected": "Cambio de comisión rechazado",
+        "commission_override_set": "Comisión ajustada",
+        "unknown": "Evento registrado"
+      },
+      "listLabel": "Eventos de la operación"
+    },
+    "kpi": {
+      "title": "Reembolsos (últimos 30 días)",
+      "refunded": "Reembolsados",
+      "pending": "Pendientes",
+      "onTime": "A tiempo",
+      "medianHours": "Mediana hasta reembolso",
+      "withProof": "Con comprobante",
+      "hours": "{value} h",
+      "percent": "{value} %",
+      "noData": "Sin datos",
+      "region": "Indicadores de reembolsos"
+    },
+    "dispute": {
+      "open": "Abrir disputa",
+      "close": "Cerrar disputa",
+      "openAria": "Abrir disputa del reembolso de {number}",
+      "closeAria": "Cerrar disputa del reembolso de {number}",
+      "opened": "Disputa abierta: el comprobante no se eliminará.",
+      "closed": "Disputa cerrada.",
+      "ownBlocked": "No puede gestionar la disputa de su propio reembolso.",
+      "failed": "No se pudo actualizar la disputa. Intente de nuevo.",
+      "badge": "Disputa abierta"
+    },
+    "purge": {
+      "heading": "Comprobantes vencidos",
+      "button": "Purgar comprobantes vencidos",
+      "checking": "Consultando...",
+      "none": "No hay comprobantes vencidos para purgar.",
+      "confirmTitle": "Confirmar purga",
+      "confirmBody": "Se eliminarán de forma definitiva {count} comprobantes cuya retención de un año ya venció. Las disputas abiertas se omiten. Esta acción no se puede deshacer.",
+      "capped": "Hay más comprobantes vencidos; esta corrida procesa un lote y podrá repetirla.",
+      "confirm": "Eliminar {count} comprobantes",
+      "cancel": "Cancelar",
+      "running": "Eliminando...",
+      "done": "Purga terminada: {purged} eliminados, {skipped} omitidos, {failed} con error.",
+      "countChanged": "La cantidad cambió desde la consulta. Revise el nuevo número y confirme de nuevo.",
+      "failed": "No se pudo completar la purga. Intente de nuevo.",
+      "forbidden": "Solo un administrador puede purgar comprobantes."
+    },
+    "expiring": {
+      "warning": "{count} comprobantes vencen en los próximos 30 días.",
+      "overdue": "{count} comprobantes ya vencidos esperan la purga."
+    },
+    "opStatus": {
+      "pending": "Pendiente",
+      "validated": "Validado",
+      "rejected": "Rechazado",
+      "processing": "En proceso",
+      "dispatched": "Despachado",
+      "shipped": "Enviado",
+      "delivered": "Entregado",
+      "completed": "Completado",
+      "cancelled": "Cancelado",
+      "payment_pending": "Pendiente de pago",
+      "payment_proof_uploaded": "Comprobante enviado",
+      "payment_validated": "Pago validado",
+      "payment_rejected": "Pago rechazado"
+    }
+  },
+  "myRefund": {
+    "title": "Estado de su reembolso",
+    "region": "Reembolso de esta operación",
+    "stage": {
+      "on_hold": "Recibimos su solicitud. El reembolso se podrá procesar a partir del {date}.",
+      "processing": "Estamos procesando su reembolso. Fecha límite: {date}.",
+      "refunded": "Su reembolso fue realizado el {date}.",
+      "not_applicable": "Revisamos su solicitud y no correspondía un reembolso. Si tiene dudas, contáctenos."
+    },
+    "amount": "Monto: {amount}",
+    "cancelledOn": "Cancelado el {date}",
+    "eligibleFrom": "Desde: {date}",
+    "dueBy": "Hasta: {date}"
+  },
+  "errorBoundary": {
+    "title": "Algo salió mal",
+    "staleVersion": "Hay una versión nueva del sitio. Recargue la página para continuar.",
+    "generic": "Ocurrió un error inesperado. Recargue la página para continuar.",
+    "reload": "Recargar página"
   }
 }

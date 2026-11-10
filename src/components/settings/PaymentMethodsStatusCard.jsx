@@ -17,6 +17,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { getPendingOrdersCount } from '@/lib/orderService';
 import { getPendingRemittancesCount } from '@/lib/remittanceService';
+import { includePlannedPaymentMethods } from '@/lib/paymentMethodPresentation';
 import {
   PAYMENT_FLOWS,
   PAYMENT_METHOD_ERROR,
@@ -60,6 +61,7 @@ const PendingCount = ({ count, t }) => {
 const PaymentMethodsStatusCard = () => {
   const { t } = useLanguage();
   const { methods, loading, error, refresh, toggle } = usePaymentMethods({ admin: true });
+  const displayMethods = includePlannedPaymentMethods(methods);
 
   const [pending, setPending] = useState(null); // { code, flow, enable, isLast }
   const [pendingCount, setPendingCount] = useState(undefined); // undefined = loading, null = unknown
@@ -255,7 +257,7 @@ const PaymentMethodsStatusCard = () => {
   } else {
     body = (
       <ul className="divide-y divide-gray-200">
-        {(methods || []).map((row) => (
+        {displayMethods.map((row) => (
           <li key={row.code} className="py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">

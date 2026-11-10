@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
 const STRINGS = {
   'remittances.notifyAdmin.button': 'Avisar al administrador por WhatsApp',
@@ -34,6 +34,16 @@ const remittance = {
 
 const getButton = () => screen.getByRole('button', { name: /Avisar al administrador por WhatsApp/ });
 
+// Mount and wait until the recipient lookup finished (the button leaves its disabled/loading state).
+// act() flushes the already-resolved mocks and the resulting render inside the test's control; polling a
+// ByRole query instead is costly (the first call is cold) and, under CPU load, each render hop queued behind
+// a poll, leaving the button disabled past the 5 s timeout. The poll below uses a cheap text query.
+const mountReady = async () => {
+  render(<NotifyAdminWhatsAppButton remittance={remittance} />);
+  await act(async () => {});
+  await waitFor(() => expect(screen.getByText('Avisar al administrador por WhatsApp').closest('button')).not.toBeDisabled());
+};
+
 describe('NotifyAdminWhatsAppButton', () => {
   let openSpy;
 
@@ -49,8 +59,7 @@ describe('NotifyAdminWhatsAppButton', () => {
 
   it('does not open WhatsApp on mount, only on click (user gesture)', async () => {
     recipientMock.mockResolvedValue('+15551234567');
-    render(<NotifyAdminWhatsAppButton remittance={remittance} />);
-    await waitFor(() => expect(getButton()).not.toBeDisabled());
+    await mountReady();
     expect(openSpy).not.toHaveBeenCalled();
 
     fireEvent.click(getButton());
@@ -62,8 +71,7 @@ describe('NotifyAdminWhatsAppButton', () => {
 
   it('shows an error toast and never throws when the recipient cannot be resolved', async () => {
     recipientMock.mockResolvedValue('');
-    render(<NotifyAdminWhatsAppButton remittance={remittance} />);
-    await waitFor(() => expect(getButton()).not.toBeDisabled());
+    await mountReady();
 
     fireEvent.click(getButton());
     expect(openSpy).not.toHaveBeenCalled();
@@ -72,8 +80,7 @@ describe('NotifyAdminWhatsAppButton', () => {
 
   it('treats a rejected recipient lookup as unavailable', async () => {
     recipientMock.mockRejectedValue(new Error('network'));
-    render(<NotifyAdminWhatsAppButton remittance={remittance} />);
-    await waitFor(() => expect(getButton()).not.toBeDisabled());
+    await mountReady();
 
     fireEvent.click(getButton());
     expect(openSpy).not.toHaveBeenCalled();

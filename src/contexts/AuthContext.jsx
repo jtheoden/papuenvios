@@ -3,21 +3,87 @@ import React, { createContext, useContext, useEffect, useState, useRef } from 'r
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/components/ui/use-toast';
 import AuthLoadingScreen from '@/components/AuthLoadingScreen';
-import { TIMEOUTS, RETRY_CONFIG } from '@/lib/constants';
+import { TIMEOUTS, RETRY_CONFIG, AUTH_STORAGE_KEY } from '@/lib/constants';
 import { getUserCategory } from '@/lib/userCategorizationService';
 import { flushQueuedActivityLogs, logActivity } from '@/lib/activityLogger';
+import { clearRefreshBlock, getRefreshBlockRemainingMs, isRefreshBlocked, subscribeRefreshBlock } from '@/lib/refreshGuard';
+import { dropApiCaches } from '@/lib/requestBudget';
+import { subscribeResume } from '@/lib/resumeTrigger';
+import { reportClientError } from '@/lib/errorHandler';
 
 const AuthContext = createContext();
 
+// Waits between session-recovery attempts (the refresh guard's cooldown, when longer, wins).
+const SESSION_RECOVERY_DELAYS = [5000, 15000, 30000, 60000];
+const SESSION_RECOVERY_JITTER = 0.2;
+// Token refreshes (hourly) and the SIGNED_IN that auth-js re-emits when the tab regains focus re-read the profile of an
+// already resolved user at most every PROFILE_RECHECK_MS: a disabled or demoted account is still noticed, even in a tab
+// that is never hidden, without a user_profiles request per event.
+const PROFILE_RECHECK_MS = 5 * 60_000;
+const PROFILE_RECHECK_EVENTS = new Set(['TOKEN_REFRESHED', 'SIGNED_IN', 'INITIAL_SESSION']);
+const isRetryableAuthError = (error) => error?.name === 'AuthRetryableFetchError';
+// auth-js refreshes a token this close to its expiry (EXPIRY_MARGIN_MS = AUTO_REFRESH_TICK_THRESHOLD (3)
+// x AUTO_REFRESH_TICK_DURATION_MS (30 s) in @supabase/auth-js/src/lib/constants.ts), so a session with
+// less left is not "back to normal".
+const SESSION_HEALTHY_MIN_LEFT_MS = 90_000;
+const hasLifeLeft = (session) => (session?.expires_at ?? 0) * 1000 - Date.now() > SESSION_HEALTHY_MIN_LEFT_MS;
+
+const readStoredSession = () => {
+  try {
+    return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY));
+  } catch (e) {
+    return null;
+  }
+};
+
+const clearStoredSession = () => {
+  try {
+    [AUTH_STORAGE_KEY, `${AUTH_STORAGE_KEY}-user`, `${AUTH_STORAGE_KEY}-code-verifier`]
+      .forEach((key) => localStorage.removeItem(key));
+  } catch (e) {
+    // storage unavailable: nothing persisted to clear
+  }
+};
+
+// While the refresh is blocked AND the stored token has expired, auth-js cannot load the session:
+// signOut() would stall for the whole retry loop and then fail WITHOUT removing it. Only then sign
+// out locally. Otherwise signOut({ scope: 'local' }) runs (it revokes only THIS session on the server).
+// LIMIT: the blocked-and-expired path clears this browser only. Its refresh token is NOT revoked
+// server-side, so that session stays valid on the server until it is signed out from somewhere else.
+// Returns { error, local }.
+const signOutSafely = async () => {
+  const blockedAndExpired = isRefreshBlocked() && !hasLifeLeft(readStoredSession());
+  if (!blockedAndExpired) {
+    // scope local: the default (global) would revoke the user's sessions on every device and dev server
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
+    if (!error) return { error: null, local: false };
+    if (!isRetryableAuthError(error)) return { error, local: false };
+  }
+  clearStoredSession();
+  clearRefreshBlock();
+  return { error: null, local: true };
+};
+
 // localStorage role cache helper functions
 const getRoleCacheKey = (userId) => `auth_role_${userId}`;
+// The cached role is a UI HINT only (shown as 'provisional'); the fresh profile
+// and server-side RLS are the authority. Entries expire after ROLE_CACHE_MAX_AGE.
 const getCachedRole = (userId) => {
   if (!userId) return null;
   try {
-    const cached = localStorage.getItem(getRoleCacheKey(userId));
-    return cached ? JSON.parse(cached) : null;
+    const cached = JSON.parse(localStorage.getItem(getRoleCacheKey(userId)));
+    const fresh = cached?.role && Date.now() - cached.ts <= RETRY_CONFIG.ROLE_CACHE_MAX_AGE;
+    return fresh ? cached : null;
   } catch (e) {
     return null;
+  }
+};
+const clearCachedRole = (userId) => {
+  if (!userId) return;
+  try {
+    localStorage.removeItem(getRoleCacheKey(userId));
+  } catch (e) {
+    // storage unavailable: nothing to clear
   }
 };
 const setCachedRole = (userId, role) => {
@@ -36,9 +102,30 @@ export const AuthProvider = ({ children }) => {
   const [isEnabled, setIsEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [hasLoggedSession, setHasLoggedSession] = useState(false);
+  // 'resolved' = role comes from a fresh profile (or there is nothing to resolve),
+  // 'provisional' = cached role shown as a hint, 'unresolved' = no role known yet
+  // (userRole stays null: never default to 'user' on a failed fetch).
+  const [roleStatus, setRoleStatus] = useState('resolved');
+  const [profileFailed, setProfileFailed] = useState(false);
+  const [roleRetryExhausted, setRoleRetryExhausted] = useState(false);
+  const [roleVerifyTimedOut, setRoleVerifyTimedOut] = useState(false);
+  // The refresh token could not be renewed for now (rate limit / network): the session is kept
+  // and renewed in the background. Different from `sessionExpired`: the session really ended.
+  const [sessionRecovering, setSessionRecovering] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   const mountedRef = useRef(true);
-  const sessionCheckIntervalRef = useRef(null);
+  const updateSeqRef = useRef(0); // only the latest updateUserState call may apply its result
+  const sessionRef = useRef(null);
+  const resolvedUidRef = useRef(null);
+  const profileReadAtRef = useRef(0);
+  const retryRef = useRef(null);
+  const explicitSignOutRef = useRef(false); // SIGNED_OUT that the person asked for is not an expiry
+
+  const markSessionHealthy = () => {
+    setSessionRecovering(false);
+    setSessionExpired(false);
+  };
 
   // Check and refresh session to prevent auth loss
   const checkAndRefreshSession = async () => {
@@ -52,45 +139,21 @@ export const AuthProvider = ({ children }) => {
 
       if (!session) {
         console.warn('[Auth] Session lost - no active session detected');
-        setUser(null);
-        setUserRole(null);
-        setUserCategory(null);
+        setSessionExpired(Boolean(sessionRef.current));
+        resetAuthState();
         return false;
       }
 
       // Verify user still has proper permissions
       if (user && session.user.id !== user.id) {
         console.warn('[Auth] User ID mismatch - possible session corruption');
-        setUser(null);
-        setUserRole(null);
-        setUserCategory(null);
+        resetAuthState();
         return false;
       }
 
-      // Check token expiration
-      const expiresAt = session.expires_at;
-      const now = Math.floor(Date.now() / 1000);
-      const timeUntilExpiry = expiresAt - now;
-
-      if (timeUntilExpiry < 60) {
-        console.warn('[Auth] Token expiring soon, attempting refresh...');
-        const { data, error: refreshError } = await supabase.auth.refreshSession();
-
-        if (refreshError) {
-          console.error('[Auth] Token refresh failed:', refreshError.message);
-          await supabase.auth.signOut();
-          setUser(null);
-          setUserRole(null);
-          setUserCategory(null);
-          return false;
-        }
-
-        if (data?.session) {
-          await updateUserState(data.session);
-          return true;
-        }
-      }
-
+      // No explicit refreshSession() here: getSession() above already refreshed the token if it was inside
+      // auth-js's expiry margin (single-flight, under its lock). A forced refresh ignores both and, with several
+      // triggers (tabs, resume events), multiplies /auth/v1/token calls against a per-IP rate limit.
       return true;
     } catch (err) {
       console.error('[Auth] Session check error:', err);
@@ -99,81 +162,117 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Profile fetch with retry logic for better reliability
-  const fetchProfile = async (uid, attempt = 1) => {
+  const fetchProfile = async (uid, timeoutMs, attempt = 1) => {
+    let timer;
+    const retryOrNull = async () => {
+      if (attempt < RETRY_CONFIG.PROFILE_FETCH_ATTEMPTS) {
+        await new Promise(resolve => setTimeout(resolve, RETRY_CONFIG.PROFILE_FETCH_DELAY));
+        return fetchProfile(uid, timeoutMs, attempt + 1);
+      }
+      return null;
+    };
+
     try {
       const { data, error } = await Promise.race([
         supabase.from('user_profiles')
           .select('role, is_enabled, avatar_url, full_name, email')
           .eq('id', uid)
           .single(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Profile fetch timeout')), TIMEOUTS.PROFILE_FETCH)
-        )
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Profile fetch timeout')), timeoutMs);
+        })
       ]);
 
       if (error) {
         console.warn(`[Auth] Profile fetch error (attempt ${attempt}/${RETRY_CONFIG.PROFILE_FETCH_ATTEMPTS}):`, error);
-
-        // Retry if attempts remaining
-        if (attempt < RETRY_CONFIG.PROFILE_FETCH_ATTEMPTS) {
-          await new Promise(resolve => setTimeout(resolve, RETRY_CONFIG.PROFILE_FETCH_DELAY));
-          return fetchProfile(uid, attempt + 1);
-        }
-
-        return null;
+        return await retryOrNull();
       }
 
       return data;
     } catch (err) {
       console.warn(`[Auth] Profile fetch failed (attempt ${attempt}/${RETRY_CONFIG.PROFILE_FETCH_ATTEMPTS}):`, err.message);
-
-      // Retry if attempts remaining
-      if (attempt < RETRY_CONFIG.PROFILE_FETCH_ATTEMPTS) {
-        await new Promise(resolve => setTimeout(resolve, RETRY_CONFIG.PROFILE_FETCH_DELAY));
-        return fetchProfile(uid, attempt + 1);
-      }
-
-      return null;
+      return await retryOrNull();
+    } finally {
+      // Otherwise the losing timeout promise rejects later, unhandled.
+      clearTimeout(timer);
     }
+  };
+
+  const resetAuthState = () => {
+    updateSeqRef.current += 1; // invalidate any in-flight updateUserState
+    clearCachedRole(sessionRef.current?.user?.id);
+    sessionRef.current = null;
+    resolvedUidRef.current = null;
+    setUser(null);
+    setUserRole(null);
+    setUserCategory(null);
+    setIsEnabled(true);
+    setRoleStatus('resolved');
+    setProfileFailed(false);
+    setRoleRetryExhausted(false);
   };
 
   const updateUserState = async (session) => {
     if (!session?.user) {
       console.warn('[Auth] updateUserState called with invalid session');
-      setUser(null);
-      setUserRole(null);
-      setUserCategory(null);
-      setIsEnabled(true);
+      resetAuthState();
       return;
     }
 
+    const seq = ++updateSeqRef.current;
     const uid = session.user.id;
+    const isNewUid = sessionRef.current?.user?.id !== uid;
+    sessionRef.current = session;
+    const alreadyResolved = resolvedUidRef.current === uid;
 
-    // Fetch profile from database
-    const profile = await fetchProfile(uid);
+    if (!alreadyResolved) {
+      // Show the signed-in person right away with the cached role as a hint
+      // (or no role at all) while the profile loads; never default to 'user'.
+      const cachedRoleData = getCachedRole(uid);
+      setUser(prev => (prev?.id === uid ? prev : session.user));
+      setUserRole(cachedRoleData?.role ?? null);
+      if (isNewUid) {
+        // Only a different person resets the failure flags; recovery retries of the
+        // same uid must not hide the banner while their fetch is in flight.
+        setRoleStatus(cachedRoleData ? 'provisional' : 'unresolved');
+        setProfileFailed(false);
+        setRoleRetryExhausted(false);
+      }
+    }
+
+    // Fetch profile from database. Generous budget until the role is resolved;
+    // short for background refreshes of an already resolved role.
+    const profile = await fetchProfile(
+      uid,
+      alreadyResolved ? TIMEOUTS.PROFILE_FETCH : TIMEOUTS.PROFILE_FETCH_INITIAL
+    );
+
+    // A newer call (or sign-out/unmount) superseded this one: drop its result.
+    if (!mountedRef.current || seq !== updateSeqRef.current) return;
 
     if (!profile) {
-      // Profile doesn't exist or fetch failed - use cached role if available
-      console.warn('[Auth] Profile not found, attempting to use cached role as fallback');
-      const cachedRoleData = getCachedRole(uid);
-      const fallbackRole = cachedRoleData?.role || 'user';
-
-      setUser(session.user);
-      setUserRole(fallbackRole);
-      setUserCategory(null);
-      setIsEnabled(true);
+      // Fetch failed: keep whatever is known (resolved role, provisional hint or
+      // unresolved) and let the background recovery loop retry.
+      console.warn('[Auth] Profile not available; keeping current role state and retrying in background');
+      setProfileFailed(true);
       return;
     }
 
     // Check if account is disabled
     if (profile.is_enabled === false) {
       console.warn('[Auth] Account is disabled');
+      clearCachedRole(uid);
+      sessionRef.current = null;
+      resolvedUidRef.current = null;
       setUser(null);
       setUserRole(null);
       setUserCategory(null);
       setIsEnabled(false);
+      setRoleStatus('resolved');
+      setProfileFailed(false);
+      setRoleRetryExhausted(false);
       try {
-        await supabase.auth.signOut();
+        await supabase.auth.signOut({ scope: 'local' });
         toast({
           title: 'Cuenta deshabilitada',
           description: 'Tu cuenta ha sido deshabilitada. Contacta al soporte.',
@@ -203,11 +302,16 @@ export const AuthProvider = ({ children }) => {
       profile
     };
 
+    resolvedUidRef.current = uid;
+    profileReadAtRef.current = Date.now();
     setUser(mergedUser);
     setUserRole(profile.role || 'user');
     setIsEnabled(true);
+    setRoleStatus('resolved');
+    setProfileFailed(false);
+    setRoleRetryExhausted(false);
 
-    // Cache the role for future use in case of timeout
+    // Cache the role for future use (UI hint only)
     setCachedRole(uid, profile.role || 'user');
 
     // Non-blocking: Sync metadata from OAuth provider
@@ -245,9 +349,14 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     mountedRef.current = true;
+    // Effect-local (not a ref): each StrictMode run owns its flag, so a
+    // discarded run finishing cannot re-open the guard of the live one.
+    let initializing = false;
 
     // Global timeout to prevent infinite loading
     const globalTimer = setTimeout(() => {
+      // A hung getSession() must not keep dropping auth events forever.
+      initializing = false;
       if (mountedRef.current && loading) {
         console.warn('[Auth] Init timeout - clearing loading state');
         setLoading(false);
@@ -255,6 +364,7 @@ export const AuthProvider = ({ children }) => {
     }, TIMEOUTS.INIT_AUTH);
 
     const initialize = async () => {
+      initializing = true;
       setLoading(true);
 
       try {
@@ -262,17 +372,22 @@ export const AuthProvider = ({ children }) => {
 
         if (error) {
           console.error('[Auth] getSession error:', error);
+          // Refresh blocked/unreachable: the stored session is intact, so say "reconnecting"
+          // and let the recovery loop renew it instead of showing a signed-out screen.
+          if (isRetryableAuthError(error)) setSessionRecovering(true);
           setLoading(false);
           return;
         }
 
         if (session) {
+          markSessionHealthy();
           await updateUserState(session);
         }
       } catch (err) {
         console.error('[Auth] Init error:', err);
       } finally {
         clearTimeout(globalTimer);
+        initializing = false;
         if (mountedRef.current) {
           setLoading(false);
         }
@@ -285,36 +400,79 @@ export const AuthProvider = ({ children }) => {
       if (!mountedRef.current) return;
 
       if (event === 'SIGNED_OUT') {
-        setUser(null);
-        setUserRole(null);
-        setUserCategory(null);
-        setIsEnabled(true);
+        const expired = Boolean(sessionRef.current) && !explicitSignOutRef.current;
+        explicitSignOutRef.current = false;
+        if (expired) reportClientError({ name: 'AuthSessionEnded', message: 'Signed out without a sign-out request' }, 'auth.sessionEnded');
+        clearRefreshBlock(); // nothing left to refresh: do not carry the cooldown into the next session
+        dropApiCaches(); // the next person on this browser starts with no cached answer of this one
+        resetAuthState();
+        setSessionRecovering(false);
+        setSessionExpired((previous) => expired || previous); // the storage handler may have flagged it first
         return;
       }
 
-      if (event === 'TOKEN_REFRESHED') {
-      }
+      // While `initialize()` is running it independently resolves the
+      // current session via its own getSession() call and calls
+      // updateUserState itself. supabase-js's internal
+      // _recoverAndRefresh() also notifies this listener for that same
+      // stored session — observed in real browsers as 'SIGNED_IN' fired
+      // BEFORE 'INITIAL_SESSION' (not always 'INITIAL_SESSION' alone, and
+      // not necessarily in event-name order). Skipping by the `initializing` flag
+      // (a time window) instead of by specific event name covers both,
+      // and any other event supabase-js may emit during that window,
+      // without needing to duplicate updateUserState here.
+      if (initializing) return;
 
+      // Do NOT await updateUserState here: supabase-js's internal
+      // _notifyAllSubscribers awaits this callback's returned promise as
+      // part of _recoverAndRefresh(), which getSession() itself awaits via
+      // initializePromise. Since updateUserState -> fetchProfile needs a
+      // valid session (which requires getSession() to resolve), awaiting it
+      // here creates a circular wait: getSession() blocks on this callback,
+      // which blocks on getSession(). Firing it without awaiting lets this
+      // callback's promise resolve immediately, breaking the deadlock.
       if (session) {
-        await updateUserState(session);
+        // A session about to expire proves nothing yet; one with life left means we are back.
+        if (hasLifeLeft(session)) markSessionHealthy();
+        // Same person, profile read less than PROFILE_RECHECK_MS ago: keep the new token, skip the request (egress).
+        const sameResolvedUser = Boolean(session.user?.id) && session.user.id === resolvedUidRef.current;
+        const recentlyRead = Date.now() - profileReadAtRef.current < PROFILE_RECHECK_MS;
+        if (sameResolvedUser && PROFILE_RECHECK_EVENTS.has(event) && recentlyRead) {
+          sessionRef.current = session;
+          return;
+        }
+        updateUserState(session);
       }
     });
 
-    // Set up periodic session check (every 5 minutes)
-    sessionCheckIntervalRef.current = setInterval(() => {
-      if (mountedRef.current && user) {
-        checkAndRefreshSession();
-      }
-    }, 5 * 60 * 1000); // 5 minutes
+    // The refresh guard says "rate limited": keep the session, show "reconnecting".
+    const unsubscribeRefreshBlock = subscribeRefreshBlock((blocked) => {
+      if (mountedRef.current) setSessionRecovering(blocked);
+    });
+    // A reload during the cooldown (or a 429 that landed before this effect subscribed): auth-js is
+    // still retrying locally for a long while, so say "reconnecting" instead of "sign in".
+    // Only if there is a session to recover: a visitor must not inherit another person's cooldown.
+    if (isRefreshBlocked() && localStorage.getItem(AUTH_STORAGE_KEY)) setSessionRecovering(true);
+
+    // Another tab emptied the stored session (sign-out, or the local fallback that emits no event).
+    const onStorage = (event) => {
+      if (event.key !== AUTH_STORAGE_KEY && event.key !== null) return;
+      if (event.newValue !== null) return;
+      if (!mountedRef.current) return;
+      const expired = Boolean(sessionRef.current);
+      resetAuthState();
+      setSessionRecovering(false);
+      setSessionExpired((previous) => expired || previous);
+    };
+    window.addEventListener('storage', onStorage);
 
     initialize();
 
     return () => {
       mountedRef.current = false;
       clearTimeout(globalTimer);
-      if (sessionCheckIntervalRef.current) {
-        clearInterval(sessionCheckIntervalRef.current);
-      }
+      unsubscribeRefreshBlock();
+      window.removeEventListener('storage', onStorage);
       if (listener?.subscription) {
         listener.subscription.unsubscribe();
       }
@@ -331,6 +489,8 @@ export const AuthProvider = ({ children }) => {
       if (error) throw error;
 
       if (data?.session) {
+        markSessionHealthy();
+        clearRefreshBlock(); // a fresh sign-in starts clean
         await updateUserState(data.session);
         return true;
       }
@@ -349,7 +509,9 @@ export const AuthProvider = ({ children }) => {
 
   const signInWithGoogle = async () => {
     try {
-      await supabase.auth.signOut();
+      explicitSignOutRef.current = true;
+      await signOutSafely();
+      explicitSignOutRef.current = false; // SIGNED_OUT (if any) was delivered before signOut resolved
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: `${window.location.origin}/auth/callback`, queryParams: { access_type: 'offline', prompt: 'consent' } }
@@ -364,17 +526,159 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
+      explicitSignOutRef.current = true;
+      const { error, local } = await signOutSafely();
       if (error) throw error;
-      setUser(null);
-      setUserRole(null);
-      setUserCategory(null);
-      setIsEnabled(true);
+      resetAuthState();
+      if (local) {
+        toast({
+          title: 'Sesión cerrada en este dispositivo',
+          description: 'No pudimos contactar al servidor. Su sesión se cerró aquí; si usa un equipo compartido, cierre sesión también desde otro dispositivo.'
+        });
+      }
+      markSessionHealthy();
+      explicitSignOutRef.current = false; // SIGNED_OUT was already delivered; do not mask a later expiry
     } catch (err) {
+      explicitSignOutRef.current = false;
       console.error('[Auth] logout error', err);
       toast({ title: 'Error al cerrar sesión', description: err.message || String(err), variant: 'destructive' });
     }
   };
+
+  // Total budget for "verifying permissions": after it, protected routes stop spinning.
+  const roleResolved = roleStatus === 'resolved';
+  useEffect(() => {
+    if (roleResolved || !user?.id) {
+      setRoleVerifyTimedOut(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => setRoleVerifyTimedOut(true), TIMEOUTS.ROLE_VERIFY_MAX);
+    return () => clearTimeout(timer);
+  }, [user?.id, roleResolved]);
+
+  // One boolean so the loop (and its attempt budget) is not restarted when the second flag flips.
+  const recoveryActive = profileFailed || roleVerifyTimedOut;
+
+  // Background recovery once a profile fetch has failed while the role is
+  // unresolved/provisional: backoff, then a
+  // steady interval (capped), plus an immediate try on `online` and when the tab
+  // becomes visible. Stops as soon as the role resolves, on sign-out and unmount.
+  useEffect(() => {
+    // While the session itself is being renewed every profile fetch would go out without a
+    // valid token; the role loop restarts (fresh budget) once the session is back.
+    if (roleStatus === 'resolved' || !recoveryActive || !user?.id || sessionRecovering) return undefined;
+
+    let cancelled = false;
+    let running = false;
+    let attempts = 0;
+    let timer = null;
+
+    const scheduleNext = () => {
+      clearTimeout(timer);
+      if (cancelled) return;
+      if (attempts >= RETRY_CONFIG.PROFILE_RECOVERY_MAX_ATTEMPTS) {
+        reportClientError({ name: 'AuthRecoveryExhausted', message: 'Role resolution gave up after the retry budget' }, 'auth.roleRecoveryExhausted');
+        setRoleRetryExhausted(true);
+        return;
+      }
+      const delays = RETRY_CONFIG.PROFILE_RECOVERY_DELAYS;
+      const delay = delays[attempts] ?? RETRY_CONFIG.PROFILE_RECOVERY_INTERVAL;
+      attempts += 1;
+      timer = setTimeout(() => attempt(false), delay);
+    };
+
+    const attempt = async (resetBudget) => {
+      clearTimeout(timer);
+      if (resetBudget) {
+        attempts = 0;
+        setRoleRetryExhausted(false);
+      }
+      if (cancelled || running || !sessionRef.current) return;
+      running = true;
+      try {
+        await updateUserState(sessionRef.current);
+      } finally {
+        running = false;
+      }
+      // Resolved meanwhile (e.g. success on the last attempt): do not schedule or flag exhaustion.
+      if (cancelled || resolvedUidRef.current === sessionRef.current?.user?.id) return;
+      scheduleNext();
+    };
+
+    // `online` / tab visible again: one debounced trigger shared with the session recovery loop.
+    const unsubscribeResume = subscribeResume(() => attempt(true));
+
+    retryRef.current = () => attempt(true);
+    // Before the first failure only the manual/online/visibility triggers are armed: a timer-driven
+    // retry would supersede the first fetch still in flight and delay the failure banner.
+    if (profileFailed) scheduleNext();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      retryRef.current = null;
+      unsubscribeResume();
+    };
+  }, [user?.id, roleStatus, recoveryActive, profileFailed, sessionRecovering]);
+
+  // Renews the session in the background while the refresh is blocked/unreachable: one attempt per
+  // step (never inside the guard's cooldown), backoff with jitter, plus an immediate try when the
+  // connection or the tab comes back. Stops by itself as soon as a session is returned.
+  useEffect(() => {
+    if (!sessionRecovering) return undefined;
+
+    let cancelled = false;
+    let running = false;
+    let attempts = 0;
+    let timer = null;
+
+    const schedule = () => {
+      clearTimeout(timer);
+      if (cancelled) return;
+      const step = SESSION_RECOVERY_DELAYS[Math.min(attempts, SESSION_RECOVERY_DELAYS.length - 1)];
+      attempts += 1;
+      const wait = Math.max(step, getRefreshBlockRemainingMs());
+      timer = setTimeout(attempt, wait * (1 + Math.random() * SESSION_RECOVERY_JITTER));
+    };
+
+    const attempt = async () => {
+      clearTimeout(timer);
+      if (cancelled || running) return;
+      if (isRefreshBlocked()) {
+        schedule();
+        return;
+      }
+      running = true;
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (cancelled) return;
+        if (data?.session) {
+          // auth-js already notified listeners (TOKEN_REFRESHED); hydrate only if that did not.
+          if (sessionRef.current?.user?.id !== data.session.user?.id) updateUserState(data.session);
+          markSessionHealthy();
+          return;
+        }
+        if (!error) {
+          setSessionRecovering(false); // nothing left to recover (signed out elsewhere)
+          return;
+        }
+      } catch (err) {
+        console.warn('[Auth] Session recovery attempt failed:', err?.message);
+      } finally {
+        running = false;
+      }
+      schedule();
+    };
+
+    const unsubscribeResume = subscribeResume(() => { if (!isRefreshBlocked()) attempt(); });
+    schedule();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      unsubscribeResume();
+    };
+  }, [sessionRecovering]);
 
   useEffect(() => {
     let isMounted = true;
@@ -411,7 +715,7 @@ export const AuthProvider = ({ children }) => {
   }, [user?.id, userRole]);
 
   useEffect(() => {
-    if (user && !hasLoggedSession) {
+    if (user && roleStatus === 'resolved' && !hasLoggedSession) {
       logActivity({
         action: 'login',
         entityType: 'user',
@@ -426,13 +730,13 @@ export const AuthProvider = ({ children }) => {
     if (!user && hasLoggedSession) {
       setHasLoggedSession(false);
     }
-  }, [hasLoggedSession, user]);
+  }, [hasLoggedSession, user, roleStatus]);
 
   useEffect(() => {
-    if (user?.id) {
+    if (user?.id && roleStatus === 'resolved' && !sessionRecovering) {
       flushQueuedActivityLogs();
     }
-  }, [user?.id]);
+  }, [user?.id, roleStatus, sessionRecovering]);
 
   const checkRole = (requiredRole) => {
     if (!requiredRole) return true;
@@ -453,8 +757,15 @@ export const AuthProvider = ({ children }) => {
     loading,
     isAuthenticated: !!user && isEnabled,
     userRole,
+    roleStatus,
+    roleRetryExhausted,
+    roleFetchFailed: profileFailed,
+    roleVerifyTimedOut,
+    retryRoleResolution: () => retryRef.current?.(),
     userCategory,
     isEnabled,
+    // 'reconnecting' = session kept, being renewed; 'expired' = it ended without a sign-out request
+    sessionStatus: sessionRecovering ? 'reconnecting' : (sessionExpired && !user ? 'expired' : 'ok'),
     isSuperAdmin: userRole === 'super_admin',
     isAdmin: userRole === 'admin' || userRole === 'super_admin',
     checkRole,

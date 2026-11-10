@@ -1,0 +1,30 @@
+-- ============================================================================
+-- Drop the legacy owner INSERT policy on inventory_movements
+-- ============================================================================
+-- Apply ONLY AFTER the new front end is deployed and every open admin/vendor/customer tab
+-- was reloaded (see .claude/docs/runbook_stock_reservation_deploy.md). It is a separate,
+-- tiny migration on purpose: the previous front end still inserts 'reserved' / 'released' /
+-- 'sold' movements from the browser through this policy, so dropping it together with the
+-- stock migration would break those tabs during the deployment window (version skew).
+-- The new front end never inserts movements: the stock RPCs (SECURITY DEFINER) and the
+-- inventory ledger trigger write them.
+--
+-- Idempotent. Requires nothing from the other stock migrations.
+--
+-- ROLLBACK: recreate the policy exactly as it was on the remote project (definition captured
+-- with a read-only SELECT on pg_policies on 2026-10-14):
+--
+-- CREATE POLICY inventory_movements_insert_own_order ON public.inventory_movements
+--   FOR INSERT TO authenticated
+--   WITH CHECK (
+--     movement_type = ANY (ARRAY['reserved'::text, 'released'::text, 'sold'::text])
+--     AND reference_type = 'order'::text
+--     AND EXISTS (
+--       SELECT 1 FROM public.orders o
+--        WHERE o.id = inventory_movements.reference_id
+--          AND (o.user_id = auth.uid() OR public.is_admin_user())
+--     )
+--   );
+-- ============================================================================
+
+DROP POLICY IF EXISTS inventory_movements_insert_own_order ON public.inventory_movements;

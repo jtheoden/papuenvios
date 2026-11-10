@@ -5,24 +5,28 @@ import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLegalAcceptance } from '@/contexts/LegalAcceptanceContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle, getAlertStyle } from '@/lib/styleUtils';
 import { processImage } from '@/lib/imageUtils';
 import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingService';
-import { getSelectableProvinces, getShippingState, isShippingBlocked } from '@/lib/shippingZoneRules';
+import { getSelectableProvinces, getShippingState, isShippingBlocked, resolveShippingZone } from '@/lib/shippingZoneRules';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
-import { convertCurrency } from '@/lib/currencyService';
+import { convertCurrency, getLiveConversionRate, invalidateRateCaches } from '@/lib/currencyService';
 import { generateWhatsAppURL, buildAdminNewPaymentWhatsAppUrl, openWhatsAppChat } from '@/lib/whatsappService';
 import { getActiveWhatsappRecipient, getGuidedWhatsappPhone, getFreshNotificationSettings } from '@/lib/notificationSettingsService';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
+import { isStockReservationRefusal } from '@/lib/stockErrors';
+import { resolveCartItemType } from '@/lib/cartItemType';
 import { getPaymentConfirmationBlocker } from '@/lib/orderPayerPhone';
 import { isValidPayerPhone, normalizePayerPhone, PAYER_PHONE_MAX_LENGTH } from '@/lib/payerPhone';
 import { pickAvailableZelleAccount, registerZelleTransaction, ZELLE_TRANSACTION_TYPES } from '@/lib/zelleService';
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
 import { calculateOrderTotal } from '@/lib/priceCalculationService';
-import { getCartItemUnitPrice } from '@/lib/cartPricing';
+import { getCartItemUnitPrice, buildCartLines, buildCartLinesLive, withStoredComboPrice } from '@/lib/cartPricing';
+import { roundMoney } from '@/lib/moneyPure';
 import { validateAndGetOffer, recordOfferUsage } from '@/lib/orderDiscountService';
 import { buildDiscountBreakdown } from '@/lib/discountDisplayService';
 import { logActivity } from '@/lib/activityLogger';
@@ -38,12 +42,26 @@ import { useUserDiscounts } from '@/hooks/useUserDiscounts';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { isPaymentMethodEnabled, isPaymentMethodDisabledError, PAYMENT_FLOWS } from '@/lib/paymentMethodsService';
 import { useModal } from '@/contexts/ModalContext';
+import RegulatoryNotice from '@/components/RegulatoryNotice';
+import BeforePayingNotice from '@/components/BeforePayingNotice';
+import LegalConsentLine from '@/components/LegalConsentLine';
+
+const STOCK_REFUSAL_MESSAGE_KEYS = {
+  invalid_item: 'cart.stock.invalidItem',
+  too_many_open_reservations: 'cart.stock.tooManyOpen',
+  empty_order: 'cart.stock.emptyOrder'
+};
+
+// The cart subtotal is priced in the base currency (USD); conversion is display-only.
+const BASE_CURRENCY_CODE = 'USD';
+const BASE_CURRENCY_SYMBOL = '$';
 
 const CartPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
-  const { cart, updateCartQuantity, removeFromCart, clearCart, financialSettings, zelleAccounts, visualSettings, businessInfo, notificationSettings } = useBusiness();
+  const { cart, updateCartQuantity, removeFromCart, clearCart, combos, zelleAccounts, visualSettings, businessInfo, notificationSettings, refreshStock } = useBusiness();
   const { isAuthenticated, user } = useAuth();
-  const { selectedCurrency, setSelectedCurrency, currencies, currencyCode, currencySymbol, convertAmount } = useCurrency();
+  const { ensureAccepted } = useLegalAcceptance();
+  const { selectedCurrency, setSelectedCurrency, currencies, currencyCode, currencySymbol, convertAmount, loading: currenciesLoading } = useCurrency();
   const { showModal } = useModal();
   const { methods: paymentMethods, refresh: refreshPaymentMethods, isMethodEnabled } = usePaymentMethods();
   // Fails open: stays false until the status is known (the DB trigger is the real guard)
@@ -83,6 +101,9 @@ const CartPage = ({ onNavigate }) => {
   const [convertedDiscountedSubtotal, setConvertedDiscountedSubtotal] = useState(null);
   const [convertedShipping, setConvertedShipping] = useState(null);
   const [convertedTotal, setConvertedTotal] = useState(null);
+  // Outcome of the last conversion attempt, keyed by the currency it was made for. Amounts are
+  // only shown/charged in a non-base currency once a valid conversion succeeded for it.
+  const [conversion, setConversion] = useState({ code: BASE_CURRENCY_CODE, failed: false });
 
   // Confirmation modal state
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
@@ -106,16 +127,20 @@ const CartPage = ({ onNavigate }) => {
 
   // Unit price of a cart item (product or combo). Logic lives in src/lib/cartPricing.js
   const getItemPrice = useCallback(
-    (item) => getCartItemUnitPrice(item, { selectedCurrency, baseCurrencyId, convertAmount, financialSettings }),
-    [financialSettings, selectedCurrency, baseCurrencyId, convertAmount]
+    (item) => getCartItemUnitPrice(withStoredComboPrice(item, combos), { baseCurrencyId, convertAmount }),
+    [combos, baseCurrencyId, convertAmount]
   );
 
-  // Calculate subtotal - memoized to avoid recalculation on every render
-  const subtotal = useMemo(() => {
-    return cart.reduce((acc, item) => {
-      return acc + getItemPrice(item) * item.quantity;
-    }, 0);
-  }, [cart, getItemPrice]);
+  // Cent-exact lines and subtotal (sum of the already-rounded line totals). The same
+  // lines feed the cart UI, the confirmation modal and the order payload.
+  const cartLines = useMemo(() => buildCartLines(cart, getItemPrice), [cart, getItemPrice]);
+  const subtotal = cartLines.subtotal;
+
+  // Lines are base-currency amounts: until the currencies load (or if they never do) nothing can be
+  // priced, which is not the same as an invalid line. Checkout stays blocked in both cases.
+  const currencyUnavailable = !currenciesLoading && !baseCurrencyId;
+  const pricingPending = Boolean(currenciesLoading) || !baseCurrencyId;
+  const showInvalidItems = cartLines.hasInvalidLines && !pricingPending;
 
   // Calculate discount amount and final total (category + offers)
   const orderTotals = useMemo(() => calculateOrderTotal({
@@ -128,8 +153,8 @@ const CartPage = ({ onNavigate }) => {
   const categoryDiscountAmount = orderTotals?.categoryDiscountAmount || 0;
   const offerDiscountAmount = orderTotals?.offerDiscountAmount || 0;
   const totalDiscountAmount = orderTotals?.totalDiscount || 0;
-  const discountedSubtotal = orderTotals?.afterAllDiscounts ?? (subtotal - totalDiscountAmount);
-  const totalAmount = orderTotals?.total ?? (discountedSubtotal + shippingCost);
+  const discountedSubtotal = orderTotals?.afterAllDiscounts ?? roundMoney(subtotal - totalDiscountAmount);
+  const totalAmount = orderTotals?.total ?? roundMoney(discountedSubtotal + shippingCost);
   const totalDisplay = totalAmount.toFixed(2);
   const effectiveDiscountPercent = subtotal > 0 ? ((totalDiscountAmount / subtotal) * 100).toFixed(2) : '0.00';
   const discountBreakdown = buildDiscountBreakdown({ amount: subtotal, categoryPercent: userCategoryDiscount, offer: appliedOffer });
@@ -211,46 +236,45 @@ const CartPage = ({ onNavigate }) => {
   };
 
   const convertAmounts = async () => {
-    // If selected currency is USD (base currency), no conversion needed
-    if (currencyCode === 'USD') {
+    const targetCode = currencyCode;
+
+    const showBaseAmounts = (failed) => {
       setConvertedSubtotal(subtotal);
       setConvertedDiscountedSubtotal(discountedSubtotal);
       setConvertedShipping(shippingCost);
       setConvertedTotal(totalAmount);
+      setConversion({ code: targetCode, failed });
+    };
+
+    // If selected currency is USD (base currency), no conversion needed
+    if (targetCode === BASE_CURRENCY_CODE) {
+      showBaseAmounts(false);
       return;
     }
 
     try {
-      // convertCurrency returns a numeric value (not an object), so keep a strict numeric fallback
-      const convertedSub = await convertCurrency(subtotal, 'USD', currencyCode);
-      const convertedDiscounted = await convertCurrency(discountedSubtotal, 'USD', currencyCode);
-      const convertedShip = await convertCurrency(shippingCost, 'USD', currencyCode);
-      const convertedGrandTotal = await convertCurrency(totalAmount, 'USD', currencyCode);
+      const [convertedSub, convertedDiscounted, convertedShip, convertedGrandTotal] = await Promise.all([
+        convertCurrency(subtotal, BASE_CURRENCY_CODE, targetCode),
+        convertCurrency(discountedSubtotal, BASE_CURRENCY_CODE, targetCode),
+        convertCurrency(shippingCost, BASE_CURRENCY_CODE, targetCode),
+        convertCurrency(totalAmount, BASE_CURRENCY_CODE, targetCode)
+      ]);
 
-      const safeConvertedSub = typeof convertedSub === 'number' && !Number.isNaN(convertedSub)
-        ? convertedSub
-        : subtotal;
-      const safeConvertedDiscounted = typeof convertedDiscounted === 'number' && !Number.isNaN(convertedDiscounted)
-        ? convertedDiscounted
-        : discountedSubtotal;
-      const safeConvertedShip = typeof convertedShip === 'number' && !Number.isNaN(convertedShip)
-        ? convertedShip
-        : shippingCost;
-      const safeConvertedGrandTotal = typeof convertedGrandTotal === 'number' && !Number.isNaN(convertedGrandTotal)
-        ? convertedGrandTotal
-        : totalAmount;
+      // Fail closed: an unconverted USD amount must never be shown under another currency code.
+      const results = [convertedSub, convertedDiscounted, convertedShip, convertedGrandTotal];
+      if (!results.every((value) => typeof value === 'number' && Number.isFinite(value))) {
+        showBaseAmounts(true);
+        return;
+      }
 
-      setConvertedSubtotal(safeConvertedSub);
-      setConvertedDiscountedSubtotal(safeConvertedDiscounted);
-      setConvertedShipping(safeConvertedShip);
-      setConvertedTotal(safeConvertedGrandTotal);
+      setConvertedSubtotal(convertedSub);
+      setConvertedDiscountedSubtotal(convertedDiscounted);
+      setConvertedShipping(convertedShip);
+      setConvertedTotal(convertedGrandTotal);
+      setConversion({ code: targetCode, failed: false });
     } catch (error) {
       console.error('Error converting currency:', error);
-      // Fallback to original values
-      setConvertedSubtotal(subtotal);
-      setConvertedDiscountedSubtotal(discountedSubtotal);
-      setConvertedShipping(shippingCost);
-      setConvertedTotal(totalAmount);
+      showBaseAmounts(true);
     }
   };
 
@@ -296,18 +320,28 @@ const CartPage = ({ onNavigate }) => {
 
   const activeZelleAccount = zelleAccounts.find(acc => acc.forProducts && acc.active);
 
+  // True while the selected non-base currency has no verified conversion (pending or failed):
+  // every amount is then shown in the base currency (USD) with the USD label.
+  const showingBaseAmounts = currencyCode !== BASE_CURRENCY_CODE
+    && !(conversion.code === currencyCode && !conversion.failed);
+  const rateUnavailable = currencyCode !== BASE_CURRENCY_CODE
+    && conversion.code === currencyCode && conversion.failed;
+  const displayCurrencyCode = showingBaseAmounts ? BASE_CURRENCY_CODE : currencyCode;
+  const displayCurrencySymbol = showingBaseAmounts ? BASE_CURRENCY_SYMBOL : currencySymbol;
+
   const exchangeRateForDisplay = useMemo(() => {
+    if (showingBaseAmounts) return 1;
     if (subtotal > 0 && convertedSubtotal !== null) {
       return convertedSubtotal / subtotal;
     }
     return 1;
-  }, [convertedSubtotal, subtotal]);
+  }, [convertedSubtotal, subtotal, showingBaseAmounts]);
 
   const displayValues = {
-    subtotal: convertedSubtotal !== null ? convertedSubtotal : subtotal,
-    discountedSubtotal: convertedDiscountedSubtotal !== null ? convertedDiscountedSubtotal : discountedSubtotal,
-    shipping: convertedShipping !== null ? convertedShipping : shippingCost,
-    total: convertedTotal !== null ? convertedTotal : totalAmount,
+    subtotal: !showingBaseAmounts && convertedSubtotal !== null ? convertedSubtotal : subtotal,
+    discountedSubtotal: !showingBaseAmounts && convertedDiscountedSubtotal !== null ? convertedDiscountedSubtotal : discountedSubtotal,
+    shipping: !showingBaseAmounts && convertedShipping !== null ? convertedShipping : shippingCost,
+    total: !showingBaseAmounts && convertedTotal !== null ? convertedTotal : totalAmount,
     categoryDiscount: categoryDiscountAmount * exchangeRateForDisplay,
     offerDiscount: offerDiscountAmount * exchangeRateForDisplay
   };
@@ -326,7 +360,30 @@ const CartPage = ({ onNavigate }) => {
     }
   };
 
+  // Fail closed: a line with a non-numeric price or quantity must never reach an order
+  const notifyInvalidCart = () => {
+    if (currencyUnavailable) {
+      toast({
+        title: t('common.error'),
+        description: t('cart.currencyUnavailable'),
+        variant: 'destructive'
+      });
+      return true;
+    }
+    if (pricingPending) return true;
+    if (!cartLines.hasInvalidLines) return false;
+    toast({
+      title: t('common.error'),
+      description: t('cart.invalidItems'),
+      variant: 'destructive'
+    });
+    return true;
+  };
+
   const handleCheckout = async () => {
+    if (notifyInvalidCart()) return;
+    if (showingBaseAmounts) return;
+
     if (!isAuthenticated) {
       // Guardar estado para restaurar después del login
       localStorage.setItem('pendingCheckout', JSON.stringify({
@@ -372,7 +429,7 @@ const CartPage = ({ onNavigate }) => {
         discountedSubtotal,
         shippingCost,
         total: totalAmount,
-        currency: currencyCode,
+        currency: BASE_CURRENCY_CODE,
         userCategory,
         userCategoryDiscount,
         categoryDiscountAmount,
@@ -434,10 +491,13 @@ const CartPage = ({ onNavigate }) => {
         return language === 'es'
           ? 'Este cupón ha expirado'
           : 'This coupon has expired';
-      case 'MIN_AMOUNT':
+      case 'NOT_STARTED':
         return language === 'es'
-          ? `Compra mínima requerida: ${currencySymbol}${requiredAmount?.toFixed(2)}. Tu subtotal actual: ${currencySymbol}${currentAmount?.toFixed(2)}`
-          : `Minimum purchase required: ${currencySymbol}${requiredAmount?.toFixed(2)}. Your current subtotal: ${currencySymbol}${currentAmount?.toFixed(2)}`;
+          ? 'Este cupón aún no está vigente'
+          : 'This coupon is not active yet';
+      case 'MIN_AMOUNT':
+        // Kept as data and formatted at render: the amounts are USD and the text follows the language.
+        return { code: 'MIN_AMOUNT', requiredAmount, currentAmount };
       case 'GLOBAL_LIMIT':
         return language === 'es'
           ? 'Este cupón ya alcanzó su límite de usos'
@@ -454,6 +514,14 @@ const CartPage = ({ onNavigate }) => {
         return validation.reason || t('cart.coupon.invalid');
     }
   };
+
+  const formatBaseAmount = (amount) => `${BASE_CURRENCY_SYMBOL}${Number(amount).toFixed(2)} ${BASE_CURRENCY_CODE}`;
+
+  const couponErrorText = couponError && typeof couponError === 'object'
+    ? (language === 'es'
+      ? `Compra mínima requerida: ${formatBaseAmount(couponError.requiredAmount)}. Tu subtotal actual: ${formatBaseAmount(couponError.currentAmount)}`
+      : `Minimum purchase required: ${formatBaseAmount(couponError.requiredAmount)}. Your current subtotal: ${formatBaseAmount(couponError.currentAmount)}`)
+    : couponError;
 
   // Apply coupon code
   const handleApplyCoupon = async () => {
@@ -655,9 +723,11 @@ const CartPage = ({ onNavigate }) => {
 
   // Pre-payment confirmation modal
   const handlePrePaymentConfirmation = async () => {
+    if (notifyInvalidCart()) return;
+    if (showingBaseAmounts) return;
     if (notifyPaymentBlocker()) return;
 
-    const summaryText = `${t('cart.payment.recipientLabel')}: ${recipientDetails.fullName}\nTotal: ${currencySymbol}${convertedTotal?.toFixed(2) || totalAmount.toFixed(2)} ${currencyCode}\n${t('cart.payment.productsLabel')}: ${t('cart.payment.itemCount', { count: cart.length })}`;
+    const summaryText = `${t('cart.payment.recipientLabel')}: ${recipientDetails.fullName}\nTotal: ${BASE_CURRENCY_SYMBOL}${totalAmount.toFixed(2)} ${BASE_CURRENCY_CODE}\n${t('cart.payment.productsLabel')}: ${t('cart.payment.itemCount', { count: cart.length })}`;
 
     const confirmed = await showModal({
       type: 'confirm',
@@ -673,6 +743,8 @@ const CartPage = ({ onNavigate }) => {
   };
 
   const handleConfirmPayment = async () => {
+    if (notifyInvalidCart()) return;
+
     // Validate proof, payer and payer phone BEFORE createOrder and any proof upload
     if (notifyPaymentBlocker()) return;
 
@@ -698,6 +770,10 @@ const CartPage = ({ onNavigate }) => {
     setProcessingPayment(true);
 
     try {
+      // Terms + Privacy acceptance and 18+ confirmation must exist before any order is created.
+      // The button stays locked while the gate is open; declining aborts without side effects.
+      if (!(await ensureAccepted('checkout'))) return;
+
       // Re-read the switch right before creating the order: it may have been flipped
       // while the customer was filling the form. A failed read keeps the last known state.
       const latestPaymentMethods = (await refreshPaymentMethods()) ?? paymentMethods;
@@ -710,14 +786,46 @@ const CartPage = ({ onNavigate }) => {
         return;
       }
 
-      // Get currency object (selectedCurrency is already the UUID)
-      const currency = currencies.find(c => c.id === selectedCurrency);
+      // The cart shows prices converted with the (briefly cached) display rates; the order stores them, so they are
+      // re-priced with rates read live. Both paths resolve a pair the same way (direct rate first, else the inverse),
+      // so they only differ when a rate really moved. Then nothing is created: invalidateRateCaches reloads the display
+      // rates (the confirm button stays disabled while any line is unpriced), the cart shows the live amounts and the
+      // next confirmation converges.
+      const liveLines = await buildCartLinesLive(
+        cart,
+        (item, convert) => getCartItemUnitPrice(withStoredComboPrice(item, combos), { baseCurrencyId, convertAmount: convert }),
+        (from, to) => getLiveConversionRate(from, to)
+      );
+      if (liveLines.rateReadFailed) {
+        toast({
+          title: t('common.error'),
+          description: t('cart.rateCheckFailed'),
+          variant: 'destructive'
+        });
+        return;
+      }
+      const pricesMoved = liveLines.hasInvalidLines
+        || liveLines.subtotal !== cartLines.subtotal
+        || liveLines.lines.some((line, index) => line.unitPrice !== cartLines.lines[index]?.unitPrice);
+      if (pricesMoved) {
+        invalidateRateCaches();
+        toast({
+          title: t('common.error'),
+          description: t('cart.pricesUpdated'),
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // The order is always saved in the base currency: cart amounts are USD (selectedCurrency
+      // only drives the display conversion).
+      const currency = currencies.find(c => c.id === baseCurrencyId);
       if (!currency) {
         throw new Error('Currency not found');
       }
 
       // Get shipping zone ID
-      const shippingZone = shippingZones.find(z => z.province_name === recipientDetails.province);
+      const shippingZone = resolveShippingZone(allShippingZones, recipientDetails.province, recipientDetails.municipality);
 
       // Get Zelle account: prioritize user selection, fallback to automatic assignment
       let selectedZelleAccountId = selectedZelle?.id || null;
@@ -736,14 +844,16 @@ const CartPage = ({ onNavigate }) => {
       // Debug logs
 
       // Prepare order items
-      const orderItems = cart.map(item => ({
-        itemType: item.type || 'product',
+      // Amounts are cent-rounded at source (cartLines) so they match the cart UI and what
+      // Postgres numeric(10,2) stores: sum(totalPrice) === subtotal.
+      const orderItems = cart.map((item, index) => ({
+        itemType: resolveCartItemType(item),
         itemId: item.id,
         nameEs: item.name_es || item.name,
         nameEn: item.name_en || item.name,
-        quantity: item.quantity,
-        unitPrice: getItemPrice(item),
-        totalPrice: getItemPrice(item) * item.quantity,
+        quantity: cartLines.lines[index].quantity,
+        unitPrice: cartLines.lines[index].unitPrice,
+        totalPrice: cartLines.lines[index].totalPrice,
         inventoryId: item.inventory_id || null
       }));
 
@@ -751,10 +861,10 @@ const CartPage = ({ onNavigate }) => {
       const orderData = {
         userId: user.id,
         orderType: 'product',
-        subtotal: parseFloat(subtotal.toFixed(2)),
-        discountAmount: parseFloat(totalDiscountAmount.toFixed(2)),
-        shippingCost: parseFloat(shippingCost.toFixed(2)),
-        totalAmount: parseFloat(totalAmount.toFixed(2)),
+        subtotal: roundMoney(subtotal),
+        discountAmount: roundMoney(totalDiscountAmount),
+        shippingCost: roundMoney(shippingCost),
+        totalAmount: roundMoney(totalAmount),
         currencyId: currency.id,
         recipientInfo: JSON.stringify(recipientDetails),
         paymentMethod: 'zelle',
@@ -768,6 +878,9 @@ const CartPage = ({ onNavigate }) => {
       // Create order (returns order object directly, throws on error)
       const createdOrder = await createOrder(orderData, orderItems);
 
+      // Stock was just reserved: refresh the displayed stock (display only, server stays authoritative)
+      refreshStock?.();
+
       // ============================================================
       // ORDER CREATED SUCCESSFULLY - From here, NOTHING should block
       // All operations below are wrapped to ensure modal always shows
@@ -777,7 +890,7 @@ const CartPage = ({ onNavigate }) => {
       const orderInfo = {
         orderNumber: createdOrder.order_number,
         total: totalAmount,
-        currency: currency.code || 'USD',
+        currency: currency.code || BASE_CURRENCY_CODE,
         recipientName: recipientDetails.fullName,
         itemCount: cart.length,
         whatsappLoading: true
@@ -899,6 +1012,26 @@ const CartPage = ({ onNavigate }) => {
         });
         return;
       }
+      if (isStockReservationRefusal(error)) {
+        // Our displayed stock was out of date: re-read it so the customer sees the real numbers
+        refreshStock?.();
+        // The server already cancelled the just-created order; the cart is kept so the customer can adjust it
+        const stockItem = cart.find(item => item.id === error.context?.productId);
+        const stockItemName = language === 'es'
+          ? (stockItem?.name_es || stockItem?.name)
+          : (stockItem?.name_en || stockItem?.name_es || stockItem?.name);
+        const description = stockItem && error.context?.reason === 'insufficient_stock'
+          ? t('cart.stock.insufficientItem')
+              .replace('{name}', stockItemName)
+              .replace('{available}', String(error.context?.available ?? 0))
+          : t(STOCK_REFUSAL_MESSAGE_KEYS[error.context?.reason] || 'cart.stock.insufficient');
+        toast({
+          title: t('common.error'),
+          description,
+          variant: 'destructive'
+        });
+        return;
+      }
       toast({
         title: language === 'es' ? 'Error al procesar' : 'Processing error',
         description: error.message || (language === 'es'
@@ -1012,7 +1145,7 @@ const CartPage = ({ onNavigate }) => {
               <p className="text-2xl font-bold text-green-600">
                 {shippingCost === 0
                   ? (language === 'es' ? '¡Envío Gratis!' : 'Free Shipping!')
-                  : `$${shippingCost.toFixed(2)}`
+                  : <>{`$${shippingCost.toFixed(2)}`} <span className="text-base font-semibold">{BASE_CURRENCY_CODE}</span></>
                 }
               </p>
             </motion.div>
@@ -1104,8 +1237,8 @@ const CartPage = ({ onNavigate }) => {
                     {validatingCoupon ? t('cart.payment.validating') : t('cart.payment.apply')}
                   </Button>
                 </div>
-                {couponError && (
-                  <p className="text-sm text-red-600 font-medium">{couponError}</p>
+                {couponErrorText && (
+                  <p className="text-sm text-red-600 font-medium">{couponErrorText}</p>
                 )}
               </div>
             ) : (
@@ -1139,14 +1272,14 @@ const CartPage = ({ onNavigate }) => {
             <div className="space-y-2 p-4 bg-gray-50 rounded-lg">
               <div className="flex justify-between text-sm">
                 <span>{t('cart.subtotal')}:</span>
-                <span>${subtotal.toFixed(2)}</span>
+                <span>{BASE_CURRENCY_SYMBOL}{subtotal.toFixed(2)} {BASE_CURRENCY_CODE}</span>
               </div>
               {discountBreakdown.category.amount > 0 && (
                 <div className="flex justify-between text-sm text-green-600">
                   <span>
                     {t('cart.payment.categoryDiscount')} ({userCategory} · {discountBreakdown.category.percent}%):
                   </span>
-                  <span>-{currencySymbol}{discountBreakdown.category.amount.toFixed(2)}</span>
+                  <span>-{BASE_CURRENCY_SYMBOL}{discountBreakdown.category.amount.toFixed(2)}</span>
                 </div>
               )}
               {discountBreakdown.offer.amount > 0 && appliedOffer && (
@@ -1154,25 +1287,25 @@ const CartPage = ({ onNavigate }) => {
                   <span>
                     {t('cart.payment.offerDiscount')} ({appliedOffer.code} · {appliedOffer.discount_type === 'percentage'
                       ? `${appliedOffer.discount_value}%`
-                      : `${currencySymbol}${appliedOffer.discount_value}`
+                      : `${BASE_CURRENCY_SYMBOL}${appliedOffer.discount_value} ${BASE_CURRENCY_CODE}`
                     }):
                   </span>
-                  <span>-{currencySymbol}{discountBreakdown.offer.amount.toFixed(2)}</span>
+                  <span>-{BASE_CURRENCY_SYMBOL}{discountBreakdown.offer.amount.toFixed(2)}</span>
                 </div>
               )}
               {totalDiscountAmount > 0 && (
                 <div className="flex justify-between text-sm border-t pt-2 font-semibold text-green-700">
                   <span>{t('cart.payment.discountedSubtotal')}:</span>
-                  <span>${discountedSubtotal.toFixed(2)}</span>
+                  <span>{BASE_CURRENCY_SYMBOL}{discountedSubtotal.toFixed(2)} {BASE_CURRENCY_CODE}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm border-t pt-2">
                 <span>{t('cart.payment.shipping')}:</span>
-                <span>${shippingCost.toFixed(2)}</span>
+                <span>{BASE_CURRENCY_SYMBOL}{shippingCost.toFixed(2)} {BASE_CURRENCY_CODE}</span>
               </div>
               <div className="flex justify-between text-lg font-bold border-t pt-2">
                 <span>{t('cart.payment.amount')}:</span>
-                <span style={{ color: visualSettings.successColor || '#10b981' }}>${totalDisplay}</span>
+                <span style={{ color: visualSettings.successColor || '#10b981' }}>{BASE_CURRENCY_SYMBOL}{totalDisplay} {BASE_CURRENCY_CODE}</span>
               </div>
             </div>
 
@@ -1330,7 +1463,18 @@ const CartPage = ({ onNavigate }) => {
             </div>
           </motion.div>
 
+          <RegulatoryNotice onNavigate={onNavigate} className="mb-4" />
+
+          {/* Orders are USD-only goods: no exchange rate, fee or recipient amount to show */}
+          <BeforePayingNotice
+            onNavigate={onNavigate}
+            deliveryCost={`${BASE_CURRENCY_SYMBOL}${shippingCost.toFixed(2)} ${BASE_CURRENCY_CODE}`}
+            total={`${BASE_CURRENCY_SYMBOL}${totalDisplay} ${BASE_CURRENCY_CODE}`}
+            className="mb-4"
+          />
+
           <div className="space-y-3">
+            <LegalConsentLine variant="confirm" onNavigate={onNavigate} />
             <div className="flex gap-3">
               <Button
                 variant="outline"
@@ -1345,7 +1489,7 @@ const CartPage = ({ onNavigate }) => {
                 className="flex-1"
                 size="lg"
                 style={getPrimaryButtonStyle(visualSettings)}
-                disabled={paymentBlocker !== null || uploadingProof || processingPayment || zelleOrdersBlocked}
+                disabled={paymentBlocker !== null || uploadingProof || processingPayment || zelleOrdersBlocked || cartLines.hasInvalidLines}
               >
                 {processingPayment ? t('cart.payment.processing') : t('cart.payment.confirm')}
               </Button>
@@ -1424,11 +1568,11 @@ const CartPage = ({ onNavigate }) => {
             <Button onClick={() => onNavigate('products')} style={getPrimaryButtonStyle(visualSettings)}>{t('cart.browse')}</Button>
           </motion.div>
         ) : (
-          <div className="grid lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-4">
-              {cart.map(item => {
-                const itemPrice = getItemPrice(item);
-                const itemTotal = itemPrice * item.quantity;
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 min-w-0 space-y-4">
+              {cart.map((item, index) => {
+                const itemPrice = cartLines.lines[index].unitPrice;
+                const itemTotal = cartLines.lines[index].totalPrice;
                 const displayName = language === 'es'
                   ? (item.name_es || item.name || 'Producto')
                   : (item.name_en || item.name || 'Product');
@@ -1436,78 +1580,85 @@ const CartPage = ({ onNavigate }) => {
                 const isCombo = !!item.products;
 
                 // Calculate converted prices for display
-                const exchangeRate = currencyCode === 'USD' ? 1 : (convertedSubtotal !== null ? convertedSubtotal / subtotal : 1);
+                const exchangeRate = showingBaseAmounts || currencyCode === BASE_CURRENCY_CODE ? 1 : (convertedSubtotal !== null && subtotal > 0 ? convertedSubtotal / subtotal : 1);
                 const convertedItemPrice = itemPrice * exchangeRate;
                 const convertedItemTotal = itemTotal * exchangeRate;
 
                 return (
                   <motion.div key={item.id} layout className="glass-effect p-4 rounded-2xl">
-                    <div className="flex items-start gap-4">
-                      {/* Product Image */}
-                      <div className="w-24 h-24 rounded-lg flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden">
-                        {displayImage ? (
-                          <img
-                            className="w-full h-full object-cover"
-                            alt={displayName}
-                            src={displayImage}
-                            onError={(e) => {
-                              e.target.style.display = 'none';
-                              e.target.nextElementSibling?.classList.remove('hidden');
-                            }}
-                          />
-                        ) : null}
-                        <div className={`w-full h-full flex items-center justify-center ${displayImage ? 'hidden' : ''}`}>
-                          <Package className="w-10 h-10 text-gray-300" />
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+                      <div className="flex min-w-0 items-start gap-4 sm:flex-grow">
+                        {/* Product Image */}
+                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden">
+                          {displayImage ? (
+                            <img
+                              className="w-full h-full object-cover"
+                              alt={displayName}
+                              src={displayImage}
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.nextElementSibling?.classList.remove('hidden');
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-full h-full flex items-center justify-center ${displayImage ? 'hidden' : ''}`}>
+                            <Package className="w-10 h-10 text-gray-300" />
+                          </div>
+                        </div>
+
+                        {/* Product Info */}
+                        <div className="flex-grow min-w-0">
+                          <h3 className="font-semibold text-gray-800 mb-1 break-words">
+                            {displayName}
+                            {isCombo && <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">COMBO</span>}
+                          </h3>
+                          <p className="text-sm text-gray-500 mb-2">
+                            {language === 'es' ? 'Precio unitario: ' : 'Unit price: '}
+                            <span className="font-semibold" style={{ color: visualSettings.accentColor || '#9333ea' }}>
+                              {displayCurrencySymbol}{convertedItemPrice.toFixed(2)} {displayCurrencyCode}
+                            </span>
+                          </p>
+                          <p className="text-base font-bold text-gray-900">
+                            {language === 'es' ? 'Subtotal: ' : 'Subtotal: '}{displayCurrencySymbol}{convertedItemTotal.toFixed(2)} {displayCurrencyCode}
+                          </p>
                         </div>
                       </div>
 
-                      {/* Product Info */}
-                      <div className="flex-grow min-w-0">
-                        <h3 className="font-semibold text-gray-800 mb-1">
-                          {displayName}
-                          {isCombo && <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">COMBO</span>}
-                        </h3>
-                        <p className="text-sm text-gray-500 mb-2">
-                          {language === 'es' ? 'Precio unitario: ' : 'Unit price: '}
-                          <span className="font-semibold" style={{ color: visualSettings.accentColor || '#9333ea' }}>
-                            {currencySymbol}{convertedItemPrice.toFixed(2)} {currencyCode}
-                          </span>
-                        </p>
-                        <p className="text-base font-bold text-gray-900">
-                          {language === 'es' ? 'Subtotal: ' : 'Subtotal: '}{currencySymbol}{convertedItemTotal.toFixed(2)} {currencyCode}
-                        </p>
-                      </div>
+                      {/* Quantity Controls + Remove: below the text under sm, inline from sm */}
+                      <div className="flex items-center justify-between gap-4 sm:items-start sm:justify-start">
+                        <div className="flex items-center space-x-2 flex-shrink-0">
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => updateCartQuantity(item.id, item.quantity - 1)}
+                            aria-label={t('cart.item.decrease', { name: displayName })}
+                            className="h-11 w-11 sm:h-8 sm:w-8"
+                          >
+                            <Minus className="h-4 w-4" />
+                          </Button>
+                          <span className="w-8 text-center font-semibold">{item.quantity}</span>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => updateCartQuantity(item.id, item.quantity + 1)}
+                            aria-label={t('cart.item.increase', { name: displayName })}
+                            className="h-11 w-11 sm:h-8 sm:w-8"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
 
-                      {/* Quantity Controls */}
-                      <div className="flex items-center space-x-2 flex-shrink-0">
+                        {/* Remove Button */}
                         <Button
                           size="icon"
-                          variant="outline"
-                          onClick={() => updateCartQuantity(item.id, item.quantity - 1)}
-                          className="h-8 w-8"
+                          variant="ghost"
+                          onClick={() => removeFromCart(item.id)}
+                          aria-label={t('cart.item.remove', { name: displayName })}
+                          className="h-11 w-11 flex-shrink-0 sm:h-10 sm:w-10"
                         >
-                          <Minus className="h-4 w-4" />
-                        </Button>
-                        <span className="w-8 text-center font-semibold">{item.quantity}</span>
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          onClick={() => updateCartQuantity(item.id, item.quantity + 1)}
-                          className="h-8 w-8"
-                        >
-                          <Plus className="h-4 w-4" />
+                          <X className="h-5 w-5 text-red-500" />
                         </Button>
                       </div>
-
-                      {/* Remove Button */}
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => removeFromCart(item.id)}
-                        className="flex-shrink-0"
-                      >
-                        <X className="h-5 w-5 text-red-500" />
-                      </Button>
                     </div>
                   </motion.div>
                 );
@@ -1526,12 +1677,12 @@ const CartPage = ({ onNavigate }) => {
                       </p>
                       {discountBreakdown.category.amount > 0 && (
                         <p className="text-xs text-green-800">
-                          {language === 'es' ? 'Categoría' : 'Category'}: {userCategory} ({discountBreakdown.category.percent}% · -{currencySymbol}{discountBreakdown.category.amount.toFixed(2)})
+                          {language === 'es' ? 'Categoría' : 'Category'}: {userCategory} ({discountBreakdown.category.percent}% · -{displayCurrencySymbol}{displayValues.categoryDiscount.toFixed(2)})
                         </p>
                       )}
                       {discountBreakdown.offer.amount > 0 && appliedOffer && (
                         <p className="text-xs text-green-800">
-                          {language === 'es' ? 'Oferta' : 'Offer'}: {appliedOffer.code} ({appliedOffer.discount_type === 'percentage' ? `${appliedOffer.discount_value}%` : `${currencySymbol}${appliedOffer.discount_value}`} · -{currencySymbol}{discountBreakdown.offer.amount.toFixed(2)})
+                          {language === 'es' ? 'Oferta' : 'Offer'}: {appliedOffer.code} ({appliedOffer.discount_type === 'percentage' ? `${appliedOffer.discount_value}%` : `${displayCurrencySymbol}${(appliedOffer.discount_value * exchangeRateForDisplay).toFixed(2)}`} · -{displayCurrencySymbol}{displayValues.offerDiscount.toFixed(2)})
                         </p>
                       )}
                     </div>
@@ -1551,28 +1702,28 @@ const CartPage = ({ onNavigate }) => {
                   <div className="flex justify-between">
                     <span>{t('cart.subtotal')}</span>
                     <span className="font-semibold">
-                      {currencySymbol}
-                      {displayValues.subtotal.toFixed(2)} {currencyCode}
+                      {displayCurrencySymbol}
+                      {displayValues.subtotal.toFixed(2)} {displayCurrencyCode}
                     </span>
                   </div>
                   {discountBreakdown.category.amount > 0 && (
                     <div className="flex justify-between text-sm text-green-700">
                       <span>{language === 'es' ? 'Descuento categoría' : 'Category discount'} ({discountBreakdown.category.percent}%):</span>
-                      <span>-{currencySymbol}{displayValues.categoryDiscount.toFixed(2)} {currencyCode}</span>
+                      <span>-{displayCurrencySymbol}{displayValues.categoryDiscount.toFixed(2)} {displayCurrencyCode}</span>
                     </div>
                   )}
                   {discountBreakdown.offer.amount > 0 && appliedOffer && (
                     <div className="flex justify-between text-sm text-green-700">
                       <span>{language === 'es' ? 'Descuento por oferta' : 'Offer discount'} ({discountBreakdown.offer.percent}%):</span>
-                      <span>-{currencySymbol}{displayValues.offerDiscount.toFixed(2)} {currencyCode}</span>
+                      <span>-{displayCurrencySymbol}{displayValues.offerDiscount.toFixed(2)} {displayCurrencyCode}</span>
                     </div>
                   )}
                   {totalDiscountAmount > 0 && (
                     <div className="flex justify-between text-sm font-semibold text-green-800 border-t pt-2">
                       <span>{language === 'es' ? 'Subtotal con descuentos' : 'Discounted subtotal'}</span>
                       <span>
-                        {currencySymbol}
-                        {displayValues.discountedSubtotal.toFixed(2)} {currencyCode}
+                        {displayCurrencySymbol}
+                        {displayValues.discountedSubtotal.toFixed(2)} {displayCurrencyCode}
                       </span>
                     </div>
                   )}
@@ -1581,7 +1732,7 @@ const CartPage = ({ onNavigate }) => {
                     <span className="text-sm font-semibold">
                       {displayValues.shipping === 0
                         ? (language === 'es' ? 'Gratis' : 'Free')
-                        : `${currencySymbol}${displayValues.shipping.toFixed(2)} ${currencyCode}`
+                        : `${displayCurrencySymbol}${displayValues.shipping.toFixed(2)} ${displayCurrencyCode}`
                       }
                     </span>
                   </div>
@@ -1589,15 +1740,29 @@ const CartPage = ({ onNavigate }) => {
                   <div className="flex justify-between text-xl font-bold">
                     <span>{t('cart.total')}</span>
                     <span style={{ color: visualSettings.primaryColor || '#2563eb' }}>
-                      {currencySymbol}
-                      {displayValues.total.toFixed(2)} {currencyCode}
+                      {displayCurrencySymbol}
+                      {displayValues.total.toFixed(2)} {displayCurrencyCode}
                     </span>
                   </div>
                 </div>
 
                 {zelleOrdersBlocked && <PaymentMethodsUnavailable flow={PAYMENT_FLOWS.ORDERS} />}
 
-                <Button onClick={handleCheckout} className="w-full" size="lg" style={getPrimaryButtonStyle(visualSettings)} disabled={zelleOrdersBlocked}>
+                {rateUnavailable && (
+                  <p role="alert" className="text-sm text-amber-700 font-medium">
+                    {t('cart.rateUnavailable.notice', { currency: currencyCode })}
+                  </p>
+                )}
+
+                {currencyUnavailable && (
+                  <p role="alert" className="text-sm text-amber-700 font-medium">{t('cart.currencyUnavailable')}</p>
+                )}
+
+                {showInvalidItems && (
+                  <p role="alert" className="text-sm text-red-600 font-medium">{t('cart.invalidItems')}</p>
+                )}
+
+                <Button onClick={handleCheckout} className="w-full" size="lg" style={getPrimaryButtonStyle(visualSettings)} disabled={zelleOrdersBlocked || cartLines.hasInvalidLines || pricingPending || showingBaseAmounts}>
                   {t('cart.checkout')}
                 </Button>
                 <Button onClick={handleClearCart} variant="outline" className="w-full">
@@ -1629,7 +1794,7 @@ const CartPage = ({ onNavigate }) => {
         currency={confirmedOrderInfo?.currency}
         recipientName={confirmedOrderInfo?.recipientName}
         itemCount={confirmedOrderInfo?.itemCount}
-        estimatedDelivery={language === 'es' ? '24-72 horas' : '24-72 hours'}
+        estimatedDelivery={t('cart.payment.estimatedDelivery')}
         whatsappUrl={confirmedOrderInfo?.whatsappUrl}
         whatsappNumber={confirmedOrderInfo?.whatsappNumber}
         whatsappLoading={confirmedOrderInfo?.whatsappLoading}

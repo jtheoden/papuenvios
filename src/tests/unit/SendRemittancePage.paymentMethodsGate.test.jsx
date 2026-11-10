@@ -18,6 +18,9 @@ vi.mock('@/contexts/AuthContext', () => ({
 vi.mock('@/contexts/ModalContext', () => ({
   useModal: () => ({ showModal: vi.fn().mockResolvedValue(true) }),
 }));
+vi.mock('@/contexts/BusinessContext', () => ({
+  useBusiness: () => ({ notificationSettings: null }),
+}));
 
 vi.mock('@/hooks/usePaymentMethods', async () => {
   const service = await import('@/lib/paymentMethodsService');
@@ -64,7 +67,7 @@ vi.mock('@/lib/whatsappService', () => ({
 vi.mock('@/lib/notificationSettingsService', () => ({ getFreshGuidedWhatsappPhone: vi.fn(async () => null) }));
 vi.mock('@/lib/orderDiscountService', () => ({ validateRemittanceOffer: vi.fn() }));
 vi.mock('@/components/ui/use-toast', () => ({ toast: vi.fn() }));
-vi.mock('@/lib/styleUtils', () => ({ getHeadingStyle: () => '', getPrimaryButtonStyle: () => '' }));
+vi.mock('@/lib/styleUtils', () => ({ getHeadingStyle: () => ({}), getPrimaryButtonStyle: () => ({}) }));
 
 vi.mock('@/components/RecipientSelector', () => ({ default: () => null }));
 vi.mock('@/components/ZelleAccountSelector', () => ({ default: () => null }));

@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react';
 // ─── Mutable test state read by the mocked contexts ─────────────────────────
 const state = {
   cart: [],
+  combos: [],
   financialSettings: { productProfit: 40, comboProfit: 35 },
 };
 
@@ -26,6 +27,7 @@ vi.mock('@/contexts/LanguageContext', () => ({
 vi.mock('@/contexts/BusinessContext', () => ({
   useBusiness: () => ({
     cart: state.cart,
+    combos: state.combos,
     updateCartQuantity: vi.fn(),
     removeFromCart: vi.fn(),
     clearCart: vi.fn(),
@@ -157,11 +159,37 @@ describe('CartPage pricing - products added from the catalog list', () => {
     expect(unitPriceLine()).toHaveTextContent('$1.30 USD');
   });
 
-  it('keeps the legacy formula for old cart entries that have no final_price', () => {
+  it('fails closed for old cart entries that have no final_price: visible alert, never a base_price price', () => {
     state.cart = [rawCatalogProduct({ final_price: undefined, profit_margin: undefined, quantity: 1 })];
     render(<CartPage onNavigate={vi.fn()} />);
 
-    // base_price 1 with the global 40 % margin
-    expect(unitPriceLine()).toHaveTextContent('$1.40 USD');
+    expect(screen.getByRole('alert')).toHaveTextContent('cart.invalidItems');
+    expect(screen.queryByText(/\$1\.40/)).toBeNull();
+  });
+});
+
+describe('CartPage pricing - combos already in the cart before the stored price was carried', () => {
+  const staleCombo = (overrides = {}) => ({
+    id: 'c1', name: 'Combo viejo', products: ['a'], baseTotalPrice: 100, profitMargin: 20, quantity: 1, ...overrides,
+  });
+
+  beforeEach(() => {
+    state.combos = [];
+  });
+
+  it('prices the stale combo from the live catalog final price', () => {
+    state.cart = [staleCombo()];
+    state.combos = [{ id: 'c1', finalPrice: 66.5 }];
+    render(<CartPage onNavigate={vi.fn()} />);
+
+    expect(unitPriceLine()).toHaveTextContent('$66.50 USD');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('fails closed with a visible alert when the combo is gone from the catalog', () => {
+    state.cart = [staleCombo()];
+    render(<CartPage onNavigate={vi.fn()} />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('cart.invalidItems');
   });
 });

@@ -1,5 +1,8 @@
 // src/lib/supabase.js
 import { createClient } from '@supabase/supabase-js';
+import { createRefreshGuardFetch } from '@/lib/refreshGuard';
+import { createRequestBudgetFetch } from '@/lib/requestBudget';
+import { AUTH_STORAGE_KEY } from '@/lib/constants';
 
 /**
  * Config
@@ -24,7 +27,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     detectSessionInUrl: true,
     storage: window.localStorage,
-    storageKey: 'papuenvios-auth',
+    storageKey: AUTH_STORAGE_KEY,
     flowType: 'pkce',
     debug: false
   },
@@ -34,7 +37,10 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   global: {
     headers: {
       'x-client-info': 'papuenvios-web'
-    }
+    },
+    // Keeps a 429 on the token refresh from wiping the stored session (see refreshGuard.js);
+    // dedupes/caches REST reads and caps runaway loops without ever touching writes (see requestBudget.js).
+    fetch: createRequestBudgetFetch(createRefreshGuardFetch())
   }
 });
 

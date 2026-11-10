@@ -1,3 +1,4 @@
+import { adminCancelMessage, transitionMessage } from '@/lib/statusConflict';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -7,10 +8,18 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { isOwnOperation } from '@/lib/selfDealing';
+import { formatMoney } from '@/lib/numberFormat';
 import { useModal } from '@/contexts/ModalContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { calcTotalToPay } from '@/lib/remittanceCalculations';
+import { canAdjustCommission, isCommissionFrozen, remittanceStatusLabelKey } from '@/lib/commissionOverrideRules';
+import CommissionOverrideModal from '@/components/admin/CommissionOverrideModal';
+import CommissionProposalBadge from '@/components/admin/CommissionProposalBadge';
+import useCommissionProposals from '@/hooks/useCommissionProposals';
+import { isInformedCurrent } from '@/lib/commissionProposalRules';
+import DeliveryProofModal from '@/components/admin/modals/DeliveryProofModal';
 import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import {
   getAllRemittances,
@@ -19,10 +28,12 @@ import {
   startProcessing,
   confirmDelivery,
   completeRemittance,
+  adminCancelRemittance,
   calculateDeliveryAlert,
   generateProofSignedUrl,
   getRemittanceBankAccountDetails,
   getBankAccountByRecipientId,
+  getCommissionOverride,
   REMITTANCE_STATUS
 } from '@/lib/remittanceService';
 async function decryptData(encryptedBase64) {
@@ -34,14 +45,31 @@ async function decryptData(encryptedBase64) {
   return data.decrypted;
 }
 import { toast } from '@/components/ui/use-toast';
+import LoadingState, { SkeletonBox } from '@/components/ui/LoadingState';
+
+// Footprint of the filters bar, the stat cards and the first rows.
+const AdminRemittancesSkeleton = () => (
+  <div className="space-y-6">
+    <SkeletonBox className="h-20 w-full rounded-xl" />
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      {Array.from({ length: 4 }, (_, i) => <SkeletonBox key={i} className="h-24 rounded-xl" />)}
+    </div>
+    {Array.from({ length: 3 }, (_, i) => <SkeletonBox key={i} className="h-32 w-full rounded-xl" />)}
+  </div>
+);
 import ImageProofModal from './ImageProofModal';
 import TooltipButton from './TooltipButton';
 import RecipientLocation from './RecipientLocation';
+import OperationRefundSection from '@/components/refunds/OperationRefundSection';
 import { formatRecipientLocation } from '@/lib/recipientInfo';
+import { REMITTANCE_DELIVERED_STATUSES } from '@/lib/dashboardMetrics';
 
 const AdminRemittancesTab = () => {
   const { t, language } = useLanguage();
-  const { isAdmin, isSuperAdmin } = useAuth();
+  const { isAdmin, isSuperAdmin, user } = useAuth();
+  const isOwn = (remittance) => isOwnOperation(remittance, user?.id);
+  // Separation of duties: the server refuses an admin adjusting his own remittance's commission; the UI says so first.
+  const commissionAdjustable = (remittance) => canAdjustCommission(remittance) && !isOwn(remittance);
   const { showModal } = useModal();
   const { visualSettings } = useBusiness();
 
@@ -49,6 +77,11 @@ const AdminRemittancesTab = () => {
 
   const [remittances, setRemittances] = useState([]);
   const [filteredRemittances, setFilteredRemittances] = useState([]);
+  // Proposals refetch by themselves when a row's updated_at moves (an adjustment or the customer's acceptance)
+  const { pending: pendingProposals, informed: informedProposals } = useCommissionProposals(remittances);
+  const proposalOf = (remittance) =>
+    pendingProposals[remittance.id] ||
+    (isInformedCurrent(remittance, informedProposals[remittance.id]) ? informedProposals[remittance.id] : null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -67,6 +100,44 @@ const AdminRemittancesTab = () => {
   const [deliveryProofSignedUrl, setDeliveryProofSignedUrl] = useState(null);
   const [showPaymentProofModal, setShowPaymentProofModal] = useState(false);
   const [selectedProofUrl, setSelectedProofUrl] = useState(null);
+  const [showCommissionModal, setShowCommissionModal] = useState(false);
+  const [deliveryTarget, setDeliveryTarget] = useState(null);
+  // Latest row of remittance_commission_overrides (admin-only RLS): reason and standard commission never travel in the remittance row
+  const [commissionOverride, setCommissionOverride] = useState(null);
+  // Id whose override fetch finished: the modal must not preview against a standard commission that is still unknown
+  const [overrideLoadedFor, setOverrideLoadedFor] = useState(null);
+  // True when the modal was opened from a list card: the detail is not shown under it, and closing it leaves no detail behind
+  const [commissionFromCard, setCommissionFromCard] = useState(false);
+
+  const loadCommissionOverride = async (remittanceId) => {
+    try {
+      setCommissionOverride(await getCommissionOverride(remittanceId));
+    } catch {
+      setCommissionOverride(null); // the note is informative only: the detail stays usable
+    } finally {
+      setOverrideLoadedFor(remittanceId);
+    }
+  };
+
+  const closeCommissionModal = () => {
+    setShowCommissionModal(false);
+    if (commissionFromCard) {
+      setCommissionFromCard(false);
+      setSelectedRemittance(null);
+    }
+  };
+
+  const handleCommissionSaved = (updated) => {
+    // The RPC returns the bare row (no joins): merge it so the joined type and proofs stay on screen
+    setRemittances((list) => list.map((r) => (r.id === updated.id ? { ...r, ...updated } : r)));
+    if (commissionFromCard) {
+      closeCommissionModal();
+      return;
+    }
+    setSelectedRemittance((prev) => ({ ...prev, ...updated }));
+    setShowCommissionModal(false);
+    loadCommissionOverride(updated.id);
+  };
 
   // Helper to format account number with spaces every 4 digits
   const formatAccountNumberDisplay = (accountNumber) => {
@@ -78,6 +149,22 @@ const AdminRemittancesTab = () => {
   useEffect(() => {
     loadRemittances();
   }, []);
+
+  // Closing the detail also closes the commission modal, so the next remittance does not open with it
+  useEffect(() => {
+    if (!selectedRemittance) {
+      setShowCommissionModal(false);
+      setCommissionFromCard(false);
+    }
+  }, [selectedRemittance]);
+
+  const selectedId = selectedRemittance?.id;
+  useEffect(() => {
+    setCommissionOverride(null);
+    setOverrideLoadedFor(null);
+    if (selectedId) loadCommissionOverride(selectedId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadCommissionOverride only closes over a stable setter
+  }, [selectedId]);
 
   // Req 8: Auto-select remittance from URL parameter ?id=X
   useEffect(() => {
@@ -316,7 +403,8 @@ const AdminRemittancesTab = () => {
 
   // Stats calculation (matching AdminOrdersTab pattern)
   const stats = useMemo(() => {
-    const completedRemittances = filteredRemittances.filter(r => r.status === REMITTANCE_STATUS.COMPLETED);
+    // Same definition as the dashboard summary: delivered and completed both count as completed
+    const completedRemittances = filteredRemittances.filter(r => REMITTANCE_DELIVERED_STATUSES.includes(r.status));
     return {
       total: filteredRemittances.length,
       pendingValidation: filteredRemittances.filter(r => r.status === REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED).length,
@@ -324,7 +412,7 @@ const AdminRemittancesTab = () => {
         [REMITTANCE_STATUS.PAYMENT_VALIDATED, REMITTANCE_STATUS.PROCESSING].includes(r.status)
       ).length,
       completed: completedRemittances.length,
-      rejected: filteredRemittances.filter(r => r.status === REMITTANCE_STATUS.REJECTED).length,
+      rejected: filteredRemittances.filter(r => r.status === REMITTANCE_STATUS.PAYMENT_REJECTED).length,
       totalRevenue: completedRemittances.reduce((sum, r) => sum + (r.amount_sent || 0), 0)
     };
   }, [filteredRemittances]);
@@ -354,7 +442,7 @@ const AdminRemittancesTab = () => {
     } catch (error) {
       toast({
         title: t('common.error'),
-        description: error?.message || t('remittances.admin.paymentValidationFailed'),
+        description: transitionMessage(t, error, error?.message || t('remittances.admin.paymentValidationFailed')),
         variant: 'destructive'
       });
     }
@@ -386,10 +474,44 @@ const AdminRemittancesTab = () => {
     } catch (error) {
       toast({
         title: t('common.error'),
-        description: error?.message || t('remittances.admin.paymentRejectionFailed'),
+        description: transitionMessage(t, error, error?.message || t('remittances.admin.paymentRejectionFailed')),
         variant: 'destructive'
       });
     }
+  };
+
+  const handleAdminCancel = async (remittance) => {
+    const reason = await showModal({
+      title: t('remittances.admin.cancelRemittance'),
+      message: t('remittances.admin.confirmCancelMessage', { number: remittance.remittance_number }),
+      input: true,
+      inputLabel: t('remittances.admin.cancelReason'),
+      inputPlaceholder: t('remittances.admin.cancelReasonPlaceholder'),
+      confirmText: t('remittances.admin.cancelRemittance'),
+      cancelText: t('common.cancel'),
+      type: 'danger',
+      required: true,
+      maxLength: 500
+    });
+
+    if (!reason) return;
+
+    try {
+      await adminCancelRemittance(remittance.id, reason);
+      toast({
+        title: t('common.success'),
+        description: t('remittances.admin.remittanceCancelled')
+      });
+      setSelectedRemittance(null);
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: adminCancelMessage(t, error),
+        variant: 'destructive'
+      });
+    }
+    // Refresh on failure too: a refusal usually means the remittance moved (e.g. the customer uploaded the proof).
+    await loadRemittances();
   };
 
   const handleStartProcessing = async (remittance) => {
@@ -413,7 +535,7 @@ const AdminRemittancesTab = () => {
     } catch (error) {
       toast({
         title: t('common.error'),
-        description: error?.message || t('remittances.admin.processingFailed'),
+        description: transitionMessage(t, error, error?.message || t('remittances.admin.processingFailed')),
         variant: 'destructive'
       });
     }
@@ -467,53 +589,22 @@ const AdminRemittancesTab = () => {
     }
   };
 
-  const handleConfirmDelivery = async (remittance) => {
-    // SECURITY: Check if delivery proof exists
-    const hasDeliveryProof = remittance.delivery_proof_url && remittance.delivery_proof_url.trim() !== '';
+  // Opens the delivery dialog: the photo is optional, so nothing blocks the confirmation.
+  const handleConfirmDelivery = (remittance) => setDeliveryTarget(remittance);
 
-    if (!hasDeliveryProof) {
-      // Delivery proof is required but missing
-      toast({
-        title: t('common.error'),
-        description: t('remittances.admin.deliveryProofRequired'),
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    const notes = await showModal({
-      title: t('remittances.admin.confirmDelivery'),
-      message: t('remittances.admin.confirmDeliveryMessage', {
-        amount: remittance.amount_to_deliver,
-        currency: remittance.currency_delivered,
-        recipient: remittance.recipient_name
-      }),
-      input: true,
-      inputLabel: t('remittances.admin.deliveryNotes'),
-      inputPlaceholder: t('remittances.admin.deliveryNotesPlaceholder'),
-      confirmText: t('remittances.admin.confirmDelivery'),
-      cancelText: t('common.cancel'),
-      type: 'success'
+  // Called by the dialog; throws on failure so the dialog shows the error and its retry options.
+  const submitDelivery = async ({ file, notes }) => {
+    const remittance = deliveryTarget;
+    if (!remittance) return;
+    await confirmDelivery(remittance.id, file, notes || '');
+    const hasProof = Boolean(file) || Boolean(remittance.delivery_proof_url?.trim());
+    toast({
+      title: t('common.success'),
+      description: t(hasProof ? 'remittances.admin.deliveryConfirmed' : 'remittances.admin.deliveryConfirmedNoPhoto')
     });
-
-    if (notes === false) return;
-
-    try {
-      // Pass null for proofFile since proof must already exist (enforced by validation above)
-      await confirmDelivery(remittance.id, null, notes || '');
-      toast({
-        title: t('common.success'),
-        description: t('remittances.admin.deliveryConfirmed')
-      });
-      await loadRemittances();
-      setSelectedRemittance(null);
-    } catch (error) {
-      toast({
-        title: t('common.error'),
-        description: error?.message || t('remittances.admin.deliveryConfirmationFailed'),
-        variant: 'destructive'
-      });
-    }
+    setDeliveryTarget(null);
+    await loadRemittances();
+    setSelectedRemittance(null);
   };
 
   const handleComplete = async (remittance) => {
@@ -538,7 +629,7 @@ const AdminRemittancesTab = () => {
     } catch (error) {
       toast({
         title: t('common.error'),
-        description: error?.message || t('remittances.admin.completionFailed'),
+        description: transitionMessage(t, error, error?.message || t('remittances.admin.completionFailed')),
         variant: 'destructive'
       });
     }
@@ -619,8 +710,53 @@ const AdminRemittancesTab = () => {
     );
   };
 
+  // Same state/modal as the detail button: the card only opens the modal (z-60, above the detail layer) for its own remittance
+  const openCommissionFromCard = (remittance) => {
+    setSelectedRemittance(remittance);
+    setCommissionFromCard(true);
+    setShowCommissionModal(true);
+  };
+
+  const renderAdjustCommissionButton = (remittance) =>
+    commissionAdjustable(remittance) && (
+      <button
+        type="button"
+        onClick={() => openCommissionFromCard(remittance)}
+        className="inline-flex min-h-[44px] min-w-0 items-center justify-center px-3 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-600"
+      >
+        {t('remittances.admin.commissionOverride.adjustButton')}
+      </button>
+    );
+
   const renderActionButtons = (remittance) => {
+    const adminOnlyStatuses = [
+      REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED,
+      REMITTANCE_STATUS.PAYMENT_VALIDATED,
+      REMITTANCE_STATUS.PROCESSING,
+      REMITTANCE_STATUS.DELIVERED
+    ];
+    if (isOwn(remittance) && adminOnlyStatuses.includes(remittance.status)) {
+      return (
+        <div role="note" className="max-w-xs rounded-lg bg-amber-50 border border-amber-200 p-2 text-xs text-amber-900">
+          <span className="font-semibold">{t('common.ownOperation')}</span>
+          <p>{t('common.ownOperationReason')}</p>
+        </div>
+      );
+    }
     switch (remittance.status) {
+      case REMITTANCE_STATUS.PAYMENT_PENDING:
+        return (
+          <TooltipButton
+            tooltipText={t('remittances.admin.cancelRemittance')}
+            className="flex items-center gap-1 px-2 sm:px-3 py-1 border border-red-300 text-red-700 bg-white rounded-lg hover:bg-red-50 transition-colors text-sm"
+            onClick={() => handleAdminCancel(remittance)}
+            title={t('remittances.admin.cancelRemittance')}
+          >
+            <XCircle className="h-4 w-4" />
+            <span className="hidden sm:inline">{t('remittances.admin.cancelRemittance')}</span>
+          </TooltipButton>
+        );
+
       case REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED:
         return (
           <div className="flex gap-2">
@@ -692,16 +828,12 @@ const AdminRemittancesTab = () => {
               )}
             </div>
 
-            {/* Confirm Delivery - Only enabled if proof exists */}
+            {/* Confirm Delivery - the photo is optional */}
             <TooltipButton
               tooltipText={t('remittances.admin.confirmDelivery')}
               onClick={() => handleConfirmDelivery(remittance)}
-              disabled={!hasDeliveryProof}
               className="flex items-center gap-1 px-2 sm:px-3 py-1 rounded-lg transition-colors text-sm"
-              style={hasDeliveryProof
-                ? { backgroundColor: visualSettings?.accentColor || '#9333ea', color: '#ffffff' }
-                : { backgroundColor: '#9ca3af', color: '#e5e7eb', cursor: 'not-allowed' }
-              }
+              style={{ backgroundColor: visualSettings?.accentColor || '#9333ea', color: '#ffffff' }}
               title={t('remittances.admin.confirmDelivery')}
             >
               <Truck className="h-4 w-4" />
@@ -742,15 +874,9 @@ const AdminRemittancesTab = () => {
     );
   }
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
   return (
+    // Skeleton only for the first load: reloads after an action keep the list on screen
+    <LoadingState loading={loading && remittances.length === 0} skeleton={<AdminRemittancesSkeleton />}>
     <div className="space-y-6">
       {/* Filters */}
       <div className="glass-effect p-4 rounded-xl">
@@ -777,6 +903,7 @@ const AdminRemittancesTab = () => {
               style={{ '--tw-ring-color': visualSettings?.primaryColor || '#2563eb' }}
             >
               <option value="all">{t('remittances.admin.allStatuses')}</option>
+              <option value={REMITTANCE_STATUS.PAYMENT_PENDING}>{t('remittances.status.paymentPending')}</option>
               <option value="pending_validation">{t('remittances.admin.pendingValidation')}</option>
               <option value="in_progress">{t('remittances.admin.inProgress')}</option>
               <option value="urgent">{t('remittances.admin.urgent')}</option>
@@ -887,7 +1014,7 @@ const AdminRemittancesTab = () => {
         />
         <StatCard
           label={t('remittances.admin.revenue')}
-          value={`$${stats.totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          value={formatMoney(stats.totalRevenue, { currency: 'USD', language })}
           icon={DollarSign}
           color="green"
           isAmount
@@ -924,6 +1051,7 @@ const AdminRemittancesTab = () => {
                 </div>
                 <div className="flex flex-wrap items-center gap-1 sm:gap-2">
                   {getStatusBadge(remittance.status)}
+                  {canAdjustCommission(remittance) && <CommissionProposalBadge proposal={proposalOf(remittance)} />}
                   {[REMITTANCE_STATUS.PAYMENT_VALIDATED, REMITTANCE_STATUS.PROCESSING].includes(remittance.status) && (
                     getAlertBadge(remittance)
                   )}
@@ -1009,6 +1137,7 @@ const AdminRemittancesTab = () => {
                     <span className="hidden sm:inline">{t('remittances.admin.viewDetails')}</span>
                   </TooltipButton>
                   {renderActionButtons(remittance)}
+                  {renderAdjustCommissionButton(remittance)}
                 </div>
               </div>
             </motion.div>
@@ -1048,7 +1177,7 @@ const AdminRemittancesTab = () => {
       )}
 
       {/* Details Modal (simplified - full implementation would use a proper modal component) */}
-      {selectedRemittance && (
+      {selectedRemittance && !commissionFromCard && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
           onClick={() => setSelectedRemittance(null)}
@@ -1085,6 +1214,7 @@ const AdminRemittancesTab = () => {
                   <div>
                     <p className="text-sm text-gray-500 uppercase tracking-wider">{t('common.status')}</p>
                     {getStatusBadge(selectedRemittance.status)}
+                    {canAdjustCommission(selectedRemittance) && <CommissionProposalBadge proposal={proposalOf(selectedRemittance)} />}
                   </div>
                   <div>
                     <p className="text-sm text-gray-500 uppercase tracking-wider">{t('common.type')}</p>
@@ -1122,7 +1252,44 @@ const AdminRemittancesTab = () => {
                       <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.toDeliver')}</p>
                       <p className="text-base sm:text-lg font-bold text-green-600">{selectedRemittance.amount_to_deliver?.toFixed(2)} {selectedRemittance.currency_delivered}</p>
                     </div>
+                    <div>
+                      <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.commissionOverride.commission')}</p>
+                      <p className="text-base sm:text-lg font-bold text-gray-700">{Number(selectedRemittance.commission_total).toFixed(2)} {selectedRemittance.currency_sent}</p>
+                    </div>
                   </div>
+                  {commissionOverride && (
+                    <p className="text-xs sm:text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                      {t('remittances.admin.commissionOverride.adjustedNote', {
+                        standard: Number(commissionOverride.standard_commission).toFixed(2),
+                        currency: selectedRemittance.currency_sent
+                      })}{' '}
+                      <span className="font-medium">{commissionOverride.reason}</span>
+                    </p>
+                  )}
+                  {(isAdmin || isSuperAdmin) && (
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => commissionAdjustable(selectedRemittance) && setShowCommissionModal(true)}
+                        aria-disabled={!commissionAdjustable(selectedRemittance)}
+                        aria-describedby="commission-adjust-help"
+                        className={`min-h-[44px] px-3 border border-gray-300 rounded-lg text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-600 ${
+                          commissionAdjustable(selectedRemittance) ? 'hover:bg-white' : 'opacity-60 cursor-not-allowed'
+                        }`}
+                      >
+                        {t('remittances.admin.commissionOverride.adjustButton')}
+                      </button>
+                      <p id="commission-adjust-help" className="text-xs text-gray-700 mt-1">
+                        {commissionAdjustable(selectedRemittance)
+                          ? ''
+                          : isOwn(selectedRemittance)
+                            ? t('common.ownOperationReason')
+                            : isCommissionFrozen(selectedRemittance)
+                            ? t('remittances.admin.commissionOverride.frozenAfterPayment')
+                            : `${t('remittances.admin.commissionOverride.disabledReason')} ${t('remittances.admin.commissionOverride.currentStatus')}: ${t(remittanceStatusLabelKey(selectedRemittance.status))}`}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Recipient Information */}
@@ -1419,14 +1586,13 @@ const AdminRemittancesTab = () => {
                         )}
                       </>
                     ) : (
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                        <p className="text-sm text-green-800 font-medium">
-                          {t('remittances.admin.noPendingDeliveryProof')}
-                        </p>
-                      </div>
+                      <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-800">
+                        {t('remittances.admin.noDeliveryPhoto')}
+                      </span>
                     )}
                   </div>
                 ) : null}
+                <OperationRefundSection kind="remittance" operationId={selectedRemittance.id} />
               </div>
             </div>
 
@@ -1443,6 +1609,22 @@ const AdminRemittancesTab = () => {
         </div>
       )}
 
+      {deliveryTarget && (
+        <DeliveryProofModal
+          summary={[
+            { label: 'remittances.admin.deliveryModal.remittanceLabel', value: deliveryTarget.remittance_number },
+            { label: 'remittances.admin.deliveryModal.recipientLabel', value: deliveryTarget.recipient_name },
+            { label: 'remittances.admin.deliveryModal.amountLabel', value: `${deliveryTarget.amount_to_deliver} ${deliveryTarget.currency_delivered}` }
+          ]}
+          notesEnabled
+          onClose={() => setDeliveryTarget(null)}
+          onConfirm={submitDelivery}
+          courierKind="remittance"
+          courierOperationId={deliveryTarget.id}
+          t={t}
+        />
+      )}
+
       {/* Payment Proof Modal */}
       <ImageProofModal
         isOpen={showPaymentProofModal}
@@ -1451,7 +1633,18 @@ const AdminRemittancesTab = () => {
         title={t('remittances.user.paymentProof')}
         bucketName="remittance-proofs"
       />
+
+      {selectedRemittance && showCommissionModal && (
+        <CommissionOverrideModal
+          remittance={selectedRemittance}
+          override={commissionOverride}
+          loading={overrideLoadedFor !== selectedRemittance.id}
+          onClose={closeCommissionModal}
+          onSaved={handleCommissionSaved}
+        />
+      )}
     </div>
+    </LoadingState>
   );
 };
 

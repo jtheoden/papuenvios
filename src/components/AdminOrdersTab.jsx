@@ -5,7 +5,7 @@
  * Uses: ResponsiveTableWrapper, OrderTableConfig, OrderActionButtons
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Package,
@@ -41,8 +41,12 @@ import {
   validatePayment,
   rejectPayment,
   getDaysInProcessing,
-  cancelOrder
+  cancelOrder,
+  restockOrder
 } from '@/lib/orderService';
+import { isInsufficientStockError } from '@/lib/stockErrors';
+import { formatMoney } from '@/lib/numberFormat';
+import { isStatusConflictError, transitionErrorKey } from '@/lib/statusConflict';
 import { ORDER_STATUS, PAYMENT_STATUS, ITEM_TYPES } from '@/lib/constants';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -50,7 +54,11 @@ import { useBusiness } from '@/contexts/BusinessContext';
 import { useRealtimeOrders } from '@/hooks/useRealtimeSubscription';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
+import ReconnectingNotice from '@/components/ReconnectingNotice';
+import { isRefreshBlocked } from '@/lib/refreshGuard';
 import OrderActionButtons from '@/components/admin/OrderActionButtons';
+import { isOwnOperation } from '@/lib/selfDealing';
+import { getOrderTotalWarning } from '@/lib/orderTotalCoherence';
 import { getTableColumns, getModalColumns } from '@/components/admin/OrderTableConfig';
 import {
   OrderDetailsModal,
@@ -96,10 +104,13 @@ const getStatusIcon = (status, paymentStatus) => {
   return <Clock className="h-4 w-4" />;
 };
 
+const ORDERS_RELOAD_DEBOUNCE_MS = 500;
+
 const AdminOrdersTab = () => {
-  const { t } = useLanguage();
-  const { user } = useAuth();
-  const { visualSettings } = useBusiness();
+  const { t, language } = useLanguage();
+  const { user, sessionStatus } = useAuth();
+  const reconnecting = sessionStatus === 'reconnecting';
+  const { visualSettings, refreshStock } = useBusiness();
 
   // State
   const [orders, setOrders] = useState([]);
@@ -125,8 +136,6 @@ const AdminOrdersTab = () => {
 
   // Delivery proof modal state
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
-  const [deliveryProofFile, setDeliveryProofFile] = useState(null);
-  const [deliveryProofPreview, setDeliveryProofPreview] = useState(null);
 
   // Custom modal states
   const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
@@ -135,10 +144,27 @@ const AdminOrdersTab = () => {
 
   const operationSucceeded = (result) => result && !result.error;
 
+  // Debounced reload: realtime events and after-action refreshes of the same change
+  // collapse into a single query instead of one per trigger.
+  const reloadTimerRef = useRef(null);
+  const loadOrdersRef = useRef(null);
+  const scheduleReload = () => {
+    clearTimeout(reloadTimerRef.current);
+    reloadTimerRef.current = setTimeout(() => loadOrdersRef.current?.(), ORDERS_RELOAD_DEBOUNCE_MS);
+  };
+  useEffect(() => () => clearTimeout(reloadTimerRef.current), []);
+
   // Load orders
   useEffect(() => {
     loadOrders();
   }, []);
+
+  // Session back after reconnecting: whatever was read (or discarded) meanwhile is stale.
+  const wasReconnectingRef = useRef(false);
+  useEffect(() => {
+    if (wasReconnectingRef.current && !reconnecting) loadOrders();
+    wasReconnectingRef.current = reconnecting;
+  }, [reconnecting]);
 
   // Req 8: Auto-select order from URL parameter ?id=X
   useEffect(() => {
@@ -168,11 +194,12 @@ const AdminOrdersTab = () => {
     enabled: true,
     onUpdate: (payload) => {
       // Reload orders when any change occurs
-      loadOrders();
+      scheduleReload();
     }
   });
 
   const loadOrders = async () => {
+    const wasBlocked = isRefreshBlocked(); // a read that started blocked used the anon key even if the cooldown ends before it returns
     setLoading(true);
     setError(null);
 
@@ -213,6 +240,8 @@ const AdminOrdersTab = () => {
       if (filters.order_type) apiFilters.order_type = filters.order_type;
 
       const orders = await getAllOrders(apiFilters);
+      // Read while the token refresh is blocked = anon key = RLS-empty list: never let it replace what is shown.
+      if (wasBlocked || isRefreshBlocked()) throw new Error('session refresh paused');
       setOrders(orders || []);
     } catch (err) {
       console.error('Error loading orders:', err);
@@ -221,6 +250,8 @@ const AdminOrdersTab = () => {
       setLoading(false);
     }
   };
+  // Always point the debounced reload at the latest closure (current filters)
+  loadOrdersRef.current = loadOrders;
 
   // Apply client-side filters (search, date range, user, product)
   const filteredOrders = useMemo(() => {
@@ -330,22 +361,25 @@ const AdminOrdersTab = () => {
   };
 
   const handleValidatePayment = async (order) => {
+    const totalWarning = getOrderTotalWarning(order);
     showConfirm(
       t('adminOrders.modals.validateTitle'),
-      t('adminOrders.messages.confirmValidate').replace('{orderNumber}', order.order_number),
+      t('adminOrders.messages.confirmValidate').replace('{orderNumber}', order.order_number)
+        + (totalWarning ? `\n\n${t(`adminOrders.totalWarning.${totalWarning}`)}` : ''),
       async () => {
         setActionLoading(order.id);
         try {
           const result = await validatePayment(order.id, user.id);
           if (operationSucceeded(result)) {
             showToast(t('adminOrders.messages.validateSuccess'), 'success');
-            loadOrders();
+            refreshStock?.(); // payment validation consumes the reservation: update displayed stock
+            scheduleReload();
           } else {
             showToast(`${t('common.error')}: ${result.error}`, 'error');
           }
         } catch (err) {
           console.error('Error validating payment:', err);
-          showToast(t('common.error'), 'error');
+          showToast(t(isInsufficientStockError(err) ? 'adminOrders.messages.validateStockError' : transitionErrorKey(err)), 'error');
         } finally {
           setActionLoading(null);
         }
@@ -369,13 +403,13 @@ const AdminOrdersTab = () => {
           const result = await rejectPayment(order.id, user.id, reason.trim());
           if (operationSucceeded(result)) {
             showToast(t('adminOrders.messages.rejectSuccess'), 'success');
-            loadOrders();
+            scheduleReload();
           } else {
             showToast(`${t('common.error')}: ${result.error}`, 'error');
           }
         } catch (err) {
           console.error('Error rejecting payment:', err);
-          showToast(t('common.error'), 'error');
+          showToast(t(transitionErrorKey(err)), 'error');
         } finally {
           setActionLoading(null);
         }
@@ -394,13 +428,13 @@ const AdminOrdersTab = () => {
           const result = await startProcessingOrder(order.id, user.id);
           if (operationSucceeded(result)) {
             showToast(t('adminOrders.messages.startSuccess'), 'success');
-            loadOrders(); // Refresh orders
+            scheduleReload(); // Refresh orders
           } else {
             showToast(`${t('common.error')}: ${result.error}`, 'error');
           }
         } catch (err) {
           console.error('Error starting processing:', err);
-          showToast(t('common.error'), 'error');
+          showToast(t(transitionErrorKey(err)), 'error');
         } finally {
           setActionLoading(null);
         }
@@ -420,13 +454,13 @@ const AdminOrdersTab = () => {
           const result = await markOrderAsDispatched(order.id, user.id, trackingInfo);
           if (operationSucceeded(result)) {
             showToast(t('adminOrders.messages.dispatchSuccess'), 'success');
-            loadOrders(); // Refresh orders
+            scheduleReload(); // Refresh orders
           } else {
             showToast(`${t('common.error')}: ${result.error}`, 'error');
           }
         } catch (err) {
           console.error('Error marking as dispatched:', err);
-          showToast(t('common.error'), 'error');
+          showToast(t(transitionErrorKey(err)), 'error');
         } finally {
           setActionLoading(null);
         }
@@ -440,60 +474,34 @@ const AdminOrdersTab = () => {
     setShowDeliveryModal(true);
   };
 
-  const handleDeliveryProofFileChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  // The dialog calls this with { file } (file may be null: the photo is optional). It throws on failure so the
+  // dialog can show the error and its "retry / confirm without photo" options.
+  const handleConfirmDelivery = async ({ file }) => {
+    if (!selectedOrder) return;
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      showToast(t('adminOrders.messages.invalidImage'), 'error');
-      return;
-    }
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      showToast(t('adminOrders.messages.imageTooLarge'), 'error');
-      return;
-    }
-
-    setDeliveryProofFile(file);
-
-    // Create preview
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setDeliveryProofPreview(reader.result);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleSubmitDeliveryProof = async () => {
-    if (!deliveryProofFile || !selectedOrder) {
-      showToast(t('adminOrders.messages.selectImage'), 'error');
-      return;
-    }
-
-    // Validate order status - only allow uploading proof for dispatched orders
+    // Only dispatched orders can be delivered
     if (selectedOrder.status !== 'dispatched') {
-      showToast(t('adminOrders.messages.onlyDispatchedOrders'), 'error');
-      return;
+      scheduleReload(); // the row we hold is stale
+      throw new Error(t('adminOrders.messages.onlyDispatchedOrders'));
     }
 
     setActionLoading(selectedOrder.id);
     try {
-      const result = await markOrderAsDelivered(selectedOrder.id, deliveryProofFile, user.id);
-      if (operationSucceeded(result)) {
-        showToast(t('adminOrders.messages.deliverSuccess'), 'success');
-        setShowDeliveryModal(false);
-        setDeliveryProofFile(null);
-        setDeliveryProofPreview(null);
-        setSelectedOrder(null);
-        loadOrders(); // Refresh orders
-      } else {
-        showToast(`${t('common.error')}: ${result.error}`, 'error');
+      const result = await markOrderAsDelivered(selectedOrder.id, file, user.id);
+      if (!operationSucceeded(result)) {
+        throw new Error(result?.error || t('common.error'));
       }
+      showToast(t(file ? 'adminOrders.messages.deliverSuccess' : 'adminOrders.messages.deliveredWithoutPhoto'), 'success');
+      setShowDeliveryModal(false);
+      setSelectedOrder(null);
+      scheduleReload(); // Refresh orders
     } catch (err) {
-      console.error('Error uploading delivery proof:', err);
-      showToast(t('common.error'), 'error');
+      if (!isStatusConflictError(err)) throw err; // the dialog shows it with its retry options
+      // Another admin (or the owner) moved the order first: nothing to retry, show the fresh list.
+      showToast(t(transitionErrorKey(err)), 'error');
+      setShowDeliveryModal(false);
+      setSelectedOrder(null);
+      scheduleReload();
     } finally {
       setActionLoading(null);
     }
@@ -510,13 +518,13 @@ const AdminOrdersTab = () => {
           const result = await completeOrder(order.id);
           if (operationSucceeded(result)) {
             showToast(t('adminOrders.messages.completeSuccess'), 'success');
-            loadOrders(); // Refresh orders
+            scheduleReload(); // Refresh orders
           } else {
             showToast(`${t('common.error')}: ${result.error}`, 'error');
           }
         } catch (err) {
           console.error('Error completing order:', err);
-          showToast(t('common.error'), 'error');
+          showToast(t(transitionErrorKey(err)), 'error');
         } finally {
           setActionLoading(null);
         }
@@ -545,13 +553,23 @@ const AdminOrdersTab = () => {
               const result = await cancelOrder(order.id, user.id, reason);
               if (operationSucceeded(result)) {
                 showToast(t('adminOrders.messages.cancelSuccess'), 'success');
-                loadOrders(); // Refresh orders
+                refreshStock?.(); // the cancel released (or consumed) stock: update displayed stock
+                scheduleReload(); // Refresh orders
+                if (result.stockConsumed) {
+                  // Stock was already consumed by the validated payment. Returning it is an explicit
+                  // decision: goods may have left, so the admin must confirm the physical return.
+                  showConfirm(
+                    t('adminOrders.modals.restockTitle'),
+                    t('adminOrders.messages.restockPrompt'),
+                    () => handleRestockClick(order)
+                  );
+                }
               } else {
                 showToast(`${t('common.error')}: ${result.error}`, 'error');
               }
             } catch (err) {
               console.error('Error cancelling order:', err);
-              showToast(t('common.error'), 'error');
+              showToast(t(transitionErrorKey(err)), 'error');
             } finally {
               setActionLoading(null);
             }
@@ -559,6 +577,44 @@ const AdminOrdersTab = () => {
         );
       }
     );
+  };
+
+  // Handler: return consumed units to the inventory (explicit admin decision, also reachable
+  // later from the persistent button on cancelled orders). It asks for its OWN reason: the
+  // cancel reason explains why the order died, not why the goods came back.
+  const handleRestockClick = (order, typed = '') => {
+    showInput(
+      t('adminOrders.modals.restockReasonTitle'),
+      t('adminOrders.messages.restockReasonPrompt').replace('{orderNumber}', order.order_number),
+      typed,
+      (reason) => {
+        if (!reason || reason.trim() === '') {
+          showToast(t('adminOrders.messages.restockReasonRequired'), 'error');
+          // The dialog closes after its callback: reopen it on the next tick with what was typed.
+          setTimeout(() => handleRestockClick(order, reason || ''), 0);
+          return;
+        }
+        handleRestockOrder(order, reason.trim());
+      }
+    );
+  };
+
+  const handleRestockOrder = async (order, reason) => {
+    setActionLoading(order.id);
+    try {
+      const result = await restockOrder(order.id, reason);
+      showToast(
+        result?.restocked ? t('adminOrders.messages.restockSuccess') : t('adminOrders.messages.restockNothing'),
+        result?.restocked ? 'success' : 'info'
+      );
+      if (result?.restocked) refreshStock?.();
+      scheduleReload(); // the consumed flag changed: refresh the list
+    } catch (err) {
+      console.error('Error restocking order:', err);
+      showToast(t('adminOrders.messages.restockError'), 'error');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   // Helper functions for custom modals
@@ -597,13 +653,8 @@ const AdminOrdersTab = () => {
   };
 
   // Format currency
-  const formatCurrency = (amount, currencyCode = 'USD') => {
-    if (!amount) return '0.00';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currencyCode
-    }).format(amount);
-  };
+  const formatCurrency = (amount, currencyCode = 'USD') =>
+    formatMoney(amount, { currency: currencyCode, language });
 
   // Render order type icon
   const renderTypeIcon = (type) => {
@@ -638,13 +689,16 @@ const AdminOrdersTab = () => {
             onUploadDeliveryProof={() => handleUploadDeliveryProof(order)}
             onCompleteOrder={() => handleCompleteOrder(order)}
             onCancelOrder={() => handleCancelOrder(order)}
+            onRestockOrder={() => handleRestockClick(order)}
             actionLoading={actionLoading === order.id}
+            ownOperation={isOwnOperation(order, user?.id)}
           />
         )
       }
     ];
   }, [
     t,
+    user?.id,
     actionLoading,
     viewOrderDetails,
     handleValidatePayment,
@@ -654,6 +708,7 @@ const AdminOrdersTab = () => {
     handleUploadDeliveryProof,
     handleCompleteOrder,
     handleCancelOrder,
+    handleRestockClick,
     formatDate,
     formatCurrency,
     renderTypeIcon
@@ -858,6 +913,8 @@ const AdminOrdersTab = () => {
         )}
       </AnimatePresence>
 
+      {reconnecting && <ReconnectingNotice onRetry={loadOrders} />}
+
       {/* Orders Table - Responsive */}
       <ResponsiveTableWrapper
         data={filteredOrders}
@@ -866,7 +923,7 @@ const AdminOrdersTab = () => {
         isLoading={loading}
         modalTitle={t('adminOrders.detail.title')}
         modalColumns={getModalColumns(t, formatDate, formatCurrency)}
-        emptyMessage={filteredOrders.length === 0 && !loading ? t('adminOrders.messages.noOrders') : undefined}
+        emptyMessage={filteredOrders.length === 0 && !loading && !reconnecting ? t('adminOrders.messages.noOrders') : undefined}
       />
 
       {/* Order Details Modal */}
@@ -885,17 +942,17 @@ const AdminOrdersTab = () => {
       {/* Delivery Proof Upload Modal */}
       {showDeliveryModal && selectedOrder && (
         <DeliveryProofModal
-          order={selectedOrder}
+          summary={[
+            { label: 'adminOrders.deliveryModal.orderLabel', value: selectedOrder.order_number },
+            { label: 'adminOrders.deliveryModal.customerLabel', value: selectedOrder.user_name }
+          ]}
           onClose={() => {
             setShowDeliveryModal(false);
             setSelectedOrder(null);
-            setDeliveryProofFile(null);
-            setDeliveryProofPreview(null);
           }}
-          onFileChange={handleDeliveryProofFileChange}
-          onSubmit={handleSubmitDeliveryProof}
-          preview={deliveryProofPreview}
-          loading={actionLoading === selectedOrder.id}
+          onConfirm={handleConfirmDelivery}
+          courierKind="order"
+          courierOperationId={selectedOrder.id}
           t={t}
         />
       )}

@@ -4,6 +4,11 @@ import { X, TrendingDown, User, Truck, Loader2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { generateProofSignedUrl } from '@/lib/remittanceService';
 import { parseRecipientInfo } from '@/lib/recipientInfo';
+import { useOrderItemLines } from '@/hooks/useOrderItemLines';
+import { usePaymentProofUrl } from '@/hooks/usePaymentProofUrl';
+import OrderComboComponents from '@/components/OrderComboComponents';
+import { formatQuantityWithUnit } from '@/lib/productUnits';
+import OperationRefundSection from '@/components/refunds/OperationRefundSection';
 
 /**
  * Order Details Modal Component
@@ -20,6 +25,7 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
   const titleId = `order-modal-title-${order?.id}`;
 
   // State for signed delivery proof URL
+  const paymentProof = usePaymentProofUrl(order?.payment_proof_url);
   const [deliveryProofSignedUrl, setDeliveryProofSignedUrl] = useState(null);
   const [loadingDeliveryProof, setLoadingDeliveryProof] = useState(false);
 
@@ -39,6 +45,9 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
       recipient_info: recipientInfo
     };
   }, [order]);
+
+  // Combo lines expanded into their current components (one query, only when the order has combos)
+  const { lines: itemLines, comboLookupDone } = useOrderItemLines(normalizedOrder, language);
 
   // Generate signed URL for delivery proof (private bucket requires signed URLs)
   useEffect(() => {
@@ -245,13 +254,16 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200" role="rowgroup">
-                    {normalizedOrder.order_items?.map((item, index) => (
+                    {itemLines.map((line, index) => {
+                      const item = line.item;
+                      return (
                       <tr key={index} role="row">
                         <td className="px-4 py-3 text-sm text-gray-900" role="cell">
                           {language === 'es' ? (item.item_name_es || item.item_name_en) : (item.item_name_en || item.item_name_es)}
+                          <OrderComboComponents line={line} lookupDone={comboLookupDone} t={t} language={language} />
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900" role="cell">
-                          {item.quantity}
+                          {formatQuantityWithUnit(item.quantity, line.unit, language)}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900" role="cell">
                           {formatCurrency(item.unit_price, normalizedOrder.currencies?.code)}
@@ -260,7 +272,8 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
                           {formatCurrency(item.total_price, normalizedOrder.currencies?.code)}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -362,21 +375,31 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
                 <h4 className="text-lg font-semibold text-gray-900">
                   {t('adminOrders.detail.paymentProof')}
                 </h4>
-                <div className="bg-gray-50 rounded-lg border border-gray-200 p-2">
-                  <img
-                    src={normalizedOrder.payment_proof_url}
-                    alt={t('adminOrders.detail.paymentProof')}
-                    className="w-full h-auto rounded-lg"
-                  />
-                </div>
-                <a
-                  href={normalizedOrder.payment_proof_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-center text-sm text-blue-600 hover:text-blue-700 hover:underline"
-                >
-                  {t('adminOrders.detail.viewFullSize')} →
-                </a>
+                {paymentProof.error ? (
+                  <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                    {t('adminOrders.detail.paymentProofError')}
+                  </p>
+                ) : paymentProof.url ? (
+                  <>
+                    <div className="bg-gray-50 rounded-lg border border-gray-200 p-2">
+                      <img
+                        src={paymentProof.url}
+                        alt={t('adminOrders.detail.paymentProof')}
+                        className="w-full h-auto rounded-lg"
+                      />
+                    </div>
+                    <a
+                      href={paymentProof.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block text-center text-sm text-theme-link hover:text-theme-link-strong hover:underline"
+                    >
+                      {t('adminOrders.detail.viewFullSize')} →
+                    </a>
+                  </>
+                ) : (
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-400 mx-auto" aria-hidden="true" />
+                )}
               </div>
             ) : (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
@@ -384,6 +407,13 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
                   {t('adminOrders.detail.noPaymentProof')}
                 </p>
               </div>
+            )}
+
+            {/* Delivery without a photo (optional): a discreet badge, detail view only */}
+            {!normalizedOrder.delivery_proof_url && ['delivered', 'completed'].includes(normalizedOrder.status) && (
+              <span className="inline-flex w-fit items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-800">
+                {t('adminOrders.detail.noDeliveryPhoto')}
+              </span>
             )}
 
             {/* Delivery Proof Section */}
@@ -433,6 +463,7 @@ const OrderDetailsModal = ({ order, onClose, formatDate, formatCurrency }) => {
                 )}
               </div>
             )}
+            <OperationRefundSection kind="order" operationId={normalizedOrder.id} />
           </div>
         </div>
 

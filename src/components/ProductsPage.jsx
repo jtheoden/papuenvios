@@ -8,25 +8,65 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { toast } from '@/components/ui/use-toast';
 import { uploadProductImage, deleteProductImage } from '@/lib/storage';
-import { supabase } from '@/lib/supabase';
+import { setProductImageUrl } from '@/lib/productService';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { getHeadingStyle } from '@/lib/styleUtils';
 import CurrencySelector from '@/components/CurrencySelector';
 import PriceDisplay from '@/components/PriceDisplay';
 import { useUserDiscounts } from '@/hooks/useUserDiscounts';
 import { buildDiscountBreakdown } from '@/lib/discountDisplayService';
-import { computeComboPricing } from '@/lib/comboUtils';
-import { useRealtimeProducts, useRealtimeCombos } from '@/hooks/useRealtimeSubscription';
+import { getProductPriceInCurrency, getComboPriceInCurrency } from '@/lib/publicPricing';
+import CatalogLoadError from '@/components/CatalogLoadError';
+import LoadingState, { SkeletonBox } from '@/components/ui/LoadingState';
+
+// Breakdown returned for an item whose stored price is missing: nothing to show, nothing discounted.
+const UNPRICED_BREAKDOWN = { original: null, discount: '0.00', final: null, hasDiscount: false, percent: 0 };
+
+// Entrance stagger: only the first cards animate, so a long catalog never waits on its own animation.
+const STAGGERED_CARDS = 6;
+const staggerClass = (index) => (index < STAGGERED_CARDS ? 'motion-safe:animate-enter' : '');
+const staggerStyle = (index) => (index < STAGGERED_CARDS ? { '--stagger-index': index } : undefined);
+
+// Same footprint as the real combo row and product grid, so the data replaces it without a layout jump.
+const CatalogSkeleton = () => (
+  <>
+    <SkeletonBox className="mb-4 h-8 w-48" />
+    <div className="mb-12 flex gap-6 overflow-hidden pb-4">
+      {Array.from({ length: 4 }, (_, i) => (
+        <div key={i} className="glass-effect w-[300px] flex-shrink-0 overflow-hidden rounded-2xl">
+          <SkeletonBox className="aspect-square w-full rounded-none" />
+          <div className="space-y-3 p-4">
+            <SkeletonBox className="h-6 w-3/4" />
+            <SkeletonBox className="h-4 w-1/2" />
+            <SkeletonBox className="h-8 w-1/3" />
+            <SkeletonBox className="h-10 w-full" />
+          </div>
+        </div>
+      ))}
+    </div>
+    <SkeletonBox className="mb-4 h-8 w-40" />
+    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {Array.from({ length: 8 }, (_, i) => (
+        <div key={i} className="glass-effect overflow-hidden rounded-2xl">
+          <SkeletonBox className="aspect-square w-full rounded-none" />
+          <div className="space-y-3 p-6">
+            <SkeletonBox className="h-6 w-3/4" />
+            <SkeletonBox className="h-7 w-1/3" />
+            <SkeletonBox className="h-10 w-full" />
+          </div>
+        </div>
+      ))}
+    </div>
+  </>
+);
 
 const ProductsPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { user, isAdmin } = useAuth();
-  const { products, combos, categories, addToCart, financialSettings, refreshProducts, visualSettings } = useBusiness();
+  const { products, combos, categories, addToCart, refreshProducts, visualSettings, catalogError, loading } = useBusiness();
   const { selectedCurrency, setSelectedCurrency, currencySymbol, currencyCode, convertAmount, currencyMap } = useCurrency();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [filteredProducts, setFilteredProducts] = useState([]);
-  const [filteredCombos, setFilteredCombos] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -48,22 +88,6 @@ const ProductsPage = ({ onNavigate }) => {
     });
     return baseId || selectedCurrency;
   }, [currencyMap, selectedCurrency]);
-
-  // Suscripción real-time para productos - actualiza automáticamente cuando cambian
-  useRealtimeProducts({
-    enabled: true,
-    onUpdate: () => {
-      refreshProducts();
-    }
-  });
-
-  // Suscripción real-time para combos - actualiza automáticamente cuando cambian
-  useRealtimeCombos({
-    enabled: true,
-    onUpdate: () => {
-      refreshProducts();
-    }
-  });
 
   const handleImageUpload = useCallback(async (event, productId) => {
     const file = event.target.files[0];
@@ -97,12 +121,7 @@ const ProductsPage = ({ onNavigate }) => {
       const { publicUrl } = await uploadProductImage(result.blob, fileName);
 
       // Update product in database
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({ image_url: publicUrl })
-        .eq('id', productId);
-
-      if (updateError) throw updateError;
+      await setProductImageUrl(productId, publicUrl);
 
       // Refresh products list
       await refreshProducts();
@@ -132,12 +151,7 @@ const ProductsPage = ({ onNavigate }) => {
       await deleteProductImage(imageUrl);
 
       // Update product in database
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({ image_url: null })
-        .eq('id', productId);
-
-      if (updateError) throw updateError;
+      await setProductImageUrl(productId, null);
 
       // Refresh products list
       await refreshProducts();
@@ -156,33 +170,26 @@ const ProductsPage = ({ onNavigate }) => {
     }
   }, [t, refreshProducts]);
 
-  useEffect(() => {
-    // Filter products - Show all products (including zero stock with visual indicator)
-    let filtered = products;
+  // Derived in render (not in an effect): an effect leaves the lists empty for one painted frame
+  // after the data arrives, which flashed the "no products" state.
+  const filteredProducts = useMemo(() => {
+    // Show all products (including zero stock with visual indicator)
+    const term = searchTerm.toLowerCase();
+    return products.filter(product =>
+      (!searchTerm
+        || (product.name_es || product.name || '').toLowerCase().includes(term)
+        || (product.name_en || '').toLowerCase().includes(term))
+      && (selectedCategory === 'all'
+        || product.category?.id === selectedCategory || product.category_id === selectedCategory)
+    );
+  }, [products, searchTerm, selectedCategory]);
 
-    if (searchTerm) {
-      filtered = filtered.filter(product =>
-        (product.name_es || product.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (product.name_en || '').toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    if (selectedCategory !== 'all') {
-      filtered = filtered.filter(product => product.category?.id === selectedCategory || product.category_id === selectedCategory);
-    }
-
-    setFilteredProducts(filtered);
-
-    // Filter combos - show all combos (inactive ones will be displayed as disabled)
-    let filteredC = combos || [];
-
-    if (searchTerm) {
-      filteredC = filteredC.filter(combo =>
-        combo.name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-    setFilteredCombos(filteredC);
-  }, [products, combos, searchTerm, selectedCategory, isAdmin]);
+  // Show all combos (inactive ones are displayed as disabled)
+  const filteredCombos = useMemo(() => (
+    searchTerm
+      ? (combos || []).filter(combo => combo.name.toLowerCase().includes(searchTerm.toLowerCase()))
+      : (combos || [])
+  ), [combos, searchTerm]);
 
   const handleAddToCart = (product) => {
     addToCart(product);
@@ -228,98 +235,76 @@ const ProductsPage = ({ onNavigate }) => {
     }
   }, [filteredCombos]);
 
+  // Prices are the stored final_price of each item; an unresolved price is null (never 0).
+  const getComboPrice = useCallback((combo) => getComboPriceInCurrency(combo, {
+    convert: convertAmount,
+    baseCurrencyId,
+    selectedCurrencyId: selectedCurrency
+  }), [convertAmount, baseCurrencyId, selectedCurrency]);
+
+  const getProductPrice = useCallback((product) => getProductPriceInCurrency(product, {
+    convert: convertAmount,
+    selectedCurrencyId: selectedCurrency
+  }), [convertAmount, selectedCurrency]);
+
   /**
-   * Calculate combo display price (synchronous version)
-   * For use in calculations and displays without async/await
-   * Applies user category discounts to combos as well
+   * Combo display price with the user category discount applied.
+   * @returns {string|null} formatted price, or null when the combo has no usable stored price
    */
-  const getComboBaseAndFinal = useCallback((combo) => {
-    const pricing = computeComboPricing({
-      combo,
-      products,
-      convert: convertAmount,
-      selectedCurrencyId: selectedCurrency,
-      baseCurrencyId,
-      defaultProfitMargin: financialSettings.comboProfit
-    });
-
-    return pricing;
-  }, [products, convertAmount, selectedCurrency, baseCurrencyId, financialSettings.comboProfit]);
-
   const getComboDisplayPrice = useCallback((combo) => {
-    if (!combo) return '0.00';
+    const price = getComboPrice(combo);
+    if (price === null) return null;
 
-    const { finalPrice } = getComboBaseAndFinal(combo);
-    const breakdown = buildDiscountBreakdown({ amount: finalPrice, categoryPercent: userCategoryDiscount });
-
-    return breakdown.finalAmount.toFixed(2);
-  }, [getComboBaseAndFinal, userCategoryDiscount]);
+    return buildDiscountBreakdown({ amount: price, categoryPercent: userCategoryDiscount }).finalAmount.toFixed(2);
+  }, [getComboPrice, userCategoryDiscount]);
 
   /**
    * Get combo price breakdown for display (original + discount)
    */
   const getComboPriceBreakdown = useCallback((combo) => {
-    if (!combo) return { original: '0.00', discount: '0.00', final: '0.00' };
+    const price = getComboPrice(combo);
+    if (price === null) return UNPRICED_BREAKDOWN;
 
-    const { finalPrice } = getComboBaseAndFinal(combo);
-    const breakdown = buildDiscountBreakdown({ amount: finalPrice, categoryPercent: userCategoryDiscount });
+    const breakdown = buildDiscountBreakdown({ amount: price, categoryPercent: userCategoryDiscount });
 
     return {
-      original: finalPrice.toFixed(2),
+      original: price.toFixed(2),
       discount: breakdown.total.amount.toFixed(2),
       final: breakdown.finalAmount.toFixed(2),
       hasDiscount: breakdown.total.amount > 0,
       percent: breakdown.total.percent
     };
-  }, [getComboBaseAndFinal, userCategoryDiscount]);
+  }, [getComboPrice, userCategoryDiscount]);
 
   /**
-   * Get display price for a product with discount applied
-   * Use final_price directly (already includes profit margin from database)
-   * Do NOT apply margin again - that was the double-margin bug
+   * Get display price for a product with the user category discount applied.
+   * final_price already includes the margin: it is never applied again (double-margin bug).
+   * @returns {string|null} formatted price, or null when the product has no usable stored price
    */
   const getDisplayPrice = useCallback((product) => {
-    if (!product) return '0.00';
+    const price = getProductPrice(product);
+    if (price === null) return null;
 
-    // Use final_price from database (already includes margin)
-    const basePrice = parseFloat(product.final_price || product.base_price || 0);
-    const productCurrencyId = product.base_currency_id;
-
-    // Convert to selected currency
-    let convertedPrice = basePrice;
-    if (productCurrencyId && productCurrencyId !== selectedCurrency) {
-      convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
-    }
-
-    const breakdown = buildDiscountBreakdown({ amount: convertedPrice, categoryPercent: userCategoryDiscount });
-
-    return breakdown.finalAmount.toFixed(2);
-  }, [selectedCurrency, convertAmount, userCategoryDiscount]);
+    return buildDiscountBreakdown({ amount: price, categoryPercent: userCategoryDiscount }).finalAmount.toFixed(2);
+  }, [getProductPrice, userCategoryDiscount]);
 
   /**
    * Get price breakdown for display (original + discount)
    */
   const getPriceBreakdown = useCallback((product) => {
-    if (!product) return { original: '0.00', discount: '0.00', final: '0.00' };
+    const price = getProductPrice(product);
+    if (price === null) return UNPRICED_BREAKDOWN;
 
-    const basePrice = parseFloat(product.final_price || product.base_price || 0);
-    const productCurrencyId = product.base_currency_id;
-
-    let convertedPrice = basePrice;
-    if (productCurrencyId && productCurrencyId !== selectedCurrency) {
-      convertedPrice = convertAmount(basePrice, productCurrencyId, selectedCurrency);
-    }
-
-    const breakdown = buildDiscountBreakdown({ amount: convertedPrice, categoryPercent: userCategoryDiscount });
+    const breakdown = buildDiscountBreakdown({ amount: price, categoryPercent: userCategoryDiscount });
 
     return {
-      original: convertedPrice.toFixed(2),
+      original: price.toFixed(2),
       discount: breakdown.total.amount.toFixed(2),
       final: breakdown.finalAmount.toFixed(2),
       hasDiscount: breakdown.total.amount > 0,
       percent: breakdown.total.percent
     };
-  }, [selectedCurrency, convertAmount, userCategoryDiscount]);
+  }, [getProductPrice, userCategoryDiscount]);
 
   return (
     <div className="min-h-screen py-8 px-4">
@@ -336,6 +321,8 @@ const ProductsPage = ({ onNavigate }) => {
             {t('products.subtitle')}
           </p>
         </motion.div>
+
+        <CatalogLoadError error={catalogError} />
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -382,6 +369,8 @@ const ProductsPage = ({ onNavigate }) => {
           </div>
         </motion.div>
 
+        {/* Error: the error state replaces the skeleton instead of leaving it forever */}
+        <LoadingState loading={loading && !catalogError} skeleton={<CatalogSkeleton />}>
         {/* Display Combos First (if any) */}
         {filteredCombos.length > 0 && (
           <>
@@ -433,28 +422,25 @@ const ProductsPage = ({ onNavigate }) => {
                 // Check if combo is inactive (for non-admin users, show as disabled)
                 const isComboInactive = !isAdmin && combo.is_active === false;
 
-                // Savings calculation with currency conversion applied
+                // Savings: sum of the components' stored prices vs the combo's stored price.
+                // Any unpriced piece means there is nothing reliable to compare.
+                const comboDisplayPrice = getComboDisplayPrice(combo);
+                const comboUnpriced = comboDisplayPrice === null;
                 const calculateSavings = () => {
+                  if (comboUnpriced) return { savings: '0.00', percent: 0 };
+
                   let totalIndividual = 0;
-                  (combo.products || []).forEach(productId => {
+                  for (const productId of combo.products || []) {
                     const product = products.find(p => p.id === productId);
-                    if (product) {
-                      const productCurrencyId = product.base_currency_id;
-                      const quantity = combo.productQuantities?.[productId] || 1;
+                    if (!product) continue;
 
-                      // Use the actual product final_price (base_price * (1 + profit_margin/100))
-                      const finalPrice = parseFloat(product.final_price || product.base_price || 0);
-                      let convertedPrice = finalPrice;
-                      if (productCurrencyId && productCurrencyId !== selectedCurrency) {
-                        convertedPrice = convertAmount(finalPrice, productCurrencyId, selectedCurrency);
-                      }
+                    const price = getProductPrice(product);
+                    if (price === null) return { savings: '0.00', percent: 0 };
 
-                      totalIndividual += convertedPrice * quantity;
-                    }
-                  });
+                    totalIndividual += price * (combo.productQuantities?.[productId] || 1);
+                  }
 
-                  const comboPrice = parseFloat(getComboDisplayPrice(combo));
-                  const savings = totalIndividual - comboPrice;
+                  const savings = totalIndividual - parseFloat(comboDisplayPrice);
                   const savingsPercent = totalIndividual > 0 ? ((savings / totalIndividual) * 100).toFixed(0) : 0;
 
                   return { savings: savings.toFixed(2), percent: savingsPercent };
@@ -463,13 +449,10 @@ const ProductsPage = ({ onNavigate }) => {
                 const savingsData = calculateSavings();
 
                 return (
-                  <motion.div
+                  <div
                     key={`combo-${combo.id}`}
-                    initial={{ opacity: 0, y: 30 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    className={`glass-effect rounded-2xl overflow-hidden group border-2 border-purple-200 cursor-pointer flex-shrink-0 ${isComboInactive ? 'opacity-60' : 'hover-lift'}`}
-                    style={{ width: '300px' }}
+                    className={`glass-effect rounded-2xl overflow-hidden group border-2 border-purple-200 cursor-pointer flex-shrink-0 ${isComboInactive ? 'opacity-60' : 'hover-lift'} ${staggerClass(index)}`}
+                    style={{ width: '300px', ...staggerStyle(index) }}
                     onClick={() => onNavigate('product-detail', { itemId: combo.id, itemType: 'combo' })}
                   >
                     <div className="aspect-square bg-gradient-to-br from-purple-100 to-pink-100 relative">
@@ -517,7 +500,7 @@ const ProductsPage = ({ onNavigate }) => {
 
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex-1">
-                        {userCategoryDiscount > 0 && (
+                        {userCategoryDiscount > 0 && !comboUnpriced && (
                           <div className="mb-2">
                             <div className="text-xs text-gray-500 line-through">
                               {currencySymbol}{getComboPriceBreakdown(combo).original} {currencyCode}
@@ -528,9 +511,13 @@ const ProductsPage = ({ onNavigate }) => {
                             </div>
                           </div>
                         )}
-                        <p className="text-2xl font-bold text-purple-600">
-                          {currencySymbol}{getComboDisplayPrice(combo)} <span className="text-sm text-gray-600">{currencyCode}</span>
-                        </p>
+                        {comboUnpriced ? (
+                          <p className="text-lg font-semibold text-gray-500">{t('products.priceUnavailable')}</p>
+                        ) : (
+                          <p className="text-2xl font-bold text-purple-600">
+                            {currencySymbol}{comboDisplayPrice} <span className="text-sm text-gray-600">{currencyCode}</span>
+                          </p>
+                        )}
                         {userCategory !== 'regular' && (
                           <div className="text-xs text-blue-600 mt-1">
                             {t('products.userCategoryLabel', { category: userCategory })}
@@ -543,11 +530,11 @@ const ProductsPage = ({ onNavigate }) => {
                       <Button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (!isComboInactive) handleAddToCart({ ...combo, type: 'combo' });
+                          if (!isComboInactive && !comboUnpriced) handleAddToCart({ ...combo, type: 'combo' });
                         }}
-                        disabled={isComboInactive}
+                        disabled={isComboInactive || comboUnpriced}
                         className="w-full"
-                        style={isComboInactive ? {
+                        style={isComboInactive || comboUnpriced ? {
                           background: '#9ca3af',
                           color: '#ffffff',
                           border: 'none',
@@ -563,12 +550,14 @@ const ProductsPage = ({ onNavigate }) => {
                         <ShoppingCart className="w-4 h-4 mr-2" />
                         {isComboInactive
                           ? t('products.notAvailable')
-                          : t('products.addToCart')
+                          : comboUnpriced
+                            ? t('products.priceUnavailable')
+                            : t('products.addToCart')
                         }
                       </Button>
                     )}
                   </div>
-                </motion.div>
+                </div>
                 );
               })}
             </div>
@@ -589,14 +578,14 @@ const ProductsPage = ({ onNavigate }) => {
         <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filteredProducts.map((product, index) => {
             const isOutOfStock = !isAdmin && (product.stock === undefined || product.stock === null || product.stock <= 0);
+            const productDisplayPrice = getDisplayPrice(product);
+            const productUnpriced = productDisplayPrice === null;
 
             return (
-            <motion.div
+            <div
               key={product.id}
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
-              className={`glass-effect rounded-2xl overflow-hidden group cursor-pointer ${isOutOfStock ? 'opacity-60' : 'hover-lift'}`}
+              className={`glass-effect rounded-2xl overflow-hidden group cursor-pointer ${isOutOfStock ? 'opacity-60' : 'hover-lift'} ${staggerClass(index)}`}
+              style={staggerStyle(index)}
               onClick={() => onNavigate('product-detail', { itemId: product.id, itemType: 'product' })}
             >
               <div className="aspect-square bg-gradient-to-br from-gray-100 to-gray-200 relative group">
@@ -701,7 +690,7 @@ const ProductsPage = ({ onNavigate }) => {
                 )}
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex-1">
-                    {userCategoryDiscount > 0 && (
+                    {userCategoryDiscount > 0 && !productUnpriced && (
                       <div className="mb-2">
                         <div className="text-xs text-gray-500 line-through">
                           {currencySymbol}{getPriceBreakdown(product).original} {currencyCode}
@@ -712,9 +701,13 @@ const ProductsPage = ({ onNavigate }) => {
                         </div>
                       </div>
                     )}
-                    <div className="text-xl font-bold text-green-600">
-                      {currencySymbol}{getDisplayPrice(product)} <span className="text-sm text-gray-600">{currencyCode}</span>
-                    </div>
+                    {productUnpriced ? (
+                      <div className="text-lg font-semibold text-gray-500">{t('products.priceUnavailable')}</div>
+                    ) : (
+                      <div className="text-xl font-bold text-green-600">
+                        {currencySymbol}{productDisplayPrice} <span className="text-sm text-gray-600">{currencyCode}</span>
+                      </div>
+                    )}
                     {userCategory !== 'regular' && (
                       <div className="text-xs text-blue-600 mt-1">
                         {t('products.userCategoryLabel', { category: userCategory })}
@@ -727,11 +720,11 @@ const ProductsPage = ({ onNavigate }) => {
                   <Button
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (!isOutOfStock) handleAddToCart(product);
+                      if (!isOutOfStock && !productUnpriced) handleAddToCart(product);
                     }}
-                    disabled={isOutOfStock}
+                    disabled={isOutOfStock || productUnpriced}
                     className="w-full"
-                    style={isOutOfStock ? {
+                    style={isOutOfStock || productUnpriced ? {
                       background: '#9ca3af',
                       color: '#ffffff',
                       border: 'none',
@@ -747,12 +740,14 @@ const ProductsPage = ({ onNavigate }) => {
                     <ShoppingCart className="w-4 h-4 mr-2" />
                     {isOutOfStock
                       ? t('products.detail.outOfStock')
-                      : t('products.addToCart')
+                      : productUnpriced
+                        ? t('products.priceUnavailable')
+                        : t('products.addToCart')
                     }
                   </Button>
                 )}
               </div>
-            </motion.div>
+            </div>
           );
           })}
         </div>
@@ -770,6 +765,7 @@ const ProductsPage = ({ onNavigate }) => {
             <p className="text-gray-500">{t('products.noProductsDesc')}</p>
           </motion.div>
         )}
+        </LoadingState>
       </div>
     </div>
   );

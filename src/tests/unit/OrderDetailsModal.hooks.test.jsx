@@ -1,9 +1,16 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+
+// The refund section/block imports refundService, which imports the Supabase client (needs env vars): stub it.
+vi.mock('@/lib/supabase', () => ({ supabase: {} }));
+
+vi.mock('@/lib/paymentProofService', () => ({ getPaymentProofSignedUrl: vi.fn().mockResolvedValue({ success: false }) }));
 import { render, screen, fireEvent } from '@testing-library/react';
 
 vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({ t: (key) => key, language: 'es' })
 }));
+
+vi.mock('@/lib/orderComboService', () => ({ fetchComboDefinitions: vi.fn().mockResolvedValue(new Map()) }));
 
 vi.mock('@/lib/remittanceService', () => ({
   generateProofSignedUrl: vi.fn().mockResolvedValue({ success: false })

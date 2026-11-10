@@ -15,7 +15,7 @@ import { toast } from '@/components/ui/use-toast';
 import { saveNotificationSettings } from '@/lib/notificationSettingsService';
 import { DEFAULT_VISUAL_SETTINGS } from '@/lib/businessVisualSettingsService';
 import {
-  getAllPublications, saveAllPublications, uploadPublicationImage, deletePublicationImage
+  getAllPublications, saveAllPublications, mergeAfterPartialSave, applySaveResult, uploadPublicationImage, deletePublicationImage
 } from '@/lib/publicationService';
 
 // Icon name → component mapping
@@ -69,11 +69,19 @@ const SettingsPageContent = ({ localNotifications, setLocalNotifications, visual
     loadPublications();
   }, []);
 
-  const loadPublications = async () => {
+  const loadPublications = async (keepLocalFrom) => {
     setLoadingPubs(true);
     try {
       const pubs = await getAllPublications();
-      setPublications(pubs);
+      if (pubs === null) {
+        // Read failed: leave the list and what was typed untouched. After a save the toast already
+        // reports the result and the local state was updated from it, so stay quiet there.
+        if (!keepLocalFrom) {
+          toast({ title: t('common.error'), description: t('settings.content.pubLoadFailed'), variant: 'destructive' });
+        }
+        return;
+      }
+      setPublications(keepLocalFrom ? mergeAfterPartialSave(pubs, keepLocalFrom.local, keepLocalFrom.result) : pubs);
       setOriginalPublications(pubs);
     } catch (error) {
       console.error('Error loading publications:', error);
@@ -189,12 +197,8 @@ const SettingsPageContent = ({ localNotifications, setLocalNotifications, visual
     setExpandedPub(publications.length);
   };
 
-  const removePub = async (index) => {
-    const pub = publications[index];
-    // If it has a cover image in storage, delete it
-    if (pub.cover_image_url && !pub._isNew) {
-      await deletePublicationImage(pub.cover_image_url);
-    }
+  const removePub = (index) => {
+    // The cover image is removed from storage by saveAllPublications once the row delete succeeds
     setPublications(prev => prev.filter((_, i) => i !== index));
     setExpandedPub(null);
     toast({ title: t('settings.content.pubRemoved') });
@@ -233,7 +237,10 @@ const SettingsPageContent = ({ localNotifications, setLocalNotifications, visual
 
   const handleRemoveImage = async (index) => {
     const pub = publications[index];
-    if (pub.cover_image_url) {
+    // A saved cover is deleted from storage by saveAllPublications once the row update succeeds;
+    // only an unsaved upload (not referenced by the saved row) can be deleted right away.
+    const savedCover = originalPublications.find(o => o.id === pub.id)?.cover_image_url;
+    if (pub.cover_image_url && pub.cover_image_url !== savedCover) {
       await deletePublicationImage(pub.cover_image_url);
     }
     updatePub(index, 'cover_image_url', '');
@@ -245,9 +252,26 @@ const SettingsPageContent = ({ localNotifications, setLocalNotifications, visual
       const result = await saveAllPublications(publications, originalPublications);
       if (result.success) {
         toast({ title: t('settings.content.pubSaved') });
-        // Reload to get fresh data with proper IDs
-        await loadPublications();
+      } else {
+        console.error('Error saving publications:', result);
+        const titlesOf = (ids) => result.failedTitles
+          .filter((_, i) => ids.includes(result.failedIds[i]))
+          .map((title) => title || t('settings.content.pubUntitled')).join(', ');
+        const parts = [
+          t('settings.content.pubSaveFailed', { n: result.failedCount }),
+          t('settings.content.pubSaveFailedList', { titles: titlesOf(result.failedIds) })
+        ];
+        if (result.missingIds?.length) {
+          parts.push(t('settings.content.pubMissingOnServer', { titles: titlesOf(result.missingIds) }));
+        }
+        toast({ title: t('common.error'), description: parts.join(' '), variant: 'destructive' });
       }
+      // Reload either way: fresh IDs on success; after a partial failure keep what was typed in failed rows
+      // Apply the result locally first (real ids for created rows), so a failed reload cannot cause duplicates
+      const applied = applySaveResult(publications, originalPublications, result);
+      setPublications(applied.publications);
+      setOriginalPublications(applied.originals);
+      await loadPublications({ local: applied.publications, result });
     } catch (error) {
       console.error('Error saving publications:', error);
       toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
@@ -601,6 +625,7 @@ const SettingsPageContent = ({ localNotifications, setLocalNotifications, visual
                       )}
                       <button
                         type="button"
+                        disabled={savingPubs}
                         onClick={(e) => {
                           e.stopPropagation();
                           updatePub(index, 'is_active', !pub.is_active);
@@ -617,7 +642,7 @@ const SettingsPageContent = ({ localNotifications, setLocalNotifications, visual
 
                     {/* Expanded form */}
                     {isExpanded && (
-                      <div className="px-4 pb-4 pt-2 border-t border-gray-100 space-y-4">
+                      <fieldset disabled={savingPubs} className="px-4 pb-4 pt-2 border-t border-gray-100 space-y-4 min-w-0">
                         {/* Row 1: Category */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div>
@@ -769,7 +794,7 @@ const SettingsPageContent = ({ localNotifications, setLocalNotifications, visual
                             {language === 'es' ? 'Eliminar' : 'Delete'}
                           </button>
                         </div>
-                      </div>
+                      </fieldset>
                     )}
                   </div>
                 );
@@ -788,6 +813,7 @@ const SettingsPageContent = ({ localNotifications, setLocalNotifications, visual
                 type="button"
                 variant="outline"
                 onClick={addPublication}
+                disabled={savingPubs}
                 className="h-9 px-3"
               >
                 <Plus className="h-4 w-4 sm:mr-2" />

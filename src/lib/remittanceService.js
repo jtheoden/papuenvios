@@ -5,10 +5,13 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { callTransitionRpc } from '@/lib/statusTransition';
+import { getOpenProposals } from '@/lib/commissionProposalService';
 import { isValidPayerPhone, normalizePayerPhone } from '@/lib/payerPhone';
 import { logActivity } from '@/lib/activityLogger';
 import { recordOfferUsage } from '@/lib/orderDiscountService';
 import {
+  AppError,
   handleError,
   logError,
   createValidationError,
@@ -30,7 +33,9 @@ import {
   ZELLE_TRANSACTION_TYPES
 } from '@/lib/zelleService';
 import { getExchangeRate as getCurrencyExchangeRate } from '@/lib/currencyService';
-import { calcTotalToPay } from '@/lib/remittanceCalculations';
+import { calcForward, calcReverse, calcTotalToPay } from '@/lib/remittanceCalculations';
+import { roundMoney } from '@/lib/moneyPure';
+import { validateCommissionOverride } from '@/lib/commissionOverrideRules';
 import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingService';
 import { getShippingState } from '@/lib/shippingZoneRules';
 
@@ -133,6 +138,43 @@ export const REMITTANCE_STATUS = {
   CANCELLED: 'cancelled'
 };
 
+/**
+ * Single source of truth for "what does the admin have to do with this remittance".
+ * Terminal / rejected statuses are intentionally absent: they need no admin action.
+ */
+export const REMITTANCE_WORK_GROUPS = {
+  needs_validation: [REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED],
+  needs_delivery: [REMITTANCE_STATUS.PAYMENT_VALIDATED, REMITTANCE_STATUS.PROCESSING],
+  awaiting_customer: [REMITTANCE_STATUS.PAYMENT_PENDING]
+};
+
+/**
+ * Statuses the admin can ACT on (validate a proof or deliver). Counted by the admin avatar
+ * badge and by the "to process" tab/chip, so badge number === tab count. payment_pending is
+ * excluded on purpose: the customer has not paid yet, so there is nothing for the admin to do.
+ */
+export const TO_PROCESS_STATUSES = [
+  ...REMITTANCE_WORK_GROUPS.needs_validation,
+  ...REMITTANCE_WORK_GROUPS.needs_delivery
+];
+
+/**
+ * Split remittances by the work they need. Pure; ignores statuses outside the groups.
+ * @param {Array<{status: string}>} list
+ * @returns {{needs_validation: Array, needs_delivery: Array, awaiting_customer: Array}}
+ */
+export const groupRemittancesByWork = (list) => {
+  const grouped = Object.fromEntries(Object.keys(REMITTANCE_WORK_GROUPS).map((key) => [key, []]));
+  if (!Array.isArray(list)) return grouped;
+  list.forEach((remittance) => {
+    const group = Object.keys(REMITTANCE_WORK_GROUPS).find((key) =>
+      REMITTANCE_WORK_GROUPS[key].includes(remittance?.status)
+    );
+    if (group) grouped[group].push(remittance);
+  });
+  return grouped;
+};
+
 const logRemittancePaymentActivity = async ({ action, remittance, performedBy, description, metadata = {} }) => {
   try {
     const paymentMetadata = {
@@ -144,6 +186,12 @@ const logRemittancePaymentActivity = async ({ action, remittance, performedBy, d
       amountToDeliver: remittance?.amount_to_deliver,
       currencySent: remittance?.currency_sent,
       currencyDelivered: remittance?.currency_delivered,
+      // Partial remittance objects omit these fields instead of guessing a method, a zero amount or a currency.
+      ...(remittance?.payment_method ? { paymentMethod: remittance.payment_method } : {}),
+      ...(remittance?.amount_sent != null
+        ? { paymentAmount: Number(remittance.amount_sent) + Number(remittance.delivery_cost || 0) }
+        : {}),
+      ...(remittance?.currency_sent ? { paymentCurrency: remittance.currency_sent } : {}),
       paymentReference: remittance?.payment_reference || null,
       ...metadata
     };
@@ -171,50 +219,88 @@ export const DELIVERY_METHODS = {
 // recipient_bank_account_id column now exists in remittances table (added 2026-01-19)
 
 // ============================================================================
-// EXCHANGE RATE HELPERS - Get rate from exchange_rates table with fallback
+// EXCHANGE RATE HELPERS
 // ============================================================================
 
 /**
- * Get exchange rate for remittance from exchange_rates table
- * Uses the rate configured in financial settings (exchange_rates table)
- * Falls back to remittance_type.exchange_rate if no configured rate exists
+ * Get the exchange rate for a remittance.
+ * The type's own rate wins; exchange_rates is used only when the type has none.
  *
  * @param {string} fromCurrencyCode - Source currency code (e.g., 'USD')
  * @param {string} toCurrencyCode - Target currency code (e.g., 'CUP')
- * @param {number} fallbackRate - Fallback rate from remittance_type if not found
- * @returns {Promise<{rate: number, source: 'configured'|'fallback'}>} Exchange rate and its source
+ * @param {number|string|null|undefined} typeRate - Rate configured on the remittance type
+ * @returns {Promise<{rate: number, source: 'type'|'configured'}>} Exchange rate and its source
+ * @throws {AppError} If no valid rate is available for the currency pair
  */
 export const getRemittanceExchangeRate = async (fromCurrencyCode, toCurrencyCode, typeRate) => {
+  const unavailableError = () => new AppError(
+    'The exchange rate for this currency pair is not available.',
+    ERROR_CODES.EXCHANGE_RATE_UNAVAILABLE,
+    503,
+    { from: fromCurrencyCode, to: toCurrencyCode }
+  );
+
   try {
-    // Same currency = 1:1 rate
+    const numericTypeRate = Number(typeRate);
+
+    // Same currency = 1:1 rate, without querying any external configuration.
+    // The type's own rate is not applied there: admins use it as the reference that derives the commission
+    // (market 1.03 / delivery 1.00 -> 2.91%), which is stored in commission_percentage.
     if (fromCurrencyCode === toCurrencyCode) {
       return { rate: 1, source: 'configured' };
     }
 
-    // The type's exchange_rate is authoritative when set (admin configured it explicitly)
-    if (typeRate && typeRate > 0) {
-      return { rate: typeRate, source: 'type' };
+    if (Number.isFinite(numericTypeRate) && numericTypeRate > 0) {
+      return { rate: numericTypeRate, source: 'type' };
     }
 
-    // Fallback to exchange_rates table when the type doesn't have its own rate
-    const configuredRate = await getCurrencyExchangeRate(fromCurrencyCode, toCurrencyCode);
-
-    if (configuredRate && configuredRate > 0) {
+    const configuredRate = Number(await getCurrencyExchangeRate(fromCurrencyCode, toCurrencyCode));
+    if (Number.isFinite(configuredRate) && configuredRate > 0) {
       return { rate: configuredRate, source: 'configured' };
     }
 
-    console.warn(`[getRemittanceExchangeRate] No rate found for ${fromCurrencyCode}→${toCurrencyCode}, using 1`);
-    return { rate: 1, source: 'fallback' };
+    throw unavailableError();
   } catch (error) {
-    // If any error, use type rate or 1
-    console.warn(`[getRemittanceExchangeRate] Error getting rate for ${fromCurrencyCode}→${toCurrencyCode}`, error);
-    return { rate: typeRate || 1, source: 'fallback' };
+    const appError = error?.code === ERROR_CODES.EXCHANGE_RATE_UNAVAILABLE
+      ? error
+      : unavailableError();
+    logError(appError, { operation: 'getRemittanceExchangeRate' });
+    throw appError;
   }
 };
 
 // ============================================================================
 // GESTIÓN DE TIPOS DE REMESAS (ADMIN)
 // ============================================================================
+
+/**
+ * Card / transfer / moneypocket deliveries are paid into the recipient's account: it must be linked to the selected
+ * recipient, active (link and bank account, not deleted) and in the delivery currency.
+ * @throws {AppError} VALIDATION_FAILED when the account is missing or unusable
+ */
+const assertRecipientBankAccount = async ({ recipientId, recipientBankAccountId, deliveryCurrency }) => {
+  const invalid = (message) => createValidationError({ recipient_bank_account_id: message }, 'Bank account required for this delivery method');
+
+  if (!recipientId || !recipientBankAccountId) {
+    throw invalid('Select the recipient and one of their bank accounts or cards');
+  }
+
+  const { data: link, error } = await supabase
+    .from('recipient_bank_accounts')
+    .select('id, recipient_id, is_active, bank_account:bank_accounts!bank_account_id(is_active, deleted_at, currency:currencies!currency_id(code))')
+    .eq('id', recipientBankAccountId)
+    .eq('recipient_id', recipientId)
+    .eq('is_active', true)
+    .single();
+
+  // PGRST116 = no row: the account is not linked to this recipient or is inactive. Anything else is a real failure.
+  if (error && error.code !== 'PGRST116') throw parseSupabaseError(error);
+
+  const account = link?.bank_account;
+  if (!account || account.is_active === false || account.deleted_at || account.currency?.code !== deliveryCurrency) {
+    throw invalid(`The selected account is not an active ${deliveryCurrency} account of this recipient`);
+  }
+};
 
 /**
  * Get all remittance types (Admin)
@@ -486,7 +572,7 @@ export const getPendingRemittancesCountByType = async (typeId) => {
 };
 
 /**
- * Get count of remittances that still need admin attention (awaiting payment or proof validation).
+ * Get count of remittances the admin can act on (proof to validate or delivery to complete).
  * Feeds the admin avatar badge in the top bar; never throws so the header keeps rendering.
  * @returns {Promise<number>} Count of pending remittances
  */
@@ -495,10 +581,7 @@ export const getPendingRemittancesCount = async () => {
     const { count, error } = await supabase
       .from('remittances')
       .select('id', { count: 'exact', head: true })
-      .in('status', [
-        REMITTANCE_STATUS.PAYMENT_PENDING,
-        REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED
-      ]);
+      .in('status', TO_PROCESS_STATUSES);
 
     if (error) {
       console.warn('[getPendingRemittancesCount] Error:', error);
@@ -578,14 +661,77 @@ export const recalculateRemittanceAtCurrentRate = async (remittanceId) => {
   }
 };
 
+/**
+ * Admin: set a different (final) commission on a remittance whose payment is still pending or was rejected.
+ * Server-side RPC (SECURITY DEFINER, admin only, audited): it zeroes the offer discount, recomputes the amount to
+ * deliver at the stored rate and records who and why. Clients cannot PATCH money columns.
+ * @param {string} remittanceId
+ * @param {number|string} commission - final commission, 0 <= c < amount sent
+ * @param {string} reason - internal reason, 10..500 characters
+ * @throws {AppError} If the input is invalid or the server refuses
+ * @returns {Promise<Object>} The updated remittance row (without joins)
+ */
+export const setRemittanceCommission = async (remittanceId, commission, reason) => {
+  try {
+    const errors = validateCommissionOverride({ commission, reason });
+    if (!remittanceId || Object.keys(errors).length > 0) {
+      throw createValidationError(
+        { remittanceId: remittanceId ? undefined : 'Remittance ID is required', ...errors },
+        'Invalid commission adjustment'
+      );
+    }
+
+    const { data, error } = await supabase.rpc('admin_set_remittance_commission', {
+      p_remittance_id: remittanceId,
+      p_commission: roundMoney(commission),
+      p_reason: String(reason).trim()
+    });
+
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    return data;
+  } catch (error) {
+    if (error.code) throw error;
+    throw handleError(error, ERROR_CODES.DB_ERROR, { operation: 'setRemittanceCommission', remittanceId });
+  }
+};
+
+/**
+ * Admin: the latest commission override of a remittance (commission, standard_commission, reason, set_by, set_at),
+ * or null. It lives in remittance_commission_overrides (RLS: administrators only), never in the remittance row,
+ * so the customer who owns the remittance cannot read the reason.
+ * @param {string} remittanceId
+ * @throws {AppError} If the query fails
+ * @returns {Promise<Object|null>}
+ */
+export const getCommissionOverride = async (remittanceId) => {
+  if (!remittanceId) return null;
+  try {
+    const { data, error } = await supabase
+      .from('remittance_commission_overrides')
+      .select('commission, standard_commission, reason, set_by, set_at')
+      .eq('remittance_id', remittanceId)
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw parseSupabaseError(error);
+    return data ?? null;
+  } catch (error) {
+    if (error.code) throw error;
+    throw handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getCommissionOverride', remittanceId });
+  }
+};
+
 // ============================================================================
 // GESTIÓN DE REMESAS (USUARIO)
 // ============================================================================
 
 /**
  * Calculate remittance details including exchange rate, commissions, and delivery amount
- * Uses exchange rate from exchange_rates table (financial settings) when available,
- * falls back to remittance_type.exchange_rate if not configured
+ * The type's own rate wins; exchange_rates is used only when the type has none.
+ * If neither provides a valid rate, the calculation throws.
  *
  * @param {string} typeId - Remittance type ID
  * @param {number} amount - Amount to send
@@ -640,44 +786,32 @@ export const calculateRemittance = async (typeId, amount, offer = null) => {
       );
     }
 
-    // Get exchange rate from configured rates (exchange_rates table) or fallback to type rate
+    // The type's own rate wins; exchange_rates is used only when the type has none.
     const { rate: exchangeRate, source: rateSource } = await getRemittanceExchangeRate(
       type.currency_code,
       type.delivery_currency,
       type.exchange_rate
     );
 
-    // Calculate commission - single source of truth formula
-    const commissionPercentage = (amount * (type.commission_percentage || 0)) / 100;
-    const commissionFixed = type.commission_fixed || 0;
-    const totalCommission = commissionPercentage + commissionFixed;
-
-    // Apply offer discount to commission if present
-    let discountAmount = 0;
-    if (offer && offer.discount_type && offer.discount_value) {
-      if (offer.discount_type === 'percentage') {
-        discountAmount = totalCommission * (offer.discount_value / 100);
-      } else if (offer.discount_type === 'fixed') {
-        discountAmount = Math.min(offer.discount_value, totalCommission);
-      }
-      discountAmount = Math.round(discountAmount * 100) / 100;
-    }
-
-    const effectiveCommission = Math.max(0, totalCommission - discountAmount);
-
-    // Calculate delivery amount using the resolved exchange rate
-    const amountToDeliver = (amount * exchangeRate) - (effectiveCommission * exchangeRate);
-
-    return {
+    // Single rounding contract (calcForward); every value comes back already rounded to its stored scale
+    const calc = calcForward({
       amount,
       exchangeRate,
+      commissionPct: type.commission_percentage || 0,
+      commissionFixed: type.commission_fixed || 0,
+      offer
+    });
+
+    return {
+      amount: calc.amountSent,
+      exchangeRate: calc.exchangeRate,
       exchangeRateSource: rateSource,
       commissionPercentage: type.commission_percentage || 0,
       commissionFixed: type.commission_fixed || 0,
-      totalCommission: effectiveCommission,
-      originalCommission: totalCommission,
-      discountAmount,
-      amountToDeliver,
+      totalCommission: calc.effectiveCommission,
+      originalCommission: calc.totalCommission,
+      discountAmount: calc.discountAmount,
+      amountToDeliver: calc.amountToDeliver,
       currency: type.currency_code,
       deliveryCurrency: type.delivery_currency,
       deliveryMethod: type.delivery_method
@@ -692,8 +826,8 @@ export const calculateRemittance = async (typeId, amount, offer = null) => {
 /**
  * Calculate remittance in REVERSE mode (from desired receive amount)
  * Given how much recipient should receive, calculate how much sender needs to send
- * Uses exchange rate from exchange_rates table (financial settings) when available,
- * falls back to remittance_type.exchange_rate if not configured
+ * The type's own rate wins; exchange_rates is used only when the type has none.
+ * If neither provides a valid rate, the calculation throws.
  *
  * @param {string} typeId - Remittance type UUID
  * @param {number} desiredReceiveAmount - Amount recipient should receive (in delivery currency)
@@ -732,35 +866,35 @@ export const calculateReverseRemittance = async (typeId, desiredReceiveAmount) =
       throw createNotFoundError('Remittance type', typeId);
     }
 
-    // Reverse formula:
-    // Normal: amountToDeliver = (amount - totalCommission) * exchange_rate
-    // Where: totalCommission = (amount * commission_percentage / 100) + commission_fixed
-    //
-    // Solving for amount:
-    // desiredReceive = (amount - (amount * commPct / 100) - commFixed) * exchangeRate
-    // desiredReceive / exchangeRate = amount * (1 - commPct/100) - commFixed
-    // (desiredReceive / exchangeRate) + commFixed = amount * (1 - commPct/100)
-    // amount = ((desiredReceive / exchangeRate) + commFixed) / (1 - commPct/100)
-
-    // Get exchange rate from configured rates (exchange_rates table) or fallback to type rate
+    // The type's own rate wins; exchange_rates is used only when the type has none.
     const { rate: exchangeRate, source: rateSource } = await getRemittanceExchangeRate(
       type.currency_code,
       type.delivery_currency,
-      type.exchange_rate || 1
+      type.exchange_rate
     );
 
     const commissionPercentage = type.commission_percentage || 0;
     const commissionFixed = type.commission_fixed || 0;
 
-    // Calculate amount to send
-    const denominator = 1 - (commissionPercentage / 100);
-    if (denominator <= 0) {
+    if (1 - (commissionPercentage / 100) <= 0) {
       throw createValidationError({ commission: 'Commission percentage cannot be 100% or more' });
     }
 
-    const amountToSend = ((desiredReceiveAmount / exchangeRate) + commissionFixed) / denominator;
+    // Rounded up to the cent, adjusted until the recipient gets at least what was requested
+    let amountToSend;
+    try {
+      amountToSend = calcReverse({
+        desiredReceive: desiredReceiveAmount,
+        exchangeRate,
+        commissionPct: commissionPercentage,
+        commissionFixed
+      });
+    } catch (calcError) {
+      throw createValidationError({ calculation: calcError.message }, 'Reverse calculation not possible');
+    }
+    const forward = calcForward({ amount: amountToSend, exchangeRate, commissionPct: commissionPercentage, commissionFixed });
 
-    // Validate against limits
+    // Validate against limits (on the final amount to send)
     if (amountToSend < type.min_amount) {
       throw createValidationError(
         { amount: `Amount to send (${amountToSend.toFixed(2)}) is below minimum ${type.min_amount} ${type.currency_code}` },
@@ -775,18 +909,15 @@ export const calculateReverseRemittance = async (typeId, desiredReceiveAmount) =
       );
     }
 
-    // Recalculate commission for display
-    const totalCommissionPercentage = (amountToSend * commissionPercentage) / 100;
-    const totalCommission = totalCommissionPercentage + commissionFixed;
-
     return {
-      amountToSend: Math.round(amountToSend * 100) / 100, // Round to 2 decimals
+      amountToSend,
+      amountToDeliver: forward.amountToDeliver,
       desiredReceiveAmount,
-      exchangeRate,
+      exchangeRate: forward.exchangeRate,
       exchangeRateSource: rateSource,
       commissionPercentage,
       commissionFixed,
-      totalCommission: Math.round(totalCommission * 100) / 100,
+      totalCommission: forward.effectiveCommission,
       currency: type.currency_code,
       deliveryCurrency: type.delivery_currency,
       deliveryMethod: type.delivery_method,
@@ -825,8 +956,14 @@ export const createRemittance = async (remittanceData) => {
       recipient_address_id,
       recipient_bank_account_id,
       offer_id,
-      discount_amount: passedDiscountAmount
+      discount_amount: passedDiscountAmount,
+      expectedQuote
     } = remittanceData;
+
+    // The customer pays and the recipient gets exactly what the form showed: the quote shown is mandatory
+    if (!expectedQuote) {
+      throw createValidationError({ expectedQuote: 'The quote shown to the customer is required' }, 'Missing displayed quote');
+    }
 
     // Validate required fields
     if (!remittance_type_id || !amount || !recipient_name || !recipient_phone) {
@@ -858,6 +995,7 @@ export const createRemittance = async (remittanceData) => {
     // Calculate using single source of truth (with optional offer discount)
     const calculation = await calculateRemittance(remittance_type_id, amount, offerForCalc);
     const {
+      amount: amountSent, // rounded to cents by the contract: what is stored and charged
       commissionPercentage,
       commissionFixed,
       totalCommission,
@@ -868,6 +1006,23 @@ export const createRemittance = async (remittanceData) => {
       deliveryCurrency,
       deliveryMethod
     } = calculation;
+
+    // Live numbers must equal the displayed ones to the cent (rate at its stored 4 decimals); otherwise nothing is stored
+    const actualQuote = { amountSent, amountToDeliver, exchangeRate, commissionTotal: totalCommission };
+    const sameQuote = Object.keys(actualQuote).every((key) => Number(expectedQuote[key]) === actualQuote[key]);
+    if (!sameQuote) {
+      throw new AppError(
+        'The amounts changed since the quote was shown.',
+        ERROR_CODES.REMITTANCE_QUOTE_CHANGED,
+        409,
+        // the discount is not compared (it follows the commission) but the review step must show the live one
+        { expected: expectedQuote, actual: { ...actualQuote, discountAmount: calcDiscountAmount } }
+      );
+    }
+
+    if (deliveryMethod !== DELIVERY_METHODS.CASH) {
+      await assertRecipientBankAccount({ recipientId: recipient_id, recipientBankAccountId: recipient_bank_account_id, deliveryCurrency });
+    }
 
     // Cash deliveries add the destination's shipping cost to what the sender pays (D2).
     // The cost is never deducted from amountToDeliver. shippingService is the only source.
@@ -884,11 +1039,11 @@ export const createRemittance = async (remittanceData) => {
           'Delivery not available for the selected destination'
         );
       }
-      const shipping = await calculateShippingCost(destinationProvince, amount, destinationMunicipality);
+      const shipping = await calculateShippingCost(destinationProvince, amountSent, destinationMunicipality);
       deliveryCost = shipping.cost;
       shippingZoneId = shipping.zone?.id ?? null;
     }
-    const totalToPay = calcTotalToPay({ amountSent: amount, deliveryCost });
+    const totalToPay = calcTotalToPay({ amountSent, deliveryCost });
 
     // Get authenticated user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -936,7 +1091,7 @@ export const createRemittance = async (remittanceData) => {
     const insertData = {
       user_id: user.id,
       remittance_type_id,
-      amount_sent: amount,
+      amount_sent: amountSent,
       delivery_cost: deliveryCost,
       shipping_zone_id: shippingZoneId,
       exchange_rate: exchangeRate,
@@ -954,6 +1109,9 @@ export const createRemittance = async (remittanceData) => {
       recipient_id_number,
       delivery_notes: notes,
       status: REMITTANCE_STATUS.PAYMENT_PENDING,
+      // Remittances currently collect through Zelle only. Persist the origin explicitly
+      // so history/audit feeds do not have to infer it from the linked account.
+      payment_method: 'zelle',
       zelle_account_id: selectedZelleAccountId
     };
 
@@ -1057,6 +1215,54 @@ export const createRemittance = async (remittanceData) => {
   }
 };
 
+// ============================================================================
+// STATUS TRANSITIONS - the database owns lock, matrix and history (remittance_* RPCs)
+// ============================================================================
+
+const requireAuthUser = async (operation) => {
+  const { data: { user } = {}, error } = await supabase.auth.getUser();
+  if (error) {
+    const appError = parseSupabaseError(error);
+    logError(appError, { operation: `${operation} - getUser` });
+    throw appError;
+  }
+  if (!user) {
+    throw new Error('Not authenticated');
+  }
+  return user;
+};
+
+/**
+ * Runs a remittance_* transition RPC, then re-reads the row with its type for the notifications.
+ * Falls back to the RPC row when the re-read fails (the transition already committed).
+ */
+const runRemittanceTransition = async (rpcName, args, remittanceId) => {
+  const row = await callTransitionRpc(rpcName, args, { entity: 'Remittance', id: remittanceId });
+  const { data, error } = await supabase
+    .from('remittances')
+    .select('*, remittance_types(*)')
+    .eq('id', remittanceId)
+    .single();
+  return error || !data ? row : data;
+};
+
+const syncRemittanceZelle = async (remittance, status, performedBy, operation) => {
+  if (!remittance?.zelle_account_id) return;
+  try {
+    await upsertZelleTransactionStatus({
+      referenceId: remittance.id,
+      transactionType: ZELLE_TRANSACTION_TYPES.REMITTANCE,
+      status,
+      // What the customer actually paid (same total the Zelle record is created with), not just amount_sent.
+      amount: calcTotalToPay({ amountSent: remittance.amount_sent || 0, deliveryCost: remittance.delivery_cost || 0 }),
+      zelleAccountId: remittance.zelle_account_id,
+      validatedBy: performedBy
+    });
+  } catch (zelleError) {
+    logError(zelleError, { operation: `${operation} - zelle sync`, remittanceId: remittance.id });
+  }
+};
+
 /**
  * Upload payment proof for a remittance (User)
  * Validates remittance state, stores proof file, updates status.
@@ -1082,7 +1288,7 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
       }, 'Missing required fields for proof upload');
     }
 
-    // Fetch remittance with its type
+    // The row is read for the file name and the ownership/status pre-checks; the matrix is enforced by the RPC.
     const { data: remittance, error: fetchError } = await supabase
       .from('remittances')
       .select('*, remittance_types(*)')
@@ -1099,42 +1305,40 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
       throw createNotFoundError('Remittance', remittanceId);
     }
 
-    // Validate remittance state - allow uploads while pending or after rejection
-    const allowedStatuses = [
-      REMITTANCE_STATUS.PAYMENT_PENDING,
-      REMITTANCE_STATUS.PAYMENT_REJECTED
-    ];
+    const user = await requireAuthUser('uploadPaymentProof');
 
-    if (!allowedStatuses.includes(remittance.status)) {
-      throw createValidationError(
-        { status: `Current status is ${remittance.status}, allowed: ${allowedStatuses.join(', ')}` },
-        'Payment proof can only be uploaded when remittance is pending payment or was rejected'
-      );
-    }
-
-    // Get authenticated user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) {
-      const appError = parseSupabaseError(userError);
-      logError(appError, { operation: 'uploadPaymentProof - getUser' });
-      throw appError;
-    }
-
-    if (!user) {
-      throw new Error('Not authenticated');
-    }
-
-    // Authorize - user must own the remittance
     if (remittance.user_id !== user.id) {
       throw createPermissionError('modify this remittance', 'owner');
     }
 
-    // Prepare file for upload
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${remittance.remittance_number}.${fileExt}`;
-    const filePath = `${user.id}/${fileName}`;
+    // Pre-check before the upload only: the file goes to a deterministic path with upsert, so a late upload would
+    // overwrite the proof an admin is reviewing. The RPC re-checks under lock.
+    if (![REMITTANCE_STATUS.PAYMENT_PENDING, REMITTANCE_STATUS.PAYMENT_REJECTED].includes(remittance.status)) {
+      throw createValidationError(
+        { status: `Current status is ${remittance.status}` },
+        'Payment proof can only be uploaded when remittance is pending payment or was rejected'
+      );
+    }
 
-    // Upload file to storage
+    // The upload below overwrites a deterministic path, so refuse BEFORE it while a commission raise awaits acceptance
+    // (the database guard would refuse the RPC afterwards, but the file would already be replaced). A failing read
+    // must not block the payment: the database guard still decides.
+    let hasPendingRaise = false;
+    try {
+      hasPendingRaise = (await getOpenProposals([remittanceId])).some((p) => p.status === 'pending');
+    } catch {
+      hasPendingRaise = false;
+    }
+    if (hasPendingRaise) {
+      throw new AppError('Commission change pending acceptance', ERROR_CODES.CONFLICT, 409, {
+        reason: 'commission_pending_acceptance',
+        entityId: remittanceId
+      });
+    }
+
+    const fileExt = file.name.split('.').pop();
+    const filePath = `${user.id}/${remittance.remittance_number}.${fileExt}`;
+
     const { error: uploadError } = await supabase.storage
       .from('remittance-proofs')
       .upload(filePath, file, { upsert: true });
@@ -1145,29 +1349,14 @@ export const uploadPaymentProof = async (remittanceId, file, reference, notes = 
       throw appError;
     }
 
-    // Update remittance with proof details
-    const { data: updatedRemittance, error: updateError } = await supabase
-      .from('remittances')
-      .update({
-        payment_proof_url: filePath,
-        payment_reference: reference,
-        payment_proof_notes: notes,
-        payer_phone: normalizePayerPhone(payerPhone),
-        payment_proof_uploaded_at: new Date().toISOString(),
-        status: REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', remittanceId)
-      .select('*, remittance_types(*)')
-      .single();
+    const updatedRemittance = await runRemittanceTransition('remittance_submit_proof', {
+      p_remittance_id: remittanceId,
+      p_proof_path: filePath,
+      p_reference: String(reference).trim(),
+      p_notes: notes || null,
+      p_payer_phone: normalizePayerPhone(payerPhone)
+    }, remittanceId);
 
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'uploadPaymentProof - update', remittanceId });
-      throw appError;
-    }
-
-    // Log payment proof upload for observability
     await logRemittancePaymentActivity({
       action: 'payment_proof_uploaded',
       remittance: { ...updatedRemittance, payment_reference: reference },
@@ -1325,78 +1514,53 @@ export const cancelRemittance = async (remittanceId, reason = '') => {
       throw createValidationError({ remittanceId: 'Remittance ID is required' });
     }
 
-    // Fetch remittance
-    const { data: remittance, error: fetchError } = await supabase
-      .from('remittances')
-      .select('*')
-      .eq('id', remittanceId)
-      .single();
+    return await runRemittanceTransition('remittance_cancel', {
+      p_remittance_id: remittanceId,
+      p_reason: reason || null
+    }, remittanceId);
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'cancelRemittance', remittanceId });
+    throw appError;
+  }
+};
 
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'cancelRemittance - fetch', remittanceId });
-      throw appError;
+/**
+ * Cancel a remittance (Admin / Super Admin)
+ * Only payment_pending (no payment proof yet); the server re-checks role, state and reason.
+ * @param {string} remittanceId - Remittance ID to cancel
+ * @param {string} reason - Cancellation reason (required, 1..500 chars)
+ * @returns {Promise<Object>} Updated cancelled remittance
+ */
+export const adminCancelRemittance = async (remittanceId, reason) => {
+  try {
+    const trimmed = (reason || '').trim();
+    if (!remittanceId || !trimmed) {
+      throw createValidationError({
+        remittanceId: !remittanceId ? 'Remittance ID is required' : undefined,
+        reason: !trimmed ? 'Cancellation reason is required' : undefined
+      }, 'Missing required fields for remittance cancellation');
     }
 
-    if (!remittance) {
-      throw createNotFoundError('Remittance', remittanceId);
-    }
+    const user = await requireAuthUser('adminCancelRemittance');
 
-    // Check cancellation eligibility - the owner may cancel until an admin validates the payment.
-    // Mirrors the database guard (guard_remittance_owner_update).
-    const cancellableStatuses = [
-      REMITTANCE_STATUS.PAYMENT_PENDING,
-      REMITTANCE_STATUS.PAYMENT_REJECTED,
-      REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED
-    ];
+    const updatedRemittance = await runRemittanceTransition('remittance_admin_cancel', {
+      p_remittance_id: remittanceId,
+      p_reason: trimmed
+    }, remittanceId);
 
-    if (!cancellableStatuses.includes(remittance.status)) {
-      throw createValidationError(
-        { status: `Cannot cancel remittance in ${remittance.status} state` },
-        'Remittance cannot be cancelled in its current state'
-      );
-    }
-
-    // Get authenticated user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) {
-      const appError = parseSupabaseError(userError);
-      logError(appError, { operation: 'cancelRemittance - getUser' });
-      throw appError;
-    }
-
-    if (!user) {
-      throw new Error('Not authenticated');
-    }
-
-    // Authorize - user must own remittance
-    if (remittance.user_id !== user.id) {
-      throw createPermissionError('cancel this remittance', 'owner');
-    }
-
-    // Update to cancelled state
-    const { data: updatedRemittance, error: updateError } = await supabase
-      .from('remittances')
-      .update({
-        status: REMITTANCE_STATUS.CANCELLED,
-        cancelled_at: new Date().toISOString(),
-        cancellation_reason: reason,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', remittanceId)
-      .select('*, remittance_types(*)')
-      .single();
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'cancelRemittance - update', remittanceId });
-      throw appError;
-    }
+    await logRemittancePaymentActivity({
+      action: 'remittance_cancelled',
+      remittance: updatedRemittance,
+      performedBy: user?.email || user?.id,
+      description: `Remesa cancelada por admin - ${updatedRemittance?.remittance_number || remittanceId}`,
+      metadata: { remittanceId, cancellationReason: trimmed, cancelledBy: user?.id }
+    });
 
     return updatedRemittance;
   } catch (error) {
     if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'cancelRemittance', remittanceId });
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'adminCancelRemittance', remittanceId });
     throw appError;
   }
 };
@@ -1453,6 +1617,57 @@ export const getAllRemittances = async (filters = {}) => {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getAllRemittances' });
     throw appError;
+  }
+};
+
+/**
+ * Get the remittances that need admin attention (see REMITTANCE_WORK_GROUPS), oldest first,
+ * enriched with the sender's name/email from user_profiles (no schema change: second query).
+ * A failing profile lookup never hides the remittances themselves.
+ * @throws {AppError} If the remittances query fails
+ * @returns {Promise<Array>} Remittances with sender_name / sender_email (null when unknown)
+ */
+export const getAdminWorkRemittances = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('remittances')
+      .select('*, remittance_types(*)')
+      .in('status', Object.values(REMITTANCE_WORK_GROUPS).flat())
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation: 'getAdminWorkRemittances' });
+      throw appError;
+    }
+
+    const remittances = data || [];
+    const userIds = [...new Set(remittances.map((r) => r.user_id).filter(Boolean))];
+    const profilesById = {};
+
+    if (userIds.length > 0) {
+      const { data: profiles, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('user_id, full_name, email')
+        .in('user_id', userIds);
+
+      if (profileError) {
+        console.warn('[getAdminWorkRemittances] Sender lookup failed:', profileError);
+      } else {
+        (profiles || []).forEach((profile) => {
+          profilesById[profile.user_id] = profile;
+        });
+      }
+    }
+
+    return remittances.map((remittance) => ({
+      ...remittance,
+      sender_name: profilesById[remittance.user_id]?.full_name || null,
+      sender_email: profilesById[remittance.user_id]?.email || null
+    }));
+  } catch (error) {
+    if (error.code) throw error;
+    throw handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getAdminWorkRemittances' });
   }
 };
 
@@ -1558,62 +1773,11 @@ export const validatePayment = async (remittanceId, notes = '') => {
       throw createValidationError({ remittanceId: 'Remittance ID is required' });
     }
 
-    // Fetch remittance
-    const { data: remittance, error: fetchError } = await supabase
-      .from('remittances')
-      .select('*, remittance_types(*)')
-      .eq('id', remittanceId)
-      .single();
+    const user = await requireAuthUser('validatePayment');
 
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'validatePayment - fetch', remittanceId });
-      throw appError;
-    }
-
-    if (!remittance) {
-      throw createNotFoundError('Remittance', remittanceId);
-    }
-
-    // Validate state - can only validate when proof is uploaded
-    if (remittance.status !== REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED) {
-      throw createValidationError(
-        { status: `Current status is ${remittance.status}, but PAYMENT_PROOF_UPLOADED is required` },
-        'Payment can only be validated when proof has been uploaded'
-      );
-    }
-
-    // Get authenticated admin user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) {
-      const appError = parseSupabaseError(userError);
-      logError(appError, { operation: 'validatePayment - getUser' });
-      throw appError;
-    }
-
-    if (!user) {
-      throw new Error('Not authenticated');
-    }
-
-    // Update remittance to payment validated
-    const { data: updatedRemittance, error: updateError } = await supabase
-      .from('remittances')
-      .update({
-        status: REMITTANCE_STATUS.PAYMENT_VALIDATED,
-        payment_validated: true,
-        payment_validated_at: new Date().toISOString(),
-        payment_validated_by: user.id,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', remittanceId)
-      .select('*, remittance_types(*)')
-      .single();
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'validatePayment - update', remittanceId });
-      throw appError;
-    }
+    const updatedRemittance = await runRemittanceTransition('remittance_validate_payment', {
+      p_remittance_id: remittanceId
+    }, remittanceId);
 
     await logRemittancePaymentActivity({
       action: 'payment_validated',
@@ -1632,20 +1796,7 @@ export const validatePayment = async (remittanceId, notes = '') => {
     // Sync Zelle transaction history (graceful fallback).
     // Independent of the activity log result: a failed audit insert must not
     // leave the Zelle history out of sync with the remittance status.
-    if (remittance.zelle_account_id) {
-      try {
-        await upsertZelleTransactionStatus({
-          referenceId: remittanceId,
-          transactionType: ZELLE_TRANSACTION_TYPES.REMITTANCE,
-          status: ZELLE_STATUS.VALIDATED,
-          amount: remittance.amount_sent || 0,
-          zelleAccountId: remittance.zelle_account_id,
-          validatedBy: user.id
-        });
-      } catch (zelleError) {
-        logError(zelleError, { operation: 'validatePayment - zelle sync', remittanceId });
-      }
-    }
+    await syncRemittanceZelle(updatedRemittance, ZELLE_STATUS.VALIDATED, user.id, 'validatePayment');
 
     // Send notification to user (graceful fallback if fails)
     try {
@@ -1653,10 +1804,6 @@ export const validatePayment = async (remittanceId, notes = '') => {
     } catch (notifyError) {
       logError(notifyError, { operation: 'validatePayment - notification', remittanceId });
       // Don't fail validation if notification fails
-    }
-
-    if (notes) {
-      console.info('[validatePayment] Validation notes provided', { remittanceId, notes });
     }
 
     return updatedRemittance;
@@ -1684,62 +1831,12 @@ export const rejectPayment = async (remittanceId, reason) => {
       }, 'Missing required fields for payment rejection');
     }
 
-    // Fetch remittance
-    const { data: remittance, error: fetchError } = await supabase
-      .from('remittances')
-      .select('*, remittance_types(*)')
-      .eq('id', remittanceId)
-      .single();
+    const user = await requireAuthUser('rejectPayment');
 
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'rejectPayment - fetch', remittanceId });
-      throw appError;
-    }
-
-    if (!remittance) {
-      throw createNotFoundError('Remittance', remittanceId);
-    }
-
-    // Validate state - can only reject when proof is uploaded
-    if (remittance.status !== REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED) {
-      throw createValidationError(
-        { status: `Current status is ${remittance.status}, but PAYMENT_PROOF_UPLOADED is required` },
-        'Payment can only be rejected when proof has been uploaded'
-      );
-    }
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) {
-      const appError = parseSupabaseError(userError);
-      logError(appError, { operation: 'rejectPayment - getUser' });
-      throw appError;
-    }
-
-    if (!user) {
-      throw new Error('Not authenticated');
-    }
-
-    // Update remittance to payment rejected
-    // Note: payment_rejected_at column does not exist in DB schema
-    // Using updated_at as the rejection timestamp
-    const rejectionTimestamp = new Date().toISOString();
-    const { data: updatedRemittance, error: updateError } = await supabase
-      .from('remittances')
-      .update({
-        status: REMITTANCE_STATUS.PAYMENT_REJECTED,
-        payment_rejection_reason: reason,
-        updated_at: rejectionTimestamp
-      })
-      .eq('id', remittanceId)
-      .select('*, remittance_types(*)')
-      .single();
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'rejectPayment - update', remittanceId });
-      throw appError;
-    }
+    const updatedRemittance = await runRemittanceTransition('remittance_reject_payment', {
+      p_remittance_id: remittanceId,
+      p_reason: reason
+    }, remittanceId);
 
     // Notify user (graceful fallback if fails)
     try {
@@ -1758,28 +1855,12 @@ export const rejectPayment = async (remittanceId, reason) => {
         remittanceId,
         remittanceNumber: updatedRemittance?.remittance_number,
         rejectionReason: reason,
-        rejectedAt: rejectionTimestamp,
+        rejectedAt: updatedRemittance?.updated_at,
         rejectedBy: user?.id
       }
     });
 
-    // Sync Zelle transaction history (graceful fallback).
-    // Independent of the activity log result: a failed audit insert must not
-    // leave the Zelle history out of sync with the remittance status.
-    if (remittance.zelle_account_id) {
-      try {
-        await upsertZelleTransactionStatus({
-          referenceId: remittanceId,
-          transactionType: ZELLE_TRANSACTION_TYPES.REMITTANCE,
-          status: ZELLE_STATUS.REJECTED,
-          amount: remittance.amount_sent || 0,
-          zelleAccountId: remittance.zelle_account_id,
-          validatedBy: user.id
-        });
-      } catch (zelleError) {
-        logError(zelleError, { operation: 'rejectPayment - zelle sync', remittanceId });
-      }
-    }
+    await syncRemittanceZelle(updatedRemittance, ZELLE_STATUS.REJECTED, user.id, 'rejectPayment');
 
     return updatedRemittance;
   } catch (error) {
@@ -1797,60 +1878,15 @@ export const rejectPayment = async (remittanceId, reason) => {
  * @throws {AppError} If remittance not found, invalid state, or update fails
  * @returns {Promise<Object>} Updated remittance
  */
-export const startProcessing = async (remittanceId, notes = '') => {
+export const startProcessing = async (remittanceId) => {
   try {
     if (!remittanceId) {
       throw createValidationError({ remittanceId: 'Remittance ID is required' });
     }
 
-    // Fetch remittance
-    const { data: remittance, error: fetchError } = await supabase
-      .from('remittances')
-      .select('*, remittance_types(*)')
-      .eq('id', remittanceId)
-      .single();
-
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'startProcessing - fetch', remittanceId });
-      throw appError;
-    }
-
-    if (!remittance) {
-      throw createNotFoundError('Remittance', remittanceId);
-    }
-
-    // Validate state - can only process when payment is validated
-    if (remittance.status !== REMITTANCE_STATUS.PAYMENT_VALIDATED) {
-      throw createValidationError(
-        { status: `Current status is ${remittance.status}, but PAYMENT_VALIDATED is required` },
-        'Processing can only start when payment has been validated'
-      );
-    }
-
-    // Update remittance to processing
-    const { data: updatedRemittance, error: updateError } = await supabase
-      .from('remittances')
-      .update({
-        status: REMITTANCE_STATUS.PROCESSING,
-        processing_started_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', remittanceId)
-      .select('*, remittance_types(*)')
-      .single();
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'startProcessing - update', remittanceId });
-      throw appError;
-    }
-
-    if (notes) {
-      console.info('[startProcessing] Processing notes provided', { remittanceId, notes });
-    }
-
-    return updatedRemittance;
+    return await runRemittanceTransition('remittance_start_processing', {
+      p_remittance_id: remittanceId
+    }, remittanceId);
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'startProcessing', remittanceId });
@@ -1858,13 +1894,23 @@ export const startProcessing = async (remittanceId, notes = '') => {
   }
 };
 
+const MIME_EXTENSIONS = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/heic': 'heic' };
+
+// A name without a dot used to yield the whole name as "extension": take it from the name only when it looks like one.
+const proofExtension = (file) => {
+  const fromName = file.name?.includes('.') ? file.name.split('.').pop().toLowerCase() : '';
+  return /^[a-z0-9]{1,5}$/.test(fromName) ? fromName : (MIME_EXTENSIONS[file.type] ?? 'jpg');
+};
+
 /**
  * Confirm delivery of a remittance (Admin)
- * Marks remittance as delivered with delivery proof. Requires proof file or existing proof.
+ * The delivery photo is OPTIONAL: a new file wins, else the stored proof is kept, else it is delivered without one.
+ * The file goes to remittance-delivery-proofs as {remittance.user_id}/{remittance.id}_delivery_proof_{timestamp}.ext
+ * (owner folder first, as the customer's read policy expects; the stored delivery_proof_url is what the views sign).
  * @param {string} remittanceId - Remittance ID
  * @param {File} proofFile - Optional new delivery proof file
  * @param {string} notes - Optional delivery notes
- * @throws {AppError} If validation fails, no proof provided, or update fails
+ * @throws {AppError} If validation fails, the upload fails, or the transition fails
  * @returns {Promise<Object>} Updated remittance
  */
 export const confirmDelivery = async (remittanceId, proofFile = null, notes = '') => {
@@ -1873,7 +1919,7 @@ export const confirmDelivery = async (remittanceId, proofFile = null, notes = ''
       throw createValidationError({ remittanceId: 'Remittance ID is required' });
     }
 
-    // Fetch remittance
+    // The row is read only to know whether a delivery proof is already stored; the RPC re-checks it under lock.
     const { data: remittance, error: fetchError } = await supabase
       .from('remittances')
       .select('*, remittance_types(*)')
@@ -1890,85 +1936,31 @@ export const confirmDelivery = async (remittanceId, proofFile = null, notes = ''
       throw createNotFoundError('Remittance', remittanceId);
     }
 
-    // Validate state - can only confirm delivery when processing
-    if (remittance.status !== REMITTANCE_STATUS.PROCESSING) {
-      throw createValidationError(
-        { status: `Current status is ${remittance.status}, but PROCESSING is required` },
-        'Delivery can only be confirmed when remittance is being processed'
-      );
-    }
-
-    // CRITICAL: Require delivery proof - either new file or existing proof
-    const hasExistingProof = remittance.delivery_proof_url && remittance.delivery_proof_url.trim() !== '';
-    if (!proofFile && !hasExistingProof) {
-      throw new Error('Delivery proof required. Please provide a photo or document as evidence.');
-    }
-
-    let deliveryProofUrl = remittance.delivery_proof_url; // Keep existing proof if not updating
-
-    // Upload new delivery proof if provided
+    let proofPath = null; // null = keep the stored proof (or none)
     if (proofFile) {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError) {
-        const appError = parseSupabaseError(userError);
-        logError(appError, { operation: 'confirmDelivery - getUser' });
-        throw appError;
+      if (!proofFile.type?.startsWith('image/')) {
+        throw createValidationError({ proofFile: 'The delivery proof must be an image' });
       }
+      // Unique per attempt: the bucket's UPDATE policy is owner-only, so a retry (maybe by another admin) must never overwrite.
+      // Owner folder first, shape accepted by the RPC (no '..', no leading '/', no backslash).
+      proofPath = `${remittance.user_id}/${remittance.id}_delivery_proof_${Date.now()}.${proofExtension(proofFile)}`;
 
-      if (!user) {
-        throw new Error('Not authenticated');
-      }
-
-      // Prepare file for upload
-      const fileExt = proofFile.name.split('.').pop();
-      const fileName = `${remittance.remittance_number}_delivery.${fileExt}`;
-      const filePath = `${user.id}/delivery/${fileName}`;
-
-      // Upload file
       const { error: uploadError } = await supabase.storage
-        .from('remittance-proofs')
-        .upload(filePath, proofFile, { upsert: true });
+        .from('remittance-delivery-proofs')
+        .upload(proofPath, proofFile, { upsert: false });
 
       if (uploadError) {
         const appError = parseSupabaseError(uploadError);
-        logError(appError, { operation: 'confirmDelivery - upload', filePath });
-        throw appError;
+        logError(appError, { operation: 'confirmDelivery - upload', filePath: proofPath });
+        throw Object.assign(appError, { stage: 'upload' }); // lets the dialog offer "retry / confirm without photo"
       }
-
-      deliveryProofUrl = filePath;
     }
 
-    // Update remittance to delivered
-    // CRITICAL: Ensure delivery_proof_url is valid and persisted
-    const trimmedProofUrl = deliveryProofUrl?.trim();
-
-    if (!trimmedProofUrl) {
-      throw createValidationError(
-        { delivery_proof_url: 'Delivery proof URL is required but is empty or invalid' },
-        'Cannot confirm delivery without valid proof URL. This should not happen - proof validation failed.'
-      );
-    }
-
-    const updateData = {
-      status: REMITTANCE_STATUS.DELIVERED,
-      delivered_at: new Date().toISOString(),
-      delivery_notes_admin: notes,
-      delivery_proof_url: trimmedProofUrl,  // ✅ ALWAYS include valid proof URL
-      updated_at: new Date().toISOString()
-    };
-
-    const { data: updatedRemittance, error: updateError } = await supabase
-      .from('remittances')
-      .update(updateData)
-      .eq('id', remittanceId)
-      .select('*, remittance_types(*)')
-      .single();
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'confirmDelivery - update', remittanceId });
-      throw appError;
-    }
+    const updatedRemittance = await runRemittanceTransition('remittance_confirm_delivery', {
+      p_remittance_id: remittanceId,
+      p_proof_path: proofPath,
+      p_notes: notes || null
+    }, remittanceId);
 
     // Notify user (graceful fallback if fails)
     try {
@@ -2000,56 +1992,10 @@ export const completeRemittance = async (remittanceId, notes = '') => {
       throw createValidationError({ remittanceId: 'Remittance ID is required' });
     }
 
-    // Fetch remittance
-    const { data: remittance, error: fetchError } = await supabase
-      .from('remittances')
-      .select('*, remittance_types(*)')
-      .eq('id', remittanceId)
-      .single();
-
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'completeRemittance - fetch', remittanceId });
-      throw appError;
-    }
-
-    if (!remittance) {
-      throw createNotFoundError('Remittance', remittanceId);
-    }
-
-    // Validate state - can only complete when delivered
-    if (remittance.status !== REMITTANCE_STATUS.DELIVERED) {
-      throw createValidationError(
-        { status: `Current status is ${remittance.status}, but DELIVERED is required` },
-        'Remittance can only be completed after delivery'
-      );
-    }
-
-    // Update remittance to completed
-    const updateData = {
-      status: REMITTANCE_STATUS.COMPLETED,
-      completed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    if (notes) {
-      updateData.delivery_notes_admin = notes;
-    }
-
-    const { data: updatedRemittance, error: updateError } = await supabase
-      .from('remittances')
-      .update(updateData)
-      .eq('id', remittanceId)
-      .select('*, remittance_types(*)')
-      .single();
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'completeRemittance - update', remittanceId });
-      throw appError;
-    }
-
-    return updatedRemittance;
+    return await runRemittanceTransition('remittance_complete', {
+      p_remittance_id: remittanceId,
+      p_notes: notes || null
+    }, remittanceId);
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'completeRemittance', remittanceId });

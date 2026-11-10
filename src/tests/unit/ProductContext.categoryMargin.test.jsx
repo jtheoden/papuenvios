@@ -8,6 +8,9 @@ const getCategories = vi.fn(async () => []);
 
 vi.mock('@/lib/productService', () => ({
   getProducts: vi.fn(async () => []),
+  getProductRows: vi.fn(async () => []),
+  getProductStock: vi.fn(async () => ({ stock: {}, expiry: {} })),
+  mergeProductStock: (rows) => rows,
   getCategories: (...args) => getCategories(...args)
 }));
 vi.mock('@/lib/comboService', () => ({ getCombos: vi.fn(async () => []) }));
@@ -18,6 +21,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 }));
 
 import { ProductProvider } from '@/contexts/ProductContext';
+import { clearCatalogCache } from '@/lib/catalogCache';
 
 const renderProvider = () =>
   render(
@@ -30,6 +34,7 @@ const lastCallOptions = () => getCategories.mock.calls.at(-1)?.[0];
 
 describe('ProductProvider category margin visibility', () => {
   beforeEach(() => {
+    clearCatalogCache();
     getCategories.mockClear();
     state.role = null;
   });

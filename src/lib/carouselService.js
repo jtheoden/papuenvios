@@ -1,4 +1,6 @@
 import { supabase } from './supabase';
+import { withCatalogInvalidation } from './catalogCache';
+import { resolveImageUrl } from './imageStorage';
 import {
   handleError, logError, createValidationError,
   createNotFoundError, parseSupabaseError, ERROR_CODES
@@ -84,14 +86,13 @@ export const getCarouselSlideById = async (id) => {
  * @param {string} [slideData.subtitle_es] - Spanish subtitle
  * @param {string} [slideData.subtitle_en] - English subtitle
  * @param {string} [slideData.image_url] - Image URL
- * @param {string} [slideData.image_file] - Image file reference
  * @param {string} [slideData.link_url] - Link URL
  * @param {number} [slideData.display_order] - Display order (auto-assigned if omitted)
  * @param {boolean} [slideData.is_active] - Active status (default: true)
  * @returns {Promise<Object>} Created carousel slide
  * @throws {AppError} VALIDATION_FAILED if required fields missing, DB_ERROR on failure
  */
-export const createCarouselSlide = async (slideData) => {
+export const createCarouselSlide = withCatalogInvalidation(async (slideData) => {
   try {
     if (!slideData.title_es && !slideData.title_en) {
       throw createValidationError({ title: 'At least one language title is required' }, 'Missing required field');
@@ -111,6 +112,12 @@ export const createCarouselSlide = async (slideData) => {
 
     const nextOrder = slides && slides.length > 0 ? slides[0].display_order + 1 : 0;
 
+    // Upload first: if it fails nothing is saved (no base64 fallback)
+    const imageUrl = await resolveImageUrl(slideData.image_url, {
+      folder: 'carousel',
+      id: crypto.randomUUID()
+    });
+
     const { data, error } = await supabase
       .from('carousel_slides')
       .insert([{
@@ -118,8 +125,7 @@ export const createCarouselSlide = async (slideData) => {
         title_en: slideData.title_en || '',
         subtitle_es: slideData.subtitle_es || null,
         subtitle_en: slideData.subtitle_en || null,
-        image_url: slideData.image_url || null,
-        image_file: slideData.image_file || null,
+        image_url: imageUrl || null,
         link_url: slideData.link_url || null,
         display_order: slideData.display_order ?? nextOrder,
         is_active: slideData.is_active ?? true
@@ -138,7 +144,7 @@ export const createCarouselSlide = async (slideData) => {
     logError(appError, { operation: 'createCarouselSlide' });
     throw appError;
   }
-};
+});
 
 /**
  * Update carousel slide
@@ -147,16 +153,22 @@ export const createCarouselSlide = async (slideData) => {
  * @returns {Promise<Object>} Updated carousel slide
  * @throws {AppError} VALIDATION_FAILED if id missing, NOT_FOUND if not found, DB_ERROR on failure
  */
-export const updateCarouselSlide = async (id, updates) => {
+export const updateCarouselSlide = withCatalogInvalidation(async (id, updates) => {
   try {
     if (!id) {
       throw createValidationError({ id: 'Slide ID is required' }, 'Missing slide ID');
     }
 
+    const payload = { ...updates };
+    if (payload.image_url) {
+      payload.image_url = await resolveImageUrl(payload.image_url, { folder: 'carousel', id });
+    }
+    delete payload.image_file; // legacy duplicate column is no longer written
+
     const { data, error } = await supabase
       .from('carousel_slides')
       .update({
-        ...updates,
+        ...payload,
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
@@ -177,7 +189,7 @@ export const updateCarouselSlide = async (id, updates) => {
     logError(appError, { operation: 'updateCarouselSlide', id });
     throw appError;
   }
-};
+});
 
 /**
  * Toggle carousel slide active status
@@ -186,7 +198,7 @@ export const updateCarouselSlide = async (id, updates) => {
  * @returns {Promise<Object>} Updated carousel slide
  * @throws {AppError} VALIDATION_FAILED if id missing, NOT_FOUND if not found, DB_ERROR on failure
  */
-export const toggleCarouselSlideActive = async (id, isActive) => {
+export const toggleCarouselSlideActive = withCatalogInvalidation(async (id, isActive) => {
   try {
     if (!id) {
       throw createValidationError({ id: 'Slide ID is required' }, 'Missing slide ID');
@@ -216,7 +228,7 @@ export const toggleCarouselSlideActive = async (id, isActive) => {
     logError(appError, { operation: 'toggleCarouselSlideActive', id });
     throw appError;
   }
-};
+});
 
 /**
  * Update slide display order
@@ -225,7 +237,7 @@ export const toggleCarouselSlideActive = async (id, isActive) => {
  * @returns {Promise<Object>} Updated carousel slide
  * @throws {AppError} VALIDATION_FAILED if id/order invalid, NOT_FOUND if not found, DB_ERROR on failure
  */
-export const updateSlideOrder = async (id, newOrder) => {
+export const updateSlideOrder = withCatalogInvalidation(async (id, newOrder) => {
   try {
     if (!id) {
       throw createValidationError({ id: 'Slide ID is required' }, 'Missing slide ID');
@@ -258,7 +270,7 @@ export const updateSlideOrder = async (id, newOrder) => {
     logError(appError, { operation: 'updateSlideOrder', id });
     throw appError;
   }
-};
+});
 
 /**
  * Reorder all slides (bulk update)
@@ -268,7 +280,7 @@ export const updateSlideOrder = async (id, newOrder) => {
  * @returns {Promise<boolean>} Success indicator
  * @throws {AppError} VALIDATION_FAILED if array invalid, DB_ERROR on failure
  */
-export const reorderSlides = async (slideOrderArray) => {
+export const reorderSlides = withCatalogInvalidation(async (slideOrderArray) => {
   try {
     if (!Array.isArray(slideOrderArray) || slideOrderArray.length === 0) {
       throw createValidationError({ slideOrderArray: 'Array of slides with IDs and orders is required' }, 'Invalid slides array');
@@ -305,7 +317,7 @@ export const reorderSlides = async (slideOrderArray) => {
     logError(appError, { operation: 'reorderSlides', count: slideOrderArray?.length });
     throw appError;
   }
-};
+});
 
 /**
  * Delete carousel slide (soft delete via is_active = false)
@@ -313,7 +325,7 @@ export const reorderSlides = async (slideOrderArray) => {
  * @returns {Promise<boolean>} Success indicator
  * @throws {AppError} VALIDATION_FAILED if id missing, NOT_FOUND if not found, DB_ERROR on failure
  */
-export const deleteCarouselSlide = async (id) => {
+export const deleteCarouselSlide = withCatalogInvalidation(async (id) => {
   try {
     if (!id) {
       throw createValidationError({ id: 'Slide ID is required' }, 'Missing slide ID');
@@ -352,7 +364,7 @@ export const deleteCarouselSlide = async (id) => {
     logError(appError, { operation: 'deleteCarouselSlide', id });
     throw appError;
   }
-};
+});
 
 /**
  * Hard delete carousel slide (permanent removal)
@@ -361,7 +373,7 @@ export const deleteCarouselSlide = async (id) => {
  * @returns {Promise<boolean>} Success indicator
  * @throws {AppError} VALIDATION_FAILED if id missing, NOT_FOUND if not found, DB_ERROR on failure
  */
-export const hardDeleteCarouselSlide = async (id) => {
+export const hardDeleteCarouselSlide = withCatalogInvalidation(async (id) => {
   try {
     if (!id) {
       throw createValidationError({ id: 'Slide ID is required' }, 'Missing slide ID');
@@ -397,7 +409,7 @@ export const hardDeleteCarouselSlide = async (id) => {
     logError(appError, { operation: 'hardDeleteCarouselSlide', id });
     throw appError;
   }
-};
+});
 
 /**
  * Get active slides for public display

@@ -6,6 +6,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { getPublications } from '@/lib/publicationService';
 import { getHeadingStyle } from '@/lib/styleUtils';
+import { getEmbedUrl } from '@/lib/videoEmbed';
 
 const CATEGORIES = [
   { value: 'all', labelEs: 'Todas', labelEn: 'All' },
@@ -15,25 +16,6 @@ const CATEGORIES = [
   { value: 'user-panel', labelEs: 'Panel de Usuario', labelEn: 'User Panel' },
   { value: 'general', labelEs: 'General', labelEn: 'General' }
 ];
-
-/**
- * Parse a YouTube/Vimeo URL into an embeddable URL
- */
-function getEmbedUrl(url) {
-  if (!url) return null;
-  try {
-    // YouTube: youtube.com/watch?v=ID or youtu.be/ID
-    const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]+)/);
-    if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}`;
-
-    // Vimeo: vimeo.com/ID
-    const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
-    if (vimeoMatch) return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
-  } catch {
-    // ignore
-  }
-  return null;
-}
 
 /**
  * Get category badge color

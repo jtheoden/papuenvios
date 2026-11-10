@@ -3,10 +3,14 @@
  * Handles persistence of visual settings to/from Supabase database
  */
 
-import { supabase } from '@/lib/supabase';
+import { supabase, withTimeout } from '@/lib/supabase';
+import { NEW_KEY_DEFAULTS, BRAND_CSS_VARS, isHexColor, resolveLookId } from '@/lib/brandPalette';
+import { LOCAL_CACHE_KEY } from '@/lib/constants';
+import { normalizeBrandingSettings } from '@/lib/brandingDisplay';
 
-const LOCAL_CACHE_KEY = 'business_visual_settings_cache';
 const CACHE_DURATION = 60 * 1000; // 1 minute cache
+// Startup waits for these settings (StartupGate), after auth's own cap: a hung query must not block the app.
+export const VISUAL_SETTINGS_TIMEOUT_MS = 3500;
 
 // Default settings - used when no DB record exists or on error
 export const DEFAULT_VISUAL_SETTINGS = {
@@ -134,18 +138,24 @@ export const DEFAULT_VISUAL_SETTINGS = {
   // Carousel settings
   carouselEnabled: true,
   carouselAutoplaySpeed: 5000,
-  carouselTransitionSpeed: 1000
+  carouselTransitionSpeed: 1000,
+  // heroLayout ('spaced' | 'cover', see heroLayout.js) is deliberately NOT a default: everything that spreads these
+  // defaults would persist it. A missing key already resolves to 'spaced'.
+  // Brand refresh keys (additive; see brandPalette.js)
+  ...NEW_KEY_DEFAULTS
+  // No `activeTheme` here on purpose: visualThemes.resolveThemeId infers it from the stored values
 };
 
 /**
- * Get cached settings from localStorage
+ * Get cached settings from localStorage. `ignoreTtl` is for load failures: a stale look beats flipping to the code
+ * defaults (the inline script in index.html also ignores the TTL).
  */
-function getCachedSettings() {
+function getCachedSettings(ignoreTtl = false) {
   try {
     const cached = localStorage.getItem(LOCAL_CACHE_KEY);
     if (cached) {
       const { data, timestamp } = JSON.parse(cached);
-      if (Date.now() - timestamp < CACHE_DURATION) {
+      if (data && (ignoreTtl || Date.now() - timestamp < CACHE_DURATION)) {
         return data;
       }
     }
@@ -155,17 +165,41 @@ function getCachedSettings() {
   return null;
 }
 
+// Last settings that really came from the database/cache/an admin save, for failed reloads in the same session.
+let lastGoodSettings = null;
+// A late request cannot replace a newer verified load/cache hit/admin save.
+let settingsRevision = 0;
+let lastGoodRevision = 0;
+// Code defaults handed out because a load FAILED (nothing better known): applyVisualSettingsToDOM must not let them
+// pick the look, since the defaults are classic and the stored (production) row is the brand.
+const unverifiedSettings = new WeakSet();
+
+/** What to use when the settings request fails: last good settings, else the stale cache, else unverified defaults. */
+function settingsAfterFailure() {
+  if (lastGoodSettings) return lastGoodSettings;
+  const stale = getCachedSettings(true);
+  if (stale) return { ...DEFAULT_VISUAL_SETTINGS, ...normalizeBrandingSettings(stale) };
+  const fallback = { ...DEFAULT_VISUAL_SETTINGS };
+  unverifiedSettings.add(fallback);
+  return fallback;
+}
+
 /**
  * Set cached settings in localStorage
  */
 function setCachedSettings(settings) {
+  const write = (data) => localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify({ data, timestamp: Date.now() }));
   try {
-    localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify({
-      data: settings,
-      timestamp: Date.now()
-    }));
+    write(settings);
   } catch (err) {
     console.warn('[BusinessVisualSettings] Cache write error:', err);
+    // Quota is usually the base64 images: keep the rest cached; if that fails too, drop the entry rather than leave it stale.
+    try {
+      const { logo, loaderImage, ...light } = settings;
+      write(light);
+    } catch {
+      try { localStorage.removeItem(LOCAL_CACHE_KEY); } catch { /* storage unavailable: nothing else to do */ }
+    }
   }
 }
 
@@ -183,37 +217,53 @@ export function clearVisualSettingsCache() {
 /**
  * Load visual settings from database
  * Falls back to defaults on error
- * @returns {Promise<Object>} Visual settings object
+ * @param {Object} options - Optional late-success handler and consumer lifetime/change guard
+ * @returns {Promise<Object>} Visual settings object (the startup wait is bounded, not the request)
  */
-export async function loadVisualSettings() {
+export async function loadVisualSettings({ onLateSettings, isCurrent = () => true } = {}) {
+  const revision = ++settingsRevision;
+  let timedOut = false;
   try {
     // Check cache first
     const cached = getCachedSettings();
     if (cached) {
-      return { ...DEFAULT_VISUAL_SETTINGS, ...cached };
+      lastGoodSettings = { ...DEFAULT_VISUAL_SETTINGS, ...normalizeBrandingSettings(cached) };
+      lastGoodRevision = revision;
+      return lastGoodSettings;
     }
 
-    const { data, error } = await supabase
-      .from('business_visual_settings')
-      .select('settings')
-      .limit(1)
-      .single();
-
-    if (error) {
-      // If table doesn't exist or no rows, return defaults
-      if (error.code === 'PGRST116' || error.code === '42P01') {
-        return DEFAULT_VISUAL_SETTINGS;
+    // Observe the underlying request, not just the race: slow connections can still deliver a verified row later.
+    const request = Promise.resolve(
+      supabase.from('business_visual_settings').select('settings').limit(1).single()
+    ).then(({ data, error }) => {
+      if (error) {
+        // Missing rows/tables retain the existing foreground default behavior, but are NOT a verified late row.
+        if (error.code === 'PGRST116' || error.code === '42P01') return DEFAULT_VISUAL_SETTINGS;
+        throw error;
       }
-      console.error('[BusinessVisualSettings] Load error:', error);
-      return DEFAULT_VISUAL_SETTINGS;
-    }
 
-    const settings = { ...DEFAULT_VISUAL_SETTINGS, ...(data?.settings || {}) };
-    setCachedSettings(settings);
-    return settings;
+      if (!isCurrent() || revision < lastGoodRevision) return settingsAfterFailure();
+      if (timedOut && (!data?.settings || typeof data.settings !== 'object' || Array.isArray(data.settings))) {
+        return settingsAfterFailure();
+      }
+      const settings = { ...DEFAULT_VISUAL_SETTINGS, ...normalizeBrandingSettings(data?.settings) };
+      setCachedSettings(settings);
+      lastGoodSettings = settings;
+      lastGoodRevision = revision;
+      if (timedOut) onLateSettings?.(settings);
+      return settings;
+    });
+
+    return await withTimeout(
+      request,
+      VISUAL_SETTINGS_TIMEOUT_MS,
+      'business_visual_settings'
+    );
   } catch (err) {
+    timedOut = true;
     console.error('[BusinessVisualSettings] Load exception:', err);
-    return DEFAULT_VISUAL_SETTINGS;
+    // Timeout (withTimeout) or network failure: same fallback as a DB error.
+    return settingsAfterFailure();
   }
 }
 
@@ -222,7 +272,8 @@ export async function loadVisualSettings() {
  * @param {Object} settings - Visual settings object to save
  * @returns {Promise<{success: boolean, error?: string}>}
  */
-export async function saveVisualSettings(settings) {
+export async function saveVisualSettings(rawSettings) {
+  const settings = normalizeBrandingSettings(rawSettings);
   try {
     // First check if a row exists
     const { data: existing, error: fetchError } = await supabase
@@ -259,6 +310,8 @@ export async function saveVisualSettings(settings) {
     clearVisualSettingsCache();
     // Re-cache with new settings
     setCachedSettings(settings);
+    lastGoodSettings = settings;
+    lastGoodRevision = ++settingsRevision;
 
     return { success: true };
   } catch (err) {
@@ -272,7 +325,13 @@ export async function saveVisualSettings(settings) {
  * @param {Object} settings - Visual settings object
  */
 export function applyVisualSettingsToDOM(settings) {
+  // Failed-load defaults are not a theme: preserve ALL first-paint tokens, body styles and metadata.
+  if (unverifiedSettings.has(settings)) return;
   try {
+    // First on purpose: it switches the --t-* tokens, so nothing below may keep it from running. The try/catch is
+    // the guard for environments without a document.
+    document.documentElement.dataset.theme = resolveLookId(settings);
+
     // Update document title
     if (settings.siteTitle) {
       document.title = settings.siteTitle;
@@ -326,7 +385,15 @@ export function applyVisualSettingsToDOM(settings) {
         : 'none'
     );
 
-    // Apply page background to body
+    // Brand variables for the Tailwind `brand-*` colours. Invalid values are removed so the
+    // Tailwind fallback (brand HEX) applies; nothing user-supplied reaches the stylesheet unchecked.
+    for (const [key, cssVar] of Object.entries(BRAND_CSS_VARS)) {
+      if (isHexColor(settings[key])) root.style.setProperty(cssVar, settings[key]);
+      else root.style.removeProperty(cssVar);
+    }
+
+    // Apply page background to body. In the classic look it sits under the stylesheet gradient (index.css); in the
+    // brand look the gradient is off (data-theme above), so this colour is the page. Never touch background-image here.
     document.body.style.backgroundColor = settings.pageBgColor || '#f9fafb';
 
   } catch (err) {

@@ -23,6 +23,10 @@ vi.mock('@/contexts/BusinessContext', () => ({
 }));
 vi.mock('@/components/ui/use-toast', () => ({ toast: vi.fn() }));
 vi.mock('@/lib/imageUtils', () => ({ validateAndProcessImage: vi.fn() }));
+vi.mock('@/lib/imageStorage', () => ({
+  isImageUploadError: () => false,
+  getImageUploadMessageKey: () => 'images.uploadFailed'
+}));
 vi.mock('@/lib/activityLogger', () => ({ logActivity: vi.fn() }));
 vi.mock('@/hooks/useRealtimeSubscription', () => ({ useRealtimeCombos: vi.fn() }));
 vi.mock('@/lib/comboService', () => ({
@@ -118,6 +122,37 @@ describe('VendorCombosTab price warning (form)', () => {
     expect(screen.queryByTestId('combo-margin-warning')).toBeNull();
     setMargin(41);
     expect(screen.queryByTestId('combo-margin-warning')).not.toBeNull();
+  });
+
+  // Typing 0 stores the number 0: it must not be replaced by the default margin (45% here) and warn falsely
+  it('treats a typed 0% margin as 0%, not as the default margin', () => {
+    openNewForm();
+    pickProducts();
+    setMargin(0);
+    expect(screen.queryByTestId('combo-margin-warning')).toBeNull();
+  });
+
+  it('says the comparison is unavailable (instead of staying silent) when a product has no exchange rate', () => {
+    render(
+      <VendorCombosTab
+        combos={[]}
+        products={[...products, { id: 'e', name_es: 'Aceite', base_price: 10, final_price: 14, base_currency_id: 'eur', stock: 50 }]}
+        currencies={[...currencies, { id: 'eur', code: 'EUR', symbol: '€' }]}
+        visualSettings={{}}
+        financialSettings={{ comboProfit: 45 }}
+        exchangeRates={{}}
+        selectedCurrency="usd"
+        onSelectedCurrencyChange={vi.fn()}
+        onCombosRefresh={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    fireEvent.click(screen.getByText('vendor.combos.new').closest('button'));
+    fireEvent.click(document.getElementById('p-a'));
+    fireEvent.click(document.getElementById('p-e'));
+    setMargin(45);
+
+    expect(screen.getByTestId('combo-comparison-unavailable').textContent).toBe(EN.vendor.combos.priceWarningUnavailable);
+    expect(screen.queryByTestId('combo-margin-warning')).toBeNull();
   });
 
   it('reacts to removing products', () => {

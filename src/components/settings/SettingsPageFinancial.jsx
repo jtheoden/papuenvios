@@ -1,18 +1,33 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DollarSign, Save, Plus, Edit, Trash2, AlertTriangle, ArrowRightLeft, Info, Power, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { getPrimaryButtonStyle, getHeadingStyle } from '@/lib/styleUtils';
 import { toast } from '@/components/ui/use-toast';
 import {
-  getCurrencies, getAllCurrencies, createCurrency, updateCurrency, deleteCurrency,
-  fetchOfficialRates, getAllExchangeRates, saveExchangeRate, deleteExchangeRate, deleteExchangeRatePair, updateExchangeRatePair
+  getCurrencies, getAllCurrencies, createCurrency, updateCurrency, deleteCurrency, setCurrencyShowInSelector,
+  getAllExchangeRates, saveExchangeRatePair, deleteExchangeRate, deleteExchangeRatePair, updateExchangeRatePair,
+  previewCatalogReprice, applyCatalogReprice, getCatalogRepriceStatus
 } from '@/lib/currencyService';
 import { supabase } from '@/lib/supabase';
+import { refreshSessionOnce } from '@/lib/sessionRefresh';
 import { saveMarginSettings } from '@/lib/financialSettingsService';
-import { ERROR_CODES } from '@/lib/errorHandler';
+import { ERROR_CODES, isSessionExpiredError } from '@/lib/errorHandler';
+import { formatDateTime } from '@/lib/numberFormat';
+import {
+  USD_EUR_BOUNDS,
+  isRatePairAllowed,
+  isUsdEurPair,
+  requiresChangeConfirmation,
+  rateChangeRatio,
+  selectableRateCurrencies,
+  validateUsdEurRate
+} from '@/lib/fxRateGuards';
+import FxReferenceCard from '@/components/settings/FxReferenceCard';
 
 /**
  * Confirmation Modal Component with framer-motion animations
@@ -127,9 +142,42 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
  * Financial Settings component
  * Manages profit margins, shipping, currencies, and exchange rates
  */
+const RATES_NOTE_ID = 'rates-super-admin-only-note';
+const CURRENCY_DELETE_NOTE_ID = 'currency-delete-super-admin-only-note';
+/** Informational gap of the operative rate over the market reference, e.g. 915 vs 900 -> "+1.7 %". */
+const formatMarketDifference = (rate, market) => {
+  const pct = (Number(rate) / Number(market) - 1) * 100;
+  return `${pct >= 0 ? '+' : '-'}${Math.abs(pct).toFixed(1)} %`;
+};
+
+// ----- Catalog repricing helpers (USD<->CUP rate flow) -----
+const REPRICE_RATE_TOLERANCE = 1e-6; // catalog_reprice_runs.rate has 6 decimals
+const isUsdCupPair = (a, b) => {
+  const codes = new Set([a, b].map((code) => String(code ?? '').toUpperCase()));
+  return codes.size === 2 && codes.has('USD') && codes.has('CUP');
+};
+// USD->CUP equivalent of a from->to rate of the pair
+const toUsdCupRate = (fromCode, rate) => (String(fromCode ?? '').toUpperCase() === 'USD' ? Number(rate) : 1 / Number(rate));
+const formatPct = (value) => Number(value ?? 0).toFixed(1);
+
+const SuperOnlyNote = ({ id, children }) => (
+  <p id={id} role="note" className="mb-4 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+    <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+    <span className="min-w-0 break-words">{children}</span>
+  </p>
+);
+
 const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   const { t, language } = useLanguage();
+  const confirm = useConfirm();
   const { visualSettings, applyMarginSettings } = useBusiness();
+  const { isSuperAdmin } = useAuth();
+  const canWriteRates = Boolean(isSuperAdmin);
+  // aria-disabled (not the native attribute) keeps the control focusable so the note it points at is announced;
+  // every write handler is guarded by canWriteRates.
+  const LOCKED_STYLE = 'aria-disabled:cursor-not-allowed aria-disabled:opacity-50';
+  const ratesLock = (describedBy = RATES_NOTE_ID) =>
+    canWriteRates ? {} : { 'aria-disabled': true, 'aria-describedby': describedBy };
 
   // Currency states
   const [currencies, setCurrencies] = useState([]);
@@ -137,8 +185,6 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   const [currencyForm, setCurrencyForm] = useState({
     code: '', name_es: '', name_en: '', symbol: '', is_base: false
   });
-  const [officialRates, setOfficialRates] = useState(null);
-  const [loadingRates, setLoadingRates] = useState(false);
 
   // Confirmation modal state
   const [confirmModal, setConfirmModal] = useState({
@@ -147,20 +193,25 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
     newStatus: false
   });
 
-  // Filter active currencies for exchange rate selectors
-  const activeCurrencies = useMemo(() => {
-    return currencies.filter(c => c.is_active);
-  }, [currencies]);
-
   // Exchange rates states
   const [exchangeRates, setExchangeRates] = useState([]);
   const [loadingRates2, setLoadingRates2] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [refreshingSession, setRefreshingSession] = useState(false);
   const [showAddRate, setShowAddRate] = useState(false);
   const [editingRatePair, setEditingRatePair] = useState(null); // { fromCurrencyId, toCurrencyId, rate, effectiveDate }
   const [newRate, setNewRate] = useState({
     fromCurrencyId: '', toCurrencyId: '', rate: '',
     effectiveDate: new Date().toISOString().split('T')[0]
   });
+  // Large USD->EUR change waiting for the admin's explicit confirmation
+  const [rateChangeConfirm, setRateChangeConfirm] = useState({ isOpen: false, pair: null });
+  const rateFormRef = useRef(null);
+  const [preloadTick, setPreloadTick] = useState(0);
+  // Catalog repricing: rate of the last run, and whether the last apply failed (drives the stale-prices banner)
+  const [lastRunRate, setLastRunRate] = useState(null);
+  const [repriceFailed, setRepriceFailed] = useState(false);
+  const [retryingReprice, setRetryingReprice] = useState(false);
 
   // Check if exchange rate pair already exists (including inverse)
   const duplicateRateInfo = useMemo(() => {
@@ -189,6 +240,17 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   const fromCurrency = useMemo(() => currencies.find(c => c.id === newRate.fromCurrencyId), [currencies, newRate.fromCurrencyId]);
   const toCurrency = useMemo(() => currencies.find(c => c.id === newRate.toCurrencyId), [currencies, newRate.toCurrencyId]);
   const inverseRate = useMemo(() => newRate.rate ? (1 / parseFloat(newRate.rate)) : null, [newRate.rate]);
+
+  const usdCurrency = useMemo(() => currencies.find(c => c.code === 'USD'), [currencies]);
+  const eurCurrency = useMemo(() => currencies.find(c => c.code === 'EUR'), [currencies]);
+  const fromOptions = useMemo(
+    () => selectableRateCurrencies(currencies, { role: 'from', otherId: newRate.toCurrencyId }),
+    [currencies, newRate.toCurrencyId]
+  );
+  const toOptions = useMemo(
+    () => selectableRateCurrencies(currencies, { role: 'to', otherId: newRate.fromCurrencyId }),
+    [currencies, newRate.fromCurrencyId]
+  );
 
   // Group exchange rates into pairs for display
   const groupedExchangeRates = useMemo(() => {
@@ -224,9 +286,38 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
 
   useEffect(() => {
     loadCurrencies();
-    loadOfficialRates();
     loadExchangeRates();
   }, []);
+
+  // Last repricing run, to flag prices that no longer match the active rate. The service never throws
+  // (unavailable/error = no banner); the guard only protects the screen from a missing export in partial mocks.
+  useEffect(() => {
+    if (!canWriteRates) return;
+    (async () => {
+      try {
+        const status = await getCatalogRepriceStatus();
+        if (status?.data?.rate != null) setLastRunRate(Number(status.data.rate));
+      } catch {
+        /* never block the screen for an advisory indicator */
+      }
+    })();
+  }, [canWriteRates]);
+
+  const activeUsdCupRate = useMemo(() => {
+    const row = exchangeRates.find((r) => r.is_active !== false && r.from_currency?.code === 'USD' && r.to_currency?.code === 'CUP');
+    return row ? Number(row.rate) : null;
+  }, [exchangeRates]);
+  const showStaleBanner = canWriteRates && (repriceFailed
+    || (lastRunRate !== null && activeUsdCupRate !== null && Math.abs(activeUsdCupRate - lastRunRate) > REPRICE_RATE_TOLERANCE));
+
+  // After preloading the form from the reference, bring it into view and focus the rate field.
+  useEffect(() => {
+    if (!preloadTick) return;
+    const node = rateFormRef.current;
+    if (!node) return;
+    node.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    node.querySelector('input[type="number"]')?.focus();
+  }, [preloadTick]);
 
   // ===== FINANCIAL HANDLERS =====
   const handleFinancialSave = async () => {
@@ -246,20 +337,6 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
           : t('settings.financial.marginSaveError'),
         variant: 'destructive'
       });
-    }
-  };
-
-  // ===== OFFICIAL RATES HANDLERS =====
-  const loadOfficialRates = async () => {
-    setLoadingRates(true);
-    try {
-      const rates = await fetchOfficialRates();
-      setOfficialRates(rates || []);
-    } catch (error) {
-      console.error('Error loading official rates:', error);
-      setOfficialRates([]);
-    } finally {
-      setLoadingRates(false);
     }
   };
 
@@ -338,7 +415,13 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   };
 
   const handleRemoveCurrency = async (currencyId) => {
-    if (!confirm(t('settings.financial.confirmDeleteCurrency'))) {
+    if (!canWriteRates) return;
+    if (!(await confirm({
+      title: t('common.confirmDialog.deleteTitle'),
+      description: t('settings.financial.confirmDeleteCurrency'),
+      confirmLabel: t('common.confirmDialog.delete'),
+      variant: 'destructive'
+    }))) {
       return;
     }
 
@@ -362,6 +445,20 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         description: error.message,
         variant: 'destructive'
       });
+    }
+  };
+
+  // Selector visibility: the base currency and the last visible one must stay in the public selector.
+  const isInSelector = (c) => c.is_active && c.show_in_selector !== false;
+  const visibleSelectorCount = currencies.filter(isInSelector).length;
+
+  const handleToggleShowInSelector = async (currency) => {
+    try {
+      await setCurrencyShowInSelector(currency.id, currency.show_in_selector === false);
+      await loadCurrencies();
+    } catch (error) {
+      console.error('Error updating selector visibility:', error);
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
     }
   };
 
@@ -409,20 +506,208 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
   };
 
   // ===== EXCHANGE RATES HANDLERS =====
+  // An expired session surfaces as 401 / 42501: guide the admin instead of showing the raw error
+  const handleSessionExpired = (error) => {
+    if (!isSessionExpiredError(error)) return false;
+    setSessionExpired(true);
+    toast({
+      title: t('common.error'),
+      description: t('settings.financial.sessionExpired'),
+      variant: 'destructive'
+    });
+    return true;
+  };
+
   const loadExchangeRates = async () => {
     setLoadingRates2(true);
     try {
       const rates = await getAllExchangeRates();
       setExchangeRates(rates || []);
+      setSessionExpired(false);
     } catch (error) {
-      console.error('Error loading exchange rates:', error);
+      if (!handleSessionExpired(error)) {
+        console.error('Error loading exchange rates:', error);
+      }
       setExchangeRates([]);
     } finally {
       setLoadingRates2(false);
     }
   };
 
+  const handleRetryAfterSessionExpired = async () => {
+    setRefreshingSession(true);
+    try {
+      const { data, error } = await refreshSessionOnce(supabase.auth);
+      if (error || !data?.session) {
+        // During a refresh cooldown the helper answers with a retryable network error: the session is not lost.
+        const reconnecting = error?.name === 'AuthRetryableFetchError';
+        toast({
+          title: t('common.error'),
+          description: reconnecting ? t('auth.sessionReconnecting') : t('settings.financial.sessionExpiredSignIn'),
+          variant: 'destructive'
+        });
+        return;
+      }
+      await loadExchangeRates();
+    } finally {
+      setRefreshingSession(false);
+    }
+  };
+
+  // Text for a failed rate write. Only the RLS refusal proves a role problem; a 0-row result means the rate is gone
+  // (a plain admin never gets here: the handlers are guarded by canWriteRates).
+  const rateWriteErrorMessage = (error) => {
+    if (error?.context?.requiredRole === 'super_admin') return t('settings.financial.ratesSuperAdminOnly');
+    if (error?.code === 'EXCHANGE_RATE_PAIR_PARTIAL') return t('settings.financial.ratePairPartial');
+    if (error?.code === 'EXCHANGE_RATE_PAIR_INCOMPLETE') return t('settings.financial.ratePairIncomplete');
+    // The service refuses it up front; the DB constraint (rate >= market_rate) is the backstop when the market field was left untouched
+    if (error?.context?.fieldErrors?.marketRate || /rate_higher_than_market/.test(error?.message || '')) {
+      return t('settings.financial.marketAboveRate');
+    }
+    if (error?.code === 'NOT_FOUND' && error?.context?.reason === 'no_rows') {
+      return canWriteRates ? t('settings.financial.rateNotFound') : t('settings.financial.ratesSuperAdminOnly');
+    }
+    return error.message;
+  };
+
+  // ----- Catalog repricing: one confirmation before saving a USD<->CUP rate, apply right after -----
+  const affectedCounts = (data) => ({ products: Number(data?.products_affected ?? 0), combos: Number(data?.combos_affected ?? 0) });
+
+  // Rates and skipped-products lines shared by both confirmation dialogs.
+  const repriceRateDetails = (data) => {
+    const next = Number(data?.rate);
+    if (!Number.isFinite(next)) return null;
+    const previous = data.previous_rate == null ? null : Number(data.previous_rate);
+    const pct = data.rate_pct_change ?? (previous ? ((next - previous) / previous) * 100 : null);
+    const skipped = Array.isArray(data.skipped_products) ? data.skipped_products.length : 0;
+    return (
+      <>
+        <span className="mt-2 block">
+          {previous === null || pct === null
+            ? t('settings.financial.repricing.ratesNew', { next })
+            : t('settings.financial.repricing.rates', { previous, next, pct: formatPct(pct) })}
+        </span>
+        {skipped > 0 && <span className="mt-2 block">{t('settings.financial.repricing.skippedProducts', { count: skipped })}</span>}
+      </>
+    );
+  };
+
+  // Resolves to { apply, confirmLarge, confirmed, expectedRate } or null when the owner cancelled.
+  const askRepriceConfirmation = async (data, expectedRate) => {
+    const { products, combos } = affectedCounts(data);
+    const large = Boolean(data.requires_extra_confirmation);
+    const accepted = await confirm({
+      title: t('settings.financial.repricing.confirmTitle'),
+      description: (
+        <>
+          <span className="block">
+            {t('settings.financial.repricing.summary', {
+              products, combos, avg: formatPct(data.avg_pct_change), max: formatPct(data.max_abs_pct_change)
+            })}
+          </span>
+          {repriceRateDetails(data)}
+          {large && (
+            <span className="mt-2 block font-semibold text-destructive">{t('settings.financial.repricing.largeWarning')}</span>
+          )}
+        </>
+      ),
+      confirmLabel: t('settings.financial.repricing.confirmAction'),
+      variant: large ? 'warning' : 'default'
+    });
+    if (!accepted) return null;
+    if (large && !(await confirm({
+      title: t('settings.financial.repricing.secondTitle'),
+      description: (
+        <>
+          <span className="block">{t('settings.financial.repricing.secondMessage', { products, combos })}</span>
+          {repriceRateDetails(data)}
+        </>
+      ),
+      confirmLabel: t('settings.financial.repricing.secondAction'),
+      variant: 'destructive'
+    }))) return null;
+    return { apply: true, confirmLarge: large, confirmed: true, expectedRate };
+  };
+
+  // Previews the repricing for the rate about to be saved. null = cancelled (save nothing); apply:false = save as today.
+  // markStale: the rate is saved without repricing, so the stale-prices banner must appear afterwards.
+  const planCatalogReprice = async (fromCode, toCode, rate) => {
+    const saveAsToday = { apply: false, confirmLarge: false, confirmed: false };
+    if (!canWriteRates || !isUsdCupPair(fromCode, toCode)) return saveAsToday;
+    const usdCup = toUsdCupRate(fromCode, rate);
+    if (!Number.isFinite(usdCup) || usdCup <= 0) return saveAsToday;
+    const preview = await previewCatalogReprice(usdCup);
+    if (preview?.error) {
+      // The effect on prices is unknown: let the owner decide instead of blocking the rate.
+      const saveWithoutPrices = await confirm({
+        title: t('settings.financial.repricing.previewErrorTitle'),
+        description: t('settings.financial.repricing.previewErrorMessage'),
+        confirmLabel: t('settings.financial.repricing.previewErrorAction'),
+        variant: 'warning'
+      });
+      return saveWithoutPrices ? { ...saveAsToday, markStale: true } : null;
+    }
+    const { products, combos } = affectedCounts(preview?.data);
+    if (!preview?.data || products + combos === 0) return saveAsToday;
+    return askRepriceConfirmation(preview.data, usdCup);
+  };
+
+  // Runs after the rate is saved. Never reverts the rate: a failure leaves the stale banner.
+  const applyRepricing = async (plan) => {
+    if (plan?.markStale) {
+      setRepriceFailed(true);
+      return;
+    }
+    if (!plan?.apply) return;
+    const result = await applyCatalogReprice(plan.confirmLarge, plan.expectedRate);
+    if (!result?.data) {
+      setRepriceFailed(true);
+      // rate_changed: the active rate moved after the owner confirmed. Never retry blindly: Retry re-previews.
+      toast({
+        title: t(result?.rateChanged ? 'settings.financial.repricing.rateChanged' : 'settings.financial.repricing.applyFailed'),
+        description: t(result?.rateChanged ? 'settings.financial.repricing.rateChangedDesc' : 'settings.financial.repricing.applyFailedDesc'),
+        variant: 'destructive'
+      });
+      return;
+    }
+    setRepriceFailed(false);
+    if (result.data.rate != null) setLastRunRate(Number(result.data.rate));
+    toast({
+      title: t('settings.financial.repricing.applied'),
+      description: t('settings.financial.repricing.appliedDesc', {
+        products: Number(result.data.products_updated ?? 0), combos: Number(result.data.combos_updated ?? 0)
+      })
+    });
+  };
+
+  // Banner "Retry": same preview -> confirm -> apply at the active rate.
+  const handleRetryReprice = async () => {
+    if (!canWriteRates || retryingReprice) return;
+    setRetryingReprice(true);
+    try {
+      const preview = await previewCatalogReprice(null);
+      if (preview?.unavailable) {
+        setRepriceFailed(false);
+        return;
+      }
+      if (preview?.error || !preview?.data) {
+        toast({ title: t('common.error'), description: t('settings.financial.repricing.previewFailed'), variant: 'destructive' });
+        return;
+      }
+      const { products, combos } = affectedCounts(preview.data);
+      const expectedRate = preview.data.rate == null ? null : Number(preview.data.rate);
+      // Nothing to change: apply only records the run (no prices move), so no question is needed.
+      const plan = products + combos === 0
+        ? { apply: true, confirmLarge: Boolean(preview.data.requires_extra_confirmation), expectedRate }
+        : await askRepriceConfirmation(preview.data, expectedRate);
+      if (plan) await applyRepricing(plan);
+    } finally {
+      setRetryingReprice(false);
+    }
+  };
+
   const handleSaveRate = async () => {
+    if (!canWriteRates) return;
     if (!newRate.fromCurrencyId || !newRate.toCurrencyId || !newRate.rate) {
       toast({
         title: t('settings.financial.incompleteData'),
@@ -441,6 +726,24 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       return;
     }
 
+    if (!isRatePairAllowed(fromCurrency, toCurrency)) {
+      toast({
+        title: t('common.error'),
+        description: t('settings.financial.pairNotAllowed'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (isUsdEurPair(fromCurrency?.code, toCurrency?.code) && !validateUsdEurRate(newRate.rate).ok) {
+      toast({
+        title: t('common.error'),
+        description: t('settings.financial.rateOutOfBand', USD_EUR_BOUNDS),
+        variant: 'destructive'
+      });
+      return;
+    }
+
     // Check for duplicate exchange rate pair
     if (duplicateRateInfo) {
       toast({
@@ -453,18 +756,12 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       return;
     }
 
-    try {
-      const result = await saveExchangeRate(newRate);
-      if (result.error) throw result.error;
+    const reprice = await planCatalogReprice(fromCurrency?.code, toCurrency?.code, newRate.rate);
+    if (!reprice) return;
 
-      const inverseRate = {
-        fromCurrencyId: newRate.toCurrencyId,
-        toCurrencyId: newRate.fromCurrencyId,
-        rate: (1 / parseFloat(newRate.rate)).toString(),
-        effectiveDate: newRate.effectiveDate
-      };
-      const inverseResult = await saveExchangeRate(inverseRate);
-      if (inverseResult.error) throw inverseResult.error;
+    try {
+      const result = await saveExchangeRatePair(newRate);
+      if (result.error) throw result.error;
 
       await loadExchangeRates();
       setShowAddRate(false);
@@ -476,18 +773,28 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
       toast({
         title: t('settings.financial.ratesSaved')
       });
+      await applyRepricing(reprice);
     } catch (error) {
-      console.error('Error saving rate:', error);
-      toast({
-        title: t('settings.financial.saveError'),
-        description: error.message,
-        variant: 'destructive'
-      });
+      if (!handleSessionExpired(error)) {
+        console.error('Error saving rate:', error);
+        toast({
+          title: t('settings.financial.saveError'),
+          description: rateWriteErrorMessage(error),
+          variant: 'destructive'
+        });
+      }
+      await loadExchangeRates();
     }
   };
 
   const handleDeleteRate = async (rateId) => {
-    if (!confirm(t('settings.financial.confirmDeleteRate'))) {
+    if (!canWriteRates) return;
+    if (!(await confirm({
+      title: t('common.confirmDialog.deleteTitle'),
+      description: t('settings.financial.confirmDeleteRate'),
+      confirmLabel: t('common.confirmDialog.delete'),
+      variant: 'destructive'
+    }))) {
       return;
     }
 
@@ -500,22 +807,32 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         title: t('settings.financial.rateDeleted')
       });
     } catch (error) {
+      if (handleSessionExpired(error)) return;
       console.error('Error deleting rate:', error);
       toast({
         title: 'Error',
-        description: error.message,
+        description: rateWriteErrorMessage(error),
         variant: 'destructive'
       });
+      // rateNotFound promises a reload: show the real state
+      await loadExchangeRates();
     }
   };
 
   // Delete exchange rate pair (both direct and inverse)
   const handleDeleteRatePair = async (fromCurrencyId, toCurrencyId) => {
-    const confirmMessage = language === 'es'
-      ? '¿Eliminar este par de tasas de cambio? Se eliminarán ambas direcciones (directa e inversa).'
-      : 'Delete this exchange rate pair? Both directions (direct and inverse) will be removed.';
+    if (!canWriteRates) return;
+    // "Delete" only deactivates (soft delete): say so, name the pair and state the consequence.
+    const fromCode = currencies.find(c => c.id === fromCurrencyId)?.code ?? '?';
+    const toCode = currencies.find(c => c.id === toCurrencyId)?.code ?? '?';
+    const confirmMessage = t('settings.financial.deactivatePairConfirm', { pair: `${fromCode} <-> ${toCode}` });
 
-    if (!confirm(confirmMessage)) {
+    if (!(await confirm({
+      title: t('common.confirmDialog.deactivateTitle'),
+      description: confirmMessage,
+      confirmLabel: t('common.confirmDialog.deactivate'),
+      variant: 'destructive'
+    }))) {
       return;
     }
 
@@ -525,27 +842,32 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
 
       await loadExchangeRates();
       toast({
-        title: language === 'es' ? 'Par de tasas eliminado' : 'Rate pair deleted',
-        description: language === 'es'
-          ? `Se eliminaron ${result.deletedCount} tasas de cambio`
-          : `${result.deletedCount} exchange rates removed`
+        title: t('settings.financial.pairDeactivated'),
+        description: t('settings.financial.pairDeactivatedDesc', { count: result.deletedCount })
       });
     } catch (error) {
+      if (handleSessionExpired(error)) return;
       console.error('Error deleting rate pair:', error);
       toast({
         title: 'Error',
-        description: error.message,
+        description: rateWriteErrorMessage(error),
         variant: 'destructive'
       });
+      // rateNotFound promises a reload: show the real state
+      await loadExchangeRates();
     }
   };
 
   // Start editing a rate pair
   const handleEditRatePair = (pair) => {
+    if (!canWriteRates) return;
     setEditingRatePair({
       fromCurrencyId: pair.directRate.from_currency_id,
       toCurrencyId: pair.directRate.to_currency_id,
       rate: pair.directRate.rate,
+      originalRate: pair.directRate.rate,
+      marketRate: pair.directRate.market_rate ?? '',
+      originalMarketRate: pair.directRate.market_rate ?? '',
       effectiveDate: pair.effectiveDate || new Date().toISOString().split('T')[0],
       fromCurrency: pair.fromCurrency,
       toCurrency: pair.toCurrency
@@ -553,23 +875,54 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
     setShowAddRate(false);
   };
 
-  // Update exchange rate pair (both direct and inverse)
-  const handleUpdateRatePair = async () => {
-    if (!editingRatePair || !editingRatePair.rate) {
-      toast({
-        title: t('common.error'),
-        description: t('settings.financial.fillAllFields'),
-        variant: 'destructive'
+  // Preload the form from the external reference. Never saves: the admin reviews and saves explicitly.
+  const handleUseReference = ({ rate }) => {
+    if (!canWriteRates) return;
+    if (!usdCurrency || !eurCurrency) return;
+    const today = new Date().toISOString().split('T')[0];
+    // Edit only when the USD->EUR row itself exists: updating a pair touches rows by direction.
+    const current = exchangeRates.find(r => r.from_currency_id === usdCurrency.id && r.to_currency_id === eurCurrency.id);
+    if (current) {
+      setEditingRatePair({
+        fromCurrencyId: usdCurrency.id,
+        toCurrencyId: eurCurrency.id,
+        rate: String(rate),
+        originalRate: current.rate,
+        effectiveDate: today,
+        fromCurrency: usdCurrency,
+        toCurrency: eurCurrency
       });
-      return;
+      setShowAddRate(false);
+    } else {
+      setNewRate({ fromCurrencyId: usdCurrency.id, toCurrencyId: eurCurrency.id, rate: String(rate), effectiveDate: today });
+      setEditingRatePair(null);
+      setShowAddRate(true);
     }
+    setPreloadTick(tick => tick + 1);
+  };
 
+  // Changing the source can leave the target invalid (e.g. inactive EUR only pairs with USD).
+  const handleFromCurrencyChange = (value) => {
+    const nextFrom = currencies.find(c => c.id === value);
+    const currentTo = currencies.find(c => c.id === newRate.toCurrencyId);
+    const keepTo = !nextFrom || !currentTo || isRatePairAllowed(nextFrom, currentTo);
+    setNewRate({ ...newRate, fromCurrencyId: value, toCurrencyId: keepTo ? newRate.toCurrencyId : '' });
+  };
+
+  // Persist the pair (both direct and inverse) once every guard has passed
+  const commitRatePairUpdate = async (pair) => {
+    if (!canWriteRates) return;
     try {
       const result = await updateExchangeRatePair(
-        editingRatePair.fromCurrencyId,
-        editingRatePair.toCurrencyId,
-        editingRatePair.rate,
-        editingRatePair.effectiveDate
+        pair.fromCurrencyId,
+        pair.toCurrencyId,
+        pair.rate,
+        pair.effectiveDate,
+        // Only a changed, non-empty value is sent: untouched or cleared leaves the stored market rate (and the inverse row's) alone.
+        ...(pair.marketRate !== undefined && pair.marketRate !== '' && pair.marketRate !== null
+          && String(pair.marketRate) !== String(pair.originalMarketRate ?? '')
+          ? [{ marketRate: pair.marketRate }]
+          : [])
       );
       if (result.error) throw result.error;
 
@@ -581,14 +934,57 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
           ? 'Se actualizaron ambas tasas (directa e inversa)'
           : 'Both rates updated (direct and inverse)'
       });
+      await applyRepricing(pair.reprice);
     } catch (error) {
-      console.error('Error updating rate pair:', error);
+      if (handleSessionExpired(error)) return;
       toast({
         title: 'Error',
-        description: error.message,
+        description: rateWriteErrorMessage(error),
         variant: 'destructive'
       });
+      // The pair may be half written or gone: show the real state, not the stale list.
+      await loadExchangeRates();
     }
+  };
+
+  const handleUpdateRatePair = async () => {
+    if (!canWriteRates) return;
+    if (!editingRatePair || !editingRatePair.rate) {
+      toast({
+        title: t('common.error'),
+        description: t('settings.financial.fillAllFields'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (isUsdEurPair(editingRatePair.fromCurrency?.code, editingRatePair.toCurrency?.code)) {
+      if (!validateUsdEurRate(editingRatePair.rate).ok) {
+        toast({
+          title: t('common.error'),
+          description: t('settings.financial.rateOutOfBand', USD_EUR_BOUNDS),
+          variant: 'destructive'
+        });
+        return;
+      }
+    }
+
+    const reprice = await planCatalogReprice(editingRatePair.fromCurrency?.code, editingRatePair.toCurrency?.code, editingRatePair.rate);
+    if (!reprice) return;
+    const pair = { ...editingRatePair, reprice };
+
+    // The repricing dialog already warned about a large change: do not ask the same thing twice.
+    if (!reprice.confirmed && requiresChangeConfirmation(editingRatePair.originalRate, editingRatePair.rate)) {
+      setRateChangeConfirm({ isOpen: true, pair });
+      return;
+    }
+
+    await commitRatePairUpdate(pair);
+  };
+
+  const handleCloseRateChangeConfirm = () => setRateChangeConfirm({ isOpen: false, pair: null });
+  const handleConfirmRateChange = () => {
+    if (rateChangeConfirm.pair) commitRatePairUpdate(rateChangeConfirm.pair);
   };
 
   // Cancel editing rate pair
@@ -672,34 +1068,9 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
         <div className="border-t pt-6">
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
             <h3 className="text-xl font-semibold">{t('settings.financial.currencies')}</h3>
-            <Button
-              onClick={loadOfficialRates}
-              disabled={loadingRates}
-              variant="outline"
-              size="sm"
-              className="h-8 px-2 sm:px-3"
-              title={t('settings.financial.loadOfficialRates')}
-            >
-              <DollarSign className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">{loadingRates ? t('common.loading') : t('settings.financial.loadOfficialRates')}</span>
-            </Button>
           </div>
 
-          {officialRates && (
-            <div className="bg-green-50 p-4 rounded-lg mb-4">
-              <h4 className="font-semibold text-green-800 mb-2">
-                {t('settings.financial.officialRatesReference')}
-              </h4>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 text-sm">
-                {Object.entries(officialRates).map(([code, rate]) => (
-                  <div key={code} className="bg-white p-2 rounded flex justify-between">
-                    <span className="font-bold">{code}:</span>
-                    <span className="font-mono">{Number(rate).toFixed(4)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {!canWriteRates && <SuperOnlyNote id={CURRENCY_DELETE_NOTE_ID}>{t('settings.financial.currencyDeleteSuperAdminOnly')}</SuperOnlyNote>}
 
           <div className="space-y-2 mb-6">
             {currencies.map(currency => (
@@ -723,6 +1094,16 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                   </span>
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2 ml-auto">
+                  <label className="flex items-center gap-1 text-xs whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={currency.show_in_selector !== false}
+                      disabled={currency.is_base || (isInSelector(currency) && visibleSelectorCount <= 1)}
+                      onChange={() => handleToggleShowInSelector(currency)}
+                      aria-label={`${t('settings.financial.showInSelector')}: ${currency.code}`}
+                    />
+                    {t('settings.financial.showInSelector')}
+                  </label>
                   {/* Inactive badge */}
                   {!currency.is_active && (
                     <span className="text-xs bg-gray-300 text-gray-600 px-2 py-1 rounded font-semibold whitespace-nowrap">
@@ -762,9 +1143,9 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                     <Button
                       variant="destructive"
                       size="icon"
-                      className={`h-8 w-8 ${currency.is_base ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      className={`h-8 w-8 ${LOCKED_STYLE} ${currency.is_base ? 'opacity-50 cursor-not-allowed' : ''}`}
                       onClick={() => !currency.is_base && handleRemoveCurrency(currency.id)}
-                      disabled={currency.is_base}
+                      {...(canWriteRates ? { disabled: currency.is_base } : ratesLock(CURRENCY_DELETE_NOTE_ID))}
                       title={currency.is_base
                         ? (language === 'es' ? 'La moneda base no puede eliminarse' : 'Base currency cannot be deleted')
                         : (language === 'es' ? 'Eliminar moneda' : 'Delete currency')
@@ -873,18 +1254,40 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
             {t('settings.financial.exchangeRates')}
           </h3>
           <Button
-            onClick={() => setShowAddRate(!showAddRate)}
+            onClick={() => canWriteRates && setShowAddRate(!showAddRate)}
             style={getPrimaryButtonStyle(visualSettings)}
-            className="h-8 px-2 sm:px-3"
+            className={`h-8 px-2 sm:px-3 ${LOCKED_STYLE}`}
             title={t('settings.financial.newRate')}
+            {...ratesLock()}
           >
             <Plus className="h-4 w-4 sm:mr-2" />
             <span className="hidden sm:inline">{t('settings.financial.newRate')}</span>
           </Button>
         </div>
 
+        {showStaleBanner && (
+          <div role="status" className="mb-4 flex flex-wrap items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">{t('settings.financial.repricing.staleTitle')}</p>
+              <p className="break-words">{t('settings.financial.repricing.staleMessage')}</p>
+            </div>
+            <Button type="button" size="sm" variant="outline" onClick={handleRetryReprice} disabled={retryingReprice}>
+              {t('settings.financial.repricing.retry')}
+            </Button>
+          </div>
+        )}
+
+        {!canWriteRates && <SuperOnlyNote id={RATES_NOTE_ID}>{t('settings.financial.ratesSuperAdminOnly')}</SuperOnlyNote>}
+
+        <FxReferenceCard
+          onUse={handleUseReference}
+          lockedBy={canWriteRates ? null : RATES_NOTE_ID}
+          disabledReason={usdCurrency && eurCurrency ? null : t('settings.fxReference.missingCurrencies')}
+        />
+
         {showAddRate && (
-          <div className="bg-blue-50 p-4 rounded-lg mb-6">
+          <div ref={rateFormRef} className="bg-blue-50 p-4 rounded-lg mb-6">
             <h4 className="text-lg font-semibold mb-3">
               {t('settings.financial.addNewExchangeRate')}
             </h4>
@@ -918,11 +1321,11 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                 </label>
                 <select
                   value={newRate.fromCurrencyId}
-                  onChange={e => setNewRate({ ...newRate, fromCurrencyId: e.target.value })}
+                  onChange={e => handleFromCurrencyChange(e.target.value)}
                   className="input-style w-full"
                 >
                   <option value="">{t('settings.financial.select')}</option>
-                  {activeCurrencies.filter(c => c.id !== newRate.toCurrencyId).map(c => (
+                  {fromOptions.map(c => (
                     <option key={c.id} value={c.id}>{c.code} - {language === 'es' ? c.name_es : c.name_en}</option>
                   ))}
                 </select>
@@ -937,7 +1340,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                   className="input-style w-full"
                 >
                   <option value="">{t('settings.financial.select')}</option>
-                  {activeCurrencies.filter(c => c.id !== newRate.fromCurrencyId).map(c => (
+                  {toOptions.map(c => (
                     <option key={c.id} value={c.id}>{c.code} - {language === 'es' ? c.name_es : c.name_en}</option>
                   ))}
                 </select>
@@ -955,6 +1358,24 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                   className="input-style w-full"
                 />
               </div>
+              {canWriteRates && (
+                <div>
+                  <label htmlFor="new-market-rate" className="block text-sm font-medium mb-1">
+                    {t('settings.financial.marketRate')}
+                  </label>
+                  <input
+                    id="new-market-rate"
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    value={newRate.marketRate ?? ''}
+                    onChange={e => setNewRate({ ...newRate, marketRate: e.target.value })}
+                    aria-describedby="new-market-rate-hint"
+                    className="input-style w-full"
+                  />
+                  <p id="new-market-rate-hint" className="text-xs text-gray-500 mt-1">{t('settings.financial.marketRateHint')}</p>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium mb-1">
                   {t('settings.financial.effectiveDate')}
@@ -1020,7 +1441,7 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
 
         {/* Edit Exchange Rate Pair Form */}
         {editingRatePair && (
-          <div className="bg-amber-50 p-4 rounded-lg mb-6 border border-amber-200">
+          <div ref={rateFormRef} className="bg-amber-50 p-4 rounded-lg mb-6 border border-amber-200">
             <h4 className="text-lg font-semibold mb-3 flex items-center gap-2">
               <Edit className="h-5 w-5 text-amber-600" />
               {language === 'es' ? 'Editar Par de Tasas' : 'Edit Rate Pair'}
@@ -1043,6 +1464,24 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                   className="input-style w-full"
                 />
               </div>
+              {canWriteRates && (
+                <div>
+                  <label htmlFor="edit-market-rate" className="block text-sm font-medium mb-1">
+                    {t('settings.financial.marketRate')}
+                  </label>
+                  <input
+                    id="edit-market-rate"
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    value={editingRatePair.marketRate ?? ''}
+                    onChange={e => setEditingRatePair({ ...editingRatePair, marketRate: e.target.value })}
+                    aria-describedby="edit-market-rate-hint"
+                    className="input-style w-full"
+                  />
+                  <p id="edit-market-rate-hint" className="text-xs text-gray-500 mt-1">{t('settings.financial.marketRateHint')}</p>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium mb-1">
                   {t('settings.financial.effectiveDate')}
@@ -1096,6 +1535,23 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                 <span>{language === 'es' ? 'Cancelar' : 'Cancel'}</span>
               </Button>
             </div>
+          </div>
+        )}
+
+        {sessionExpired && (
+          <div role="alert" className="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex items-start gap-2 flex-1 text-amber-900 text-sm">
+              <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+              <span>{t('settings.financial.sessionExpired')}</span>
+            </div>
+            <Button
+              onClick={handleRetryAfterSessionExpired}
+              disabled={refreshingSession}
+              variant="outline"
+              className="h-9 px-3"
+            >
+              <span>{t('settings.financial.sessionExpiredRetry')}</span>
+            </Button>
           </div>
         )}
 
@@ -1157,18 +1613,33 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                       )}
                     </div>
 
+                    {canWriteRates && Number(pair.directRate.market_rate) > 0 && (
+                      <div data-testid="market-rate-info" className="mt-2 text-xs text-gray-600">
+                        {t('settings.financial.marketRateInfo', {
+                          market: `${Number(pair.directRate.market_rate).toFixed(4)} ${pair.toCurrency?.code ?? ''}`.trim(),
+                          diff: formatMarketDifference(pair.directRate.rate, pair.directRate.market_rate)
+                        })}
+                      </div>
+                    )}
                     <div className="mt-2 text-xs text-gray-500">
                       {language === 'es' ? 'Vigente desde: ' : 'Effective: '}
                       {new Date(pair.effectiveDate).toLocaleDateString()}
                     </div>
+                    {pair.directRate.updated_at && (
+                      <div className="text-xs text-gray-500">
+                        {t('settings.financial.rateUpdatedAt', { date: formatDateTime(pair.directRate.updated_at, language) })}
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
+                      className={LOCKED_STYLE}
                       onClick={() => handleEditRatePair(pair)}
                       title={language === 'es' ? 'Editar par de tasas' : 'Edit rate pair'}
+                      {...ratesLock()}
                     >
                       <Edit className="h-4 w-4 mr-1" />
                       <span className="hidden sm:inline">
@@ -1178,12 +1649,14 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
                     <Button
                       variant="destructive"
                       size="sm"
+                      className={LOCKED_STYLE}
                       onClick={() => handleDeleteRatePair(pair.directRate.from_currency_id, pair.directRate.to_currency_id)}
-                      title={language === 'es' ? 'Eliminar par de tasas' : 'Delete rate pair'}
+                      title={t('settings.financial.deactivatePairTitle')}
+                      {...ratesLock()}
                     >
                       <Trash2 className="h-4 w-4 mr-1" />
                       <span className="hidden sm:inline">
-                        {language === 'es' ? 'Eliminar' : 'Delete'}
+                        {t('settings.financial.deactivatePair')}
                       </span>
                     </Button>
                   </div>
@@ -1193,6 +1666,28 @@ const SettingsPageFinancial = ({ localFinancial, setLocalFinancial }) => {
           </div>
         )}
       </motion.div>
+
+      {/* Large rate change confirmation */}
+      <ConfirmationModal
+        isOpen={rateChangeConfirm.isOpen}
+        onClose={handleCloseRateChangeConfirm}
+        onConfirm={handleConfirmRateChange}
+        title={t('settings.financial.rateChangeConfirmTitle')}
+        message={rateChangeConfirm.pair
+          ? t(isUsdEurPair(rateChangeConfirm.pair.fromCurrency?.code, rateChangeConfirm.pair.toCurrency?.code)
+            ? 'settings.financial.rateChangeConfirmMessage'
+            : 'settings.financial.rateChangeConfirmMessageGeneric', {
+              from: rateChangeConfirm.pair.fromCurrency?.code,
+              to: rateChangeConfirm.pair.toCurrency?.code,
+              previous: String(Number(rateChangeConfirm.pair.originalRate)),
+              next: String(Number(rateChangeConfirm.pair.rate)),
+              percent: (rateChangeRatio(rateChangeConfirm.pair.originalRate, rateChangeConfirm.pair.rate) * 100).toFixed(1)
+            })
+          : ''}
+        confirmText={t('settings.financial.rateChangeConfirmAction')}
+        cancelText={t('common.cancel')}
+        variant="default"
+      />
 
       {/* Currency Toggle Confirmation Modal */}
       <ConfirmationModal

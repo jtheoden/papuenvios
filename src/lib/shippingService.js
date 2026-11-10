@@ -10,6 +10,19 @@ import {
   handleError, logError, createValidationError,
   createNotFoundError, parseSupabaseError, ERROR_CODES
 } from './errorHandler';
+import { PUBLIC_SHIPPING_COLUMNS } from './publicCatalogColumns';
+import { ADMIN_SHIPPING_COLUMNS } from './adminCatalogColumns';
+import { listShippingZoneCosts } from './adminCostService';
+
+/** Admin zone rows: the non-sensitive columns from the table plus transport_cost from the admin RPC. */
+const withTransportCost = async (zones) => {
+  if (zones.length === 0) return zones;
+  const costs = await listShippingZoneCosts(zones.map(zone => zone.id));
+  return zones.map(zone => ({
+    ...zone,
+    transport_cost: costs.has(zone.id) ? costs.get(zone.id).transport_cost : 0
+  }));
+};
 
 /**
  * Get all active shipping zones
@@ -20,7 +33,7 @@ export const getActiveShippingZones = async () => {
   try {
     const { data, error } = await supabase
       .from('shipping_zones')
-      .select('*')
+      .select(PUBLIC_SHIPPING_COLUMNS)
       .eq('is_active', true)
       .order('province_name', { ascending: true })
       .order('municipality_name', { ascending: true, nullsFirst: true });
@@ -47,7 +60,7 @@ export const getAllShippingZones = async () => {
   try {
     const { data, error } = await supabase
       .from('shipping_zones')
-      .select('*')
+      .select(ADMIN_SHIPPING_COLUMNS)
       .order('province_name', { ascending: true })
       .order('municipality_name', { ascending: true, nullsFirst: true });
 
@@ -55,7 +68,7 @@ export const getAllShippingZones = async () => {
       throw parseSupabaseError(error);
     }
 
-    return data || [];
+    return await withTransportCost(data || []);
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getAllShippingZones' });
@@ -78,7 +91,7 @@ export const getShippingZoneById = async (zoneId) => {
 
     const { data, error } = await supabase
       .from('shipping_zones')
-      .select('*')
+      .select(PUBLIC_SHIPPING_COLUMNS)
       .eq('id', zoneId)
       .single();
 
@@ -112,7 +125,7 @@ export const getShippingZoneByProvince = async (provinceName) => {
 
     const { data, error } = await supabase
       .from('shipping_zones')
-      .select('*')
+      .select(PUBLIC_SHIPPING_COLUMNS)
       .eq('province_name', provinceName)
       .is('municipality_name', null)
       .eq('is_active', true)
@@ -152,7 +165,7 @@ export const getShippingZoneByMunicipality = async (provinceName, municipalityNa
 
     const { data, error } = await supabase
       .from('shipping_zones')
-      .select('*')
+      .select(PUBLIC_SHIPPING_COLUMNS)
       .eq('province_name', provinceName)
       .eq('municipality_name', municipalityName)
       .eq('is_active', true)
@@ -236,7 +249,7 @@ export const getShippingZonesForProvince = async (provinceName) => {
 
     const { data, error } = await supabase
       .from('shipping_zones')
-      .select('*')
+      .select(ADMIN_SHIPPING_COLUMNS)
       .eq('province_name', provinceName)
       .order('municipality_name', { ascending: true, nullsFirst: true });
 
@@ -244,7 +257,7 @@ export const getShippingZonesForProvince = async (provinceName) => {
       throw parseSupabaseError(error);
     }
 
-    return data || [];
+    return await withTransportCost(data || []);
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getShippingZonesForProvince', provinceName });
@@ -340,7 +353,7 @@ export const createShippingZone = async (zoneData) => {
     const { data, error } = await supabase
       .from('shipping_zones')
       .insert(zone)
-      .select()
+      .select(PUBLIC_SHIPPING_COLUMNS)
       .single();
 
     if (error) {
@@ -415,7 +428,7 @@ export const updateShippingZone = async (zoneId, updates) => {
       .from('shipping_zones')
       .update(updateData)
       .eq('id', zoneId)
-      .select()
+      .select(PUBLIC_SHIPPING_COLUMNS)
       .single();
 
     if (error) {
@@ -468,7 +481,7 @@ export const toggleShippingZoneStatus = async (zoneId) => {
         updated_at: new Date().toISOString()
       })
       .eq('id', zoneId)
-      .select()
+      .select(PUBLIC_SHIPPING_COLUMNS)
       .single();
 
     if (error) {
@@ -573,7 +586,7 @@ export const setFreeShipping = async (zoneId, freeShipping) => {
         updated_at: new Date().toISOString()
       })
       .eq('id', zoneId)
-      .select()
+      .select(PUBLIC_SHIPPING_COLUMNS)
       .single();
 
     if (error) {
@@ -601,7 +614,7 @@ export const getFreeShippingProvinces = async () => {
   try {
     const { data, error } = await supabase
       .from('shipping_zones')
-      .select('*')
+      .select(PUBLIC_SHIPPING_COLUMNS)
       .eq('is_active', true)
       .eq('free_shipping', true)
       .order('province_name', { ascending: true });

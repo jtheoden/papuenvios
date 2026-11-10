@@ -5,8 +5,11 @@
  */
 
 import { supabase } from './supabase';
+import { withCatalogInvalidation } from './catalogCache';
+import { resolveImageUrl } from './imageStorage';
 import { getCurrentTimestamp } from './queryHelpers';
 import { DEFAULTS } from './constants';
+import { resolveMarginInput } from './marginResolver';
 import {
   AppError,
   handleError,
@@ -17,20 +20,68 @@ import {
   ERROR_CODES
 } from './errorHandler';
 import { ORDER_STATUS } from './orderService';
+import { PUBLIC_COMBO_COLUMNS, PUBLIC_COMBO_ITEM_COLUMNS } from './publicCatalogColumns';
+import { listProductCosts, listComboCosts } from './adminCostService';
 
-// Estados que BLOQUEAN eliminación de combos
-const BLOCKING_ORDER_STATUSES = [
-  ORDER_STATUS.PENDING,
-  ORDER_STATUS.PROCESSING
-];
+/** base_total_price of a combo: sum of component base_price x quantity (currency was already asserted). */
+const sumBaseTotal = (productsWithQuantities, costs) =>
+  productsWithQuantities.reduce((sum, item) => {
+    const cost = costs.get(item.productId);
+    return cost ? sum + (parseFloat(cost.base_price) * item.quantity) : sum;
+  }, 0);
 
-// Estados que PERMITEN eliminación (órdenes ya procesadas o canceladas)
-const SAFE_DELETE_ORDER_STATUSES = [
-  ORDER_STATUS.DISPATCHED,
-  ORDER_STATUS.DELIVERED,
-  ORDER_STATUS.COMPLETED,
-  ORDER_STATUS.CANCELLED
-];
+const assertComponentsInBaseCurrency = async (productIds) => {
+  const [productsResult, currenciesResult] = await Promise.all([
+    supabase.from('products').select('id, base_currency_id').in('id', productIds),
+    supabase.from('currencies').select('id').eq('is_base', true)
+  ]);
+
+  if (productsResult.error) {
+    const appError = parseSupabaseError(productsResult.error);
+    logError(appError, { operation: 'assertComponentsInBaseCurrency.products' });
+    throw appError;
+  }
+  if (currenciesResult.error) {
+    const appError = parseSupabaseError(currenciesResult.error);
+    logError(appError, { operation: 'assertComponentsInBaseCurrency.currencies' });
+    throw appError;
+  }
+
+  const baseCurrencyIds = new Set((currenciesResult.data || []).map(currency => currency.id));
+  const hasMismatch = baseCurrencyIds.size === 0 || (productsResult.data || []).some(product =>
+    product.base_currency_id !== null && product.base_currency_id !== undefined && !baseCurrencyIds.has(product.base_currency_id)
+  );
+  if (hasMismatch) {
+    const error = createValidationError(
+      { productsWithQuantities: 'All combo components must be priced in the base currency' },
+      'Combo components in a non-base currency'
+    );
+    error.i18nKey = 'vendor.combos.componentCurrencyMismatch';
+    throw error;
+  }
+};
+
+// Explicit projections so new heavy or sensitive columns are never pulled by accident.
+
+/**
+ * Admin combos: base_total_price / profit_margin and each component's base_price come from the admin RPCs.
+ */
+const withComboCosts = async (combos, componentProductIds) => {
+  const [comboCosts, productCosts] = await Promise.all([
+    listComboCosts(combos.map(combo => combo.id)),
+    listProductCosts(componentProductIds.filter(Boolean))
+  ]);
+  return combos.map(combo => {
+    const cost = comboCosts.get(combo.id);
+    return {
+      ...combo,
+      ...(cost ? { base_total_price: cost.base_total_price, profit_margin: cost.profit_margin } : {}),
+      items: combo.items.map(item => (item.product?.id && productCosts.has(item.product.id)
+        ? { ...item, product: { ...item.product, base_price: productCosts.get(item.product.id).base_price } }
+        : item))
+    };
+  });
+};
 
 /**
  * Get all combos with their products
@@ -40,16 +91,25 @@ const SAFE_DELETE_ORDER_STATUSES = [
  */
 export const getCombos = async (includeInactive = false) => {
   try {
+    // The public view prices a combo from its stored final_price only. The admin view
+    // (includeInactive) merges the cost fields read through the admin RPCs below.
     // Get combos
     let comboQuery = supabase
       .from('combo_products')
-      .select('*');
+      .select(PUBLIC_COMBO_COLUMNS);
 
     if (!includeInactive) {
       comboQuery = comboQuery.eq('is_active', true);
     }
 
-    const combosResult = await comboQuery.order('created_at', { ascending: false });
+    // Items are small; fetch them in parallel instead of after the combos
+    // (rows of combos that were filtered out are ignored below).
+    const [combosResult, itemsResult] = await Promise.all([
+      comboQuery.order('created_at', { ascending: false }),
+      supabase
+        .from('combo_items')
+        .select(PUBLIC_COMBO_ITEM_COLUMNS)
+    ]);
 
     if (combosResult.error) {
       const appError = parseSupabaseError(combosResult.error);
@@ -61,14 +121,8 @@ export const getCombos = async (includeInactive = false) => {
       return [];
     }
 
-    // Get combo IDs to fetch their items
     const comboIds = combosResult.data.map(c => c.id);
-
-    // Get combo items with product details
-    const { data: itemsData, error: itemsError } = await supabase
-      .from('combo_items')
-      .select('combo_id, quantity, products(id, name_es, name_en, base_price)')
-      .in('combo_id', comboIds);
+    const { data: itemsData, error: itemsError } = itemsResult;
 
     if (itemsError) {
       const appError = parseSupabaseError(itemsError);
@@ -92,10 +146,14 @@ export const getCombos = async (includeInactive = false) => {
     });
 
     // Attach items to combos
-    const combosWithItems = combosResult.data.map(combo => ({
+    let combosWithItems = combosResult.data.map(combo => ({
       ...combo,
       items: itemsMap[combo.id] || []
     }));
+
+    if (includeInactive) {
+      combosWithItems = await withComboCosts(combosWithItems, (itemsData || []).map(item => item.products?.id));
+    }
 
     return combosWithItems;
   } catch (error) {
@@ -114,7 +172,7 @@ export const getCombos = async (includeInactive = false) => {
  * @throws {AppError} If validation fails or creation fails
  * @returns {Promise<Object>} Created combo
  */
-export const createCombo = async (comboData) => {
+export const createCombo = withCatalogInvalidation(async (comboData) => {
   try {
     if (!comboData.name) {
       throw createValidationError({ name: 'Combo name is required' });
@@ -128,22 +186,16 @@ export const createCombo = async (comboData) => {
     }
 
     // Calculate base total price from selected products with quantities
-    let baseTotalPrice = 0;
+    // (an unavailable cost source aborts the save: a silent 0 would store a wrong base_total_price)
     const productIds = comboData.productsWithQuantities.map(item => item.productId);
-    const { data: productPrices } = await supabase
-      .from('products')
-      .select('id, base_price')
-      .in('id', productIds);
+    await assertComponentsInBaseCurrency(productIds);
+    const baseTotalPrice = sumBaseTotal(comboData.productsWithQuantities, await listProductCosts(productIds));
 
-    if (productPrices) {
-      baseTotalPrice = comboData.productsWithQuantities.reduce((sum, item) => {
-        const product = productPrices.find(p => p.id === item.productId);
-        if (product) {
-          return sum + (parseFloat(product.base_price) * item.quantity);
-        }
-        return sum;
-      }, 0);
-    }
+    // Upload first: if it fails nothing is saved (no base64 fallback)
+    const imageUrl = await resolveImageUrl(comboData.image, {
+      folder: 'combos',
+      id: crypto.randomUUID()
+    });
 
     // Create combo
     const { data: combo, error: comboError } = await supabase
@@ -153,12 +205,12 @@ export const createCombo = async (comboData) => {
         name_en: comboData.name,
         description_es: comboData.description || '',
         description_en: comboData.description || '',
-        image_url: comboData.image || null,
+        image_url: imageUrl || null,
         base_total_price: baseTotalPrice,
-        profit_margin: parseFloat(comboData.profitMargin || DEFAULTS.COMBO_PROFIT_MARGIN),
+        profit_margin: resolveMarginInput(comboData.profitMargin, DEFAULTS.COMBO_PROFIT_MARGIN),
         is_active: true
       }])
-      .select()
+      .select(PUBLIC_COMBO_COLUMNS)
       .single();
 
     if (comboError) {
@@ -194,7 +246,7 @@ export const createCombo = async (comboData) => {
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'createCombo' });
     throw appError;
   }
-};
+});
 
 /**
  * Update an existing combo and its items
@@ -203,7 +255,7 @@ export const createCombo = async (comboData) => {
  * @throws {AppError} If combo not found or update fails
  * @returns {Promise<Object>} Updated combo
  */
-export const updateCombo = async (comboId, comboData) => {
+export const updateCombo = withCatalogInvalidation(async (comboId, comboData) => {
   try {
     if (!comboId) {
       throw createValidationError({ comboId: 'Combo ID is required' });
@@ -213,20 +265,8 @@ export const updateCombo = async (comboId, comboData) => {
     let baseTotalPrice = undefined;
     if (comboData.productsWithQuantities && comboData.productsWithQuantities.length > 0) {
       const productIds = comboData.productsWithQuantities.map(item => item.productId);
-      const { data: productPrices } = await supabase
-        .from('products')
-        .select('id, base_price')
-        .in('id', productIds);
-
-      if (productPrices) {
-        baseTotalPrice = comboData.productsWithQuantities.reduce((sum, item) => {
-          const product = productPrices.find(p => p.id === item.productId);
-          if (product) {
-            return sum + (parseFloat(product.base_price) * item.quantity);
-          }
-          return sum;
-        }, 0);
-      }
+      await assertComponentsInBaseCurrency(productIds);
+      baseTotalPrice = sumBaseTotal(comboData.productsWithQuantities, await listProductCosts(productIds));
     }
 
     // Update combo
@@ -235,12 +275,15 @@ export const updateCombo = async (comboId, comboData) => {
       name_en: comboData.name,
       description_es: comboData.description || '',
       description_en: comboData.description || '',
-      profit_margin: parseFloat(comboData.profitMargin || DEFAULTS.COMBO_PROFIT_MARGIN),
+      profit_margin: resolveMarginInput(comboData.profitMargin, DEFAULTS.COMBO_PROFIT_MARGIN),
       updated_at: getCurrentTimestamp()
     };
 
     if (comboData.image) {
-      updateData.image_url = comboData.image;
+      updateData.image_url = await resolveImageUrl(comboData.image, {
+        folder: 'combos',
+        id: comboId
+      });
     }
 
     if (baseTotalPrice !== undefined) {
@@ -251,7 +294,7 @@ export const updateCombo = async (comboId, comboData) => {
       .from('combo_products')
       .update(updateData)
       .eq('id', comboId)
-      .select()
+      .select(PUBLIC_COMBO_COLUMNS)
       .single();
 
     if (comboError) {
@@ -309,7 +352,7 @@ export const updateCombo = async (comboId, comboData) => {
     });
     throw appError;
   }
-};
+});
 
 /**
  * Toggle combo active state
@@ -317,7 +360,7 @@ export const updateCombo = async (comboId, comboData) => {
  * @param {boolean} isActive - Target active state
  * @returns {Promise<Object>} Updated combo row
  */
-export const setComboActiveState = async (comboId, isActive = true) => {
+export const setComboActiveState = withCatalogInvalidation(async (comboId, isActive = true) => {
   try {
     if (!comboId) {
       throw createValidationError({ comboId: 'Combo ID is required' });
@@ -327,7 +370,7 @@ export const setComboActiveState = async (comboId, isActive = true) => {
       .from('combo_products')
       .update({ is_active: isActive, updated_at: getCurrentTimestamp() })
       .eq('id', comboId)
-      .select()
+      .select(PUBLIC_COMBO_COLUMNS)
       .single();
 
     if (error) {
@@ -349,150 +392,25 @@ export const setComboActiveState = async (comboId, isActive = true) => {
     });
     throw appError;
   }
-};
+});
 
 /**
- * Find blocking orders for a combo
- * Returns orders in BLOCKING states (pending/processing)
- * @param {string} comboId - Combo ID
- * @returns {Promise<{blockingOrders: Array, safeOrders: Array}>}
- */
-const findBlockingOrdersForCombo = async (comboId) => {
-  // Find order_items that reference this combo
-  const { data: orderItems, error: oiError } = await supabase
-    .from('order_items')
-    .select(`
-      id,
-      item_id,
-      order_id,
-      orders!inner(id, order_number, status, payment_status)
-    `)
-    .eq('item_type', 'combo')
-    .eq('item_id', comboId);
-
-  if (oiError) {
-    console.warn('[findBlockingOrdersForCombo] Error fetching order_items:', oiError);
-    return { blockingOrders: [], safeOrders: [] };
-  }
-
-  const blockingOrders = [];
-  const safeOrders = [];
-
-  (orderItems || []).forEach(item => {
-    const order = item.orders;
-    if (!order) return;
-
-    const orderInfo = {
-      orderId: order.id,
-      orderNumber: order.order_number,
-      status: order.status,
-      paymentStatus: order.payment_status
-    };
-
-    if (BLOCKING_ORDER_STATUSES.includes(order.status)) {
-      blockingOrders.push(orderInfo);
-    } else if (SAFE_DELETE_ORDER_STATUSES.includes(order.status)) {
-      safeOrders.push(orderInfo);
-    }
-  });
-
-  return { blockingOrders, safeOrders };
-};
-
-/**
- * Delete a combo (hard delete - removes from database)
- * Validates no blocking orders exist before deletion
- * Clears combo references from completed/cancelled orders
+ * Delete a combo (hard delete) through ONE fail-closed database transaction (delete_combo):
+ * the database locks the component batches, applies the blocker predicate (any order that
+ * references the combo with ANY item_type and is open / unknown, or still holds a reserved
+ * component allocation, blocks it) and deletes items and combo together. Closed orders never
+ * block; order_items.item_id is NOT NULL with no FK, so nothing is rewritten there.
  * @param {string} comboId - Combo ID to delete
- * @throws {AppError} If deletion fails or blocking orders exist
- * @returns {Promise<Object>} Result with deleted combo info
+ * @throws {AppError} CONFLICT (409) with context.blockingOrders when blocked, NOT_FOUND, or a DB error
+ * @returns {Promise<Object>} { success, deletedCombo: {id, name} }
  */
-export const deleteCombo = async (comboId) => {
+export const deleteCombo = withCatalogInvalidation(async (comboId) => {
   try {
     if (!comboId) {
       throw createValidationError({ comboId: 'Combo ID is required' });
     }
 
-    // Fetch combo info for error messages
-    const { data: combo, error: fetchError } = await supabase
-      .from('combo_products')
-      .select('id, name_es, name_en')
-      .eq('id', comboId)
-      .single();
-
-    if (fetchError) {
-      console.warn('[deleteCombo] Error fetching combo info:', fetchError);
-    }
-
-    const comboName = combo?.name_es || combo?.name_en || comboId;
-
-    // ============================================
-    // STEP 1: Check for blocking orders
-    // ============================================
-    const { blockingOrders, safeOrders } = await findBlockingOrdersForCombo(comboId);
-
-    if (blockingOrders.length > 0) {
-      const orderNumbers = blockingOrders.map(o => o.orderNumber).join(', ');
-
-      throw new AppError(
-        `No se puede eliminar el combo "${comboName}" porque tiene órdenes activas en proceso: ${orderNumbers}. Espere a que las órdenes sean despachadas o canceladas.`,
-        ERROR_CODES.CONFLICT,
-        409,
-        {
-          comboId,
-          comboName,
-          blockingOrders,
-          blockingOrderCount: blockingOrders.length
-        }
-      );
-    }
-
-    // ============================================
-    // STEP 2: Clear item_id from safe order_items (dispatched/delivered/completed/cancelled)
-    // ============================================
-    if (safeOrders.length > 0) {
-      const { error: clearError } = await supabase
-        .from('order_items')
-        .update({ item_id: null })
-        .eq('item_type', 'combo')
-        .eq('item_id', comboId);
-
-      if (clearError) {
-        console.error('[deleteCombo] Error clearing item_id from order_items:', clearError);
-        throw new AppError(
-          'Error al limpiar referencias del combo en órdenes completadas',
-          ERROR_CODES.DB_ERROR,
-          500,
-          { operation: 'clearOrderItemsCombo', error: clearError.message }
-        );
-      }
-    }
-
-    // ============================================
-    // STEP 3: Delete combo_items references (FK constraint)
-    // ============================================
-    const { error: comboItemsError } = await supabase
-      .from('combo_items')
-      .delete()
-      .eq('combo_id', comboId);
-
-    if (comboItemsError) {
-      console.error('[deleteCombo] Error deleting combo_items:', comboItemsError);
-      throw new AppError(
-        'Error al eliminar items del combo',
-        ERROR_CODES.DB_ERROR,
-        500,
-        { operation: 'deleteComboItems', error: comboItemsError.message }
-      );
-    }
-
-    // ============================================
-    // STEP 4: Delete the combo
-    // ============================================
-    const { error } = await supabase
-      .from('combo_products')
-      .delete()
-      .eq('id', comboId);
+    const { data, error } = await supabase.rpc('delete_combo', { p_combo_id: comboId });
 
     if (error) {
       const appError = parseSupabaseError(error);
@@ -500,13 +418,40 @@ export const deleteCombo = async (comboId) => {
       throw appError;
     }
 
+    const result = data || {};
+
+    if (!result.ok) {
+      if (result.reason === 'blocking_orders') {
+        const blockingOrders = (result.blockers || []).map((row) => ({
+          orderId: row.order_id,
+          orderNumber: row.order_number,
+          status: row.status,
+          paymentStatus: row.payment_status,
+          via: row.via
+        }));
+        const comboName = result.combo_name || comboId;
+        const orderNumbers = blockingOrders.map(o => o.orderNumber).join(', ');
+        throw new AppError(
+          `No se puede eliminar el combo "${comboName}" porque tiene órdenes activas en proceso: ${orderNumbers}. Espere a que las órdenes sean despachadas o canceladas.`,
+          ERROR_CODES.CONFLICT,
+          409,
+          { comboId, comboName, blockingOrders, blockingOrderCount: blockingOrders.length }
+        );
+      }
+      if (result.reason === 'not_found') {
+        throw createNotFoundError('Combo', comboId);
+      }
+      throw new AppError(
+        `Combo delete refused: ${result.reason || 'unknown'}`,
+        ERROR_CODES.INVALID_OPERATION,
+        409,
+        { comboId, reason: result.reason || 'unknown' }
+      );
+    }
+
     return {
       success: true,
-      deletedCombo: {
-        id: comboId,
-        name: comboName
-      },
-      clearedOrderItems: safeOrders.length
+      deletedCombo: { id: comboId, name: result.combo_name || comboId }
     };
   } catch (error) {
     if (error.code) throw error; // Already an AppError
@@ -516,7 +461,7 @@ export const deleteCombo = async (comboId) => {
     });
     throw appError;
   }
-};
+});
 
 /**
  * Import path:

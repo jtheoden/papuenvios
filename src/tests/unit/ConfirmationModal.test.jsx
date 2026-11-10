@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
+const mockLang = { current: 'es' };
 vi.mock('@/contexts/LanguageContext', () => ({
-  useLanguage: () => ({ language: 'es' })
+  useLanguage: () => ({ language: mockLang.current })
 }));
 
 vi.mock('@/contexts/BusinessContext', () => ({
@@ -52,7 +53,7 @@ describe('ConfirmationModal guided WhatsApp step', () => {
 
     const items = screen.getAllByRole('listitem');
     expect(items).toHaveLength(4);
-    expect(items[0]).toHaveTextContent('Envíanos el comprobante por WhatsApp con el botón de abajo');
+    expect(items[0]).toHaveTextContent('Opcional: envíenos el comprobante por WhatsApp con el botón de abajo para acelerar la verificación');
     expect(items[0]).toHaveTextContent('1');
   });
 
@@ -102,11 +103,11 @@ describe('ConfirmationModal pending-proof variant', () => {
 
     const items = screen.getAllByRole('listitem');
     expect(items).toHaveLength(4);
-    expect(items[0]).toHaveTextContent('Avísanos por WhatsApp que registraste la remesa con el botón de abajo');
-    expect(items[1]).toHaveTextContent('Sube tu comprobante de pago desde Mis Remesas');
-    expect(screen.queryByText('Verificaremos tu comprobante de pago')).not.toBeInTheDocument();
-    expect(items[2]).toHaveTextContent('Procesaremos tu remesa cuando validemos el pago');
-    expect(screen.queryByText('Procesaremos tu remesa en las próximas horas')).not.toBeInTheDocument();
+    expect(items[0]).toHaveTextContent('Opcional: avísenos por WhatsApp que registró la remesa con el botón de abajo para acelerar la verificación');
+    expect(items[1]).toHaveTextContent('Suba su comprobante de pago desde Mis Remesas');
+    expect(screen.queryByText('Verificaremos su comprobante de pago')).not.toBeInTheDocument();
+    expect(items[2]).toHaveTextContent('Procesaremos su remesa cuando validemos el pago');
+    expect(screen.queryByText('Procesaremos su remesa una vez validado el pago.')).not.toBeInTheDocument();
   });
 
   it('stacks above other z-50 modals', () => {
@@ -123,8 +124,8 @@ describe('ConfirmationModal pending-proof variant', () => {
     expect(screen.getByText('¡Remesa Enviada!')).toBeInTheDocument();
     expect(screen.getByText('Tu remesa ha sido registrada exitosamente')).toBeInTheDocument();
     expect(screen.getByTestId('confirmation-whatsapp-link')).toHaveTextContent('Enviar comprobante por WhatsApp');
-    expect(screen.getByText('Verificaremos tu comprobante de pago')).toBeInTheDocument();
-    expect(screen.getByText('Procesaremos tu remesa en las próximas horas')).toBeInTheDocument();
+    expect(screen.getByText('Verificaremos su comprobante de pago')).toBeInTheDocument();
+    expect(screen.getByText('Procesaremos su remesa una vez validado el pago.')).toBeInTheDocument();
   });
 
   it('ignores proofPending for product orders', () => {
@@ -135,124 +136,107 @@ describe('ConfirmationModal pending-proof variant', () => {
   });
 });
 
-describe('ConfirmationModal skip guard for the guided WhatsApp step', () => {
-  const SKIP_WARNING = 'El administrador aún no fue notificado. Envía el mensaje por WhatsApp para que procese tu operación.';
+describe('ConfirmationModal optional WhatsApp step', () => {
+  const WARNING_FRAGMENT = /aún no fue notificado|has not been notified/;
   const guardedProps = { ...baseProps, whatsappUrl: WHATSAPP_URL, whatsappNumber: WHATSAPP_NUMBER };
   const clickClose = () => fireEvent.click(screen.getByText('Cerrar'));
 
   beforeEach(() => {
+    mockLang.current = 'es';
     baseProps.onClose.mockClear();
     baseProps.onViewOrders.mockClear();
   });
 
-  it('warns instead of closing on the first close attempt, then closes on the second', () => {
-    render(<ConfirmationModal {...guardedProps} />);
+  const scenarios = [
+    ['a WhatsApp URL', guardedProps],
+    ['no URL and not configured', baseProps],
+    ['the message still loading', { ...baseProps, whatsappLoading: true }]
+  ];
 
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  it.each(scenarios)('closes on the first attempt without warning when there is %s', (_name, props) => {
+    render(<ConfirmationModal {...props} />);
+
     clickClose();
 
-    expect(baseProps.onClose).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toHaveTextContent(SKIP_WARNING);
-
-    clickClose();
     expect(baseProps.onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText(WARNING_FRAGMENT)).not.toBeInTheDocument();
   });
 
-  it('applies the same rule to the X button and the backdrop', () => {
-    render(<ConfirmationModal {...guardedProps} />);
+  it.each(scenarios)('lets the X button, backdrop and view-orders through immediately with %s', (_name, props) => {
+    render(<ConfirmationModal {...props} />);
 
     fireEvent.click(screen.getByLabelText('Cerrar'));
-    expect(baseProps.onClose).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toBeInTheDocument();
-
     fireEvent.click(screen.getByText('¡Pedido Confirmado!').closest('.fixed'));
-    expect(baseProps.onClose).toHaveBeenCalledTimes(1);
-  });
+    expect(baseProps.onClose).toHaveBeenCalledTimes(2);
 
-  it('closes on the first attempt once the WhatsApp link was clicked', () => {
-    render(<ConfirmationModal {...guardedProps} />);
-
-    fireEvent.click(screen.getByTestId('confirmation-whatsapp-link'));
-    clickClose();
-
-    expect(baseProps.onClose).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: /Ver Mis Pedidos/ }));
+    expect(baseProps.onViewOrders).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('closes on the first attempt when there is no WhatsApp URL', () => {
+  it('keeps the WhatsApp button visible with the correct href as a direct link', () => {
+    render(<ConfirmationModal {...guardedProps} />);
+
+    const link = screen.getByTestId('confirmation-whatsapp-link');
+    expect(link.tagName).toBe('A');
+    expect(link).toHaveAttribute('href', WHATSAPP_URL);
+    expect(link).toHaveAttribute('target', '_blank');
+  });
+
+  it('does not open WhatsApp automatically', () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    render(<ConfirmationModal {...guardedProps} />);
+    clickClose();
+
+    expect(openSpy).not.toHaveBeenCalled();
+    openSpy.mockRestore();
+  });
+
+  it('explains in Spanish that the step is optional and the order is already registered', () => {
+    render(<ConfirmationModal {...guardedProps} />);
+
+    expect(screen.getByText('Tu pedido ya quedó registrado. El aviso por WhatsApp es opcional.')).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent(/Opcional/);
+  });
+
+  it('explains in English that the step is optional and the order is already registered', () => {
+    mockLang.current = 'en';
+    render(<ConfirmationModal {...guardedProps} />);
+
+    expect(screen.getByText('Your order is already registered. The WhatsApp notice is optional.')).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent(/Optional: .*speed up verification/);
+  });
+
+  it.each([
+    ['es', 'Tu remesa ya quedó registrada. El aviso por WhatsApp es opcional.'],
+    ['en', 'Your remittance is already registered. The WhatsApp notice is optional.']
+  ])('applies the same optional treatment to remittances (%s), also with proof pending', (lang, note) => {
+    mockLang.current = lang;
+    const { rerender } = render(<ConfirmationModal {...guardedProps} orderType="remittance" />);
+    expect(screen.getByText(note)).toBeInTheDocument();
+
+    rerender(<ConfirmationModal {...guardedProps} orderType="remittance" proofPending={true} />);
+    expect(screen.getByText(note)).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent(/Opcional|Optional/);
+  });
+
+  it('shows no optional note when there is no WhatsApp URL', () => {
     render(<ConfirmationModal {...baseProps} />);
 
-    clickClose();
-
-    expect(baseProps.onClose).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText(/es opcional/)).not.toBeInTheDocument();
   });
 
-  it('guards the close while the WhatsApp message is still loading', () => {
-    render(<ConfirmationModal {...baseProps} whatsappLoading={true} />);
+  it('has the same set of rendered texts in both languages (parity)', () => {
+    const textsFor = (lang) => {
+      mockLang.current = lang;
+      const { container, unmount } = render(<ConfirmationModal {...guardedProps} orderType="remittance" proofPending={true} />);
+      const count = container.querySelectorAll('li, h2, h3, p, a, button').length;
+      unmount();
+      return count;
+    };
 
-    clickClose();
-    expect(baseProps.onClose).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toHaveTextContent(SKIP_WARNING);
-
-    clickClose();
-    expect(baseProps.onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it('keeps the warning visible when the URL arrives after a guarded attempt during loading', () => {
-    const { rerender } = render(<ConfirmationModal {...baseProps} whatsappLoading={true} />);
-
-    clickClose();
-    rerender(<ConfirmationModal {...guardedProps} whatsappLoading={false} />);
-
-    expect(screen.getByRole('alert')).toHaveTextContent(SKIP_WARNING);
-    expect(screen.getByTestId('confirmation-whatsapp-link')).toBeInTheDocument();
-  });
-
-  it('counts a middle-click on the WhatsApp link as having opened it', () => {
-    render(<ConfirmationModal {...guardedProps} />);
-
-    fireEvent(
-      screen.getByTestId('confirmation-whatsapp-link'),
-      new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 })
-    );
-    clickClose();
-
-    expect(baseProps.onClose).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  it('guards the view-orders button with the same rule', () => {
-    render(<ConfirmationModal {...guardedProps} />);
-    const viewOrders = screen.getByRole('button', { name: /Ver Mis Pedidos/ });
-
-    fireEvent.click(viewOrders);
-    expect(baseProps.onViewOrders).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toHaveTextContent(SKIP_WARNING);
-
-    fireEvent.click(viewOrders);
-    expect(baseProps.onViewOrders).toHaveBeenCalledTimes(1);
-  });
-
-  it('lets view-orders through on the first attempt after the link was clicked', () => {
-    render(<ConfirmationModal {...guardedProps} />);
-
-    fireEvent.click(screen.getByTestId('confirmation-whatsapp-link'));
-    fireEvent.click(screen.getByRole('button', { name: /Ver Mis Pedidos/ }));
-
-    expect(baseProps.onViewOrders).toHaveBeenCalledTimes(1);
-  });
-
-  it('resets the guard every time the modal opens', () => {
-    const { rerender } = render(<ConfirmationModal {...guardedProps} />);
-
-    fireEvent.click(screen.getByTestId('confirmation-whatsapp-link'));
-    rerender(<ConfirmationModal {...guardedProps} isOpen={false} />);
-    rerender(<ConfirmationModal {...guardedProps} />);
-    clickClose();
-
-    expect(baseProps.onClose).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(textsFor('es')).toBe(textsFor('en'));
   });
 
   describe('resend variant', () => {
@@ -294,5 +278,39 @@ describe('ConfirmationModal skip guard for the guided WhatsApp step', () => {
 
     rerender(<ConfirmationModal {...baseProps} />);
     expect(screen.getByRole('button', { name: /Ver Mis Pedidos/ }).style.backgroundColor).not.toBe('');
+  });
+});
+
+describe('ConfirmationModal total', () => {
+  beforeEach(() => { mockLang.current = 'es'; });
+  const plain = (node) => node.textContent.replace(/\u00a0/g, ' ');
+
+  it('shows the real currency code, no hardcoded dollar sign (ES, CUP)', () => {
+    render(<ConfirmationModal {...baseProps} total={7700} currency="CUP" />);
+
+    expect(screen.getByText('7700,00 CUP')).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('$');
+  });
+
+  it('shows a USD total with the USD code, not US$ (ES)', () => {
+    render(<ConfirmationModal {...baseProps} total={26} currency="USD" />);
+
+    expect(screen.getByText('26,00 USD')).toBeInTheDocument();
+  });
+
+  it('shows a USD total with the USD code (EN)', () => {
+    mockLang.current = 'en';
+    render(<ConfirmationModal {...baseProps} total={26} currency="USD" />);
+
+    expect(plain(screen.getByText(/26\.00/))).toBe('USD 26.00');
+  });
+
+  it('formats a numeric-string total and never prints a raw or NaN value for a bad one', () => {
+    const { rerender } = render(<ConfirmationModal {...baseProps} total="26.5" currency="USD" />);
+    expect(screen.getByText('26,50 USD')).toBeInTheDocument();
+
+    rerender(<ConfirmationModal {...baseProps} total="abc" currency="USD" />);
+    expect(screen.queryByText(/abc|NaN/)).toBeNull();
+    expect(screen.getByText('\u2014')).toBeInTheDocument();
   });
 });

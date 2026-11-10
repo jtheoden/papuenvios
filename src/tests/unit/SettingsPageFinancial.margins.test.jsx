@@ -18,6 +18,7 @@ vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({ t: (key) => key, language: 'en' })
 }));
 
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ isSuperAdmin: true }) }));
 vi.mock('@/contexts/BusinessContext', () => ({
   useBusiness: () => ({ visualSettings: {}, applyMarginSettings: applyMarginSettingsMock })
 }));
@@ -39,6 +40,7 @@ vi.mock('@/lib/currencyService', () => ({
 vi.mock('@/lib/supabase', () => ({ supabase: { from: vi.fn() } }));
 
 import SettingsPageFinancial from '@/components/settings/SettingsPageFinancial';
+vi.mock('@/components/ui/ConfirmDialog', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) })); // these tests do not exercise confirmations
 
 const renderPage = (financial = { productProfit: 45, comboProfit: 30 }) =>
   render(<SettingsPageFinancial localFinancial={financial} setLocalFinancial={vi.fn()} />);

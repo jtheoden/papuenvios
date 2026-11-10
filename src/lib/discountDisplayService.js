@@ -1,4 +1,5 @@
 import { applyOffer, calculateDiscount } from './priceCalculationService';
+import { roundMoney } from './moneyPure';
 
 /**
  * Builds a consistent discount breakdown for any amount using
@@ -7,7 +8,7 @@ import { applyOffer, calculateDiscount } from './priceCalculationService';
 export const buildDiscountBreakdown = ({ amount = 0, categoryPercent = 0, offer = null } = {}) => {
   const base = parseFloat(amount) || 0;
   const categoryAmount = calculateDiscount(base, categoryPercent);
-  const afterCategory = base - categoryAmount;
+  const afterCategory = roundMoney(base - categoryAmount);
 
   const offerResult = applyOffer(afterCategory, offer);
   const offerAmount = offerResult.discountAmount || 0;
@@ -20,19 +21,19 @@ export const buildDiscountBreakdown = ({ amount = 0, categoryPercent = 0, offer 
         : 0
     : 0;
 
-  const totalDiscountAmount = parseFloat((categoryAmount + offerAmount).toFixed(2));
+  const totalDiscountAmount = roundMoney(categoryAmount + offerAmount);
   const totalDiscountPercent = derivePercentFromAmount(base, totalDiscountAmount);
 
   return {
     baseAmount: base,
-    finalAmount: parseFloat((offerResult.finalSubtotal || afterCategory).toFixed(2)),
+    finalAmount: roundMoney(offerResult.finalSubtotal || afterCategory),
     category: {
       percent: Math.max(0, categoryPercent || 0),
-      amount: parseFloat(categoryAmount.toFixed(2))
+      amount: roundMoney(categoryAmount)
     },
     offer: {
       percent: parseFloat(offerPercent.toFixed(2)),
-      amount: parseFloat(offerAmount.toFixed(2)),
+      amount: roundMoney(offerAmount),
       type: offer?.discount_type || null,
       code: offer?.code || null
     },

@@ -67,6 +67,28 @@ export const getSelectableProvinces = (zones = []) => {
   return list.filter((zone) => selectable.has(zone.province_name));
 };
 
+const lookupZone = (zones, provinceName, municipalityName = null) => {
+  const rows = (zones || []).filter(
+    (zone) => zone && zone.is_active !== false && zone.province_name === provinceName
+  );
+  const municipalityRow = municipalityName
+    ? rows.find((zone) => zone.municipality_name === municipalityName)
+    : null;
+  return { zone: municipalityRow || rows.find(isProvinceRow), municipalityRow };
+};
+
+/**
+ * The zone row that prices a destination (municipality row, else the province row), or null.
+ * Single lookup shared by the shipping cost and the zone id stored on the order.
+ *
+ * @param {Array<object>} zones - raw active zone rows (not the selectable-province list)
+ * @param {string} provinceName
+ * @param {string|null} [municipalityName]
+ * @returns {object|null}
+ */
+export const resolveShippingZone = (zones, provinceName, municipalityName = null) =>
+  provinceName ? lookupZone(zones, provinceName, municipalityName).zone || null : null;
+
 /**
  * Resolves what a destination costs, mirroring the lookup priority of
  * `shippingService.getShippingZoneForLocation`: municipality row first, then the
@@ -83,14 +105,7 @@ export const getShippingState = (zones, provinceName, municipalityName = null) =
     return { status: 'none', cost: 0, freeShipping: false, source: null };
   }
 
-  const rows = (zones || []).filter(
-    (zone) => zone && zone.is_active !== false && zone.province_name === provinceName
-  );
-
-  const municipalityRow = municipalityName
-    ? rows.find((zone) => zone.municipality_name === municipalityName)
-    : null;
-  const zone = municipalityRow || rows.find(isProvinceRow);
+  const { zone, municipalityRow } = lookupZone(zones, provinceName, municipalityName);
   const source = municipalityRow ? 'municipality' : 'province';
 
   if (!isZoneAvailable(zone)) {

@@ -15,6 +15,18 @@ import {
 
 // ─── calculatePriceWithMargin ───────────────────────────────────────────────
 
+describe('calculateCompletePrice margin',()=>{
+  it('keeps a 0% margin in the breakdown', () => {
+    const r = calculateCompletePrice({ basePrice: 100, profitMargin: 0 });
+    expect(r.beforeDiscount).toBe(100);
+    expect(r.profitMargin).toBe(0);
+  });
+
+  it('does not clamp a 150% margin to 100', () => {
+    expect(calculateCompletePrice({ basePrice: 100, profitMargin: 150 }).profitMargin).toBe(150);
+  });
+});
+
 describe('calculatePriceWithMargin', () => {
   it('applies 40% default margin', () => {
     expect(calculatePriceWithMargin(100)).toBe(140);
@@ -24,8 +36,18 @@ describe('calculatePriceWithMargin', () => {
     expect(calculatePriceWithMargin(100, 25)).toBe(125);
   });
 
-  it('clamps margin to [0, 100]', () => {
-    expect(calculatePriceWithMargin(100, 150)).toBe(200);
+  it('respects a 0% margin', () => {
+    expect(calculatePriceWithMargin(100, 0)).toBe(100);
+    expect(calculatePriceWithMargin(100, '0')).toBe(100);
+  });
+
+  it.each([[undefined], [null], [''], [NaN]])('uses the 40% default when margin is %j', (margin) => {
+    expect(calculatePriceWithMargin(100, margin)).toBe(140);
+  });
+
+  it('allows markups above 100% up to the DB maximum and clamps beyond it', () => {
+    expect(calculatePriceWithMargin(100, 150)).toBe(250);
+    expect(calculatePriceWithMargin(100, 5000)).toBe(1099.99);
     expect(calculatePriceWithMargin(100, -10)).toBe(100);
   });
 
@@ -206,6 +228,48 @@ describe('calculateOrderTotal', () => {
   it('returns 0 total for empty input', () => {
     const result = calculateOrderTotal();
     expect(result.total).toBe(0);
+  });
+
+  describe('cent-exact invariants', () => {
+    const cents = (n) => Math.round(n * 100);
+
+    it('rounds discounts half-up (1.005 -> 1.01, not 1.00)', () => {
+      expect(calculateDiscount(100.5, 1)).toBe(1.01);
+      expect(calculateOrderTotal({ subtotal: 100.5, categoryDiscount: 1 }).categoryDiscountAmount).toBe(1.01);
+    });
+
+    it('rounds a fixed-amount offer half-up and keeps the identity subtotal - discount = afterAllDiscounts', () => {
+      const offer = { id: 'o', discount_type: 'fixed_amount', discount_value: 1.005 };
+      const r = calculateOrderTotal({ subtotal: 44.81, categoryDiscount: 0, offer, shippingCost: 3.5 });
+      expect(r.offerDiscountAmount).toBe(1.01);
+      expect(cents(r.afterAllDiscounts)).toBe(cents(r.subtotal) - cents(r.totalDiscount));
+      expect(cents(r.total)).toBe(cents(r.afterAllDiscounts) + cents(r.shippingCost));
+    });
+
+    it('holds total = subtotal - discount + shipping in cents across many combinations', () => {
+      const subtotals = [0.55, 14.85, 44.81, 59.66, 99.99, 1234.56, 14.74 + 44.81];
+      const categories = [0, 3, 5, 7.5, 10, 12.345];
+      const shippings = [0, 2.5, 7.99, 15];
+      const offers = [
+        null,
+        { id: 'p', discount_type: 'percentage', discount_value: 7 },
+        { id: 'f', discount_type: 'fixed_amount', discount_value: 1.005 },
+      ];
+
+      subtotals.forEach((subtotal) => {
+        categories.forEach((categoryDiscount) => {
+          shippings.forEach((shippingCost) => {
+            offers.forEach((offer) => {
+              const r = calculateOrderTotal({ subtotal, categoryDiscount, offer, shippingCost });
+              const label = JSON.stringify({ subtotal, categoryDiscount, shippingCost, offer });
+              expect(cents(r.totalDiscount), label).toBe(cents(r.categoryDiscountAmount) + cents(r.offerDiscountAmount));
+              expect(cents(r.afterAllDiscounts), label).toBe(cents(r.subtotal) - cents(r.totalDiscount));
+              expect(cents(r.total), label).toBe(cents(r.afterAllDiscounts) + cents(r.shippingCost));
+            });
+          });
+        });
+      });
+    });
   });
 });
 

@@ -1,22 +1,30 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, Save, Edit, X, RefreshCw, Percent, DollarSign, Tag, Search, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
+import { getLiveConversionRate } from '@/lib/currencyService';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
+import { isImageUploadError, getImageUploadMessageKey } from '@/lib/imageStorage';
+import { isStockBelowReservedError } from '@/lib/stockErrors';
 import { createProduct, deleteProduct, setProductActiveState, updateProduct as updateProductDB } from '@/lib/productService';
 import { bulkDeleteProducts, previewBulkDeleteProducts } from '@/lib/bulkDeleteService';
+import { isAlreadyDeletedError, shouldRefreshAfterBulkDelete } from '@/lib/deleteOutcomePure';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import BulkDeleteBar from '@/components/tables/BulkDeleteBar';
 import { getTableColumns, getModalColumns } from './ProductTableConfig';
 import { logActivity } from '@/lib/activityLogger';
-import { useRealtimeProducts } from '@/hooks/useRealtimeSubscription';
+import { hasAdminProductFields } from '@/lib/adminCatalogColumns';
 import { DEFAULTS } from '@/lib/constants';
-import { resolveMargin } from '@/lib/marginResolver';
+import { resolveMargin, resolveMarginInput } from '@/lib/marginResolver';
+import { getUnitOptions, isKnownUnit, normalizeUnitCode } from '@/lib/productUnits';
+
+const CUP_CODE = 'CUP';
+const round2 = (n) => Math.round(n * 100) / 100;
 
 /**
  * Vendor Inventory Tab Component
@@ -39,14 +47,31 @@ const VendorInventoryTab = ({
   const { convertAmountAsync, getCurrencyById } = useCurrency();
   const [productForm, setProductForm] = useState(null);
   const [productImagePreview, setProductImagePreview] = useState(null);
-  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [selectedProductId, setSelectedProductId] = useState(null);
   const [showProductDetails, setShowProductDetails] = useState(false);
   const [processingProductId, setProcessingProductId] = useState(null);
   const [deletingProductId, setDeletingProductId] = useState(null);
   const [productToDelete, setProductToDelete] = useState(null);
   const [selectedProductIds, setSelectedProductIds] = useState([]);
+
+  // Drop selected ids that no longer exist (deleted here or by another user)
+  useEffect(() => {
+    const present = new Set(products.map((p) => p.id));
+    setSelectedProductIds((prev) => {
+      const next = prev.filter((id) => present.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [products]);
   const [convertedPreview, setConvertedPreview] = useState(null);
   const [isConverting, setIsConverting] = useState(false);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  // Last price the user can trust, in its own currency: currency switches re-convert from it so round trips stay exact
+  const priceAnchorRef = useRef(null);
+  const currencySwitchSeqRef = useRef(0);
+  const [currencyNote, setCurrencyNote] = useState(null);
+  const [isSwitchingCurrency, setIsSwitchingCurrency] = useState(false);
+  const switchingCurrencyRef = useRef(false);
+  const submittingRef = useRef(false);
   const [filterName, setFilterName] = useState('');
   const [filterCategories, setFilterCategories] = useState([]);
   const [filterExpiry, setFilterExpiry] = useState('');
@@ -55,14 +80,38 @@ const VendorInventoryTab = ({
   // Find base currency from currencies list
   const systemBaseCurrency = currencies.find(c => c.is_base);
   const systemBaseCurrencyId = systemBaseCurrency?.id || baseCurrencyId;
+  const cupCurrency = currencies.find(c => c.code === CUP_CODE);
+
+  // A cost typed in CUP (when CUP is not the base) is stored as cost_cup; the base price follows from the live
+  // USD->CUP rate of the pair itself, never the inverse CUP->USD row. Throws when no valid rate exists (fail closed).
+  const costCupToBase = async (costCup, cupCurrencyId) => {
+    const rate = await getLiveConversionRate(systemBaseCurrencyId, cupCurrencyId);
+    const base = round2(costCup / rate);
+    if (!Number.isFinite(rate) || rate <= 0 || !Number.isFinite(base)) throw new Error('No valid exchange rate available');
+    return base;
+  };
+  // Signal that the cost_cup migration is applied: admin rows only carry the cost_cup key after it (null or a number).
+  // No loaded row with the key (old DB, or empty catalog) => compat mode: save exactly as before, never send cost_cup.
+  const costCupAvailable = products.some(p => p.cost_cup !== undefined);
+  const isCostInCup = (currencyId) =>
+    costCupAvailable && getCurrencyById(currencyId)?.code === CUP_CODE && currencyId !== systemBaseCurrencyId;
 
   // Resolve the active form currency (from the currency selector)
   const formCurrency = getCurrencyById(productForm?.base_currency_id) || systemBaseCurrency;
   const formCurrencySymbol = formCurrency?.symbol || '$';
   const formCurrencyCode = formCurrency?.code || 'USD';
+  const listCurrencyCode = getCurrencyById(selectedCurrency ?? baseCurrencyId)?.code || systemBaseCurrency?.code || '';
+
+  // Catalog units; a stored code outside the catalog stays selectable so saving never wipes it
+  const unitOptions = useMemo(() => {
+    const options = getUnitOptions(language);
+    const current = normalizeUnitCode(productForm?.unit);
+    return current && !isKnownUnit(current) ? [...options, { value: current, label: current }] : options;
+  }, [language, productForm?.unit]);
 
   // Calculate converted price preview when price or currency changes
   const updateConvertedPreview = useCallback(async (price, fromCurrencyId) => {
+    setPreviewFailed(false);
     if (!price || !fromCurrencyId || !systemBaseCurrencyId) {
       setConvertedPreview(null);
       return;
@@ -76,7 +125,11 @@ const VendorInventoryTab = ({
 
     setIsConverting(true);
     try {
-      const converted = await convertAmountAsync(parseFloat(price), fromCurrencyId, systemBaseCurrencyId);
+      // Same live rate as the save: the preview is the amount that will be stored
+      const converted = isCostInCup(fromCurrencyId)
+        ? await costCupToBase(parseFloat(price), fromCurrencyId)
+        : parseFloat(price) * await getLiveConversionRate(fromCurrencyId, systemBaseCurrencyId);
+      if (!Number.isFinite(converted)) throw new Error('No valid exchange rate available');
       const baseCurrencyInfo = getCurrencyById(systemBaseCurrencyId);
       setConvertedPreview({
         amount: converted,
@@ -86,10 +139,12 @@ const VendorInventoryTab = ({
     } catch (error) {
       console.warn('[VendorInventoryTab] Conversion preview error:', error);
       setConvertedPreview(null);
+      setPreviewFailed(true);
     } finally {
       setIsConverting(false);
     }
-  }, [convertAmountAsync, getCurrencyById, systemBaseCurrencyId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getCurrencyById, systemBaseCurrencyId]);
 
   // Trigger conversion preview when form price or currency changes
   useEffect(() => {
@@ -102,16 +157,6 @@ const VendorInventoryTab = ({
       setConvertedPreview(null);
     }
   }, [productForm?.basePrice, productForm?.base_currency_id, updateConvertedPreview]);
-
-  // Real-time subscription for product updates
-  useRealtimeProducts({
-    enabled: true,
-    onUpdate: () => {
-      if (onProductsRefresh) {
-        onProductsRefresh(true);
-      }
-    }
-  });
 
   const logProductActivity = async (action, productId, description, metadata = {}) => {
     try {
@@ -170,23 +215,93 @@ const VendorInventoryTab = ({
   };
 
   // Recalculate secondary profit fields when basePrice changes
-  const handleBasePriceChange = (value) => {
+  // Pure: the form with a new base price and its derived profit fields
+  const withBasePrice = (prev, value) => {
     const basePrice = parseFloat(value);
-    setProductForm(prev => {
-      const updated = { ...prev, basePrice: value };
-      const margin = parseFloat(prev.profitMargin);
-      if (!isNaN(margin) && basePrice > 0) {
-        updated.profitAmount = (basePrice * margin / 100).toFixed(2);
-        updated.sellPrice = (basePrice * (1 + margin / 100)).toFixed(2);
-      } else {
-        updated.profitAmount = '';
-        updated.sellPrice = '';
-      }
-      return updated;
-    });
+    const updated = { ...prev, basePrice: value };
+    const margin = parseFloat(prev.profitMargin);
+    if (!isNaN(margin) && basePrice > 0) {
+      updated.profitAmount = (basePrice * margin / 100).toFixed(2);
+      updated.sellPrice = (basePrice * (1 + margin / 100)).toFixed(2);
+    } else {
+      updated.profitAmount = '';
+      updated.sellPrice = '';
+    }
+    return updated;
   };
 
-  const defaultProfitMargin = financialSettings?.productProfit || DEFAULTS.PRODUCT_PROFIT_MARGIN;
+  // Single reset point for the trusted price and any in-flight currency conversion:
+  // used by open, cancel and save so a late response can never touch another form.
+  const setSwitching = (value) => {
+    switchingCurrencyRef.current = value;
+    setIsSwitchingCurrency(value);
+  };
+
+  const resetPriceAnchor = (anchor = null) => {
+    currencySwitchSeqRef.current += 1;
+    setSwitching(false);
+    priceAnchorRef.current = anchor;
+    setCurrencyNote(null);
+  };
+
+  const closeProductForm = () => {
+    resetPriceAnchor(null);
+    setProductForm(null);
+  };
+
+  const handleBasePriceChange = (value) => {
+    const typed = parseFloat(value);
+    currencySwitchSeqRef.current += 1; // a typed figure beats any pending conversion
+    setSwitching(false);
+    // Editing only: a positive typed figure becomes the anchor (also after the field was emptied);
+    // creating has no original price, so the figure is simply read in the selected currency.
+    priceAnchorRef.current = productForm.id && typed > 0
+      ? { amount: typed, currencyId: productForm.base_currency_id }
+      : null;
+    // A missing-rate alert stays until the next currency switch, form open or close
+    setCurrencyNote(prev => (prev?.kind === 'missing' ? prev : null));
+    setProductForm(prev => withBasePrice(prev, value));
+  };
+
+  // Switching the currency of an already loaded price re-converts the figure so its value is preserved.
+  // The currency only changes together with the converted figure: if the conversion fails the
+  // previous currency stays, so a figure is never shown under a currency it was not converted to.
+  const handleCurrencyChange = async (nextCurrencyId) => {
+    const seq = ++currencySwitchSeqRef.current;
+    setSwitching(false); // supersedes any pending switch
+    setCurrencyNote(null);
+    const anchor = priceAnchorRef.current;
+    if (!anchor) {
+      // Create mode: no original price, the typed figure is read in the chosen currency
+      handleInputChange('base_currency_id', nextCurrencyId);
+      return;
+    }
+
+    const code = getCurrencyById(nextCurrencyId)?.code || '';
+    let converted = anchor.amount;
+    if (nextCurrencyId !== anchor.currencyId) {
+      setSwitching(true);
+      try {
+        converted = await convertAmountAsync(anchor.amount, anchor.currencyId, nextCurrencyId);
+      } catch (error) {
+        console.warn('[VendorInventoryTab] Currency switch conversion failed:', error);
+        converted = NaN;
+      }
+      if (seq !== currencySwitchSeqRef.current) return;
+      setSwitching(false);
+      converted = Math.round(converted * 100) / 100;
+      // A zero/negative/non-finite result (also after rounding) is a failed conversion, never a price
+      if (!Number.isFinite(converted) || converted <= 0) {
+        setCurrencyNote({ kind: 'missing', code });
+        return;
+      }
+    }
+
+    setProductForm(prev => ({ ...withBasePrice(prev, String(converted)), base_currency_id: nextCurrencyId }));
+    if (nextCurrencyId !== anchor.currencyId) setCurrencyNote({ kind: 'converted', code });
+  };
+
+  const defaultProfitMargin = resolveMarginInput(financialSettings?.productProfit, DEFAULTS.PRODUCT_PROFIT_MARGIN);
 
   // Precedence: product's own margin > category margin > global default.
   // Only used to pre-fill the form; existing product prices are never recomputed.
@@ -228,6 +343,7 @@ const VendorInventoryTab = ({
       category: '',
       stock: '',
       min_stock_alert: '',
+      unit: '',
       expiryDate: '',
       image: '',
       profitMargin: defaultProfitMargin,
@@ -237,33 +353,54 @@ const VendorInventoryTab = ({
       profitAmount: '',
       sellPrice: ''
     });
+    resetPriceAnchor(null);
     setProductImagePreview(null);
   };
 
   const openEditProductForm = (product) => {
+    // Rows from the public catalog carry no cost fields: reload the admin data instead of
+    // seeding a form that would overwrite them with defaults.
+    if (!hasAdminProductFields(product)) {
+      toast({ title: t('vendor.adminDataPending'), variant: 'destructive' });
+      onProductsRefresh(true);
+      return;
+    }
+
     // A product's own margin always wins; NULL falls back to category, then global
     const { value: margin, source: marginSource } = getEffectiveMargin(
       product.profit_margin,
       product.category?.id || product.category_id
     );
-    const base = parseFloat(product.base_price || product.basePrice || 0);
+    // A product with a CUP cost opens in CUP (the source of truth), not in the USD derived from it
+    const costCup = product.cost_cup !== null && product.cost_cup !== undefined && cupCurrency
+      ? parseFloat(product.cost_cup)
+      : null;
+    const hasCostCup = costCup !== null;
+    const formPrice = hasCostCup ? costCup : (product.base_price || product.basePrice || '');
+    const formCurrencyId = hasCostCup ? cupCurrency.id : (product.base_currency_id || baseCurrencyId || '');
+    const base = parseFloat(formPrice || 0);
+    resetPriceAnchor(base > 0 ? { amount: base, currencyId: formCurrencyId } : null);
     setProductForm({
       id: product.id,
       name_es: product.name_es || product.name || '',
       name_en: product.name_en || product.name || '',
       description_es: product.description_es || '',
       description_en: product.description_en || '',
-      basePrice: product.base_price || product.basePrice || '',
+      basePrice: formPrice,
+      hadCostCup: hasCostCup,
+      origPrice: formPrice,
+      origCurrencyId: formCurrencyId,
       profitMargin: margin,
       marginSource,
       marginTouched: marginSource === 'product',
       profitMode: 'percentage',
       profitAmount: base > 0 ? (base * margin / 100).toFixed(2) : '',
       sellPrice: base > 0 ? (base * (1 + margin / 100)).toFixed(2) : '',
-      base_currency_id: product.base_currency_id || baseCurrencyId || '',
+      base_currency_id: formCurrencyId,
       category: product.category?.id || product.category_id || '',
       stock: product.stock || '',
       min_stock_alert: product.min_stock_alert || '',
+      unit: product.unit || '',
       expiryDate: product.expiry_date || product.expiryDate || '',
       image: product.image_url || product.image_file || product.image || '',
       sku: product.sku || ''
@@ -272,7 +409,7 @@ const VendorInventoryTab = ({
   };
 
   const handleViewProductDetails = (product) => {
-    setSelectedProduct(product);
+    setSelectedProductId(product.id);
     setShowProductDetails(true);
   };
 
@@ -312,7 +449,7 @@ const VendorInventoryTab = ({
     }
   };
 
-  const handleSubmitProduct = async () => {
+  const submitProduct = async () => {
 
     if (!productForm.name_es || !productForm.basePrice || !productForm.category) {
       toast({
@@ -348,31 +485,65 @@ const VendorInventoryTab = ({
       let finalCurrencyId = productForm.base_currency_id;
       const inputCurrency = getCurrencyById(productForm.base_currency_id);
 
-      if (productForm.base_currency_id !== systemBaseCurrencyId) {
+      // undefined = leave cost_cup untouched (also keeps the payload valid before the migration is applied)
+      let costCup;
+
+      // Editing other fields must not reprice: an unchanged cost and currency sends neither base_price nor cost_cup
+      // (compared at 2 decimals, like cost_cup: a sub-cent retype would otherwise reprice base_price while cost_cup stays equal)
+      const costUnchanged = Boolean(productForm.id)
+        && round2(parseFloat(productForm.basePrice)) === round2(parseFloat(productForm.origPrice))
+        && productForm.base_currency_id === productForm.origCurrencyId;
+
+      if (!costUnchanged && productForm.base_currency_id !== systemBaseCurrencyId) {
         try {
-          normalizedPrice = await convertAmountAsync(
-            parseFloat(productForm.basePrice),
-            productForm.base_currency_id,
-            systemBaseCurrencyId
-          );
+          // A saved price: converted with the rate read live, never the cached display rate.
+          if (isCostInCup(productForm.base_currency_id)) {
+            costCup = round2(parseFloat(productForm.basePrice));
+            normalizedPrice = await costCupToBase(costCup, productForm.base_currency_id);
+          } else {
+            const liveRate = await getLiveConversionRate(productForm.base_currency_id, systemBaseCurrencyId);
+            normalizedPrice = parseFloat(productForm.basePrice) * liveRate;
+            if (!Number.isFinite(normalizedPrice)) throw new Error('No valid exchange rate available');
+          }
           finalCurrencyId = systemBaseCurrencyId;
         } catch (convError) {
-          console.warn('[handleSubmitProduct] Conversion failed, using original:', convError);
-          // Fallback: keep original price and currency
+          // Never persist a number typed in one currency under another: abort and keep the form open
+          console.warn('[handleSubmitProduct] Conversion failed, save aborted:', convError);
+          toast({
+            title: t('common.error'),
+            description: t('vendor.inventory.conversionToBaseFailed'),
+            variant: 'destructive'
+          });
+          return;
         }
       }
+
+      // A zero USD price (tiny CUP cost / big rate) must never be saved
+      if (costCup !== undefined && normalizedPrice < 0.01) {
+        toast({
+          title: t('common.error'),
+          description: t('vendor.inventory.costTooLow'),
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // A fixed non-CUP cost must not be repriced by the rate: clear a previously stored cost_cup
+      if (!costUnchanged && costCup === undefined && productForm.id && productForm.hadCostCup) costCup = null;
 
       const productData = {
         name_es: productForm.name_es,
         name_en: productForm.name_en || productForm.name_es,
         description_es: productForm.description_es || '',
         description_en: productForm.description_en || '',
-        basePrice: normalizedPrice,
+        basePrice: costUnchanged ? undefined : normalizedPrice,
+        costCup,
         stock: parseInt(productForm.stock || 0, 10),
         min_stock_alert: parseInt(productForm.min_stock_alert || 10, 10),
-        profitMargin: parseFloat(productForm.profitMargin || 40),
+        unit: normalizeUnitCode(productForm.unit),
+        profitMargin: resolveMarginInput(productForm.profitMargin, DEFAULTS.PRODUCT_PROFIT_MARGIN),
         category_id: productForm.category,
-        base_currency_id: finalCurrencyId,
+        base_currency_id: costUnchanged ? undefined : finalCurrencyId,
         image: productForm.image || '',
         sku: productForm.sku || `SKU-${Date.now()}`,
         slug: productForm.name_es.toLowerCase().replace(/\s+/g, '-'),
@@ -414,16 +585,29 @@ const VendorInventoryTab = ({
       }
 
       await onProductsRefresh(true);
-      setProductForm(null);
+      closeProductForm();
       setProductImagePreview(null);
     } catch (error) {
       console.error('[handleSubmitProduct] ERROR:', error);
       console.error('[handleSubmitProduct] Error details:', { message: error?.message, code: error?.code, stack: error?.stack });
       toast({
         title: 'Error',
-        description: error.message,
+        description: isStockBelowReservedError(error)
+          ? t('vendor.inventory.stockBelowReserved')
+          : (isImageUploadError(error) ? t(getImageUploadMessageKey(error)) : error.message),
         variant: 'destructive'
       });
+    }
+  };
+
+  // Ignores clicks while a currency conversion or an earlier save is still in flight (no duplicate creates)
+  const handleSubmitProduct = async () => {
+    if (switchingCurrencyRef.current || submittingRef.current) return;
+    submittingRef.current = true;
+    try {
+      await submitProduct();
+    } finally {
+      submittingRef.current = false;
     }
   };
 
@@ -474,42 +658,64 @@ const VendorInventoryTab = ({
     }
   };
 
+  // Refreshes the product list; a failure is reported but never thrown, so it
+  // cannot be mistaken for a failed delete or become an unhandled rejection.
+  const refreshProductsSafely = async () => {
+    try {
+      await onProductsRefresh(true);
+    } catch (refreshError) {
+      console.error('[refreshProductsSafely] ERROR:', refreshError);
+      toast({
+        title: t('vendor.inventory.refreshFailed'),
+        variant: 'destructive'
+      });
+    }
+  };
+
   const handleDeleteProduct = async () => {
     if (!productToDelete) return;
     setDeletingProductId(productToDelete.id);
+    let deleteResult;
     try {
       // Pass user info for activity logging
-      const result = await deleteProduct(productToDelete.id, user?.email || user?.id || 'anonymous');
-
-      // Build toast description with deactivated combos info
-      const productName = productToDelete.name_es || productToDelete.name_en || productToDelete.id;
-      let toastDescription = language === 'es'
-        ? `${productName} eliminado`
-        : `${productName} deleted`;
-
-      if (result?.deactivatedCombos?.length > 0) {
-        const comboNames = result.deactivatedCombos.map(c => c.name).join(', ');
-        toastDescription += language === 'es'
-          ? `. Combos desactivados: ${comboNames}`
-          : `. Deactivated combos: ${comboNames}`;
-      }
-
-      toast({
-        title: t('vendor.inventory.productDeleted'),
-        description: toastDescription
-      });
-      await onProductsRefresh(true);
-      setProductToDelete(null);
+      deleteResult = await deleteProduct(productToDelete.id, user?.email || user?.id || 'anonymous');
     } catch (error) {
-      console.error('[handleDeleteProduct] ERROR:', error);
-      toast({
-        title: t('common.error'),
-        description: error?.message || (language === 'es' ? 'No se pudo eliminar el producto.' : 'Could not delete the product.'),
-        variant: 'destructive'
-      });
-    } finally {
+      if (isAlreadyDeletedError(error)) {
+        toast({ title: t('vendor.inventory.productAlreadyDeleted') });
+        setProductToDelete(null);
+        await refreshProductsSafely();
+      } else {
+        console.error('[handleDeleteProduct] ERROR:', error);
+        toast({
+          title: t('common.error'),
+          description: error?.message || (language === 'es' ? 'No se pudo eliminar el producto.' : 'Could not delete the product.'),
+          variant: 'destructive'
+        });
+      }
       setDeletingProductId(null);
+      return;
     }
+
+    // Build toast description with deactivated combos info
+    const productName = productToDelete.name_es || productToDelete.name_en || productToDelete.id;
+    let toastDescription = language === 'es'
+      ? `${productName} eliminado`
+      : `${productName} deleted`;
+
+    if (deleteResult?.deactivatedCombos?.length > 0) {
+      const comboNames = deleteResult.deactivatedCombos.map(c => c.name).join(', ');
+      toastDescription += language === 'es'
+        ? `. Combos desactivados: ${comboNames}`
+        : `. Deactivated combos: ${comboNames}`;
+    }
+
+    toast({
+      title: t('vendor.inventory.productDeleted'),
+      description: toastDescription
+    });
+    setProductToDelete(null);
+    await refreshProductsSafely();
+    setDeletingProductId(null);
   };
 
   const handleBulkDeleteProducts = async (ids) => {
@@ -519,7 +725,9 @@ const VendorInventoryTab = ({
         title: t('vendor.inventory.productDeleted'),
         description: (t('tables.bulkDeleteSuccess') || '{count} item(s) deleted').replace('{count}', outcome.deleted.length)
       });
-      await onProductsRefresh(true);
+    }
+    if (shouldRefreshAfterBulkDelete(outcome)) {
+      await refreshProductsSafely();
     }
     return outcome;
   };
@@ -548,7 +756,9 @@ const VendorInventoryTab = ({
       return price / inverseRate;
     }
 
-    return price; // Retornar precio original si no hay tasa disponible
+    // No rate: null so the UI shows an em dash, never an unconverted number under another symbol.
+    // shortcut: local rate map fetched once by VendorPage; upgrade with the unified rate system (RB-17)
+    return null;
   };
 
   // Productos con precios convertidos
@@ -569,9 +779,27 @@ const VendorInventoryTab = ({
       ...product,
       base_price: convertedBasePrice,
       final_price: convertedFinalPrice,
+      // Flag only real conversion failures: a price that was already missing keeps the old fallbacks
+      price_unavailable:
+        (product.base_price != null && convertedBasePrice === null) ||
+        (product.final_price != null && convertedFinalPrice === null),
       display_currency_id: selectedCurrency || baseCurrencyId
     };
   });
+
+  // Resolved by id at use time so a products refresh never leaves a stale snapshot
+  const selectedProduct = productsWithConvertedPrices.find(p => p.id === selectedProductId) || null;
+
+  const notifyProductGone = () =>
+    toast({ title: t('common.error'), description: t('vendor.inventory.productNotFound'), variant: 'destructive' });
+
+  // The product was deleted/refreshed away while its details were open: close and say so
+  useEffect(() => {
+    if (showProductDetails && selectedProductId && !selectedProduct) {
+      notifyProductGone();
+      setShowProductDetails(false);
+    }
+  }, [showProductDetails, selectedProductId, selectedProduct]);
 
   // Apply filters
   const filteredProducts = useMemo(() => {
@@ -620,22 +848,33 @@ const VendorInventoryTab = ({
       {/* Header con selector de moneda y botón agregar */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4 sm:mb-6">
         {/* Currency Selector */}
-        <div className="flex items-center gap-2">
-          <label className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap">
-            {language === 'es' ? 'Moneda:' : 'Currency:'}
-          </label>
-          <select
-            value={selectedCurrency ?? baseCurrencyId ?? ''}
-            onChange={(e) => onSelectedCurrencyChange(e.target.value)}
-            className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+        {productForm ? (
+          // Same box height as the select so opening the form causes no layout shift
+          <p
+            data-testid="list-currency-cue"
+            className="flex items-center min-h-[34px] sm:min-h-[42px] text-xs sm:text-sm font-medium text-gray-700"
           >
-            {currencies.map(currency => (
-              <option key={currency.id} value={currency.id}>
-                {currency.code}
-              </option>
-            ))}
-          </select>
-        </div>
+            {t('vendor.inventory.listPricesCue', { code: listCurrencyCode })}
+          </p>
+        ) : (
+          <div className="flex items-center gap-2">
+            <label htmlFor="inventory-list-currency" className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap">
+              {t('vendor.inventory.viewPricesIn')}
+            </label>
+            <select
+              id="inventory-list-currency"
+              value={selectedCurrency ?? baseCurrencyId ?? ''}
+              onChange={(e) => onSelectedCurrencyChange(e.target.value)}
+              className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            >
+              {currencies.map(currency => (
+                <option key={currency.id} value={currency.id}>
+                  {currency.code}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <Button onClick={openNewProductForm} style={getPrimaryButtonStyle(visualSettings)} className="flex-shrink-0 h-9 sm:h-10 px-3 sm:px-4 text-sm">
           <Plus className="h-4 w-4 sm:mr-2" />
@@ -742,11 +981,12 @@ const VendorInventoryTab = ({
             {/* Base Price */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {t('vendor.addProduct.basePrice')} *
+                {isCostInCup(productForm.base_currency_id) ? t('vendor.inventory.costCupLabel') : t('vendor.addProduct.basePrice')} *
               </label>
               <input
                 type="number"
                 step="0.01"
+                data-testid="product-base-price-input"
                 value={productForm.basePrice}
                 onChange={e => handleBasePriceChange(e.target.value)}
                 placeholder="0.00"
@@ -765,6 +1005,11 @@ const VendorInventoryTab = ({
                   </span>
                 </div>
               )}
+              {previewFailed && !isConverting && (
+                <p role="status" className="mt-2 text-xs text-amber-700">
+                  {t('vendor.inventory.previewUnavailable')}
+                </p>
+              )}
               {isConverting && !convertedPreview && (
                 <div className="mt-2 flex items-center gap-2 text-sm text-gray-500">
                   <RefreshCw className="w-4 h-4 animate-spin" />
@@ -775,12 +1020,14 @@ const VendorInventoryTab = ({
 
             {/* Currency */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {t('vendor.addProduct.currency')}
+              <label htmlFor="product-price-currency" className="block text-sm font-medium text-gray-700 mb-2">
+                {t('vendor.inventory.priceCurrencyLabel')}
               </label>
               <select
+                id="product-price-currency"
+                aria-describedby="product-price-currency-help"
                 value={productForm.base_currency_id}
-                onChange={e => handleInputChange('base_currency_id', e.target.value)}
+                onChange={e => handleCurrencyChange(e.target.value)}
                 className="w-full input-style"
               >
                 {currencies.map(c => (
@@ -789,6 +1036,24 @@ const VendorInventoryTab = ({
                   </option>
                 ))}
               </select>
+              <p id="product-price-currency-help" className="mt-2 text-xs text-gray-500">
+                {t('vendor.inventory.priceCurrencyHelp', { base: systemBaseCurrency?.code || 'USD' })}
+              </p>
+              {isSwitchingCurrency && (
+                <p role="status" aria-busy="true" className="mt-2 text-xs text-gray-500">
+                  {t('vendor.inventory.priceConverting')}
+                </p>
+              )}
+              {currencyNote?.kind === 'converted' && (
+                <p role="status" className="mt-2 text-xs text-blue-700">
+                  {t('vendor.inventory.priceConvertedNote', { code: currencyNote.code })}
+                </p>
+              )}
+              {currencyNote?.kind === 'missing' && (
+                <p role="alert" className="mt-2 text-xs text-red-600">
+                  {t('vendor.inventory.priceRateMissing', { code: currencyNote.code })}
+                </p>
+              )}
             </div>
 
             {/* Profit Mode */}
@@ -946,6 +1211,25 @@ const VendorInventoryTab = ({
               />
             </div>
 
+            {/* Unit of measure (optional) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {t('vendor.addProduct.unit')}
+              </label>
+              <select
+                data-testid="product-unit-select"
+                value={productForm.unit || ''}
+                onChange={e => handleInputChange('unit', e.target.value)}
+                className="w-full input-style"
+              >
+                <option value="">{t('vendor.addProduct.unitNone')}</option>
+                {unitOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">{t('vendor.addProduct.unitHelp')}</p>
+            </div>
+
             {/* Expiry Date */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -994,10 +1278,10 @@ const VendorInventoryTab = ({
             </div>
           </div>
           <div className="flex justify-end gap-4 mt-6">
-            <Button variant="outline" onClick={() => setProductForm(null)}>
+            <Button variant="outline" onClick={closeProductForm}>
               {t('common.cancel')}
             </Button>
-            <Button onClick={handleSubmitProduct} style={getPrimaryButtonStyle(visualSettings)}>
+            <Button onClick={handleSubmitProduct} disabled={isSwitchingCurrency} style={getPrimaryButtonStyle(visualSettings)}>
               <Save className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">{t('vendor.addProduct.save')}</span>
             </Button>
@@ -1248,8 +1532,8 @@ const VendorInventoryTab = ({
                   <ProductInfoItem label={t('vendor.addProduct.category')} value={selectedProduct.category ? (language === 'es' ? selectedProduct.category.name_es : selectedProduct.category.name_en) : 'Sin categoría'} />
                   <ProductInfoItem label={t('vendor.inventory.stock')} value={selectedProduct.stock || 0} />
                   <ProductInfoItem label={t('vendor.inventory.currency')} value={currencies.find(c => c.id === (selectedProduct.display_currency_id || selectedProduct.base_currency_id))?.code || 'USD'} />
-                  <ProductInfoItem label={t('vendor.inventory.basePrice')} value={`${currencies.find(c => c.id === (selectedProduct.display_currency_id || selectedProduct.base_currency_id))?.symbol || '$'}${Number(selectedProduct.base_price || 0).toFixed(2)}`} />
-                  <ProductInfoItem label={t('vendor.inventory.price')} value={`${currencies.find(c => c.id === (selectedProduct.display_currency_id || selectedProduct.base_currency_id))?.symbol || '$'}${Number(selectedProduct.final_price || 0).toFixed(2)}`} />
+                  <ProductInfoItem label={t('vendor.inventory.basePrice')} value={selectedProduct.price_unavailable ? '—' : `${currencies.find(c => c.id === (selectedProduct.display_currency_id || selectedProduct.base_currency_id))?.symbol || '$'}${Number(selectedProduct.base_price || 0).toFixed(2)}`} />
+                  <ProductInfoItem label={t('vendor.inventory.price')} value={selectedProduct.price_unavailable ? '—' : `${currencies.find(c => c.id === (selectedProduct.display_currency_id || selectedProduct.base_currency_id))?.symbol || '$'}${Number(selectedProduct.final_price || 0).toFixed(2)}`} />
                   <ProductInfoItem label={t('vendor.inventory.minStock')} value={selectedProduct.min_stock_alert || 10} />
                   <ProductInfoItem label={t('vendor.inventory.expiryDate')} value={selectedProduct.expiry_date ? new Date(selectedProduct.expiry_date).toLocaleDateString() : 'N/A'} />
                 </div>
@@ -1277,7 +1561,10 @@ const VendorInventoryTab = ({
                 <span className="hidden sm:inline">{t('common.cancel')}</span>
               </Button>
               <Button onClick={() => {
-                openEditProductForm(selectedProduct);
+                // Edit always seeds from the stored record, never from the display-converted row
+                const original = products.find(p => p.id === selectedProductId);
+                if (original) openEditProductForm(original);
+                else notifyProductGone();
                 setShowProductDetails(false);
               }} style={getPrimaryButtonStyle(visualSettings)} className="text-sm sm:text-base">
                 <Edit className="h-4 w-4 sm:mr-2" />

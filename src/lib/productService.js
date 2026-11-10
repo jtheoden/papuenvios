@@ -5,9 +5,12 @@
  */
 
 import { supabase } from './supabase';
+import { withCatalogInvalidation } from './catalogCache';
+import { resolveImageUrl } from './imageStorage';
 import { generateSlug, getCurrentTimestamp } from './queryHelpers';
 import { DEFAULTS } from './constants';
-import { validateMarginPercent, MARGIN_MIN, MARGIN_MAX } from './marginResolver';
+import { normalizeUnitCode } from './productUnits';
+import { validateMarginPercent, resolveMarginInput, MARGIN_MIN, MARGIN_MAX } from './marginResolver';
 import {
   AppError,
   handleError,
@@ -19,21 +22,14 @@ import {
 } from './errorHandler';
 import { ORDER_STATUS } from './orderService';
 import { logActivity } from './activityLogger';
-
-// Estados que BLOQUEAN eliminación de productos/combos
-// (órdenes activas que aún no han sido despachadas)
-const BLOCKING_ORDER_STATUSES = [
-  ORDER_STATUS.PENDING,
-  ORDER_STATUS.PROCESSING
-];
-
-// Estados que PERMITEN eliminación (órdenes ya procesadas o canceladas)
-const SAFE_DELETE_ORDER_STATUSES = [
-  ORDER_STATUS.DISPATCHED,
-  ORDER_STATUS.DELIVERED,
-  ORDER_STATUS.COMPLETED,
-  ORDER_STATUS.CANCELLED
-];
+import { isStockBelowReservedError } from './stockErrors';
+import {
+  PUBLIC_PRODUCT_COLUMNS,
+  PUBLIC_PRODUCT_CATEGORY_EMBED,
+  PUBLIC_INVENTORY_COLUMNS,
+  PUBLIC_CATEGORY_COLUMNS
+} from './publicCatalogColumns';
+import { listProductCosts, listCategoryMargins } from './adminCostService';
 
 // Legacy: Para toggle de estado activo
 const IN_PROGRESS_ORDER_STATUSES = [
@@ -43,75 +39,123 @@ const IN_PROGRESS_ORDER_STATUSES = [
   ORDER_STATUS.DELIVERED
 ];
 
+// Explicit projections (see publicCatalogColumns): `select('*')` also pulled `image_file`, a
+// byte-identical copy of the base64 `image_url` (doubling the payload), and every cost column.
+// Consumers fall back `image_url || image_file`, so omitting it is safe.
+
 /**
- * Get all active products with their categories
- * @throws {AppError} If database query fails
- * @returns {Promise<Array>} Array of products with inventory data
+ * cost_cup is sent only when defined (undefined = key omitted, null = clear it).
+ * Deploy order: apply migration 20261110100000_catalog_cost_cup_reprice.sql BEFORE this code. The vendor form only
+ * defines costCup when loaded admin rows carry the cost_cup key (present only after the migration), so a front
+ * deployed early keeps saving exactly as before.
  */
+const costCupField = (productData) =>
+  productData.costCup === undefined ? {} : { cost_cup: productData.costCup };
+
+/** Admin rows: base_price and profit_margin come from the admin RPC, not from the table. */
+const withProductCosts = async (rows) => {
+  if (rows.length === 0) return rows;
+  const costs = await listProductCosts();
+  return rows.map(row => {
+    const cost = costs.get(row.id);
+    return cost ? { ...row, base_price: cost.base_price, profit_margin: cost.profit_margin, ...('cost_cup' in cost ? { cost_cup: cost.cost_cup } : {}) } : row;
+  });
+};
+
+/** Admin categories: the margin comes from the admin RPC (null stays null). */
+const withCategoryMargins = async (rows) => {
+  const margins = await listCategoryMargins();
+  return rows.map(row => (
+    margins.has(row.id) ? { ...row, profit_margin: margins.get(row.id).profit_margin } : row
+  ));
+};
+
+/**
+ * Heavy part of the catalog: product rows (with category), without inventory.
+ * Safe to cache; stock must be fetched separately via getProductStock.
+ * Both views read the same public columns straight from the table. The admin view (includeInactive = true)
+ * also lists inactive rows and merges the cost fields (base_price, profit_margin) from the admin RPC.
+ * @throws {AppError} If database query fails (ADMIN_COST_RPC_UNAVAILABLE if the admin RPC is missing)
+ */
+export const getProductRows = async (includeInactive = false) => {
+  let query = supabase
+    .from('products')
+    .select(`
+      ${PUBLIC_PRODUCT_COLUMNS},
+      ${PUBLIC_PRODUCT_CATEGORY_EMBED}
+    `)
+    .order('created_at', { ascending: false });
+
+  if (!includeInactive) {
+    query = query.eq('is_active', true);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    const appError = parseSupabaseError(error);
+    logError(appError, { operation: 'getProducts' });
+    throw appError;
+  }
+
+  const rows = data || [];
+  return includeInactive ? withProductCosts(rows) : rows;
+};
+
+/**
+ * Light, always-fresh part: summed available stock and latest expiry per product.
+ * @throws {AppError} so callers can keep their previous values on failure
+ * @returns {Promise<{stock: Object, expiry: Object}>}
+ */
+export const getProductStock = async () => {
+  const { data, error } = await supabase
+    .from('inventory')
+    .select(PUBLIC_INVENTORY_COLUMNS)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    const appError = parseSupabaseError(error);
+    logError(appError, { operation: 'getProductStock' });
+    throw appError;
+  }
+
+  const stock = {};
+  const expiry = {};
+  (data || []).forEach(inv => {
+    stock[inv.product_id] = (stock[inv.product_id] || 0) + (inv.available_quantity || 0);
+
+    // Keep the most recent expiry_date (first one due to order by created_at desc)
+    if (!expiry[inv.product_id] && inv.expiry_date) {
+      expiry[inv.product_id] = inv.expiry_date;
+    }
+  });
+
+  return { stock, expiry };
+};
+
+/** Attach stock/expiry (from getProductStock) to product rows. */
+export const mergeProductStock = (rows, { stock, expiry }) =>
+  rows.map(product => ({
+    ...product,
+    stock: stock[product.id] || 0,
+    expiry_date: expiry[product.id] || null
+  }));
+
 export const getProducts = async (includeInactive = false) => {
   try {
-    let query = supabase
-      .from('products')
-      .select(`
-        *,
-        category:product_categories(id, name_es, name_en, slug)
-      `)
-      .order('created_at', { ascending: false });
+    // Inventory runs in parallel with products; an inventory failure never
+    // fails the catalog (products simply show stock 0).
+    const [rows, stockData] = await Promise.all([
+      getProductRows(includeInactive),
+      getProductStock().catch(() => ({ stock: {}, expiry: {} }))
+    ]);
 
-    if (!includeInactive) {
-      query = query.eq('is_active', true);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      const appError = parseSupabaseError(error);
-      logError(appError, { operation: 'getProducts' });
-      throw appError;
-    }
-
-    // Get inventory data for all products
-    const productIds = (data || []).map(p => p.id);
-    if (productIds.length === 0) {
+    if (rows.length === 0) {
       return [];
     }
 
-    const { data: inventoryData, error: invError } = await supabase
-      .from('inventory')
-      .select('product_id, quantity, available_quantity, expiry_date')
-      .in('product_id', productIds)
-      .eq('is_active', true)
-      .order('created_at', { ascending: false });
-
-    if (invError) {
-      const appError = parseSupabaseError(invError);
-      logError(appError, { operation: 'getProducts - inventory fetch', productCount: productIds.length });
-      // Don't fail, just continue without inventory data
-    }
-
-    // Create inventory map with stock and expiry_date
-    const inventoryMap = {};
-    const expiryDateMap = {};
-    (inventoryData || []).forEach(inv => {
-      if (!inventoryMap[inv.product_id]) {
-        inventoryMap[inv.product_id] = 0;
-      }
-      inventoryMap[inv.product_id] += inv.available_quantity || 0;
-
-      // Keep the most recent expiry_date (first one due to order by created_at desc)
-      if (!expiryDateMap[inv.product_id] && inv.expiry_date) {
-        expiryDateMap[inv.product_id] = inv.expiry_date;
-      }
-    });
-
-    // Add stock and expiry_date from inventory
-    const transformedData = (data || []).map(product => ({
-      ...product,
-      stock: inventoryMap[product.id] || 0,
-      expiry_date: expiryDateMap[product.id] || null
-    }));
-
-    return transformedData;
+    return mergeProductStock(rows, stockData);
   } catch (error) {
     if (error.code) throw error; // Already an AppError
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getProducts' });
@@ -183,7 +227,24 @@ const findInProgressOrdersForProduct = async (productId) => {
  * @param {boolean} isActive - Desired active state
  * @returns {Promise<Object>} Updated product
  */
-export const setProductActiveState = async (productId, isActive) => {
+/**
+ * Set (or clear with null) a product's image URL
+ * @throws {AppError} If the update fails
+ */
+export const setProductImageUrl = withCatalogInvalidation(async (productId, imageUrl) => {
+  const { error } = await supabase
+    .from('products')
+    .update({ image_url: imageUrl })
+    .eq('id', productId);
+
+  if (error) {
+    const appError = parseSupabaseError(error);
+    logError(appError, { operation: 'setProductImageUrl', productId });
+    throw appError;
+  }
+});
+
+export const setProductActiveState = withCatalogInvalidation(async (productId, isActive) => {
   try {
     if (!productId) {
       throw createValidationError({ productId: 'Product ID is required' });
@@ -213,7 +274,7 @@ export const setProductActiveState = async (productId, isActive) => {
         updated_at: getCurrentTimestamp()
       })
       .eq('id', productId)
-      .select()
+      .select(PUBLIC_PRODUCT_COLUMNS)
       .single();
 
     if (error) {
@@ -234,7 +295,7 @@ export const setProductActiveState = async (productId, isActive) => {
     logError(appError, appError.context);
     throw appError;
   }
-};
+});
 
 /**
  * Create a new product with optional initial inventory
@@ -242,7 +303,7 @@ export const setProductActiveState = async (productId, isActive) => {
  * @throws {AppError} If validation fails or database operation fails
  * @returns {Promise<Object>} Created product with inventory
  */
-export const createProduct = async (productData) => {
+export const createProduct = withCatalogInvalidation(async (productData) => {
   try {
     // Validate required fields
     if (!productData.name_es) {
@@ -271,6 +332,12 @@ export const createProduct = async (productData) => {
       { operation: 'createProduct', productName: productData.name_es }
     );
 
+    // Upload first: if it fails nothing is saved (no base64 fallback)
+    const imageUrl = await resolveImageUrl(productData.image, {
+      folder: 'products',
+      id: crypto.randomUUID()
+    });
+
     const { data, error } = await supabase
       .from('products')
       .insert([{
@@ -282,13 +349,14 @@ export const createProduct = async (productData) => {
         category_id: productData.category_id,
         base_price: parseFloat(productData.basePrice),
         base_currency_id: productData.base_currency_id,
-        profit_margin: parseFloat(productData.profitMargin || DEFAULTS.PRODUCT_PROFIT_MARGIN),
+        profit_margin: resolveMarginInput(productData.profitMargin, DEFAULTS.PRODUCT_PROFIT_MARGIN),
+        ...costCupField(productData),
         min_stock_alert: productData.min_stock_alert ? parseInt(productData.min_stock_alert) : DEFAULTS.MIN_STOCK_ALERT,
-        image_url: productData.image || null,
-        image_file: productData.image || null,
+        image_url: imageUrl || null,
+        unit: normalizeUnitCode(productData.unit),
         is_active: true
       }])
-      .select()
+      .select(PUBLIC_PRODUCT_COLUMNS)
       .single();
 
     if (error) {
@@ -331,7 +399,7 @@ export const createProduct = async (productData) => {
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'createProduct' });
     throw appError;
   }
-};
+});
 
 /**
  * Update an existing product and optionally its inventory
@@ -340,7 +408,7 @@ export const createProduct = async (productData) => {
  * @throws {AppError} If product not found or update fails
  * @returns {Promise<Object>} Updated product
  */
-export const updateProduct = async (productId, productData) => {
+export const updateProduct = withCatalogInvalidation(async (productId, productData) => {
   try {
     if (!productId) {
       throw createValidationError({ productId: 'Product ID is required' });
@@ -352,23 +420,28 @@ export const updateProduct = async (productId, productData) => {
       description_es: productData.description_es || '',
       description_en: productData.description_en || '',
       category_id: productData.category_id,
-      base_price: parseFloat(productData.basePrice),
-      base_currency_id: productData.base_currency_id,
-      profit_margin: parseFloat(productData.profitMargin || DEFAULTS.PRODUCT_PROFIT_MARGIN),
+      // undefined price/currency = unchanged cost: do not touch base_price (no silent repricing)
+      ...(productData.basePrice === undefined ? {} : { base_price: parseFloat(productData.basePrice) }),
+      ...(productData.base_currency_id === undefined ? {} : { base_currency_id: productData.base_currency_id }),
+      profit_margin: resolveMarginInput(productData.profitMargin, DEFAULTS.PRODUCT_PROFIT_MARGIN),
+      ...costCupField(productData),
       min_stock_alert: productData.min_stock_alert !== undefined ? parseInt(productData.min_stock_alert) : DEFAULTS.MIN_STOCK_ALERT,
+      unit: normalizeUnitCode(productData.unit),
       updated_at: getCurrentTimestamp()
     };
 
     if (productData.image) {
-      updateData.image_url = productData.image;
-      updateData.image_file = productData.image;
+      updateData.image_url = await resolveImageUrl(productData.image, {
+        folder: 'products',
+        id: productId
+      });
     }
 
     const { data, error } = await supabase
       .from('products')
       .update(updateData)
       .eq('id', productId)
-      .select()
+      .select(PUBLIC_PRODUCT_COLUMNS)
       .single();
 
     if (error) {
@@ -410,6 +483,15 @@ export const updateProduct = async (productId, productData) => {
             .eq('id', existingInventory.id);
 
           if (invError) {
+            if (invError.code === '23514' && String(invError.message).includes('inventory_reserved_lte_quantity')) {
+              // New stock is below the units reserved by open orders: the admin must know, not guess
+              throw new AppError(
+                'Stock cannot be lower than the units reserved by open orders',
+                ERROR_CODES.INVALID_OPERATION,
+                409,
+                { reason: 'stock_below_reserved', productId }
+              );
+            }
             const appError = parseSupabaseError(invError);
             logError(appError, { operation: 'updateProduct - inventory update', productId });
           }
@@ -435,6 +517,7 @@ export const updateProduct = async (productId, productData) => {
           }
         }
       } catch (invError) {
+        if (isStockBelowReservedError(invError)) throw invError;
         // Don't fail product update if inventory operation fails
         logError(invError, { operation: 'updateProduct - inventory operation', productId });
       }
@@ -446,290 +529,39 @@ export const updateProduct = async (productId, productData) => {
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'updateProduct', productId });
     throw appError;
   }
-};
+});
 
 /**
- * Find blocking orders for a product (via inventory or combo)
- * Returns orders in BLOCKING states (pending/processing with validated payment)
- * @param {string} productId - Product ID
- * @returns {Promise<{blockingOrders: Array, safeOrders: Array, inventoryIds: Array}>}
+ * Maps the blockers returned by the database predicate (get_product_blockers /
+ * get_combo_blockers) to the shape the UI already consumes.
  */
-const findBlockingOrdersForProduct = async (productId) => {
-  // Get inventory IDs for this product
-  const { data: inventoryRecords, error: invError } = await supabase
-    .from('inventory')
-    .select('id')
-    .eq('product_id', productId);
-
-  if (invError) {
-    console.warn('[findBlockingOrdersForProduct] Error fetching inventory:', invError);
-  }
-
-  const inventoryIds = (inventoryRecords || []).map(inv => inv.id);
-
-  if (inventoryIds.length === 0) {
-    return { blockingOrders: [], safeOrders: [], inventoryIds: [] };
-  }
-
-  // Find order_items that reference these inventory records
-  const { data: orderItems, error: oiError } = await supabase
-    .from('order_items')
-    .select(`
-      id,
-      inventory_id,
-      order_id,
-      orders!inner(id, order_number, status, payment_status, created_at)
-    `)
-    .in('inventory_id', inventoryIds);
-
-  if (oiError) {
-    console.warn('[findBlockingOrdersForProduct] Error fetching order_items:', oiError);
-    return { blockingOrders: [], safeOrders: [], inventoryIds };
-  }
-
-  const blockingOrders = [];
-  const safeOrders = [];
-
-  (orderItems || []).forEach(item => {
-    const order = item.orders;
-    if (!order) return;
-
-    const orderInfo = {
-      orderId: order.id,
-      orderNumber: order.order_number,
-      status: order.status,
-      paymentStatus: order.payment_status,
-      orderItemId: item.id,
-      inventoryId: item.inventory_id
-    };
-
-    // Check if order is in blocking state
-    if (BLOCKING_ORDER_STATUSES.includes(order.status)) {
-      blockingOrders.push(orderInfo);
-    } else if (SAFE_DELETE_ORDER_STATUSES.includes(order.status)) {
-      safeOrders.push(orderInfo);
-    }
-  });
-
-  return { blockingOrders, safeOrders, inventoryIds };
-};
+const mapBlockers = (rows) =>
+  (rows || []).map((row) => ({
+    orderId: row.order_id,
+    orderNumber: row.order_number,
+    status: row.status,
+    paymentStatus: row.payment_status,
+    via: row.via
+  }));
 
 /**
- * Delete a product (hard delete - removes from database)
- * Validates no blocking orders exist before deletion
- * Deactivates combos that contain this product
- * Clears inventory references from completed/cancelled orders
+ * Delete a product (hard delete) through ONE database transaction (delete_product).
+ * The database decides (same predicate as the preview and the bulk delete, taken under row
+ * locks): open orders referencing the product - directly, via a combo or via inventory - and
+ * orders still holding a reserved allocation block it. Consumed allocations never block.
+ * It also deactivates combos that contain the product, removes the combo links, snapshots the
+ * ledger sums and deletes movements, batches and the product atomically. Fails CLOSED.
  * @param {string} productId - Product ID to delete
- * @param {string} performedBy - Email or ID of user performing the action (optional)
- * @throws {AppError} If deletion fails or blocking orders exist
- * @returns {Promise<Object>} Result with deleted product info and deactivated combos
+ * @throws {AppError} CONFLICT (409) with context.blockingOrders when blocked, NOT_FOUND, or a DB error
+ * @returns {Promise<Object>} { success, deletedProduct: {id, name}, deactivatedCombos: [{id, name}] }
  */
-export const deleteProduct = async (productId, performedBy = 'system') => {
+export const deleteProduct = withCatalogInvalidation(async (productId) => {
   try {
     if (!productId) {
       throw createValidationError({ productId: 'Product ID is required' });
     }
 
-    // Fetch product info before deletion for logging
-    const { data: product, error: fetchProductError } = await supabase
-      .from('products')
-      .select('id, name_es, name_en, sku')
-      .eq('id', productId)
-      .single();
-
-    if (fetchProductError) {
-      console.warn('[deleteProduct] Error fetching product info:', fetchProductError);
-    }
-
-    const productName = product?.name_es || product?.name_en || productId;
-
-    // ============================================
-    // STEP 1: Check for blocking orders
-    // ============================================
-    const { blockingOrders, safeOrders, inventoryIds } = await findBlockingOrdersForProduct(productId);
-
-    if (blockingOrders.length > 0) {
-      const orderNumbers = blockingOrders.map(o => o.orderNumber).join(', ');
-
-      throw new AppError(
-        `No se puede eliminar el producto "${productName}" porque tiene órdenes activas en proceso: ${orderNumbers}. Espere a que las órdenes sean despachadas o canceladas.`,
-        ERROR_CODES.CONFLICT,
-        409,
-        {
-          productId,
-          productName,
-          blockingOrders,
-          blockingOrderCount: blockingOrders.length
-        }
-      );
-    }
-
-    // ============================================
-    // STEP 2: Clear inventory_id from safe orders (dispatched/delivered/completed/cancelled)
-    // ============================================
-    if (safeOrders.length > 0) {
-      const safeOrderItemIds = safeOrders.map(o => o.orderItemId);
-
-      const { error: clearError } = await supabase
-        .from('order_items')
-        .update({ inventory_id: null })
-        .in('id', safeOrderItemIds);
-
-      if (clearError) {
-        console.error('[deleteProduct] Error clearing inventory_id from order_items:', clearError);
-        throw new AppError(
-          'Error al limpiar referencias de inventario en órdenes completadas',
-          ERROR_CODES.DB_ERROR,
-          500,
-          { operation: 'clearOrderItemsInventory', error: clearError.message }
-        );
-      }
-    }
-
-    // ============================================
-    // STEP 3: Find and deactivate combos containing this product
-    // ============================================
-    const { data: comboItems, error: findCombosError } = await supabase
-      .from('combo_items')
-      .select('combo_id')
-      .eq('product_id', productId);
-
-    if (findCombosError) {
-      console.warn('[deleteProduct] Error finding combos containing product:', findCombosError);
-    }
-
-    const deactivatedCombos = [];
-
-    if (comboItems && comboItems.length > 0) {
-      const comboIds = [...new Set(comboItems.map(item => item.combo_id))];
-
-      // Fetch combo info before deactivating for logging
-      const { data: combos, error: fetchCombosError } = await supabase
-        .from('combo_products')
-        .select('id, name_es, name_en, is_active')
-        .in('id', comboIds);
-
-      if (fetchCombosError) {
-        console.warn('[deleteProduct] Error fetching combo info:', fetchCombosError);
-      }
-
-      // Only deactivate active combos
-      const activeCombos = (combos || []).filter(c => c.is_active);
-
-      if (activeCombos.length > 0) {
-        const activeComboIds = activeCombos.map(c => c.id);
-
-        const { error: deactivateCombosError } = await supabase
-          .from('combo_products')
-          .update({ is_active: false, updated_at: getCurrentTimestamp() })
-          .in('id', activeComboIds);
-
-        if (deactivateCombosError) {
-          console.warn('[deleteProduct] Error deactivating combos:', deactivateCombosError);
-        } else {
-          // Log each combo deactivation
-          for (const combo of activeCombos) {
-            const comboName = combo.name_es || combo.name_en || combo.id;
-            deactivatedCombos.push({ id: combo.id, name: comboName });
-
-            try {
-              await logActivity({
-                action: 'combo_deactivated',
-                entityType: 'combo',
-                entityId: combo.id,
-                performedBy,
-                description: `Combo desactivado - ${comboName} (producto eliminado: ${productName})`,
-                metadata: {
-                  comboId: combo.id,
-                  comboName,
-                  reason: 'product_deleted',
-                  deletedProductId: productId,
-                  deletedProductName: productName
-                }
-              });
-            } catch (logErr) {
-              console.warn('[deleteProduct] Failed to log combo deactivation:', logErr);
-            }
-          }
-        }
-      }
-    }
-
-    // ============================================
-    // STEP 4: Delete combo_items references (FK constraint)
-    // ============================================
-    const { error: comboItemsError } = await supabase
-      .from('combo_items')
-      .delete()
-      .eq('product_id', productId);
-
-    if (comboItemsError) {
-      console.error('[deleteProduct] Error deleting combo_items:', comboItemsError);
-      throw new AppError(
-        'Error al eliminar referencias en combos',
-        ERROR_CODES.DB_ERROR,
-        500,
-        { operation: 'deleteComboItems', error: comboItemsError.message }
-      );
-    }
-
-    // ============================================
-    // STEP 5: Get inventory IDs and delete inventory_movements first
-    // ============================================
-    const { data: inventoryRecords, error: invFetchError } = await supabase
-      .from('inventory')
-      .select('id')
-      .eq('product_id', productId);
-
-    if (invFetchError) {
-      console.warn('[deleteProduct] Error fetching inventory IDs:', invFetchError);
-    }
-
-    const productInventoryIds = (inventoryRecords || []).map(inv => inv.id);
-
-    if (productInventoryIds.length > 0) {
-      // Delete inventory_movements that reference these inventory records
-      const { error: movementsError } = await supabase
-        .from('inventory_movements')
-        .delete()
-        .in('inventory_id', productInventoryIds);
-
-      if (movementsError) {
-        console.error('[deleteProduct] Error deleting inventory_movements:', movementsError);
-        throw new AppError(
-          'Error al eliminar movimientos de inventario',
-          ERROR_CODES.DB_ERROR,
-          500,
-          { operation: 'deleteInventoryMovements', error: movementsError.message }
-        );
-      }
-    }
-
-    // ============================================
-    // STEP 6: Delete inventory records (now safe - no FK references)
-    // ============================================
-    const { error: inventoryError } = await supabase
-      .from('inventory')
-      .delete()
-      .eq('product_id', productId);
-
-    if (inventoryError) {
-      console.error('[deleteProduct] Error deleting inventory:', inventoryError);
-      throw new AppError(
-        'Error al eliminar registros de inventario',
-        ERROR_CODES.DB_ERROR,
-        500,
-        { operation: 'deleteInventory', error: inventoryError.message }
-      );
-    }
-
-    // ============================================
-    // STEP 7: Delete the product
-    // ============================================
-    const { error } = await supabase
-      .from('products')
-      .delete()
-      .eq('id', productId);
+    const { data, error } = await supabase.rpc('delete_product', { p_product_id: productId });
 
     if (error) {
       const appError = parseSupabaseError(error);
@@ -737,42 +569,50 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
       throw appError;
     }
 
-    // Log the product deletion
-    try {
-      await logActivity({
-        action: 'product_deleted',
-        entityType: 'product',
-        entityId: productId,
-        performedBy,
-        description: `Producto eliminado - ${productName}`,
-        metadata: {
-          productId,
-          productName,
-          productSku: product?.sku,
-          clearedOrderItems: safeOrders.length,
-          deactivatedCombos: deactivatedCombos.map(c => c.name),
-          deactivatedCombosCount: deactivatedCombos.length
-        }
-      });
-    } catch (logErr) {
-      console.warn('[deleteProduct] Failed to log product deletion:', logErr);
+    const result = data || {};
+
+    if (!result.ok) {
+      if (result.reason === 'blocking_orders') {
+        const blockingOrders = mapBlockers(result.blockers);
+        const productName = result.product_name || productId;
+        const orderNumbers = blockingOrders.map(o => o.orderNumber).join(', ');
+        throw new AppError(
+          `No se puede eliminar el producto "${productName}" porque tiene órdenes activas en proceso: ${orderNumbers}. Espere a que las órdenes sean despachadas o canceladas.`,
+          ERROR_CODES.CONFLICT,
+          409,
+          {
+            productId,
+            productName,
+            blockingOrders,
+            blockingOrderCount: blockingOrders.length
+          }
+        );
+      }
+      if (result.reason === 'not_found') {
+        throw createNotFoundError('Product', productId);
+      }
+      throw new AppError(
+        `Product delete refused: ${result.reason || 'unknown'}`,
+        ERROR_CODES.INVALID_OPERATION,
+        409,
+        { productId, reason: result.reason || 'unknown' }
+      );
     }
 
     return {
       success: true,
       deletedProduct: {
         id: productId,
-        name: productName
+        name: result.product_name || productId
       },
-      deactivatedCombos,
-      clearedOrderItems: safeOrders.length
+      deactivatedCombos: result.deactivated_combos || []
     };
   } catch (error) {
     if (error.code) throw error; // Already an AppError
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'deleteProduct', productId });
     throw appError;
   }
-};
+});
 
 /**
  * Get all active product categories
@@ -781,11 +621,10 @@ export const deleteProduct = async (productId, performedBy = 'system') => {
  */
 export const getCategories = async ({ includeMargin = false } = {}) => {
   try {
-    // profit_margin is internal business data: only admin callers ask for it
-    const publicColumns = 'id, slug, name_es, name_en, description_es, description_en, display_order, is_active';
+    // The category margin is internal business data: only admin callers ask for it
     const { data, error } = await supabase
       .from('product_categories')
-      .select(includeMargin ? `${publicColumns}, profit_margin` : publicColumns)
+      .select(PUBLIC_CATEGORY_COLUMNS)
       .eq('is_active', true)
       .order('display_order', { ascending: true });
 
@@ -795,7 +634,7 @@ export const getCategories = async ({ includeMargin = false } = {}) => {
       throw appError;
     }
 
-    return data || [];
+    return includeMargin ? withCategoryMargins(data || []) : (data || []);
   } catch (error) {
     if (error.code) throw error; // Already an AppError
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getCategories' });
@@ -828,7 +667,7 @@ const normalizeCategoryMargin = (raw) => {
  * @throws {AppError} If validation fails or creation fails
  * @returns {Promise<Object>} Created category
  */
-export const createCategory = async (categoryData, performedBy = 'system') => {
+export const createCategory = withCatalogInvalidation(async (categoryData, performedBy = 'system') => {
   try {
     if (!categoryData.es || !categoryData.en) {
       throw createValidationError(
@@ -851,7 +690,7 @@ export const createCategory = async (categoryData, performedBy = 'system') => {
         is_active: true,
         display_order: DEFAULTS.DISPLAY_ORDER
       }])
-      .select()
+      .select(PUBLIC_CATEGORY_COLUMNS)
       .single();
 
     if (error) {
@@ -885,7 +724,7 @@ export const createCategory = async (categoryData, performedBy = 'system') => {
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'createCategory' });
     throw appError;
   }
-};
+});
 
 /**
  * Update a product category
@@ -894,7 +733,7 @@ export const createCategory = async (categoryData, performedBy = 'system') => {
  * @throws {AppError} If category not found or update fails
  * @returns {Promise<Object>} Updated category
  */
-export const updateCategory = async (categoryId, categoryData, performedBy = 'system') => {
+export const updateCategory = withCatalogInvalidation(async (categoryId, categoryData, performedBy = 'system') => {
   try {
     if (!categoryId) {
       throw createValidationError({ categoryId: 'Category ID is required' });
@@ -924,7 +763,7 @@ export const updateCategory = async (categoryId, categoryData, performedBy = 'sy
         updated_at: getCurrentTimestamp()
       })
       .eq('id', categoryId)
-      .select()
+      .select(PUBLIC_CATEGORY_COLUMNS)
       .single();
 
     if (error) {
@@ -961,7 +800,7 @@ export const updateCategory = async (categoryId, categoryData, performedBy = 'sy
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'updateCategory', categoryId });
     throw appError;
   }
-};
+});
 
 /**
  * Delete a product category (hard delete - removes from database)
@@ -971,7 +810,7 @@ export const updateCategory = async (categoryId, categoryData, performedBy = 'sy
  * @throws {AppError} If deletion fails or products exist with this category
  * @returns {Promise<Object>} Result with deleted category info
  */
-export const deleteCategory = async (categoryId, performedBy = 'system') => {
+export const deleteCategory = withCatalogInvalidation(async (categoryId, performedBy = 'system') => {
   try {
     if (!categoryId) {
       throw createValidationError({ categoryId: 'Category ID is required' });
@@ -1068,7 +907,7 @@ export const deleteCategory = async (categoryId, performedBy = 'system') => {
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'deleteCategory', categoryId });
     throw appError;
   }
-};
+});
 
 /**
  * Import path:

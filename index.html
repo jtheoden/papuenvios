@@ -1,14 +1,106 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
 	<head>
 		<meta charset="UTF-8" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<meta name="generator" content="Hostinger Horizons" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>Papuenvios</title>
+		<script>
+			// First paint: pick the look from the cached visual settings (mirrors resolveLookId in brandPalette.js:
+			// a valid activeTheme wins, else every BRAND_PRESET value present => papuenvios, else classic).
+			// The cache TTL is ignored on purpose: a stale look is better than a flash of the other one.
+			// Only the constant literals 'classic' / 'papuenvios' are ever written. themeCompliance.test.js keeps P == BRAND_PRESET.
+			try {
+				var cached = JSON.parse(localStorage.getItem('business_visual_settings_cache'));
+				var d = cached && cached.data;
+				if (d) {
+					var P = {"primaryColor":"#171717","secondaryColor":"#605B52","headerGradientColor":"#605B52","pageBgColor":"#FAF7F0","cardBgColor":"#FFFFFF","accentColor":"#FFA500","useGradient":false,"useHeaderGradient":false,"headerBgColor":"#FFFFFF","headerTextColor":"#171717","headerMenuBgColor":"#FFFFFF","headerMenuTextColor":"#171717","headerMenuHoverBgColor":"#FAF7F0","headerMenuHoverTextColor":"#171717","headerMenuActiveBgColor":"#FFF1CC","headerMenuActiveColor":"#171717","navBarActiveBgColor":"#FFF1CC","navBarActiveTextColor":"#171717","headingColor":"#171717","useHeadingGradient":false,"tabActiveColor":"#171717","tabActiveBgColor":"#FFF1CC","tabInactiveColor":"#605B52","tabInactiveBgColor":"#FFFFFF","tabHoverColor":"#171717","tabHoverBgColor":"#FAF7F0","buttonBgColor":"#FFA500","buttonTextColor":"#171717","buttonHoverBgColor":"#E59400","useButtonGradient":false,"footerBgColor":"#FFFFFF","footerTextColor":"#605B52","footerLinkColor":"#171717","footerLinkHoverColor":"#605B52","cartBadgeBgColor":"#FFA500","cartBadgeTextColor":"#171717","carouselDotActiveColor":"#FFA500","borderColor":"#E8E0D2","mutedTextColor":"#605B52","softAccentColor":"#FFF1CC","focusRingColor":"#171717"};
+					var brand = true;
+					for (var k in P) {
+						if (k === 'primaryColor' || k === 'secondaryColor' || k === 'headerGradientColor') continue; // legacy look keys only
+						var a = d[k], b = P[k];
+						if (typeof a === 'string' && typeof b === 'string' ? a.toLowerCase() !== b.toLowerCase() : a !== b) brand = false;
+					}
+					document.documentElement.dataset.theme = d.activeTheme === 'classic' ? 'classic' : d.activeTheme === 'papuenvios' || brand ? 'papuenvios' : 'classic';
+				}
+			} catch (e) {}
+			// Recovery must not depend on the module loading or React committing successfully.
+			setTimeout(function () {
+				var splash = document.getElementById('ps');
+				if (!splash) return;
+				var english = false;
+				try { english = localStorage.getItem('preferredLanguage') === 'en'; } catch (e) {}
+				splash.lang = english ? 'en' : 'es';
+				splash.textContent = '';
+				var message = document.createElement('p');
+				message.textContent = english ? 'Loading is taking too long.' : 'La carga está tardando demasiado.';
+				var button = document.createElement('button');
+				button.type = 'button';
+				button.textContent = english ? 'Reload' : 'Recargar';
+				button.addEventListener('click', function () { window.location.reload(); });
+				splash.appendChild(message);
+				splash.appendChild(button);
+			}, 20000);
+		</script>
+		<!-- Static splash: painted before any JS loads; React replaces #root content on its first commit. -->
+		<style>
+			#ps{position:fixed;inset:0;display:flex;flex-direction:column;gap:16px;align-items:center;justify-content:center;background:#FAF7F0;color:#171717;font:16px system-ui,sans-serif}
+			#ps svg{width:min(240px,70vw);height:auto}
+			#ps img{max-width:min(240px,70vw);object-fit:contain}
+			/* data-theme comes from the inline script above: classic matches AuthLoadingScreen's classic backdrop (buildLoadingTheme). */
+			[data-theme="classic"] #ps{background:linear-gradient(to right, #2563eb, #9333ea);color:#fff}
+			[data-theme="classic"] #ps text{fill:#fff}
+			#ps .ps-arrow{animation:ps-nudge 1.2s ease-in-out infinite alternate}
+			@keyframes ps-nudge{to{transform:translateX(4px)}}
+			@media (prefers-reduced-motion: reduce){#ps .ps-arrow{animation:none}}
+			#ps .ps-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+		</style>
 	</head>
 	<body>
-		<div id="root"></div>
+		<div id="root"><div id="ps" role="status"><span class="ps-sr" lang="es">Cargando PapuEnvíos…</span><noscript lang="es">PapuEnvíos necesita JavaScript activado.</noscript><!-- Text wordmark on purpose: the brand SVG in src/assets/brand/ weighs ~19 KB and does not fit the inline HTML budget (4 KB). --><svg viewBox="0 0 240 72" aria-hidden="true" focusable="false"><text x="20" y="42" textLength="200" lengthAdjust="spacingAndGlyphs" font-family="system-ui,-apple-system,'Segoe UI',Roboto,sans-serif" font-size="38" font-weight="700" fill="#171717">PapuEnvíos</text><path class="ps-arrow" d="M24 58h180m-9-7 9 7-9 7" fill="none" stroke="#FFA500" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
+		<script>
+			// Cached branding on the splash (mirrors BrandLogo / getLoaderConfig): same cache and TTL policy as the look script
+			// above. The image is the loader image, else the logo: only an image data URL or https URL is accepted, and the <img>
+			// is built with DOM APIs. The background is a strict hex colour or nothing (theme background). No HTML strings.
+			(function () {
+				try {
+					var s = (JSON.parse(localStorage.getItem('business_visual_settings_cache')) || {}).data || {};
+					var splash = document.getElementById('ps');
+					var wordmark = splash && splash.querySelector('svg');
+					if (!wordmark) return;
+					var SAFE = /^(?:data:image\/(?:png|jpe?g|gif|webp|avif|svg\+xml);base64,[A-Za-z0-9+\/=]+|https:\/\/\S+)$/i;
+					var src = typeof s.loaderImage === 'string' && SAFE.test(s.loaderImage) ? s.loaderImage : typeof s.logo === 'string' && SAFE.test(s.logo) ? s.logo : '';
+					if (src) {
+						var img = document.createElement('img');
+						var h = Number(s.logoMaxHeight);
+						img.src = src;
+						img.alt = ''; // decorative: the .ps-sr label already announces the splash
+						img.style.maxHeight = Math.min(h > 0 ? h : 40, 64) + 'px';
+						img.style.width = 'auto';
+						// Fail-open: the wordmark is only hidden once the image has really loaded.
+						img.onload = function () { wordmark.style.display = 'none'; };
+						img.onerror = function () { img.remove(); wordmark.style.display = ''; };
+						splash.insertBefore(img, wordmark);
+					}
+					var bg = s.loaderBgColor;
+					if (typeof bg === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(bg)) {
+						var hexv = bg.length === 4 ? bg.charAt(1) + bg.charAt(1) + bg.charAt(2) + bg.charAt(2) + bg.charAt(3) + bg.charAt(3) : bg.slice(1);
+						var lum = 0;
+						[0, 2, 4].forEach(function (i, k) {
+							var c = parseInt(hexv.substr(i, 2), 16) / 255;
+							lum += [0.2126, 0.7152, 0.0722][k] * (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+						});
+						// white on dark, charcoal on light: whichever has the higher WCAG contrast with the background
+						var ink = 1.05 / (lum + 0.05) > (lum + 0.05) / 0.0586 ? '#ffffff' : '#171717';
+						splash.style.background = bg;
+						splash.style.color = ink;
+						var label = wordmark.querySelector('text');
+						if (label) label.style.fill = ink;
+					}
+				} catch (e) {}
+			})();
+		</script>
 		<script type="module" src="/src/main.jsx"></script>
 	</body>
 </html>

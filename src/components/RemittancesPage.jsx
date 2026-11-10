@@ -1,33 +1,30 @@
 import { motion } from 'framer-motion';
 import { Send, Eye, TrendingUp, Clock, ArrowRight, CheckCircle } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
+import { resolveThemeId } from '@/lib/visualThemes';
 
 const RemittancesPage = ({ onNavigate }) => {
   const { t } = useLanguage();
   const { user } = useAuth();
+  const { visualSettings } = useBusiness();
+  // Stored heading/button colours are brand-look only; classic keeps its token classes.
+  const themed = resolveThemeId(visualSettings) !== 'classic';
 
   const features = [
-    {
-      icon: TrendingUp,
-      title: 'Tasas Competitivas',
-      description: 'Las mejores tasas de cambio del mercado'
-    },
-    {
-      icon: Clock,
-      title: 'Entrega Rápida',
-      description: 'Entrega en 24-72 horas'
-    },
-    {
-      icon: CheckCircle,
-      title: 'Seguro y Confiable',
-      description: 'Tus remesas están protegidas'
-    }
-  ];
+    { icon: TrendingUp, key: 'rates' },
+    { icon: Clock, key: 'delivery' },
+    { icon: CheckCircle, key: 'tracking' }
+  ].map(({ icon, key }) => ({
+    icon,
+    title: t(`remittances.features.${key}.title`),
+    description: t(`remittances.features.${key}.description`)
+  }));
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
+    <div className="min-h-screen bg-gradient-to-b from-theme-accent-soft to-white">
       <div className="max-w-6xl mx-auto px-4 py-16">
         {/* Hero Section */}
         <motion.div
@@ -35,7 +32,7 @@ const RemittancesPage = ({ onNavigate }) => {
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-16"
         >
-          <h1 className={`${getHeadingStyle()} text-4xl md:text-5xl mb-4`}>
+          <h1 style={themed ? getHeadingStyle(visualSettings) : undefined} className="font-bold text-4xl md:text-5xl mb-4">
             {t('remittances.title')}
           </h1>
           <p className="text-xl text-gray-600 mb-8">
@@ -46,13 +43,13 @@ const RemittancesPage = ({ onNavigate }) => {
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
             <motion.button
               onClick={() => onNavigate('send-remittance')}
-              className={`${getPrimaryButtonStyle()} flex items-center justify-center gap-2 px-8 py-4 text-lg shadow-lg shadow-blue-500/30 ring-2 ring-blue-400/50`}
+              style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="bg-theme-accent text-theme-on-accent hover:bg-theme-accent-hover rounded-lg font-semibold flex items-center justify-center gap-2 px-8 py-4 text-lg shadow-lg shadow-theme-focus/30 ring-2 ring-blue-400/50 theme-cta-ring"
               animate={{
                 scale: [1, 1.02, 1],
                 boxShadow: [
-                  '0 10px 15px -3px rgba(59, 130, 246, 0.3)',
-                  '0 10px 25px -3px rgba(59, 130, 246, 0.5)',
-                  '0 10px 15px -3px rgba(59, 130, 246, 0.3)'
+                  '0 10px 15px -3px rgb(var(--t-focus) / 0.3)',
+                  '0 10px 25px -3px rgb(var(--t-focus) / 0.5)',
+                  '0 10px 15px -3px rgb(var(--t-focus) / 0.3)'
                 ]
               }}
               transition={{
@@ -70,7 +67,7 @@ const RemittancesPage = ({ onNavigate }) => {
             {user && (
               <button
                 onClick={() => onNavigate('my-remittances')}
-                className="flex items-center justify-center gap-2 px-8 py-4 text-lg border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-semibold"
+                className="flex items-center justify-center gap-2 px-8 py-4 text-lg border-2 border-theme-accent text-[rgb(var(--t-link))] rounded-lg hover:bg-theme-accent-soft transition-colors font-semibold"
               >
                 <Eye className="h-6 w-6" />
                 {t('remittances.myRemittances')}
@@ -89,8 +86,8 @@ const RemittancesPage = ({ onNavigate }) => {
               transition={{ delay: index * 0.1 }}
               className="glass-effect p-6 rounded-xl text-center hover:shadow-lg transition-shadow"
             >
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-                <feature.icon className="h-8 w-8 text-blue-600" />
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-theme-accent-soft-2 rounded-full mb-4">
+                <feature.icon className="h-8 w-8 text-[rgb(var(--t-link))]" />
               </div>
               <h3 className="text-xl font-bold mb-2">{feature.title}</h3>
               <p className="text-gray-600">{feature.description}</p>
@@ -117,7 +114,7 @@ const RemittancesPage = ({ onNavigate }) => {
             ].map((step, index) => (
               <div key={index} className="relative">
                 <div className="flex items-center mb-4">
-                  <div className="flex items-center justify-center w-12 h-12 bg-blue-600 text-white rounded-full font-bold text-xl">
+                  <div className="flex items-center justify-center w-12 h-12 bg-theme-accent text-theme-on-accent rounded-full font-bold text-xl">
                     {step.step}
                   </div>
                   {index < 2 && (
@@ -144,13 +141,13 @@ const RemittancesPage = ({ onNavigate }) => {
             </p>
             <motion.button
               onClick={() => onNavigate('send-remittance')}
-              className={`${getPrimaryButtonStyle()} inline-flex items-center gap-2 shadow-lg shadow-blue-500/30`}
+              style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="bg-theme-accent text-theme-on-accent hover:bg-theme-accent-hover rounded-lg px-6 py-3 font-semibold inline-flex items-center gap-2 shadow-lg shadow-theme-focus/30"
               animate={{
                 scale: [1, 1.02, 1],
                 boxShadow: [
-                  '0 10px 15px -3px rgba(59, 130, 246, 0.3)',
-                  '0 10px 25px -3px rgba(59, 130, 246, 0.5)',
-                  '0 10px 15px -3px rgba(59, 130, 246, 0.3)'
+                  '0 10px 15px -3px rgb(var(--t-focus) / 0.3)',
+                  '0 10px 25px -3px rgb(var(--t-focus) / 0.5)',
+                  '0 10px 15px -3px rgb(var(--t-focus) / 0.3)'
                 ]
               }}
               transition={{

@@ -7,6 +7,7 @@ import { toast } from '@/components/ui/use-toast';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import TableDetailModal from '@/components/modals/TableDetailModal';
 import { zelleService } from '@/lib/zelleService';
+import { formatMoney } from '@/lib/numberFormat';
 import { useRealtimeZelleTransactions } from '@/hooks/useRealtimeSubscription';
 
 const ZellePaymentHistoryTab = () => {
@@ -14,13 +15,8 @@ const ZellePaymentHistoryTab = () => {
   const { visualSettings } = useBusiness();
 
   // Format currency helper
-  const formatCurrency = (amount, currencyCode = 'USD') => {
-    if (!amount) return '0.00';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currencyCode
-    }).format(amount);
-  };
+  const formatCurrency = (amount, currencyCode = 'USD') =>
+    formatMoney(amount, { currency: currencyCode, language });
 
   // State
   const [transactions, setTransactions] = useState([]);
@@ -331,7 +327,7 @@ const ZellePaymentHistoryTab = () => {
       {/* Header with title and action buttons */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h2 className="text-2xl font-bold gradient-text">
-          {t('zelleHistory.title') || 'Zelle Payment History'}
+          {t('zelleHistory.title') || 'Payment History'}
         </h2>
         <button
           onClick={() => setShowFilters(!showFilters)}

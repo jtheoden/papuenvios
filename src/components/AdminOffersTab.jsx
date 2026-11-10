@@ -30,17 +30,28 @@ import {
   Activity
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { toast } from '@/components/ui/use-toast';
+import LoadingState, { SkeletonBox } from '@/components/ui/LoadingState';
+
+// Footprint of the offer rows.
+const OffersSkeleton = () => (
+  <div className="space-y-3">
+    {Array.from({ length: 3 }, (_, i) => <SkeletonBox key={i} className="h-28 w-full rounded-lg" />)}
+  </div>
+);
 import { supabase } from '@/lib/supabase';
 import { logActivity } from '@/lib/activityLogger';
 import { useRealtimeOffers } from '@/hooks/useRealtimeSubscription';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
+import { normalizeDiscountType } from '@/lib/offerRules';
 
 const AdminOffersTab = () => {
   const { t, language } = useLanguage();
+  const confirm = useConfirm();
   const { currencySymbol } = useCurrency();
   const { user } = useAuth();
   const { visualSettings } = useBusiness();
@@ -56,7 +67,8 @@ const AdminOffersTab = () => {
     activeOffers: 0,
     topOffers: []
   });
-  const [loading, setLoading] = useState(false);
+  // true from the start: the first render must not show "no offers" before the load begins
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterActive, setFilterActive] = useState('all'); // all, active, inactive
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -69,7 +81,7 @@ const AdminOffersTab = () => {
     nameEs: '',
     nameEn: '',
     appliesTo: 'product', // product, combo, remittance
-    discountType: 'percentage', // percentage or fixed
+    discountType: 'percentage', // percentage or fixed_amount
     discountValue: '',
     minPurchaseAmount: '',
     maxUsageGlobal: '',
@@ -229,8 +241,20 @@ const AdminOffersTab = () => {
       return;
     }
 
+    // Both dates are required: an offer without a window never expires (isOfferInWindow treats null as open-ended)
+    if (!formData.startDate || !formData.endDate) {
+      toast({
+        title: language === 'es' ? 'Fechas requeridas' : 'Dates required',
+        description: language === 'es'
+          ? 'La fecha de inicio y la de fin son obligatorias'
+          : 'Start date and end date are required',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     // Validate that start date is before end date
-    if (formData.startDate && formData.endDate && formData.startDate >= formData.endDate) {
+    if (formData.startDate >= formData.endDate) {
       toast({
         title: language === 'es' ? 'Error de fechas' : 'Date Error',
         description: language === 'es'
@@ -252,8 +276,8 @@ const AdminOffersTab = () => {
         min_purchase_amount: formData.minPurchaseAmount ? parseFloat(formData.minPurchaseAmount) : null,
         max_usage_global: formData.maxUsageGlobal ? parseInt(formData.maxUsageGlobal) : null,
         max_usage_per_user: formData.maxUsagePerUser ? parseInt(formData.maxUsagePerUser) : null,
-        start_date: formData.startDate ? formData.startDate : null,
-        end_date: formData.endDate ? formData.endDate : null,
+        start_date: formData.startDate,
+        end_date: formData.endDate,
         is_active: formData.isActive
       };
 
@@ -301,7 +325,12 @@ const AdminOffersTab = () => {
   };
 
   const handleDeleteOffer = async (offerId) => {
-    if (!window.confirm(language === 'es' ? '¿Eliminar esta oferta?' : 'Delete this offer?')) {
+    if (!(await confirm({
+      title: t('common.confirmDialog.deleteTitle'),
+      description: language === 'es' ? '¿Eliminar esta oferta?' : 'Delete this offer?',
+      confirmLabel: t('common.confirmDialog.delete'),
+      variant: 'destructive'
+    }))) {
       return;
     }
 
@@ -356,7 +385,7 @@ const AdminOffersTab = () => {
       nameEs: offer.name_es || '',
       nameEn: offer.name_en || '',
       appliesTo: offer.applies_to || 'product',
-      discountType: offer.discount_type,
+      discountType: normalizeDiscountType(offer.discount_type) || 'percentage',
       discountValue: offer.discount_value,
       minPurchaseAmount: offer.min_purchase_amount || '',
       maxUsageGlobal: offer.max_usage_global || '',
@@ -680,7 +709,7 @@ const AdminOffersTab = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   >
                     <option value="percentage">{language === 'es' ? 'Porcentaje (%)' : 'Percentage (%)'}</option>
-                    <option value="fixed">{language === 'es' ? 'Cantidad Fija' : 'Fixed Amount'}</option>
+                    <option value="fixed_amount">{language === 'es' ? 'Cantidad Fija' : 'Fixed Amount'}</option>
                   </select>
                 </div>
 
@@ -754,11 +783,12 @@ const AdminOffersTab = () => {
                 {/* Start Date */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {language === 'es' ? 'Fecha de Inicio' : 'Start Date'}
+                    {language === 'es' ? 'Fecha de Inicio *' : 'Start Date *'}
                   </label>
                   <input
                     type="date"
                     value={formData.startDate}
+                    required
                     onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   />
@@ -767,11 +797,12 @@ const AdminOffersTab = () => {
                 {/* End Date */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {language === 'es' ? 'Fecha de Fin' : 'End Date'}
+                    {language === 'es' ? 'Fecha de Fin *' : 'End Date *'}
                   </label>
                   <input
                     type="date"
                     value={formData.endDate}
+                    required
                     onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
                     min={formData.startDate || undefined}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
@@ -835,11 +866,8 @@ const AdminOffersTab = () => {
 
       {/* Offers List */}
       <div className="space-y-3">
-        {loading ? (
-          <div className="text-center py-8 text-gray-500">
-            {language === 'es' ? 'Cargando ofertas...' : 'Loading offers...'}
-          </div>
-        ) : filteredOffers.length === 0 ? (
+        <LoadingState loading={loading && Boolean(user) && offers.length === 0} skeleton={<OffersSkeleton />} contentClassName="space-y-3">
+        {filteredOffers.length === 0 ? (
           <div className="text-center py-8 bg-gray-50 rounded-lg">
             <AlertCircle className="h-8 w-8 text-gray-400 mx-auto mb-2" />
             <p className="text-gray-600">
@@ -1155,6 +1183,7 @@ const AdminOffersTab = () => {
             </motion.div>
           ))
         )}
+        </LoadingState>
       </div>
     </div>
   );

@@ -12,36 +12,10 @@ import {
   getPendingRemittancesCountByType,
   DELIVERY_METHODS
 } from '@/lib/remittanceService';
+import { calcCommissionFromRates, effectiveDeliveryRate, simulateRemittance } from '@/lib/remittanceCalculations';
 import { getCurrenciesWithRates } from '@/lib/currencyService';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
-
-// Forward simulation (mirrors remittanceService.calculateRemittance)
-const simulateRemittance = ({ amount, exchangeRate, commissionPercentage, commissionFixed }) => {
-  const commPctAmount = (amount * (commissionPercentage || 0)) / 100;
-  const commFixedAmount = commissionFixed || 0;
-  const totalCommission = commPctAmount + commFixedAmount;
-  const netAmount = amount - totalCommission;
-  const amountToDeliver = netAmount * exchangeRate;
-  const effectiveRate = amount > 0 ? amountToDeliver / amount : 0;
-  return { amount, commPctAmount, commFixedAmount, totalCommission, netAmount, exchangeRate, amountToDeliver, effectiveRate };
-};
-
-// Reverse simulation (mirrors remittanceService.calculateReverseRemittance)
-const simulateReverseRemittance = ({ desiredDeliveryAmount, exchangeRate, commissionPercentage, commissionFixed }) => {
-  const denominator = 1 - ((commissionPercentage || 0) / 100);
-  if (denominator <= 0) return null;
-  const amountToSend = ((desiredDeliveryAmount / exchangeRate) + (commissionFixed || 0)) / denominator;
-  return simulateRemittance({ amount: amountToSend, exchangeRate, commissionPercentage, commissionFixed });
-};
-
-// Calculate commission % from market rate and delivery rate
-const calcCommissionFromRates = (marketRate, deliveryRate) => {
-  if (!marketRate || marketRate <= 0) return 0;
-  if (!deliveryRate || deliveryRate <= 0) return 100;
-  if (deliveryRate >= marketRate) return 0;
-  return ((1 - deliveryRate / marketRate) * 100);
-};
 
 const RemittanceTypesConfig = () => {
   const { t, language } = useLanguage();
@@ -83,15 +57,28 @@ const RemittanceTypesConfig = () => {
     loadCurrencies();
   }, []);
 
-  // Auto-calculate commission_percentage when market rate or delivery rate change
-  useEffect(() => {
-    const marketRate = parseFloat(formData.exchange_rate);
-    const deliveryRate = parseFloat(formData.delivery_rate);
-    if (marketRate > 0 && deliveryRate > 0) {
-      const pct = calcCommissionFromRates(marketRate, deliveryRate);
-      setFormData(prev => ({ ...prev, commission_percentage: pct.toString() }));
-    }
-  }, [formData.exchange_rate, formData.delivery_rate]);
+  // Rates as loaded by handleEdit (null when creating): typing a rate and going back to it is not a change.
+  const [loadedRates, setLoadedRates] = useState(null);
+
+  // commission_percentage is derived ONLY when the user types a market or delivery rate. Doing it in an effect
+  // would also fire when handleEdit loads the form and overwrite the stored value. If both rates are back to the
+  // loaded ones the stored commission is restored as is (the displayed delivery rate is rounded to the cent, so
+  // recomputing from it would drift).
+  const handleRateChange = (field, value) => {
+    setFormData(prev => {
+      const next = { ...prev, [field]: value };
+      const marketRate = parseFloat(next.exchange_rate);
+      const deliveryRate = parseFloat(next.delivery_rate);
+      if (loadedRates
+        && marketRate === parseFloat(loadedRates.exchange_rate)
+        && deliveryRate === parseFloat(loadedRates.delivery_rate)) {
+        next.commission_percentage = String(editingType.commission_percentage || 0);
+      } else if (marketRate > 0 && deliveryRate > 0) {
+        next.commission_percentage = calcCommissionFromRates(marketRate, deliveryRate).toString();
+      }
+      return next;
+    });
+  };
 
   // Show advanced if commission_fixed > 0 on load
   useEffect(() => {
@@ -101,21 +88,23 @@ const RemittanceTypesConfig = () => {
   }, [editingType]);
 
   // Simulator computation
-  const simResult = useMemo(() => {
+  const simulation = useMemo(() => {
     const exchangeRate = parseFloat(formData.exchange_rate);
     const commissionPercentage = parseFloat(formData.commission_percentage) || 0;
     const commissionFixed = parseFloat(formData.commission_fixed) || 0;
     const amount = parseFloat(simAmount);
 
-    if (!exchangeRate || exchangeRate <= 0) return null;
-    if (!amount || amount <= 0) return null;
+    if (!exchangeRate || exchangeRate <= 0) return { result: null, failed: false };
+    if (!amount || amount <= 0) return { result: null, failed: false };
 
-    if (simMode === 'send') {
-      return simulateRemittance({ amount, exchangeRate, commissionPercentage, commissionFixed });
-    } else {
-      return simulateReverseRemittance({ desiredDeliveryAmount: amount, exchangeRate, commissionPercentage, commissionFixed });
+    // A render must never crash while the admin is typing (e.g. a rate that rounds to 0 at 4 decimals).
+    try {
+      return { result: simulateRemittance({ mode: simMode, amount, exchangeRate, commissionPercentage, commissionFixed }), failed: false };
+    } catch {
+      return { result: null, failed: true };
     }
-  }, [formData.exchange_rate, formData.commission_percentage, formData.commission_fixed, simAmount, simMode]);
+  },[formData.exchange_rate, formData.commission_percentage, formData.commission_fixed, simAmount, simMode]);
+  const simResult = simulation.result;
 
   const loadCurrencies = async () => {
     try {
@@ -152,7 +141,9 @@ const RemittanceTypesConfig = () => {
   };
 
   const handleCreate = () => {
+    if (!isSuperAdmin) return;
     setEditingType(null);
+    setLoadedRates(null);
     // Set defaults based on available currencies
     const defaultOrigin = currencies.find(c => c.code === 'USD') || currencies[0];
     const defaultDelivery = currencies.find(c => c.code === 'CUP') || currencies[0];
@@ -185,13 +176,15 @@ const RemittanceTypesConfig = () => {
     // Derive delivery_rate from existing exchange_rate and commission_percentage
     const rate = type.exchange_rate || 0;
     const pct = type.commission_percentage || 0;
-    const derivedDeliveryRate = rate * (1 - pct / 100);
+    const derivedDeliveryRate = effectiveDeliveryRate(rate, pct);
+    const loadedDeliveryRate = derivedDeliveryRate > 0 ? derivedDeliveryRate.toFixed(2) : '';
+    setLoadedRates({ exchange_rate: type.exchange_rate.toString(), delivery_rate: loadedDeliveryRate });
     setFormData({
       name: type.name,
       currency_code: type.currency_code,
       delivery_currency: type.delivery_currency,
       exchange_rate: type.exchange_rate.toString(),
-      delivery_rate: derivedDeliveryRate > 0 ? derivedDeliveryRate.toFixed(2) : '',
+      delivery_rate: loadedDeliveryRate,
       commission_percentage: (type.commission_percentage || 0).toString(),
       commission_fixed: (type.commission_fixed || 0).toString(),
       min_amount: type.min_amount.toString(),
@@ -267,9 +260,11 @@ const RemittanceTypesConfig = () => {
       name: formData.name,
       currency_code: formData.currency_code,
       delivery_currency: formData.delivery_currency,
-      exchange_rate: parseFloat(formData.exchange_rate),
-      commission_percentage: parseFloat(formData.commission_percentage) || 0,
-      commission_fixed: parseFloat(formData.commission_fixed) || 0,
+      ...(isSuperAdmin ? {
+        exchange_rate: parseFloat(formData.exchange_rate),
+        commission_percentage: parseFloat(formData.commission_percentage) || 0,
+        commission_fixed: parseFloat(formData.commission_fixed) || 0
+      } : {}),
       min_amount: parseFloat(formData.min_amount),
       max_amount: formData.max_amount ? parseFloat(formData.max_amount) : null,
       delivery_method: formData.delivery_method,
@@ -283,6 +278,23 @@ const RemittanceTypesConfig = () => {
 
     try {
       if (editingType) {
+        // Changing a live type's currency re-prices every future quote: make the admin confirm it
+        const currencyChanged = editingType.currency_code !== formData.currency_code ||
+                                editingType.delivery_currency !== formData.delivery_currency;
+        if (currencyChanged) {
+          const confirmed = await showModal({
+            type: 'warning',
+            title: t('remittances.admin.currencyChangeWarning'),
+            message: t('remittances.admin.currencyChangeMessage', {
+              from: `${editingType.currency_code} → ${editingType.delivery_currency}`,
+              to: `${formData.currency_code} → ${formData.delivery_currency}`
+            }),
+            confirmText: t('common.confirm'),
+            cancelText: t('common.cancel')
+          });
+          if (!confirmed) return;
+        }
+
         // Detect rate/commission changes and warn admin about affected pending remittances
         const oldRate = editingType.exchange_rate;
         const newRate = parseFloat(formData.exchange_rate);
@@ -290,9 +302,9 @@ const RemittanceTypesConfig = () => {
         const newCommPct = parseFloat(formData.commission_percentage) || 0;
 
         const rateChanged = Math.abs(oldRate - newRate) > 0.0001 ||
-                            Math.abs(oldCommPct - newCommPct) > 0.01;
+                            Math.abs(oldCommPct - newCommPct) > 1e-10;
 
-        if (rateChanged) {
+        if (isSuperAdmin && rateChanged) {
           const pendingCount = await getPendingRemittancesCountByType(editingType.id);
           if (pendingCount > 0) {
             const msg = t('remittances.admin.rateChangeAffected', { count: pendingCount })
@@ -418,13 +430,15 @@ const RemittanceTypesConfig = () => {
             {t('remittances.admin.title')}
           </p>
         </div>
-        <button
-          onClick={handleCreate}
-          className={`${getPrimaryButtonStyle()} flex items-center gap-2`}
-        >
-          <Plus className="h-5 w-5" />
-          {t('remittances.admin.newType')}
-        </button>
+        {isSuperAdmin && (
+          <button
+            onClick={handleCreate}
+            className={`${getPrimaryButtonStyle()} flex items-center gap-2`}
+          >
+            <Plus className="h-5 w-5" />
+            {t('remittances.admin.newType')}
+          </button>
+        )}
       </div>
 
       {/* Form Modal */}
@@ -439,6 +453,13 @@ const RemittanceTypesConfig = () => {
           </h3>
 
           <form onSubmit={handleSave} className="grid md:grid-cols-2 gap-6">
+            {!isSuperAdmin && (
+              <p id="remittance-rate-super-admin-only-note" role="note" className="md:col-span-2 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{t('remittances.admin.rateFieldsSuperAdminOnly')}</span>
+              </p>
+            )}
+
             {/* Nombre */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -505,9 +526,11 @@ const RemittanceTypesConfig = () => {
                   type="number"
                   step="0.01"
                   value={formData.exchange_rate}
-                  onChange={(e) => setFormData({ ...formData, exchange_rate: e.target.value })}
+                  onChange={(e) => handleRateChange('exchange_rate', e.target.value)}
                   className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="472.00"
+                  disabled={!isSuperAdmin}
+                  aria-describedby={!isSuperAdmin ? 'remittance-rate-super-admin-only-note' : undefined}
                   required
                 />
               </div>
@@ -525,13 +548,15 @@ const RemittanceTypesConfig = () => {
                   type="number"
                   step="0.01"
                   value={formData.delivery_rate}
-                  onChange={(e) => setFormData({ ...formData, delivery_rate: e.target.value })}
+                  onChange={(e) => handleRateChange('delivery_rate', e.target.value)}
                   className={`w-full pl-10 pr-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                     parseFloat(formData.delivery_rate) > parseFloat(formData.exchange_rate) && parseFloat(formData.exchange_rate) > 0
                       ? 'border-red-400 bg-red-50'
                       : 'border-gray-300'
                   }`}
                   placeholder="470.00"
+                  disabled={!isSuperAdmin}
+                  aria-describedby={!isSuperAdmin ? 'remittance-rate-super-admin-only-note' : undefined}
                   required
                 />
               </div>
@@ -548,13 +573,19 @@ const RemittanceTypesConfig = () => {
                     <Info className="h-4 w-4 text-blue-500 flex-shrink-0" />
                     <span className="text-sm text-blue-700 font-medium">{t('remittances.admin.calculatedCommission')}:</span>
                     <span className="text-sm font-bold text-blue-800">
-                      {parseFloat(formData.commission_percentage || 0)}%
+                      {Number((parseFloat(formData.commission_percentage) || 0).toFixed(2))}%
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-blue-700 font-medium">{t('remittances.admin.marginPerUnit')}:</span>
                     <span className="text-sm font-bold text-blue-800">
                       {(parseFloat(formData.exchange_rate) - parseFloat(formData.delivery_rate)).toFixed(2)} {formData.delivery_currency || ''}/{formData.currency_code || ''}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-blue-700 font-medium">{t('remittances.admin.effectiveDeliveryRate')}:</span>
+                    <span className="text-sm font-bold text-blue-800" data-testid="effective-delivery-rate">
+                      {effectiveDeliveryRate(parseFloat(formData.exchange_rate), parseFloat(formData.commission_percentage) || 0).toFixed(2)} {formData.delivery_currency || ''}/{formData.currency_code || ''}
                     </span>
                   </div>
                 </div>
@@ -580,6 +611,8 @@ const RemittanceTypesConfig = () => {
                     onChange={(e) => setFormData({ ...formData, commission_fixed: e.target.value })}
                     className="w-full max-w-xs px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="0.00"
+                    disabled={!isSuperAdmin}
+                    aria-describedby={!isSuperAdmin ? 'remittance-rate-super-admin-only-note' : undefined}
                   />
                   {parseFloat(formData.commission_fixed) > 0 && (
                     <p className="text-xs text-amber-600 flex items-center gap-1">
@@ -686,6 +719,10 @@ const RemittanceTypesConfig = () => {
                       </div>
                     )}
                   </div>
+                ) : simulation.failed ? (
+                  <p role="alert" className="text-xs text-amber-700">
+                    {t('remittances.admin.simulator.calculationUnavailable')}
+                  </p>
                 ) : (
                   <p className="text-xs text-gray-400">
                     {!parseFloat(formData.exchange_rate) ? t('remittances.admin.simulator.enterValidRate') : t('remittances.admin.simulator.enterValidAmount')}
@@ -826,13 +863,15 @@ const RemittanceTypesConfig = () => {
         <div className="text-center py-12 glass-effect rounded-xl">
           <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <p className="text-gray-600 mb-4">{t('remittances.admin.noTypes')}</p>
-          <button
-            onClick={handleCreate}
-            className={`${getPrimaryButtonStyle()} inline-flex items-center gap-2`}
-          >
-            <Plus className="h-5 w-5" />
-            {t('remittances.admin.newType')}
-          </button>
+          {isSuperAdmin && (
+            <button
+              onClick={handleCreate}
+              className={`${getPrimaryButtonStyle()} inline-flex items-center gap-2`}
+            >
+              <Plus className="h-5 w-5" />
+              {t('remittances.admin.newType')}
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid gap-4">

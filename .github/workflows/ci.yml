@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Official actions pinned to a major tag (not SHA): they receive security
+      # patches automatically and are first-party (owner `actions/`).
+      - uses: actions/checkout@v4
+
+      # vite 7 requires Node ^20.19 || >=22.12; jsdom 29 requires ^22.13 || >=24.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      # Unit tests + coverage thresholds (see vite.config.js)
+      - run: npm run test:coverage
+
+      # Dummy values: only needed so the build can inline the env vars
+      - run: npm run build
+        env:
+          VITE_SUPABASE_URL: http://localhost
+          VITE_SUPABASE_ANON_KEY: dummy
+
+      # Informational: does not block merges
+      - run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true

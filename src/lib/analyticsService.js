@@ -1,8 +1,7 @@
 import { supabase } from '@/lib/supabase';
+import { isAnalyticsAllowed, ANALYTICS_STORAGE_KEYS } from '@/lib/consent';
 
-const SESSION_STORAGE_KEY = 'site_visit_session_id';
-const LAST_PAGE_VIEW_KEY = 'site_visit_last_page';
-const MIN_TIME_BETWEEN_LOGS_MS = 60_000; // 1 minute between logs of the same page
+const [SESSION_STORAGE_KEY, LAST_PAGE_VIEW_KEY] = ANALYTICS_STORAGE_KEYS;
 
 const getOrCreateSessionId = () => {
   if (typeof window === 'undefined') return null;
@@ -23,29 +22,29 @@ const getOrCreateSessionId = () => {
   }
 };
 
+// One visit per browser session and logical page (sessionStorage): re-renders, internal navigation back to the same
+// page and reloads do not insert again (Supabase egress). A new tab/session counts again.
 const shouldThrottleForPage = (pagePath) => {
   if (typeof window === 'undefined') return true;
 
   try {
-    const raw = localStorage.getItem(LAST_PAGE_VIEW_KEY);
-    const lastMap = raw ? JSON.parse(raw) : {};
-    const lastTimestamp = lastMap[pagePath];
+    const raw = sessionStorage.getItem(LAST_PAGE_VIEW_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    const logged = Array.isArray(parsed) ? parsed : [];
+    if (logged.includes(pagePath)) return true;
 
-    if (lastTimestamp && Date.now() - lastTimestamp < MIN_TIME_BETWEEN_LOGS_MS) {
-      return true;
-    }
-
-    lastMap[pagePath] = Date.now();
-    localStorage.setItem(LAST_PAGE_VIEW_KEY, JSON.stringify(lastMap));
+    sessionStorage.setItem(LAST_PAGE_VIEW_KEY, JSON.stringify([...logged, pagePath]));
     return false;
   } catch (error) {
-    console.warn('[Analytics] Unable to read/write last page view cache:', error);
+    console.warn('[Analytics] Unable to read/write the session page cache:', error);
     return false;
   }
 };
 
 export const trackPageVisit = async ({ pageUrl, userId }) => {
   if (typeof window === 'undefined') return;
+  // Opt-in: no insert and no localStorage write unless the visitor accepted analytics.
+  if (!isAnalyticsAllowed()) return;
 
   const page_path = pageUrl || window.location.pathname;
   if (shouldThrottleForPage(page_path)) return;

@@ -35,7 +35,7 @@ describe('getPendingRemittancesCount', () => {
     state.result = { count: 0, error: null };
   });
 
-  it('counts remittances awaiting payment or proof validation with a head count query', async () => {
+  it('counts remittances the admin can act on (validate or deliver) with a head count query', async () => {
     state.result = { count: 3, error: null };
 
     await expect(getPendingRemittancesCount()).resolves.toBe(3);
@@ -46,7 +46,7 @@ describe('getPendingRemittancesCount', () => {
     });
     expect(state.calls[1]).toEqual({
       in: 'status',
-      values: ['payment_pending', 'payment_proof_uploaded']
+      values: ['payment_proof_uploaded', 'payment_validated', 'processing']
     });
   });
 

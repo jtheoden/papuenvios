@@ -62,9 +62,18 @@ describe('ProvinceSelector - province list (decision D3, interpretation B)', () 
     expect(screen.queryByRole('option', { name: /Artemisa/ })).toBeNull();
   });
 
-  it('keeps the province fee label for a province priced at province level', () => {
+  it('never shows a fee in the province options, only the province name', () => {
     renderSelector();
-    expect(screen.getByRole('option', { name: /Ciego de Ávila - \$20\.00/ })).toBeInTheDocument();
+    const options = screen.getAllByRole('option').map((o) => o.textContent);
+    expect(options).toEqual(['Seleccione una provincia', 'Camagüey', 'Ciego de Ávila']);
+  });
+
+  it('does not show a free-shipping label in the province options either', () => {
+    renderSelector({
+      shippingZones: [zone('Holguín', null, 0, { free: true })],
+    });
+    expect(screen.getByRole('option', { name: 'Holguín' })).toBeInTheDocument();
+    expect(screen.queryByText(/Envío Gratis|Free Shipping/)).toBeNull();
   });
 });
 

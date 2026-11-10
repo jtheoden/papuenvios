@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useSettings } from '@/contexts/SettingsContext';
+import { resolveMarginInput } from '@/lib/marginResolver';
 
 /**
  * useProfitMargin Hook
@@ -45,16 +46,16 @@ export const useProfitMargin = ({ itemType = 'product', categoryId = null, overr
     if (financialSettings) {
       switch (itemType.toLowerCase()) {
         case 'product':
-          marginPercent = parseFloat(financialSettings.productProfit) || 40;
+          marginPercent = resolveMarginInput(financialSettings.productProfit, 40);
           break;
         case 'combo':
-          marginPercent = parseFloat(financialSettings.comboProfit) || 35;
+          marginPercent = resolveMarginInput(financialSettings.comboProfit, 35);
           break;
         case 'remittance':
           // DEPRECATED: Remittance profits are now calculated as commission = profit
           // This case is kept for backward compatibility but is not used in active code.
           // Actual remittance commissions are configured per remittance_type in the database.
-          marginPercent = parseFloat(financialSettings.remittanceProfit) || 10;
+          marginPercent = resolveMarginInput(financialSettings.remittanceProfit, 10);
           break;
         default:
           marginPercent = 40;

@@ -1,4 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
+
+// The refund section/block imports refundService, which imports the Supabase client (needs env vars): stub it.
+vi.mock('@/lib/supabase', () => ({ supabase: {} }));
+
+vi.mock('@/lib/paymentProofService', () => ({ getPaymentProofSignedUrl: vi.fn().mockResolvedValue({ success: false }) }));
 import { render, screen } from '@testing-library/react';
 import ES from '@/translations/ES.json';
 import EN from '@/translations/EN.json';
@@ -6,6 +11,8 @@ import EN from '@/translations/EN.json';
 vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({ t: (key) => key, language: 'es' })
 }));
+
+vi.mock('@/lib/orderComboService', () => ({ fetchComboDefinitions: vi.fn().mockResolvedValue(new Map()) }));
 
 vi.mock('@/lib/remittanceService', () => ({
   generateProofSignedUrl: vi.fn().mockResolvedValue({ success: false })
@@ -52,5 +59,17 @@ describe('OrderDetailsModal payer phone', () => {
   it('has the label key in both locales', () => {
     expect(ES.adminOrders.detail.payerPhone).toBeTruthy();
     expect(EN.adminOrders.detail.payerPhone).toBeTruthy();
+  });
+});
+
+describe('OrderDetailsModal delivery without a photo (W6a)', () => {
+  it.each(['delivered', 'completed'])('shows the "no photo" badge when a %s order has no delivery proof', (status) => {
+    renderModal({ status, delivered_at: '2026-01-05T00:00:00Z', delivery_proof_url: null });
+    expect(screen.getByText('adminOrders.detail.noDeliveryPhoto')).toBeInTheDocument();
+  });
+
+  it.each([['dispatched', null], ['delivered', 'u/o/p.jpg']])('does not show it for %s with proof %j', (status, delivery_proof_url) => {
+    renderModal({ status, delivery_proof_url });
+    expect(screen.queryByText('adminOrders.detail.noDeliveryPhoto')).toBeNull();
   });
 });

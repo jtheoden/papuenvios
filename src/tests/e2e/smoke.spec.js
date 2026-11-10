@@ -39,18 +39,27 @@ test.describe('Legal pages', () => {
   test('privacy page renders via login link', async ({ page }) => {
     await goToLogin(page);
 
-    const privacyLink = page.getByRole('button', { name: /política de privacidad|privacy policy/i }).first();
+    const privacyLink = page.getByRole('link', { name: /política de privacidad|privacy policy/i }).first();
     await expect(privacyLink).toBeVisible({ timeout: 8000 });
     await privacyLink.click();
 
     await expect(page.getByRole('heading', { name: /política de privacidad|privacy policy/i })).toBeVisible();
-    await expect(page.getByText(/soporte@papuenvios\.com/i).first()).toBeVisible();
+    // The page no longer prints a support e-mail; it ends with a Contact section pointing at the in-app channels.
+    await expect(page.getByRole('heading', { name: /contacto|contact/i })).toBeVisible();
+    // LegalContact renders one of: a mailto link (VITE_SUPPORT_EMAIL), a WhatsApp link, or the generic support-channel
+    // pointer. The E2E build sets none of the first two, so the generic pointer is expected; any of them is a valid channel.
+    await expect(
+      page
+        .locator('a[href^="mailto:"], a[href*="wa.me"]')
+        .or(page.getByText(/canal de soporte o WhatsApp|support or WhatsApp channel/i))
+        .first()
+    ).toBeVisible();
   });
 
   test('terms page renders via login link', async ({ page }) => {
     await goToLogin(page);
 
-    const termsLink = page.getByRole('button', { name: /términos de servicio|terms of service/i }).first();
+    const termsLink = page.getByRole('link', { name: /términos de servicio|terms of service/i }).first();
     await expect(termsLink).toBeVisible({ timeout: 8000 });
     await termsLink.click();
 
@@ -97,7 +106,8 @@ test.describe('Accessibility basics', () => {
 
   test('page has a single h1', async ({ page }) => {
     await page.goto('/');
-    const h1Count = await page.locator('h1').count();
-    expect(h1Count).toBeGreaterThanOrEqual(1);
+    // The page is rendered lazily (React.lazy): wait for the first h1 before counting.
+    await expect(page.locator('h1').first()).toBeVisible({ timeout: 10000 });
+    expect(await page.locator('h1').count()).toBeGreaterThanOrEqual(1);
   });
 });

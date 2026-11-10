@@ -7,6 +7,7 @@ import {
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useModal } from '@/contexts/ModalContext';
 import { toast } from '@/components/ui/use-toast';
+import LoadingState, { SkeletonBox } from '@/components/ui/LoadingState';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import {
   getMyRecipients,
@@ -17,7 +18,26 @@ import {
   updateRecipientAddress,
   deleteRecipientAddress
 } from '@/lib/recipientService';
+import { findEquivalentAddress } from '@/lib/recipientIdentity';
 import { getProvinceNames, getMunicipalitiesByProvince } from '@/lib/cubanLocations';
+
+// Entrance stagger cap: only the first cards animate.
+const STAGGERED_CARDS = 6;
+
+// Same grid and card footprint as the recipient cards.
+const RecipientsSkeleton = () => (
+  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+    {Array.from({ length: 3 }, (_, i) => (
+      <div key={i} className="glass-effect space-y-3 rounded-xl border-2 border-gray-200 p-4">
+        <SkeletonBox className="h-6 w-2/3" />
+        <SkeletonBox className="h-4 w-1/2" />
+        <SkeletonBox className="h-4 w-3/4" />
+        <SkeletonBox className="h-16 w-full" />
+        <SkeletonBox className="h-9 w-full" />
+      </div>
+    ))}
+  </div>
+);
 
 const MyRecipientsPage = ({ onNavigate }) => {
   const { t } = useLanguage();
@@ -26,6 +46,7 @@ const MyRecipientsPage = ({ onNavigate }) => {
   const [recipients, setRecipients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [editingRecipient, setEditingRecipient] = useState(null);
   const [provinces, setProvinces] = useState([]);
   const [municipalities, setMunicipalities] = useState([]);
@@ -165,42 +186,54 @@ const MyRecipientsPage = ({ onNavigate }) => {
       return;
     }
 
-    let result;
-    if (editingRecipient) {
-      result = await updateRecipient(editingRecipient.id, formData);
-      if (result.success && addressForm.province && addressForm.address_line_1) {
-        if (editingRecipient.addresses?.[0]) {
-          await updateRecipientAddress(editingRecipient.addresses[0].id, addressForm);
-        } else {
+    if (saving) return;
+    setSaving(true);
+    try {
+      let result;
+      if (editingRecipient) {
+        result = await updateRecipient(editingRecipient.id, formData);
+        if (result.success && addressForm.province && addressForm.address_line_1) {
+          if (editingRecipient.addresses?.[0]) {
+            await updateRecipientAddress(editingRecipient.addresses[0].id, addressForm);
+          } else {
+            await addRecipientAddress({
+              recipient_id: editingRecipient.id,
+              ...addressForm
+            });
+          }
+        }
+      } else {
+        result = await createRecipient(formData);
+        // An existing recipient may already have this very address: do not stack a duplicate
+        const hasTypedAddress = addressForm.province && addressForm.address_line_1;
+        if (result.success && hasTypedAddress && !(result.existing && findEquivalentAddress(result.recipient.addresses, addressForm))) {
           await addRecipientAddress({
-            recipient_id: editingRecipient.id,
+            recipient_id: result.recipient.id,
             ...addressForm
           });
         }
       }
-    } else {
-      result = await createRecipient(formData);
-      if (result.success && addressForm.province && addressForm.address_line_1) {
-        await addRecipientAddress({
-          recipient_id: result.recipient.id,
-          ...addressForm
+
+      if (result.success) {
+        toast({
+          title: t('common.success'),
+          description: result.existing
+            ? t('recipients.recipientAlreadyExists')
+            : editingRecipient ? t('recipients.recipientUpdated') : t('recipients.recipientCreated')
+        });
+        handleCloseForm();
+        loadRecipients();
+      } else {
+        toast({
+          title: t('common.error'),
+          description: result.code === 'DB_UNIQUE_VIOLATION'
+            ? t('recipients.recipientDuplicateOnEdit')
+            : (result.error ?? result.message),
+          variant: 'destructive'
         });
       }
-    }
-
-    if (result.success) {
-      toast({
-        title: t('common.success'),
-        description: editingRecipient ? t('recipients.recipientUpdated') : t('recipients.recipientCreated')
-      });
-      handleCloseForm();
-      loadRecipients();
-    } else {
-      toast({
-        title: t('common.error'),
-        description: result.error,
-        variant: 'destructive'
-      });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -240,14 +273,6 @@ const MyRecipientsPage = ({ onNavigate }) => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-6xl mx-auto py-8 px-4 space-y-6">
       {/* Back Button */}
@@ -281,7 +306,8 @@ const MyRecipientsPage = ({ onNavigate }) => {
         </button>
       </div>
 
-      {/* Recipients List */}
+      {/* Recipients List: skeleton only for the first load; a reload keeps the current list on screen */}
+      <LoadingState loading={loading && recipients.length === 0} skeleton={<RecipientsSkeleton />}>
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         {recipients.length === 0 ? (
           <div className="col-span-full glass-effect p-8 rounded-xl text-center">
@@ -292,22 +318,21 @@ const MyRecipientsPage = ({ onNavigate }) => {
             </p>
             <button
               onClick={() => handleOpenForm()}
-              className="text-blue-600 hover:underline"
+              className="text-theme-link hover:underline"
             >
               {t('recipients.createFirstRecipient')}
             </button>
           </div>
         ) : (
-          recipients.map((recipient) => {
+          recipients.map((recipient, index) => {
             const defaultAddress = recipient.addresses?.find((a) => a.is_default) ||
               recipient.addresses?.[0];
 
             return (
-              <motion.div
+              <div
                 key={recipient.id}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="glass-effect p-4 rounded-xl border-2 border-gray-200 hover:border-blue-400 transition-all"
+                className={`glass-effect p-4 rounded-xl border-2 border-gray-200 hover:border-blue-400 transition-all ${index < STAGGERED_CARDS ? 'motion-safe:animate-enter' : ''}`}
+                style={index < STAGGERED_CARDS ? { '--stagger-index': index } : undefined}
               >
                 {/* Header */}
                 <div className="flex justify-between items-start mb-3">
@@ -385,11 +410,12 @@ const MyRecipientsPage = ({ onNavigate }) => {
                     {t('recipients.deleteAction')}
                   </button>
                 </div>
-              </motion.div>
+              </div>
             );
           })
         )}
       </div>
+      </LoadingState>
 
       {/* Form Modal */}
       <AnimatePresence>
@@ -604,7 +630,9 @@ const MyRecipientsPage = ({ onNavigate }) => {
                   </button>
                   <button
                     type="submit"
-                    className={`flex-1 ${getPrimaryButtonStyle()} flex items-center justify-center gap-2`}
+                    disabled={saving}
+                    aria-busy={saving}
+                    className={`flex-1 ${getPrimaryButtonStyle()} flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed`}
                   >
                     <Save className="h-5 w-5" />
                     {editingRecipient ? t('recipients.updateButton') : t('common.save')}

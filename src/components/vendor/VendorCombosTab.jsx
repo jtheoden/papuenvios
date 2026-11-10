@@ -7,12 +7,15 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
+import { resolveMarginInput } from '@/lib/marginResolver';
+import { isImageUploadError, getImageUploadMessageKey } from '@/lib/imageStorage';
 import { createCombo, updateCombo as updateComboDB, deleteCombo, setComboActiveState } from '@/lib/comboService';
-import { checkComboStockIssues, computeComboPricing, evaluateComboPricing } from '@/lib/comboUtils';
+import { checkComboStockIssues, computeComboPricing, convertWithRates, evaluateComboPricing } from '@/lib/comboUtils';
 import ComboMarginWarning from '@/components/vendor/ComboMarginWarning';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { logActivity } from '@/lib/activityLogger';
-import { useRealtimeCombos } from '@/hooks/useRealtimeSubscription';
+import { hasAdminComboFields } from '@/lib/adminCatalogColumns';
+import ComboProductPicker from '@/components/vendor/ComboProductPicker';
 
 /**
  * Vendor Combos Tab Component
@@ -64,17 +67,6 @@ const VendorCombosTab = ({
     });
   }, []);
 
-  // Real-time subscription for combo updates
-  useRealtimeCombos({
-    enabled: true,
-    onUpdate: () => {
-      if (refreshCombos) {
-        refreshCombos(true);
-      } else if (onCombosRefresh) {
-        onCombosRefresh(true);
-      }
-    }
-  });
 
   const currencyCodeById = useMemo(() => {
     return (currencies || []).reduce((acc, currency) => {
@@ -101,15 +93,7 @@ const VendorCombosTab = ({
   const selectedCurrencyCode = currencyCodeById[selectedCurrency] || baseCurrencyCode;
 
   const convertPrice = useCallback((amount, fromCurrencyId, toCurrencyId) => {
-    if (!amount || !fromCurrencyId || !toCurrencyId || fromCurrencyId === toCurrencyId) return amount;
-
-    const direct = exchangeRates?.[`${fromCurrencyId}-${toCurrencyId}`];
-    if (direct) return amount * direct;
-
-    const inverse = exchangeRates?.[`${toCurrencyId}-${fromCurrencyId}`];
-    if (inverse) return amount / inverse;
-
-    return amount;
+    return convertWithRates(amount, fromCurrencyId, toCurrencyId, exchangeRates);
   }, [exchangeRates]);
 
   // Compare a combo price against its products bought separately (display currency)
@@ -127,7 +111,8 @@ const VendorCombosTab = ({
     return evaluateCombo({
       products: comboForm.products,
       productQuantities: comboForm.productQuantities,
-      profitMargin: comboForm.profitMargin || financialSettings.comboProfit
+      // resolveMarginInput keeps an explicit 0%: `||` would turn it into the default margin
+      profitMargin: resolveMarginInput(comboForm.profitMargin, financialSettings.comboProfit)
     });
   }, [comboForm?.products, comboForm?.productQuantities, comboForm?.profitMargin, evaluateCombo, financialSettings.comboProfit]);
 
@@ -150,6 +135,14 @@ const VendorCombosTab = ({
   };
 
   const openEditComboForm = (combo) => {
+    // Rows from the public catalog carry no cost fields: reload the admin data instead of
+    // seeding a form that would overwrite them with defaults.
+    if (!hasAdminComboFields(combo)) {
+      toast({ title: t('vendor.adminDataPending'), variant: 'destructive' });
+      refreshCombos?.(true);
+      return;
+    }
+
     const productQuantities = {};
     const productIds = [];
 
@@ -176,13 +169,14 @@ const VendorCombosTab = ({
   // Compute combo base price from selected products (in base currency)
   const comboBasePrice = useMemo(() => {
     if (!comboForm?.products?.length) return 0;
-    return comboForm.products.reduce((total, productId) => {
+    const total = comboForm.products.reduce((sum, productId) => {
       const product = products.find(p => p.id === productId);
-      if (!product) return total;
+      if (!product) return sum;
       const qty = comboForm.productQuantities[productId] || 1;
       const priceInBase = convertPrice(product.base_price, product.base_currency_id, baseCurrencyId);
-      return total + (priceInBase * qty);
+      return sum + (priceInBase * qty);
     }, 0);
+    return Number.isFinite(total) ? total : 0;
   }, [comboForm?.products, comboForm?.productQuantities, products, baseCurrencyId, convertPrice]);
 
   // Cross-calculate profit fields when any one changes
@@ -221,7 +215,7 @@ const VendorCombosTab = ({
 
   // Recalculate profit amount and sell price when comboBasePrice changes (products added/removed)
   useEffect(() => {
-    if (!comboForm || comboBasePrice <= 0) return;
+    if (!comboForm || !(comboBasePrice > 0)) return;
     const margin = parseFloat(comboForm.profitMargin);
     if (isNaN(margin)) return;
     const amount = (comboBasePrice * margin / 100).toFixed(2);
@@ -388,7 +382,7 @@ const VendorCombosTab = ({
     }
 
     // Margin validation
-    const margin = parseFloat(comboForm.profitMargin || financialSettings.comboProfit);
+    const margin = resolveMarginInput(comboForm.profitMargin, financialSettings.comboProfit);
     if (margin < 0) {
       toast({
         title: t('vendor.combos.cannotSaveNegative'),
@@ -419,7 +413,7 @@ const VendorCombosTab = ({
         description: comboForm.description || '',
         image: comboForm.image || '',
         productsWithQuantities: productsWithQuantities,
-        profitMargin: parseFloat(comboForm.profitMargin || financialSettings.comboProfit),
+        profitMargin: margin,
         slug: comboForm.name.toLowerCase().replace(/\s+/g, '-')
       };
 
@@ -448,7 +442,7 @@ const VendorCombosTab = ({
       console.error('[handleComboSubmit] Error details:', { message: error?.message, code: error?.code, stack: error?.stack });
       toast({
         title: 'Error',
-        description: error.message,
+        description: isImageUploadError(error) ? t(getImageUploadMessageKey(error)) : (error?.i18nKey ? t(error.i18nKey) : error.message),
         variant: 'destructive'
       });
     } finally {
@@ -469,8 +463,8 @@ const VendorCombosTab = ({
     });
 
     return {
-      base: prices.basePrice.toFixed(2),
-      final: prices.finalPrice.toFixed(2)
+      base: Number.isFinite(prices.basePrice) ? prices.basePrice.toFixed(2) : '—',
+      final: Number.isFinite(prices.finalPrice) ? prices.finalPrice.toFixed(2) : '—'
     };
   };
 
@@ -546,7 +540,7 @@ const VendorCombosTab = ({
                     key={mode.id}
                     type="button"
                     onClick={() => {
-                      if (comboBasePrice <= 0 && mode.id !== 'percentage') {
+                      if (!(comboBasePrice > 0) && mode.id !== 'percentage') {
                         toast({ title: t('vendor.combos.addProductsFirst'), variant: 'destructive' });
                         return;
                       }
@@ -681,61 +675,15 @@ const VendorCombosTab = ({
             {/* Right Column - Product Selection */}
             <div>
               <h3 className="font-semibold mb-2">{t('vendor.combos.products')}</h3>
-              <div className="max-h-96 overflow-y-auto space-y-2 p-2 border rounded-lg bg-white">
-                {products.map(p => {
-                  const stock = p.stock !== undefined ? p.stock : 0;
-                  const minStock = p.min_stock_alert || 10;
-                  const isOutOfStock = stock === 0;
-                  const isLowStock = stock > 0 && stock <= minStock;
-                  const requiredQuantity = comboForm.productQuantities[p.id] || 1;
-                  const hasInsufficientStock = comboForm.products.includes(p.id) && stock < requiredQuantity;
-
-                  return (
-                    <div
-                      key={p.id}
-                      className={`flex items-center gap-2 p-2 rounded ${
-                        isOutOfStock ? 'bg-red-50 border border-red-200' :
-                        isLowStock || hasInsufficientStock ? 'bg-yellow-50 border border-yellow-200' :
-                        'border border-transparent'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        id={`p-${p.id}`}
-                        checked={comboForm.products.includes(p.id)}
-                        onChange={() => handleComboProductToggle(p.id)}
-                        disabled={isOutOfStock}
-                        className="flex-shrink-0"
-                      />
-                      <label
-                        htmlFor={`p-${p.id}`}
-                        className={`cursor-pointer flex-1 ${isOutOfStock ? 'text-gray-400 line-through' : ''}`}
-                      >
-                        {p.name_es || p.name}
-                      </label>
-                      {isOutOfStock && (
-                        <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
-                      )}
-                      {isLowStock && !isOutOfStock && (
-                        <AlertTriangle className="h-4 w-4 text-orange-500 flex-shrink-0" />
-                      )}
-                      {hasInsufficientStock && (
-                        <AlertTriangle className="h-4 w-4 text-orange-600 flex-shrink-0" />
-                      )}
-                      {comboForm.products.includes(p.id) && (
-                        <input
-                          type="number"
-                          min="1"
-                          value={comboForm.productQuantities[p.id] || 1}
-                          onChange={(e) => handleComboProductQuantityChange(p.id, e.target.value)}
-                          className="w-16 px-2 py-1 border rounded text-sm"
-                          placeholder="Cant."
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+              <ComboProductPicker
+                key={comboForm.id || 'new'}
+                products={products}
+                selectedIds={comboForm.products}
+                quantities={comboForm.productQuantities}
+                onToggle={handleComboProductToggle}
+                onQuantityChange={handleComboProductQuantityChange}
+                t={t}
+              />
             </div>
 
             {/* Combo more expensive than its products bought separately */}
@@ -751,6 +699,13 @@ const VendorCombosTab = ({
               </div>
             )}
 
+            {/* A product could not be converted (missing rate): say so instead of silently skipping the check */}
+            {comboFormEvaluation && comboFormEvaluation.comparable === false && (
+              <p role="status" data-testid="combo-comparison-unavailable" className="md:col-span-2 text-sm text-amber-700">
+                {t('vendor.combos.priceWarningUnavailable')}
+              </p>
+            )}
+
             {/* Price Summary with Cost Breakdown */}
             <div className="md:col-span-2">
               {(() => {
@@ -758,18 +713,19 @@ const VendorCombosTab = ({
                 const prices = hasProducts ? getComboCalculatedPrices(comboForm) : { base: '0.00', final: '0.00' };
                 const baseNum = parseFloat(prices.base) || 0;
                 const finalNum = hasProducts ? (parseFloat(prices.final) || 0) : 0;
-                const margin = parseFloat(comboForm.profitMargin || financialSettings.comboProfit) || 0;
+                const margin = resolveMarginInput(comboForm.profitMargin, financialSettings.comboProfit) || 0;
                 const marginAmount = finalNum - baseNum;
 
                 // Calculate user savings: sum of actual individual product final prices vs combo price
                 const displayCurrencyId = selectedCurrency || baseCurrencyId;
-                const individualTotal = hasProducts ? comboForm.products.reduce((sum, productId) => {
+                const calculatedIndividualTotal = hasProducts ? comboForm.products.reduce((sum, productId) => {
                   const product = products.find(p => p.id === productId);
                   if (!product) return sum;
                   const qty = comboForm.productQuantities[productId] || 1;
                   const finalInDisplay = convertPrice(parseFloat(product.final_price || product.base_price || 0), product.base_currency_id, displayCurrencyId);
                   return sum + (finalInDisplay * qty);
                 }, 0) : 0;
+                const individualTotal = Number.isFinite(calculatedIndividualTotal) ? calculatedIndividualTotal : 0;
                 const savings = individualTotal - finalNum;
                 const savingsPercent = individualTotal > 0 ? ((savings / individualTotal) * 100) : 0;
 
@@ -1041,6 +997,7 @@ const VendorCombosTab = ({
                             size="icon"
                             onClick={() => openEditComboForm(c)}
                             disabled={isProcessing}
+                            aria-label={t('vendor.combos.edit')}
                             className="h-8 w-8"
                           >
                             <Edit className="h-4 w-4" />

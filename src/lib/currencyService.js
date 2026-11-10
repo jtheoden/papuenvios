@@ -5,47 +5,72 @@ import {
   createValidationError,
   createNotFoundError,
   parseSupabaseError,
-  ERROR_CODES,
-  isSchemaMissingError
+  AppError,
+  ERROR_CODES
 } from './errorHandler';
+import { rateAgeHours } from './rateAge';
+import { invalidateCatalog } from './catalogCache';
+import { subscribeApiWrites, dropApiCaches } from './requestBudget';
 
-const OFFICIAL_RATE_FALLBACKS = {
-  USD: 1,
-  MLC: 1,
-  CUP: 0.041
+const ratesChangedListeners = new Set();
+
+// Only an RLS error proves the role problem. A 0-row write may also mean the rate no longer exists, so it carries
+// no requiredRole and the UI (which knows the role) picks the text.
+const rateForbiddenError = () => new AppError(
+  'Exchange rate not changed: only a super_admin can change exchange rates.',
+  ERROR_CODES.FORBIDDEN,
+  403,
+  { requiredRole: 'super_admin' }
+);
+const rateNotChangedError = () => new AppError(
+  'Exchange rate not changed: no matching active rate was found.',
+  ERROR_CODES.NOT_FOUND,
+  404,
+  { reason: 'no_rows' }
+);
+const ratePairError = (code, message, context = {}) => new AppError(message, code, 409, context);
+const isRlsViolation = (error) => error?.code === '42501' && /row-level security/i.test(error?.message || '');
+const parseRateWriteError = (error) => (isRlsViolation(error) ? rateForbiddenError() : parseSupabaseError(error));
+
+/**
+ * Subscribe to exchange-rate writes so rate caches can invalidate themselves.
+ * @param {function} listener
+ * @returns {function} unsubscribe
+ */
+export const subscribeRatesChanged = (listener) => {
+  ratesChangedListeners.add(listener);
+  return () => ratesChangedListeners.delete(listener);
 };
 
-const OFFICIAL_RATES_STORAGE_KEY = 'officialRatesUnavailable';
-const isBrowser = typeof window !== 'undefined';
-const officialRatesDisabledByEnv = typeof import.meta !== 'undefined' && import.meta.env?.VITE_DISABLE_OFFICIAL_RATES === 'true';
-
-const getPersistedOfficialRatesUnavailable = () => {
-  if (!isBrowser) return false;
-  try {
-    return window.localStorage.getItem(OFFICIAL_RATES_STORAGE_KEY) === 'true';
-  } catch (error) {
-    console.warn('[currencyService] Unable to read official rates availability from storage:', error);
-    return false;
-  }
+const notifyRatesChanged = () => {
+  ratesChangedListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch (error) {
+      logError(error, { operation: 'notifyRatesChanged' });
+    }
+  });
 };
 
-const markOfficialRatesUnavailable = () => {
-  officialRatesUnavailable = true;
-  if (!isBrowser) return;
-  try {
-    window.localStorage.setItem(OFFICIAL_RATES_STORAGE_KEY, 'true');
-  } catch (error) {
-    console.warn('[currencyService] Unable to persist official rates availability flag:', error);
-  }
+/**
+ * The rates changed (or the caller saw a priced amount differ from the displayed one): drop every cached rate read and
+ * tell the rate caches (CurrencyContext reloads).
+ */
+export const invalidateRateCaches = () => {
+  dropApiCaches();
+  notifyRatesChanged();
 };
 
-// Circuit breaker to avoid spamming Supabase when the table/columns are missing
-let officialRatesUnavailable = officialRatesDisabledByEnv || getPersistedOfficialRatesUnavailable();
+// Any write to rates or currencies through the client (including the Settings save paths that update the table
+// directly) invalidates the rate caches.
+subscribeApiWrites((path) => {
+  if (/^\/rest\/v1\/(exchange_rates|currencies)\b/.test(path)) notifyRatesChanged();
+});
 
 /**
  * Currency Service - Manages currency CRUD operations and rate conversions
  * Currencies: USD, EUR, CUP (Cuba market focus)
- * Rate Conversion Hierarchy: defined rates → official rates fallback
+ * Rate conversion uses only active exchange_rates rows; without one it fails closed
  */
 
 /**
@@ -253,6 +278,43 @@ export const updateCurrency = async (currencyId, currencyData) => {
 };
 
 /**
+ * Show or hide a currency in the public currency selector (ADMIN ONLY). The currency stays active: it keeps
+ * converting and pricing, it just is not offered to shoppers. The database refuses to hide the base currency.
+ * @param {string} currencyId - Currency UUID
+ * @param {boolean} show - Whether the selector offers it
+ * @returns {Promise<Object>} Updated currency object
+ * @throws {AppError} VALIDATION_FAILED on bad input, NOT_FOUND if missing, DB_ERROR on failure
+ */
+export const setCurrencyShowInSelector = async (currencyId, show) => {
+  try {
+    if (!currencyId || typeof show !== 'boolean') {
+      throw createValidationError({ currencyId: 'Currency ID and a boolean value are required' }, 'Invalid selector visibility');
+    }
+
+    const { data, error } = await supabase
+      .from('currencies')
+      .update({ show_in_selector: show, updated_at: new Date().toISOString() })
+      .eq('id', currencyId)
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw createNotFoundError('Currency', currencyId);
+      }
+      throw parseSupabaseError(error);
+    }
+
+    return data;
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'setCurrencyShowInSelector', currencyId });
+    logError(appError, { operation: 'setCurrencyShowInSelector', currencyId });
+    throw appError;
+  }
+};
+
+/**
  * Soft delete a currency (set is_active = false) - ADMIN ONLY
  * @param {string} currencyId - Currency UUID
  * @returns {Promise<boolean>} True if successful
@@ -288,14 +350,14 @@ export const deleteCurrency = async (currencyId) => {
 /**
  * Get conversion rate between two currencies using IDs
  * CONVERSION HIERARCHY:
- * 1. Check exchange_rates table (defined/API rates)
- * 2. If not found, check official_currency_rates (fallback)
- * 3. If not found, throw SERVICE_UNAVAILABLE error
+ * 1. Active direct rate in exchange_rates
+ * 2. Inverse of the active opposite rate
+ * 3. Otherwise throw SERVICE_UNAVAILABLE (no static or invented fallback)
  *
  * @param {string} fromCurrencyId - Source currency UUID
  * @param {string} toCurrencyId - Target currency UUID
  * @returns {Promise<number>} Conversion rate (amount in fromCurrency * rate = amount in toCurrency)
- * @throws {AppError} NOT_FOUND if currencies not found, SERVICE_UNAVAILABLE if rates unavailable
+ * @throws {AppError} SERVICE_UNAVAILABLE if no active rate exists
  */
 export const getConversionRate = async (fromCurrencyId, toCurrencyId) => {
   try {
@@ -311,111 +373,38 @@ export const getConversionRate = async (fromCurrencyId, toCurrencyId) => {
       }, 'Missing currency IDs');
     }
 
-    // 1. Try to get defined rate
-    const { data: rateData, error: rateError } = await supabase
+    // One query for every pair (same URL -> deduped and cached by requestBudget): the latest active row of each pair.
+    const { data: rows, error: rateError } = await supabase
       .from('exchange_rates')
-      .select('rate')
-      .eq('from_currency_id', fromCurrencyId)
-      .eq('to_currency_id', toCurrencyId)
+      .select('from_currency_id, to_currency_id, rate, effective_date')
       .eq('is_active', true)
-      .order('effective_date', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .order('effective_date', { ascending: false });
 
     if (rateError) {
       throw parseSupabaseError(rateError);
     }
 
-    if (rateData && rateData.rate) {
-      return parseFloat(rateData.rate);
+    const latestRate = (from, to) => (rows || []).find((r) => r.from_currency_id === from && r.to_currency_id === to)?.rate;
+
+    // 1. Defined rate
+    const direct = latestRate(fromCurrencyId, toCurrencyId);
+    if (direct) {
+      return parseFloat(direct);
     }
 
-    // 2. Fallback: Try inverse rate
-    const { data: inverseRateData, error: invError } = await supabase
-      .from('exchange_rates')
-      .select('rate')
-      .eq('from_currency_id', toCurrencyId)
-      .eq('to_currency_id', fromCurrencyId)
-      .eq('is_active', true)
-      .order('effective_date', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (invError) {
-      throw parseSupabaseError(invError);
+    // 2. Fallback: inverse rate
+    const inverse = latestRate(toCurrencyId, fromCurrencyId);
+    if (inverse) {
+      return 1 / parseFloat(inverse);
     }
 
-    if (inverseRateData && inverseRateData.rate) {
-      return 1 / parseFloat(inverseRateData.rate);
-    }
-
-    // 3. Fallback: Official currency rates (table or static defaults)
-    const { data: fromCurr, error: err1 } = await supabase
-      .from('currencies')
-      .select('code')
-      .eq('id', fromCurrencyId)
-      .single();
-
-    const { data: toCurr, error: err2 } = await supabase
-      .from('currencies')
-      .select('code')
-      .eq('id', toCurrencyId)
-      .single();
-
-    if (err1 || err2) {
-      throw createNotFoundError('Currency', fromCurrencyId || toCurrencyId);
-    }
-
-    const fetchOfficialRate = async (currencyCode) => {
-      try {
-        if (officialRatesUnavailable) {
-          return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
-        }
-
-        const { data, error } = await supabase
-          .from('official_currency_rates')
-          .select('rate_to_usd')
-          .eq('currency_code', currencyCode)
-          .maybeSingle();
-
-        if (error) {
-          const parsed = parseSupabaseError(error);
-          const supabaseCode = error?.code || parsed?.context?.originalError?.code || parsed?.context?.postgresCode || parsed?.code || error?.status;
-          // If table/column is missing or inaccessible, gracefully fall back
-          if (isSchemaMissingError(error) ||
-              isSchemaMissingError(parsed) ||
-              ['42P01', 'PGRST116', 'PGRST204', '42703', 404, '404'].includes(supabaseCode) ||
-              error?.status === 404 ||
-              parsed?.context?.originalError?.status === 404) {
-            markOfficialRatesUnavailable();
-            return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
-          }
-          throw parsed;
-        }
-
-        if (data?.rate_to_usd !== undefined && data?.rate_to_usd !== null) {
-          return parseFloat(data.rate_to_usd);
-        }
-
-        return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
-      } catch (rateError) {
-        logError(rateError, { operation: 'getConversionRate - officialRateFallback', currency: currencyCode });
-        if (isSchemaMissingError(rateError) || rateError?.status === 404) {
-          markOfficialRatesUnavailable();
-        }
-        return OFFICIAL_RATE_FALLBACKS[currencyCode] ?? null;
-      }
-    };
-
-    const fromRate = await fetchOfficialRate(fromCurr.code);
-    const toRate = await fetchOfficialRate(toCurr.code);
-
-    if (fromRate !== null && fromRate !== undefined && toRate !== null && toRate !== undefined) {
-      // Calculate: (1 from_currency = X USD) / (1 to_currency = Y USD) = conversion rate
-      return fromRate / toRate;
-    }
-
-    throw new Error(`Official rates not found for ${fromCurr.code} or ${toCurr.code}`);
+    // 3. No active pair: fail closed, never invent a rate
+    throw new AppError(
+      'No active exchange rate for this currency pair',
+      ERROR_CODES.SERVICE_UNAVAILABLE,
+      503,
+      { from: fromCurrencyId, to: toCurrencyId }
+    );
 
   } catch (error) {
     if (error.code) throw error;
@@ -427,6 +416,43 @@ export const getConversionRate = async (fromCurrencyId, toCurrencyId) => {
     logError(appError, { operation: 'getConversionRate', from: fromCurrencyId, to: toCurrencyId });
     throw appError;
   }
+};
+
+/** Latest active rate of a directed pair read from the server (never cached), or null. */
+const readActivePairRate = async (fromCurrencyId, toCurrencyId) => {
+  const { data, error } = await supabase
+    .from('exchange_rates')
+    .select('rate')
+    .eq('from_currency_id', fromCurrencyId)
+    .eq('to_currency_id', toCurrencyId)
+    .eq('is_active', true)
+    .order('effective_date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw parseSupabaseError(error);
+  }
+  return data?.rate ? parseFloat(data.rate) : null;
+};
+
+/**
+ * Conversion rate read live from the server (direct pair, else the inverse of the opposite pair; fail closed), for
+ * every amount that is SAVED (order lines, product prices, remittances). getConversionRate is the cached display read.
+ * @throws {AppError} SERVICE_UNAVAILABLE if no active rate exists
+ */
+export const getLiveConversionRate = async (fromCurrencyId, toCurrencyId) => {
+  if (fromCurrencyId === toCurrencyId) return 1;
+  const direct = await readActivePairRate(fromCurrencyId, toCurrencyId);
+  if (direct) return direct;
+  const inverse = await readActivePairRate(toCurrencyId, fromCurrencyId);
+  if (inverse) return 1 / inverse;
+  throw new AppError(
+    'No active exchange rate for this currency pair',
+    ERROR_CODES.SERVICE_UNAVAILABLE,
+    503,
+    { from: fromCurrencyId, to: toCurrencyId }
+  );
 };
 
 /**
@@ -559,7 +585,8 @@ export const getExchangeRate = async (fromCurrencyCode, toCurrencyCode) => {
     const fromCurrency = currencies.find(c => c.code === fromCurrencyCode);
     const toCurrency = currencies.find(c => c.code === toCurrencyCode);
 
-    return await getConversionRate(fromCurrency.id, toCurrency.id);
+    // Prices an operation (remittance confirmation, cart): live pair reads, never the cached all-rates read.
+    return await getLiveConversionRate(fromCurrency.id, toCurrency.id);
 
   } catch (error) {
     if (error.code) throw error;
@@ -607,43 +634,6 @@ export const convertCurrency = async (amount, fromCurrencyCode, toCurrencyCode) 
 };
 
 /**
- * Fetch official exchange rates from exchangerate-api.com
- * Returns rates relative to USD (as fallback for missing defined rates)
- *
- * @returns {Promise<Object>} Map of {currencyCode: rateToUSD}
- * @throws {AppError} NETWORK_ERROR if API call fails
- */
-export const fetchOfficialRates = async () => {
-  try {
-    const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch exchange rates from API');
-    }
-
-    const data = await response.json();
-
-    // Return rates for common currencies
-    const rates = {
-      EUR: data.rates.EUR || 1,
-      GBP: data.rates.GBP || 1,
-      CAD: data.rates.CAD || 1,
-      MXN: data.rates.MXN || 1,
-      USD: 1,
-      // Note: CUP might not be in API, will need manual input
-    };
-
-    return rates;
-  } catch (error) {
-    const appError = handleError(error, ERROR_CODES.NETWORK_ERROR, {
-      operation: 'fetchOfficialRates'
-    });
-    logError(appError, { operation: 'fetchOfficialRates' });
-    throw appError;
-  }
-};
-
-/**
  * Get all exchange rates (ADMIN VIEW)
  * @returns {Promise<Array>} Array of exchange rate objects with related currencies
  * @throws {AppError} DB_ERROR if query fails
@@ -656,7 +646,9 @@ export const getAllExchangeRates = async () => {
         id,
         rate,
         effective_date,
+        updated_at,
         is_active,
+        market_rate,
         from_currency_id,
         to_currency_id,
         from_currency:from_currency_id(id, code, name_es, name_en, symbol),
@@ -679,6 +671,82 @@ export const getAllExchangeRates = async () => {
 };
 
 /**
+ * Active rate of a directed pair by currency CODE, for display (single read source for the UI).
+ * Fail closed: no active row or an unusable stored rate -> null, never 0. A failed read throws, so the
+ * caller can tell "no rate" from "could not load" and offer a retry.
+ *
+ * @param {string} fromCode - e.g. 'USD'
+ * @param {string} toCode - e.g. 'CUP'
+ * @param {{now?: Date}} [options] now is injectable for tests
+ * @returns {Promise<{rate: number, effective_date: string, updated_at: string|null, ageHours: number|null}|null>}
+ * @throws {AppError} DB_ERROR if the query fails
+ */
+export const getActiveRate = async (fromCode, toCode, { now = new Date() } = {}) => {
+  if (!fromCode || !toCode) return null;
+  try {
+    const { data, error } = await supabase
+      .from('exchange_rates')
+      .select('rate, effective_date, updated_at, from_currency:from_currency_id!inner(code), to_currency:to_currency_id!inner(code)')
+      .eq('is_active', true)
+      .eq('from_currency.code', String(fromCode).toUpperCase())
+      .eq('to_currency.code', String(toCode).toUpperCase())
+      .order('effective_date', { ascending: false })
+      .order('updated_at', { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    const rate = Number(data?.rate);
+    if (!data || !Number.isFinite(rate) || rate <= 0) return null;
+
+    return {
+      rate,
+      effective_date: data.effective_date,
+      updated_at: data.updated_at ?? null,
+      ageHours: rateAgeHours(data.effective_date, now)
+    };
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getActiveRate', from: fromCode, to: toCode });
+    logError(appError, { operation: 'getActiveRate', from: fromCode, to: toCode });
+    throw appError;
+  }
+};
+
+/**
+ * All active rates as a `${fromCurrencyId}-${toCurrencyId}` -> rate map (one query, for screens that
+ * convert many prices, e.g. the vendor catalog).
+ * @returns {Promise<Object<string, number>>}
+ * @throws {AppError} DB_ERROR if the query fails
+ */
+export const getActiveRatesMap = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('exchange_rates')
+      .select('from_currency_id, to_currency_id, rate')
+      .eq('is_active', true);
+
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+
+    const map = {};
+    (data || []).forEach((r) => {
+      map[`${r.from_currency_id}-${r.to_currency_id}`] = r.rate;
+    });
+    return map;
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getActiveRatesMap' });
+    logError(appError, { operation: 'getActiveRatesMap' });
+    throw appError;
+  }
+};
+
+/**
  * Create or update exchange rate (ADMIN ONLY)
  * @param {Object} rateData - Exchange rate data
  * @param {string} rateData.fromCurrencyId - Source currency UUID
@@ -688,6 +756,34 @@ export const getAllExchangeRates = async () => {
  * @returns {Promise<Object>} Created or updated exchange rate object
  * @throws {AppError} VALIDATION_FAILED if required fields missing, DB_ERROR on failure
  */
+/**
+ * Optional internal reference rate: undefined when not provided (the column is then left untouched), else a
+ * positive finite number. Anything else is a validation error.
+ */
+const parseMarketRate = (value) => {
+  if (value === null || value === undefined || value === '') return undefined;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    throw createValidationError({ marketRate: 'Market rate must be a positive finite number' }, 'Invalid market rate');
+  }
+  return numeric;
+};
+
+/**
+ * The DB enforces rate >= market_rate (constraint rate_higher_than_market): the operative reference can never exceed
+ * the rate users see. Refuse it here, before any write, with a message instead of a raw constraint error.
+ * Compared at the column scale (numeric(14,6)).
+ */
+const assertMarketNotAboveRate = (rate, market) => {
+  const atColumnScale = (value) => Math.round(value * 1e6) / 1e6;
+  if (market !== undefined && atColumnScale(rate) < atColumnScale(market)) {
+    throw createValidationError(
+      { marketRate: 'The operative (market) rate cannot be higher than the rate shown to users' },
+      'Market rate above the rate'
+    );
+  }
+};
+
 export const saveExchangeRate = async (rateData) => {
   try {
     // Input validation
@@ -710,7 +806,8 @@ export const saveExchangeRate = async (rateData) => {
         to_currency_id: rateData.toCurrencyId,
         rate: parseFloat(rateData.rate),
         effective_date: rateData.effectiveDate || new Date().toISOString().split('T')[0],
-        is_active: true
+        is_active: true,
+        ...(rateData.marketRate !== undefined && { market_rate: rateData.marketRate })
       }, {
         onConflict: 'from_currency_id,to_currency_id,effective_date'
       })
@@ -718,9 +815,10 @@ export const saveExchangeRate = async (rateData) => {
       .single();
 
     if (error) {
-      throw parseSupabaseError(error);
+      throw parseRateWriteError(error);
     }
 
+    notifyRatesChanged();
     return data;
   } catch (error) {
     if (error.code) throw error;
@@ -739,6 +837,77 @@ export const saveExchangeRate = async (rateData) => {
 };
 
 /**
+ * Save both directions of an exchange-rate pair. Client-side compensation is best effort;
+ * a future RPC is required for a transactional guarantee.
+ * If the inverse write fails, the direct rate is put back as it was: restored when the upsert overwrote a
+ * same-day row, deactivated when it created one. If that compensation fails too, EXCHANGE_RATE_PAIR_PARTIAL
+ * tells the caller the pair is half written.
+ */
+export const saveExchangeRatePair = async ({ fromCurrencyId, toCurrencyId, rate, effectiveDate, marketRate }) => {
+  const numericRate = Number(rate);
+  if (!Number.isFinite(numericRate) || numericRate <= 0) {
+    throw createValidationError({ rate: 'Rate must be a positive finite number' }, 'Invalid rate');
+  }
+  const market = parseMarketRate(marketRate);
+  assertMarketNotAboveRate(numericRate, market);
+  const effDate = effectiveDate || new Date().toISOString().split('T')[0];
+
+  // The upsert overwrites a same-day row (active or not): remember it to be able to put it back.
+  const { data: previousRows, error: previousError } = await supabase
+    .from('exchange_rates')
+    .select('id, rate, is_active, market_rate')
+    .eq('from_currency_id', fromCurrencyId)
+    .eq('to_currency_id', toCurrencyId)
+    .eq('effective_date', effDate);
+  if (previousError) throw parseSupabaseError(previousError);
+  const previous = previousRows?.[0];
+
+  const direct = await saveExchangeRate({ fromCurrencyId, toCurrencyId, rate: numericRate, effectiveDate: effDate, marketRate: market });
+  try {
+    const inverse = await saveExchangeRate({
+      fromCurrencyId: toCurrencyId,
+      toCurrencyId: fromCurrencyId,
+      rate: 1 / numericRate,
+      effectiveDate: effDate,
+      // The inverse leg keeps its own rate as reference: 1/market would exceed 1/rate whenever rate > market
+      marketRate: market === undefined ? undefined : 1 / numericRate
+    });
+    return { direct, inverse };
+  } catch (inverseError) {
+    let compensationError = null;
+    try {
+      if (previous) {
+        const { data, error } = await supabase
+          .from('exchange_rates')
+          .update({
+            rate: previous.rate,
+            is_active: previous.is_active,
+            ...(market !== undefined && previous.market_rate != null && { market_rate: previous.market_rate })
+          })
+          .eq('id', previous.id)
+          .select('id');
+        if (error) throw parseRateWriteError(error);
+        if (!data || data.length === 0) throw rateNotChangedError();
+      } else {
+        await deleteExchangeRate(direct.id);
+      }
+    } catch (error) {
+      compensationError = error;
+      logError(error, { operation: 'saveExchangeRatePair - restore direct rate', fromCurrencyId, toCurrencyId });
+    }
+    notifyRatesChanged();
+    if (compensationError) {
+      throw ratePairError(
+        ERROR_CODES.EXCHANGE_RATE_PAIR_PARTIAL,
+        'Exchange rate pair partially written: the inverse failed and the direct rate could not be restored.',
+        { fromCurrencyId, toCurrencyId }
+      );
+    }
+    throw inverseError;
+  }
+};
+
+/**
  * Soft delete exchange rate (ADMIN ONLY)
  * @param {string} rateId - Exchange rate UUID
  * @returns {Promise<boolean>} True if successful
@@ -750,15 +919,20 @@ export const deleteExchangeRate = async (rateId) => {
       throw createValidationError({ rateId: 'Rate ID required' }, 'Missing rate ID');
     }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('exchange_rates')
       .update({ is_active: false })
-      .eq('id', rateId);
+      .eq('id', rateId)
+      .select('id');
 
     if (error) {
-      throw parseSupabaseError(error);
+      throw parseRateWriteError(error);
+    }
+    if (!data || data.length === 0) {
+      throw rateNotChangedError();
     }
 
+    notifyRatesChanged();
     return true;
   } catch (error) {
     if (error.code) throw error;
@@ -771,6 +945,40 @@ export const deleteExchangeRate = async (rateId) => {
   }
 };
 
+const UNIQUE_VIOLATION = '23505';
+
+/**
+ * Update the ACTIVE row of a directed pair. exchange_rates is unique on (from, to, effective_date), and
+ * the admin edit stamps today's date, so an INACTIVE leftover of the same pair and day (created, then
+ * deactivated, earlier today) blocks the update with a unique violation. Only that inactive duplicate is
+ * cleared, once, and the update is retried; an active row owning the date is never touched and the error
+ * is surfaced.
+ */
+const updateActiveRateRow = async (fromCurrencyId, toCurrencyId, values) => {
+  const run = () => supabase
+    .from('exchange_rates')
+    .update(values)
+    .eq('from_currency_id', fromCurrencyId)
+    .eq('to_currency_id', toCurrencyId)
+    .eq('is_active', true)
+    .select('id');
+
+  const result = await run();
+  if (result.error?.code !== UNIQUE_VIOLATION) return result;
+
+  const { error: clearError } = await supabase
+    .from('exchange_rates')
+    .delete()
+    .eq('from_currency_id', fromCurrencyId)
+    .eq('to_currency_id', toCurrencyId)
+    .eq('effective_date', values.effective_date)
+    .eq('is_active', false)
+    .select('id');
+  if (clearError) return result;
+
+  return run();
+};
+
 /**
  * Update exchange rate pair - updates both direct and inverse rate (ADMIN ONLY)
  * @param {string} fromCurrencyId - From currency UUID
@@ -780,7 +988,7 @@ export const deleteExchangeRate = async (rateId) => {
  * @returns {Promise<{updatedCount: number}>} Number of rates updated
  * @throws {AppError} DB_ERROR on failure
  */
-export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRate, effectiveDate) => {
+export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRate, effectiveDate, options = {}) => {
   try {
     if (!fromCurrencyId || !toCurrencyId) {
       throw createValidationError({
@@ -795,33 +1003,81 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
 
     const rate = parseFloat(newRate);
     const inverseRate = 1 / rate;
+    const market = parseMarketRate(options?.marketRate);
+    assertMarketNotAboveRate(rate, market);
     const effDate = effectiveDate || new Date().toISOString().split('T')[0];
 
-    // Update direct rate (from→to)
-    const { error: directError } = await supabase
+    const { data: previousDirectRows, error: previousDirectError } = await supabase
       .from('exchange_rates')
-      .update({ rate: rate, effective_date: effDate })
+      .select('id, from_currency_id, to_currency_id, rate, effective_date, market_rate')
       .eq('from_currency_id', fromCurrencyId)
       .eq('to_currency_id', toCurrencyId)
       .eq('is_active', true);
+    if (previousDirectError) throw parseSupabaseError(previousDirectError);
+
+    const previousDirect = previousDirectRows?.[0];
+
+    // Update direct rate (from→to)
+    const { data: directRows, error: directError } = await updateActiveRateRow(
+      fromCurrencyId, toCurrencyId,
+      { rate: rate, effective_date: effDate, ...(market !== undefined && { market_rate: market }) }
+    );
 
     if (directError) {
-      throw parseSupabaseError(directError);
+      throw parseRateWriteError(directError);
+    }
+
+    // The pair may have been deactivated or deleted since the admin loaded it: never report a no-op as saved.
+    if (!directRows || directRows.length === 0) {
+      throw rateNotChangedError();
     }
 
     // Update inverse rate (to→from)
-    const { error: inverseError } = await supabase
-      .from('exchange_rates')
-      .update({ rate: inverseRate, effective_date: effDate })
-      .eq('from_currency_id', toCurrencyId)
-      .eq('to_currency_id', fromCurrencyId)
-      .eq('is_active', true);
+    const { data: inverseRows, error: inverseError } = await updateActiveRateRow(
+      toCurrencyId, fromCurrencyId,
+      { rate: inverseRate, effective_date: effDate, ...(market !== undefined && { market_rate: inverseRate }) }
+    );
 
-    if (inverseError) {
-      throw parseSupabaseError(inverseError);
+    // An inverse that errors or matches no active row leaves the pair inconsistent: put the direct rate back.
+    if (inverseError || !inverseRows || inverseRows.length === 0) {
+      const cause = inverseError
+        ? parseRateWriteError(inverseError)
+        : ratePairError(
+          ERROR_CODES.EXCHANGE_RATE_PAIR_INCOMPLETE,
+          'Exchange rate pair incomplete: the inverse rate is missing or inactive; the direct rate was restored.',
+          { fromCurrencyId, toCurrencyId }
+        );
+      let restored = false;
+      if (previousDirect) {
+        try {
+          const { data: restoredRows, error: restoreError } = await updateActiveRateRow(
+            fromCurrencyId,
+            toCurrencyId,
+            {
+              rate: previousDirect.rate,
+              effective_date: previousDirect.effective_date,
+              ...(market !== undefined && previousDirect.market_rate != null && { market_rate: previousDirect.market_rate })
+            }
+          );
+          if (restoreError) throw parseRateWriteError(restoreError);
+          restored = Boolean(restoredRows && restoredRows.length > 0);
+        } catch (restoreError) {
+          logError(restoreError, { operation: 'updateExchangeRatePair - restore direct rate', fromCurrencyId, toCurrencyId });
+        }
+      }
+      notifyRatesChanged();
+      if (!restored) {
+        throw ratePairError(
+          ERROR_CODES.EXCHANGE_RATE_PAIR_PARTIAL,
+          'Exchange rate pair partially updated: the inverse failed and the direct rate could not be restored.',
+          { fromCurrencyId, toCurrencyId }
+        );
+      }
+      throw cause;
     }
 
-    return { updatedCount: 2 };
+    notifyRatesChanged();
+    return { updatedCount: directRows.length + inverseRows.length };
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, {
@@ -843,11 +1099,12 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
  */
 export const deleteExchangeRatePair = async (fromCurrencyId, toCurrencyId) => {
   try {
-    if (!fromCurrencyId || !toCurrencyId) {
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidPattern.test(fromCurrencyId) || !uuidPattern.test(toCurrencyId)) {
       throw createValidationError({
-        fromCurrencyId: !fromCurrencyId ? 'From currency ID required' : null,
-        toCurrencyId: !toCurrencyId ? 'To currency ID required' : null
-      }, 'Missing currency IDs');
+        fromCurrencyId: !uuidPattern.test(fromCurrencyId) ? 'From currency ID must be a UUID' : null,
+        toCurrencyId: !uuidPattern.test(toCurrencyId) ? 'To currency ID must be a UUID' : null
+      }, 'Invalid currency IDs');
     }
 
     // Delete both direct rate (from→to) and inverse rate (to→from)
@@ -862,10 +1119,14 @@ export const deleteExchangeRatePair = async (fromCurrencyId, toCurrencyId) => {
       .select('id');
 
     if (error) {
-      throw parseSupabaseError(error);
+      throw parseRateWriteError(error);
+    }
+    if (!data || data.length === 0) {
+      throw rateNotChangedError();
     }
 
-    return { deletedCount: data?.length || 0 };
+    notifyRatesChanged();
+    return { deletedCount: data.length };
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, {
@@ -877,3 +1138,62 @@ export const deleteExchangeRatePair = async (fromCurrencyId, toCurrencyId) => {
     throw appError;
   }
 };
+
+// ===== Catalog repricing (USD<->CUP rate flow) =====
+// The migration may not be applied yet: a missing RPC/table answers { unavailable: true } and never throws,
+// so saving a rate keeps working exactly as before. Other failures come back as { error }.
+const REPRICE_UNAVAILABLE_CODES = new Set(['PGRST202', 'PGRST205', '42883', '42P01']);
+const REPRICE_UNAVAILABLE_MESSAGE = /could not find the (function|table)|schema cache|(function|relation) .* does not exist/i;
+// supabase-js puts the PostgREST code/message on the error, not an HTTP status; status 404 is kept for other clients.
+const isRepriceUnavailable = (error) => REPRICE_UNAVAILABLE_CODES.has(error?.code)
+  || error?.status === 404
+  || REPRICE_UNAVAILABLE_MESSAGE.test(error?.message ?? '');
+
+const runRepriceCall = async (operation, call) => {
+  try {
+    const { data, error } = await call();
+    if (error) {
+      if (isRepriceUnavailable(error)) return { unavailable: true };
+      if (/rate_changed/.test(error.message ?? '')) return { rateChanged: true };
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation });
+      return { error: appError };
+    }
+    return { data };
+  } catch (error) {
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation });
+    logError(appError, { operation });
+    return { error: appError };
+  }
+};
+
+/** Dry run of the repricing at `rate` (USD->CUP); null/undefined uses the active rate. */
+export const previewCatalogReprice = async (rate = null) => {
+  const numeric = rate === null ? null : Number(rate);
+  if (numeric !== null && (!Number.isFinite(numeric) || numeric <= 0)) {
+    throw createValidationError({ rate: 'Rate must be a positive finite number' }, 'Invalid rate');
+  }
+  return runRepriceCall('previewCatalogReprice', () => supabase.rpc('preview_catalog_reprice', { p_rate: numeric }));
+};
+
+/**
+ * Applies the repricing at the active USD->CUP rate. `confirmLarge` acknowledges a change above 10%;
+ * `expectedRate` is the rate the caller confirmed: if the active one differs the server refuses (-> { rateChanged: true }).
+ */
+export const applyCatalogReprice = async (confirmLarge = false, expectedRate = null) => {
+  const expected = expectedRate === null || expectedRate === undefined ? null : Number(expectedRate);
+  if (expected !== null && (!Number.isFinite(expected) || expected <= 0)) {
+    throw createValidationError({ expectedRate: 'Expected rate must be a positive finite number' }, 'Invalid rate');
+  }
+  const result = await runRepriceCall('applyCatalogReprice', () => (
+    supabase.rpc('apply_catalog_reprice', { p_confirm_large: Boolean(confirmLarge), p_expected_rate: expected })
+  ));
+  // Prices moved: catalog, vendor and cart must not serve the old ones for up to the cache TTL.
+  if (Number(result.data?.products_updated) > 0 || Number(result.data?.combos_updated) > 0) invalidateCatalog();
+  return result;
+};
+
+/** Last repricing run ({ rate, applied_at }) or data null when none happened yet. */
+export const getCatalogRepriceStatus = async () => runRepriceCall('getCatalogRepriceStatus', () => (
+  supabase.from('catalog_reprice_runs').select('rate, applied_at').order('applied_at', { ascending: false }).limit(1).maybeSingle()
+));

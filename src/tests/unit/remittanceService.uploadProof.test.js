@@ -4,10 +4,19 @@ const REMITTANCE = {
   id: 'rem-1',
   remittance_number: 'REM-1',
   user_id: 'user-1',
-  status: 'payment_pending'
+  status: 'payment_pending',
+  amount_sent: 100,
+  delivery_cost: 4.5,
+  currency_sent: 'USD',
+  payment_method: 'zelle'
 };
 
-const state = { updateCalled: false, updatePayload: null };
+const state = { updateCalled: false, updatePayload: null, rpcData: null };
+const rpcMock = vi.fn(async (_name, args) => {
+  state.updateCalled = true;
+  state.updatePayload = { payer_phone: args.p_payer_phone, payment_reference: args.p_reference };
+  return { data: { ...(state.rpcData || REMITTANCE), status: 'payment_proof_uploaded', payment_proof_url: args.p_proof_path, payer_phone: args.p_payer_phone }, error: null };
+});
 const uploadMock = vi.fn(async () => ({ error: null }));
 
 const makeQuery = () => {
@@ -21,7 +30,7 @@ const makeQuery = () => {
     },
     single: async () => ({
       data: state.updateCalled
-        ? { ...REMITTANCE, ...state.updatePayload, status: 'payment_proof_uploaded', payment_proof_url: 'user-1/REM-1.png' }
+        ? { ...(state.rpcData || REMITTANCE), ...state.updatePayload, status: 'payment_proof_uploaded', payment_proof_url: 'user-1/REM-1.png' }
         : REMITTANCE,
       error: null
     })
@@ -32,6 +41,7 @@ const makeQuery = () => {
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     from: vi.fn(() => makeQuery()),
+    rpc: (...a) => rpcMock(...a),
     auth: {
       getUser: vi.fn(async () => ({
         data: { user: { id: 'user-1', email: 'u@example.com', user_metadata: {} } },
@@ -83,7 +93,7 @@ describe('remittanceService.uploadPaymentProof notification', () => {
 describe('remittanceService.uploadPaymentProof payer phone', () => {
   beforeEach(resetState);
 
-  it('persists the trimmed payer_phone in the update payload', async () => {
+  it('sends the trimmed payer_phone to remittance_submit_proof', async () => {
     await uploadPaymentProof('rem-1', file, 'John Doe', 'note', { payerPhone: `  ${PHONE}  ` });
     expect(state.updatePayload).toMatchObject({ payer_phone: PHONE });
   });
@@ -110,5 +120,30 @@ describe('remittanceService.uploadPaymentProof payer phone', () => {
     await uploadPaymentProof('rem-1', file, 'John Doe', 'note', { payerPhone: PHONE });
     expect(logActivity).toHaveBeenCalled();
     expect(JSON.stringify(logActivity.mock.calls)).not.toContain('305 555 0100');
+  });
+
+  it('records the actual payment origin and native amount in activity metadata', async () => {
+    await uploadPaymentProof('rem-1', file, 'John Doe', 'note', { payerPhone: PHONE });
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({
+      entityType: 'remittance',
+      metadata: expect.objectContaining({
+        paymentMethod: 'zelle',
+        paymentAmount: 104.5,
+        paymentCurrency: 'USD'
+      })
+    }));
+  });
+
+  it('omits payment fields it cannot know instead of inferring zero, zelle or a currency', async () => {
+    state.rpcData = { id: 'rem-1', remittance_number: 'REM-1', user_id: 'user-1' };
+    try {
+      await uploadPaymentProof('rem-1', file, 'John Doe', 'note', { payerPhone: PHONE });
+    } finally {
+      state.rpcData = null;
+    }
+    const call = logActivity.mock.calls.at(-1)[0];
+    expect(call.metadata).not.toHaveProperty('paymentMethod');
+    expect(call.metadata).not.toHaveProperty('paymentAmount');
+    expect(call.metadata).not.toHaveProperty('paymentCurrency');
   });
 });

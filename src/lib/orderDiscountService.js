@@ -9,6 +9,7 @@
 import { supabase } from './supabase';
 import { calculateOrderTotal, calculateDiscount } from './priceCalculationService';
 import { logActivity } from './activityLogger';
+import { isOfferInWindow } from './offerRules';
 
 /**
  * Get user email by user ID for activity logging
@@ -127,13 +128,14 @@ export const validateAndGetOffer = async (offerCode, subtotal = 0, userId = null
     }
 
     // Check if offer has passed expiry date
-    if (offers.valid_until && new Date(offers.valid_until) < new Date()) {
+    if (!isOfferInWindow(offers)) {
+      const notStarted = offers.start_date && new Date(offers.start_date) > new Date();
       return {
         valid: false,
-        reason: 'Offer has expired',
-        errorCode: 'EXPIRED',
+        reason: notStarted ? 'Offer is not active yet' : 'Offer has expired',
+        errorCode: notStarted ? 'NOT_STARTED' : 'EXPIRED',
         code: offerCode,
-        expiredDate: offers.valid_until
+        expiredDate: offers.end_date
       };
     }
 

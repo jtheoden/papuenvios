@@ -6,18 +6,24 @@
 
 import { supabase } from './supabase';
 import {
+  AppError,
   handleError,
   logError,
   createValidationError,
   createNotFoundError,
   parseSupabaseError,
-  createPermissionError,
   ERROR_CODES
 } from './errorHandler';
 import { logActivity } from './activityLogger';
+import { callTransitionRpc } from './statusTransition';
 import { isValidPayerPhone, normalizePayerPhone } from './payerPhone';
 import { getUserCategoryWithDiscount } from './orderDiscountService';
 import { ZELLE_STATUS, ZELLE_TRANSACTION_TYPES, upsertZelleTransactionStatus } from './zelleService';
+import { isInsufficientStockError, stockRefusalToError } from './stockErrors';
+import { roundMoney } from './moneyPure';
+import { PAYMENT_PROOF_MIME_EXT, validatePaymentProofFile } from './paymentProofService';
+
+export { isInsufficientStockError };
 
 const isValidUUID = (value) => {
   if (!value || typeof value !== 'string') return false;
@@ -40,20 +46,32 @@ const logOrderActivity = async ({ action, entityId, performedBy, description, me
   }
 };
 
-const buildOrderPaymentMetadata = (order, metadata = {}) => ({
-  paymentType: 'order',
-  orderId: order?.id,
-  orderNumber: order?.order_number,
-  paymentStatus: order?.payment_status,
-  orderStatus: order?.status,
-  paymentMethod: order?.payment_method,
-  paymentReference: order?.payment_reference || null,
-  totalAmount: order?.total_amount,
-  ...metadata
-});
+const buildOrderPaymentMetadata = (order, metadata = {}) => {
+  const paymentMethod = order?.payment_method || metadata.paymentMethod || null;
+  const hasNativePaymentAmount = order?.payment_currency && order?.payment_amount != null;
+  return {
+    paymentType: 'order',
+    orderId: order?.id,
+    orderNumber: order?.order_number,
+    paymentStatus: order?.payment_status,
+    orderStatus: order?.status,
+    paymentMethod,
+    paymentReference: order?.payment_reference || null,
+    totalAmount: order?.total_amount,
+    // Bizum quotes store the actual received amount/currency separately from the
+    // USD-denominated order total. Zelle orders are charged in the USD base currency.
+    paymentAmount: hasNativePaymentAmount
+      ? order.payment_amount
+      : paymentMethod === 'zelle' ? order?.total_amount : null,
+    paymentCurrency: hasNativePaymentAmount
+      ? order.payment_currency
+      : paymentMethod === 'zelle' ? 'USD' : null,
+    ...metadata
+  };
+};
 
 // ============================================================================
-// STATE MACHINE CONSTANTS
+// STATUS CONSTANTS (the transition matrix lives in the database: see statusTransition.js)
 // ============================================================================
 
 /**
@@ -76,150 +94,6 @@ export const PAYMENT_STATUS = {
   PROOF_UPLOADED: 'proof_uploaded', // Proof uploaded - awaiting validation
   VALIDATED: 'validated',       // Payment confirmed by admin
   REJECTED: 'rejected'          // Payment rejected - can retry
-};
-
-/**
- * State transition matrix - defines valid transitions
- * Format: currentStatus => allowedNextStatuses
- */
-const ORDER_TRANSITIONS = {
-  [ORDER_STATUS.PENDING]: [
-    ORDER_STATUS.PROCESSING,
-    ORDER_STATUS.CANCELLED
-  ],
-  [ORDER_STATUS.PROCESSING]: [
-    ORDER_STATUS.DISPATCHED,
-    ORDER_STATUS.CANCELLED
-  ],
-  [ORDER_STATUS.DISPATCHED]: [
-    ORDER_STATUS.DELIVERED
-  ],
-  [ORDER_STATUS.DELIVERED]: [
-    ORDER_STATUS.COMPLETED
-  ],
-  [ORDER_STATUS.COMPLETED]: [],     // Terminal state
-  [ORDER_STATUS.CANCELLED]: [
-    ORDER_STATUS.PENDING  // Allow reopening cancelled orders
-  ]
-};
-
-/**
- * Payment status transitions
- * Format: currentStatus => allowedNextStatuses
- */
-const PAYMENT_TRANSITIONS = {
-  [PAYMENT_STATUS.PENDING]: [
-    PAYMENT_STATUS.PROOF_UPLOADED,
-    PAYMENT_STATUS.REJECTED,
-    // Super admins can validate directly without proof
-    PAYMENT_STATUS.VALIDATED
-  ],
-  [PAYMENT_STATUS.PROOF_UPLOADED]: [
-    PAYMENT_STATUS.VALIDATED,
-    PAYMENT_STATUS.REJECTED,
-    PAYMENT_STATUS.PENDING  // Can reset if rejected
-  ],
-  [PAYMENT_STATUS.VALIDATED]: [],   // Terminal for payments
-  [PAYMENT_STATUS.REJECTED]: [
-    PAYMENT_STATUS.PENDING  // Can retry after rejection
-  ]
-};
-
-// ============================================================================
-// STATE MACHINE VALIDATION HELPERS
-// ============================================================================
-
-/**
- * Validate order status transition
- * @param {string} currentStatus - Current order status
- * @param {string} newStatus - Proposed new status
- * @throws {AppError} If transition is invalid
- */
-const validateOrderTransition = (currentStatus, newStatus) => {
-  if (!ORDER_STATUS[Object.keys(ORDER_STATUS).find(k => ORDER_STATUS[k] === currentStatus)]) {
-    throw createValidationError({ status: `Invalid current status: ${currentStatus}` });
-  }
-
-  if (!ORDER_STATUS[Object.keys(ORDER_STATUS).find(k => ORDER_STATUS[k] === newStatus)]) {
-    throw createValidationError({ status: `Invalid new status: ${newStatus}` });
-  }
-
-  const allowedTransitions = ORDER_TRANSITIONS[currentStatus];
-  if (!allowedTransitions.includes(newStatus)) {
-    throw createValidationError(
-      { status: `Cannot transition from ${currentStatus} to ${newStatus}` },
-      `Invalid order status transition. From ${currentStatus}, you can only transition to: ${allowedTransitions.join(', ') || 'no further transitions allowed'}`
-    );
-  }
-};
-
-/**
- * Validate payment status transition
- * @param {string} currentStatus - Current payment status
- * @param {string} newStatus - Proposed new status
- * @throws {AppError} If transition is invalid
- */
-const validatePaymentTransition = (currentStatus, newStatus) => {
-  if (!PAYMENT_STATUS[Object.keys(PAYMENT_STATUS).find(k => PAYMENT_STATUS[k] === currentStatus)]) {
-    throw createValidationError({ payment_status: `Invalid current payment status: ${currentStatus}` });
-  }
-
-  if (!PAYMENT_STATUS[Object.keys(PAYMENT_STATUS).find(k => PAYMENT_STATUS[k] === newStatus)]) {
-    throw createValidationError({ payment_status: `Invalid new payment status: ${newStatus}` });
-  }
-
-  const allowedTransitions = PAYMENT_TRANSITIONS[currentStatus];
-  if (!allowedTransitions.includes(newStatus)) {
-    throw createValidationError(
-      { payment_status: `Cannot transition from ${currentStatus} to ${newStatus}` },
-      `Invalid payment status transition. From ${currentStatus}, you can only transition to: ${allowedTransitions.join(', ') || 'no further transitions allowed'}`
-    );
-  }
-};
-
-// ============================================================================
-// ORDER NUMBER GENERATION
-// ============================================================================
-
-/**
- * Generate unique order number
- * Format: ORD-YYYYMMDD-XXXXX (e.g., ORD-20251007-12345)
- * Uses timestamp + random to avoid race conditions, with DB constraint as backup
- * @throws {AppError} If generation fails
- * @returns {Promise<string>} Unique order number
- */
-export const generateOrderNumber = async () => {
-  try {
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-
-    // Use timestamp (last 5 digits) + random (2 digits) for uniqueness
-    const timestamp = Date.now().toString().slice(-5);
-    const random = Math.floor(Math.random() * 100).toString().padStart(2, '0');
-    const uniqueId = `${timestamp}${random}`.slice(0, 5);
-
-    const orderNumber = `ORD-${today}-${uniqueId}`;
-
-    // Verify uniqueness (unlikely collision, but safety check)
-    // NOTE: This is a graceful fallback - database constraint on order_number is the primary guard
-    const { data } = await supabase
-      .from('orders')
-      .select('order_number', { count: 'exact', head: true })
-      .eq('order_number', orderNumber);
-
-    // If collision (extremely rare), add microseconds
-    if (data && data.length > 0) {
-      const microseconds = (Date.now() % 1000).toString().padStart(3, '0');
-      return `ORD-${today}-${timestamp.slice(-2)}${microseconds}`;
-    }
-
-    return orderNumber;
-  } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'generateOrderNumber'
-    });
-    throw appError;
-  }
 };
 
 // ============================================================================
@@ -261,21 +135,19 @@ const getUserEmail = async (userId) => {
  * Create new order with items and inventory reservation
  * Validates initial state, reserves inventory, creates order and order items atomically
  *
- * TRANSACTION BOUNDARY (for future DB transaction wrapper support):
- * BEGIN TRANSACTION
+ * Flow:
  *   1. Insert order record
  *   2. Insert order_items records (all at once)
- *   3. Update inventory reserved_quantity for all products (batch)
- *   4. Insert inventory_movements records (batch logging)
- * COMMIT TRANSACTION
+ *   3. reserve_order_inventory RPC (atomic, server-side; expands combos, FEFO,
+ *      cancels the order itself when stock is insufficient)
  *
- * If any step fails, rollback all changes.
- * Current implementation: Supabase doesn't support explicit transactions,
- * so we batch operations where possible and fail loudly on errors.
+ * Supabase has no client-side transactions: steps 1-2 are separate requests, but
+ * the stock decision (step 3) is a single transaction, so concurrent orders can
+ * never oversell. A failed reservation leaves the order cancelled, never pending.
  *
  * @param {Object} orderData - Order information
  * @param {Array} items - Order items (products, combos, remittances)
- * @throws {AppError} If validation fails, creation fails, or inventory reservation fails
+ * @throws {AppError} If validation fails, creation fails, or stock is insufficient (code INSUFFICIENT_STOCK)
  * @returns {Promise<Object>} Created order with items
  */
 export const createOrder = async (orderData, items) => {
@@ -298,20 +170,18 @@ export const createOrder = async (orderData, items) => {
 
     // Note: Orders always start in PENDING status
 
-    // Generate order number
-    const orderNumber = await generateOrderNumber();
-
     // Prepare order data with initial state
     const order = {
-      order_number: orderNumber,
       user_id: orderData.userId,
       order_type: orderData.orderType || 'product',
       status: ORDER_STATUS.PENDING,
-      subtotal: orderData.subtotal || 0,
-      discount_amount: orderData.discountAmount || 0,
-      shipping_cost: orderData.shippingCost || 0,
-      tax_amount: orderData.taxAmount || 0,
-      total_amount: orderData.totalAmount,
+      // Defensive cent rounding: callers already round, but Postgres numeric(10,2) must
+      // never be the one deciding how an unrounded value is rounded.
+      subtotal: roundMoney(orderData.subtotal),
+      discount_amount: roundMoney(orderData.discountAmount),
+      shipping_cost: roundMoney(orderData.shippingCost),
+      tax_amount: roundMoney(orderData.taxAmount),
+      total_amount: roundMoney(orderData.totalAmount),
       currency_id: orderData.currencyId,
       shipping_address: orderData.shippingAddress || null,
       recipient_info: orderData.recipientInfo || null,
@@ -327,7 +197,7 @@ export const createOrder = async (orderData, items) => {
       offer_id: orderData.offerId || null
     };
 
-    // ATOMIC: Insert order
+    // ATOMIC: Insert order. order_number is assigned by the database (trigger set_order_number).
     const { data: createdOrder, error: orderError } = await supabase
       .from('orders')
       .insert(order)
@@ -336,9 +206,10 @@ export const createOrder = async (orderData, items) => {
 
     if (orderError) {
       const appError = parseSupabaseError(orderError);
-      logError(appError, { operation: 'createOrder - insert order', orderNumber });
+      logError(appError, { operation: 'createOrder - insert order' });
       throw appError;
     }
+    const orderNumber = createdOrder.order_number;
 
     // ATOMIC: Prepare and insert order items
     const orderItems = items.map(item => ({
@@ -348,8 +219,8 @@ export const createOrder = async (orderData, items) => {
       item_name_es: item.nameEs,
       item_name_en: item.nameEn,
       quantity: item.quantity,
-      unit_price: item.unitPrice,
-      total_price: item.totalPrice,
+      unit_price: roundMoney(item.unitPrice),
+      total_price: roundMoney(item.totalPrice),
       inventory_id: item.inventoryId || null,
       remittance_amount: item.remittanceAmount || null,
       exchange_rate: item.exchangeRate || null,
@@ -367,68 +238,9 @@ export const createOrder = async (orderData, items) => {
       throw appError;
     }
 
-    // ATOMIC: Reserve inventory for all products in parallel (not sequential)
-    // This reduces N queries from O(n) sequential to single batch operation
-    const inventoryReservations = items
-      .filter(item => item.itemType === 'product' && item.inventoryId)
-      .map(item => ({ id: item.inventoryId, quantity: item.quantity }));
-
-    if (inventoryReservations.length > 0) {
-      // Batch fetch all inventory records
-      const inventoryIds = inventoryReservations.map(r => r.id);
-      const { data: inventoryRecords, error: fetchError } = await supabase
-        .from('inventory')
-        .select('id, reserved_quantity')
-        .in('id', inventoryIds);
-
-      if (fetchError) {
-        const appError = parseSupabaseError(fetchError);
-        logError(appError, { operation: 'createOrder - fetch inventory', orderId: createdOrder.id });
-        throw appError;
-      }
-
-      // Build update operations for all inventory records
-      const inventoryMap = new Map(inventoryRecords.map(inv => [inv.id, inv]));
-      const updatePromises = inventoryReservations.map(async (res) => {
-        const current = inventoryMap.get(res.id);
-        if (current) {
-          const newReserved = (current.reserved_quantity || 0) + res.quantity;
-          return supabase
-            .from('inventory')
-            .update({ reserved_quantity: newReserved })
-            .eq('id', res.id);
-        }
-      });
-
-      const updateResults = await Promise.all(updatePromises);
-      const hasError = updateResults.some(result => result.error);
-      if (hasError) {
-        const errorResult = updateResults.find(result => result.error);
-        const appError = parseSupabaseError(errorResult.error);
-        logError(appError, { operation: 'createOrder - update inventory', orderId: createdOrder.id });
-        throw appError;
-      }
-
-      // Log all inventory movements in single insert
-      const movements = inventoryReservations.map(res => ({
-        inventory_id: res.id,
-        movement_type: 'reserved',
-        quantity_change: -res.quantity,
-        reference_type: 'order',
-        reference_id: createdOrder.id,
-        notes: `Reserved for order ${orderNumber}`
-      }));
-
-      const { error: movementError } = await supabase
-        .from('inventory_movements')
-        .insert(movements);
-
-      if (movementError) {
-        const appError = parseSupabaseError(movementError);
-        logError(appError, { operation: 'createOrder - log inventory movements', orderId: createdOrder.id });
-        // Don't fail order creation if logging fails
-      }
-    }
+    // ATOMIC (server-side): reserve stock for products and combo components in one RPC.
+    // Insufficient stock cancels the order inside that transaction and throws a typed error.
+    await reserveOrCancel(createdOrder.id);
 
     // Activity log (best effort) - get email for proper logging
     const userEmail = await getUserEmail(orderData.userId);
@@ -444,7 +256,13 @@ export const createOrder = async (orderData, items) => {
         shippingCost: orderData.shippingCost,
         totalAmount: orderData.totalAmount,
         currencyId: orderData.currencyId,
-        paymentMethod: orderData.paymentMethod,
+        paymentMethod: orderData.paymentMethod || 'zelle',
+        paymentAmount: (orderData.paymentMethod || 'zelle') === 'zelle'
+          ? orderData.totalAmount
+          : (orderData.paymentAmount ?? null),
+        paymentCurrency: (orderData.paymentMethod || 'zelle') === 'zelle'
+          ? 'USD'
+          : (orderData.paymentCurrency ?? null),
         offerId: orderData.offerId
       }
     });
@@ -463,233 +281,94 @@ export const createOrder = async (orderData, items) => {
 };
 
 // ============================================================================
-// INVENTORY MANAGEMENT (PRIVATE HELPERS)
+// STOCK RESERVATION (server-side, atomic)
 // ============================================================================
+// All stock movements happen inside Postgres (SECURITY DEFINER RPCs, see
+// supabase/migrations/20261014190000_atomic_stock_reservation.sql). The client
+// only orders the calls; it never reads-modifies-writes inventory.
 
-/**
- * Reserve inventory for order
- * @param {string} inventoryId - Inventory record ID
- * @param {number} quantity - Quantity to reserve
- * @throws {AppError} If fetch or update fails
- */
-const reserveInventory = async (inventoryId, quantity) => {
-  try {
-    if (!inventoryId || quantity <= 0) {
-      throw createValidationError({
-        inventoryId: !inventoryId ? 'Inventory ID is required' : undefined,
-        quantity: quantity <= 0 ? 'Quantity must be greater than 0' : undefined
-      });
-    }
-
-    // Get current inventory
-    const { data: inventory, error: fetchError } = await supabase
-      .from('inventory')
-      .select('reserved_quantity')
-      .eq('id', inventoryId)
-      .single();
-
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'reserveInventory - fetch', inventoryId });
-      throw appError;
-    }
-
-    if (!inventory) {
-      throw createNotFoundError('Inventory', inventoryId);
-    }
-
-    // Update reserved quantity
-    const newReserved = (inventory.reserved_quantity || 0) + quantity;
-
-    const { error: updateError } = await supabase
-      .from('inventory')
-      .update({ reserved_quantity: newReserved })
-      .eq('id', inventoryId);
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'reserveInventory - update', inventoryId });
-      throw appError;
-    }
-
-    // Log inventory movement (graceful fallback if fails)
-    try {
-      await supabase
-        .from('inventory_movements')
-        .insert({
-          inventory_id: inventoryId,
-          movement_type: 'reserved',
-          quantity_change: -quantity,
-          reference_type: 'order',
-          notes: 'Reserved for order'
-        });
-    } catch (logError) {
-      logError(logError, { operation: 'reserveInventory - log movement', inventoryId });
-    }
-  } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'reserveInventory',
-      inventoryId
-    });
+const callStockRpc = async (rpcName, orderId, extraArgs = {}) => {
+  const { data, error } = await supabase.rpc(rpcName, { p_order_id: orderId, ...extraArgs });
+  if (error) {
+    const appError = parseSupabaseError(error);
+    logError(appError, { operation: rpcName, orderId });
     throw appError;
   }
+  return data || {};
 };
 
 /**
- * Release reserved inventory (when order is rejected/cancelled)
- * @param {string} inventoryId - Inventory record ID
- * @param {number} quantity - Quantity to release
- * @throws {AppError} If fetch or update fails
+ * Whether the order owns 'consumed' allocations (authoritative: read from
+ * order_stock_allocations, not inferred from payment_status). A read failure is logged and
+ * treated as "unknown = no"; restock stays available from the order list.
  */
-const releaseInventory = async (inventoryId, quantity) => {
-  try {
-    if (!inventoryId || quantity <= 0) {
-      throw createValidationError({
-        inventoryId: !inventoryId ? 'Inventory ID is required' : undefined,
-        quantity: quantity <= 0 ? 'Quantity must be greater than 0' : undefined
-      });
-    }
-
-    // Get current inventory
-    const { data: inventory, error: fetchError } = await supabase
-      .from('inventory')
-      .select('reserved_quantity')
-      .eq('id', inventoryId)
-      .single();
-
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'releaseInventory - fetch', inventoryId });
-      throw appError;
-    }
-
-    if (!inventory) {
-      throw createNotFoundError('Inventory', inventoryId);
-    }
-
-    // Update reserved quantity (ensure non-negative)
-    const newReserved = Math.max(0, (inventory.reserved_quantity || 0) - quantity);
-
-    const { error: updateError } = await supabase
-      .from('inventory')
-      .update({ reserved_quantity: newReserved })
-      .eq('id', inventoryId);
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'releaseInventory - update', inventoryId });
-      throw appError;
-    }
-
-    // Log inventory movement (graceful fallback if fails)
-    try {
-      await supabase
-        .from('inventory_movements')
-        .insert({
-          inventory_id: inventoryId,
-          movement_type: 'released',
-          quantity_change: quantity,
-          reference_type: 'order',
-          notes: 'Released from rejected/cancelled order'
-        });
-    } catch (movementError) {
-      logError(movementError, { operation: 'releaseInventory - log movement', inventoryId });
-    }
-  } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'releaseInventory',
-      inventoryId
-    });
-    throw appError;
+const hasConsumedAllocations = async (orderId) => {
+  const { data, error } = await supabase
+    .from('order_stock_allocations')
+    .select('id')
+    .eq('order_id', orderId)
+    .eq('state', 'consumed')
+    .limit(1);
+  if (error) {
+    logError(error, { operation: 'hasConsumedAllocations', orderId });
+    return false;
   }
+  return Array.isArray(data) && data.length > 0;
 };
 
 /**
- * Reduce inventory quantity (when payment is validated)
- * @param {string} inventoryId - Inventory record ID
- * @param {number} quantity - Quantity to reduce
- * @throws {AppError} If fetch, validation, or update fails
+ * Reserve stock for an order that already has its items. The RPC cancels the
+ * order itself (same transaction) when stock is insufficient.
+ * @throws {AppError} INSUFFICIENT_STOCK / INVALID_OPERATION when refused, or a DB error
  */
-const reduceInventory = async (inventoryId, quantity) => {
+const reserveOrderStock = async (orderId) => {
+  const result = await callStockRpc('reserve_order_inventory', orderId);
+  if (!result.ok) throw stockRefusalToError(result, orderId);
+  return result;
+};
+
+/**
+ * Return the units consumed by a CANCELLED order to the inventory (admin only).
+ * Never automatic: goods may already have left, so the admin must confirm the physical return.
+ * @param {string} orderId
+ * @param {string} reason - why the units are being returned (stored in the movement notes)
+ * @throws {AppError} when the reason is empty, the RPC fails, or it refuses (e.g. order not cancelled)
+ * @returns {Promise<{ok: boolean, restocked: boolean, reason: string|null}>}
+ */
+export const restockOrder = async (orderId, reason) => {
+  if (!orderId || !reason || !String(reason).trim()) {
+    throw createValidationError({
+      orderId: !orderId ? 'Order ID is required' : undefined,
+      reason: !reason || !String(reason).trim() ? 'A restock reason is required' : undefined
+    }, 'Missing required fields for restock');
+  }
+  const result = await callStockRpc('restock_order_inventory', orderId, { p_reason: String(reason).trim() });
+  if (!result.ok) throw stockRefusalToError(result, orderId);
+  return result;
+};
+
+/**
+ * Best-effort compensation when a reserve call failed for transport reasons: the owner cancels the pending order
+ * through order_cancel (a direct UPDATE of the status would be rejected once status writes are RPC-only).
+ */
+const revertOrderToCancelled = async (orderId, reason) => {
   try {
-    if (!inventoryId || quantity <= 0) {
-      throw createValidationError({
-        inventoryId: !inventoryId ? 'Inventory ID is required' : undefined,
-        quantity: quantity <= 0 ? 'Quantity must be greater than 0' : undefined
-      });
+    await callTransitionRpc('order_cancel', { p_order_id: orderId, p_reason: reason }, { entity: 'Order', id: orderId });
+  } catch (revertError) {
+    logError(revertError, { operation: 'revertOrderToCancelled', orderId });
+  }
+};
+
+/** Reserve, and when the call fails WITHOUT a business answer, cancel the order again. */
+const reserveOrCancel = async (orderId) => {
+  try {
+    return await reserveOrderStock(orderId);
+  } catch (reserveError) {
+    // A business refusal was already cancelled server-side; anything else may not have been.
+    if (reserveError?.context?.reason === undefined) {
+      await revertOrderToCancelled(orderId, 'reservation_failed');
     }
-
-    // Get current inventory
-    const { data: inventory, error: fetchError } = await supabase
-      .from('inventory')
-      .select('quantity, reserved_quantity, available_quantity')
-      .eq('id', inventoryId)
-      .single();
-
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'reduceInventory - fetch', inventoryId });
-      throw appError;
-    }
-
-    if (!inventory) {
-      throw createNotFoundError('Inventory', inventoryId);
-    }
-
-    const availableStock =
-      inventory.available_quantity ??
-      (inventory.quantity ?? 0) - (inventory.reserved_quantity ?? 0);
-
-    // Validate sufficient stock
-    if (availableStock < quantity) {
-      throw createValidationError(
-        { quantity: `Insufficient stock. Available: ${availableStock}, Requested: ${quantity}` },
-        ERROR_CODES.INSUFFICIENT_STOCK
-      );
-    }
-
-    // Reduce both actual and reserved quantities
-    const newQuantity = (inventory.quantity ?? availableStock) - quantity;
-    const newReserved = Math.max(0, (inventory.reserved_quantity || 0) - quantity);
-
-    const { error: updateError } = await supabase
-      .from('inventory')
-      .update({
-        quantity: newQuantity,
-        reserved_quantity: newReserved,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', inventoryId);
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'reduceInventory - update', inventoryId });
-      throw appError;
-    }
-
-    // Log inventory movement (graceful fallback if fails)
-    try {
-      await supabase
-        .from('inventory_movements')
-        .insert({
-          inventory_id: inventoryId,
-          movement_type: 'sold',
-          quantity_change: -quantity,
-          reference_type: 'order',
-          notes: 'Sold - payment validated'
-        });
-    } catch (movementError) {
-      logError(movementError, { operation: 'reduceInventory - log movement', inventoryId });
-    }
-  } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'reduceInventory',
-      inventoryId
-    });
-    throw appError;
+    throw reserveError;
   }
 };
 
@@ -930,6 +609,28 @@ export const getOrderById = async (orderId) => {
 };
 
 /**
+ * Mutates the given orders: has_consumed_stock = true when a CANCELLED order owns at least
+ * one 'consumed' allocation (asked to the database through orders_with_consumed_stock, not
+ * inferred from payment status). Never throws: on error the flag stays false and the failure is logged.
+ */
+const flagConsumedStock = async (orders) => {
+  if (!Array.isArray(orders)) return;
+  orders.forEach((o) => { o.has_consumed_stock = false; });
+  const cancelledIds = orders.filter((o) => o.status === ORDER_STATUS.CANCELLED).map((o) => o.id);
+  if (cancelledIds.length === 0) return;
+
+  // RPC (ids in the request body) instead of .in('order_id', ids): hundreds of uuids in a
+  // GET URL exceed proxy limits and would silently hide the button.
+  const { data, error } = await supabase.rpc('orders_with_consumed_stock', { p_order_ids: cancelledIds });
+  if (error) {
+    logError(error, { operation: 'flagConsumedStock' });
+    return;
+  }
+  const consumed = new Set((data || []).map((row) => row.order_id));
+  orders.forEach((o) => { o.has_consumed_stock = consumed.has(o.id); });
+};
+
+/**
  * Get all orders with filters (admin only)
  * Batches user profile fetch to avoid N+1 queries
  * @param {Object} filters - Optional filters (status, payment_status, order_type)
@@ -968,6 +669,10 @@ export const getAllOrders = async (filters = {}) => {
       logError(appError, { operation: 'getAllOrders', filters });
       throw appError;
     }
+
+    // Authoritative restock flag: cancelled orders that own 'consumed' allocations may still
+    // need their units returned (admin decision). A failed read only hides the button.
+    await flagConsumedStock(orders);
 
     // Enrich orders with user profile data if orders exist
     if (orders && orders.length > 0) {
@@ -1032,32 +737,54 @@ export const getPendingOrdersCount = async () => {
 };
 
 // ============================================================================
+// STATUS TRANSITIONS (server-side, atomic)
+// ============================================================================
+// Every status change is one order_* RPC (supabase/migrations/20261024110000_order_transition_rpcs.sql): the
+// database locks the row, checks the transition matrix against the locked state, applies the stock effect and writes
+// the status history in ONE transaction. The client only validates its inputs, uploads files (before the RPC),
+// and runs the best-effort side effects afterwards (activity log, Zelle history). A concurrent change surfaces as a
+// CONFLICT error (isStatusConflictError) instead of silently overwriting the other actor.
+
+const orderTarget = (orderId) => ({ entity: 'Order', id: orderId });
+
+/** Best-effort Zelle history sync from the row returned by a transition RPC. */
+const syncOrderZelleStatus = async (order, status, validatedBy, operation) => {
+  if (!order?.zelle_account_id) return;
+  try {
+    await upsertZelleTransactionStatus({
+      referenceId: order.id,
+      transactionType: order.order_type === 'combo'
+        ? ZELLE_TRANSACTION_TYPES.COMBO
+        : ZELLE_TRANSACTION_TYPES.PRODUCT,
+      status,
+      amount: order.total_amount || 0,
+      zelleAccountId: order.zelle_account_id,
+      validatedBy
+    });
+  } catch (zelleError) {
+    logError(zelleError, { operation: `${operation} - zelle sync`, orderId: order.id });
+  }
+};
+
+/** Rethrows AppErrors; wraps anything else as an internal error for `operation`. */
+const rethrowAsAppError = (error, operation, context = {}) => {
+  if (error.code) throw error;
+  throw handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, { operation, ...context });
+};
+
+// ============================================================================
 // PAYMENT VALIDATION & REJECTION
 // ============================================================================
 
 /**
- * Validate payment and update order with inventory reduction
- * CRITICAL: Requires payment_status === 'proof_uploaded' and order.status === 'pending'
- * Handles both direct products and combo items by batching product lookups
- *
- * TRANSACTION BOUNDARY (for future DB transaction wrapper support):
- * BEGIN TRANSACTION
- *   1. Fetch order and validate state (status === pending, payment_status === proof_uploaded)
- *   2. Batch fetch all combo_items for combo order items (N+1 optimization)
- *   3. Batch fetch all products for combo items (N+1 optimization)
- *   4. Calculate all inventory reductions (direct products + combo product quantities)
- *   5. Execute all inventory reductions in parallel (Promise.all)
- *   6. Update order status to PROCESSING and payment_status to VALIDATED
- *   7. Log order status history (graceful fallback if fails)
- * COMMIT TRANSACTION
- *
- * If any critical step (1-6) fails, rollback all inventory changes.
- * Logging failure (step 7) doesn't rollback - logging is non-critical.
+ * Validate payment and consume the stock reserved for the order (order_validate_payment).
+ * One transaction: status -> processing, payment -> validated, stock consumed, history row. If the stock cannot be
+ * consumed nothing changes and the typed INSUFFICIENT_STOCK error is thrown, so the admin can simply retry.
  *
  * @param {string} orderId - Order ID
- * @param {string} adminId - Admin user ID
- * @throws {AppError} If validation fails, state invalid, or inventory operations fail
- * @returns {Promise<Object>} Updated order with reduced inventory
+ * @param {string} adminId - Admin user ID (activity log / Zelle history; authorization is the JWT's)
+ * @throws {AppError} CONFLICT when the order already moved, INSUFFICIENT_STOCK, FORBIDDEN, or a DB error
+ * @returns {Promise<Object>} Updated order
  */
 export const validatePayment = async (orderId, adminId) => {
   try {
@@ -1068,52 +795,8 @@ export const validatePayment = async (orderId, adminId) => {
       });
     }
 
-    // Fetch order with items
-    const { data: order, error: fetchError } = await supabase
-      .from('orders')
-      .select('*, order_items (*)')
-      .eq('id', orderId)
-      .single();
+    const updatedOrder = await callTransitionRpc('order_validate_payment', { p_order_id: orderId }, orderTarget(orderId));
 
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'validatePayment - fetch', orderId });
-      throw appError;
-    }
-
-    if (!order) {
-      throw createNotFoundError('Order', orderId);
-    }
-
-    // CRITICAL: Validate state machine - only pending orders with proof uploaded
-    // Only validate transition if we're not already in the target state
-    if (order.status !== ORDER_STATUS.PROCESSING) {
-      validateOrderTransition(order.status, ORDER_STATUS.PROCESSING);
-    }
-    if (order.payment_status !== PAYMENT_STATUS.VALIDATED) {
-      validatePaymentTransition(order.payment_status, PAYMENT_STATUS.VALIDATED);
-    }
-
-    // ATOMIC: Update order status
-    const { data: updatedOrder, error: updateError } = await supabase
-      .from('orders')
-      .update({
-        payment_status: PAYMENT_STATUS.VALIDATED,
-        status: ORDER_STATUS.PROCESSING,
-        validated_by: adminId,
-        validated_at: new Date().toISOString()
-      })
-      .eq('id', orderId)
-      .select()
-      .single();
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'validatePayment - update', orderId });
-      throw appError;
-    }
-
-    // Get admin email for logging
     const adminEmail = await getUserEmail(adminId);
     await logOrderActivity({
       action: 'payment_validated',
@@ -1128,162 +811,26 @@ export const validatePayment = async (orderId, adminId) => {
       })
     });
 
-    // OPTIMIZE: Fix N³ problem - batch fetch all combo items and products at once
-    // instead of nested loops within order items
-    const comboItemIds = order.order_items
-      .filter(item => item.item_type === 'combo')
-      .map(item => item.item_id);
-
-    let comboItemsMap = new Map();
-    let productsMap = new Map();
-
-    if (comboItemIds.length > 0) {
-      // Batch fetch all combo items
-      const { data: comboItems, error: comboError } = await supabase
-        .from('combo_items')
-        .select('combo_id, product_id, quantity')
-        .in('combo_id', comboItemIds);
-
-      if (comboError) {
-        const appError = parseSupabaseError(comboError);
-        logError(appError, { operation: 'validatePayment - fetch combos', orderId });
-        throw appError;
-      }
-
-      // Build map of combo_id => combo_items for efficient lookup
-      if (comboItems) {
-        comboItems.forEach(item => {
-          if (!comboItemsMap.has(item.combo_id)) {
-            comboItemsMap.set(item.combo_id, []);
-          }
-          comboItemsMap.get(item.combo_id).push(item);
-        });
-
-        // Batch fetch inventory records for all products referenced by combo items
-        const productIds = [...new Set(comboItems.map(item => item.product_id))];
-        if (productIds.length > 0) {
-          const { data: inventories, error: inventoriesError } = await supabase
-            .from('inventory')
-            .select('id, product_id')
-            .in('product_id', productIds);
-
-          if (inventoriesError) {
-            const appError = parseSupabaseError(inventoriesError);
-            logError(appError, { operation: 'validatePayment - fetch inventory', orderId });
-            throw appError;
-          }
-
-          // Build map of product_id => inventory for efficient lookup
-          if (inventories) {
-            inventories.forEach(inventory => {
-              productsMap.set(inventory.product_id, { inventory_id: inventory.id });
-            });
-          }
-        }
-      }
-    }
-
-    // ATOMIC: Reduce inventory for all items
-    // Collect all inventory reduction operations
-    const inventoryReductions = [];
-
-    for (const item of order.order_items) {
-      if (item.item_type === 'product' && item.inventory_id) {
-        // Direct product
-        inventoryReductions.push({ inventoryId: item.inventory_id, quantity: item.quantity });
-      } else if (item.item_type === 'combo' && item.item_id) {
-        // Combo - get items from batched data
-        const comboItems = comboItemsMap.get(item.item_id) || [];
-        for (const comboItem of comboItems) {
-          const product = productsMap.get(comboItem.product_id);
-          if (product?.inventory_id) {
-            // Reduce inventory: combo quantity * item quantity in combo
-            inventoryReductions.push({
-              inventoryId: product.inventory_id,
-              quantity: item.quantity * comboItem.quantity
-            });
-          }
-        }
-      }
-    }
-
-    // Execute all inventory reductions in parallel
-    if (inventoryReductions.length > 0) {
-      const reductionPromises = inventoryReductions.map(reduction =>
-        reduceInventory(reduction.inventoryId, reduction.quantity)
-      );
-      await Promise.all(reductionPromises);
-    }
-
-    // Log status change (graceful fallback if fails)
-    try {
-      await supabase
-        .from('order_status_history')
-        .insert({
-          order_id: orderId,
-          previous_status: order.status,
-          new_status: ORDER_STATUS.PROCESSING,
-          changed_by: adminId,
-          notes: 'Payment validated by admin'
-        });
-    } catch (historyError) {
-      logError(historyError, { operation: 'validatePayment - log history', orderId });
-    }
-
-    // Sync Zelle transaction history for observabilidad (graceful fallback)
-    // CRITICAL: Always register Zelle transaction when validating payment, independent of activity log status
-    if (order.zelle_account_id) {
-      try {
-        const zelleResult = await upsertZelleTransactionStatus({
-          referenceId: orderId,
-          transactionType: order.order_type === 'combo'
-            ? ZELLE_TRANSACTION_TYPES.COMBO
-            : ZELLE_TRANSACTION_TYPES.PRODUCT,
-          status: ZELLE_STATUS.VALIDATED,
-          amount: order.total_amount || 0,
-          zelleAccountId: order.zelle_account_id,
-          validatedBy: adminId
-        });
-      } catch (zelleError) {
-        console.error('[validatePayment] ERROR registering Zelle transaction:', zelleError);
-        logError(zelleError, { operation: 'validatePayment - zelle sync', orderId });
-      }
-    } else {
-      console.warn('[validatePayment] No zelle_account_id found in order, skipping Zelle registration');
-    }
+    await syncOrderZelleStatus(updatedOrder, ZELLE_STATUS.VALIDATED, adminId, 'validatePayment');
 
     return updatedOrder;
   } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'validatePayment',
-      orderId
-    });
-    throw appError;
+    return rethrowAsAppError(error, 'validatePayment', { orderId });
   }
 };
 
 /**
- * Reject payment and cancel order
- * CRITICAL: Requires payment_status === 'proof_uploaded'
- * Releases all reserved inventory and logs rejection
+ * Reject a payment (order_reject_payment). The order stays PENDING so the customer can retry with a new proof.
  *
- * TRANSACTION BOUNDARY (for future DB transaction wrapper support):
- * BEGIN TRANSACTION
- *   1. Fetch order and validate state (status === pending, payment_status === proof_uploaded)
- *   2. Update order status to CANCELLED and payment_status to REJECTED
- *   3. Release reserved inventory for all product items (parallel Promise.all)
- *   4. Log order status history (graceful fallback if fails)
- * COMMIT TRANSACTION
- *
- * If any critical step (1-3) fails, rollback all inventory changes.
- * Logging failure (step 4) doesn't rollback - logging is non-critical.
+ * Stock: a rejection does NOT release the reservation. The order is still alive (a rejected payment accepts a new
+ * proof and never re-reserves), so releasing here would let the customer retry against stock somebody else took.
+ * A rejected order that is abandoned is cancelled and released by expire_stale_order_reservations.
  *
  * @param {string} orderId - Order ID
  * @param {string} adminId - Admin user ID
  * @param {string} rejectionReason - Reason for rejection
- * @throws {AppError} If validation fails, state invalid, or operations fail
- * @returns {Promise<Object>} Updated cancelled order
+ * @throws {AppError} If validation fails, the order already moved (CONFLICT) or the RPC fails
+ * @returns {Promise<Object>} Updated order
  */
 export const rejectPayment = async (orderId, adminId, rejectionReason) => {
   try {
@@ -1295,76 +842,12 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
       }, 'Missing required fields for payment rejection');
     }
 
-    // Fetch order with items
-    const { data: order, error: fetchError } = await supabase
-      .from('orders')
-      .select('*, order_items (*)')
-      .eq('id', orderId)
-      .single();
+    const updatedOrder = await callTransitionRpc(
+      'order_reject_payment',
+      { p_order_id: orderId, p_reason: rejectionReason },
+      orderTarget(orderId)
+    );
 
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'rejectPayment - fetch', orderId });
-      throw appError;
-    }
-
-    if (!order) {
-      throw createNotFoundError('Order', orderId);
-    }
-
-    // CRITICAL: Validate state - only pending orders can have payment rejected
-    if (order.status !== ORDER_STATUS.PENDING) {
-      throw createValidationError(
-        { status: `Current order status is ${order.status}, but must be ${ORDER_STATUS.PENDING}` },
-        'Payment can only be rejected for pending orders'
-      );
-    }
-
-    // Allow rejecting payments that are either PENDING or have PROOF_UPLOADED
-    if (order.payment_status !== PAYMENT_STATUS.PROOF_UPLOADED &&
-        order.payment_status !== PAYMENT_STATUS.PENDING) {
-      throw createValidationError(
-        { payment_status: `Cannot reject payment with status ${order.payment_status}` },
-        'El pago solo puede rechazarse si está pendiente o tiene comprobante subido'
-      );
-    }
-
-    // ATOMIC: Update order status (keep pending so user can retry with new proof)
-    const { data: updatedOrder, error: updateError } = await supabase
-      .from('orders')
-      .update({
-        payment_status: PAYMENT_STATUS.REJECTED,
-        status: ORDER_STATUS.PENDING,
-        validated_by: adminId,
-        validated_at: new Date().toISOString(),
-        rejection_reason: rejectionReason
-      })
-      .eq('id', orderId)
-      .select()
-      .single();
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'rejectPayment - update', orderId });
-      throw appError;
-    }
-
-    // Log status change (graceful fallback if fails)
-    try {
-      await supabase
-        .from('order_status_history')
-        .insert({
-          order_id: orderId,
-          previous_status: order.status,
-          new_status: ORDER_STATUS.PENDING,
-          changed_by: adminId,
-          notes: `Payment rejected: ${rejectionReason}`
-        });
-    } catch (historyError) {
-      logError(historyError, { operation: 'rejectPayment - log history', orderId });
-    }
-
-    // Get admin email for logging
     const adminEmail = await getUserEmail(adminId);
     await logOrderActivity({
       action: 'payment_rejected',
@@ -1380,145 +863,29 @@ export const rejectPayment = async (orderId, adminId, rejectionReason) => {
       })
     });
 
-    // Sync Zelle transaction history (graceful fallback)
-    // CRITICAL: Always register Zelle transaction when rejecting payment, independent of activity log status
-    if (order.zelle_account_id) {
-      try {
-        const zelleResult = await upsertZelleTransactionStatus({
-          referenceId: orderId,
-          transactionType: order.order_type === 'combo'
-            ? ZELLE_TRANSACTION_TYPES.COMBO
-            : ZELLE_TRANSACTION_TYPES.PRODUCT,
-          status: ZELLE_STATUS.REJECTED,
-          amount: order.total_amount || 0,
-          zelleAccountId: order.zelle_account_id,
-          validatedBy: adminId
-        });
-      } catch (zelleError) {
-        console.error('[rejectPayment] ERROR registering Zelle transaction:', zelleError);
-        logError(zelleError, { operation: 'rejectPayment - zelle sync', orderId });
-      }
-    } else {
-      console.warn('[rejectPayment] No zelle_account_id found in order, skipping Zelle registration');
-    }
+    await syncOrderZelleStatus(updatedOrder, ZELLE_STATUS.REJECTED, adminId, 'rejectPayment');
 
     return updatedOrder;
   } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'rejectPayment',
-      orderId
-    });
-    throw appError;
+    return rethrowAsAppError(error, 'rejectPayment', { orderId });
   }
 };
 
 // ============================================================================
-// ORDER STATUS UPDATES & WORKFLOW
+// ORDER STATUS WORKFLOW
 // ============================================================================
 
 /**
- * Update order status with full state machine validation
- * @param {string} orderId - Order ID
- * @param {string} newStatus - New status (must be valid ORDER_STATUS)
- * @param {string} adminId - Admin user ID
- * @param {string} notes - Optional notes for status change
- * @throws {AppError} If validation fails, state invalid, or update fails
- * @returns {Promise<Object>} Updated order
- */
-export const updateOrderStatus = async (orderId, newStatus, adminId, notes = '') => {
-  try {
-    if (!orderId || !newStatus || !adminId) {
-      throw createValidationError({
-        orderId: !orderId ? 'Order ID is required' : undefined,
-        newStatus: !newStatus ? 'New status is required' : undefined,
-        adminId: !adminId ? 'Admin ID is required' : undefined
-      });
-    }
-
-    // Get current order
-    const { data: order, error: fetchError } = await supabase
-      .from('orders')
-      .select('status')
-      .eq('id', orderId)
-      .single();
-
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'updateOrderStatus - fetch', orderId });
-      throw appError;
-    }
-
-    if (!order) {
-      throw createNotFoundError('Order', orderId);
-    }
-
-    // CRITICAL: Validate state machine transition
-    validateOrderTransition(order.status, newStatus);
-
-    // Update order
-    const { data: updatedOrder, error: updateError } = await supabase
-      .from('orders')
-      .update({
-        status: newStatus,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', orderId)
-      .select()
-      .single();
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'updateOrderStatus - update', orderId, newStatus });
-      throw appError;
-    }
-
-    // Log status change (graceful fallback if fails)
-    try {
-      await supabase
-        .from('order_status_history')
-        .insert({
-          order_id: orderId,
-          previous_status: order.status,
-          new_status: newStatus,
-          changed_by: adminId,
-          notes: notes
-        });
-    } catch (historyError) {
-      logError(historyError, { operation: 'updateOrderStatus - log history', orderId });
-    }
-
-    // Get admin email for logging
-    const adminEmail = await getUserEmail(adminId);
-    logOrderActivity({
-      action: 'order_status_updated',
-      entityId: orderId,
-      performedBy: adminEmail,
-      description: `Estado cambiado a ${newStatus} - Orden ${updatedOrder?.order_number || orderId}`,
-      metadata: { orderId, orderNumber: updatedOrder?.order_number, previousStatus: order.status, newStatus, notes }
-    });
-
-    return updatedOrder;
-  } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'updateOrderStatus',
-      orderId
-    });
-    throw appError;
-  }
-};
-
-/**
- * Upload payment proof screenshot with authorization validation
+ * Upload payment proof screenshot and mark the payment as proof_uploaded (order_submit_proof).
+ * The file goes to the private bucket first; if the RPC then refuses (the order moved), the file stays orphaned.
  * @param {File} file - Image file
  * @param {string} orderId - Order ID
- * @param {string} userId - User ID (for authorization)
+ * @param {string} userId - User ID (activity log; ownership is checked by the RPC against the JWT)
  * @param {string} paymentReference - Payer name/company (titular/empresa que realiza el pago)
  * @param {Object} [options]
  * @param {string} options.payerPhone - Payer contact phone (required; stored in orders.payer_phone)
- * @throws {AppError} If validation fails, authorization fails, or upload fails
- * @returns {Promise<string>} Public URL of uploaded proof
+ * @throws {AppError} If validation fails, the upload fails, or the RPC refuses
+ * @returns {Promise<string>} Storage path of the uploaded proof (private bucket; sign it to view)
  */
 export const uploadPaymentProof = async (file, orderId, userId, paymentReference = '', options = {}) => {
   try {
@@ -1532,55 +899,14 @@ export const uploadPaymentProof = async (file, orderId, userId, paymentReference
       }, 'Missing required fields for proof upload');
     }
 
-    // Fetch order to validate ownership and state
-    const { data: order, error: fetchError } = await supabase
-      .from('orders')
-      .select('id, order_number, user_id, status, payment_status, payment_method, total_amount, payment_reference')
-      .eq('id', orderId)
-      .single();
-
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'uploadPaymentProof - fetch', orderId });
-      throw appError;
+    const fileError = validatePaymentProofFile(file);
+    if (fileError) {
+      throw createValidationError({ file: fileError }, 'Invalid payment proof file');
     }
 
-    if (!order) {
-      throw createNotFoundError('Order', orderId);
-    }
+    const fileExt = PAYMENT_PROOF_MIME_EXT[file.type];
+    const filePath = `payment-proofs/payment-proof-${orderId}-${Date.now()}.${fileExt}`;
 
-    // Authorize - user must own the order
-    if (order.user_id !== userId) {
-      throw createPermissionError('upload proof for this order', 'owner');
-    }
-
-    // Validate order state - can only upload proof for pending orders (including rejected payments)
-    if (order.status !== ORDER_STATUS.PENDING) {
-      throw createValidationError(
-        { status: `Current order status is ${order.status}, but must be ${ORDER_STATUS.PENDING}` },
-        'Payment proof can only be uploaded for pending orders'
-      );
-    }
-
-    // Handle both File and Blob objects
-    let fileExt = 'jpg';
-    if (file.name) {
-      fileExt = file.name.split('.').pop();
-    } else if (file.type) {
-      const mimeToExt = {
-        'image/jpeg': 'jpg',
-        'image/jpg': 'jpg',
-        'image/png': 'png',
-        'image/webp': 'webp',
-        'image/gif': 'gif'
-      };
-      fileExt = mimeToExt[file.type] || 'jpg';
-    }
-
-    const fileName = `payment-proof-${orderId}-${Date.now()}.${fileExt}`;
-    const filePath = `payment-proofs/${fileName}`;
-
-    // Upload to Supabase Storage
     const { error: uploadError } = await supabase.storage
       .from('order-documents')
       .upload(filePath, file, {
@@ -1594,66 +920,38 @@ export const uploadPaymentProof = async (file, orderId, userId, paymentReference
       throw appError;
     }
 
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from('order-documents')
-      .getPublicUrl(filePath);
+    const order = await callTransitionRpc(
+      'order_submit_proof',
+      {
+        p_order_id: orderId,
+        p_proof_path: filePath,
+        p_reference: paymentReference?.trim() || null,
+        p_payer_phone: normalizePayerPhone(payerPhone)
+      },
+      orderTarget(orderId)
+    );
 
-    // Update order with proof URL, payment reference, and mark as proof uploaded
-    const updateData = {
-      payment_proof_url: urlData.publicUrl,
-      payment_status: PAYMENT_STATUS.PROOF_UPLOADED,
-      payer_phone: normalizePayerPhone(payerPhone),
-      rejection_reason: null,
-      updated_at: new Date().toISOString()
-    };
-
-    // Include payment_reference if provided
-    if (paymentReference && paymentReference.trim()) {
-      updateData.payment_reference = paymentReference.trim();
-    }
-
-    const { error: updateError } = await supabase
-      .from('orders')
-      .update(updateData)
-      .eq('id', orderId);
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'uploadPaymentProof - update', orderId });
-      throw appError;
-    }
-
-    // Get user email for logging
     const userEmail = await getUserEmail(userId);
     logOrderActivity({
       action: 'payment_proof_uploaded',
       entityId: orderId,
       performedBy: userEmail,
       description: `Comprobante subido - Orden ${order?.order_number || orderId}`,
-      metadata: buildOrderPaymentMetadata(
-        { ...order, payment_status: PAYMENT_STATUS.PROOF_UPLOADED },
-        { orderId, orderNumber: order?.order_number, paymentProofUrl: urlData.publicUrl }
-      )
+      metadata: buildOrderPaymentMetadata(order, { orderId, orderNumber: order?.order_number, paymentProofUrl: filePath })
     });
 
-    return urlData.publicUrl;
+    return filePath;
   } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'uploadPaymentProof',
-      orderId
-    });
-    throw appError;
+    return rethrowAsAppError(error, 'uploadPaymentProof', { orderId });
   }
 };
 
 /**
- * Start processing an order (Payment Validated → Processing)
- * Validates order is in correct state for processing
+ * Start processing an order (order_start_processing: pending + payment validated -> processing).
+ * Legacy path: validatePayment already leaves the order in processing.
  * @param {string} orderId - Order ID
  * @param {string} adminId - Admin user ID
- * @throws {AppError} If order not found, invalid state, or update fails
+ * @throws {AppError} If validation fails, the order already moved (CONFLICT) or the RPC fails
  * @returns {Promise<Object>} Updated order in processing state
  */
 export const startProcessingOrder = async (orderId, adminId) => {
@@ -1665,70 +963,20 @@ export const startProcessingOrder = async (orderId, adminId) => {
       });
     }
 
-    // Verify order exists and payment is validated
-    const { data: order, error: fetchError } = await supabase
-      .from('orders')
-      .select('id, order_number, status, payment_status')
-      .eq('id', orderId)
-      .single();
-
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'startProcessingOrder - fetch', orderId });
-      throw appError;
-    }
-
-    if (!order) {
-      throw createNotFoundError('Order', orderId);
-    }
-
-    // Validate state machine
-    if (order.payment_status !== PAYMENT_STATUS.VALIDATED) {
-      throw createValidationError(
-        { payment_status: `Current payment status is ${order.payment_status}, but must be ${PAYMENT_STATUS.VALIDATED}` },
-        'Payment must be validated before processing'
-      );
-    }
-
-    validateOrderTransition(order.status, ORDER_STATUS.PROCESSING);
-
-    // Update order status
-    const { data: updatedOrder, error: updateError } = await supabase
-      .from('orders')
-      .update({
-        status: ORDER_STATUS.PROCESSING,
-        processing_started_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', orderId)
-      .select()
-      .single();
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'startProcessingOrder - update', orderId });
-      throw appError;
-    }
-
-    return updatedOrder;
+    return await callTransitionRpc('order_start_processing', { p_order_id: orderId }, orderTarget(orderId));
   } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'startProcessingOrder',
-      orderId
-    });
-    throw appError;
+    return rethrowAsAppError(error, 'startProcessingOrder', { orderId });
   }
 };
 
 /**
- * Mark order as shipped (Processing → Shipped)
- * Validates order is in processing state
+ * Mark order as dispatched (order_dispatch: processing -> dispatched). The tracking is APPENDED to the existing
+ * notes by the database.
  * @param {string} orderId - Order ID
  * @param {string} adminId - Admin user ID
  * @param {string} trackingInfo - Optional tracking information
- * @throws {AppError} If order not found, invalid state, or update fails
- * @returns {Promise<Object>} Updated order in shipped state
+ * @throws {AppError} If validation fails, the order already moved (CONFLICT) or the RPC fails
+ * @returns {Promise<Object>} Updated order in dispatched state
  */
 export const markOrderAsDispatched = async (orderId, adminId, trackingInfo = '') => {
   try {
@@ -1739,71 +987,24 @@ export const markOrderAsDispatched = async (orderId, adminId, trackingInfo = '')
       });
     }
 
-    // Verify order exists and is in processing
-    const { data: order, error: fetchError } = await supabase
-      .from('orders')
-      .select('id, order_number, status')
-      .eq('id', orderId)
-      .single();
+    const updatedOrder = await callTransitionRpc(
+      'order_dispatch',
+      { p_order_id: orderId, p_tracking: trackingInfo || null },
+      orderTarget(orderId)
+    );
 
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'markOrderAsDispatched - fetch', orderId });
-      throw appError;
-    }
-
-    if (!order) {
-      throw createNotFoundError('Order', orderId);
-    }
-
-    // Validate state machine
-    validateOrderTransition(order.status, ORDER_STATUS.DISPATCHED);
-
-    // Update order status
-    const updateData = {
-      status: ORDER_STATUS.DISPATCHED,
-      dispatched_at: new Date().toISOString(),
-      dispatched_by: adminId,
-      updated_at: new Date().toISOString()
-    };
-
-    if (trackingInfo) {
-      updateData.notes = order.notes
-        ? `${order.notes}\n\nTracking: ${trackingInfo}`
-        : `Tracking: ${trackingInfo}`;
-    }
-
-    const { data: updatedOrder, error: updateError } = await supabase
-      .from('orders')
-      .update(updateData)
-      .eq('id', orderId)
-      .select()
-      .single();
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'markOrderAsDispatched - update', orderId });
-      throw appError;
-    }
-
-    // Get admin email for logging
     const adminEmail = await getUserEmail(adminId);
     logOrderActivity({
       action: 'order_dispatched',
       entityId: orderId,
       performedBy: adminEmail,
-      description: `Orden ${order.order_number} marcada como despachada`,
-      metadata: { trackingInfo, orderNumber: order.order_number }
+      description: `Orden ${updatedOrder?.order_number} marcada como despachada`,
+      metadata: { trackingInfo, orderNumber: updatedOrder?.order_number }
     });
 
     return updatedOrder;
   } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'markOrderAsDispatched',
-      orderId
-    });
-    throw appError;
+    return rethrowAsAppError(error, 'markOrderAsDispatched', { orderId });
   }
 };
 
@@ -1811,117 +1012,75 @@ export const markOrderAsDispatched = async (orderId, adminId, trackingInfo = '')
 export const markOrderAsShipped = markOrderAsDispatched;
 
 /**
- * Mark order as delivered with proof (Shipped → Delivered)
- * Requires valid delivery proof file
+ * Mark order as delivered (order_mark_delivered: dispatched -> delivered). The delivery photo is OPTIONAL.
+ * With a photo it goes to the private order-delivery-proofs bucket first (path {user_id}/{order_id}/..., required by RLS);
+ * without one the RPC receives an explicit null proof path and stores no delivery_proof_url.
  * @param {string} orderId - Order ID
- * @param {File} proofFile - Delivery proof image file
+ * @param {File|null} proofFile - Optional delivery proof image file
  * @param {string} adminId - Admin user ID
- * @throws {AppError} If order not found, invalid state, no proof, or update fails
+ * @throws {AppError} If validation fails, the upload fails, the order already moved (CONFLICT) or the RPC fails
  * @returns {Promise<Object>} Updated order in delivered state
  */
-export const markOrderAsDelivered = async (orderId, proofFile, adminId) => {
+export const markOrderAsDelivered = async (orderId, proofFile = null, adminId) => {
   try {
-    if (!orderId || !proofFile || !adminId) {
+    if (!orderId || !adminId) {
       throw createValidationError({
         orderId: !orderId ? 'Order ID is required' : undefined,
-        proofFile: !proofFile ? 'Delivery proof file is required' : undefined,
         adminId: !adminId ? 'Admin ID is required' : undefined
       }, 'Missing required fields for delivery confirmation');
     }
 
-    // Verify order exists and is shipped
-    const { data: order, error: fetchError } = await supabase
-      .from('orders')
-      .select('id, order_number, status')
-      .eq('id', orderId)
-      .single();
+    let fileName = null; // null = deliver without a photo (the RPC stores no delivery_proof_url)
+    if (proofFile) {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user?.id) {
+        const appError = parseSupabaseError(authError) || new Error('User not authenticated');
+        logError(appError, { operation: 'markOrderAsDelivered - getUser', orderId });
+        throw appError;
+      }
 
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'markOrderAsDelivered - fetch', orderId });
-      throw appError;
+      fileName = `${user.id}/${orderId}/delivery-proof-${Date.now()}.jpg`;
+      const { error: uploadError } = await supabase.storage
+        .from('order-delivery-proofs')
+        .upload(fileName, proofFile, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) {
+        const appError = parseSupabaseError(uploadError);
+        logError(appError, { operation: 'markOrderAsDelivered - upload', fileName });
+        throw Object.assign(appError, { stage: 'upload' }); // lets the dialog offer "retry / confirm without photo"
+      }
     }
 
-    if (!order) {
-      throw createNotFoundError('Order', orderId);
-    }
+    // Store the file path (NOT a public URL): signed URLs are generated when displaying.
+    const updatedOrder = await callTransitionRpc(
+      'order_mark_delivered',
+      { p_order_id: orderId, p_proof_path: fileName },
+      orderTarget(orderId)
+    );
 
-    // Validate state machine
-    validateOrderTransition(order.status, ORDER_STATUS.DELIVERED);
-
-    // Get authenticated user for file path
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user?.id) {
-      const appError = parseSupabaseError(authError) || new Error('User not authenticated');
-      logError(appError, { operation: 'markOrderAsDelivered - getUser', orderId });
-      throw appError;
-    }
-
-    // Upload delivery proof to order-delivery-proofs bucket
-    // Path format: {user_id}/{order_id}/filename (required by RLS policy)
-    const fileName = `${user.id}/${orderId}/delivery-proof-${Date.now()}.jpg`;
-    const { error: uploadError } = await supabase.storage
-      .from('order-delivery-proofs')
-      .upload(fileName, proofFile, {
-        cacheControl: '3600',
-        upsert: false
-      });
-
-    if (uploadError) {
-      const appError = parseSupabaseError(uploadError);
-      logError(appError, { operation: 'markOrderAsDelivered - upload', fileName });
-      throw appError;
-    }
-
-    // Store the file path (NOT public URL) - signed URLs will be generated when displaying
-    // This matches the pattern used by remittances for private bucket storage
-
-    // Update order status
-    const { data: updatedOrder, error: updateError } = await supabase
-      .from('orders')
-      .update({
-        status: ORDER_STATUS.DELIVERED,
-        delivered_at: new Date().toISOString(),
-        delivery_proof_url: fileName, // Store path only, not full URL
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', orderId)
-      .select()
-      .single();
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'markOrderAsDelivered - update', orderId });
-      throw appError;
-    }
-
-    // Get admin email for logging
     const adminEmail = await getUserEmail(adminId);
     logOrderActivity({
       action: 'order_delivered',
       entityId: orderId,
       performedBy: adminEmail,
-      description: `Entregada con evidencia - Orden ${updatedOrder?.order_number || orderId}`,
-      metadata: { orderId, orderNumber: updatedOrder?.order_number, deliveryProofPath: fileName }
+      description: `${fileName ? 'Entregada con evidencia' : 'Entregada sin evidencia'} - Orden ${updatedOrder?.order_number || orderId}`,
+      metadata: { orderId, orderNumber: updatedOrder?.order_number, ...(fileName ? { deliveryProofPath: fileName } : {}) }
     });
 
     return updatedOrder;
   } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'markOrderAsDelivered',
-      orderId
-    });
-    throw appError;
+    return rethrowAsAppError(error, 'markOrderAsDelivered', { orderId });
   }
 };
 
 /**
- * Complete an order (Delivered → Completed)
- * Final state transition - order can no longer be modified
+ * Complete an order (order_complete: delivered -> completed). Final state; the notes are APPENDED by the database.
  * @param {string} orderId - Order ID
  * @param {string} notes - Optional completion notes
- * @throws {AppError} If order not found, invalid state, or update fails
+ * @throws {AppError} If validation fails, the order already moved (CONFLICT) or the RPC fails
  * @returns {Promise<Object>} Updated order in completed state
  */
 export const completeOrder = async (orderId, notes = '') => {
@@ -1930,49 +1089,11 @@ export const completeOrder = async (orderId, notes = '') => {
       throw createValidationError({ orderId: 'Order ID is required' });
     }
 
-    // Verify order exists and is delivered
-    const { data: order, error: fetchError } = await supabase
-      .from('orders')
-      .select('id, order_number, status')
-      .eq('id', orderId)
-      .single();
-
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'completeOrder - fetch', orderId });
-      throw appError;
-    }
-
-    if (!order) {
-      throw createNotFoundError('Order', orderId);
-    }
-
-    // Validate state machine
-    validateOrderTransition(order.status, ORDER_STATUS.COMPLETED);
-
-    // Update order status
-    const updateData = {
-      status: ORDER_STATUS.COMPLETED,
-      completed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    if (notes) {
-      updateData.notes = order.notes ? `${order.notes}\n\n${notes}` : notes;
-    }
-
-    const { data: updatedOrder, error: updateError } = await supabase
-      .from('orders')
-      .update(updateData)
-      .eq('id', orderId)
-      .select()
-      .single();
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'completeOrder - update', orderId });
-      throw appError;
-    }
+    const updatedOrder = await callTransitionRpc(
+      'order_complete',
+      { p_order_id: orderId, p_notes: notes || null },
+      orderTarget(orderId)
+    );
 
     logOrderActivity({
       action: 'order_completed',
@@ -1984,36 +1105,20 @@ export const completeOrder = async (orderId, notes = '') => {
 
     return updatedOrder;
   } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'completeOrder',
-      orderId
-    });
-    throw appError;
+    return rethrowAsAppError(error, 'completeOrder', { orderId });
   }
 };
 
 /**
- * Cancel an order with full state validation
- * CRITICAL: Can only cancel pending or processing orders
- * Releases all reserved inventory
- *
- * TRANSACTION BOUNDARY (for future DB transaction wrapper support):
- * BEGIN TRANSACTION
- *   1. Fetch order with items and validate state (pending or processing)
- *   2. Release reserved inventory for all items (parallel Promise.all)
- *   3. Update order status to CANCELLED
- *   4. Log order status history (graceful fallback if fails)
- * COMMIT TRANSACTION
- *
- * If any critical step (1-3) fails, rollback all inventory changes.
- * Logging failure (step 4) doesn't rollback - logging is non-critical.
+ * Cancel an order as admin (order_cancel: pending | processing -> cancelled, payment unchanged).
+ * The release of the reserved stock happens in the same transaction (trigger release_stock_on_order_cancel); stock
+ * already consumed by a validated payment is NOT restocked - that is an explicit inventory decision (restockOrder).
  *
  * @param {string} orderId - Order ID
  * @param {string} adminId - Admin user ID
  * @param {string} reason - Cancellation reason
- * @throws {AppError} If order not found, invalid state, or operations fail
- * @returns {Promise<Object>} Updated cancelled order
+ * @throws {AppError} If validation fails, the order already moved (CONFLICT) or the RPC fails
+ * @returns {Promise<Object>} Updated cancelled order plus `stockConsumed`
  */
 export const cancelOrder = async (orderId, adminId, reason) => {
   try {
@@ -2025,75 +1130,12 @@ export const cancelOrder = async (orderId, adminId, reason) => {
       }, 'Missing required fields for order cancellation');
     }
 
-    // Get order with items
-    const { data: order, error: fetchError } = await supabase
-      .from('orders')
-      .select('*, order_items(*)')
-      .eq('id', orderId)
-      .single();
+    const updatedOrder = await callTransitionRpc(
+      'order_cancel',
+      { p_order_id: orderId, p_reason: reason },
+      orderTarget(orderId)
+    );
 
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'cancelOrder - fetch', orderId });
-      throw appError;
-    }
-
-    if (!order) {
-      throw createNotFoundError('Order', orderId);
-    }
-
-    // CRITICAL: Validate state machine - can only cancel pending or processing
-    const cancellableStatuses = [ORDER_STATUS.PENDING, ORDER_STATUS.PROCESSING];
-    if (!cancellableStatuses.includes(order.status)) {
-      throw createValidationError(
-        { status: `Order is in ${order.status} state` },
-        `Orders can only be cancelled in ${cancellableStatuses.join(' or ')} states`
-      );
-    }
-
-    // ATOMIC: Release reserved inventory for all items in parallel
-    const releasePromises = order.order_items
-      .filter(item => item.inventory_id)
-      .map(item => releaseInventory(item.inventory_id, item.quantity));
-
-    if (releasePromises.length > 0) {
-      await Promise.all(releasePromises);
-    }
-
-    // ATOMIC: Update order status
-    const { data: updatedOrder, error: updateError } = await supabase
-      .from('orders')
-      .update({
-        status: ORDER_STATUS.CANCELLED,
-        rejection_reason: reason,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', orderId)
-      .select()
-      .single();
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'cancelOrder - update', orderId });
-      throw appError;
-    }
-
-    // Log status change (graceful fallback if fails)
-    try {
-      await supabase
-        .from('order_status_history')
-        .insert({
-          order_id: orderId,
-          previous_status: order.status,
-          new_status: ORDER_STATUS.CANCELLED,
-          changed_by: adminId,
-          notes: `Cancelled: ${reason}`
-        });
-    } catch (historyError) {
-      logError(historyError, { operation: 'cancelOrder - log history', orderId });
-    }
-
-    // Get admin email for logging
     const adminEmail = await getUserEmail(adminId);
     logOrderActivity({
       action: 'order_cancelled',
@@ -2103,19 +1145,15 @@ export const cancelOrder = async (orderId, adminId, reason) => {
       metadata: { orderId, orderNumber: updatedOrder?.order_number, reason }
     });
 
-    return updatedOrder;
+    // The caller may offer restockOrder() only when the database really consumed units.
+    return { ...updatedOrder, stockConsumed: await hasConsumedAllocations(orderId) };
   } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'cancelOrder',
-      orderId
-    });
-    throw appError;
+    return rethrowAsAppError(error, 'cancelOrder', { orderId });
   }
 };
 
 /**
- * Allow order owner to cancel while pending
+ * Allow the order owner to cancel while pending (order_cancel, owner branch: payment becomes rejected).
  */
 export const cancelOrderByUser = async (orderId, userId, reason = 'cancelled_by_user') => {
   try {
@@ -2123,74 +1161,24 @@ export const cancelOrderByUser = async (orderId, userId, reason = 'cancelled_by_
       throw createValidationError({ orderId: !orderId ? 'Order ID is required' : undefined, userId: !userId ? 'User ID is required' : undefined });
     }
 
-    const { data: order, error: fetchError } = await supabase
-      .from('orders')
-      .select('id, user_id, status, order_number, order_items(*)')
-      .eq('id', orderId)
-      .single();
+    const updatedOrder = await callTransitionRpc(
+      'order_cancel',
+      { p_order_id: orderId, p_reason: reason },
+      orderTarget(orderId)
+    );
 
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'cancelOrderByUser - fetch', orderId });
-      throw appError;
-    }
-
-    if (!order) {
-      throw createNotFoundError('Order', orderId);
-    }
-
-    if (order.user_id !== userId) {
-      throw createPermissionError('cancel this order', 'owner');
-    }
-
-    if (order.status !== ORDER_STATUS.PENDING) {
-      throw createValidationError({ status: `Order is in ${order.status} state` }, 'Only pending orders can be cancelled by the user');
-    }
-
-    const releasePromises = order.order_items
-      .filter(item => item.inventory_id)
-      .map(item => releaseInventory(item.inventory_id, item.quantity));
-
-    if (releasePromises.length > 0) {
-      await Promise.all(releasePromises);
-    }
-
-    const { data: updatedOrder, error: updateError } = await supabase
-      .from('orders')
-      .update({
-        status: ORDER_STATUS.CANCELLED,
-        payment_status: PAYMENT_STATUS.REJECTED,
-        rejection_reason: reason,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', orderId)
-      .select()
-      .single();
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'cancelOrderByUser - update', orderId });
-      throw appError;
-    }
-
-    // Get user email for logging
     const userEmail = await getUserEmail(userId);
     logOrderActivity({
       action: 'order_cancelled',
       entityId: orderId,
       performedBy: userEmail,
-      description: `Usuario canceló orden ${order.order_number}`,
+      description: `Usuario canceló orden ${updatedOrder?.order_number}`,
       metadata: { reason }
     });
 
     return updatedOrder;
   } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'cancelOrderByUser',
-      orderId
-    });
-    throw appError;
+    return rethrowAsAppError(error, 'cancelOrderByUser', { orderId });
   }
 };
 
@@ -2222,10 +1210,11 @@ export const getDaysInProcessing = (order) => {
 // ============================================================================
 
 /**
- * Reopen a cancelled order (user action)
- * Allows users to reopen their own cancelled orders to retry payment
+ * Reopen a cancelled order (owner only, order_reopen: cancelled -> pending/pending).
+ * The RPC re-reserves the stock in the same transaction; when it is no longer available the whole reopen is refused
+ * with INSUFFICIENT_STOCK and the order stays cancelled. Reopening on behalf of a customer is not supported (ND-3).
  * @param {string} orderId - Order ID to reopen
- * @param {string} userId - User ID performing the action
+ * @param {string} userId - User ID performing the action (activity log; ownership is checked by the RPC)
  * @returns {Promise<Object>} Reopened order
  */
 export const reopenOrder = async (orderId, userId) => {
@@ -2237,171 +1226,19 @@ export const reopenOrder = async (orderId, userId) => {
       }, 'Missing required fields for order reopening');
     }
 
-    // Fetch order to verify existence and ownership
-    const { data: order, error: fetchError } = await supabase
-      .from('orders')
-      .select('id, order_number, user_id, status, payment_status')
-      .eq('id', orderId)
-      .single();
+    const updatedOrder = await callTransitionRpc('order_reopen', { p_order_id: orderId }, orderTarget(orderId));
 
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'reopenOrder - fetch', orderId });
-      throw appError;
-    }
-
-    if (!order) {
-      throw createNotFoundError('Order', orderId);
-    }
-
-    // Verify user ownership
-    if (order.user_id !== userId) {
-      throw createValidationError(
-        { userId: 'User does not own this order' },
-        'Solo puedes reabrir tus propias órdenes'
-      );
-    }
-
-    // Verify order is cancelled
-    if (order.status !== ORDER_STATUS.CANCELLED) {
-      throw createValidationError(
-        { status: `Order status is ${order.status}, must be cancelled` },
-        'Solo puedes reabrir órdenes canceladas'
-      );
-    }
-
-    // Validate state transition
-    validateOrderTransition(order.status, ORDER_STATUS.PENDING);
-
-    // Reopen order - reset to pending status
-    const { data: updatedOrder, error: updateError } = await supabase
-      .from('orders')
-      .update({
-        status: ORDER_STATUS.PENDING,
-        payment_status: PAYMENT_STATUS.PENDING,
-        cancelled_by: null,
-        cancelled_at: null,
-        cancellation_reason: null,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', orderId)
-      .select()
-      .single();
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'reopenOrder - update', orderId });
-      throw appError;
-    }
-
-    // Log activity
     const userEmail = await getUserEmail(userId);
     logOrderActivity({
       action: 'order_reopened',
       entityId: orderId,
       performedBy: userEmail,
-      description: `Usuario reabrió orden ${order.order_number}`,
-      metadata: { orderNumber: order.order_number, reason: 'user_request' }
+      description: `Usuario reabrió orden ${updatedOrder?.order_number}`,
+      metadata: { orderNumber: updatedOrder?.order_number, reason: 'user_request' }
     });
 
     return updatedOrder;
   } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'reopenOrder',
-      orderId,
-      userId
-    });
-    logError(appError);
-    throw appError;
-  }
-};
-
-/**
- * Reopen a cancelled order (admin action)
- * Allows admins to reopen any cancelled order with a reason
- * @param {string} orderId - Order ID to reopen
- * @param {string} adminId - Admin user ID performing the action
- * @param {string} reason - Reason for reopening
- * @returns {Promise<Object>} Reopened order
- */
-export const reopenOrderByAdmin = async (orderId, adminId, reason = 'Reapertura administrativa') => {
-  try {
-    if (!orderId || !adminId) {
-      throw createValidationError({
-        orderId: !orderId ? 'Order ID is required' : undefined,
-        adminId: !adminId ? 'Admin ID is required' : undefined
-      }, 'Missing required fields for order reopening');
-    }
-
-    // Fetch order to verify existence
-    const { data: order, error: fetchError } = await supabase
-      .from('orders')
-      .select('id, order_number, status, payment_status')
-      .eq('id', orderId)
-      .single();
-
-    if (fetchError) {
-      const appError = parseSupabaseError(fetchError);
-      logError(appError, { operation: 'reopenOrderByAdmin - fetch', orderId });
-      throw appError;
-    }
-
-    if (!order) {
-      throw createNotFoundError('Order', orderId);
-    }
-
-    // Verify order is cancelled
-    if (order.status !== ORDER_STATUS.CANCELLED) {
-      throw createValidationError(
-        { status: `Order status is ${order.status}, must be cancelled` },
-        'Solo puedes reabrir órdenes canceladas'
-      );
-    }
-
-    // Validate state transition
-    validateOrderTransition(order.status, ORDER_STATUS.PENDING);
-
-    // Reopen order - reset to pending status
-    const { data: updatedOrder, error: updateError } = await supabase
-      .from('orders')
-      .update({
-        status: ORDER_STATUS.PENDING,
-        payment_status: PAYMENT_STATUS.PENDING,
-        cancelled_by: null,
-        cancelled_at: null,
-        cancellation_reason: null,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', orderId)
-      .select()
-      .single();
-
-    if (updateError) {
-      const appError = parseSupabaseError(updateError);
-      logError(appError, { operation: 'reopenOrderByAdmin - update', orderId });
-      throw appError;
-    }
-
-    // Log activity
-    const adminEmail = await getUserEmail(adminId);
-    logOrderActivity({
-      action: 'order_reopened',
-      entityId: orderId,
-      performedBy: adminEmail,
-      description: `Administrador reabrió orden ${order.order_number}: ${reason}`,
-      metadata: { orderNumber: order.order_number, reason, reopenedBy: 'admin' }
-    });
-
-    return updatedOrder;
-  } catch (error) {
-    if (error.code) throw error;
-    const appError = handleError(error, ERROR_CODES.INTERNAL_SERVER_ERROR, {
-      operation: 'reopenOrderByAdmin',
-      orderId,
-      adminId
-    });
-    logError(appError);
-    throw appError;
+    return rethrowAsAppError(error, 'reopenOrder', { orderId, userId });
   }
 };

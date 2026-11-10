@@ -145,6 +145,7 @@ export const getTableColumns = (t, language, currencies, options = {}) => {
     label: t('vendor.inventory.price'),
     width: '120px',
     render: (value, row) => {
+      if (row.price_unavailable) return <span className="text-sm text-gray-400">—</span>;
       const currency = currencies.find(c => c.id === (row.display_currency_id || row.base_currency_id));
       const price = value || row.base_price || '0.00';
       return (
@@ -225,6 +226,7 @@ export const getModalColumns = (t, language, currencies) => [
     key: 'base_price',
     label: t('vendor.inventory.basePrice'),
     render: (value, row) => {
+      if (row.price_unavailable) return '—';
       const currency = currencies.find(c => c.id === (row.display_currency_id || row.base_currency_id));
       return `${currency?.symbol || '$'}${Number(value || 0).toFixed(2)}`;
     }
@@ -233,6 +235,7 @@ export const getModalColumns = (t, language, currencies) => [
     key: 'final_price',
     label: t('vendor.inventory.finalPrice'),
     render: (value, row) => {
+      if (row.price_unavailable) return '—';
       const currency = currencies.find(c => c.id === (row.display_currency_id || row.base_currency_id));
       return `${currency?.symbol || '$'}${Number(value || 0).toFixed(2)}`;
     }

@@ -21,6 +21,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import { noteRemoteChange } from '@/lib/requestBudget';
 
 export const useRealtimeSubscription = ({
   table,
@@ -88,6 +89,7 @@ export const useRealtimeSubscription = ({
             'postgres_changes',
             changeOptions,
             (payload) => {
+              noteRemoteChange(); // the refetches below must not get an answer cached before this change
               setLastUpdate(new Date());
 
               // Call specific handlers based on event type
@@ -225,36 +227,6 @@ export const useRealtimeZelleTransactions = ({ onUpdate, enabled = true }) => {
 export const useRealtimeActivityLogs = ({ onUpdate, enabled = true }) => {
   return useRealtimeSubscription({
     table: 'activity_logs',
-    event: '*',
-    enabled,
-    onInsert: onUpdate,
-    onUpdate: onUpdate,
-    onDelete: onUpdate
-  });
-};
-
-/**
- * useRealtimeProducts Hook
- * Specialized hook for real-time product updates
- */
-export const useRealtimeProducts = ({ onUpdate, enabled = true }) => {
-  return useRealtimeSubscription({
-    table: 'products',
-    event: '*',
-    enabled,
-    onInsert: onUpdate,
-    onUpdate: onUpdate,
-    onDelete: onUpdate
-  });
-};
-
-/**
- * useRealtimeCombos Hook
- * Specialized hook for real-time combo updates
- */
-export const useRealtimeCombos = ({ onUpdate, enabled = true }) => {
-  return useRealtimeSubscription({
-    table: 'combo_products',
     event: '*',
     enabled,
     onInsert: onUpdate,

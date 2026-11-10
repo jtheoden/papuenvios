@@ -14,6 +14,7 @@ import { useState } from 'react';
  * @param {boolean} props.disabled - Button disabled state
  * @param {string} props.title - Native title attribute for accessibility
  * @param {string} props.type - Native button type (default: 'button', so it never submits a form by accident)
+ * @param {string} props['aria-describedby'] - Id of the element that explains the button (e.g. why it is disabled)
  * @param {string} props['aria-label'] - Accessible name, needed when the visible text is hidden on small screens
  */
 const TooltipButton = ({
@@ -26,7 +27,8 @@ const TooltipButton = ({
   disabled = false,
   title,
   type = 'button',
-  'aria-label': ariaLabel
+  'aria-label': ariaLabel,
+  'aria-describedby': ariaDescribedBy
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
 
@@ -56,6 +58,7 @@ const TooltipButton = ({
       <button
         type={type}
         aria-label={ariaLabel}
+        aria-describedby={ariaDescribedBy}
         onClick={onClick}
         disabled={disabled}
         className={finalClassName}

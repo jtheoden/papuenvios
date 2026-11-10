@@ -38,7 +38,7 @@ export const userService = {
       return profiles;
     } catch (error) {
       if (error.code) throw error; // Already an AppError
-      return handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getAllUsers' });
+      throw handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getAllUsers' });
     }
   },
 
@@ -75,7 +75,7 @@ export const userService = {
       return data;
     } catch (error) {
       if (error.code) throw error; // Already an AppError
-      return handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getUserById', userId });
+      throw handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getUserById', userId });
     }
   },
 
@@ -93,7 +93,7 @@ export const userService = {
       }
     } catch (error) {
       if (error.code) throw error; // Already an AppError
-      return handleError(error, ERROR_CODES.DB_ERROR, { operation: 'updateUserRole', userId, role });
+      throw handleError(error, ERROR_CODES.DB_ERROR, { operation: 'updateUserRole', userId, role });
     }
   },
 
@@ -111,7 +111,7 @@ export const userService = {
       }
     } catch (error) {
       if (error.code) throw error; // Already an AppError
-      return handleError(error, ERROR_CODES.DB_ERROR, { operation: 'updateUserStatus', userId, isEnabled });
+      throw handleError(error, ERROR_CODES.DB_ERROR, { operation: 'updateUserStatus', userId, isEnabled });
     }
   },
 
@@ -136,7 +136,7 @@ export const userService = {
       };
     } catch (error) {
       if (error.code) throw error; // Already an AppError
-      return handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getUserStats' });
+      throw handleError(error, ERROR_CODES.DB_ERROR, { operation: 'getUserStats' });
     }
   }
 };
@@ -200,7 +200,7 @@ export const withAuth = async (user, requiredRole, callback) => {
     return callback();
   } catch (error) {
     if (error.code) throw error; // Already an AppError
-    return handleError(error, ERROR_CODES.FORBIDDEN, { operation: 'withAuth', requiredRole });
+    throw handleError(error, ERROR_CODES.FORBIDDEN, { operation: 'withAuth', requiredRole });
   }
 };
 

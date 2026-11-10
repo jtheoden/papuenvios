@@ -90,7 +90,8 @@ describe('evaluateComboPricing', () => {
       difference: 0,
       savingsPercent: 0,
       isMoreExpensive: false,
-      maxMarginWithoutLoss: 0
+      maxMarginWithoutLoss: 0,
+      comparable: true
     });
   });
 
@@ -141,3 +142,28 @@ describe('evaluateComboPricing', () => {
     expect(r.maxMarginWithoutLoss).toBeCloseTo(40, 1);
   });
 });
+
+describe('evaluateComboPricing when a product cannot be converted', () => {
+  // main's convertWithRates returns NaN for a missing rate
+  const noRate = () => NaN;
+
+  it('is not comparable (and never warns) instead of silently comparing against NaN', () => {
+    const r = evaluate({ products: ['a', 'eur1'], productQuantities: { a: 1, eur1: 1 }, profitMargin: 45 }, { convert: noRate });
+    expect(r.comparable).toBe(false);
+    expect(r.isMoreExpensive).toBe(false);
+    expect(r.maxMarginWithoutLoss).toBe(0);
+  });
+
+  it('is comparable when every product converts', () => {
+    const r = evaluate({ products: ['a', 'eur1'], productQuantities: { a: 1, eur1: 1 }, profitMargin: 45 });
+    expect(r.comparable).toBe(true);
+  });
+
+  it('keeps an explicit 0% margin: it does not fall back to the default margin', () => {
+    const zero = evaluate({ products: ['a', 'b'], productQuantities: { a: 1, b: 1 }, profitMargin: 0 });
+    const dflt = evaluate({ products: ['a', 'b'], productQuantities: { a: 1, b: 1 } });
+    expect(zero.comboPrice).toBeLessThan(dflt.comboPrice);
+    expect(zero.isMoreExpensive).toBe(false);
+  });
+});
+
