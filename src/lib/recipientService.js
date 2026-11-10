@@ -588,9 +588,6 @@ export const createBankAccount = async (userId, bankData) => {
     const accountNumberHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     const accountNumberLast4 = accountNumber.slice(-4);
 
-    // Encrypt full account number for admin access
-    const encryptedAccountNumber = await encryptData(accountNumber);
-
     // Check if account already exists (including soft-deleted ones)
     const { data: existingAccount } = await supabase
       .from('bank_accounts')
@@ -619,14 +616,20 @@ export const createBankAccount = async (userId, bankData) => {
       return reactivatedAccount;
     }
 
-    // If account exists and is active, return error
-    if (existingAccount && !existingAccount.deleted_at) {
-      console.warn('[createBankAccount] Account already exists:', existingAccount.id);
+    // Already saved by this customer: reuse it so it can also be linked to another recipient
+    if (existingAccount?.is_active) {
+      return existingAccount;
+    }
+
+    if (existingAccount) {
       throw createValidationError(
         { accountNumber: 'Esta cuenta bancaria ya está registrada para este usuario' },
         'Duplicate bank account'
       );
     }
+
+    // Encrypt full account number for admin access
+    const encryptedAccountNumber = await encryptData(accountNumber);
 
     // Create new account
     const { data, error } = await supabase
@@ -684,9 +687,9 @@ export const getBankAccountsByUser = async (userId, activeOnly = true) => {
         account_holder_name,
         is_active,
         created_at,
-        banks(name, swift_code),
-        account_types(name),
-        currencies(code, name)
+        bank:banks!bank_id(name, swift_code, logo_filename),
+        account_type:account_types!account_type_id(name),
+        currency:currencies!currency_id(code, name_es, name_en)
       `)
       .eq('user_id', userId);
 
@@ -816,6 +819,32 @@ export const linkBankAccountToRecipient = async (recipientId, bankAccountId, isD
         recipientId: !recipientId ? 'Recipient ID required' : null,
         bankAccountId: !bankAccountId ? 'Bank account ID required' : null
       }, 'Missing link parameters');
+    }
+
+    // (recipient_id, bank_account_id) is unique: reuse or reactivate the existing link
+    const { data: existingLink } = await supabase
+      .from('recipient_bank_accounts')
+      .select('id, is_active')
+      .eq('recipient_id', recipientId)
+      .eq('bank_account_id', bankAccountId)
+      .maybeSingle();
+
+    if (existingLink?.is_active) {
+      return existingLink;
+    }
+
+    if (existingLink) {
+      const { data: reactivated, error: reactivateError } = await supabase
+        .from('recipient_bank_accounts')
+        .update({ is_active: true })
+        .eq('id', existingLink.id)
+        .select()
+        .single();
+
+      if (reactivateError) {
+        throw parseSupabaseError(reactivateError);
+      }
+      return reactivated;
     }
 
     // If setting as default, unset other defaults
