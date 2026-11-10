@@ -28,6 +28,12 @@ const makeQuery = (table) => {
     single: async () => {
       if (table === 'remittance_types') return { data: state.type, error: null };
       if (table === 'offers') return { data: state.offer, error: null };
+      if (table === 'recipient_bank_accounts') {
+        return {
+          data: { id: 'link-1', recipient_id: 'rec-1', is_active: true, bank_account: { is_active: true, deleted_at: null, currency: { code: state.type.delivery_currency } } },
+          error: null
+        };
+      }
       if (table === 'remittances') {
         return { data: { id: 'rem-1', remittance_number: 'REM-1', ...state.insertPayload }, error: null };
       }
@@ -135,11 +141,17 @@ describe('calculateReverseRemittance guarantees the recipient gets at least what
 });
 
 describe('createRemittance stores the rounded values of the contract', () => {
-  const input = { remittance_type_id: 'type-1', recipient_name: 'Ana', recipient_phone: '+5355555555' };
+  const input = { remittance_type_id: 'type-1', recipient_name: 'Ana', recipient_phone: '+5355555555', recipient_id: 'rec-1', recipient_bank_account_id: 'link-1' };
+
+  // The quote the form displays is the calculateRemittance result; createRemittance stores exactly that
+  const displayedQuote = async (amount, offer = null) => {
+    const r = await calculateRemittance('type-1', amount, offer);
+    return { amountSent: r.amount, amountToDeliver: r.amountToDeliver, exchangeRate: r.exchangeRate, commissionTotal: r.totalCommission };
+  };
 
   it('persists amount_sent, commission_total and amount_to_deliver rounded to cents (REM-2026-001125 case)', async () => {
     state.type = baseType({ exchange_rate: 800, commission_percentage: 2.5 });
-    await createRemittance({ ...input, amount: 765 });
+    await createRemittance({ ...input, amount: 765, expectedQuote: await displayedQuote(765) });
     expect(state.insertPayload.amount_sent).toBe(765);
     expect(state.insertPayload.commission_total).toBe(19.13);
     expect(state.insertPayload.amount_to_deliver).toBe(596696);
@@ -147,14 +159,14 @@ describe('createRemittance stores the rounded values of the contract', () => {
 
   it('rounds a sub-cent amount before storing it and computes everything from the rounded amount', async () => {
     state.type = baseType({ exchange_rate: 780.5, commission_percentage: 0 });
-    await createRemittance({ ...input, amount: 10.005 });
+    await createRemittance({ ...input, amount: 10.005, expectedQuote: await displayedQuote(10.005) });
     expect(state.insertPayload.amount_sent).toBe(10.01);
     expect(state.insertPayload.amount_to_deliver).toBe(7812.81);
   });
 
   it('stored values satisfy amount_to_deliver = round((amount_sent - commission_total) * exchange_rate, 2)', async () => {
     state.type = baseType({ exchange_rate: 820, commission_percentage: 2.4390243902 });
-    await createRemittance({ ...input, amount: 100 });
+    await createRemittance({ ...input, amount: 100, expectedQuote: await displayedQuote(100) });
     const p = state.insertPayload;
     expect(p.commission_total).toBe(2.44);
     expect(p.amount_to_deliver).toBe(79999.2);
@@ -164,7 +176,7 @@ describe('createRemittance stores the rounded values of the contract', () => {
   it('stores the discount derived from the offer and the reduced commission', async () => {
     state.type = baseType({ exchange_rate: 800, commission_percentage: 2.5, commission_fixed: 1 });
     state.offer = { discount_type: 'percentage', discount_value: 15 };
-    await createRemittance({ ...input, amount: 100, offer_id: 'offer-1' });
+    await createRemittance({ ...input, amount: 100, offer_id: 'offer-1', expectedQuote: await displayedQuote(100, state.offer) });
     expect(state.insertPayload.discount_amount).toBe(0.53);
     expect(state.insertPayload.commission_total).toBe(2.97);
     expect(state.insertPayload.amount_to_deliver).toBe(77624);
