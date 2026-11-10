@@ -813,7 +813,7 @@ export const deleteBankAccount = async (accountId, deletedByUserId) => {
  * @returns {Promise<Object>} Created link object
  * @throws {AppError} VALIDATION_FAILED if IDs missing, DB_ERROR on failure
  */
-export const linkBankAccountToRecipient = async (recipientId, bankAccountId, isDefault = false) => {
+export const linkBankAccountToRecipient = async (recipientId, bankAccountId, isDefault = false, { confirmShared = false } = {}) => {
   try {
     if (!recipientId || !bankAccountId) {
       throw createValidationError({
@@ -832,6 +832,26 @@ export const linkBankAccountToRecipient = async (recipientId, bankAccountId, isD
 
     if (existingLink?.is_active) {
       return existingLink;
+    }
+
+    // A recipient may have several accounts (its holder may be anyone), but an account should not repeat between
+    // recipients: stop and let the customer confirm, naming who already holds it. Only a confirmation links it to both.
+    if (!confirmShared) {
+      const { data: otherHolders } = await supabase
+        .from('recipient_bank_accounts')
+        .select('recipient_id, recipient:recipients!recipient_id(full_name)')
+        .eq('bank_account_id', bankAccountId)
+        .eq('is_active', true)
+        .neq('recipient_id', recipientId);
+
+      if (otherHolders?.length) {
+        throw new AppError(
+          'Bank account is already linked to another recipient',
+          ERROR_CODES.CONFLICT,
+          409,
+          { reason: 'BANK_ACCOUNT_SHARED', recipientNames: otherHolders.map(h => h.recipient?.full_name || '—') }
+        );
+      }
     }
 
     if (existingLink) {

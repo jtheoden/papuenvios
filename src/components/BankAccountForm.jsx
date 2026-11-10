@@ -135,13 +135,7 @@ const BankAccountForm = ({
         accountHolderName: formData.accountHolderName.trim()
       });
 
-      toast({
-        title: language === 'es' ? 'Éxito' : 'Success',
-        description: language === 'es'
-          ? 'Cuenta bancaria creada exitosamente'
-          : 'Bank account created successfully',
-        variant: 'default'
-      });
+      // No success toast here: the caller links the account to the recipient and reports the real outcome
 
       // Call success callback with created account
       if (onSuccess) {
