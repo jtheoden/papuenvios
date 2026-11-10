@@ -27,6 +27,7 @@ import SettingsPageVisual from '@/components/settings/SettingsPageVisual';
 import { DEFAULT_VISUAL_SETTINGS } from '@/lib/businessVisualSettingsService';
 import { BRAND_PRESET } from '@/lib/brandPalette';
 import { buildHeaderTheme } from '@/lib/headerTheme';
+vi.mock('@/components/ui/ConfirmDialog', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) })); // these tests do not exercise confirmations
 
 const PNG = 'data:image/png;base64,iVBORw0KGgo=';
 const K = 'settings.visual.';

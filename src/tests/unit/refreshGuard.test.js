@@ -112,6 +112,24 @@ describe('refreshGuard — fetch wrapper for the Supabase refresh endpoint', () 
     expect(getRefreshBlockRemainingMs()).toBeLessThanOrEqual(REFRESH_RATE_LIMIT_BASE_MS * 1.2 + 1); // backoff restarted
   });
 
+  it('drops the server-clock expires_at from a successful refresh so auth-js derives the expiry from expires_in (clock-offset safe)', async () => {
+    const body = { access_token: 'a', refresh_token: 'r', expires_in: 3600, expires_at: 1234567890, user: { id: 'u1' } };
+    const guarded = createRefreshGuardFetch(vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json', 'content-length': '999' } })
+    ));
+
+    const response = await guarded(REFRESH_URL);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('application/json');
+    expect(await response.json()).toEqual({ access_token: 'a', refresh_token: 'r', expires_in: 3600, user: { id: 'u1' } });
+  });
+
+  it('leaves a non-JSON or expiry-less success untouched', async () => {
+    const html = new Response('<html></html>', { status: 200 });
+    expect(await (await createRefreshGuardFetch(vi.fn().mockResolvedValue(html))(REFRESH_URL)).text()).toBe('<html></html>');
+  });
+
   it('does not treat other failures (invalid refresh token, 5xx) as rate limiting: they flow to auth-js unchanged', async () => {
     const base = vi.fn().mockResolvedValue(res(400));
     const guarded = createRefreshGuardFetch(base);

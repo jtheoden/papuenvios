@@ -75,15 +75,20 @@ describe('SettingsBizumSection gating (R-01)', () => {
     expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
   });
 
-  it('shows the FX badge inside the section header from the single FX read, and no stray top margin', async () => {
+  it('does not duplicate the FX status as a single header badge', async () => {
     servicesMock.getPaymentFxStatus.mockResolvedValue({ ...NONE_STATUS, state: 'blocked' });
     render(<SettingsBizumSection />);
-    const badge = await screen.findByTestId('fx-badge');
-    expect(badge).toHaveAttribute('data-state', 'blocked');
-    const section = screen.getByRole('heading', { level: 2, name: 'settings.bizum.title' }).closest('section');
-    expect(section).toContainElement(badge);
-    expect(section.className).not.toMatch(/\bmt-\d+/);
+    await screen.findByText('settings.fxRate.title');
+    expect(screen.queryByTestId('fx-badge')).not.toBeInTheDocument();
     expect(servicesMock.getPaymentFxStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('places EUR rates once in the shared intro area and accounts before Bizum parameters', async () => {
+    render(<SettingsBizumSection />);
+    const accounts = await screen.findByText('settings.bizum.accounts.title');
+    const params = screen.getByText('settings.bizum.settings.title');
+    expect(accounts.compareDocumentPosition(params) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByTestId('eur-payment-rate-badges')).toHaveLength(1);
   });
 
   it('renders nothing when the catalog has no bizum row', async () => {

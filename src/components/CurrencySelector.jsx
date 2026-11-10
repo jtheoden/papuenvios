@@ -31,10 +31,13 @@ export const CurrencySelector = ({
   label = null,
   showSymbol = true,
   disabled = false,
+  includeHidden = false,
   size = 'md',
   className = ''
 }) => {
-  const { currencies, loading } = useCurrency();
+  const { currencies: allCurrencies, selectorCurrencies, loading } = useCurrency();
+  // Public pages offer the visible list; price-authoring forms pass includeHidden to pick any currency.
+  const currencies = includeHidden ? allCurrencies : selectorCurrencies;
 
   const handleChange = useCallback((e) => {
     const currencyId = e.target.value;

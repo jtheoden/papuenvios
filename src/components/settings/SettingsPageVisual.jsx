@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Palette, Upload, Plus, Trash2, Check, RefreshCw, Save, Eye, Image, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { getPrimaryButtonStyle, getHeadingStyle } from '@/lib/styleUtils';
 import { toast } from '@/components/ui/use-toast';
@@ -28,6 +29,7 @@ const SWATCH_KEYS = ['buttonBgColor', 'headerMenuActiveBgColor', 'pageBgColor', 
 // canChangeTheme: only a super admin may pick the default theme (the tab itself is open to admins)
 const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVisualSettings, canChangeTheme = false }) => {
   const { t, language } = useLanguage();
+  const confirm = useConfirm();
   const hasPaletteSuggestions = Object.keys(getThemeFormDefaults(visualSettings)).length > 0;
   const [livePreview, setLivePreview] = useState(!hasPaletteSuggestions);
   // Suggestions lock preview too, but only user-owned drafts block external settings refreshes.
@@ -591,7 +593,12 @@ const SettingsPageVisual = ({ localVisual, setLocalVisual, visualSettings, setVi
   };
 
   const handleRemoveSlide = async (id) => {
-    if (!confirm(t('settings.visual.confirmDeleteSlide'))) {
+    if (!(await confirm({
+      title: t('common.confirmDialog.deleteTitle'),
+      description: t('settings.visual.confirmDeleteSlide'),
+      confirmLabel: t('common.confirmDialog.delete'),
+      variant: 'destructive'
+    }))) {
       return;
     }
 

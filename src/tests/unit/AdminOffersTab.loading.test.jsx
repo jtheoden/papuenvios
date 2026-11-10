@@ -34,6 +34,7 @@ vi.mock('@/lib/supabase', () => ({
 
 import AdminOffersTab from '@/components/AdminOffersTab';
 import { useRealtimeOffers } from '@/hooks/useRealtimeSubscription';
+vi.mock('@/components/ui/ConfirmDialog', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) })); // these tests do not exercise confirmations
 
 const pending = () => {
   let resolve;

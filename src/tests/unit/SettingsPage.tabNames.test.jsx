@@ -36,6 +36,7 @@ vi.mock('@/components/settings/PaymentMethodsStatusCard', () => ({ default: () =
 vi.mock('@/components/settings/SettingsZelleTab', () => ({ default: () => <div /> }));
 
 import SettingsPage from '@/components/SettingsPage';
+vi.mock('@/components/ui/ConfirmDialog', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) })); // these tests do not exercise confirmations
 
 describe('SettingsPage tab strip accessibility', () => {
   it('gives every tab an accessible name below the sm breakpoint', () => {

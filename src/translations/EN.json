@@ -12,6 +12,15 @@
     "disclaimer": "Static informational help; it does not perform actions or replace official procedures."
   },
   "common": {
+    "confirmDialog": {
+      "title": "Please confirm",
+      "deleteTitle": "Confirm deletion",
+      "deactivateTitle": "Confirm deactivation",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "delete": "Delete",
+      "deactivate": "Deactivate"
+    },
     "success": "Success",
     "error": "Error",
     "statusSelfDealing": "This operation is yours. Another administrator must perform this action.",
@@ -341,6 +350,8 @@
       "typeCreated": "Remittance type created",
       "typeUpdated": "Remittance type updated",
       "typeDeleted": "Remittance type deleted",
+      "currencyChangeWarning": "Currency Change Detected",
+      "currencyChangeMessage": "This type goes from {from} to {to}. Every new quote will use the new currencies. Confirm only if this is intended.",
       "rateChangeWarning": "Rate Change Detected",
       "rateChangeAffected": "There are {count} pending remittance(s) created at the previous rate. Users will be notified of the change in their 'My Remittances' section.",
       "typeActivated": "Type activated",
@@ -632,6 +643,7 @@
       "selectTypeRequired": "Select remittance type *",
       "rate": "Rate",
       "rateUnavailable": "The exchange rate for this remittance type is not available right now. Please try again later or contact support.",
+      "quoteChanged": "The amounts changed since the quote was shown. The remittance was not created: review the new amounts and confirm again.",
       "calculating": "Calculating...",
       "continue": "Continue",
       "back": "Back",
@@ -799,6 +811,8 @@
       "viewPricesIn": "Show list prices in:",
       "listPricesCue": "List prices in {code}",
       "priceCurrencyLabel": "Currency of the entered price",
+      "costCupLabel": "Cost in CUP",
+      "costTooLow": "The cost is too low: the resulting USD price would be below 0.01. Enter a higher cost.",
       "priceCurrencyHelp": "The base price is stored in {base}. If you choose another currency, the amount will be read in that currency and converted to {base} when saved.",
       "priceConvertedNote": "The price was converted to {code}; please check the amount.",
       "priceRateMissing": "There is no exchange rate for {code}; check the price",
@@ -946,7 +960,7 @@
     "retry": "Retry",
     "remittancePendingDelivery": "Pending delivery",
     "remittancePendingDeliveryDef": "Remittances with a validated payment that have not been delivered to the recipient yet (validated and processing): amount sent minus commission. It is money collected that still has to be delivered.",
-    "paymentMethodsPeriod": "all time, all active orders",
+    "paymentMethodsPeriod": "all time, active orders and validated remittances",
     "shippingRow": "Shipping charged (passes to the courier)",
     "stats": {
       "dailyRevenue": "Daily Revenue",
@@ -1073,6 +1087,7 @@
     }
   },
   "activityLog": {
+    "paymentSource": "Payment source",
     "title": "Activity log",
     "subtitle": "Full audit of system and security events",
     "timestamp": "Timestamp",
@@ -1247,11 +1262,17 @@
       "newCurrency": "New Currency",
       "baseCurrency": "Base Currency",
       "base": "Base",
+      "showInSelector": "Show in selector",
       "exchangeRates": "Exchange Rates",
       "ratesSuperAdminOnly": "Only a super admin can create, edit or delete exchange rates. You can view them but not change them.",
       "currencyDeleteSuperAdminOnly": "Deleting a currency also deactivates its exchange rates, and only a super admin can do that.",
+      "deactivatePair": "Deactivate",
+      "deactivatePairTitle": "Deactivate rate pair",
+      "deactivatePairConfirm": "Deactivate the {pair} rate pair? Both directions (direct and inverse) will be deactivated and no operations can be quoted with this rate until a new one is created or reactivated.",
+      "pairDeactivated": "Rate pair deactivated",
+      "pairDeactivatedDesc": "{count} exchange rates deactivated",
       "ratePairPartial": "The rate pair was only partly saved and may be inconsistent. The list was reloaded: review both rates and try again.",
-      "ratePairIncomplete": "The inverse rate is missing or inactive, so the pair was not changed (the direct rate was restored). Delete the pair and create it again.",
+      "ratePairIncomplete": "The inverse rate is missing or inactive, so the pair was not changed (the direct rate was restored). Deactivate the pair and create it again.",
       "rateNotFound": "This exchange rate no longer exists or was already changed. The list was reloaded.",
       "newRate": "New Rate",
       "addNewExchangeRate": "Add New Exchange Rate",
@@ -1280,11 +1301,40 @@
       "deactivate": "Deactivate",
       "rateOutOfBand": "The USD to EUR rate must be between {min} and {max}.",
       "rateUpdatedAt": "Last updated: {date}",
+      "marketRate": "Market rate (reference)",
+      "marketRateHint": "Internal reference to measure the margin; not used for quoting.",
+      "marketAboveRate": "The market rate (reference) cannot be higher than the rate users see. Raise the rate or lower the market rate.",
+      "marketRateInfo": "Market rate (reference): {market} · operative rate is {diff} vs market (informational)",
       "rateChangeConfirmTitle": "Confirm large rate change",
       "rateChangeConfirmMessage": "The USD to EUR rate changes from {previous} to {next} ({percent}%). Bizum quotes use this rate; make sure the new value is correct.",
       "rateChangeConfirmMessageGeneric": "The {from} to {to} rate changes from {previous} to {next} ({percent}%). Make sure the new value is correct.",
       "rateChangeConfirmAction": "Save anyway",
-      "pairNotAllowed": "Only active currencies can be used in a rate, except an inactive EUR as the target of a USD rate."
+      "pairNotAllowed": "Only active currencies can be used in a rate, except an inactive EUR as the target of a USD rate.",
+      "repricing": {
+        "confirmTitle": "Update catalog prices?",
+        "summary": "{products} products and {combos} combos will be repriced to the new rate. Average change {avg}%, largest {max}%.",
+        "confirmAction": "Save rate and update prices",
+        "largeWarning": "Large change: it exceeds 10% of the last applied rate (or it is the first time prices are applied). Prices will move noticeably.",
+        "secondTitle": "Confirm large price change",
+        "secondMessage": "You are about to apply a large price change to {products} products and {combos} combos. Existing orders keep their amounts.",
+        "secondAction": "Yes, apply large change",
+        "applied": "Prices updated",
+        "appliedDesc": "{products} products and {combos} combos repriced.",
+        "applyFailed": "Rate saved, but prices were not updated",
+        "applyFailedDesc": "The new rate is saved. Use Retry in the warning to update the prices.",
+        "previewFailed": "Could not calculate the price change. Try again.",
+        "rates": "Rate: {previous} → {next} ({pct}%).",
+        "ratesNew": "New rate: {next}.",
+        "skippedProducts": "{count} products skipped (price would be 0.00).",
+        "rateChanged": "The rate changed before prices were applied",
+        "rateChangedDesc": "Prices were not updated. Review the current rate and use Retry in the warning.",
+        "previewErrorTitle": "Price effect unknown",
+        "previewErrorMessage": "Could not calculate the effect on prices. Save the rate without updating prices?",
+        "previewErrorAction": "Save rate only",
+        "staleTitle": "Prices out of date",
+        "staleMessage": "The USD to CUP rate changed and the catalog prices do not match it yet.",
+        "retry": "Retry"
+      }
     },
     "zelle": {
       "title": "Zelle Accounts",
@@ -1845,7 +1895,21 @@
       "tabs": {
         "label": "Payment methods",
         "zelle": "Zelle",
-        "bizum": "Bizum"
+        "bizum": "Bizum",
+        "iban": "IBAN"
+      },
+      "ibanStatus": {
+        "title": "IBAN transfer (SEPA)",
+        "description": "EUR collection readiness for orders and remittances.",
+        "unavailable": "Unavailable",
+        "blocker": "Activation requires active EUR→USD and EUR→CUP rates, secure IBAN account setup, transfer receipt, and reconciliation. This method remains disabled for orders and remittances."
+      },
+      "ibanAccounts": {
+        "title": "IBAN receiving accounts and limits",
+        "description": "PapuEnvios collection accounts will be managed here (not Cuban beneficiary payout accounts).",
+        "limits": "Per-transfer minimum and maximum limits, configurable per account.",
+        "routing": "Collection priority and independent use for orders and remittances.",
+        "unavailable": "Configuration is not available yet: secure account storage and transfer reconciliation are not implemented. Do not enter bank details here."
       }
     }
   },
@@ -2561,7 +2625,8 @@
     "flowLabel": "Flow",
     "methods": {
       "zelle": "Zelle",
-      "bizum": "Bizum"
+      "bizum": "Bizum",
+      "iban": "IBAN"
     },
     "flows": {
       "orders": "Orders",

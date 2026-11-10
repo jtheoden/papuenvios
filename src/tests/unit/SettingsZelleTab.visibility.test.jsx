@@ -1,4 +1,5 @@
 import React from 'react';
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import EN from '@/translations/EN.json';
@@ -23,7 +24,7 @@ vi.mock('@/contexts/LanguageContext', () => ({
   })
 }));
 vi.mock('@/contexts/BusinessContext', () => ({
-  useBusiness: () => ({ visualSettings: {} })
+  useBusiness: () => ({ visualSettings: { primaryColor: '#123456' } })
 }));
 vi.mock('@/components/ui/use-toast', () => ({ toast: (...args) => toastMock(...args) }));
 vi.mock('@/components/tables/ResponsiveTableWrapper', () => ({
@@ -185,6 +186,16 @@ describe('SettingsZelleTab account identifier', () => {
     expect(selector).toHaveValue(next);
     save();
     await waitFor(() => expect(serviceMock.updateZelleAccount).toHaveBeenCalledWith('legacy', expect.objectContaining({ contact_type: next }), expect.any(Object)));
+  });
+
+  it('primary buttons use the theme-controlled default look, not the stored primaryColor inline', async () => {
+    await openCreate();
+    expect(screen.getByTitle('Create Account').getAttribute('style')).toBeNull();
+    expect(screen.getByText('Save').closest('button').getAttribute('style')).toBeNull();
+  });
+
+  it('no Zelle button hardcodes a blue fallback background', () => {
+    expect(readFileSync('src/components/settings/SettingsZelleTab.jsx', 'utf8')).not.toMatch(/#2563eb|backgroundColor:\s*visualSettings\.primaryColor/);
   });
 
   it('shows the optional label in natural Spanish', async () => {

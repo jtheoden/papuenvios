@@ -82,8 +82,8 @@
   --t-page-via: 250 247 240; /* ivory */
   --t-page-to: 250 247 240; /* ivory */
   /* shadcn tokens (RGB channels, see tailwind.config.js) follow the look: Button default, focus rings. */
-  --primary: var(--t-focus);
-  --primary-foreground: 255 255 255;
+  --primary: var(--t-accent);
+  --primary-foreground: var(--t-on-accent);
   --ring: var(--t-focus);
 }
 
@@ -234,10 +234,18 @@ body {
   accent-color: rgb(var(--t-focus));
 }
 
-/* The default Button hovers with bg-primary/90, which is barely visible on the charcoal brand primary: darker step
-   for the brand look only (classic keeps its blue and the class string stays byte-identical). */
-:root:not([data-theme="classic"]) .hover\:bg-primary\/90:hover {
-  background-color: rgb(var(--primary) / 0.8);
+/* The default Button hovers with bg-primary/90, which would lighten the gold brand primary: use the darker gold step
+   instead, for the brand look only (classic keeps its blue and the class string stays byte-identical). */
+:root:not([data-theme="classic"]) .hover\:bg-primary\/90:hover:not(:disabled) {
+  background-color: rgb(var(--t-accent-hover));
+}
+
+/* Remittance blue-400 accents stay as the Classic utilities; the brand look swaps them for the accent token. */
+:root:not([data-theme="classic"]) .theme-cta-ring {
+  --tw-ring-color: rgb(var(--t-accent) / 0.5);
+}
+:root:not([data-theme="classic"]) .theme-accent-disabled:disabled {
+  background-color: rgb(var(--t-accent) / 0.6);
 }
 
 .loading-spinner {

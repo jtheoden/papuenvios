@@ -9,6 +9,7 @@ import {
   ERROR_CODES
 } from './errorHandler';
 import { rateAgeHours } from './rateAge';
+import { invalidateCatalog } from './catalogCache';
 import { subscribeApiWrites, dropApiCaches } from './requestBudget';
 
 const ratesChangedListeners = new Set();
@@ -272,6 +273,43 @@ export const updateCurrency = async (currencyId, currencyData) => {
       currencyId
     });
     logError(appError, { operation: 'updateCurrency', currencyId });
+    throw appError;
+  }
+};
+
+/**
+ * Show or hide a currency in the public currency selector (ADMIN ONLY). The currency stays active: it keeps
+ * converting and pricing, it just is not offered to shoppers. The database refuses to hide the base currency.
+ * @param {string} currencyId - Currency UUID
+ * @param {boolean} show - Whether the selector offers it
+ * @returns {Promise<Object>} Updated currency object
+ * @throws {AppError} VALIDATION_FAILED on bad input, NOT_FOUND if missing, DB_ERROR on failure
+ */
+export const setCurrencyShowInSelector = async (currencyId, show) => {
+  try {
+    if (!currencyId || typeof show !== 'boolean') {
+      throw createValidationError({ currencyId: 'Currency ID and a boolean value are required' }, 'Invalid selector visibility');
+    }
+
+    const { data, error } = await supabase
+      .from('currencies')
+      .update({ show_in_selector: show, updated_at: new Date().toISOString() })
+      .eq('id', currencyId)
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw createNotFoundError('Currency', currencyId);
+      }
+      throw parseSupabaseError(error);
+    }
+
+    return data;
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'setCurrencyShowInSelector', currencyId });
+    logError(appError, { operation: 'setCurrencyShowInSelector', currencyId });
     throw appError;
   }
 };
@@ -610,6 +648,7 @@ export const getAllExchangeRates = async () => {
         effective_date,
         updated_at,
         is_active,
+        market_rate,
         from_currency_id,
         to_currency_id,
         from_currency:from_currency_id(id, code, name_es, name_en, symbol),
@@ -717,6 +756,34 @@ export const getActiveRatesMap = async () => {
  * @returns {Promise<Object>} Created or updated exchange rate object
  * @throws {AppError} VALIDATION_FAILED if required fields missing, DB_ERROR on failure
  */
+/**
+ * Optional internal reference rate: undefined when not provided (the column is then left untouched), else a
+ * positive finite number. Anything else is a validation error.
+ */
+const parseMarketRate = (value) => {
+  if (value === null || value === undefined || value === '') return undefined;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    throw createValidationError({ marketRate: 'Market rate must be a positive finite number' }, 'Invalid market rate');
+  }
+  return numeric;
+};
+
+/**
+ * The DB enforces rate >= market_rate (constraint rate_higher_than_market): the operative reference can never exceed
+ * the rate users see. Refuse it here, before any write, with a message instead of a raw constraint error.
+ * Compared at the column scale (numeric(14,6)).
+ */
+const assertMarketNotAboveRate = (rate, market) => {
+  const atColumnScale = (value) => Math.round(value * 1e6) / 1e6;
+  if (market !== undefined && atColumnScale(rate) < atColumnScale(market)) {
+    throw createValidationError(
+      { marketRate: 'The operative (market) rate cannot be higher than the rate shown to users' },
+      'Market rate above the rate'
+    );
+  }
+};
+
 export const saveExchangeRate = async (rateData) => {
   try {
     // Input validation
@@ -739,7 +806,8 @@ export const saveExchangeRate = async (rateData) => {
         to_currency_id: rateData.toCurrencyId,
         rate: parseFloat(rateData.rate),
         effective_date: rateData.effectiveDate || new Date().toISOString().split('T')[0],
-        is_active: true
+        is_active: true,
+        ...(rateData.marketRate !== undefined && { market_rate: rateData.marketRate })
       }, {
         onConflict: 'from_currency_id,to_currency_id,effective_date'
       })
@@ -775,30 +843,34 @@ export const saveExchangeRate = async (rateData) => {
  * same-day row, deactivated when it created one. If that compensation fails too, EXCHANGE_RATE_PAIR_PARTIAL
  * tells the caller the pair is half written.
  */
-export const saveExchangeRatePair = async ({ fromCurrencyId, toCurrencyId, rate, effectiveDate }) => {
+export const saveExchangeRatePair = async ({ fromCurrencyId, toCurrencyId, rate, effectiveDate, marketRate }) => {
   const numericRate = Number(rate);
   if (!Number.isFinite(numericRate) || numericRate <= 0) {
     throw createValidationError({ rate: 'Rate must be a positive finite number' }, 'Invalid rate');
   }
+  const market = parseMarketRate(marketRate);
+  assertMarketNotAboveRate(numericRate, market);
   const effDate = effectiveDate || new Date().toISOString().split('T')[0];
 
   // The upsert overwrites a same-day row (active or not): remember it to be able to put it back.
   const { data: previousRows, error: previousError } = await supabase
     .from('exchange_rates')
-    .select('id, rate, is_active')
+    .select('id, rate, is_active, market_rate')
     .eq('from_currency_id', fromCurrencyId)
     .eq('to_currency_id', toCurrencyId)
     .eq('effective_date', effDate);
   if (previousError) throw parseSupabaseError(previousError);
   const previous = previousRows?.[0];
 
-  const direct = await saveExchangeRate({ fromCurrencyId, toCurrencyId, rate: numericRate, effectiveDate: effDate });
+  const direct = await saveExchangeRate({ fromCurrencyId, toCurrencyId, rate: numericRate, effectiveDate: effDate, marketRate: market });
   try {
     const inverse = await saveExchangeRate({
       fromCurrencyId: toCurrencyId,
       toCurrencyId: fromCurrencyId,
       rate: 1 / numericRate,
-      effectiveDate: effDate
+      effectiveDate: effDate,
+      // The inverse leg keeps its own rate as reference: 1/market would exceed 1/rate whenever rate > market
+      marketRate: market === undefined ? undefined : 1 / numericRate
     });
     return { direct, inverse };
   } catch (inverseError) {
@@ -807,7 +879,11 @@ export const saveExchangeRatePair = async ({ fromCurrencyId, toCurrencyId, rate,
       if (previous) {
         const { data, error } = await supabase
           .from('exchange_rates')
-          .update({ rate: previous.rate, is_active: previous.is_active })
+          .update({
+            rate: previous.rate,
+            is_active: previous.is_active,
+            ...(market !== undefined && previous.market_rate != null && { market_rate: previous.market_rate })
+          })
           .eq('id', previous.id)
           .select('id');
         if (error) throw parseRateWriteError(error);
@@ -912,7 +988,7 @@ const updateActiveRateRow = async (fromCurrencyId, toCurrencyId, values) => {
  * @returns {Promise<{updatedCount: number}>} Number of rates updated
  * @throws {AppError} DB_ERROR on failure
  */
-export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRate, effectiveDate) => {
+export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRate, effectiveDate, options = {}) => {
   try {
     if (!fromCurrencyId || !toCurrencyId) {
       throw createValidationError({
@@ -927,11 +1003,13 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
 
     const rate = parseFloat(newRate);
     const inverseRate = 1 / rate;
+    const market = parseMarketRate(options?.marketRate);
+    assertMarketNotAboveRate(rate, market);
     const effDate = effectiveDate || new Date().toISOString().split('T')[0];
 
     const { data: previousDirectRows, error: previousDirectError } = await supabase
       .from('exchange_rates')
-      .select('id, from_currency_id, to_currency_id, rate, effective_date')
+      .select('id, from_currency_id, to_currency_id, rate, effective_date, market_rate')
       .eq('from_currency_id', fromCurrencyId)
       .eq('to_currency_id', toCurrencyId)
       .eq('is_active', true);
@@ -941,7 +1019,8 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
 
     // Update direct rate (from→to)
     const { data: directRows, error: directError } = await updateActiveRateRow(
-      fromCurrencyId, toCurrencyId, { rate: rate, effective_date: effDate }
+      fromCurrencyId, toCurrencyId,
+      { rate: rate, effective_date: effDate, ...(market !== undefined && { market_rate: market }) }
     );
 
     if (directError) {
@@ -955,7 +1034,8 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
 
     // Update inverse rate (to→from)
     const { data: inverseRows, error: inverseError } = await updateActiveRateRow(
-      toCurrencyId, fromCurrencyId, { rate: inverseRate, effective_date: effDate }
+      toCurrencyId, fromCurrencyId,
+      { rate: inverseRate, effective_date: effDate, ...(market !== undefined && { market_rate: inverseRate }) }
     );
 
     // An inverse that errors or matches no active row leaves the pair inconsistent: put the direct rate back.
@@ -973,7 +1053,11 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
           const { data: restoredRows, error: restoreError } = await updateActiveRateRow(
             fromCurrencyId,
             toCurrencyId,
-            { rate: previousDirect.rate, effective_date: previousDirect.effective_date }
+            {
+              rate: previousDirect.rate,
+              effective_date: previousDirect.effective_date,
+              ...(market !== undefined && previousDirect.market_rate != null && { market_rate: previousDirect.market_rate })
+            }
           );
           if (restoreError) throw parseRateWriteError(restoreError);
           restored = Boolean(restoredRows && restoredRows.length > 0);
@@ -1054,3 +1138,62 @@ export const deleteExchangeRatePair = async (fromCurrencyId, toCurrencyId) => {
     throw appError;
   }
 };
+
+// ===== Catalog repricing (USD<->CUP rate flow) =====
+// The migration may not be applied yet: a missing RPC/table answers { unavailable: true } and never throws,
+// so saving a rate keeps working exactly as before. Other failures come back as { error }.
+const REPRICE_UNAVAILABLE_CODES = new Set(['PGRST202', 'PGRST205', '42883', '42P01']);
+const REPRICE_UNAVAILABLE_MESSAGE = /could not find the (function|table)|schema cache|(function|relation) .* does not exist/i;
+// supabase-js puts the PostgREST code/message on the error, not an HTTP status; status 404 is kept for other clients.
+const isRepriceUnavailable = (error) => REPRICE_UNAVAILABLE_CODES.has(error?.code)
+  || error?.status === 404
+  || REPRICE_UNAVAILABLE_MESSAGE.test(error?.message ?? '');
+
+const runRepriceCall = async (operation, call) => {
+  try {
+    const { data, error } = await call();
+    if (error) {
+      if (isRepriceUnavailable(error)) return { unavailable: true };
+      if (/rate_changed/.test(error.message ?? '')) return { rateChanged: true };
+      const appError = parseSupabaseError(error);
+      logError(appError, { operation });
+      return { error: appError };
+    }
+    return { data };
+  } catch (error) {
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation });
+    logError(appError, { operation });
+    return { error: appError };
+  }
+};
+
+/** Dry run of the repricing at `rate` (USD->CUP); null/undefined uses the active rate. */
+export const previewCatalogReprice = async (rate = null) => {
+  const numeric = rate === null ? null : Number(rate);
+  if (numeric !== null && (!Number.isFinite(numeric) || numeric <= 0)) {
+    throw createValidationError({ rate: 'Rate must be a positive finite number' }, 'Invalid rate');
+  }
+  return runRepriceCall('previewCatalogReprice', () => supabase.rpc('preview_catalog_reprice', { p_rate: numeric }));
+};
+
+/**
+ * Applies the repricing at the active USD->CUP rate. `confirmLarge` acknowledges a change above 10%;
+ * `expectedRate` is the rate the caller confirmed: if the active one differs the server refuses (-> { rateChanged: true }).
+ */
+export const applyCatalogReprice = async (confirmLarge = false, expectedRate = null) => {
+  const expected = expectedRate === null || expectedRate === undefined ? null : Number(expectedRate);
+  if (expected !== null && (!Number.isFinite(expected) || expected <= 0)) {
+    throw createValidationError({ expectedRate: 'Expected rate must be a positive finite number' }, 'Invalid rate');
+  }
+  const result = await runRepriceCall('applyCatalogReprice', () => (
+    supabase.rpc('apply_catalog_reprice', { p_confirm_large: Boolean(confirmLarge), p_expected_rate: expected })
+  ));
+  // Prices moved: catalog, vendor and cart must not serve the old ones for up to the cache TTL.
+  if (Number(result.data?.products_updated) > 0 || Number(result.data?.combos_updated) > 0) invalidateCatalog();
+  return result;
+};
+
+/** Last repricing run ({ rate, applied_at }) or data null when none happened yet. */
+export const getCatalogRepriceStatus = async () => runRepriceCall('getCatalogRepriceStatus', () => (
+  supabase.from('catalog_reprice_runs').select('rate, applied_at').order('applied_at', { ascending: false }).limit(1).maybeSingle()
+));

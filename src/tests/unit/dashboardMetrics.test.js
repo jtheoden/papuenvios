@@ -7,6 +7,7 @@ import {
   estimateOrderProfit,
   computeOrderCounters,
   computeOrderTotals,
+  computePaymentSourceBreakdown,
   computeOrderProfitTotals,
   computeHeadline,
   computeOrderCosts,
@@ -55,12 +56,10 @@ describe('computeOrderTotals (H5)', () => {
     expect(t.monthlyRevenue).toBeCloseTo(1186.3, 2);
   });
 
-  it('drives shipping, discounts and payment breakdown from the same status list', () => {
+  it('drives shipping and discounts from the same status list', () => {
     const t = computeOrderTotals(buildOrders('dispatched'), NOW);
     expect(t.monthlyShippingCost).toBeCloseTo(89, 2);
     expect(t.dailyDiscounts).toBeCloseTo(1.62, 2);
-    expect(t.paymentMethodBreakdown.zelle.count).toBe(5);
-    expect(t.paymentMethodBreakdown.zelle.total).toBeCloseTo(1429.92, 2);
   });
 });
 
@@ -93,6 +92,30 @@ describe('computeOrderTotals dating (D5)', () => {
   it('rounds the sums to cents', () => {
     const orders = ['0.1', '0.2'].map((n, i) => ({ ...base, id: `r${i}`, total_amount: n, created_at: hoursAgo(1), validated_at: hoursAgo(1) }));
     expect(computeOrderTotals(orders, NOW).dailyRevenue).toBe(0.3);
+  });
+});
+
+describe('computePaymentSourceBreakdown', () => {
+  it('groups received order and remittance amounts by source and native currency', () => {
+    const result = computePaymentSourceBreakdown([
+      { id: 'z1', status: 'completed', payment_method: 'zelle', total_amount: '25.00' },
+      { id: 'b1', status: 'processing', payment_method: 'bizum', total_amount: '100.00', payment_amount: '92.50', payment_currency: 'EUR' },
+      { id: 'i1', status: 'processing', payment_method: 'iban', payment_amount: null, payment_currency: null },
+      { id: 'cancelled', status: 'cancelled', payment_method: 'zelle', total_amount: '999.00' }
+    ], [
+      { id: 'r-z', status: 'payment_validated', payment_method: 'zelle', amount_sent: '30', delivery_cost: '2', currency_sent: 'USD' },
+      { id: 'r-b', status: 'payment_validated', payment_method: 'bizum', amount_sent: '50', delivery_cost: '5', currency_sent: 'EUR' }
+    ]);
+
+    expect(result.zelle).toEqual({ count: 2, nativeAmounts: { USD: 57 } });
+    expect(result.bizum).toEqual({ count: 2, nativeAmounts: { EUR: 147.5 } });
+    expect(result.iban).toEqual({ count: 1, nativeAmounts: {} });
+  });
+
+  it('does not infer non-Zelle order amount or currency when a sealed amount is missing', () => {
+    expect(computePaymentSourceBreakdown([
+      { status: 'processing', payment_method: 'bizum', total_amount: 120 }
+    ])).toEqual({ bizum: { count: 1, nativeAmounts: {} } });
   });
 });
 

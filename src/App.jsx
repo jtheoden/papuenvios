@@ -35,6 +35,7 @@ import { LanguageProvider } from '@/contexts/LanguageContext';
 import { BusinessProvider, useBusiness } from '@/contexts/BusinessContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ModalProvider } from '@/contexts/ModalContext';
+import { ConfirmProvider } from '@/components/ui/ConfirmDialog';
 import { LegalAcceptanceProvider } from '@/contexts/LegalAcceptanceContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -243,6 +244,7 @@ function App() {
             <BusinessProvider>
               <CurrencyProvider>
                 <ModalProvider>
+                <ConfirmProvider>
                 <LegalAcceptanceProvider>
                 <div className="min-h-screen">
                   <DynamicVisualSettings />
@@ -282,6 +284,7 @@ function App() {
                 <Toaster />
               </div>
                 </LegalAcceptanceProvider>
+                </ConfirmProvider>
               </ModalProvider>
               </CurrencyProvider>
             </BusinessProvider>

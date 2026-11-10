@@ -77,6 +77,7 @@ const makeProduct = (overrides = {}) => ({
   profit_margin: 30,
   stock: 5,
   is_active: true,
+  cost_cup: null, // migration applied: the key is present
   ...overrides
 });
 
@@ -229,15 +230,15 @@ describe('VendorInventoryTab currency handling (RB-20)', () => {
       expect(updateProduct.mock.calls[0][1]).toMatchObject({ basePrice: 0.01, base_currency_id: 'usd' });
     });
 
-    it('the saved base price uses the rate read live (cup -> usd), never the cached display rate', async () => {
+    it('the saved base price uses the rate read live (usd -> cup), never the cached display rate', async () => {
       mocks.convertAmountAsync.mockResolvedValue(9000); // display conversion when switching the form to CUP
-      liveRate.mockResolvedValue(1 / 900);
+      liveRate.mockResolvedValue(900);
       await editWithForeignCurrency();
 
       fireEvent.click(screen.getByText('vendor.addProduct.save').closest('button'));
 
       await waitFor(() => expect(updateProduct).toHaveBeenCalled());
-      expect(liveRate).toHaveBeenCalledWith('cup', 'usd');
+      expect(liveRate).toHaveBeenCalledWith('usd', 'cup');
       expect(updateProduct.mock.calls[0][1].basePrice).toBeCloseTo(10);
     });
   });

@@ -22,6 +22,7 @@ import PaymentMethodsStatusCard from '@/components/settings/PaymentMethodsStatus
 import PaymentsTabs from '@/components/settings/PaymentsTabs';
 import SettingsZelleTab from '@/components/settings/SettingsZelleTab';
 import SettingsBizumSection from '@/components/settings/SettingsBizumSection';
+import SettingsIbanStatus from '@/components/settings/SettingsIbanStatus';
 
 const isFirstLoad = (resource) => resource.loading && resource.data === null && !resource.error;
 
@@ -47,6 +48,8 @@ const SettingsPaymentsTab = ({ onGoToFinancial }) => {
   if (showBizum) {
     tabs.push({ id: 'bizum', label: t('settings.payments.tabs.bizum'), render: () => <SettingsBizumSection onGoToFinancial={onGoToFinancial} /> });
   }
+  // Keep the planned method discoverable even before its catalog migration is deployed.
+  tabs.push({ id: 'iban', label: t('settings.payments.tabs.iban'), render: () => <SettingsIbanStatus /> });
 
   return (
     <>

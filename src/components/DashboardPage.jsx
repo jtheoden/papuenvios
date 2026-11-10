@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart3, TrendingUp, DollarSign, Package, Users, AlertTriangle, Eye, Users2, RefreshCw, FileText, List, Send, Settings, Clock, CheckCircle, Ticket, CreditCard, ShieldCheck, Truck, Tag, Calendar } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -12,6 +12,8 @@ import { classifyAdminCatalogError } from '@/lib/catalogErrors';
 import CatalogLoadError from './CatalogLoadError';
 import RefundsAlertCard from '@/components/admin/RefundsAlertCard';
 import RefundKpiCards from '@/components/admin/RefundKpiCards';
+import ReconnectingNotice from '@/components/ReconnectingNotice';
+import { isRefreshBlocked } from '@/lib/refreshGuard';
 import { getHeadingStyle } from '@/lib/styleUtils';
 import {
   ACTIVE_ORDER_STATUSES,
@@ -22,6 +24,7 @@ import {
   computeOrderCounters,
   computeOrderProfitTotals,
   computeOrderTotals,
+  computePaymentSourceBreakdown,
   computeRemittanceCourierTotals,
   computeRemittanceTotals,
   computeZelleTotals,
@@ -58,7 +61,8 @@ const COURIER_PERIOD_KEYS = ['dailyBreakdown', 'monthlyBreakdown', 'yearlyBreakd
 const DashboardPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { products, combos, financialSettings, visualSettings } = useBusiness();
-  const { user, isAdmin, isSuperAdmin } = useAuth();
+  const { user, isAdmin, isSuperAdmin, sessionStatus } = useAuth();
+  const reconnecting = sessionStatus === 'reconnecting';
 
   // Tab state
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' or 'orders'
@@ -144,6 +148,7 @@ const DashboardPage = ({ onNavigate }) => {
   const fetchVisitStats = useCallback(async () => {
     const unavailable = { weekly: 0, monthly: 0, yearly: 0, total: 0, loading: false, unavailable: true };
     try {
+      const wasBlocked = isRefreshBlocked(); // a read that started blocked used the anon key even if the cooldown ends before it returns
       const nowMs = Date.now();
       const since = (days) => new Date(nowMs - days * 24 * 60 * 60 * 1000).toISOString();
       const countVisits = (from) => {
@@ -152,6 +157,8 @@ const DashboardPage = ({ onNavigate }) => {
       };
 
       const results = await Promise.all([countVisits(since(7)), countVisits(since(30)), countVisits(since(365)), countVisits()]);
+      // Read while the token refresh is blocked = anon key = RLS-empty counts: not data, so show "unavailable".
+      if (wasBlocked || isRefreshBlocked()) throw new Error('session refresh paused');
       if (results.some((res) => res.error)) {
         setVisitStats(unavailable);
         return;
@@ -167,6 +174,7 @@ const DashboardPage = ({ onNavigate }) => {
   const fetchStats = useCallback(async () => {
 
     try {
+      const wasBlocked = isRefreshBlocked(); // see fetchVisitStats
       setStats(prev => ({ ...prev, loading: true }));
 
       // Get counts
@@ -174,14 +182,16 @@ const DashboardPage = ({ onNavigate }) => {
         supabase.from('products').select('id', { count: 'exact', head: true }),
         supabase.from('combo_products').select('id', { count: 'exact', head: true }),
         supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
-        fetchAllRows((from, to) => supabase.from('orders').select('id, status, payment_status, total_amount, shipping_cost, shipping_zone_id, discount_amount, payment_method, created_at, validated_at').order('id').range(from, to)),
-        fetchAllRows((from, to) => supabase.from('remittances').select('id, status, commission_total, amount_sent, discount_amount, payment_validated_at, delivered_at, completed_at, delivery_cost, shipping_zone_id, created_at').order('id').range(from, to)),
+        fetchAllRows((from, to) => supabase.from('orders').select('id, status, payment_status, total_amount, payment_amount, payment_currency, shipping_cost, shipping_zone_id, discount_amount, payment_method, created_at, validated_at').order('id').range(from, to)),
+        fetchAllRows((from, to) => supabase.from('remittances').select('id, status, commission_total, amount_sent, discount_amount, payment_method, currency_sent, payment_validated_at, delivered_at, completed_at, delivery_cost, shipping_zone_id, created_at').order('id').range(from, to)),
         supabase.from('remittance_types').select('id', { count: 'exact', head: true }).eq('is_active', true),
         fetchAllRows((from, to) => supabase.from('zelle_transaction_history').select('id, amount, status, transaction_type, transaction_date, zelle_account_id').eq('status', 'validated').order('id').range(from, to)),
         settleCosts(listProductCosts()),
         settleCosts(listComboCosts())
       ]);
 
+      // Read while the token refresh is blocked = anon key = RLS-empty answers: discard them, never show them as zeros.
+      if (wasBlocked || isRefreshBlocked()) throw new Error('session refresh paused');
       if (productsRes.error) throw productsRes.error;
       if (combosRes.error) throw combosRes.error;
       if (usersRes.error) throw usersRes.error;
@@ -220,6 +230,7 @@ const DashboardPage = ({ onNavigate }) => {
       // Revenue, shipping, discounts and payment breakdown (validated, active orders; ET calendar windows)
       const now = new Date();
       const orderTotals = computeOrderTotals(orders, now);
+      const paymentMethodBreakdown = computePaymentSourceBreakdown(orders, remittances);
 
       try {
         const costByOrder = await listOrderCourierCosts();
@@ -288,6 +299,7 @@ const DashboardPage = ({ onNavigate }) => {
         ...orderTotals,
         ...remittanceTotals,
         ...zelleTotals,
+        paymentMethodBreakdown,
         ...discounts,
         ready: true,
         error: false,
@@ -310,6 +322,16 @@ const DashboardPage = ({ onNavigate }) => {
     refreshOnWrite: affectsAdminPending
   });
   useVisiblePolling('dashboard:visits', fetchVisitStats, { enabled: canSeeStats, intervalMs: POLL_STATS_MS });
+
+  // Session back after reconnecting: whatever was shown (or discarded) meanwhile is stale, load it again.
+  const wasReconnectingRef = useRef(false);
+  useEffect(() => {
+    if (wasReconnectingRef.current && !reconnecting) {
+      fetchStats();
+      fetchVisitStats();
+    }
+    wasReconnectingRef.current = reconnecting;
+  }, [reconnecting, fetchStats, fetchVisitStats]);
 
   useRealtimeOrders({
     enabled: isAdmin || isSuperAdmin,
@@ -359,6 +381,16 @@ const DashboardPage = ({ onNavigate }) => {
 
   // Amount with the base-currency symbol; "—" until the first load so a pending figure is not read as a real zero.
   const money = (value) => (stats.ready ? `${currencySymbol}${formatCurrency(value)}` : '—');
+  const nativePaymentMoney = (value, currency) => {
+    try {
+      return new Intl.NumberFormat(language === 'es' ? 'es-ES' : 'en-US', {
+        style: 'currency',
+        currency
+      }).format(value);
+    } catch {
+      return `${formatCurrency(value)} ${currency}`;
+    }
+  };
   const negativeMoney = (value) => (stats.ready ? `-${currencySymbol}${formatCurrency(value)}` : '—');
   const visitCount = (value) => (visitStats.loading || visitStats.unavailable ? '—' : value);
 
@@ -431,8 +463,12 @@ const DashboardPage = ({ onNavigate }) => {
               label: 'dashboard.overviewTab',
               icon: <BarChart3 className="h-5 w-5" />,
               content: (
+                reconnecting && !stats.ready ? (
+                  <ReconnectingNotice onRetry={() => { fetchStats(); fetchVisitStats(); }} />
+                ) : (
                 <>
-                  {stats.error && (
+                  {reconnecting && <ReconnectingNotice onRetry={() => { fetchStats(); fetchVisitStats(); }} />}
+                  {stats.error && !reconnecting && (
                     <div data-testid="stats-error" role="alert" className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
                       <p className="text-sm">{stats.ready ? t('dashboard.loadErrorStale') : t('dashboard.loadError')}</p>
                       <button type="button" onClick={fetchStats} disabled={stats.loading} className="px-3 py-1.5 bg-white border border-red-300 rounded-lg text-sm font-medium hover:bg-red-100">
@@ -442,8 +478,8 @@ const DashboardPage = ({ onNavigate }) => {
                   )}
                   <CatalogLoadError error={marginsError} />
                   {/* Pending refunds: what needs action goes before what is read */}
-                  <RefundsAlertCard enabled={Boolean(isAdmin)} onNavigate={onNavigate} />
-                  <RefundKpiCards enabled={Boolean(isAdmin)} />
+                  <RefundsAlertCard enabled={Boolean(isAdmin) && !reconnecting} onNavigate={onNavigate} />
+                  <RefundKpiCards enabled={Boolean(isAdmin) && !reconnecting} />
                   {/* Expiration Warning */}
                   {expiringProducts.length > 0 && (
                     <motion.div
@@ -604,7 +640,13 @@ const DashboardPage = ({ onNavigate }) => {
                                 </div>
                                 <div className="flex items-center gap-3">
                                   <span className="text-gray-500">{data.count}</span>
-                                  <span className="font-semibold text-gray-800">{money(data.total)}</span>
+                                  <span className="font-semibold text-gray-800 text-right">
+                                    {Object.entries(data.nativeAmounts || {}).length > 0
+                                      ? Object.entries(data.nativeAmounts).map(([currency, amount]) => (
+                                        <span key={currency} className="block">{nativePaymentMoney(amount, currency)}</span>
+                                      ))
+                                      : <span className="text-gray-400">—</span>}
+                                  </span>
                                 </div>
                               </div>
                             ))}
@@ -1003,6 +1045,7 @@ const DashboardPage = ({ onNavigate }) => {
                     </div>
                   </motion.div>
                 </>
+                )
               )
             },
             {

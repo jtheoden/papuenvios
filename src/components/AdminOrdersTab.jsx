@@ -54,6 +54,8 @@ import { useBusiness } from '@/contexts/BusinessContext';
 import { useRealtimeOrders } from '@/hooks/useRealtimeSubscription';
 import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
+import ReconnectingNotice from '@/components/ReconnectingNotice';
+import { isRefreshBlocked } from '@/lib/refreshGuard';
 import OrderActionButtons from '@/components/admin/OrderActionButtons';
 import { isOwnOperation } from '@/lib/selfDealing';
 import { getOrderTotalWarning } from '@/lib/orderTotalCoherence';
@@ -106,7 +108,8 @@ const ORDERS_RELOAD_DEBOUNCE_MS = 500;
 
 const AdminOrdersTab = () => {
   const { t, language } = useLanguage();
-  const { user } = useAuth();
+  const { user, sessionStatus } = useAuth();
+  const reconnecting = sessionStatus === 'reconnecting';
   const { visualSettings, refreshStock } = useBusiness();
 
   // State
@@ -156,6 +159,13 @@ const AdminOrdersTab = () => {
     loadOrders();
   }, []);
 
+  // Session back after reconnecting: whatever was read (or discarded) meanwhile is stale.
+  const wasReconnectingRef = useRef(false);
+  useEffect(() => {
+    if (wasReconnectingRef.current && !reconnecting) loadOrders();
+    wasReconnectingRef.current = reconnecting;
+  }, [reconnecting]);
+
   // Req 8: Auto-select order from URL parameter ?id=X
   useEffect(() => {
     if (orders.length === 0) return;
@@ -189,6 +199,7 @@ const AdminOrdersTab = () => {
   });
 
   const loadOrders = async () => {
+    const wasBlocked = isRefreshBlocked(); // a read that started blocked used the anon key even if the cooldown ends before it returns
     setLoading(true);
     setError(null);
 
@@ -229,6 +240,8 @@ const AdminOrdersTab = () => {
       if (filters.order_type) apiFilters.order_type = filters.order_type;
 
       const orders = await getAllOrders(apiFilters);
+      // Read while the token refresh is blocked = anon key = RLS-empty list: never let it replace what is shown.
+      if (wasBlocked || isRefreshBlocked()) throw new Error('session refresh paused');
       setOrders(orders || []);
     } catch (err) {
       console.error('Error loading orders:', err);
@@ -900,6 +913,8 @@ const AdminOrdersTab = () => {
         )}
       </AnimatePresence>
 
+      {reconnecting && <ReconnectingNotice onRetry={loadOrders} />}
+
       {/* Orders Table - Responsive */}
       <ResponsiveTableWrapper
         data={filteredOrders}
@@ -908,7 +923,7 @@ const AdminOrdersTab = () => {
         isLoading={loading}
         modalTitle={t('adminOrders.detail.title')}
         modalColumns={getModalColumns(t, formatDate, formatCurrency)}
-        emptyMessage={filteredOrders.length === 0 && !loading ? t('adminOrders.messages.noOrders') : undefined}
+        emptyMessage={filteredOrders.length === 0 && !loading && !reconnecting ? t('adminOrders.messages.noOrders') : undefined}
       />
 
       {/* Order Details Modal */}

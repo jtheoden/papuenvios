@@ -136,12 +136,13 @@ describeDb('admin cost read RPCs (migration A)', () => {
 
   // --------------------------------------------------------------------------------------------
   describe('admin and super_admin read cost data', () => {
-    it('products: only id, base_price, profit_margin (cost_price is never returned)', async () => {
+    it('products: only id, base_price, profit_margin, cost_cup (cost_price is never returned)', async () => {
       const [a, b] = await seedProducts(2, { base: 11.5, margin: 37.5 });
       const c = await as(actors.adminId);
       const { rows, fields } = await call(c, 'admin_list_product_costs', { ids: [b, a] });
-      expect(fields.map((f) => f.name)).toEqual(['id', 'base_price', 'profit_margin']);
+      expect(fields.map((f) => f.name)).toEqual(['id', 'base_price', 'profit_margin', 'cost_cup']);
       const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
+      expect(byId[a].cost_cup).toBeNull();
       expect(Number(byId[a].base_price)).toBe(11.5);
       expect(Number(byId[b].base_price)).toBe(12.5);
       expect(Number(byId[a].profit_margin)).toBe(37.5);

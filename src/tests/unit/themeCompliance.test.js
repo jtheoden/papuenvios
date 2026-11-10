@@ -111,8 +111,8 @@ describe('controls follow the look (index.css)', () => {
 
   it('--primary, --primary-foreground and --ring come from the theme tokens in the brand look', () => {
     const brand = blockOf(':root');
-    expect(brand).toMatch(/--primary:\s*var\(--t-focus\);/);
-    expect(brand).toMatch(/--primary-foreground:\s*255 255 255;/);
+    expect(brand).toMatch(/--primary:\s*var\(--t-accent\);/);
+    expect(brand).toMatch(/--primary-foreground:\s*var\(--t-on-accent\);/);
     expect(brand).toMatch(/--ring:\s*var\(--t-focus\);/);
   });
 
@@ -123,10 +123,21 @@ describe('controls follow the look (index.css)', () => {
     expect(classic).toMatch(/--ring:\s*42 109 244;/);
   });
 
-  it('the default Button hover stays visible on the charcoal brand primary, without touching classic', () => {
-    const rule = rules.find((r) => r.selector === ':root:not([data-theme="classic"]) .hover\\:bg-primary\\/90:hover');
-    expect(rule?.body).toMatch(/background-color:\s*rgb\(var\(--primary\) \/ 0\.8\)/);
+  it('the default Button hover goes to the darker gold step (charcoal text stays readable), without touching classic', () => {
+    const rule = rules.find((r) => r.selector === ':root:not([data-theme="classic"]) .hover\\:bg-primary\\/90:hover:not(:disabled)');
+    expect(rule?.body).toMatch(/background-color:\s*rgb\(var\(--t-accent-hover\)\)/);
     expect(rules.some((r) => r.selector.includes('[data-theme="classic"]') && !r.selector.includes(':not(') && r.selector.includes('bg-primary'))).toBe(false);
+  });
+
+  it('remittance pages scope their blue-400 accents to classic via theme classes (brand overrides in index.css)', () => {
+    const read = (file) => fs.readFileSync(path.join(ROOT, `src/components/${file}.jsx`), 'utf8');
+    // Classic keeps the original blue-400 utilities; the marker classes let the brand look override them.
+    expect(read('MyRemittancesPage')).toMatch(/theme-accent-disabled disabled:bg-blue-400/);
+    expect(read('RemittancesPage')).toMatch(/ring-blue-400\/50 theme-cta-ring/);
+    const ring = rules.find((r) => r.selector === ':root:not([data-theme="classic"]) .theme-cta-ring');
+    expect(ring?.body).toMatch(/--tw-ring-color:\s*rgb\(var\(--t-accent\) \/ 0\.5\)/);
+    const disabled = rules.find((r) => r.selector === ':root:not([data-theme="classic"]) .theme-accent-disabled:disabled');
+    expect(disabled?.body).toMatch(/background-color:\s*rgb\(var\(--t-accent\) \/ 0\.6\)/);
   });
 
   it('the Visual settings sliders no longer hardcode a blue accent', () => {

@@ -85,11 +85,14 @@ describe('PaymentMethodsStatusCard', () => {
   it('shows Bizum as coming soon with disabled switches', () => {
     render(<PaymentMethodsStatusCard />);
 
-    expect(screen.getByText('Próximamente')).toBeInTheDocument();
+    // Bizum plus the planned IBAN placeholder row (older catalog without an IBAN row).
+    expect(screen.getAllByText('Próximamente')).toHaveLength(2);
     const bizumOrders = switchByName('Bizum para Pedidos');
     expect(bizumOrders).toBeDisabled();
     expect(bizumOrders).toHaveAttribute('aria-checked', 'false');
     expect(switchByName('Bizum para Remesas')).toBeDisabled();
+    expect(switchByName('IBAN para Pedidos')).toBeDisabled();
+    expect(switchByName('IBAN para Remesas')).toBeDisabled();
   });
 
   it('shows a loading state and an error state with retry', () => {

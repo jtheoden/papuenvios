@@ -20,7 +20,8 @@ export const PAYMENT_FLOWS = Object.freeze({
 
 export const PAYMENT_METHOD_CODES = Object.freeze({
   ZELLE: 'zelle',
-  BIZUM: 'bizum'
+  BIZUM: 'bizum',
+  IBAN: 'iban'
 });
 
 export const PAYMENT_METHOD_ERROR = Object.freeze({

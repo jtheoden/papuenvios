@@ -17,6 +17,8 @@ import TableDetailModal from '@/components/modals/TableDetailModal';
 import { zelleService } from '@/lib/zelleService';
 import { deriveZelleVisibility, inferZelleContactType, normalizeZelleAccountPayload, validateZelleContact, validateZelleVisibility } from '@/lib/zelleVisibility';
 import { getZelleTableColumns, getZelleModalColumns } from './ZelleAccountTableConfig';
+import PaymentRateBadge from './PaymentRateBadge';
+import PaymentMethodOverview from './PaymentMethodOverview';
 
 const SettingsZelleTab = () => {
   const { t, language } = useLanguage();
@@ -389,31 +391,23 @@ const SettingsZelleTab = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
-      >
-        <div>
-          <h3 className="text-xl sm:text-2xl font-semibold" style={{ color: visualSettings.headingColor || '#1f2937' }}>
-            {t('zelle.accounts') || 'Zelle Accounts'}
-          </h3>
-          <p className="text-sm text-gray-600 mt-1 hidden sm:block">
-            {language === 'es'
-              ? 'Gestiona las cuentas Zelle para pagos de productos y remesas'
-              : 'Manage Zelle accounts for product payments and remittances'}
-          </p>
-        </div>
-        <Button
-          onClick={handleCreateAccount}
-          style={{ backgroundColor: visualSettings.primaryColor || '#2563eb', color: 'white' }}
-          className="hover:opacity-90 h-9 px-3"
-          title={t('zelle.createAccount') || 'Create Account'}
-        >
-          <Plus className="h-4 w-4 sm:mr-2" />
-          <span className="hidden sm:inline">{t('zelle.createAccount') || 'Create Account'}</span>
-        </Button>
-      </motion.div>
+      <PaymentMethodOverview
+        title={t('zelle.accounts') || 'Zelle Accounts'}
+        description={language === 'es'
+          ? 'Gestiona las cuentas Zelle para pagos de productos y remesas'
+          : 'Manage Zelle accounts for product payments and remittances'}
+        rates={<PaymentRateBadge sourceCurrency="USD" targetCurrency="CUP" language={language} />}
+        actions={(
+          <Button
+            onClick={handleCreateAccount}
+            className="h-9 px-3"
+            title={t('zelle.createAccount') || 'Create Account'}
+          >
+            <Plus className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">{t('zelle.createAccount') || 'Create Account'}</span>
+          </Button>
+        )}
+      />
 
       {/* Accounts Table */}
       {accounts.length > 0 ? (
@@ -654,7 +648,6 @@ const SettingsZelleTab = () => {
               <Button
                 onClick={handleSubmitForm}
                 disabled={actionLoading === 'form'}
-                style={{ backgroundColor: visualSettings.primaryColor || '#2563eb', color: 'white' }}
                 className="h-9 px-3"
               >
                 {actionLoading === 'form' && <Loader className="h-4 w-4 sm:mr-2 animate-spin" />}
@@ -763,7 +756,6 @@ const SettingsZelleTab = () => {
               <Button
                 onClick={handleConfirmReset}
                 disabled={actionLoading === 'reset'}
-                style={{ backgroundColor: visualSettings.primaryColor || '#2563eb', color: 'white' }}
                 className="h-9 px-3"
               >
                 {actionLoading === 'reset' && <Loader className="h-4 w-4 sm:mr-2 animate-spin" />}

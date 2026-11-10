@@ -15,7 +15,13 @@ const ROWS = [
   entity_type,
   performed_by: 'admin@x.test',
   description: 'free text',
-  metadata: null,
+  metadata: i === 0 ? {
+    paymentType: 'order',
+    paymentMethod: 'zelle',
+    paymentAmount: 25,
+    paymentCurrency: 'USD',
+    orderNumber: 'ORD-123'
+  } : null,
   created_at: '2026-11-05T10:00:00.000Z'
 }));
 
@@ -72,5 +78,18 @@ describe.each(['es', 'en'])('ActivityLogTab labels (%s)', (lang) => {
     expect(within(modal).queryByText('order_submitted')).toBeNull();
     expect(modal.textContent).not.toContain('activityLog.');
     expect(modal.textContent).not.toMatch(/[a-z]_[a-z]/);
+  });
+
+  it('shows the explicit payment source and native amount in the log and detail', async () => {
+    await renderTab();
+    const inline = screen.getByTestId('activity-payment-details');
+    expect(inline.textContent).toContain('ZELLE');
+    expect(inline.textContent).toMatch(/25/);
+    expect(inline.textContent).toContain('ORD-123');
+
+    fireEvent.click(screen.getAllByText('admin@x.test')[0]);
+    const summary = await screen.findByTestId('activity-payment-summary');
+    expect(summary.textContent).toContain('ZELLE');
+    expect(summary.textContent).toMatch(/25/);
   });
 });

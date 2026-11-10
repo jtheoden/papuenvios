@@ -12,6 +12,15 @@
     "disclaimer": "Ayuda informativa estática; no ejecuta acciones ni reemplaza los procedimientos oficiales."
   },
   "common": {
+    "confirmDialog": {
+      "title": "Confirmar",
+      "deleteTitle": "Confirmar eliminación",
+      "deactivateTitle": "Confirmar desactivación",
+      "cancel": "Cancelar",
+      "confirm": "Confirmar",
+      "delete": "Eliminar",
+      "deactivate": "Desactivar"
+    },
     "success": "Éxito",
     "error": "Error",
     "statusSelfDealing": "Esta operación es suya. Otro administrador debe realizar esta acción.",
@@ -341,6 +350,8 @@
       "typeCreated": "Tipo de remesa creado",
       "typeUpdated": "Tipo de remesa actualizado",
       "typeDeleted": "Tipo de remesa eliminado",
+      "currencyChangeWarning": "Cambio de Moneda Detectado",
+      "currencyChangeMessage": "Este tipo pasa de {from} a {to}. Todas las cotizaciones nuevas usarán las monedas nuevas. Confirma solo si es intencional.",
       "rateChangeWarning": "Cambio de Tasa Detectado",
       "rateChangeAffected": "Hay {count} remesa(s) pendiente(s) creada(s) con la tasa anterior. Los usuarios serán notificados del cambio en su sección 'Mis Remesas'.",
       "typeActivated": "Tipo activado",
@@ -640,6 +651,7 @@
       "selectTypeRequired": "Seleccione el tipo de remesa *",
       "rate": "Tasa",
       "rateUnavailable": "La tasa de cambio para este tipo de remesa no está disponible en este momento. Por favor, inténtelo más tarde o contacte con soporte.",
+      "quoteChanged": "Los montos cambiaron desde que se mostró la cotización. No se creó la remesa: revisa los nuevos montos y confirma de nuevo.",
       "calculating": "Calculando...",
       "continue": "Continuar",
       "back": "Atrás",
@@ -807,6 +819,8 @@
       "viewPricesIn": "Ver precios de la lista en:",
       "listPricesCue": "Precios de la lista en {code}",
       "priceCurrencyLabel": "Moneda del precio ingresado",
+      "costCupLabel": "Costo en CUP",
+      "costTooLow": "El costo es demasiado bajo: el precio resultante en USD sería menor que 0.01. Ingresa un costo mayor.",
       "priceCurrencyHelp": "El precio base se guarda en {base}. Si elige otra moneda, la cifra se interpretará en esa moneda y se convertirá a {base} al guardar.",
       "priceConvertedNote": "El precio se convirtió a {code}; verifique la cifra.",
       "priceRateMissing": "No hay tasa de cambio para {code}; revise el precio",
@@ -954,7 +968,7 @@
     "retry": "Reintentar",
     "remittancePendingDelivery": "Pendiente de entregar",
     "remittancePendingDeliveryDef": "Remesas con pago validado que todavía no se entregaron al destinatario (validadas y en proceso): monto enviado menos comisión. Es dinero cobrado que se debe entregar.",
-    "paymentMethodsPeriod": "histórico, todos los pedidos activos",
+    "paymentMethodsPeriod": "histórico, pedidos activos y remesas validadas",
     "shippingRow": "Envío cobrado (pasa al courier)",
     "stats": {
       "dailyRevenue": "Ingresos Diarios",
@@ -1081,6 +1095,7 @@
     }
   },
   "activityLog": {
+    "paymentSource": "Origen del pago",
     "title": "Registro de actividad",
     "subtitle": "Auditoría completa de eventos del sistema y seguridad",
     "timestamp": "Fecha y hora",
@@ -1255,11 +1270,17 @@
       "newCurrency": "Nueva Moneda",
       "baseCurrency": "Moneda Base",
       "base": "Base",
+      "showInSelector": "Mostrar en el selector",
       "exchangeRates": "Tasas de Cambio",
       "ratesSuperAdminOnly": "Solo un super administrador puede crear, editar o eliminar tasas de cambio. Puede consultarlas, pero no modificarlas.",
       "currencyDeleteSuperAdminOnly": "Eliminar una moneda también desactiva sus tasas de cambio, y eso solo lo puede hacer un super administrador.",
+      "deactivatePair": "Desactivar",
+      "deactivatePairTitle": "Desactivar par de tasas",
+      "deactivatePairConfirm": "¿Desactivar el par de tasas {pair}? Se desactivarán ambas direcciones (directa e inversa) y no se podrán cotizar operaciones con esta tasa hasta crear o reactivar una nueva.",
+      "pairDeactivated": "Par de tasas desactivado",
+      "pairDeactivatedDesc": "Se desactivaron {count} tasas de cambio",
       "ratePairPartial": "El par de tasas se guardó solo en parte y puede quedar inconsistente. Se recargó la lista: revise ambas tasas e inténtelo de nuevo.",
-      "ratePairIncomplete": "La tasa inversa falta o está inactiva, por lo que el par no se modificó (se restauró la tasa directa). Elimine el par y créelo de nuevo.",
+      "ratePairIncomplete": "La tasa inversa falta o está inactiva, por lo que el par no se modificó (se restauró la tasa directa). Desactive el par y créelo de nuevo.",
       "rateNotFound": "Esta tasa de cambio ya no existe o ya fue modificada. Se recargó la lista.",
       "newRate": "Nueva Tasa",
       "addNewExchangeRate": "Agregar Nueva Tasa de Cambio",
@@ -1288,11 +1309,40 @@
       "deactivate": "Desactivar",
       "rateOutOfBand": "La tasa USD a EUR debe estar entre {min} y {max}.",
       "rateUpdatedAt": "Última actualización: {date}",
+      "marketRate": "Tasa de mercado (referencia)",
+      "marketRateHint": "Referencia interna para medir el margen; no se usa para cotizar.",
+      "marketAboveRate": "La tasa de mercado (referencia) no puede ser mayor que la tasa que ven los usuarios. Sube la tasa o baja la de mercado.",
+      "marketRateInfo": "Tasa de mercado (referencia): {market} · la tasa operativa está {diff} frente al mercado (informativo)",
       "rateChangeConfirmTitle": "Confirmar cambio grande de tasa",
       "rateChangeConfirmMessage": "La tasa USD a EUR cambia de {previous} a {next} ({percent}%). Las cotizaciones de Bizum usan esta tasa; verifique que el nuevo valor sea correcto.",
       "rateChangeConfirmMessageGeneric": "La tasa {from} a {to} cambia de {previous} a {next} ({percent}%). Verifique que el nuevo valor sea correcto.",
       "rateChangeConfirmAction": "Guardar de todos modos",
-      "pairNotAllowed": "Solo se pueden usar monedas activas en una tasa, salvo un EUR inactivo como destino de una tasa desde USD."
+      "pairNotAllowed": "Solo se pueden usar monedas activas en una tasa, salvo un EUR inactivo como destino de una tasa desde USD.",
+      "repricing": {
+        "confirmTitle": "¿Actualizar los precios del catálogo?",
+        "summary": "Se recalcularán {products} productos y {combos} combos con la nueva tasa. Variación media {avg} %, mayor {max} %.",
+        "confirmAction": "Guardar tasa y actualizar precios",
+        "largeWarning": "Cambio grande: supera el 10 % de la última tasa aplicada (o es la primera vez que se aplican precios). Los precios se moverán de forma notable.",
+        "secondTitle": "Confirmar cambio grande de precios",
+        "secondMessage": "Va a aplicar un cambio grande de precios a {products} productos y {combos} combos. Los pedidos existentes conservan sus importes.",
+        "secondAction": "Sí, aplicar cambio grande",
+        "applied": "Precios actualizados",
+        "appliedDesc": "Se recalcularon {products} productos y {combos} combos.",
+        "applyFailed": "Tasa guardada, pero los precios no se actualizaron",
+        "applyFailedDesc": "La nueva tasa está guardada. Use Reintentar en el aviso para actualizar los precios.",
+        "previewFailed": "No se pudo calcular el cambio de precios. Inténtelo de nuevo.",
+        "rates": "Tasa: {previous} → {next} ({pct} %).",
+        "ratesNew": "Tasa nueva: {next}.",
+        "skippedProducts": "{count} productos omitidos (el precio quedaría en 0.00).",
+        "rateChanged": "La tasa cambió antes de aplicar los precios",
+        "rateChangedDesc": "Los precios no se actualizaron. Revise la tasa vigente y use Reintentar en el aviso.",
+        "previewErrorTitle": "Efecto en precios desconocido",
+        "previewErrorMessage": "No se pudo calcular el efecto en precios. ¿Guardar la tasa sin actualizar precios?",
+        "previewErrorAction": "Guardar solo la tasa",
+        "staleTitle": "Precios desactualizados",
+        "staleMessage": "La tasa USD a CUP cambió y los precios del catálogo aún no coinciden con ella.",
+        "retry": "Reintentar"
+      }
     },
     "zelle": {
       "title": "Cuentas Zelle",
@@ -1853,7 +1903,21 @@
       "tabs": {
         "label": "Métodos de pago",
         "zelle": "Zelle",
-        "bizum": "Bizum"
+        "bizum": "Bizum",
+        "iban": "IBAN"
+      },
+      "ibanStatus": {
+        "title": "Transferencia IBAN (SEPA)",
+        "description": "Estado de preparación del cobro en euros para pedidos y remesas.",
+        "unavailable": "No disponible",
+        "blocker": "Para habilitarlo deben existir tasas activas EUR→USD y EUR→CUP, y completarse la configuración segura de cuentas IBAN, la recepción y la conciliación. El método permanece desactivado para pedidos y remesas."
+      },
+      "ibanAccounts": {
+        "title": "Cuentas receptoras IBAN y límites",
+        "description": "Aquí se administrarán las cuentas de cobro de PapuEnvios (no las cuentas de los beneficiarios en Cuba).",
+        "limits": "Límites mínimo y máximo por transferencia, configurables por cuenta.",
+        "routing": "Prioridad de recepción y uso independiente para pedidos y remesas.",
+        "unavailable": "La configuración aún no está disponible: falta el almacenamiento seguro y la conciliación de transferencias. No introduzca datos bancarios aquí."
       }
     }
   },
@@ -2569,7 +2633,8 @@
     "flowLabel": "Flujo",
     "methods": {
       "zelle": "Zelle",
-      "bizum": "Bizum"
+      "bizum": "Bizum",
+      "iban": "IBAN"
     },
     "flows": {
       "orders": "Pedidos",
