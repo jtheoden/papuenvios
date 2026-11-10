@@ -138,14 +138,24 @@ const RecipientForm = ({
       {deliveryMethod !== 'cash' ? (
         // Bank Account Selector for non-cash remittances (allows create new or select existing)
         <div className="border-t pt-4">
-          <BankAccountSelector
-            recipientId={recipientId}
-            onSelect={(account) => {
-              setSelectedBankAccount(account);
-              onChange({ ...formData, bank_account_id: account.bank_account_id });
-            }}
-            showCreateButton={true}
-          />
+          {recipientId ? (
+            <BankAccountSelector
+              recipientId={recipientId}
+              onSelect={(account) => {
+                setSelectedBankAccount(account);
+                onChange({ ...formData, bank_account_id: account?.bank_account_id });
+              }}
+              showCreateButton={true}
+            />
+          ) : (
+            // A new recipient has no id until it is saved: nothing to list or link yet. Once saved, the
+            // recipient is auto-selected and the selector below the list lets the customer add the account.
+            <p className="text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
+              {language === 'es'
+                ? 'Guarda el destinatario para vincular su cuenta bancaria: justo después podrás agregarla o elegir una existente.'
+                : 'Save the recipient to link their bank account: right after you can add one or pick an existing one.'}
+            </p>
+          )}
         </div>
       ) : (
         // Province & Municipality for cash deliveries
