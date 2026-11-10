@@ -591,7 +591,7 @@ export const createBankAccount = async (userId, bankData) => {
     // Check if account already exists (including soft-deleted ones)
     const { data: existingAccount } = await supabase
       .from('bank_accounts')
-      .select('id, is_active, deleted_at')
+      .select('id, is_active, deleted_at, bank_id, currency_id')
       .eq('account_number_hash', accountNumberHash)
       .eq('user_id', userId)
       .single();
@@ -616,8 +616,9 @@ export const createBankAccount = async (userId, bankData) => {
       return reactivatedAccount;
     }
 
-    // Already saved by this customer: reuse it so it can also be linked to another recipient
-    if (existingAccount?.is_active) {
+    // Already saved by this customer: reuse it so it can also be linked to another recipient, but only when it is
+    // really the same account (bank and currency). A mismatch is a typing mistake: never link a different account.
+    if (existingAccount?.is_active && existingAccount.bank_id === bankId && existingAccount.currency_id === finalCurrencyId) {
       return existingAccount;
     }
 
