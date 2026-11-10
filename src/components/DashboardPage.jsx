@@ -24,6 +24,7 @@ import {
   computeOrderCounters,
   computeOrderProfitTotals,
   computeOrderTotals,
+  computePaymentSourceBreakdown,
   computeRemittanceCourierTotals,
   computeRemittanceTotals,
   computeZelleTotals,
@@ -181,8 +182,8 @@ const DashboardPage = ({ onNavigate }) => {
         supabase.from('products').select('id', { count: 'exact', head: true }),
         supabase.from('combo_products').select('id', { count: 'exact', head: true }),
         supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
-        fetchAllRows((from, to) => supabase.from('orders').select('id, status, payment_status, total_amount, shipping_cost, shipping_zone_id, discount_amount, payment_method, created_at, validated_at').order('id').range(from, to)),
-        fetchAllRows((from, to) => supabase.from('remittances').select('id, status, commission_total, amount_sent, discount_amount, payment_validated_at, delivered_at, completed_at, delivery_cost, shipping_zone_id, created_at').order('id').range(from, to)),
+        fetchAllRows((from, to) => supabase.from('orders').select('id, status, payment_status, total_amount, payment_amount, payment_currency, shipping_cost, shipping_zone_id, discount_amount, payment_method, created_at, validated_at').order('id').range(from, to)),
+        fetchAllRows((from, to) => supabase.from('remittances').select('id, status, commission_total, amount_sent, discount_amount, payment_method, currency_sent, payment_validated_at, delivered_at, completed_at, delivery_cost, shipping_zone_id, created_at').order('id').range(from, to)),
         supabase.from('remittance_types').select('id', { count: 'exact', head: true }).eq('is_active', true),
         fetchAllRows((from, to) => supabase.from('zelle_transaction_history').select('id, amount, status, transaction_type, transaction_date, zelle_account_id').eq('status', 'validated').order('id').range(from, to)),
         settleCosts(listProductCosts()),
@@ -229,6 +230,7 @@ const DashboardPage = ({ onNavigate }) => {
       // Revenue, shipping, discounts and payment breakdown (validated, active orders; ET calendar windows)
       const now = new Date();
       const orderTotals = computeOrderTotals(orders, now);
+      const paymentMethodBreakdown = computePaymentSourceBreakdown(orders, remittances);
 
       try {
         const costByOrder = await listOrderCourierCosts();
@@ -297,6 +299,7 @@ const DashboardPage = ({ onNavigate }) => {
         ...orderTotals,
         ...remittanceTotals,
         ...zelleTotals,
+        paymentMethodBreakdown,
         ...discounts,
         ready: true,
         error: false,
@@ -378,6 +381,16 @@ const DashboardPage = ({ onNavigate }) => {
 
   // Amount with the base-currency symbol; "—" until the first load so a pending figure is not read as a real zero.
   const money = (value) => (stats.ready ? `${currencySymbol}${formatCurrency(value)}` : '—');
+  const nativePaymentMoney = (value, currency) => {
+    try {
+      return new Intl.NumberFormat(language === 'es' ? 'es-ES' : 'en-US', {
+        style: 'currency',
+        currency
+      }).format(value);
+    } catch {
+      return `${formatCurrency(value)} ${currency}`;
+    }
+  };
   const negativeMoney = (value) => (stats.ready ? `-${currencySymbol}${formatCurrency(value)}` : '—');
   const visitCount = (value) => (visitStats.loading || visitStats.unavailable ? '—' : value);
 
@@ -627,7 +640,13 @@ const DashboardPage = ({ onNavigate }) => {
                                 </div>
                                 <div className="flex items-center gap-3">
                                   <span className="text-gray-500">{data.count}</span>
-                                  <span className="font-semibold text-gray-800">{money(data.total)}</span>
+                                  <span className="font-semibold text-gray-800 text-right">
+                                    {Object.entries(data.nativeAmounts || {}).length > 0
+                                      ? Object.entries(data.nativeAmounts).map(([currency, amount]) => (
+                                        <span key={currency} className="block">{nativePaymentMoney(amount, currency)}</span>
+                                      ))
+                                      : <span className="text-gray-400">—</span>}
+                                  </span>
                                 </div>
                               </div>
                             ))}

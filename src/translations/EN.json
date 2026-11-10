@@ -948,7 +948,7 @@
     "retry": "Retry",
     "remittancePendingDelivery": "Pending delivery",
     "remittancePendingDeliveryDef": "Remittances with a validated payment that have not been delivered to the recipient yet (validated and processing): amount sent minus commission. It is money collected that still has to be delivered.",
-    "paymentMethodsPeriod": "all time, all active orders",
+    "paymentMethodsPeriod": "all time, active orders and validated remittances",
     "shippingRow": "Shipping charged (passes to the courier)",
     "stats": {
       "dailyRevenue": "Daily Revenue",
@@ -1075,6 +1075,7 @@
     }
   },
   "activityLog": {
+    "paymentSource": "Payment source",
     "title": "Activity log",
     "subtitle": "Full audit of system and security events",
     "timestamp": "Timestamp",

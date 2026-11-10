@@ -796,3 +796,9 @@ Follow-up committed on `feat/theme-controls-links-logo` in five new commits (no 
 - PR #182 head `495a5c6c` passed lint but CI coverage had 1 failing test (4,875 passed): `themeCompliance.test.js` requires the inline first-paint `index.html` preset to exactly match `BRAND_PRESET`.
 - The corresponding local `index.html` change adds the new identity keys but excludes them from legacy-brand inference, matching the `brandPalette.js` behavior. Focused `themeCompliance.test.js`: 26/26 passed. Both blind reviewers CLEAN. This change must be committed/pushed, then the full PR CI rerun must pass before merge.
 - Vercel preview was BUILDING at time of check; production has not been updated.
+
+## S4 — Payment origin in audit + Dashboard payment sources (2026-11-10)
+
+- Activity-log entries for orders and remittances now carry `paymentMethod`, `paymentAmount`, `paymentCurrency` (Zelle orders: total in USD; Bizum/other: sealed `payment_amount`/`payment_currency` or `null`, never inferred). `ActivityLogTab` shows them inline and in the detail dialog via `getActivityPaymentDetails`.
+- Dashboard "payment methods" card uses `computePaymentSourceBreakdown`: native-currency totals per method (orders + validated remittances), no cross-currency sum; non-Zelle rows without a sealed amount show "—". It no longer shows `data.total` in USD.
+- `createRemittance` writes `payment_method: 'zelle'` explicitly (INSERT only; `remittances_payment_method_check` allows it, the routing-columns guard is UPDATE-only). No DB migration.

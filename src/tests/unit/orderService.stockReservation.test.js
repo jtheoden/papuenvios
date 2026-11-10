@@ -89,6 +89,7 @@ vi.mock('@/lib/zelleService', () => ({
 }));
 
 import { supabase } from '@/lib/supabase';
+import { logActivity } from '@/lib/activityLogger';
 import * as errorHandler from '@/lib/errorHandler';
 import {
   createOrder,
@@ -135,6 +136,20 @@ describe('createOrder stock reservation', () => {
     expect(state.log.indexOf('order_items:insert')).toBeLessThan(reserveAt);
     expect(supabase.from).not.toHaveBeenCalledWith('inventory');
     expect(supabase.from).not.toHaveBeenCalledWith('inventory_movements');
+  });
+
+  it('records Zelle origin, received amount, and USD in order activity metadata', async () => {
+    await createOrder({ ...orderData, paymentMethod: 'zelle' }, items);
+
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'order_created',
+      entityType: 'order',
+      metadata: expect.objectContaining({
+        paymentMethod: 'zelle',
+        paymentAmount: 10,
+        paymentCurrency: 'USD'
+      })
+    }));
   });
 
   it('throws a typed INSUFFICIENT_STOCK error carrying product and availability when the RPC rejects', async () => {
@@ -199,6 +214,28 @@ describe('cancel flows leave the release to the database (trigger, same transact
 });
 
 describe('validatePayment consumes the reservation inside order_validate_payment', () => {
+  it('records the quoted Bizum native amount and currency rather than the USD order total', async () => {
+    state.order = {
+      ...state.order,
+      payment_method: 'bizum',
+      total_amount: 10,
+      payment_amount: 9.2,
+      payment_currency: 'EUR'
+    };
+
+    await validatePayment('ord-1', 'admin-1');
+
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'payment_validated',
+      metadata: expect.objectContaining({
+        paymentMethod: 'bizum',
+        paymentAmount: 9.2,
+        paymentCurrency: 'EUR',
+        totalAmount: 10
+      })
+    }));
+  });
+
   it('is ONE RPC: no client-side consume, no UPDATE, no inventory writes', async () => {
     await validatePayment('ord-1', 'admin-1');
 
