@@ -1009,7 +1009,8 @@ export const createRemittance = async (remittanceData) => {
         'The amounts changed since the quote was shown.',
         ERROR_CODES.REMITTANCE_QUOTE_CHANGED,
         409,
-        { expected: expectedQuote, actual: actualQuote }
+        // the discount is not compared (it follows the commission) but the review step must show the live one
+        { expected: expectedQuote, actual: { ...actualQuote, discountAmount: calcDiscountAmount } }
       );
     }
 

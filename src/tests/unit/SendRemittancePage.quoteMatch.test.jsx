@@ -125,7 +125,7 @@ describe('SendRemittancePage - the quote on screen is the quote that gets stored
     createRemittance.mockRejectedValue(
       new AppError('changed', ERROR_CODES.REMITTANCE_QUOTE_CHANGED, 409, {
         expected: { amountSent: 50, amountToDeliver: 4900, exchangeRate: 100, commissionTotal: 1 },
-        actual: { amountSent: 50, amountToDeliver: 5100, exchangeRate: 102, commissionTotal: 1 },
+        actual: { amountSent: 50, amountToDeliver: 5100, exchangeRate: 102, commissionTotal: 1, discountAmount: 0.5 },
       })
     );
     render(<SendRemittancePage onNavigate={vi.fn()} />);
@@ -140,6 +140,8 @@ describe('SendRemittancePage - the quote on screen is the quote that gets stored
     );
     // back on the review step, showing what the recipient would really get now
     await waitFor(() => expect(document.body.textContent).toContain('5100.00 CUP'));
+    // the coupon discount moves with the rest of the quote, it is not left at the old value
+    expect(document.body.textContent).toContain('+0.50 USD');
     expect(screen.queryByText('submit-proof')).toBeNull();
     expect(createRemittance).toHaveBeenCalledTimes(1);
   });

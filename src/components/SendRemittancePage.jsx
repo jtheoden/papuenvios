@@ -631,8 +631,15 @@ const SendRemittancePage = ({ onNavigate }) => {
       const quoteChanged = error?.code === ERROR_CODES.REMITTANCE_QUOTE_CHANGED;
       if (quoteChanged && error.context?.actual) {
         // Nothing was stored: show the customer the new amounts and let them confirm again
-        const { amountSent, amountToDeliver, exchangeRate, commissionTotal } = error.context.actual;
-        setCalculation((previous) => ({ ...previous, amount: amountSent, amountToDeliver, exchangeRate, totalCommission: commissionTotal }));
+        const { amountSent, amountToDeliver, exchangeRate, commissionTotal, discountAmount } = error.context.actual;
+        setCalculation((previous) => ({
+          ...previous,
+          amount: amountSent,
+          amountToDeliver,
+          exchangeRate,
+          totalCommission: commissionTotal,
+          discountAmount: discountAmount ?? previous?.discountAmount
+        }));
         setRateCheckedAt(new Date());
         setStep(2);
       }

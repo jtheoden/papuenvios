@@ -74,6 +74,7 @@ vi.mock('@/lib/shippingService', () => ({ getActiveShippingZones: vi.fn(), calcu
 vi.mock('@/lib/errorHandler', async (orig) => ({ ...(await orig()), logError: vi.fn() }));
 
 import { createRemittance } from '@/lib/remittanceService';
+import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingService';
 
 // 1.03 market rate on a same-currency type is the commission reference: 100 USD -> 2.91 commission -> 97.09 delivered
 const expectedQuote = { amountSent: 100, amountToDeliver: 97.09, exchangeRate: 1, commissionTotal: 2.91 };
@@ -144,8 +145,14 @@ describe('createRemittance with cash delivery', () => {
   it('does not require nor look up a bank account', async () => {
     state.type = baseType({ delivery_method: 'cash' });
     state.link = null;
+    const zone = { id: 'zone-1', province_name: 'La Habana', municipality_name: null, shipping_cost: 7, free_shipping: false, is_active: true };
+    getActiveShippingZones.mockResolvedValue([zone]);
+    calculateShippingCost.mockResolvedValue({ cost: 7, freeShipping: false, zone, source: 'province' });
     const { recipient_bank_account_id: _omit, ...withoutAccount } = input;
-    await expect(createRemittance(withoutAccount)).rejects.not.toMatchObject({ context: expect.objectContaining({ recipient_bank_account_id: expect.anything() }) });
+
+    await expect(createRemittance({ ...withoutAccount, recipient_province: 'La Habana' })).resolves.toBeDefined();
+
+    expect(state.insertPayload).not.toBeNull();
     expect(state.linkQuery).toBeNull();
   });
 });
