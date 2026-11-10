@@ -186,6 +186,12 @@ const logRemittancePaymentActivity = async ({ action, remittance, performedBy, d
       amountToDeliver: remittance?.amount_to_deliver,
       currencySent: remittance?.currency_sent,
       currencyDelivered: remittance?.currency_delivered,
+      // Partial remittance objects omit these fields instead of guessing a method, a zero amount or a currency.
+      ...(remittance?.payment_method ? { paymentMethod: remittance.payment_method } : {}),
+      ...(remittance?.amount_sent != null
+        ? { paymentAmount: Number(remittance.amount_sent) + Number(remittance.delivery_cost || 0) }
+        : {}),
+      ...(remittance?.currency_sent ? { paymentCurrency: remittance.currency_sent } : {}),
       paymentReference: remittance?.payment_reference || null,
       ...metadata
     };
@@ -1048,6 +1054,9 @@ export const createRemittance = async (remittanceData) => {
       recipient_id_number,
       delivery_notes: notes,
       status: REMITTANCE_STATUS.PAYMENT_PENDING,
+      // Remittances currently collect through Zelle only. Persist the origin explicitly
+      // so history/audit feeds do not have to infer it from the linked account.
+      payment_method: 'zelle',
       zelle_account_id: selectedZelleAccountId
     };
 

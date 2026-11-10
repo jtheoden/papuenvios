@@ -195,6 +195,7 @@ describe('createRemittance real payload', () => {
       amount_to_deliver: 88755,
       currency_sent: 'USD',
       currency_delivered: 'CUP',
+      payment_method: 'zelle',
       zelle_account_id: 'zelle-1'
     });
   });

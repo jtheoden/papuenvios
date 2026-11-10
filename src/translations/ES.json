@@ -953,7 +953,7 @@
     "retry": "Reintentar",
     "remittancePendingDelivery": "Pendiente de entregar",
     "remittancePendingDeliveryDef": "Remesas con pago validado que todavía no se entregaron al destinatario (validadas y en proceso): monto enviado menos comisión. Es dinero cobrado que se debe entregar.",
-    "paymentMethodsPeriod": "histórico, todos los pedidos activos",
+    "paymentMethodsPeriod": "histórico, pedidos activos y remesas validadas",
     "shippingRow": "Envío cobrado (pasa al courier)",
     "stats": {
       "dailyRevenue": "Ingresos Diarios",
@@ -1080,6 +1080,7 @@
     }
   },
   "activityLog": {
+    "paymentSource": "Origen del pago",
     "title": "Registro de actividad",
     "subtitle": "Auditoría completa de eventos del sistema y seguridad",
     "timestamp": "Fecha y hora",

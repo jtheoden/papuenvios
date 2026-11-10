@@ -46,17 +46,29 @@ const logOrderActivity = async ({ action, entityId, performedBy, description, me
   }
 };
 
-const buildOrderPaymentMetadata = (order, metadata = {}) => ({
-  paymentType: 'order',
-  orderId: order?.id,
-  orderNumber: order?.order_number,
-  paymentStatus: order?.payment_status,
-  orderStatus: order?.status,
-  paymentMethod: order?.payment_method,
-  paymentReference: order?.payment_reference || null,
-  totalAmount: order?.total_amount,
-  ...metadata
-});
+const buildOrderPaymentMetadata = (order, metadata = {}) => {
+  const paymentMethod = order?.payment_method || metadata.paymentMethod || null;
+  const hasNativePaymentAmount = order?.payment_currency && order?.payment_amount != null;
+  return {
+    paymentType: 'order',
+    orderId: order?.id,
+    orderNumber: order?.order_number,
+    paymentStatus: order?.payment_status,
+    orderStatus: order?.status,
+    paymentMethod,
+    paymentReference: order?.payment_reference || null,
+    totalAmount: order?.total_amount,
+    // Bizum quotes store the actual received amount/currency separately from the
+    // USD-denominated order total. Zelle orders are charged in the USD base currency.
+    paymentAmount: hasNativePaymentAmount
+      ? order.payment_amount
+      : paymentMethod === 'zelle' ? order?.total_amount : null,
+    paymentCurrency: hasNativePaymentAmount
+      ? order.payment_currency
+      : paymentMethod === 'zelle' ? 'USD' : null,
+    ...metadata
+  };
+};
 
 // ============================================================================
 // STATUS CONSTANTS (the transition matrix lives in the database: see statusTransition.js)
@@ -244,7 +256,13 @@ export const createOrder = async (orderData, items) => {
         shippingCost: orderData.shippingCost,
         totalAmount: orderData.totalAmount,
         currencyId: orderData.currencyId,
-        paymentMethod: orderData.paymentMethod,
+        paymentMethod: orderData.paymentMethod || 'zelle',
+        paymentAmount: (orderData.paymentMethod || 'zelle') === 'zelle'
+          ? orderData.totalAmount
+          : (orderData.paymentAmount ?? null),
+        paymentCurrency: (orderData.paymentMethod || 'zelle') === 'zelle'
+          ? 'USD'
+          : (orderData.paymentCurrency ?? null),
         offerId: orderData.offerId
       }
     });
