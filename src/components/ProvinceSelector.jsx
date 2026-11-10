@@ -68,7 +68,7 @@ const ProvinceSelector = ({
         <select
           value={selectedProvince}
           onChange={e => onProvinceChange(e.target.value)}
-          className="input-style w-full"
+          className="input-style w-full recipient-theme-control"
           required
         >
           <option value="">
@@ -93,7 +93,7 @@ const ProvinceSelector = ({
           <select
             value={selectedMunicipality}
             onChange={e => onMunicipalityChange(e.target.value)}
-            className="input-style w-full"
+            className="input-style w-full recipient-theme-control"
             required
           >
             <option value="">

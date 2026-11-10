@@ -135,7 +135,7 @@ export function EmailVerificationPending() {
             ¿Email incorrecto?{' '}
             <button
               onClick={() => navigate('/auth/register')}
-              className="text-blue-600 hover:text-blue-700 font-semibold"
+              className="text-theme-link hover:text-theme-link-strong font-semibold"
             >
               Registrate con otro email
             </button>
@@ -159,7 +159,7 @@ export function EmailVerificationPending() {
         <p className="text-center text-sm text-gray-600 mt-6">
           <button
             onClick={() => navigate('/')}
-            className="text-blue-600 hover:text-blue-700 font-semibold"
+            className="text-theme-link hover:text-theme-link-strong font-semibold"
           >
             Volver al inicio
           </button>

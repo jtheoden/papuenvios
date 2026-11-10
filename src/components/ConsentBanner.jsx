@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import LegalLink from '@/components/LegalLink';
 import {
@@ -17,11 +17,15 @@ const CHOICE_BUTTON_CLASS =
  * pages such as checkout/admin, where analytics simply stays off) and whenever the user asks to
  * reopen it from the footer. The two choices are visually identical and are the only way to
  * dismiss it. Focus is moved into it only when the user reopened it, and it never traps focus.
+ * "More information" is a disclosure button (aria-expanded) revealing the full text in place.
  */
 const ConsentBanner = ({ suppressed = false, onNavigate }) => {
   const { t } = useLanguage();
   const [consent, setConsent] = useState(getConsent);
   const [reopened, setReopened] = useState(false);
+  // Short line by default (small footprint on phones); the full text and the privacy link on request.
+  const [expanded, setExpanded] = useState(false);
+  const detailsId = useId();
   const regionRef = useRef(null);
   const previousFocusRef = useRef(null);
 
@@ -57,7 +61,7 @@ const ConsentBanner = ({ suppressed = false, onNavigate }) => {
       window.removeEventListener('resize', apply);
       document.body.style.paddingBottom = '';
     };
-  }, [open]);
+  }, [open, expanded]);
 
   if (!open) return null;
 
@@ -78,14 +82,29 @@ const ConsentBanner = ({ suppressed = false, onNavigate }) => {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-300 bg-white shadow-[0_-4px_16px_rgba(0,0,0,0.12)] focus:outline-none"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
-      <div className="container mx-auto flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-sm text-gray-800">
-          <h2 id="cookie-consent-title" className="font-semibold">
-            {t('cookieConsent.title')}
-          </h2>
-          <p className="mt-1">
+      <div className="container mx-auto flex flex-col gap-2 px-4 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+        <div className="text-sm leading-5 text-gray-800">
+          <div>
+            <h2 id="cookie-consent-title" className="inline font-semibold">
+              {t('cookieConsent.title')}
+            </h2>
+            {'. '}
+            <span>{t('cookieConsent.short')}</span>{' '}
+            <button
+              type="button"
+              aria-expanded={expanded}
+              aria-controls={detailsId}
+              onClick={() => setExpanded((value) => !value)}
+              // 44px touch target; the negative margin keeps the text line (and the banner) at its compact height
+              className="-my-3 inline-flex min-h-[44px] items-center font-medium text-theme-link-strong underline focus:outline-none focus-visible:ring-2 focus-visible:ring-theme-focus"
+            >
+              {t('cookieConsent.moreInfo')}
+            </button>
+          </div>
+          {/* Always rendered so aria-controls points at an existing id; hidden while collapsed */}
+          <p id={detailsId} className="mt-1" hidden={!expanded}>
             {t('cookieConsent.description')}{' '}
-            <LegalLink page="privacy" onNavigate={onNavigate} className="underline text-blue-700">
+            <LegalLink page="privacy" onNavigate={onNavigate} className="underline text-theme-link-strong">
               {t('cookieConsent.privacyLink')}
             </LegalLink>
           </p>

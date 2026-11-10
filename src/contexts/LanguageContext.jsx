@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import ES from '@/translations/ES.json';
 import EN from '@/translations/EN.json';
 
@@ -9,12 +9,19 @@ const translations = { es: ES, en: EN };
 export const LanguageProvider = ({ children }) => {
   const [language, setLanguage] = useState(() => {
     // Load language preference from localStorage on initial mount
-    if (typeof window !== 'undefined') {
-      const savedLanguage = localStorage.getItem('preferredLanguage');
-      return savedLanguage || 'es';
-    }
+    try {
+      if (typeof window !== 'undefined') {
+        const savedLanguage = localStorage.getItem('preferredLanguage');
+        return savedLanguage || 'es';
+      }
+    } catch (error) { /* Storage may be blocked; keep the default language. */ }
     return 'es';
   });
+
+  // index.html ships lang="es" (the default); keep it true for screen readers and translators after a switch.
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
 
   const handleSetLanguage = (newLanguage) => {
     setLanguage(newLanguage);
@@ -39,7 +46,8 @@ export const LanguageProvider = ({ children }) => {
       );
     }
 
-    return value || key;
+    // `defaultValue` (i18next-style) is the fallback for a missing key; without it the key is returned.
+    return value || params?.defaultValue || key;
   };
 
   return (

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
+import { getLiveConversionRate } from '@/lib/currencyService';
 import { toast } from '@/components/ui/use-toast';
 import { validateAndProcessImage } from '@/lib/imageUtils';
 import { isImageUploadError, getImageUploadMessageKey } from '@/lib/imageStorage';
@@ -21,6 +22,9 @@ import { hasAdminProductFields } from '@/lib/adminCatalogColumns';
 import { DEFAULTS } from '@/lib/constants';
 import { resolveMargin, resolveMarginInput } from '@/lib/marginResolver';
 import { getUnitOptions, isKnownUnit, normalizeUnitCode } from '@/lib/productUnits';
+
+const CUP_CODE = 'CUP';
+const round2 = (n) => Math.round(n * 100) / 100;
 
 /**
  * Vendor Inventory Tab Component
@@ -76,6 +80,21 @@ const VendorInventoryTab = ({
   // Find base currency from currencies list
   const systemBaseCurrency = currencies.find(c => c.is_base);
   const systemBaseCurrencyId = systemBaseCurrency?.id || baseCurrencyId;
+  const cupCurrency = currencies.find(c => c.code === CUP_CODE);
+
+  // A cost typed in CUP (when CUP is not the base) is stored as cost_cup; the base price follows from the live
+  // USD->CUP rate of the pair itself, never the inverse CUP->USD row. Throws when no valid rate exists (fail closed).
+  const costCupToBase = async (costCup, cupCurrencyId) => {
+    const rate = await getLiveConversionRate(systemBaseCurrencyId, cupCurrencyId);
+    const base = round2(costCup / rate);
+    if (!Number.isFinite(rate) || rate <= 0 || !Number.isFinite(base)) throw new Error('No valid exchange rate available');
+    return base;
+  };
+  // Signal that the cost_cup migration is applied: admin rows only carry the cost_cup key after it (null or a number).
+  // No loaded row with the key (old DB, or empty catalog) => compat mode: save exactly as before, never send cost_cup.
+  const costCupAvailable = products.some(p => p.cost_cup !== undefined);
+  const isCostInCup = (currencyId) =>
+    costCupAvailable && getCurrencyById(currencyId)?.code === CUP_CODE && currencyId !== systemBaseCurrencyId;
 
   // Resolve the active form currency (from the currency selector)
   const formCurrency = getCurrencyById(productForm?.base_currency_id) || systemBaseCurrency;
@@ -106,7 +125,11 @@ const VendorInventoryTab = ({
 
     setIsConverting(true);
     try {
-      const converted = await convertAmountAsync(parseFloat(price), fromCurrencyId, systemBaseCurrencyId);
+      // Same live rate as the save: the preview is the amount that will be stored
+      const converted = isCostInCup(fromCurrencyId)
+        ? await costCupToBase(parseFloat(price), fromCurrencyId)
+        : parseFloat(price) * await getLiveConversionRate(fromCurrencyId, systemBaseCurrencyId);
+      if (!Number.isFinite(converted)) throw new Error('No valid exchange rate available');
       const baseCurrencyInfo = getCurrencyById(systemBaseCurrencyId);
       setConvertedPreview({
         amount: converted,
@@ -120,7 +143,8 @@ const VendorInventoryTab = ({
     } finally {
       setIsConverting(false);
     }
-  }, [convertAmountAsync, getCurrencyById, systemBaseCurrencyId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getCurrencyById, systemBaseCurrencyId]);
 
   // Trigger conversion preview when form price or currency changes
   useEffect(() => {
@@ -347,22 +371,32 @@ const VendorInventoryTab = ({
       product.profit_margin,
       product.category?.id || product.category_id
     );
-    const base = parseFloat(product.base_price || product.basePrice || 0);
-    resetPriceAnchor(base > 0 ? { amount: base, currencyId: product.base_currency_id || baseCurrencyId || '' } : null);
+    // A product with a CUP cost opens in CUP (the source of truth), not in the USD derived from it
+    const costCup = product.cost_cup !== null && product.cost_cup !== undefined && cupCurrency
+      ? parseFloat(product.cost_cup)
+      : null;
+    const hasCostCup = costCup !== null;
+    const formPrice = hasCostCup ? costCup : (product.base_price || product.basePrice || '');
+    const formCurrencyId = hasCostCup ? cupCurrency.id : (product.base_currency_id || baseCurrencyId || '');
+    const base = parseFloat(formPrice || 0);
+    resetPriceAnchor(base > 0 ? { amount: base, currencyId: formCurrencyId } : null);
     setProductForm({
       id: product.id,
       name_es: product.name_es || product.name || '',
       name_en: product.name_en || product.name || '',
       description_es: product.description_es || '',
       description_en: product.description_en || '',
-      basePrice: product.base_price || product.basePrice || '',
+      basePrice: formPrice,
+      hadCostCup: hasCostCup,
+      origPrice: formPrice,
+      origCurrencyId: formCurrencyId,
       profitMargin: margin,
       marginSource,
       marginTouched: marginSource === 'product',
       profitMode: 'percentage',
       profitAmount: base > 0 ? (base * margin / 100).toFixed(2) : '',
       sellPrice: base > 0 ? (base * (1 + margin / 100)).toFixed(2) : '',
-      base_currency_id: product.base_currency_id || baseCurrencyId || '',
+      base_currency_id: formCurrencyId,
       category: product.category?.id || product.category_id || '',
       stock: product.stock || '',
       min_stock_alert: product.min_stock_alert || '',
@@ -451,13 +485,26 @@ const VendorInventoryTab = ({
       let finalCurrencyId = productForm.base_currency_id;
       const inputCurrency = getCurrencyById(productForm.base_currency_id);
 
-      if (productForm.base_currency_id !== systemBaseCurrencyId) {
+      // undefined = leave cost_cup untouched (also keeps the payload valid before the migration is applied)
+      let costCup;
+
+      // Editing other fields must not reprice: an unchanged cost and currency sends neither base_price nor cost_cup
+      // (compared at 2 decimals, like cost_cup: a sub-cent retype would otherwise reprice base_price while cost_cup stays equal)
+      const costUnchanged = Boolean(productForm.id)
+        && round2(parseFloat(productForm.basePrice)) === round2(parseFloat(productForm.origPrice))
+        && productForm.base_currency_id === productForm.origCurrencyId;
+
+      if (!costUnchanged && productForm.base_currency_id !== systemBaseCurrencyId) {
         try {
-          normalizedPrice = await convertAmountAsync(
-            parseFloat(productForm.basePrice),
-            productForm.base_currency_id,
-            systemBaseCurrencyId
-          );
+          // A saved price: converted with the rate read live, never the cached display rate.
+          if (isCostInCup(productForm.base_currency_id)) {
+            costCup = round2(parseFloat(productForm.basePrice));
+            normalizedPrice = await costCupToBase(costCup, productForm.base_currency_id);
+          } else {
+            const liveRate = await getLiveConversionRate(productForm.base_currency_id, systemBaseCurrencyId);
+            normalizedPrice = parseFloat(productForm.basePrice) * liveRate;
+            if (!Number.isFinite(normalizedPrice)) throw new Error('No valid exchange rate available');
+          }
           finalCurrencyId = systemBaseCurrencyId;
         } catch (convError) {
           // Never persist a number typed in one currency under another: abort and keep the form open
@@ -471,18 +518,32 @@ const VendorInventoryTab = ({
         }
       }
 
+      // A zero USD price (tiny CUP cost / big rate) must never be saved
+      if (costCup !== undefined && normalizedPrice < 0.01) {
+        toast({
+          title: t('common.error'),
+          description: t('vendor.inventory.costTooLow'),
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // A fixed non-CUP cost must not be repriced by the rate: clear a previously stored cost_cup
+      if (!costUnchanged && costCup === undefined && productForm.id && productForm.hadCostCup) costCup = null;
+
       const productData = {
         name_es: productForm.name_es,
         name_en: productForm.name_en || productForm.name_es,
         description_es: productForm.description_es || '',
         description_en: productForm.description_en || '',
-        basePrice: normalizedPrice,
+        basePrice: costUnchanged ? undefined : normalizedPrice,
+        costCup,
         stock: parseInt(productForm.stock || 0, 10),
         min_stock_alert: parseInt(productForm.min_stock_alert || 10, 10),
         unit: normalizeUnitCode(productForm.unit),
         profitMargin: resolveMarginInput(productForm.profitMargin, DEFAULTS.PRODUCT_PROFIT_MARGIN),
         category_id: productForm.category,
-        base_currency_id: finalCurrencyId,
+        base_currency_id: costUnchanged ? undefined : finalCurrencyId,
         image: productForm.image || '',
         sku: productForm.sku || `SKU-${Date.now()}`,
         slug: productForm.name_es.toLowerCase().replace(/\s+/g, '-'),
@@ -920,7 +981,7 @@ const VendorInventoryTab = ({
             {/* Base Price */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {t('vendor.addProduct.basePrice')} *
+                {isCostInCup(productForm.base_currency_id) ? t('vendor.inventory.costCupLabel') : t('vendor.addProduct.basePrice')} *
               </label>
               <input
                 type="number"

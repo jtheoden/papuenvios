@@ -1,10 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import TableDetailModal from '@/components/modals/TableDetailModal';
 import { semanticColors } from '@/lib/colorTokens';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
+import LoadingState, { SkeletonBox } from '@/components/ui/LoadingState';
+
+// Row-shaped placeholder: a header bar and a few rows.
+const TableSkeleton = () => (
+  <div className="space-y-2">
+    <SkeletonBox className="hidden h-10 w-full lg:block" />
+    {Array.from({ length: 5 }, (_, i) => <SkeletonBox key={i} className="h-14 w-full" />)}
+  </div>
+);
 
 /**
  * Responsive table wrapper that adapts display based on screen size
@@ -93,23 +102,16 @@ const ResponsiveTableWrapper = ({
     setShowModal(true);
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader size={32} className="animate-spin" style={{ color: primaryColor }} />
-      </div>
-    );
-  }
+  const isEmpty = !data || data.length === 0;
 
-  if (!data || data.length === 0) {
-    return (
+  // Skeleton only while nothing is on screen yet: a refresh keeps the current rows visible.
+  return (
+    <LoadingState loading={isLoading && isEmpty} refreshing={isLoading && !isEmpty} skeleton={<TableSkeleton />}>
+    {isEmpty ? (
       <div className="text-center py-12" style={{ color: semanticColors.neutral[500] }}>
         <p className="text-sm sm:text-base">{t('tables.noData') || 'No data available'}</p>
       </div>
-    );
-  }
-
-  return (
+    ) : (
     <>
       {/* Mobile View: xs screens */}
       <div className="block sm:hidden space-y-2">
@@ -344,6 +346,8 @@ const ResponsiveTableWrapper = ({
         />
       )}
     </>
+    )}
+    </LoadingState>
   );
 };
 

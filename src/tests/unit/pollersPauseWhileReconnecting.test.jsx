@@ -48,6 +48,8 @@ import { useRefundQueue } from '@/hooks/useRefundQueue';
 import { useRefundCounts } from '@/hooks/useRefundCounts';
 import { getAdminWorkRemittances } from '@/lib/remittanceService';
 import { listRefunds, getRefundCounts } from '@/lib/refundService';
+import { refreshPoll } from '@/lib/visiblePolling';
+import { REFUND_COUNTS_KEY, REFUND_QUEUE_KEY, WORK_REMITTANCES_KEY } from '@/lib/adminPollKeys';
 import {
   createRefreshGuardFetch, resetRefreshGuard, skipWhileRefreshBlocked, isRefreshBlocked
 } from '@/lib/refreshGuard';
@@ -83,6 +85,26 @@ describe('pollers pause while the token refresh is blocked', () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
+  it('skipWhileRefreshBlocked also skips while the tab is hidden (no egress for background tabs)', () => {
+    const fn = vi.fn();
+    const guarded = skipWhileRefreshBlocked(fn);
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    guarded();
+    hidden.mockReturnValue(false);
+    guarded();
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('admin badge does not poll while the tab is hidden', async () => {
+    const { getPendingOrdersCount } = await import('@/lib/orderService');
+    render(<Header currentPage="home" onNavigate={() => {}} />);
+    await advance(1000);
+    const first = getPendingOrdersCount.mock.calls.length;
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    await advance(90_000);
+    expect(getPendingOrdersCount.mock.calls.length).toBe(first);
+  });
+
   it('admin badge keeps its last count (never "0 pending") while reconnecting, and refreshes again afterwards', async () => {
     render(<Header currentPage="home" onNavigate={() => {}} />);
     await advance(1000);
@@ -101,29 +123,29 @@ describe('pollers pause while the token refresh is blocked', () => {
     expect(screen.queryByText('3')).toBeNull();
   });
 
-  it('usePendingRemittances skips its 30 s poll during the cooldown and resumes after', async () => {
+  it('usePendingRemittances skips its poll during the cooldown and runs it as soon as the cooldown ends', async () => {
     renderHook(() => usePendingRemittances({ enabled: true }));
     await advance(1000);
     const first = getAdminWorkRemittances.mock.calls.length;
 
-    await act(async () => { await blockRefresh(); });
-    await advance(29_000); // t=30 s tick inside the cooldown
+    await act(async () => { await blockRefresh(); }); // blocked from t=1 s until t=31 s
+    await act(async () => { await refreshPoll(WORK_REMITTANCES_KEY); }); // e.g. an own write inside the cooldown: skipped
+    await advance(29_000);
     expect(getAdminWorkRemittances.mock.calls.length).toBe(first);
-
-    await advance(30_000);
+    await advance(2_000); // cooldown over: the skipped refresh runs at once instead of waiting for the 15-min tick
     expect(getAdminWorkRemittances.mock.calls.length).toBe(first + 1);
   });
 
-  it('useRefundQueue skips its 30 s poll during the cooldown and resumes after', async () => {
+  it('useRefundQueue skips its poll during the cooldown and runs it as soon as the cooldown ends', async () => {
     renderHook(() => useRefundQueue({ enabled: true }));
     await advance(1000);
     const first = listRefunds.mock.calls.length;
 
-    await act(async () => { await blockRefresh(); });
+    await act(async () => { await blockRefresh(); }); // blocked from t=1 s until t=31 s
+    await act(async () => { await refreshPoll(REFUND_QUEUE_KEY); }); // e.g. an own write inside the cooldown: skipped
     await advance(29_000);
     expect(listRefunds.mock.calls.length).toBe(first);
-
-    await advance(30_000);
+    await advance(2_000); // cooldown over: the skipped refresh runs at once instead of waiting for the 15-min tick
     expect(listRefunds.mock.calls.length).toBe(first + 1);
   });
 
@@ -136,11 +158,12 @@ describe('pollers pause while the token refresh is blocked', () => {
 
     await act(async () => { await blockRefresh('120'); }); // blocked from t=1 s until t=121 s
     getRefundCounts.mockRejectedValue(new Error('anon'));
-    await advance(119_000); // the 60 s tick falls inside the cooldown
+    await act(async () => { await refreshPoll(REFUND_COUNTS_KEY); }); // e.g. an own write inside the cooldown
+    await advance(119_000);
     expect(getRefundCounts.mock.calls.length).toBe(first);
     expect(result.current?.actionable).toBe(4);
 
-    await advance(60_000); // cooldown over: the t=180 s tick runs again
+    await advance(2_000); // cooldown over: the skipped refresh runs at once instead of waiting for the 5-min tick
     expect(getRefundCounts.mock.calls.length).toBe(first + 1);
   });
 });

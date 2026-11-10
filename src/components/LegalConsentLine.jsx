@@ -8,7 +8,7 @@ import LegalLink from '@/components/LegalLink';
  */
 const LegalConsentLine = ({ variant = 'confirm', onNavigate, className = 'text-center text-xs text-gray-500' }) => {
   const { t } = useLanguage();
-  const linkClass = 'underline hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-sm';
+  const linkClass = 'underline hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-theme-focus rounded-sm';
 
   return (
     <p className={className}>

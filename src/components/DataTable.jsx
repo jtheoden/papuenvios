@@ -298,7 +298,7 @@ export const DataTable = ({
                               variant="outline"
                               size="sm"
                               onClick={() => onEdit(row)}
-                              className="text-blue-600 hover:text-blue-700"
+                              className="text-theme-link hover:text-theme-link-strong"
                             >
                               Edit
                             </Button>

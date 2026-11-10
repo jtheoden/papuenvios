@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Users, Shield, Trash2, AlertCircle, BarChart3, Settings, Edit, Save, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -20,6 +21,7 @@ import UserStatusAction from '@/components/admin/UserStatusAction';
 
 const UserManagement = () => {
   const { t } = useLanguage();
+  const confirm = useConfirm();
   const { user, isSuperAdmin } = useAuth();
   const { visualSettings } = useBusiness();
   const [users, setUsers] = useState([]);
@@ -219,7 +221,12 @@ const UserManagement = () => {
 
     // Confirm deletion
     const confirmMessage = t('users.confirmDelete', { email: targetUser?.email });
-    if (!window.confirm(confirmMessage)) {
+    if (!(await confirm({
+      title: t('common.confirmDialog.deleteTitle'),
+      description: confirmMessage,
+      confirmLabel: t('common.confirmDialog.delete'),
+      variant: 'destructive'
+    }))) {
       logUserManagementAction('delete_user_cancelled', { userId });
       return;
     }
@@ -961,7 +968,7 @@ const UserManagement = () => {
               {t('users.categories.recalculateDesc')}
             </p>
             {lastRecalculateTime && (
-              <p className="text-xs text-blue-700 mt-2">
+              <p className="text-xs text-[rgb(var(--t-link-strong))] mt-2">
                 {t('users.categories.lastRecalculate')}: {new Date(lastRecalculateTime).toLocaleString()}
               </p>
             )}
@@ -969,7 +976,7 @@ const UserManagement = () => {
           <Button
             onClick={() => setShowRecalculateSlider(prev => !prev)}
             disabled={recalculatingAll}
-            className="bg-blue-600 hover:bg-blue-700 text-white h-9 px-3"
+            className="bg-theme-accent hover:bg-theme-accent-hover text-theme-on-accent h-9 px-3"
             title={t('users.categories.recalculate')}
           >
             <BarChart3 className={`w-4 h-4 sm:mr-2 ${recalculatingAll ? 'animate-spin' : ''}`} />
@@ -998,7 +1005,7 @@ const UserManagement = () => {
       >
         <div className="p-4 border-b border-gray-200 bg-gray-50">
           <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-blue-600" />
+            <BarChart3 className="w-5 h-5 text-[rgb(var(--t-link))]" />
             {t('users.categories.rulesTitle')}
           </h3>
         </div>
@@ -1200,7 +1207,7 @@ const UserManagement = () => {
       >
         <div className="p-4 border-b border-gray-200 bg-gray-50">
           <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-            <Settings className="w-5 h-5 text-purple-600" />
+            <Settings className="w-5 h-5 text-theme-accent-2" />
             {t('users.categories.discountsTitle')}
           </h3>
         </div>
@@ -1248,7 +1255,7 @@ const UserManagement = () => {
                                 ...editingDiscountData,
                                 discount_percentage: parseFloat(e.target.value) || 0
                               })}
-                              className="w-20 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                              className="w-20 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-theme-focus"
                             />
                           ) : (
                             <span className="font-semibold text-green-600">
@@ -1265,7 +1272,7 @@ const UserManagement = () => {
                                 ...editingDiscountData,
                                 discount_description: e.target.value
                               })}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-theme-focus"
                               placeholder={t('users.categories.description')}
                             />
                           ) : (

@@ -17,6 +17,8 @@ import { supabase } from '@/lib/supabase';
 import { useRealtimeSubscription, useRealtimeCarouselSlides } from '@/hooks/useRealtimeSubscription';
 import SkeletonCard from '@/components/ui/SkeletonCard';
 import RegulatoryNotice from '@/components/RegulatoryNotice';
+import HomeHero from '@/components/home/HomeHero';
+import { buildHomeTheme } from '@/lib/homeTheme';
 
 const COMPLETED_REMITTANCE_STATUSES = ['delivered', 'completed'];
 const COMPLETED_ORDER_STATUS = 'completed';
@@ -82,7 +84,6 @@ const HomePage = ({ onNavigate }) => {
       ]
   );
 
-  const [currentSlide, setCurrentSlide] = useState(0);
   const [testimonialsError, setTestimonialsError] = useState(null);
 
   const updateCompletedCounts = useCallback((type, delta) => {
@@ -267,141 +268,17 @@ const HomePage = ({ onNavigate }) => {
     onDelete: handleOrderRealtime
   });
 
-  const nextSlide = () => {
-    setCurrentSlide(prev => (prev === carouselSlides.length - 1 ? 0 : prev + 1));
-  };
-
-  const prevSlide = () => {
-    setCurrentSlide(prev => (prev === 0 ? carouselSlides.length - 1 : prev - 1));
-  };
-
-  // Carousel settings from admin-configurable visual settings
-  const carouselEnabled = visualSettings.carouselEnabled !== false;
-  const autoplaySpeed = visualSettings.carouselAutoplaySpeed || 5000;
-  const transitionSpeed = (visualSettings.carouselTransitionSpeed || 1000) / 1000;
-
-  useEffect(() => {
-    if (carouselEnabled && carouselSlides.length > 1) {
-      const slideInterval = setInterval(nextSlide, autoplaySpeed);
-      return () => clearInterval(slideInterval);
-    }
-  }, [carouselSlides.length, carouselEnabled, autoplaySpeed]);
+  const theme = buildHomeTheme(visualSettings);
+  const { legacy } = theme;
 
   return (
-    <div className="min-h-screen">
-      <section className="relative h-[60vh] md:h-[80vh] w-full overflow-hidden">
-        {carouselLoading ? (
-          <div className="absolute inset-0">
-            <SkeletonCard variant="carousel" />
-          </div>
-        ) : carouselEnabled && carouselSlides.length > 0 ? (
-          <>
-            <AnimatePresence initial={false}>
-              <motion.div
-                key={currentSlide}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: transitionSpeed }}
-                style={{ backgroundImage: `url(${carouselSlides[currentSlide]?.image_url || carouselSlides[currentSlide]?.image_file})` }}
-                className="absolute inset-0 bg-cover bg-center"
-              >
-                <div className="absolute inset-0 bg-black/50" />
-              </motion.div>
-            </AnimatePresence>
-
-            <div className="relative z-10 flex flex-col items-center justify-center h-full text-center text-white p-4">
-              <motion.h1
-                key={`main-${currentSlide}`}
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.2 }}
-                className="text-4xl md:text-6xl font-bold mb-4"
-              >
-                {language === 'es' ? carouselSlides[currentSlide]?.title_es : carouselSlides[currentSlide]?.title_en}
-              </motion.h1>
-              <motion.p
-                key={`secondary-${currentSlide}`}
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.4 }}
-                className="text-lg md:text-xl max-w-2xl mx-auto mb-8"
-              >
-                {language === 'es' ? carouselSlides[currentSlide]?.subtitle_es : carouselSlides[currentSlide]?.subtitle_en}
-              </motion.p>
-              <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.6 }}
-                className="flex flex-col sm:flex-row gap-4 justify-center"
-              >
-                <Button
-                  size="lg"
-                  onClick={() => onNavigate('products')}
-                  className="px-8 py-3 text-lg"
-                  style={{
-                    background: visualSettings.useGradient
-                      ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
-                      : visualSettings.buttonBgColor || '#2563eb',
-                    color: visualSettings.buttonTextColor || '#ffffff',
-                    border: 'none'
-                  }}
-                >
-                  <ShoppingBag className="w-5 h-5 mr-2" />
-                  {t('home.hero.cta.products')}
-                </Button>
-              </motion.div>
-            </div>
-
-            {carouselSlides.length > 1 && (
-              <>
-                <button onClick={prevSlide} className="absolute left-4 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/20 rounded-full hover:bg-white/40 transition-colors">
-                  <ChevronLeft className="h-6 w-6 text-white" />
-                </button>
-                <button onClick={nextSlide} className="absolute right-4 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/20 rounded-full hover:bg-white/40 transition-colors">
-                  <ChevronRight className="h-6 w-6 text-white" />
-                </button>
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex gap-2">
-                  {carouselSlides.map((_, index) => (
-                    <div
-                      key={index}
-                      onClick={() => setCurrentSlide(index)}
-                      className={`w-3 h-3 rounded-full cursor-pointer transition-colors ${currentSlide === index ? 'bg-white' : 'bg-white/50'}`}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-          </>
-        ) : (
-          <div
-            className="absolute inset-0 flex items-center justify-center"
-            style={{
-              background: visualSettings.useGradient
-                ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
-                : visualSettings.primaryColor || '#2563eb'
-            }}
-          >
-            <div className="text-center text-white p-4">
-              <h1 className="text-4xl md:text-6xl font-bold mb-4">{t('home.hero.title')}</h1>
-              <p className="text-lg md:text-xl max-w-2xl mx-auto mb-8">{t('home.hero.subtitle')}</p>
-              <Button
-                size="lg"
-                onClick={() => onNavigate('products')}
-                className="px-8 py-3 text-lg"
-                style={{
-                  backgroundColor: visualSettings.cardBgColor || '#ffffff',
-                  color: visualSettings.primaryColor || '#2563eb',
-                  border: 'none'
-                }}
-              >
-                <ShoppingBag className="w-5 h-5 mr-2" />
-                {t('home.hero.cta.products')}
-              </Button>
-            </div>
-          </div>
-        )}
-      </section>
+    <div
+      data-testid="home-page"
+      className="min-h-screen"
+      // the shadow paints the same colour over the 1rem gap between the 4rem header and the 5rem top padding of <main>
+      style={theme.pageBg ? { ...theme.vars, backgroundColor: theme.pageBg, boxShadow: `0 -1rem 0 0 ${theme.pageBg}` } : theme.vars}
+    >
+      <HomeHero slides={carouselSlides} loading={carouselLoading} visualSettings={visualSettings} onNavigate={onNavigate} />
 
       <RegulatoryNotice variant="strip" onNavigate={onNavigate} />
 
@@ -409,7 +286,7 @@ const HomePage = ({ onNavigate }) => {
         <div className="container mx-auto">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 mb-8">
             <div>
-              <h2 className="text-3xl font-bold" style={getHeadingStyle(visualSettings)}>
+              <h2 className="text-2xl sm:text-3xl break-words font-bold" style={getHeadingStyle(visualSettings)}>
                 {t('home.offers.title')}
               </h2>
               <p className="text-gray-600 mt-2">{t('home.offers.subtitle')}</p>
@@ -420,19 +297,7 @@ const HomePage = ({ onNavigate }) => {
                 {t('home.offers.cta')}
               </Button>
               {isAdmin && (
-                <Button
-                  onClick={() => onNavigate('dashboard')}
-                  style={{
-                    backgroundColor: visualSettings.buttonBgColor || visualSettings.primaryColor || '#2563eb',
-                    color: visualSettings.buttonTextColor || '#ffffff'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = visualSettings.buttonHoverBgColor || '#1d4ed8';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = visualSettings.buttonBgColor || visualSettings.primaryColor || '#2563eb';
-                  }}
-                >
+                <Button variant="brand" onClick={() => onNavigate('dashboard')}>
                   {t('home.offers.manage')}
                 </Button>
               )}
@@ -454,15 +319,15 @@ const HomePage = ({ onNavigate }) => {
                   whileInView={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.05 }}
                   className="glass-effect p-6 rounded-2xl shadow-sm"
-                  style={{ border: `1px solid ${visualSettings.accentColor || '#9333ea'}30` }}
+                  style={{ border: `1px solid ${legacy ? `${visualSettings.accentColor || '#9333ea'}30` : theme.border}` }}
                 >
                   <div className="flex items-center justify-between mb-3">
                     <span
                       className="px-3 py-1 rounded-full text-xs font-semibold"
-                      style={{
+                      style={legacy ? {
                         backgroundColor: `${visualSettings.accentColor || '#9333ea'}20`,
                         color: visualSettings.accentColor || '#9333ea'
-                      }}
+                      } : { backgroundColor: theme.softAccent, color: theme.ink }}
                     >{offer.discount_type === 'percentage' ? `${offer.discount_value}% OFF` : `${currencySymbol}${offer.discount_value}`}</span>
                     <span className="text-xs text-gray-500">{offer.code}</span>
                   </div>
@@ -474,11 +339,12 @@ const HomePage = ({ onNavigate }) => {
                     </div>
                     <Button
                       size="sm"
+                      variant={legacy ? undefined : 'brand-outline'}
                       onClick={() => navigator.clipboard.writeText(offer.code)}
-                      style={{
+                      style={legacy ? {
                         backgroundColor: `${visualSettings.primaryColor || '#2563eb'}15`,
                         color: visualSettings.primaryColor || '#2563eb'
-                      }}
+                      } : undefined}
                     >
                       {t('home.offers.copy')}
                     </Button>
@@ -495,7 +361,7 @@ const HomePage = ({ onNavigate }) => {
       </section>
 
       {landingStats && (
-        <section className="py-16 px-4 bg-slate-50">
+        <section className={`py-16 px-4 ${legacy ? 'bg-slate-50' : ''}`}>
           <div className="container mx-auto">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -503,7 +369,7 @@ const HomePage = ({ onNavigate }) => {
               transition={{ duration: 0.6 }}
               className="text-center mb-12"
             >
-              <h2 className="text-4xl font-bold mb-3" style={getHeadingStyle(visualSettings)}>
+              <h2 className="text-2xl sm:text-4xl break-words font-bold mb-3" style={getHeadingStyle(visualSettings)}>
                 {t('home.stats.title')}
               </h2>
               <p className="text-gray-600">{t('home.stats.subtitle')}</p>
@@ -534,7 +400,10 @@ const HomePage = ({ onNavigate }) => {
                   transition={{ delay: idx * 0.1 }}
                   className="p-6 rounded-2xl bg-white shadow-sm border border-gray-100"
                 >
-                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-r ${stat.color} flex items-center justify-center mb-4 text-white text-xl font-bold`}>
+                  <div
+                    className={`w-12 h-12 rounded-xl ${legacy ? `bg-gradient-to-r ${stat.color} text-white` : ''} flex items-center justify-center mb-4 text-xl font-bold`}
+                    style={legacy ? undefined : { backgroundColor: theme.buttonBg, color: theme.buttonText }}
+                  >
                     {stat.value}
                   </div>
                   <p className="text-gray-700 font-semibold">{stat.label}</p>
@@ -545,6 +414,7 @@ const HomePage = ({ onNavigate }) => {
         </section>
       )}
 
+      {features.length > 0 && (
       <section className="py-20 px-4">
         <div className="container mx-auto">
           <motion.div
@@ -554,7 +424,7 @@ const HomePage = ({ onNavigate }) => {
             className="text-center mb-16"
           >
             <h2
-              className="text-4xl font-bold mb-4"
+              className="text-2xl sm:text-4xl break-words font-bold mb-4"
               style={getHeadingStyle(visualSettings)}
             >
               {t('home.features.title')}
@@ -576,13 +446,11 @@ const HomePage = ({ onNavigate }) => {
               >
                 <div
                   className="w-12 h-12 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"
-                  style={{
-                    background: visualSettings.useGradient
-                      ? `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})`
-                      : visualSettings.primaryColor || '#2563eb'
-                  }}
+                  style={legacy
+                    ? { background: `linear-gradient(to right, ${visualSettings.primaryColor || '#2563eb'}, ${visualSettings.secondaryColor || '#9333ea'})` }
+                    : { backgroundColor: theme.buttonBg }}
                 >
-                  <feature.icon className="w-6 h-6 text-white" />
+                  <feature.icon className={`w-6 h-6 ${legacy ? 'text-white' : ''}`} style={legacy ? undefined : { color: theme.buttonText }} />
                 </div>
                 <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
                 <p className="text-gray-600">{feature.description}</p>
@@ -591,6 +459,7 @@ const HomePage = ({ onNavigate }) => {
           </div>
         </div>
       </section>
+      )}
 
       {/* Blog Section */}
       {guideArticles.length > 0 && (
@@ -602,7 +471,7 @@ const HomePage = ({ onNavigate }) => {
               transition={{ duration: 0.6 }}
               className="text-center mb-10"
             >
-              <h2 className="text-4xl font-bold mb-3" style={getHeadingStyle(visualSettings)}>
+              <h2 className="text-2xl sm:text-4xl break-words font-bold mb-3" style={getHeadingStyle(visualSettings)}>
                 {t('home.blog.title')}
               </h2>
               <p className="text-gray-600 text-lg">{t('home.blog.subtitle')}</p>
@@ -633,11 +502,9 @@ const HomePage = ({ onNavigate }) => {
                       ) : (
                         <div
                           className="w-full h-full flex items-center justify-center"
-                          style={{
-                            background: visualSettings.useGradient
-                              ? `linear-gradient(135deg, ${visualSettings.primaryColor || '#2563eb'}30, ${visualSettings.secondaryColor || '#9333ea'}30)`
-                              : `${visualSettings.primaryColor || '#2563eb'}15`
-                          }}
+                          style={legacy
+                            ? { background: `linear-gradient(135deg, ${visualSettings.primaryColor || '#2563eb'}30, ${visualSettings.secondaryColor || '#9333ea'}30)` }
+                            : { backgroundColor: theme.softAccent }}
                         >
                           <BookOpen className="h-8 w-8 text-gray-400" />
                         </div>
@@ -648,7 +515,7 @@ const HomePage = ({ onNavigate }) => {
                       <p className="text-sm text-gray-500 line-clamp-2">{preview}</p>
                       <span
                         className="inline-flex items-center gap-1 mt-3 text-sm font-medium"
-                        style={{ color: visualSettings.primaryColor || '#2563eb' }}
+                        style={{ color: legacy ? visualSettings.primaryColor || '#2563eb' : theme.ink }}
                       >
                         {t('blog.readMore')} <ArrowRight className="h-3 w-3" />
                       </span>
@@ -672,7 +539,7 @@ const HomePage = ({ onNavigate }) => {
         </section>
       )}
 
-      <section className="py-20 px-4 bg-slate-100/50">
+      <section className={`py-20 px-4 ${legacy ? 'bg-slate-100/50' : ''}`}>
         <div className="container mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -681,7 +548,7 @@ const HomePage = ({ onNavigate }) => {
             className="text-center mb-12"
           >
             <h2
-              className="text-4xl font-bold mb-4"
+              className="text-2xl sm:text-4xl break-words font-bold mb-4"
               style={getHeadingStyle(visualSettings)}
             >
               {t('home.testimonials.title')}

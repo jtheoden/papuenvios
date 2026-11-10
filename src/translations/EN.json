@@ -1,5 +1,26 @@
 {
+  "helpCenter": {
+    "trigger": "Admin help",
+    "shortLabel": "Help",
+    "title": "Administration help",
+    "description": "Quick answers about workflows and safeguards",
+    "topics": "Help topics",
+    "close": "Close help",
+    "searchLabel": "Search this section",
+    "searchPlaceholder": "Search for an answer…",
+    "noResults": "No answers found for that search.",
+    "disclaimer": "Static informational help; it does not perform actions or replace official procedures."
+  },
   "common": {
+    "confirmDialog": {
+      "title": "Please confirm",
+      "deleteTitle": "Confirm deletion",
+      "deactivateTitle": "Confirm deactivation",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "delete": "Delete",
+      "deactivate": "Deactivate"
+    },
     "success": "Success",
     "error": "Error",
     "statusSelfDealing": "This operation is yours. Another administrator must perform this action.",
@@ -71,7 +92,31 @@
       "subtitle": "Send products and money to Cuba quickly, safely and reliably",
       "cta": {
         "products": "View Products"
+      },
+      "cards": {
+        "combos": {
+          "title": "Food combos",
+          "description": "Put together a food combo and send it to your family in Cuba.",
+          "cta": "View combos"
+        },
+        "remittances": {
+          "title": "Remittances to Cuba",
+          "description": "Send money to Cuba from the United States.",
+          "cta": "Send remittance"
+        }
       }
+    },
+    "carousel": {
+      "label": "Announcements carousel",
+      "roleDescription": "carousel",
+      "slide": "slide",
+      "slideOf": "{count} of {total}",
+      "slideStatus": "Announcement {count} of {total}",
+      "previous": "Previous announcement",
+      "next": "Next announcement",
+      "pause": "Pause carousel",
+      "play": "Resume carousel",
+      "goTo": "Go to announcement {count}"
     },
     "features": {
       "title": "Key Features",
@@ -82,7 +127,7 @@
       },
       "remittances": {
         "title": "Remittances to Cuba",
-        "description": "Send money to Cuba from USA and Spain quickly and securely"
+        "description": "Send money to Cuba from the United States quickly and securely"
       },
       "analytics": {
         "title": "Profit Dashboard",
@@ -125,13 +170,16 @@
   },
   "footer": {
     "date": "Today is {date}",
-    "developedBy": "Developed by {name} ({email})",
+    "developedBy": "Developed by {name}",
+    "identity": {
+      "label": "Business contact"
+    },
     "to": "To",
     "copyright": "All rights reserved"
   },
   "products": {
     "title": "Product Catalog",
-    "subtitle": "Discover products and combos to send to Cuba at competitive prices",
+    "subtitle": "Products and combos to send to Cuba.",
     "preview": "Preview",
     "searchPlaceholder": "Search products...",
     "specialCombos": "Special Combos",
@@ -193,7 +241,7 @@
   },
   "remittances": {
     "title": "Remittances to Cuba",
-    "subtitle": "Send money to Cuba from USA and Spain quickly and securely",
+    "subtitle": "Send money to Cuba from the United States. You can follow the status and see the delivery receipt in My remittances.",
     "calculator": "Remittance Calculator",
     "amount": "Amount to Send (USD)",
     "country": "Destination Country",
@@ -208,6 +256,20 @@
     "sendNew": "New Remittance",
     "myRemittances": "My Remittances",
     "howItWorks": "How It Works",
+    "features": {
+      "rates": {
+        "title": "Rate shown before you pay",
+        "description": "We show you the rate, the fee and the total before you pay."
+      },
+      "delivery": {
+        "title": "Timing depends on the area",
+        "description": "Estimated delivery, not guaranteed; timing depends on the area."
+      },
+      "tracking": {
+        "title": "Tracking in My remittances",
+        "description": "You can follow the status and see the delivery receipt in My remittances."
+      }
+    },
     "step1": {
       "title": "Select Country",
       "description": "Choose the destination country and amount to send"
@@ -288,6 +350,8 @@
       "typeCreated": "Remittance type created",
       "typeUpdated": "Remittance type updated",
       "typeDeleted": "Remittance type deleted",
+      "currencyChangeWarning": "Currency Change Detected",
+      "currencyChangeMessage": "This type goes from {from} to {to}. Every new quote will use the new currencies. Confirm only if this is intended.",
       "rateChangeWarning": "Rate Change Detected",
       "rateChangeAffected": "There are {count} pending remittance(s) created at the previous rate. Users will be notified of the change in their 'My Remittances' section.",
       "typeActivated": "Type activated",
@@ -305,6 +369,14 @@
       "viewDetails": "View Details",
       "rejectReason": "Rejection reason",
       "rejectReasonPlaceholder": "E.g.: Illegible proof, incorrect data...",
+      "cancelRemittance": "Cancel remittance",
+      "confirmCancelMessage": "Cancel remittance {number}? The customer has not uploaded a payment proof yet, but that does not mean they have not paid. Check the Zelle account that no payment was received before cancelling: no refund request will be created. This cannot be undone.",
+      "cancelReason": "Cancellation reason",
+      "cancelReasonPlaceholder": "E.g.: the customer never paid, duplicate request...",
+      "remittanceCancelled": "Remittance cancelled",
+      "cancelFailed": "The remittance could not be cancelled",
+      "cancelReasonInvalid": "A reason is required and must be at most 500 characters.",
+      "cancelUnavailable": "Admin cancellation is not available on the server yet. Please try again later.",
       "validationNotes": "Validation notes",
       "validationNotesPlaceholder": "Add notes about the validation...",
       "deliveryNotes": "Delivery notes",
@@ -411,7 +483,9 @@
       "deliveryRateHint": "What the recipient receives per unit sent",
       "marketRate": "Market Rate",
       "marketRateHint": "Actual market exchange rate",
+      "rateFieldsSuperAdminOnly": "Only a super admin can create remittance types or change their rate and commission. You can edit the remaining fields.",
       "calculatedCommission": "Calculated commission",
+      "effectiveDeliveryRate": "Effective delivery rate",
       "marginPerUnit": "Margin per unit",
       "deliveryRateTooHigh": "Delivery rate cannot exceed the market rate",
       "advancedCommission": "Additional fixed commission (Advanced)",
@@ -449,7 +523,7 @@
       "trackYourRemittances": "Track the status of your money transfers",
       "trackRemittances": "Track the status of your money transfers",
       "noRemittances": "You have no registered remittances",
-      "noRemittancesDesc": "Send your first remittance quickly and securely",
+      "noRemittancesDesc": "Send your first remittance. You can follow the status and see the delivery receipt in My remittances.",
       "remittanceNumber": "Remittance Number",
       "amountSent": "Sent",
       "toDeliver": "To Deliver",
@@ -520,8 +594,6 @@
       "rateChangedBannerPendingHint": "Pending remittances can be updated to the new rate.",
       "rateChangedBannerLockedHint": "In-progress remittances are locked at the original rate.",
       "rateChangedFrom": "Rate changed",
-      "newAmountWouldBe": "New amount to deliver",
-      "was": "was",
       "updateToNewRate": "Update to new rate",
       "keepCurrentRate": "Keep current rate",
       "rateLockedNote": "Your remittance is locked at the rate at time of creation",
@@ -567,9 +639,11 @@
       "importantNote": "Important",
       "proofNote": "Your remittance will be processed once we validate the payment proof. You will receive a notification when this happens.",
       "pageTitle": "Send Remittance",
-      "pageSubtitle": "Send money quickly and securely",
+      "pageSubtitle": "Pay with Zelle. You can follow the status and see the delivery receipt in My remittances.",
       "selectTypeRequired": "Select remittance type *",
       "rate": "Rate",
+      "rateUnavailable": "The exchange rate for this remittance type is not available right now. Please try again later or contact support.",
+      "quoteChanged": "The amounts changed since the quote was shown. The remittance was not created: review the new amounts and confirm again.",
       "calculating": "Calculating...",
       "continue": "Continue",
       "back": "Back",
@@ -623,7 +697,7 @@
       "paymentInstructions": "Now make the payment and upload the proof to complete the process.",
       "proofSubmittedSuccess": "Proof submitted successfully!",
       "submitProofAndComplete": "Submit Proof and Complete",
-      "estimatedDeliveryTime": "24-72 hours",
+      "estimatedDeliveryTime": "Estimated delivery, not guaranteed; timing depends on the area.",
       "couponLabel": "Discount coupon (optional)",
       "couponPlaceholder": "Enter your code",
       "applyCoupon": "Apply",
@@ -737,6 +811,8 @@
       "viewPricesIn": "Show list prices in:",
       "listPricesCue": "List prices in {code}",
       "priceCurrencyLabel": "Currency of the entered price",
+      "costCupLabel": "Cost in CUP",
+      "costTooLow": "The cost is too low: the resulting USD price would be below 0.01. Enter a higher cost.",
       "priceCurrencyHelp": "The base price is stored in {base}. If you choose another currency, the amount will be read in that currency and converted to {base} when saved.",
       "priceConvertedNote": "The price was converted to {code}; please check the amount.",
       "priceRateMissing": "There is no exchange rate for {code}; check the price",
@@ -821,8 +897,21 @@
       "sellPriceTooLow": "Invalid sell price",
       "sellPriceTooLowDesc": "Sell price cannot be less than product costs",
       "addProductsFirst": "Add products to the combo first",
+      "componentCurrencyMismatch": "All products in a combo must be priced in the base currency. Remove or replace the products in another currency.",
       "userSavings": "Customer savings",
-      "individualTotal": "Individual purchase"
+      "individualTotal": "Individual purchase",
+      "priceWarningTitle": "This combo costs more than its products bought separately",
+      "priceWarningComboPrice": "Combo price",
+      "priceWarningIndividualTotal": "Products bought separately",
+      "priceWarningDifference": "The combo is more expensive by",
+      "priceWarningMaxMargin": "Use a margin of up to {value}% to avoid this.",
+      "priceWarningApply": "Apply {value}%",
+      "priceWarningUnavailable": "Could not compare with the products bought separately: an exchange rate is missing.",
+      "priceWarningNote": "This is only a warning: you can still save the combo.",
+      "confirmMoreExpensive": "This combo is more expensive than the sum of its products bought separately. Customers would pay {amount} more by buying the combo. Save anyway?",
+      "saveAnyway": "Save anyway",
+      "moreExpensiveBadge": "Above separate price",
+      "moreExpensiveBadgeDetail": "{amount} above the separate price"
     },
     "management": {
       "title": "General Management",
@@ -874,7 +963,7 @@
       "sales": "Sales (gross orders)",
       "salesDef": "Gross total of orders with a validated payment and an active status, including the shipping charged and the cost of goods. Remittances are not included. Dated by payment validation.",
       "netIncome": "Net income",
-      "netIncomeDef": "What the business keeps: estimated order profit (margin per product minus discounts, without shipping) plus the net remittance commission. Dated by payment validation.",
+      "netIncomeDef": "Estimated product profit + shipping Difference for orders with known cost + remittance commissions and delivery charges − remittance courier cost. Unknown order costs are excluded from shipping Difference; retroactive assignments change past months.",
       "collected": "Collected (cash flow)",
       "collectedDef": "Money that came in: validated order totals plus the amount sent of remittances with a validated payment. It is not income: it includes what is later paid out to recipients and to the courier."
     },
@@ -883,7 +972,7 @@
     "retry": "Retry",
     "remittancePendingDelivery": "Pending delivery",
     "remittancePendingDeliveryDef": "Remittances with a validated payment that have not been delivered to the recipient yet (validated and processing): amount sent minus commission. It is money collected that still has to be delivered.",
-    "paymentMethodsPeriod": "all time, all active orders",
+    "paymentMethodsPeriod": "all time, active orders and validated remittances",
     "shippingRow": "Shipping charged (passes to the courier)",
     "stats": {
       "dailyRevenue": "Daily Revenue",
@@ -959,6 +1048,7 @@
     "yearlyProfit": "Estimated Yearly Profit",
     "shippingCollected": "Shipping charged to customers",
     "courier": {
+      "unknownCostCount": "Orders with unknown courier cost (excluded from shipping net)",
       "title": "Courier cost",
       "collected": "Shipping charged (all)",
       "collectedCompared": "Charged, with tariff",
@@ -1009,6 +1099,7 @@
     }
   },
   "activityLog": {
+    "paymentSource": "Payment source",
     "title": "Activity log",
     "subtitle": "Full audit of system and security events",
     "timestamp": "Timestamp",
@@ -1039,7 +1130,48 @@
       "inventory": "Inventory",
       "offer": "Offer",
       "coupon": "Coupon",
-      "payment": "Payment"
+      "payment": "Payment",
+      "user_management": "User management",
+      "cart": "Cart",
+      "category": "Category",
+      "system_config": "System configuration",
+      "refund_request": "Refund request",
+      "bizum_settings": "Bizum settings",
+      "payment_fx_rate": "Payment exchange rate",
+      "payment_method": "Payment method",
+      "user_profile": "User profile",
+      "orders": "Orders",
+      "remittances": "Remittances"
+    },
+    "userManagementAction": "User management: {detail}",
+    "userManagementActions": {
+      "delete_user_blocked_super_admin": "deletion blocked (super admin)",
+      "delete_user_cancelled": "user deletion cancelled",
+      "delete_user_error": "user deletion failed",
+      "delete_user_start": "user deletion started",
+      "delete_user_success": "user deleted",
+      "edit_discount_cancelled": "discount edit cancelled",
+      "edit_discount_start": "discount edit started",
+      "fetch_categories_error": "categories failed to load",
+      "fetch_categories_success": "categories loaded",
+      "fetch_users_error": "users failed to load",
+      "fetch_users_start": "users load started",
+      "fetch_users_success": "users loaded",
+      "open_user_modal": "user details opened",
+      "recalculate_all_cancelled": "category recalculation cancelled",
+      "recalculate_all_error": "category recalculation failed",
+      "recalculate_all_start": "category recalculation started",
+      "recalculate_all_success": "categories recalculated",
+      "save_discount_error": "discount save failed",
+      "save_discount_start": "discount save started",
+      "save_discount_success": "discount saved",
+      "tab_change": "tab changed",
+      "update_category_error": "category update failed",
+      "update_category_start": "category update started",
+      "update_category_success": "category updated",
+      "update_role_error": "role update failed",
+      "update_role_start": "role update started",
+      "update_role_success": "role updated"
     },
     "actions": {
       "create": "Create",
@@ -1048,7 +1180,51 @@
       "login": "Login",
       "status_change": "Status change",
       "validate": "Validate",
-      "reject": "Reject"
+      "reject": "Reject",
+      "order_created": "Order created",
+      "order_submitted": "Order submitted",
+      "order_dispatched": "Order dispatched",
+      "order_delivered": "Order delivered",
+      "order_completed": "Order completed",
+      "order_cancelled": "Order cancelled",
+      "order_reopened": "Order reopened",
+      "checkout_initiated": "Checkout started",
+      "payment_proof_uploaded": "Payment proof uploaded",
+      "payment_proof_upload_failed": "Payment proof upload failed",
+      "payment_validated": "Payment validated",
+      "payment_rejected": "Payment rejected",
+      "coupon_applied": "Coupon applied",
+      "coupon_removed": "Coupon removed",
+      "coupon_validation_blocked": "Coupon validation blocked",
+      "coupon_validation_failed": "Coupon validation failed",
+      "offer_usage_recorded": "Offer usage recorded",
+      "category_created": "Category created",
+      "category_updated": "Category updated",
+      "category_deleted": "Category deleted",
+      "combo_created": "Combo created",
+      "combo_updated": "Combo updated",
+      "combo_activated": "Combo activated",
+      "combo_deactivated": "Combo deactivated",
+      "combo_deleted": "Combo deleted",
+      "product_created": "Product created",
+      "product_updated": "Product updated",
+      "product_activated": "Product activated",
+      "product_deactivated": "Product deactivated",
+      "product_deleted": "Product deleted",
+      "remittance_pricing_guard_mode_changed": "Remittance pricing guard mode changed",
+      "order_items_pricing_guard_mode_changed": "Order pricing guard mode changed",
+      "offer_id_guard_mode_changed": "Offer guard mode changed",
+      "stock_policy_updated": "Stock reservation policy updated",
+      "stock_policy_reset": "Stock reservation policy reset",
+      "bizum_settings_updated": "Bizum settings updated",
+      "payment_fx_rate_set": "Payment exchange rate set",
+      "payment_method_toggled": "Payment method toggled",
+      "user_enabled": "User enabled",
+      "user_disabled": "User disabled",
+      "refund_resolved": "Refund resolved",
+      "refund_event_failed": "Refund event could not be recorded",
+      "refund_capture_failed": "Automatic refund creation failed",
+      "refund_close_failed": "Automatic refund closing failed"
     }
   },
   "settings": {
@@ -1098,7 +1274,18 @@
       "newCurrency": "New Currency",
       "baseCurrency": "Base Currency",
       "base": "Base",
+      "showInSelector": "Show in selector",
       "exchangeRates": "Exchange Rates",
+      "ratesSuperAdminOnly": "Only a super admin can create, edit or delete exchange rates. You can view them but not change them.",
+      "currencyDeleteSuperAdminOnly": "Deleting a currency also deactivates its exchange rates, and only a super admin can do that.",
+      "deactivatePair": "Deactivate",
+      "deactivatePairTitle": "Deactivate rate pair",
+      "deactivatePairConfirm": "Deactivate the {pair} rate pair? Both directions (direct and inverse) will be deactivated and no operations can be quoted with this rate until a new one is created or reactivated.",
+      "pairDeactivated": "Rate pair deactivated",
+      "pairDeactivatedDesc": "{count} exchange rates deactivated",
+      "ratePairPartial": "The rate pair was only partly saved and may be inconsistent. The list was reloaded: review both rates and try again.",
+      "ratePairIncomplete": "The inverse rate is missing or inactive, so the pair was not changed (the direct rate was restored). Deactivate the pair and create it again.",
+      "rateNotFound": "This exchange rate no longer exists or was already changed. The list was reloaded.",
       "newRate": "New Rate",
       "addNewExchangeRate": "Add New Exchange Rate",
       "fromCurrency": "From Currency",
@@ -1126,10 +1313,40 @@
       "deactivate": "Deactivate",
       "rateOutOfBand": "The USD to EUR rate must be between {min} and {max}.",
       "rateUpdatedAt": "Last updated: {date}",
+      "marketRate": "Market rate (reference)",
+      "marketRateHint": "Internal reference to measure the margin; not used for quoting.",
+      "marketAboveRate": "The market rate (reference) cannot be higher than the rate users see. Raise the rate or lower the market rate.",
+      "marketRateInfo": "Market rate (reference): {market} · operative rate is {diff} vs market (informational)",
       "rateChangeConfirmTitle": "Confirm large rate change",
       "rateChangeConfirmMessage": "The USD to EUR rate changes from {previous} to {next} ({percent}%). Bizum quotes use this rate; make sure the new value is correct.",
+      "rateChangeConfirmMessageGeneric": "The {from} to {to} rate changes from {previous} to {next} ({percent}%). Make sure the new value is correct.",
       "rateChangeConfirmAction": "Save anyway",
-      "pairNotAllowed": "Only active currencies can be used in a rate, except an inactive EUR as the target of a USD rate."
+      "pairNotAllowed": "Only active currencies can be used in a rate, except an inactive EUR as the target of a USD rate.",
+      "repricing": {
+        "confirmTitle": "Update catalog prices?",
+        "summary": "{products} products and {combos} combos will be repriced to the new rate. Average change {avg}%, largest {max}%.",
+        "confirmAction": "Save rate and update prices",
+        "largeWarning": "Large change: it exceeds 10% of the last applied rate (or it is the first time prices are applied). Prices will move noticeably.",
+        "secondTitle": "Confirm large price change",
+        "secondMessage": "You are about to apply a large price change to {products} products and {combos} combos. Existing orders keep their amounts.",
+        "secondAction": "Yes, apply large change",
+        "applied": "Prices updated",
+        "appliedDesc": "{products} products and {combos} combos repriced.",
+        "applyFailed": "Rate saved, but prices were not updated",
+        "applyFailedDesc": "The new rate is saved. Use Retry in the warning to update the prices.",
+        "previewFailed": "Could not calculate the price change. Try again.",
+        "rates": "Rate: {previous} → {next} ({pct}%).",
+        "ratesNew": "New rate: {next}.",
+        "skippedProducts": "{count} products skipped (price would be 0.00).",
+        "rateChanged": "The rate changed before prices were applied",
+        "rateChangedDesc": "Prices were not updated. Review the current rate and use Retry in the warning.",
+        "previewErrorTitle": "Price effect unknown",
+        "previewErrorMessage": "Could not calculate the effect on prices. Save the rate without updating prices?",
+        "previewErrorAction": "Save rate only",
+        "staleTitle": "Prices out of date",
+        "staleMessage": "The USD to CUP rate changed and the catalog prices do not match it yet.",
+        "retry": "Retry"
+      }
     },
     "zelle": {
       "title": "Zelle Accounts",
@@ -1143,10 +1360,33 @@
     },
     "visual": {
       "brand": {
-        "applyPreset": "Apply PapuEnvíos palette",
-        "applyPresetHint": "Fills the form with the brand colors. Nothing is saved until you press \"Save Customization\", as long as live preview stays off.",
-        "applied": "PapuEnvíos palette applied to the form. Live preview was turned off and nothing has been saved yet; press \"Save Customization\" to confirm.",
-        "undoPreset": "Restore previous values",
+        "theme": {
+          "title": "Default site theme",
+          "hint": "Choose the look every user sees on the site. The change is previewed in the form and is not applied until you press \"Save Customization\".",
+          "classic": {
+            "name": "Classic (blue and violet)",
+            "description": "The original look: blue buttons, violet accents, gradients and a light grey background."
+          },
+          "papuenvios": {
+            "name": "PapuEnvíos (gold and ivory)",
+            "description": "The brand palette: gold buttons, charcoal text, ivory background and beige borders, no gradients."
+          },
+          "inUse": "In use",
+          "changes": "Switching themes replaces its colors and styles, including the primary, secondary and header-gradient colors. Classic values are remembered so you can return to them. The logo, texts and carousel are not changed.",
+          "restricted": "Only a super admin can change the default theme.",
+          "customized": "Some colors in the form differ from the selected theme because they were edited by hand. If you switch themes, those edits will be replaced.",
+          "pending": "Theme applied to the form. Live preview was turned off and nothing has been saved yet; press \"Save Customization\" to confirm."
+        },
+        "reset": {
+          "title": "Reset to the factory theme?",
+          "description": "Form colors, gradients and shadows will return to the factory defaults (Classic theme). Nothing is saved until you press Save Customization. The logo, favicon, texts, home cards and carousel are not changed.",
+          "confirm": "Reset in the form",
+          "cancel": "Cancel",
+          "error": "The theme could not be reset"
+        },
+        "applyPalette": "Apply theme palette",
+        "paletteDraft": "Palette proposed in the form. Nothing is saved until you press Save Customization.",
+        "undoPreset": "Undo theme choice",
         "sectionTitle": "Brand and accents",
         "sectionHint": "Colors for the cart badge, the active carousel dot, borders, secondary text, soft accent and focus ring.",
         "cartBadgeBg": "Cart badge background",
@@ -1163,13 +1403,34 @@
           "menuActive": "Active dropdown menu item",
           "tab": "Active tab",
           "button": "Primary button text and background",
-          "cartBadge": "Cart badge"
+          "cartBadge": "Cart badge",
+          "footerText": "Footer text",
+          "footerLink": "Footer links",
+          "footerLinkHover": "Footer link on hover",
+          "footerBrand": "Company name in the footer"
         }
       },
       "title": "Visual Settings",
       "logo": "Site Logo",
       "favicon": "Favicon",
       "slides": "Hero Slides",
+      "heroLayout": {
+        "title": "Hero composition",
+        "hint": "Choose how the homepage carousel is presented. This selection is saved only when you click “Save Customization.”",
+        "cover": {
+          "name": "Full-width cover",
+          "description": "The image spans the full width, with the text and action overlaid."
+        },
+        "spaced": {
+          "name": "Framed carousel",
+          "description": "The heading and cards remain separate; the carousel is narrower and framed."
+        },
+        "inUse": "In use",
+        "restricted": "Only a super administrator can change the Hero composition.",
+        "pending": "Composition selected in the form. It is not saved yet; click “Save Customization” to apply it.",
+        "previewTitle": "Shipping, remittances, and more",
+        "previewAction": "View products"
+      },
       "addSlide": "Add Slide",
       "image": "Image (URL or File)",
       "imageType": "Image Type",
@@ -1265,8 +1526,29 @@
       "changesSaved": "Visual changes have been saved and synchronized",
       "changesDiscarded": "Theme restored",
       "settingsRestored": "Visual settings have been reset to factory defaults",
-      "restoreTheme": "Restore Theme",
+      "restoreTheme": "Reset to factory theme",
       "showCompanyName": "Show company name in header",
+      "showCompanyNameWithLogo": "Show the name next to the logo",
+      "showCompanyNameWithLogoHint": "Uncheck it if your logo already includes the company name. Without a logo the name is always shown.",
+      "loader": {
+        "title": "Initial loading screen",
+        "description": "What people see while the app starts. If you set nothing, the theme colors and the site logo are used.",
+        "image": "Loading screen image",
+        "uploadImage": "Upload image",
+        "removeImage": "Remove image",
+        "imageUploaded": "Loading image uploaded",
+        "imageHint": "PNG, SVG or WebP. Max 2MB. Without its own image the site logo is used, and without a logo the company name.",
+        "usingLogo": "No own image: the site logo is used.",
+        "usingWordmark": "No image and no logo: the company name is used.",
+        "bgColor": "Background color",
+        "bgColorHint": "Optional. Without a color the theme background is used.",
+        "bgColorPicker": "Background color picker",
+        "bgColorInvalid": "Enter a valid hex color (for example #FAF7F0).",
+        "usingThemeBg": "Theme background",
+        "preview": "Loading screen preview",
+        "reset": "Reset to theme",
+        "resetDone": "Loading screen reset (save to apply)"
+      },
       "logoMaxHeight": "Logo size in header",
       "headerPreview": "Header Preview",
       "removeLogo": "Remove Logo",
@@ -1625,16 +1907,37 @@
       "tabs": {
         "label": "Payment methods",
         "zelle": "Zelle",
-        "bizum": "Bizum"
+        "bizum": "Bizum",
+        "iban": "IBAN"
+      },
+      "ibanStatus": {
+        "title": "IBAN transfer (SEPA)",
+        "description": "EUR collection readiness for orders and remittances.",
+        "unavailable": "Unavailable",
+        "blocker": "Activation requires active EUR→USD and EUR→CUP rates, secure IBAN account setup, transfer receipt, and reconciliation. This method remains disabled for orders and remittances."
+      },
+      "ibanAccounts": {
+        "title": "IBAN receiving accounts and limits",
+        "description": "PapuEnvios collection accounts will be managed here (not Cuban beneficiary payout accounts).",
+        "limits": "Per-transfer minimum and maximum limits, configurable per account.",
+        "routing": "Collection priority and independent use for orders and remittances.",
+        "unavailable": "Configuration is not available yet: secure account storage and transfer reconciliation are not implemented. Do not enter bank details here."
       }
     }
   },
   "cart": {
+    "pricesUpdated": "Exchange rates were updated and a price in your cart changed. Please review the total and confirm again.",
+    "rateCheckFailed": "The exchange rate could not be verified. Please try again in a few seconds.",
     "clearAll": {
       "button": "Empty cart",
       "title": "Empty your cart?",
       "message": "All items will be removed from your cart. This action cannot be undone.",
       "confirm": "Yes, empty it"
+    },
+    "item": {
+      "decrease": "Decrease the quantity of {name}",
+      "increase": "Increase the quantity of {name}",
+      "remove": "Remove {name} from the cart"
     },
     "title": "Your Shopping Cart",
     "empty": "Your cart is empty.",
@@ -1718,7 +2021,7 @@
       "contactWhatsapp": "Contact via WhatsApp",
       "back": "Back",
       "processing": "Processing...",
-      "estimatedDelivery": "24-72 hours"
+      "estimatedDelivery": "Estimated delivery, not guaranteed; timing depends on the area."
     },
     "restored": {
       "title": "Welcome back!",
@@ -2242,6 +2545,13 @@
     "updateButton": "Update Recipient"
   },
   "zelle": {
+    "identifiedBy": "Account identified by",
+    "phoneIdentifier": "Phone",
+    "optionalContact": "(optional)",
+    "phoneRequired": "Phone number is required for this account.",
+    "emailRequired": "Email is required for this account.",
+    "invalidPhone": "Enter a phone number of 7–30 characters using digits, spaces, +, (, ), or -.",
+    "invalidEmail": "Enter a valid email address.",
     "showEmail": "Show email to customers",
     "showPhone": "Show phone to customers",
     "atLeastOneVisible": "At least one of email or phone must be visible to customers",
@@ -2327,7 +2637,8 @@
     "flowLabel": "Flow",
     "methods": {
       "zelle": "Zelle",
-      "bizum": "Bizum"
+      "bizum": "Bizum",
+      "iban": "IBAN"
     },
     "flows": {
       "orders": "Orders",
@@ -2686,6 +2997,7 @@
     "noProof": "No proof",
     "validate": "Validate",
     "reject": "Reject",
+    "cancelRemittance": "Cancel",
     "startProcessing": "Process",
     "confirmDelivery": "Confirm delivery",
     "loading": "Loading remittances",
@@ -2794,10 +3106,26 @@
       "seeTerms": "See Terms of Service"
     }
   },
+  "beforePaying": {
+    "title": "Before you pay",
+    "irreversible": "Zelle payments cannot be reversed. Check the recipient details and total before sending.",
+    "rate": "Rate checked",
+    "rateCheckedAt": "at {time}",
+    "rateNote": "The final amount is calculated with the rate in effect when you confirm.",
+    "easternTime": "US Eastern time",
+    "fee": "Fee (deducted from the amount sent)",
+    "deliveryCost": "Delivery cost",
+    "total": "Total to pay",
+    "recipientReceives": "Recipient receives",
+    "estimate": "Estimated delivery, not guaranteed; timing depends on the area.",
+    "seeAlso": "See:"
+  },
   "cookieConsent": {
     "title": "Privacy and analytics",
+    "short": "We only measure visits if you accept.",
+    "moreInfo": "More information",
     "description": "We use strictly necessary local storage to make the site work (for example, your session). Only if you accept will we record the pages you visit for statistics: page, referrer, browser, a session identifier and, if you are signed in, your user identifier.",
-    "accept": "Accept analytics",
+    "accept": "Accept",
     "reject": "Reject",
     "privacyLink": "Privacy Policy",
     "statusOn": "Current status: analytics enabled.",
@@ -2846,7 +3174,28 @@
       "empty": "There are no couriers yet.",
       "saved": "Courier saved."
     },
+    "subscriptions": {
+      "title": "Subscribed payment types",
+      "intro": "A subscribed payment type applies to this courier with the priority of its own rule. For the other couriers it keeps applying as a general type. It only affects future deliveries: delivered ones keep their cost.",
+      "empty": "This courier has no subscribed payment types.",
+      "type": "Payment type",
+      "noneAvailable": "There are no current payment types available to subscribe.",
+      "add": "Subscribe",
+      "remove": "Remove",
+      "added": "Payment type subscribed.",
+      "removed": "Subscription removed. Deliveries already made do not change.",
+      "gapWarning": "With this subscription, the ranges of this courier leave values without a rule (unknown cost):",
+      "acceptGaps": "I understand those values will have no rule and want to subscribe anyway.",
+      "inert": "No current version (not applied)",
+      "confirmRemove": "Remove the subscription to \"{name}\"? It only affects future deliveries: delivered ones keep their cost.",
+      "confirmRemoveYes": "Yes, remove"
+    },
     "errors": {
+      "invalidReason": "Enter an assignment reason of 10 to 500 characters.",
+      "noAmount": "The cost could not be calculated. Review the preview reason and correct the rule, exchange rate or calculation data before trying again. Nothing was assigned.",
+      "previewChanged": "Pricing or inputs changed. Get and review a new preview before confirming.",
+      "previewRequired": "Review a server preview before confirming.",
+      "alreadyAssigned": "This delivery already has a courier; its cost was not changed.",
       "generic": "The operation could not be completed. Please try again.",
       "unavailable": "The courier module is not available yet.",
       "overlap": "An active rule already overlaps this one (same scope and period). Adjust the validity or the scope.",
@@ -2858,7 +3207,17 @@
       "notRecalculable": "This item cannot be recalculated.",
       "alreadyDelivered": "This operation is already delivered: the courier cannot be changed from here.",
       "invalid": "Some data is not valid. Review it and try again.",
-      "required": "Fill in the required fields."
+      "required": "Fill in the required fields.",
+      "coverageGap": "The ranges of this scope leave values without a rule. Review the gaps and confirm if you want to save anyway.",
+      "mixedCurrency": "The ranges of this scope already use another currency. Use the same currency or define another scope.",
+      "decimals": "Amounts accept at most 2 decimals; the percentage, 3; CUP per USD, 4.",
+      "amountMax": "Amounts cannot exceed 9999999999.99.",
+      "ownedByOther": "That payment type belongs to another courier.",
+      "noActiveVersion": "That payment type does not exist or has no current version.",
+      "subscribedElsewhere": "That payment type is subscribed by another courier. Remove that subscription before assigning it to a specific courier.",
+      "courierInactive": "The courier does not exist or is inactive.",
+      "staleSubscriptions": "This deactivated code still has active subscriptions. Remove them before recreating it.",
+      "staleSubscribers": "This code expired and subscribed couriers will be paid with this version again."
     },
     "validation": {
       "required": "This field is required.",
@@ -2867,7 +3226,9 @@
       "nonNegative": "It must be a number greater than or equal to zero.",
       "percentRange": "The percentage must be between 0 and 100.",
       "tierOrder": "The maximum amount must be greater than the minimum.",
-      "windowOrder": "The end of the validity must be after its start."
+      "windowOrder": "The end of the validity must be after its start.",
+      "money": "Enter an amount greater than or equal to zero with up to 2 decimals (for example 100.50).",
+      "moneyMax": "The amount cannot exceed 9999999999.99."
     },
     "margin": {
       "ok": "Margin ok",
@@ -2888,18 +3249,23 @@
     "simulator": {
       "title": "Simulator",
       "intro": "Enter a case to see the cost and margin this rule would give. Nothing is saved.",
-      "sent": "Amount sent (USD)",
+      "sent": "Operation value (USD sent or order subtotal)",
       "commission": "Commission charged (USD)",
       "deliveryCharge": "Delivery charged to the customer (USD)",
       "rate": "Rate (CUP per USD)",
       "toDeliver": "Delivered equivalent (CUP)",
       "completeForm": "Complete the form to simulate.",
       "cost": "Courier cost",
-      "unknownBasis": "The calculation base is missing: the cost stays unknown, not zero.",
       "margin": "Margin",
       "belowWarning": "falls below the warning threshold",
       "belowCritical": "falls below the critical threshold",
-      "noThresholds": "No thresholds are set: alerts are not evaluated."
+      "noThresholds": "No thresholds are set: alerts are not evaluated.",
+      "reasons": {
+        "no_rule": "No rule: the cost stays unknown, not zero.",
+        "no_amount_basis": "Calculation base data is missing: the cost stays unknown, not zero.",
+        "no_fx": "The exchange rate needed to convert is missing: the cost stays unknown, not zero.",
+        "no_tier_match": "The value is outside the range of this rule: the cost stays unknown, not zero."
+      }
     },
     "types": {
       "title": "Payment types",
@@ -2922,7 +3288,8 @@
       "methods": {
         "fixed_cup": "Fixed amount in CUP",
         "per_usd_delivered": "CUP per USD delivered",
-        "percent_of_base": "Percentage of a base"
+        "percent_of_base": "Percentage of a base",
+        "fixed_amount": "Fixed amount (in the chosen currency)"
       },
       "fixedCup": "Amount (CUP)",
       "cupPerUsd": "CUP per USD",
@@ -2930,18 +3297,19 @@
       "base": "Calculation base",
       "bases": {
         "per_usd_delivered": {
-          "nominal_usd": "Nominal USD sent",
+          "nominal_usd": "Nominal USD (sent or order subtotal)",
           "delivered_cup": "Delivered equivalent in CUP"
         },
         "percent_of_base": {
-          "nominal_usd": "Nominal USD sent",
+          "nominal_usd": "Nominal USD (sent or order subtotal)",
           "delivered_cup": "Delivered equivalent in CUP"
         }
       },
       "summary": {
         "fixed_cup": "{value} CUP fixed per delivery",
         "per_usd_delivered": "{value} CUP per USD ({base})",
-        "percent_of_base": "{value}% of {base}"
+        "percent_of_base": "{value}% of {base}",
+        "fixed_amount": "{value} {currency} fixed per delivery"
       },
       "scope": "Scope (optional)",
       "courier": "Courier",
@@ -2950,9 +3318,6 @@
       "anyZone": "Any zone",
       "remittanceType": "Remittance type",
       "anyType": "Any type",
-      "amountFrom": "Amount from (USD, exclusive)",
-      "amountTo": "Amount up to (USD, inclusive)",
-      "tierHint": "Tier (from, to]. Leave empty for any amount.",
       "validFrom": "Valid from",
       "validFromHint": "Empty means from now. It cannot be in the past.",
       "validTo": "Valid until",
@@ -2963,9 +3328,66 @@
       "empty": "There are no current payment types.",
       "closed": "Closed",
       "newVersion": "New version",
-      "versionNote": "Earlier versions are kept for audit and cannot be deleted."
+      "versionNote": "Earlier versions are kept for audit and cannot be deleted.",
+      "fixedAmount": "Fixed amount",
+      "currency": "Currency",
+      "currencyHint": "Currency of the fixed amount and of the range comparison. An operation in another currency is converted at the current rate; with no rate, the cost stays unknown.",
+      "rangeOp": "Operation value",
+      "rangeOps": {
+        "none": "Any value",
+        "gt": "More than X",
+        "lte": "Up to Y (included)",
+        "between": "More than X and up to Y"
+      },
+      "rangeX": "X (not included)",
+      "rangeY": "Y (included)",
+      "rangeHelp": "Ranges are compared in {currency} with 2 decimals. \"More than X\" does not include X; \"Up to Y\" does include Y. To chain ranges without gaps or overlaps, start each range where the previous one ended: up to 100 → more than 100 and up to 200 → more than 200.",
+      "range": {
+        "any": "any value",
+        "gt": "more than {x} {currency}",
+        "lte": "up to {y} {currency} (included)",
+        "between": "more than {x} and up to {y} {currency}"
+      },
+      "gapWarning": "With this range, these values are left without a rule of this scope. A delivery in a gap is not blocked: its cost stays unknown.",
+      "acceptGaps": "I understand there are gaps and want to save anyway",
+      "acceptGapsRequired": "Confirm that you accept the gaps before saving.",
+      "staleSubscribers": "{count} courier(s) subscribed to this expired code will be paid with this version again, with courier priority. Confirm to save."
     },
     "payable": {
+      "filter": "Filter deliveries",
+      "allPending": "All pending accruals",
+      "deliveredUnassigned": "Delivered without a courier",
+      "assignAfterDelivery": "Assign courier",
+      "courier": "Courier",
+      "preview": "Get server preview",
+      "confirmAssignment": "Confirm retroactive assignment",
+      "assignedOk": "Courier assigned and cost recorded.",
+      "retroactive": "Retroactive",
+      "pastMonthsWarning": "Assigning a courier to a past delivery uses today's rules and changes past-month figures: the cost belongs to the operation date. There are no frozen closings.",
+      "previewAmount": "Computed cost",
+      "previewRule": "Rule in force today",
+      "precedence": "Rule precedence",
+      "previewRate": "USD → CUP rate and origin",
+      "fxOrigin": {
+        "remittance": "Frozen remittance rate",
+        "exchange_rates": "Current rate",
+        "none": "No rate available"
+      },
+      "precedenceValue": {
+        "courier": "Courier (own or subscribed)",
+        "zone": "Zone",
+        "type": "Remittance type",
+        "tier": "Range",
+        "general": "General",
+        "none": "No rule"
+      },
+      "pricingWarning": {
+        "no_rule": "No active payment rule applies today; create or enable a rule first.",
+        "no_tier_match": "No matching range: cost remains unknown.",
+        "no_fx": "Missing conversion rate: the cost or its USD equivalent remains unknown.",
+        "amount_out_of_range": "Cost out of range: remains unknown.",
+        "no_amount_basis": "No basis available to calculate the cost."
+      },
       "title": "Payable",
       "empty": "There are no pending courier payments.",
       "adjustment": "adjustment",
@@ -3169,5 +3591,11 @@
     "cancelledOn": "Cancelled on {date}",
     "eligibleFrom": "From: {date}",
     "dueBy": "Until: {date}"
+  },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "staleVersion": "There is a new version of the site. Reload the page to continue.",
+    "generic": "An unexpected error occurred. Reload the page to continue.",
+    "reload": "Reload page"
   }
 }

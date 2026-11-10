@@ -57,21 +57,35 @@ const zonedMidnight = (formatter, year, month, day) => {
   return new Date(guess - zoneOffsetMs(formatter, first));
 };
 
+const businessTimeFormatter = (timeZone) => new Intl.DateTimeFormat('en-US', {
+  timeZone,
+  hourCycle: 'h23',
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: 'numeric',
+  second: 'numeric'
+});
+
+/** Start and end instants of the current calendar month in the business time zone. */
+export const getBusinessMonthRange = (now = new Date(), timeZone = BUSINESS_TIME_ZONE) => {
+  const formatter = businessTimeFormatter(timeZone);
+  const today = wallClock(formatter, now.getTime());
+  const nextMonth = today.month === 12 ? 1 : today.month + 1;
+  const nextYear = today.month === 12 ? today.year + 1 : today.year;
+  return {
+    from: zonedMidnight(formatter, today.year, today.month, 1).toISOString(),
+    to: zonedMidnight(formatter, nextYear, nextMonth, 1).toISOString()
+  };
+};
+
 /**
  * Start instants of the current calendar day, month and year in the business time zone.
  * Every window runs from its start up to "now".
  */
 export const getBusinessWindows = (now = new Date(), timeZone = BUSINESS_TIME_ZONE) => {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hourCycle: 'h23',
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: 'numeric',
-    second: 'numeric'
-  });
+  const formatter = businessTimeFormatter(timeZone);
   const today = wallClock(formatter, now.getTime());
   return {
     daily: zonedMidnight(formatter, today.year, today.month, today.day),
@@ -101,28 +115,63 @@ const sumRecognizedSince = (orders, since, pick) =>
   sumSince(orders.filter(isRecognizedOrder), orderDate, since, pick);
 
 /**
- * Revenue, shipping, discounts (per business window) and payment-method breakdown
- * for validated, active orders.
+ * Revenue, shipping and discounts (per business window) for validated, active orders.
  */
 export const computeOrderTotals = (orders, now = new Date()) => {
   const w = getBusinessWindows(now);
   const recognized = orders.filter(isRecognizedOrder);
   const total = (o) => toNumber(o.total_amount);
 
-  const paymentMethodBreakdown = {};
-  orders.filter(isActive).forEach((o) => {
-    const method = o.payment_method || 'unknown';
-    if (!paymentMethodBreakdown[method]) paymentMethodBreakdown[method] = { count: 0, total: 0 };
-    paymentMethodBreakdown[method].count += 1;
-    paymentMethodBreakdown[method].total = roundMoney(paymentMethodBreakdown[method].total + total(o));
-  });
-
   return {
     ...sumByWindow(w, 'Revenue', recognized, orderDate, total),
     ...sumByWindow(w, 'ShippingCost', recognized, orderDate, (o) => toNumber(o.shipping_cost)),
-    ...sumByWindow(w, 'Discounts', recognized, orderDate, (o) => toNumber(o.discount_amount)),
-    paymentMethodBreakdown
+    ...sumByWindow(w, 'Discounts', recognized, orderDate, (o) => toNumber(o.discount_amount))
   };
+};
+
+/**
+ * Summarize received payment sources without combining unlike currencies.
+ * Orders count once while active; remittances count once after payment validation.
+ * Only sealed native order amounts are used for non-Zelle methods.
+ */
+export const computePaymentSourceBreakdown = (orders = [], remittances = []) => {
+  const breakdown = {};
+  const add = (methodValue, amountValue, currencyValue) => {
+    const method = String(methodValue || 'unknown').toLowerCase();
+    if (!breakdown[method]) breakdown[method] = { count: 0, nativeAmounts: {} };
+    const item = breakdown[method];
+    item.count += 1;
+
+    const amount = amountValue === null || amountValue === undefined || amountValue === ''
+      ? null
+      : Number(amountValue);
+    const currency = typeof currencyValue === 'string' ? currencyValue.trim().toUpperCase() : '';
+    if (!Number.isFinite(amount) || !currency) return;
+
+    item.nativeAmounts[currency] = roundMoney((item.nativeAmounts[currency] || 0) + amount);
+  };
+
+  orders.filter(isActive).forEach((order) => {
+    const method = order.payment_method || 'unknown';
+    const hasSealedAmount = order.payment_currency && order.payment_amount != null;
+    add(
+      method,
+      hasSealedAmount ? order.payment_amount : method === 'zelle' ? order.total_amount : null,
+      hasSealedAmount ? order.payment_currency : method === 'zelle' ? 'USD' : null
+    );
+  });
+
+  remittances.filter((remittance) => REMITTANCE_REVENUE_STATUSES.includes(remittance.status)).forEach((remittance) => {
+    const method = remittance.payment_method || 'zelle';
+    const hasReceivedAmount = remittance.amount_sent != null;
+    const amount = hasReceivedAmount
+      ? toNumber(remittance.amount_sent) + toNumber(remittance.delivery_cost)
+      : null;
+    const currency = remittance.currency_sent || (method === 'zelle' ? 'USD' : null);
+    add(method, amount, currency);
+  });
+
+  return breakdown;
 };
 
 /**
@@ -156,12 +205,12 @@ export const computeCourierCostTotals = (orders, costByOrder, now = new Date(), 
 
 /**
  * Shared bucket logic of the courier cost cards (orders and remittances). Rows must already be the
- * business-recognized ones; `hasZone(row)` false rows are not courier deliveries when `skipNoZone` is set.
+ * business-recognized ones; no-zone rows with a known cost always count, including retroactive assignments.
  */
 function buildCourierTotals({ rows, dateOf, chargedOf, costByKey, hasZone, now, recordingStart, prefix, skipNoZone = false }) {
   const w = getBusinessWindows(now);
   const startMs = recordingStart ? Date.parse(recordingStart) : NaN;
-  const included = skipNoZone ? rows.filter(hasZone) : rows;
+  const included = skipNoZone ? rows.filter((r) => hasZone(r) || costByKey.get(r.id) != null) : rows;
   const amountOf = (r) => {
     const amount = costByKey.get(r.id);
     return amount === null || amount === undefined ? null : toNumber(amount);
@@ -181,6 +230,7 @@ function buildCourierTotals({ rows, dateOf, chargedOf, costByKey, hasZone, now, 
       [`${name}${prefix}Cost`]: cost,
       [`${name}${prefix}Collected`]: collected,
       [`${name}${prefix}Difference`]: count(since, 'tariff') === 0 ? null : roundMoney(collected - cost),
+      [`${name}${prefix}UnknownCount`]: count(since, 'unrecorded') + count(since, 'missingRow'),
       [`${name}${prefix}Unrecorded`]: count(since, 'unrecorded'),
       [`${name}${prefix}MissingRow`]: count(since, 'missingRow')
     };
@@ -190,7 +240,7 @@ function buildCourierTotals({ rows, dateOf, chargedOf, costByKey, hasZone, now, 
 
 /**
  * Courier (transport) cost of remittances delivered in cash, same buckets as the orders card. Only validated
- * remittances WITH a delivery zone are courier deliveries; they are dated by payment_validated_at.
+ * remittances WITH a delivery zone OR a known courier cost are courier deliveries; they are dated by payment_validated_at.
  * `costByRemittance` is remittance id -> USD amount | null (service listRemittanceCourierCosts).
  */
 export const computeRemittanceCourierTotals = (remittances, costByRemittance, now = new Date(), recordingStart = null) =>
@@ -246,14 +296,14 @@ export const computeZelleTotals = (transactions, now = new Date()) => {
 
 /**
  * Headline figures of one window (D1). Sales and net income are different things, so they are not added:
- * net income = order profit + remittance commission + remittance delivery charge (delivery_cost, income per the
+ * net income = order profit + known-cost order courier Difference + remittance commission + remittance delivery charge (delivery_cost, income per the
  * owner) - remittance courier cost (transport, only where a snapshot exists); collected = cash in (orders total +
  * remittance amount_sent + delivery charge, which the customer pays on top of amount_sent).
  */
-export const computeHeadline = ({ orderRevenue, orderProfit, remittanceCommission, remittanceVolume, remittanceDeliveryCharge, remittanceCourierCost } = {}) => ({
+export const computeHeadline = ({ orderRevenue, orderProfit, remittanceCommission, remittanceVolume, remittanceDeliveryCharge, remittanceCourierCost, orderCourierDifference } = {}) => ({
   sales: roundMoney(toNumber(orderRevenue)),
   netIncome: roundMoney(
-    toNumber(orderProfit) + toNumber(remittanceCommission) + toNumber(remittanceDeliveryCharge) - toNumber(remittanceCourierCost)
+    toNumber(orderProfit) + toNumber(orderCourierDifference) + toNumber(remittanceCommission) + toNumber(remittanceDeliveryCharge) - toNumber(remittanceCourierCost)
   ),
   collected: roundMoney(toNumber(orderRevenue) + toNumber(remittanceVolume) + toNumber(remittanceDeliveryCharge)),
   deliveryCharge: roundMoney(toNumber(remittanceDeliveryCharge))

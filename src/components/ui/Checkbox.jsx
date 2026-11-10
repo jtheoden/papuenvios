@@ -42,8 +42,8 @@ const Checkbox = ({
 								: error
 								? 'border-red-500 bg-white group-hover:border-red-600'
 								: checked || indeterminate
-								? 'border-blue-500 bg-blue-500'
-								: 'border-gray-300 bg-white group-hover:border-blue-400'
+								? 'border-theme-focus bg-theme-focus'
+								: 'border-gray-300 bg-white group-hover:border-theme-focus/70'
 						}
 					`}
 				>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart3, TrendingUp, DollarSign, Package, Users, AlertTriangle, Eye, Users2, RefreshCw, FileText, List, Send, Settings, Clock, CheckCircle, Ticket, CreditCard, ShieldCheck, Truck, Tag, Calendar } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -12,6 +12,8 @@ import { classifyAdminCatalogError } from '@/lib/catalogErrors';
 import CatalogLoadError from './CatalogLoadError';
 import RefundsAlertCard from '@/components/admin/RefundsAlertCard';
 import RefundKpiCards from '@/components/admin/RefundKpiCards';
+import ReconnectingNotice from '@/components/ReconnectingNotice';
+import { isRefreshBlocked } from '@/lib/refreshGuard';
 import { getHeadingStyle } from '@/lib/styleUtils';
 import {
   ACTIVE_ORDER_STATUSES,
@@ -22,6 +24,7 @@ import {
   computeOrderCounters,
   computeOrderProfitTotals,
   computeOrderTotals,
+  computePaymentSourceBreakdown,
   computeRemittanceCourierTotals,
   computeRemittanceTotals,
   computeZelleTotals,
@@ -37,7 +40,8 @@ import RemittanceTypesConfig from './RemittanceTypesConfig';
 import ZellePaymentHistoryTab from './admin/ZellePaymentHistoryTab';
 import ActivityLogTab from './ActivityLogTab';
 import { fetchAllRows } from '@/lib/fetchAllRows';
-import { skipWhileRefreshBlocked } from '@/lib/refreshGuard';
+import { useVisiblePolling, POLL_STATS_MS } from '@/lib/visiblePolling';
+import { affectsAdminPending } from '@/lib/adminPollKeys';
 
 // Cost reads settle to { data, error } so one missing RPC does not blank the whole dashboard.
 const settleCosts = (promise) =>
@@ -57,7 +61,8 @@ const COURIER_PERIOD_KEYS = ['dailyBreakdown', 'monthlyBreakdown', 'yearlyBreakd
 const DashboardPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { products, combos, financialSettings, visualSettings } = useBusiness();
-  const { user, isAdmin, isSuperAdmin } = useAuth();
+  const { user, isAdmin, isSuperAdmin, sessionStatus } = useAuth();
+  const reconnecting = sessionStatus === 'reconnecting';
 
   // Tab state
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' or 'orders'
@@ -143,6 +148,7 @@ const DashboardPage = ({ onNavigate }) => {
   const fetchVisitStats = useCallback(async () => {
     const unavailable = { weekly: 0, monthly: 0, yearly: 0, total: 0, loading: false, unavailable: true };
     try {
+      const wasBlocked = isRefreshBlocked(); // a read that started blocked used the anon key even if the cooldown ends before it returns
       const nowMs = Date.now();
       const since = (days) => new Date(nowMs - days * 24 * 60 * 60 * 1000).toISOString();
       const countVisits = (from) => {
@@ -151,6 +157,8 @@ const DashboardPage = ({ onNavigate }) => {
       };
 
       const results = await Promise.all([countVisits(since(7)), countVisits(since(30)), countVisits(since(365)), countVisits()]);
+      // Read while the token refresh is blocked = anon key = RLS-empty counts: not data, so show "unavailable".
+      if (wasBlocked || isRefreshBlocked()) throw new Error('session refresh paused');
       if (results.some((res) => res.error)) {
         setVisitStats(unavailable);
         return;
@@ -166,6 +174,7 @@ const DashboardPage = ({ onNavigate }) => {
   const fetchStats = useCallback(async () => {
 
     try {
+      const wasBlocked = isRefreshBlocked(); // see fetchVisitStats
       setStats(prev => ({ ...prev, loading: true }));
 
       // Get counts
@@ -173,14 +182,16 @@ const DashboardPage = ({ onNavigate }) => {
         supabase.from('products').select('id', { count: 'exact', head: true }),
         supabase.from('combo_products').select('id', { count: 'exact', head: true }),
         supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
-        fetchAllRows((from, to) => supabase.from('orders').select('id, status, payment_status, total_amount, shipping_cost, shipping_zone_id, discount_amount, payment_method, created_at, validated_at').order('id').range(from, to)),
-        fetchAllRows((from, to) => supabase.from('remittances').select('id, status, commission_total, amount_sent, discount_amount, payment_validated_at, delivered_at, completed_at, delivery_cost, shipping_zone_id, created_at').order('id').range(from, to)),
+        fetchAllRows((from, to) => supabase.from('orders').select('id, status, payment_status, total_amount, payment_amount, payment_currency, shipping_cost, shipping_zone_id, discount_amount, payment_method, created_at, validated_at').order('id').range(from, to)),
+        fetchAllRows((from, to) => supabase.from('remittances').select('id, status, commission_total, amount_sent, discount_amount, payment_method, currency_sent, payment_validated_at, delivered_at, completed_at, delivery_cost, shipping_zone_id, created_at').order('id').range(from, to)),
         supabase.from('remittance_types').select('id', { count: 'exact', head: true }).eq('is_active', true),
         fetchAllRows((from, to) => supabase.from('zelle_transaction_history').select('id, amount, status, transaction_type, transaction_date, zelle_account_id').eq('status', 'validated').order('id').range(from, to)),
         settleCosts(listProductCosts()),
         settleCosts(listComboCosts())
       ]);
 
+      // Read while the token refresh is blocked = anon key = RLS-empty answers: discard them, never show them as zeros.
+      if (wasBlocked || isRefreshBlocked()) throw new Error('session refresh paused');
       if (productsRes.error) throw productsRes.error;
       if (combosRes.error) throw combosRes.error;
       if (usersRes.error) throw usersRes.error;
@@ -219,6 +230,7 @@ const DashboardPage = ({ onNavigate }) => {
       // Revenue, shipping, discounts and payment breakdown (validated, active orders; ET calendar windows)
       const now = new Date();
       const orderTotals = computeOrderTotals(orders, now);
+      const paymentMethodBreakdown = computePaymentSourceBreakdown(orders, remittances);
 
       try {
         const costByOrder = await listOrderCourierCosts();
@@ -287,6 +299,7 @@ const DashboardPage = ({ onNavigate }) => {
         ...orderTotals,
         ...remittanceTotals,
         ...zelleTotals,
+        paymentMethodBreakdown,
         ...discounts,
         ready: true,
         error: false,
@@ -299,30 +312,36 @@ const DashboardPage = ({ onNavigate }) => {
     }
   }, []);
 
+  // Orders/remittances refresh via realtime and own writes; the 5-min poll is a safety net and the only source for
+  // the other figures and site_visits (not in the realtime publication). 30 s here cost ~3.5 GB of egress in 10 days.
+  // Nothing is asked while the tab is hidden; coming back refreshes at once (visiblePolling).
+  const canSeeStats = Boolean(user && (isAdmin || isSuperAdmin));
+  const refreshStats = useVisiblePolling('dashboard:stats', fetchStats, {
+    enabled: canSeeStats,
+    intervalMs: POLL_STATS_MS,
+    refreshOnWrite: affectsAdminPending
+  });
+  useVisiblePolling('dashboard:visits', fetchVisitStats, { enabled: canSeeStats, intervalMs: POLL_STATS_MS });
+
+  // Session back after reconnecting: whatever was shown (or discarded) meanwhile is stale, load it again.
+  const wasReconnectingRef = useRef(false);
+  useEffect(() => {
+    if (wasReconnectingRef.current && !reconnecting) {
+      fetchStats();
+      fetchVisitStats();
+    }
+    wasReconnectingRef.current = reconnecting;
+  }, [reconnecting, fetchStats, fetchVisitStats]);
+
   useRealtimeOrders({
     enabled: isAdmin || isSuperAdmin,
-    onUpdate: fetchStats
+    onUpdate: refreshStats
   });
 
   useRealtimeRemittances({
     enabled: isAdmin || isSuperAdmin,
-    onUpdate: fetchStats
+    onUpdate: refreshStats
   });
-
-  useEffect(() => {
-    if (user && (isAdmin || isSuperAdmin)) {
-      fetchStats();
-      fetchVisitStats();
-
-      // Poll every 30 seconds (site_visits is not in the realtime publication)
-      const statsInterval = setInterval(skipWhileRefreshBlocked(() => {
-        fetchStats();
-        fetchVisitStats();
-      }), 30000);
-
-      return () => clearInterval(statsInterval);
-    }
-  }, [user, isAdmin, isSuperAdmin, fetchStats, fetchVisitStats]);
 
   // Calculate profits and apply exchange rate
   // Order profit is an ESTIMATE: per-product margin, discount deducted, shipping excluded
@@ -343,9 +362,9 @@ const DashboardPage = ({ onNavigate }) => {
 
   // Headlines per window (D1): sales, net income and cash collected are never added together.
   const headlines = {
-    daily: computeHeadline({ orderRevenue: stats.dailyRevenue, orderProfit: dailyProfit, remittanceCommission: stats.dailyRemittanceIncome, remittanceVolume: stats.dailyRemittanceVolume, remittanceDeliveryCharge: stats.dailyRemittanceDeliveryCharge, remittanceCourierCost: remittanceCourierCost('daily') }),
-    monthly: computeHeadline({ orderRevenue: stats.monthlyRevenue, orderProfit: monthlyProfit, remittanceCommission: stats.monthlyRemittanceIncome, remittanceVolume: stats.monthlyRemittanceVolume, remittanceDeliveryCharge: stats.monthlyRemittanceDeliveryCharge, remittanceCourierCost: remittanceCourierCost('monthly') }),
-    yearly: computeHeadline({ orderRevenue: stats.yearlyRevenue, orderProfit: yearlyProfit, remittanceCommission: stats.yearlyRemittanceIncome, remittanceVolume: stats.yearlyRemittanceVolume, remittanceDeliveryCharge: stats.yearlyRemittanceDeliveryCharge, remittanceCourierCost: remittanceCourierCost('yearly') })
+    daily: computeHeadline({ orderRevenue: stats.dailyRevenue, orderProfit: dailyProfit, remittanceCommission: stats.dailyRemittanceIncome, remittanceVolume: stats.dailyRemittanceVolume, remittanceDeliveryCharge: stats.dailyRemittanceDeliveryCharge, remittanceCourierCost: remittanceCourierCost('daily'), orderCourierDifference: courier.totals?.dailyCourierDifference }),
+    monthly: computeHeadline({ orderRevenue: stats.monthlyRevenue, orderProfit: monthlyProfit, remittanceCommission: stats.monthlyRemittanceIncome, remittanceVolume: stats.monthlyRemittanceVolume, remittanceDeliveryCharge: stats.monthlyRemittanceDeliveryCharge, remittanceCourierCost: remittanceCourierCost('monthly'), orderCourierDifference: courier.totals?.monthlyCourierDifference }),
+    yearly: computeHeadline({ orderRevenue: stats.yearlyRevenue, orderProfit: yearlyProfit, remittanceCommission: stats.yearlyRemittanceIncome, remittanceVolume: stats.yearlyRemittanceVolume, remittanceDeliveryCharge: stats.yearlyRemittanceDeliveryCharge, remittanceCourierCost: remittanceCourierCost('yearly'), orderCourierDifference: courier.totals?.yearlyCourierDifference })
   };
   const orderCosts = {
     daily: computeOrderCosts(stats.dailyRevenue, stats.dailyShippingCost, dailyProfit),
@@ -362,6 +381,16 @@ const DashboardPage = ({ onNavigate }) => {
 
   // Amount with the base-currency symbol; "—" until the first load so a pending figure is not read as a real zero.
   const money = (value) => (stats.ready ? `${currencySymbol}${formatCurrency(value)}` : '—');
+  const nativePaymentMoney = (value, currency) => {
+    try {
+      return new Intl.NumberFormat(language === 'es' ? 'es-ES' : 'en-US', {
+        style: 'currency',
+        currency
+      }).format(value);
+    } catch {
+      return `${formatCurrency(value)} ${currency}`;
+    }
+  };
   const negativeMoney = (value) => (stats.ready ? `-${currencySymbol}${formatCurrency(value)}` : '—');
   const visitCount = (value) => (visitStats.loading || visitStats.unavailable ? '—' : value);
 
@@ -398,9 +427,9 @@ const DashboardPage = ({ onNavigate }) => {
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex justify-between items-start mb-8"
+          className="flex flex-wrap sm:flex-nowrap justify-between items-start gap-4 mb-8"
         >
-          <div>
+          <div className="min-w-0">
             <h1 className="text-4xl font-bold mb-2" style={getHeadingStyle(visualSettings)}>
               {t('dashboard.title')}
             </h1>
@@ -434,8 +463,12 @@ const DashboardPage = ({ onNavigate }) => {
               label: 'dashboard.overviewTab',
               icon: <BarChart3 className="h-5 w-5" />,
               content: (
+                reconnecting && !stats.ready ? (
+                  <ReconnectingNotice onRetry={() => { fetchStats(); fetchVisitStats(); }} />
+                ) : (
                 <>
-                  {stats.error && (
+                  {reconnecting && <ReconnectingNotice onRetry={() => { fetchStats(); fetchVisitStats(); }} />}
+                  {stats.error && !reconnecting && (
                     <div data-testid="stats-error" role="alert" className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
                       <p className="text-sm">{stats.ready ? t('dashboard.loadErrorStale') : t('dashboard.loadError')}</p>
                       <button type="button" onClick={fetchStats} disabled={stats.loading} className="px-3 py-1.5 bg-white border border-red-300 rounded-lg text-sm font-medium hover:bg-red-100">
@@ -445,8 +478,8 @@ const DashboardPage = ({ onNavigate }) => {
                   )}
                   <CatalogLoadError error={marginsError} />
                   {/* Pending refunds: what needs action goes before what is read */}
-                  <RefundsAlertCard enabled={Boolean(isAdmin)} onNavigate={onNavigate} />
-                  <RefundKpiCards enabled={Boolean(isAdmin)} />
+                  <RefundsAlertCard enabled={Boolean(isAdmin) && !reconnecting} onNavigate={onNavigate} />
+                  <RefundKpiCards enabled={Boolean(isAdmin) && !reconnecting} />
                   {/* Expiration Warning */}
                   {expiringProducts.length > 0 && (
                     <motion.div
@@ -475,6 +508,7 @@ const DashboardPage = ({ onNavigate }) => {
                       className="mb-8"
                     >
                       <p className="text-xs text-gray-500 mb-2">{t('dashboard.timeZoneNote')}</p>
+                      <p className="mb-3 text-sm" role="note">{t('couriers.payable.pastMonthsWarning')}</p>
                       <div className="grid md:grid-cols-3 gap-4">
                         {HEADLINE_PERIODS.map(({ key, titleKey, Icon, border, iconBg, iconColor, netColor }) => (
                           <div key={key} className={`glass-effect rounded-2xl p-5 border-t-4 ${border}`}>
@@ -498,6 +532,11 @@ const DashboardPage = ({ onNavigate }) => {
                                   <p data-testid={`headline-${key}-${row}`} className={`text-xl font-bold ${valueClass}`}>
                                     {money(value)} <span className="text-xs font-normal text-gray-500">{currencyCode}</span>
                                   </p>
+                                  {row === 'netIncome' && (
+                                    <p className="text-xs" data-testid={`courier-unknown-${key}`}>
+                                      {t('dashboard.courier.unknownCostCount')}: {courier.totals?.[`${key}CourierUnknownCount`] ?? t('dashboard.courier.notAvailable')}
+                                    </p>
+                                  )}
                                   {row === 'collected' && (
                                     <p data-testid={`headline-${key}-deliveryCharge`} className="text-xs text-gray-500">
                                       {t('dashboard.headline.deliveryCharge')}: {money(headlines[key].deliveryCharge)}
@@ -527,13 +566,13 @@ const DashboardPage = ({ onNavigate }) => {
                       { title: t('dashboard.stats.pendingOrders'), value: stats.pendingOrders, icon: Package, bg: 'bg-orange-50', iconBg: 'bg-orange-100', iconColor: 'text-orange-600' },
                       { title: t('dashboard.stats.totalUsers'), value: stats.totalUsers, icon: Users2, bg: 'bg-violet-50', iconBg: 'bg-violet-100', iconColor: 'text-violet-600' }
                     ].map((stat, i) => (
-                      <div key={i} className={`${stat.bg} rounded-xl p-4 flex items-center gap-3`}>
+                      <div key={i} className={`${stat.bg} rounded-xl p-3 sm:p-4 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3`}>
                         <div className={`w-9 h-9 ${stat.iconBg} rounded-lg flex items-center justify-center flex-shrink-0`}>
                           <stat.icon className={`w-4 h-4 ${stat.iconColor}`} />
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 w-full">
                           <p className="text-lg font-bold text-gray-900 leading-tight">{stat.value}</p>
-                          <p className="text-xs text-gray-500 truncate">{stat.title}</p>
+                          <p className="text-xs text-gray-500 leading-tight break-words">{stat.title}</p>
                         </div>
                       </div>
                     ))}
@@ -601,7 +640,13 @@ const DashboardPage = ({ onNavigate }) => {
                                 </div>
                                 <div className="flex items-center gap-3">
                                   <span className="text-gray-500">{data.count}</span>
-                                  <span className="font-semibold text-gray-800">{money(data.total)}</span>
+                                  <span className="font-semibold text-gray-800 text-right">
+                                    {Object.entries(data.nativeAmounts || {}).length > 0
+                                      ? Object.entries(data.nativeAmounts).map(([currency, amount]) => (
+                                        <span key={currency} className="block">{nativePaymentMoney(amount, currency)}</span>
+                                      ))
+                                      : <span className="text-gray-400">—</span>}
+                                  </span>
                                 </div>
                               </div>
                             ))}
@@ -1000,6 +1045,7 @@ const DashboardPage = ({ onNavigate }) => {
                     </div>
                   </motion.div>
                 </>
+                )
               )
             },
             {

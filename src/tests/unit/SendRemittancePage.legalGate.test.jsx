@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 
 const NOTIFICATION_SETTINGS = { sentinel: 'notification-settings' };
 const ZELLE_ON = [
@@ -56,6 +56,7 @@ vi.mock('@/lib/remittanceService', () => ({
   calculateRemittance: vi.fn(async () => ({
     amount: 50,
     currency: 'USD',
+    exchangeRate: 100,
     totalCommission: 1,
     discountAmount: 0,
     amountToDeliver: 4900,
@@ -76,7 +77,7 @@ vi.mock('@/lib/whatsappService', () => ({
 vi.mock('@/lib/notificationSettingsService', () => ({ getFreshGuidedWhatsappPhone: vi.fn() }));
 vi.mock('@/lib/orderDiscountService', () => ({ validateRemittanceOffer: vi.fn() }));
 vi.mock('@/components/ui/use-toast', () => ({ toast: vi.fn() }));
-vi.mock('@/lib/styleUtils', () => ({ getHeadingStyle: () => '', getPrimaryButtonStyle: () => '' }));
+vi.mock('@/lib/styleUtils', () => ({ getHeadingStyle: () => ({}), getPrimaryButtonStyle: () => ({}) }));
 
 vi.mock('@/components/RecipientSelector', async () => {
   const React = await import('react');
@@ -162,6 +163,24 @@ describe('SendRemittancePage - legal acceptance gate', () => {
     vi.clearAllMocks();
     ensureAccepted.mockReset();
     createRemittance.mockResolvedValue({ id: 'r1', remittance_number: 'REM-1', delivery_cost: 0 });
+  });
+
+  it('shows the "before you pay" breakdown from the existing calculation next to the confirm button', async () => {
+    render(<SendRemittancePage onNavigate={vi.fn()} />);
+    await goToStepThree();
+
+    const block = screen.getByRole('region', { name: 'beforePaying.title' });
+    const text = block.textContent;
+    expect(text).toContain('beforePaying.irreversible');
+    expect(text).toContain('1 USD = 100 CUP');
+    expect(text).toContain('beforePaying.easternTime');
+    expect(text).toContain('1.00 USD');
+    expect(text).toContain('0.00 USD');
+    expect(text).toContain('50.00 USD');
+    expect(text).toContain('4900.00 CUP');
+    expect(text).toContain('beforePaying.estimate');
+    expect(within(block).getByRole('link', { name: 'legal.links.refunds' })).toHaveAttribute('href', '/terms#refunds');
+    expect(createRemittance).not.toHaveBeenCalled();
   });
 
   it('does not create the remittance when the user declines the gate', async () => {

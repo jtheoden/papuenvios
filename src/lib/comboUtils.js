@@ -42,6 +42,25 @@ export const convertPrice = (amount, fromCurrency, toCurrency, exchangeRates, ba
 };
 
 /**
+ * Convert an amount with the UUID-keyed exchange-rate map used by the vendor page.
+ * Missing or invalid rates fail closed so a foreign price is never presented as local.
+ */
+export const convertWithRates = (amount, fromCurrencyId, toCurrencyId, exchangeRates) => {
+  if (Number.isNaN(amount)) return NaN;
+  if (!amount) return 0;
+  if (fromCurrencyId === toCurrencyId) return amount;
+  if (!fromCurrencyId || !toCurrencyId) return NaN;
+
+  const directRate = exchangeRates?.[`${fromCurrencyId}-${toCurrencyId}`];
+  if (directRate > 0) return amount * directRate;
+
+  const inverseRate = exchangeRates?.[`${toCurrencyId}-${fromCurrencyId}`];
+  if (inverseRate > 0) return amount / inverseRate;
+
+  return NaN;
+};
+
+/**
  * Calculate combo prices (base and final with profit margin)
  * @param {object} combo - Combo object with products, productQuantities, profitMargin
  * @param {array} products - Available products for lookup
@@ -121,6 +140,7 @@ export const computeComboPricing = ({
 
   // Normalize product prices to base currency when possible to avoid drift
   let computedBaseTotal = 0;
+  let hasUnconvertibleComponent = false;
   (combo.products || []).forEach(productId => {
     const product = products.find(p => p.id === productId);
     if (!product) return;
@@ -133,18 +153,119 @@ export const computeComboPricing = ({
       normalizedPrice = convert(basePrice, product.base_currency_id, baseCurrencyId);
     }
 
+    if (!Number.isFinite(normalizedPrice)) {
+      hasUnconvertibleComponent = true;
+      return;
+    }
+
     computedBaseTotal += normalizedPrice * quantity;
   });
+
+  if (hasUnconvertibleComponent) return { basePrice: NaN, finalPrice: NaN };
 
   const baseTotal = computedBaseTotal > 0 ? computedBaseTotal : storedBaseTotal;
   const baseInSelected = convert && selectedCurrencyId && baseCurrencyId && selectedCurrencyId !== baseCurrencyId
     ? convert(baseTotal, baseCurrencyId, selectedCurrencyId)
     : baseTotal;
 
+  if (!Number.isFinite(baseInSelected)) return { basePrice: NaN, finalPrice: NaN };
+
   const roundedBase = Math.round((baseInSelected || 0) * 100) / 100;
   const finalPrice = Math.round(roundedBase * (1 + profitMargin / 100) * 100) / 100;
 
   return { basePrice: roundedBase, finalPrice };
+};
+
+const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+const PRICE_TOLERANCE = 0.005;
+
+/**
+ * Compare a combo's price against the sum of its products bought separately.
+ * Reuses computeComboPricing for the combo side so admin views stay in sync.
+ *
+ * @param {Object} params
+ * @param {Object} params.combo - Combo (products, productQuantities, profitMargin|profit_margin)
+ * @param {Array} [params.products=[]] - Product catalog
+ * @param {Function} params.convert - Conversion fn(amount, fromCurrencyId, toCurrencyId)
+ * @param {string} params.baseCurrencyId - Base currency UUID
+ * @param {string} [params.selectedCurrencyId] - Currency to express the result in (defaults to base)
+ * @param {number} [params.defaultProfitMargin=0] - Combo margin when absent
+ * @returns {{ comboPrice: number, individualTotal: number, difference: number,
+ *   savingsPercent: number, isMoreExpensive: boolean, maxMarginWithoutLoss: number }}
+ *   difference = individualTotal - comboPrice (negative => combo is more expensive).
+ */
+export const evaluateComboPricing = ({
+  combo,
+  products = [],
+  convert,
+  baseCurrencyId,
+  selectedCurrencyId,
+  defaultProfitMargin = 0
+}) => {
+  const neutral = {
+    comboPrice: 0,
+    individualTotal: 0,
+    difference: 0,
+    savingsPercent: 0,
+    isMoreExpensive: false,
+    maxMarginWithoutLoss: 0,
+    comparable: true
+  };
+  if (!combo) return neutral;
+
+  const targetCurrencyId = selectedCurrencyId || baseCurrencyId;
+  const { basePrice, finalPrice } = computeComboPricing({
+    combo,
+    products,
+    convert,
+    selectedCurrencyId: targetCurrencyId,
+    baseCurrencyId,
+    defaultProfitMargin
+  });
+
+  let individualTotal = 0;
+  let comparable = true;
+  (combo.products || []).forEach(productId => {
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+
+    const quantity = combo.productQuantities?.[productId] || 1;
+    const productBase = parseFloat(product.base_price ?? 0) || 0;
+    const storedFinal = parseFloat(product.final_price ?? 0) || 0;
+    const productMargin = parseFloat(product.profit_margin ?? 0) || 0;
+    const unitPrice = storedFinal > 0 ? storedFinal : productBase * (1 + productMargin / 100);
+
+    const inTarget = convert && targetCurrencyId && product.base_currency_id && product.base_currency_id !== targetCurrencyId
+      ? convert(unitPrice, product.base_currency_id, targetCurrencyId)
+      : unitPrice;
+
+    // convertWithRates yields NaN without a rate: the comparison would be meaningless
+    if (!Number.isFinite(inTarget)) comparable = false;
+    individualTotal += inTarget * quantity;
+  });
+  if (!comparable) return { ...neutral, comboPrice: finalPrice, comparable: false };
+
+  const roundedIndividual = roundMoney(individualTotal);
+  if (roundedIndividual <= 0) {
+    return { ...neutral, comboPrice: finalPrice };
+  }
+
+  const difference = roundMoney(roundedIndividual - finalPrice);
+  const savingsPercent = (difference / roundedIndividual) * 100;
+  const maxMargin = basePrice > 0
+    ? Math.max(0, Math.floor(((roundedIndividual / basePrice - 1) * 100) * 100 + 1e-6) / 100)
+    : 0;
+
+  return {
+    comboPrice: finalPrice,
+    individualTotal: roundedIndividual,
+    difference,
+    savingsPercent,
+    isMoreExpensive: finalPrice > roundedIndividual + PRICE_TOLERANCE,
+    maxMarginWithoutLoss: maxMargin,
+    comparable: true
+  };
 };
 
 /**

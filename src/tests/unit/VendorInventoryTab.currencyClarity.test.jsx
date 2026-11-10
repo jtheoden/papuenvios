@@ -10,6 +10,9 @@ const currencyList = [
   { id: 'eur', code: 'EUR', symbol: '€', is_base: false }
 ];
 
+// Saved prices are converted with the live rate (currencyService), not the display cache
+const liveRate = vi.hoisted(() => vi.fn(async () => 1));
+vi.mock('@/lib/currencyService', () => ({ getLiveConversionRate: (...args) => liveRate(...args) }));
 vi.mock('@/contexts/LanguageContext', () => ({
   // Params are appended so tests can assert the interpolated values
   useLanguage: () => ({ t: (k, p) => (p ? `${k}|${Object.values(p).join('|')}` : k), language: 'en' })
@@ -68,6 +71,7 @@ const makeProduct = (overrides = {}) => ({
   profit_margin: 30,
   stock: 5,
   is_active: true,
+  cost_cup: null, // migration applied: the key is present
   ...overrides
 });
 
@@ -110,6 +114,12 @@ describe('VendorInventoryTab form currency clarity', () => {
     mocks.convertAmountAsync.mockImplementation(async (amount, from, to) => {
       if (from === 'usd' && to === 'cup') return amount * RATE;
       if (from === 'cup' && to === 'usd') return amount / RATE;
+      throw new Error('no rate');
+    });
+    liveRate.mockReset();
+    liveRate.mockImplementation(async (from, to) => {
+      if (from === 'usd' && to === 'cup') return RATE;
+      if (from === 'cup' && to === 'usd') return 1 / RATE;
       throw new Error('no rate');
     });
     updateProduct.mockClear();
@@ -184,7 +194,7 @@ describe('VendorInventoryTab form currency clarity', () => {
       expect(innerSelect().value).toBe('usd');
       pressSave();
       await waitFor(() => expect(updateProduct).toHaveBeenCalled());
-      expect(updateProduct.mock.calls[0][1]).toMatchObject({ basePrice: 10, base_currency_id: 'usd' });
+      expect(updateProduct.mock.calls[0][1]).toMatchObject({ basePrice: undefined, base_currency_id: undefined }); // unchanged cost: not repriced
     });
 
     it('handles asymmetric rates: fails A->B, resolves B->A, and never leaves an unconverted figure', async () => {
@@ -212,7 +222,7 @@ describe('VendorInventoryTab form currency clarity', () => {
       expect(priceInput().value).toBe('10');
       pressSave();
       await waitFor(() => expect(updateProduct).toHaveBeenCalled());
-      expect(updateProduct.mock.calls[0][1]).toMatchObject({ basePrice: 10, base_currency_id: 'usd' });
+      expect(updateProduct.mock.calls[0][1]).toMatchObject({ basePrice: undefined, base_currency_id: undefined }); // unchanged cost: not repriced
     });
 
     it('keeps the alert visible while the user types after a failed switch', async () => {
@@ -224,6 +234,16 @@ describe('VendorInventoryTab form currency clarity', () => {
 
       expect(screen.getByRole('alert')).toBeTruthy();
       expect(innerSelect().value).toBe('usd');
+    });
+
+    it('the base-currency preview uses the same live rate as the save', async () => {
+      mocks.convertAmountAsync.mockImplementation(async (amount) => amount / 1000); // stale display rate
+      openCreate();
+      switchTo('cup');
+      fireEvent.change(priceInput(), { target: { value: '9000' } });
+
+      expect(await screen.findByText(/≈\s*\$10\.00 USD/)).toBeTruthy();
+      expect(liveRate).toHaveBeenCalledWith('usd', 'cup'); // CUP costs use the USD->CUP pair itself
     });
 
     // Create vs edit: only an edit has an original price to anchor to; in create the typed figure is
@@ -390,7 +410,7 @@ describe('VendorInventoryTab form currency clarity', () => {
       pressSave();
 
       await waitFor(() => expect(updateProduct).toHaveBeenCalled());
-      expect(updateProduct.mock.calls[0][1]).toMatchObject({ basePrice: 10, base_currency_id: 'usd' });
+      expect(updateProduct.mock.calls[0][1]).toMatchObject({ basePrice: undefined, base_currency_id: undefined }); // unchanged cost: not repriced
     });
 
     it('persists the original after a round trip USD -> CUP -> USD', async () => {
@@ -402,7 +422,7 @@ describe('VendorInventoryTab form currency clarity', () => {
       pressSave();
 
       await waitFor(() => expect(updateProduct).toHaveBeenCalled());
-      expect(updateProduct.mock.calls[0][1]).toMatchObject({ basePrice: 10, base_currency_id: 'usd' });
+      expect(updateProduct.mock.calls[0][1]).toMatchObject({ basePrice: undefined, base_currency_id: undefined }); // unchanged cost: not repriced
     });
 
     it('keeps a price with more than 2 decimals within rounding tolerance after saving in another currency', async () => {
@@ -414,8 +434,8 @@ describe('VendorInventoryTab form currency clarity', () => {
       pressSave();
 
       await waitFor(() => expect(updateProduct).toHaveBeenCalled());
-      // the displayed CUP figure is rounded to cents, so a small drift in base is expected (known limit)
-      expect(updateProduct.mock.calls[0][1].basePrice).toBeCloseTo(0.3337, 3);
+      // a CUP cost stores base_price = round(cost_cup / rate, 2): 300.33 / 900 = 0.3337 -> 0.33
+      expect(updateProduct.mock.calls[0][1].basePrice).toBe(0.33);
     });
 
     it('persists the equivalent in base after switching to CUP without retyping', async () => {

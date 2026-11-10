@@ -329,7 +329,7 @@ describeDb('financial audit log (local Postgres)', () => {
     it.each(TYPE_COLUMNS)('remittance_types.%s', async (col) => {
       const id = await makeType();
       const before = (await admin.query(`SELECT ${col}::text AS v FROM public.remittance_types WHERE id = $1`, [id])).rows[0].v;
-      // F3 (20261104160000): pricing columns are super_admin-only; min/max stay admin-managed.
+      // F3 (20261111120000): pricing columns are super_admin-only; min/max stay admin-managed.
       const pricing = ['exchange_rate', 'commission_percentage', 'commission_fixed'].includes(col);
       const role = pricing ? 'super_admin' : 'admin';
       await admin.query('UPDATE public.user_profiles SET role = $2 WHERE id = $1', [actors.adminId, role]);
@@ -350,7 +350,7 @@ describeDb('financial audit log (local Postgres)', () => {
 
     it('remittance_types.is_active / currency_code / delivery_currency', async () => {
       const id = await makeType();
-      // F3 (20261104160000): the currency pair is super_admin-only, like pricing.
+      // F3 (20261111120000): the currency pair is super_admin-only, like pricing.
       await admin.query(`UPDATE public.user_profiles SET role = 'super_admin' WHERE id = $1`, [actors.adminId]);
       try {
         const adm = await asAdmin();

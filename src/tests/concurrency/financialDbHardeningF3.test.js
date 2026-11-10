@@ -1,10 +1,10 @@
 /**
  * F3 financial DB hardening (audit 2026-11-04). Migrations under test (PREPARED, NOT APPLIED in prod):
- *   20261104160000_remittance_types_pricing_super_admin_only.sql   (C3: rate/commission writes = super_admin only)
- *   20261104160100_exchange_rate_history.sql                        (append-only rate/commission history)
- *   20261104160200_exchange_rates_validate_distinct_currencies.sql  (VALIDATE the NOT VALID check)
- *   20261104160300_revoke_rate_readers_from_anon.sql                (get_order/get_market_exchange_rate: no PUBLIC/anon)
- *   20261104160400_get_my_role_is_enabled.sql                       (RB-25: disabled account -> 'user')
+ *   20261111120000_remittance_types_pricing_super_admin_only.sql   (C3: rate/commission writes = super_admin only)
+ *   20261111120100_exchange_rate_history.sql                        (append-only rate/commission history)
+ *   20261111120200_exchange_rates_validate_distinct_currencies.sql  (VALIDATE the NOT VALID check)
+ *   20261111120300_revoke_rate_readers_from_anon.sql                (get_order/get_market_exchange_rate: no PUBLIC/anon)
+ *   20261111120400_get_my_role_is_enabled.sql                       (RB-25: disabled account -> 'user')
  * Each one has its rollback in supabase/rollbacks/<same name>_down.sql.
  *
  * Every DB section first installs the LIVE production state captured read-only on 2026-11-04 when the scratch clone
@@ -15,7 +15,7 @@
  * RED phase: F3_SKIP_MIGRATION=1 only skips RE-applying the migrations in beforeAll. A scratch DB built by
  * scripts/test-db-bootstrap.sh from this repo already contains them (the bootstrap replays supabase/migrations), so
  * that flag alone is NOT red. To reproduce red on such a DB, first undo F3 there (scratch only, never prod):
- *   for f in supabase/rollbacks/2026110416*_down.sql; do psql "$STOCK_TEST_DB_URL" -v ON_ERROR_STOP=1 -f "$f"; done
+ *   for f in supabase/rollbacks/2026111112*_down.sql; do psql "$STOCK_TEST_DB_URL" -v ON_ERROR_STOP=1 -f "$f"; done
  *   psql "$STOCK_TEST_DB_URL" -c 'DROP TABLE IF EXISTS public.exchange_rate_history; DROP FUNCTION IF EXISTS public.exchange_rate_history_block_mutation()'
  *   F3_SKIP_MIGRATION=1 npx vitest run --config src/tests/concurrency/vitest.config.js src/tests/concurrency/financialDbHardeningF3.test.js
  * (or bootstrap the scratch DB from a checkout that does not have the F3 files yet).
@@ -31,11 +31,11 @@ import { dbSuiteSkipReason, connectAdmin, connectAs, connectAnon, endAll } from 
 import { loadActors } from './fixtures';
 
 const M = {
-  rt: '20261104160000_remittance_types_pricing_super_admin_only',
-  hist: '20261104160100_exchange_rate_history',
-  chk: '20261104160200_exchange_rates_validate_distinct_currencies',
-  rev: '20261104160300_revoke_rate_readers_from_anon',
-  role: '20261104160400_get_my_role_is_enabled'
+  rt: '20261111120000_remittance_types_pricing_super_admin_only',
+  hist: '20261111120100_exchange_rate_history',
+  chk: '20261111120200_exchange_rates_validate_distinct_currencies',
+  rev: '20261111120300_revoke_rate_readers_from_anon',
+  role: '20261111120400_get_my_role_is_enabled'
 };
 const mig = (k) => readFileSync(resolve(process.cwd(), `supabase/migrations/${M[k]}.sql`), 'utf8');
 const down = (k) => readFileSync(resolve(process.cwd(), `supabase/rollbacks/${M[k]}_down.sql`), 'utf8');
@@ -375,7 +375,12 @@ describeDb('F3 financial hardening (local Postgres)', () => {
       expect(rows.map((r) => [r.operation, r.from_currency, r.to_currency])).toEqual([
         ['INSERT', 'USD', 'CUP'], ['UPDATE', 'USD', 'CUP'], ['UPDATE', 'USD', 'EUR']]);
       expect(rows[1].days - rows[0].days).toBe(5000);
-      expect(rows.every((r) => r.rate_type === null)).toBe(true); // repo schema has no rate_type; see (3b) for prod shape
+      // courier phase A (20261105150000) adds exchange_rates.rate_type DEFAULT 'general' to the repo chain: the history captures it
+      // (a scratch DB built without that migration has no column, hence null)
+      const hasRateType = (await admin.query(
+        `SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'exchange_rates' AND column_name = 'rate_type'`
+      )).rowCount > 0;
+      expect(rows.every((r) => r.rate_type === (hasRateType ? 'general' : null))).toBe(true);
     });
 
     it('records the DELETE of an exchange_rates row and of a remittance type (snapshot of the deleted row)', async () => {
@@ -486,7 +491,12 @@ describeDb('F3 financial hardening (local Postgres)', () => {
   describe('(3b) exchange_rate_history with the PROD shape of exchange_rates (market_rate NOT NULL, rate_type, CHECK)', () => {
     // Prod-only objects (read-only check 2026-11-05): market_rate numeric(20,6) NOT NULL without default, rate_type text
     // DEFAULT 'general' + exchange_rates_rate_type_check, CHECK rate_higher_than_market (rate >= market_rate).
+    // rate_type belongs to the repo chain since courier phase A (20261105150000): only drop it afterwards if THIS section added it
+    let rateTypeExisted = false;
     beforeAll(async () => {
+      rateTypeExisted = (await admin.query(
+        `SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'exchange_rates' AND column_name = 'rate_type'`
+      )).rowCount > 0;
       await admin.query(`
         ALTER TABLE public.exchange_rates ADD COLUMN IF NOT EXISTS market_rate numeric(20,6);
         UPDATE public.exchange_rates SET market_rate = rate WHERE market_rate IS NULL; -- scratch rows only
@@ -499,7 +509,7 @@ describeDb('F3 financial hardening (local Postgres)', () => {
     afterAll(async () => {
       await admin.query(`
         ALTER TABLE public.exchange_rates DROP CONSTRAINT IF EXISTS rate_higher_than_market;
-        ALTER TABLE public.exchange_rates DROP COLUMN IF EXISTS rate_type;
+        ${rateTypeExisted ? '' : 'ALTER TABLE public.exchange_rates DROP COLUMN IF EXISTS rate_type;'}
         ALTER TABLE public.exchange_rates DROP COLUMN IF EXISTS market_rate;`);
     });
 

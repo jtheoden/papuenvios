@@ -2,13 +2,16 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { makeRealT } from './helpers/realTranslator';
+import { ConfirmWrapper, answerConfirm } from './helpers/confirmDialog';
 
 const toastMock = vi.fn();
 const svc = vi.hoisted(() => ({
   getAllExchangeRates: vi.fn(),
   getAllCurrencies: vi.fn(),
   saveExchangeRate: vi.fn(),
+  saveExchangeRatePair: vi.fn(),
   updateExchangeRatePair: vi.fn(),
+  deleteExchangeRatePair: vi.fn(),
   fetchReference: vi.fn()
 }));
 
@@ -19,6 +22,7 @@ vi.mock('@/contexts/LanguageContext', async () => {
   const t = build('en');
   return { useLanguage: () => ({ t, language: 'en' }) };
 });
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ isSuperAdmin: true }) }));
 vi.mock('@/contexts/BusinessContext', () => ({
   useBusiness: () => ({ visualSettings: {}, applyMarginSettings: vi.fn() })
 }));
@@ -30,9 +34,14 @@ vi.mock('@/lib/currencyService', () => ({
   deleteCurrency: vi.fn(),
   getAllExchangeRates: (...a) => svc.getAllExchangeRates(...a),
   saveExchangeRate: (...a) => svc.saveExchangeRate(...a),
+  saveExchangeRatePair: (...a) => svc.saveExchangeRatePair(...a),
   deleteExchangeRate: vi.fn(),
-  deleteExchangeRatePair: vi.fn(),
-  updateExchangeRatePair: (...a) => svc.updateExchangeRatePair(...a)
+  deleteExchangeRatePair: (...a) => svc.deleteExchangeRatePair(...a),
+  updateExchangeRatePair: (...a) => svc.updateExchangeRatePair(...a),
+  // Catalog repricing migration not applied: the rate flow is the plain one
+  previewCatalogReprice: vi.fn().mockResolvedValue({ unavailable: true }),
+  applyCatalogReprice: vi.fn().mockResolvedValue({ unavailable: true }),
+  getCatalogRepriceStatus: vi.fn().mockResolvedValue({ unavailable: true })
 }));
 vi.mock('@/lib/fxReference', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -74,7 +83,7 @@ const reference = (overrides = {}) => ({
 });
 
 const renderPage = () =>
-  render(<SettingsPageFinancial localFinancial={{ productProfit: 40, comboProfit: 30 }} setLocalFinancial={vi.fn()} />);
+  render(<SettingsPageFinancial localFinancial={{ productProfit: 40, comboProfit: 30 }} setLocalFinancial={vi.fn()} />, { wrapper: ConfirmWrapper });
 const useReference = async () => fireEvent.click(await screen.findByRole('button', { name: 'Use as rate' }));
 const newRateForm = () => screen.getByText('Add New Exchange Rate').parentElement;
 const editForm = () => screen.getByText('Edit Rate Pair').closest('div.bg-amber-50');
@@ -212,13 +221,28 @@ describe('Financial: USD->EUR guards', () => {
     expect(svc.saveExchangeRate).not.toHaveBeenCalled();
   });
 
-  it('saves a valid USD->EUR rate together with its inverse', async () => {
-    svc.saveExchangeRate.mockResolvedValue({ error: null });
+  it('saves a valid USD->EUR rate together with its inverse through the pair save (one call, rolled back on failure)', async () => {
+    svc.saveExchangeRatePair.mockResolvedValue({ direct: { id: 'd' }, inverse: { id: 'i' } });
     const form = await fillNewRate('0.892');
     fireEvent.click(form.getByRole('button', { name: 'Save Rates' }));
 
-    await waitFor(() => expect(svc.saveExchangeRate).toHaveBeenCalledTimes(2));
-    expect(svc.saveExchangeRate.mock.calls[0][0]).toMatchObject({ fromCurrencyId: 'usd', toCurrencyId: 'eur', rate: '0.892' });
+    await waitFor(() => expect(svc.saveExchangeRatePair).toHaveBeenCalledTimes(1));
+    expect(svc.saveExchangeRatePair.mock.calls[0][0]).toMatchObject({ fromCurrencyId: 'usd', toCurrencyId: 'eur', rate: '0.892' });
+    expect(svc.saveExchangeRate).not.toHaveBeenCalled();
+  });
+
+  it('does not say "saved", keeps the form and reloads the real state when the pair save fails', async () => {
+    svc.saveExchangeRatePair.mockRejectedValue(new Error('inverse failed'));
+    const form = await fillNewRate('0.892');
+    const loadsBefore = svc.getAllExchangeRates.mock.calls.length;
+    fireEvent.click(form.getByRole('button', { name: 'Save Rates' }));
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ description: 'inverse failed', variant: 'destructive' }))
+    );
+    expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: expect.stringContaining('Rates saved') }));
+    expect(screen.getByText('Add New Exchange Rate')).toBeInTheDocument();
+    await waitFor(() => expect(svc.getAllExchangeRates.mock.calls.length).toBeGreaterThan(loadsBefore));
   });
 
   describe('editing an existing pair', () => {
@@ -272,19 +296,101 @@ describe('Financial: USD->EUR guards', () => {
       await waitFor(() => expect(svc.updateExchangeRatePair).toHaveBeenCalledWith('usd', 'eur', '0.93', expect.any(String)));
       expect(screen.queryByText('Confirm large rate change')).toBeNull();
     });
+
+    describe('when the pair update fails', () => {
+      const failWith = async (error) => {
+        const form = await startEdit('0.93');
+        svc.updateExchangeRatePair.mockRejectedValue(error);
+        const loadsBefore = svc.getAllExchangeRates.mock.calls.length;
+        fireEvent.click(form.getByRole('button', { name: 'Save Changes' }));
+        await waitFor(() => expect(toastMock).toHaveBeenCalled());
+        return loadsBefore;
+      };
+      const lastToast = () => toastMock.mock.calls.at(-1)[0];
+
+      it('half-written pair (compensation failed): clear warning, no "updated" toast, and the rates are reloaded', async () => {
+        const loadsBefore = await failWith(Object.assign(new Error('raw partial'), { code: 'EXCHANGE_RATE_PAIR_PARTIAL' }));
+        expect(lastToast()).toMatchObject({ variant: 'destructive', description: expect.stringMatching(/only partly saved/i) });
+        expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Rate pair updated' }));
+        await waitFor(() => expect(svc.getAllExchangeRates.mock.calls.length).toBeGreaterThan(loadsBefore));
+      });
+
+      it('incomplete pair (inverse missing, direct restored): says so instead of "both updated", and reloads', async () => {
+        const loadsBefore = await failWith(Object.assign(new Error('raw incomplete'), { code: 'EXCHANGE_RATE_PAIR_INCOMPLETE' }));
+        expect(lastToast()).toMatchObject({ variant: 'destructive', description: expect.stringMatching(/inverse rate is missing/i) });
+        await waitFor(() => expect(svc.getAllExchangeRates.mock.calls.length).toBeGreaterThan(loadsBefore));
+      });
+
+      it('0 rows for a super_admin: the rate no longer exists, NOT a permissions message', async () => {
+        await failWith(Object.assign(new Error('raw not found'), { code: 'NOT_FOUND', context: { reason: 'no_rows' } }));
+        expect(lastToast().description).toMatch(/no longer exists/i);
+        expect(lastToast().description).not.toMatch(/super admin/i);
+      });
+
+      it('RLS refusal keeps the super_admin-only message', async () => {
+        await failWith(Object.assign(new Error('raw forbidden'), { code: 'FORBIDDEN', context: { requiredRole: 'super_admin' } }));
+        expect(lastToast().description).toMatch(/Only a super admin/);
+      });
+    });
   });
 
-  it('does not apply the USD->EUR band to other pairs', async () => {
+  describe('other pairs (USD->CUP)', () => {
+    const startCupEdit = async (rate) => {
+      svc.getAllExchangeRates.mockResolvedValue(cupPair());
+      svc.updateExchangeRatePair.mockResolvedValue({ updatedCount: 2 });
+      renderPage();
+      await screen.findByText('1 USD = 790.0000 CUP');
+      fireEvent.click(screen.getByRole('button', { name: /Edit/ }));
+      const form = within(editForm());
+      fireEvent.change(form.getByDisplayValue('790'), { target: { value: rate } });
+      fireEvent.click(form.getByRole('button', { name: 'Save Changes' }));
+    };
+
+    it('does not apply the USD->EUR hard band (no out-of-band error), but a change larger than 5% needs confirmation', async () => {
+      await startCupEdit('1000');
+
+      expect(await screen.findByText('Confirm large rate change')).toBeInTheDocument();
+      expect(screen.getByText(/USD to CUP rate changes from 790 to 1000 \(26\.6%\)/)).toBeInTheDocument();
+      expect(screen.queryByText(/Bizum/)).toBeNull();
+      expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ description: expect.stringMatching(/must be between/) }));
+      expect(svc.updateExchangeRatePair).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save anyway' }));
+      await waitFor(() => expect(svc.updateExchangeRatePair).toHaveBeenCalledWith('usd', 'cup', '1000', expect.any(String)));
+    });
+
+    it('catches a typo (77 instead of 770) before saving', async () => {
+      await startCupEdit('79');
+      expect(await screen.findByText('Confirm large rate change')).toBeInTheDocument();
+      expect(svc.updateExchangeRatePair).not.toHaveBeenCalled();
+    });
+
+    it('saves a small change (<= 5%) without asking', async () => {
+      await startCupEdit('800');
+      await waitFor(() => expect(svc.updateExchangeRatePair).toHaveBeenCalledWith('usd', 'cup', '800', expect.any(String)));
+      expect(screen.queryByText('Confirm large rate change')).toBeNull();
+    });
+  });
+});
+
+describe('Financial: deleting a rate pair that no longer exists', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('reloads the list after a NOT_FOUND (the message promises it) and shows the not-found text, not a permissions one', async () => {
     svc.getAllExchangeRates.mockResolvedValue(cupPair());
-    svc.updateExchangeRatePair.mockResolvedValue({ updatedCount: 2 });
+    svc.deleteExchangeRatePair.mockRejectedValue(Object.assign(new Error('raw'), { code: 'NOT_FOUND', context: { reason: 'no_rows' } }));
     renderPage();
     await screen.findByText('1 USD = 790.0000 CUP');
-    fireEvent.click(screen.getByRole('button', { name: /Edit/ }));
-    const form = within(editForm());
-    fireEvent.change(form.getByDisplayValue('790'), { target: { value: '1000' } });
-    fireEvent.click(form.getByRole('button', { name: 'Save Changes' }));
+    const loadsBefore = svc.getAllExchangeRates.mock.calls.length;
 
-    await waitFor(() => expect(svc.updateExchangeRatePair).toHaveBeenCalledWith('usd', 'cup', '1000', expect.any(String)));
+    fireEvent.click(screen.getByTitle('Deactivate rate pair'));
+    await answerConfirm(true);
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({
+      variant: 'destructive',
+      description: expect.stringMatching(/no longer exists/i)
+    })));
+    await waitFor(() => expect(svc.getAllExchangeRates.mock.calls.length).toBeGreaterThan(loadsBefore));
   });
 });
 

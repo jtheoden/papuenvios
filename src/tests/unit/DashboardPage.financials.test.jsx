@@ -142,6 +142,48 @@ describe('DashboardPage financials (H5, H6, H9, H10)', () => {
     expect(within(row).getByText('1')).toBeTruthy();
   });
 
+  it('shows payment sources with native-currency totals for orders and validated remittances', async () => {
+    tables.data = {
+      ...baseTables(),
+      orders: [
+        order('o-eur', 'processing', 'validated', '100.00', hoursAgo(1), {
+          payment_method: 'bizum', payment_amount: '92.50', payment_currency: 'EUR'
+        })
+      ],
+      remittances: [
+        remittance('r-usd', 'payment_validated', hoursAgo(1), {
+          payment_method: 'zelle', amount_sent: '30', delivery_cost: '2', currency_sent: 'USD'
+        })
+      ]
+    };
+    render(<DashboardPage onNavigate={() => {}} />);
+
+    await waitFor(() => expect(screen.getByText('bizum')).toBeTruthy());
+    const bizumRow = screen.getByText('bizum').parentElement.parentElement;
+    const zelleRow = screen.getByText('zelle').parentElement.parentElement;
+    expect(bizumRow.textContent).toMatch(/92\.50/);
+    expect(bizumRow.textContent).toContain('€');
+    expect(bizumRow.textContent).not.toContain('$100.00');
+    expect(zelleRow.textContent).toContain('$32.00');
+  });
+
+  it('shows a dash, not a money total, for a bizum remittance without a currency', async () => {
+    tables.data = {
+      ...baseTables(),
+      remittances: [
+        remittance('r-b', 'payment_validated', hoursAgo(1), {
+          payment_method: 'bizum', amount_sent: '50', delivery_cost: '5', currency_sent: null
+        })
+      ]
+    };
+    render(<DashboardPage onNavigate={() => {}} />);
+
+    await waitFor(() => expect(screen.getByText('bizum')).toBeTruthy());
+    const row = screen.getByText('bizum').parentElement.parentElement;
+    expect(row.textContent).toContain('—');
+    expect(row.textContent).not.toMatch(/[$€]|55/);
+  });
+
   it('shows the pending-refunds alert card in the summary, enabled for admins', async () => {
     tables.data = baseTables();
     render(<DashboardPage onNavigate={() => {}} />);

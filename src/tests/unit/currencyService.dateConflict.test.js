@@ -29,6 +29,8 @@ import { updateExchangeRatePair } from '@/lib/currencyService';
 
 const UNIQUE_VIOLATION = { code: '23505', message: 'duplicate key value violates unique constraint' };
 const ok = (rows) => ({ data: rows, error: null });
+// updateExchangeRatePair first reads the previous active direct row (to restore it if the inverse update fails).
+const PRE_READ = [ok([])];
 
 beforeEach(() => {
   db.ops = [];
@@ -38,6 +40,7 @@ beforeEach(() => {
 describe('updateExchangeRatePair vs the unique (from, to, effective_date) key', () => {
   it('clears the inactive same-day row that blocks the date and retries the direct update', async () => {
     db.responses = [
+      ...PRE_READ,
       { data: null, error: UNIQUE_VIOLATION }, // direct update blocked
       ok([{ id: 'stale' }]), // delete of the inactive same-day duplicate
       ok([{ id: 'a' }]), // direct update retried
@@ -57,6 +60,7 @@ describe('updateExchangeRatePair vs the unique (from, to, effective_date) key', 
 
   it('does the same for the inverse direction', async () => {
     db.responses = [
+      ...PRE_READ,
       ok([{ id: 'a' }]),
       { data: null, error: UNIQUE_VIOLATION },
       ok([{ id: 'stale-inv' }]),
@@ -71,13 +75,14 @@ describe('updateExchangeRatePair vs the unique (from, to, effective_date) key', 
   });
 
   it('does not delete anything when there is no conflict', async () => {
-    db.responses = [ok([{ id: 'a' }]), ok([{ id: 'b' }])];
+    db.responses = [...PRE_READ, ok([{ id: 'a' }]), ok([{ id: 'b' }])];
     await updateExchangeRatePair('usd', 'eur', 0.9, '2026-10-16');
     expect(db.ops.some((o) => o.op === 'delete')).toBe(false);
   });
 
   it('surfaces the error when the retry is still blocked (an ACTIVE row owns that date)', async () => {
     db.responses = [
+      ...PRE_READ,
       { data: null, error: UNIQUE_VIOLATION },
       ok([]), // nothing inactive to clear
       { data: null, error: UNIQUE_VIOLATION } // retry blocked again
@@ -90,7 +95,7 @@ describe('updateExchangeRatePair vs the unique (from, to, effective_date) key', 
   });
 
   it('does not touch other error kinds', async () => {
-    db.responses = [{ data: null, error: { code: '42501', message: 'permission denied' } }];
+    db.responses = [...PRE_READ, { data: null, error: { code: '42501', message: 'permission denied' } }];
     await expect(updateExchangeRatePair('usd', 'eur', 0.9, '2026-10-16')).rejects.toBeDefined();
     expect(db.ops.some((o) => o.op === 'delete')).toBe(false);
   });

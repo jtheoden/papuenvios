@@ -1,0 +1,86 @@
+import React from 'react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
+const state = vi.hoisted(() => ({ superAdmin: true, items: [] }));
+const svc = vi.hoisted(() => ({ listAccruals: vi.fn(), previewCourierAfterDelivery: vi.fn(), confirmCourierAfterDelivery: vi.fn() }));
+vi.mock('@/lib/courierService', () => svc);
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ isSuperAdmin: state.superAdmin }) }));
+vi.mock('@/contexts/LanguageContext', () => ({ useLanguage: () => ({ t: (key) => key }) }));
+import EN from '@/translations/EN.json';
+import ES from '@/translations/ES.json';
+import PayablePanel from '@/components/settings/couriers/PayablePanel';
+const row = (over = {}) => ({ id: 'a', source_id: 'op', source_kind: 'order', component: 'delivery', courier_id: null, amount_cup: null, amount_usd: null, delivered_at: '2026-10-01', ...over });
+const show = () => render(<PayablePanel couriers={[{ id: 'c', name: 'Ana', is_active: true }, { id: 'inactive', name: 'Inactive', is_active: false }]} />);
+beforeEach(() => {
+  vi.resetAllMocks();
+  state.superAdmin = true;
+  state.items = [row(), row({ id: 'known', courier_id: 'c', amount_cup: 100 })];
+  svc.listAccruals.mockImplementation(async ({ status }) => ({ items: status === 'paid' ? [] : state.items }));
+  svc.previewCourierAfterDelivery.mockResolvedValue({ amount_cup: 800, amount_usd: 2, currency: 'CUP', rule: { name: 'Current rule' }, precedence: 'courier', fx_used: 400, fx_source: 'remittance', retroactive: true, warnings: ['past_months_change'], preview_token: 'quote' });
+  svc.confirmCourierAfterDelivery.mockResolvedValue({ confirmed: true });
+});
+describe('PayablePanel retroactive assignment', () => {
+  it('filters delivered unassigned unknown accruals and hides assignment from ordinary admins', async () => {
+    state.superAdmin = false;
+    show();
+    fireEvent.change(await screen.findByLabelText('couriers.payable.filter'), { target: { value: 'unassigned' } });
+    expect(screen.queryByRole('button', { name: /couriers.payable.assignAfterDelivery/ })).toBeNull();
+    expect(screen.getAllByTestId('payable-group')).toHaveLength(1);
+    expect(screen.queryByText('Ana')).toBeNull();
+  });
+  it.each([800, 0])('requires reason, previews a known amount (%s, including zero), then explicitly confirms once', async (amount) => {
+    const quote = await svc.previewCourierAfterDelivery();
+    svc.previewCourierAfterDelivery.mockClear();
+    svc.previewCourierAfterDelivery.mockResolvedValue({ ...quote, amount_cup: amount });
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: /couriers.payable.assignAfterDelivery/ }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('couriers.payable.pastMonthsWarning')).toBeTruthy();
+    expect(within(dialog).queryByRole('option', { name: 'Inactive' })).toBeNull();
+    const preview = within(dialog).getByRole('button', { name: 'couriers.payable.preview' });
+    expect(preview).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText('couriers.payable.courier'), { target: { value: 'c' } });
+    fireEvent.change(within(dialog).getByLabelText('couriers.payable.reason'), { target: { value: 'Historical assignment' } });
+    fireEvent.click(preview);
+    await within(dialog).findByText('Current rule');
+    expect(svc.previewCourierAfterDelivery).toHaveBeenCalledWith('order', 'op', 'c', 'Historical assignment');
+    expect(within(dialog).getByText(new RegExp(`${amount}.00 CUP`))).toBeTruthy();
+    expect(within(dialog).getByText('couriers.payable.fxOrigin.remittance')).toBeTruthy();
+    expect(within(dialog).getByText('couriers.payable.retroactive')).toBeTruthy();
+    expect(svc.confirmCourierAfterDelivery).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'couriers.payable.confirmAssignment' }));
+    await waitFor(() => expect(svc.confirmCourierAfterDelivery).toHaveBeenCalledExactlyOnceWith('order', 'op', 'c', 'Historical assignment', 'quote'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+  it.each(['no_rule', 'no_fx', 'no_tier_match', 'amount_out_of_range', 'no_amount_basis'])('blocks confirmation and explains a NULL quote: %s', async (reason) => {
+    // Reason must be displayed even if the server does not also repeat it in warnings.
+    svc.previewCourierAfterDelivery.mockResolvedValue({ amount_cup: null, amount_usd: null, reason, warnings: [], preview_token: 'unknown' });
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: /couriers.payable.assignAfterDelivery/ }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('couriers.payable.courier'), { target: { value: 'c' } });
+    fireEvent.change(within(dialog).getByLabelText('couriers.payable.reason'), { target: { value: 'Historical assignment' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'couriers.payable.preview' }));
+    const confirm = await within(dialog).findByRole('button', { name: 'couriers.payable.confirmAssignment' });
+    expect(confirm).toBeDisabled();
+    expect(within(dialog).getByText(`couriers.payable.pricingWarning.${reason}`)).toBeTruthy();
+    fireEvent.click(confirm);
+    expect(svc.confirmCourierAfterDelivery).not.toHaveBeenCalled();
+    for (const language of [EN, ES]) expect(language.couriers.payable.pricingWarning[reason]).toBeTruthy();
+    expect(EN.couriers.payable.pricingWarning.no_rule).toMatch(/no active payment rule applies today; create or enable a rule first/i);
+  });
+  it('invalidates the preview when inputs change and reports preview errors', async () => {
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: /couriers.payable.assignAfterDelivery/ }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('couriers.payable.courier'), { target: { value: 'c' } });
+    fireEvent.change(within(dialog).getByLabelText('couriers.payable.reason'), { target: { value: 'Historical assignment' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'couriers.payable.preview' }));
+    await within(dialog).findByText('Current rule');
+    fireEvent.change(within(dialog).getByLabelText('couriers.payable.reason'), { target: { value: 'Changed historical reason' } });
+    expect(within(dialog).queryByRole('button', { name: 'couriers.payable.confirmAssignment' })).toBeNull();
+    svc.previewCourierAfterDelivery.mockRejectedValue({ i18nKey: 'couriers.errors.unavailable' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'couriers.payable.preview' }));
+    await screen.findByText('couriers.errors.unavailable');
+  });
+});

@@ -1,4 +1,4 @@
-import { transitionMessage } from '@/lib/statusConflict';
+import { adminCancelMessage, transitionMessage } from '@/lib/statusConflict';
 import React, { useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle, Clock, FileText, Loader2, Percent, Truck, XCircle } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -13,6 +13,7 @@ import {
   rejectPayment,
   startProcessing,
   confirmDelivery,
+  adminCancelRemittance,
   getCommissionOverride
 } from '@/lib/remittanceService';
 import ImageProofModal from '@/components/ImageProofModal';
@@ -60,7 +61,7 @@ const getAgeLevel = (createdAt) => {
   return 'ok';
 };
 
-const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-600';
+const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-theme-focus';
 
 const AGE_CLASSES = {
   ok: 'text-gray-600',
@@ -198,6 +199,33 @@ const AdminRemittancesInbox = ({
     );
   };
 
+  const handleCancel = async (remittance) => {
+    const reason = await showModal({
+      title: t('adminInbox.cancelRemittance'),
+      message: t('remittances.admin.confirmCancelMessage', { number: remittance.remittance_number }),
+      input: true,
+      inputLabel: t('remittances.admin.cancelReason'),
+      inputPlaceholder: t('remittances.admin.cancelReasonPlaceholder'),
+      confirmText: t('adminInbox.cancelRemittance'),
+      cancelText: t('common.cancel'),
+      type: 'danger',
+      required: true,
+      maxLength: 500
+    });
+    if (!reason) return;
+    setBusyId(remittance.id);
+    try {
+      await adminCancelRemittance(remittance.id, reason);
+      toast({ title: t('common.success'), description: t('remittances.admin.remittanceCancelled') });
+    } catch (err) {
+      toast({ title: t('common.error'), description: adminCancelMessage(t, err), variant: 'destructive' });
+    } finally {
+      setBusyId(null);
+    }
+    // Refresh on failure too: a refusal usually means the remittance moved (e.g. the customer uploaded the proof).
+    if (onChanged) await onChanged();
+  };
+
   const handleStartProcessing = async (remittance) => {
     const confirmed = await showModal({
       title: t('remittances.admin.process'),
@@ -298,6 +326,22 @@ const AdminRemittancesInbox = ({
           >
             <XCircle className="h-4 w-4" aria-hidden="true" />
             {t('adminInbox.reject')}
+          </button>
+          {adjustButton}
+        </>
+      );
+    }
+    if (remittance.status === 'payment_pending') {
+      return (
+        <>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => handleCancel(remittance)}
+            className={`${base} border border-red-300 text-red-700 hover:bg-red-50 bg-white`}
+          >
+            <XCircle className="h-4 w-4" aria-hidden="true" />
+            {t('adminInbox.cancelRemittance')}
           </button>
           {adjustButton}
         </>
@@ -463,7 +507,7 @@ const AdminRemittancesInbox = ({
         <a
           href={VIEW_ALL_PATH}
           onClick={handleViewAll}
-          className={`rounded text-sm font-medium text-blue-700 underline hover:text-blue-900 ${FOCUS_RING}`}
+          className={`rounded text-sm font-medium text-theme-link-strong underline hover:decoration-2 ${FOCUS_RING}`}
         >
           {t('adminInbox.viewAll')}
         </a>

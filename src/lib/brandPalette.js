@@ -43,11 +43,14 @@ export const pickNewKeys = (settings = {}) =>
 
 /**
  * What "Aplicar paleta PapuEnvios" writes into the form. Only existing/new settings keys.
- * primaryColor/secondaryColor are left alone: ~30 admin and user screens use them for text.
+ * Identity colours are readable on the brand surfaces; they only persist after an explicit form save.
  * The gradient flags go off because Header (nav active), HomePage CTA and getHeadingStyle
  * OR them with useGradient, so a solid brand colour would otherwise be ignored.
  */
 export const BRAND_PRESET = {
+  primaryColor: charcoal,
+  secondaryColor: warmGray,
+  headerGradientColor: warmGray,
   pageBgColor: ivory,
   cardBgColor: white,
   accentColor: gold,
@@ -94,6 +97,30 @@ export const BRAND_PRESET = {
   focusRingColor: charcoal,
 };
 
+export const LOOK_IDS = ['classic', 'papuenvios'];
+
+const sameValue = (a, b) => (typeof a === 'string' && typeof b === 'string' ? a.toLowerCase() === b.toLowerCase() : a === b);
+
+// Identity keys were not in the original preset. Ignore them for legacy look inference, otherwise an
+// existing brand row with the old blue/purple identity would suddenly load the Classic look.
+const IDENTITY_KEYS = ['primaryColor', 'secondaryColor', 'headerGradientColor'];
+
+/** True when every original brand look key holds the brand value (HEX compared case-insensitively). */
+const matchesBrandPreset = (settings) =>
+  Object.keys(BRAND_PRESET).filter((key) => !IDENTITY_KEYS.includes(key)).every((key) => sameValue(settings?.[key], BRAND_PRESET[key]));
+
+/**
+ * Look of the site: 'classic' or 'papuenvios'. Single source for the `data-theme` on <html> (the --t-* tokens in
+ * index.css) AND the Settings > Visual selector (visualThemes.resolveThemeId is this function), so they never diverge.
+ * A valid stored `activeTheme` wins; without one (rows saved before the selector) every brand preset value present
+ * => papuenvios, anything else => classic. It lives here, not in visualThemes, because visualThemes imports the
+ * settings service, which imports this file (an import cycle). The inline script in index.html mirrors it.
+ */
+export const resolveLookId = (settings) => {
+  if (LOOK_IDS.includes(settings?.activeTheme)) return settings.activeTheme;
+  return matchesBrandPreset(settings) ? 'papuenvios' : 'classic';
+};
+
 /** setting key -> CSS variable consumed by the Tailwind `brand-*` colours. */
 export const BRAND_CSS_VARS = {
   buttonBgColor: '--brand-button-bg',
@@ -112,6 +139,18 @@ export const BRAND_CSS_VARS = {
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 export const isHexColor = (value) => typeof value === 'string' && HEX.test(value);
 
+/** First value that is a HEX colour, so nothing unchecked reaches a style attribute. */
+export const hex = (...candidates) => candidates.find(isHexColor);
+
+/**
+ * A text/background pair: if either colour is not a valid HEX, BOTH fall back, so a good text colour
+ * chosen for one background is never left on top of the fallback of the other one.
+ */
+export const pair = (fg, bg, fgFallback, bgFallback) => (isHexColor(fg) && isHexColor(bg) ? [fg, bg] : [fgFallback, bgFallback]);
+
+/** #rgb -> #rrggbb, so an alpha suffix stays a valid 8-digit colour. Expects a valid HEX. */
+export const toLongHex = (value) => (value.length === 4 ? `#${[...value.slice(1)].map((c) => c + c).join('')}` : value);
+
 export const MIN_TEXT_CONTRAST = 4.5;
 
 /** [id, text key, background key] - the pairs the Visual settings screen checks. */
@@ -122,14 +161,27 @@ const CONTRAST_PAIRS = [
   ['tab', 'tabActiveColor', 'tabActiveBgColor'],
   ['button', 'buttonTextColor', 'buttonBgColor'],
   ['cartBadge', 'cartBadgeTextColor', 'cartBadgeBgColor'],
+  ['footerLink', 'footerLinkColor', 'footerBgColor'],
+  ['footerLinkHover', 'footerLinkHoverColor', 'footerBgColor'],
+];
+
+/**
+ * Pairs whose colour or opacity depends on the look, mirroring footerTheme.js: while useGradient is on the
+ * footer text is painted at 80% opacity and the company name uses primaryColor; with the preset the text is solid
+ * and the name uses headingColor.
+ */
+const footerLookPairs = (s) => [
+  ['footerText', s.footerTextColor, s.footerBgColor, s.useGradient ? 0.8 : 1],
+  ['footerBrand', s.useGradient ? s.primaryColor : s.headingColor, s.footerBgColor, 1],
 ];
 
 /** Text/background pairs below WCAG AA (4.5:1). Pairs with a non-HEX value are skipped. */
 export const getContrastIssues = (settings) =>
-  CONTRAST_PAIRS.flatMap(([id, fgKey, bgKey]) => {
-    const fg = settings[fgKey];
-    const bg = settings[bgKey];
+  [
+    ...CONTRAST_PAIRS.map(([id, fgKey, bgKey]) => [id, settings[fgKey], settings[bgKey], 1]),
+    ...footerLookPairs(settings),
+  ].flatMap(([id, fg, bg, alpha]) => {
     if (!isHexColor(fg) || !isHexColor(bg)) return [];
-    const ratio = contrastRatio(fg, bg);
+    const ratio = contrastRatio(fg, bg, alpha);
     return ratio < MIN_TEXT_CONTRAST ? [{ id, fg, bg, ratio }] : [];
   });

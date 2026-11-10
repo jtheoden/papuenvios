@@ -44,6 +44,7 @@ vi.mock('@/components/settings/PaymentMethodsStatusCard', () => ({ default: () =
 vi.mock('@/components/settings/SettingsZelleTab', () => ({ default: () => <div>zelle-tab-content</div> }));
 
 import SettingsPage from '@/components/SettingsPage';
+vi.mock('@/components/ui/ConfirmDialog', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) })); // these tests do not exercise confirmations
 
 describe('SettingsPage payments tab label', () => {
   beforeEach(() => {

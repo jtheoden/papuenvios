@@ -34,6 +34,7 @@ vi.mock('@/lib/activityLogger', () => ({ logActivity: vi.fn(async () => ({})) })
 vi.mock('@/hooks/useRealtimeSubscription', () => ({ useRealtimeOffers: () => {} }));
 
 import AdminOffersTab from '@/components/AdminOffersTab';
+vi.mock('@/components/ui/ConfirmDialog', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) })); // these tests do not exercise confirmations
 
 const openForm = async () => {
   render(<AdminOffersTab />);

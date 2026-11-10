@@ -196,25 +196,32 @@ describe('admin combos', () => {
   });
 
   it('createCombo computes base_total_price from the RPC (and stops if the RPC is missing)', async () => {
+    recorder.results.products = () => ({ data: [{ id: 'p1', base_currency_id: 'usd' }], error: null });
+    recorder.results.currencies = () => ({ data: [{ id: 'usd' }], error: null }); // combo currency guard
     recorder.results.combo_products = () => ({ data: { id: 'k9' }, error: null });
     const created = await createCombo({ name: 'C', profitMargin: 10, productsWithQuantities: [{ productId: 'p1', quantity: 3 }] });
     expect(created).toBeTruthy();
-    expect(recorder.selects('products')).toEqual([]);
+    // Costs never come from a direct read; the only products read is the currency guard (id + base_currency_id, no cost column).
+    expect(recorder.selects('products')).toEqual(['id, base_currency_id']);
     const insert = recorder.queries.find((q) => q.table === 'combo_products').calls.find((c) => c.method === 'insert');
     expect(insert.args[0][0].base_total_price).toBe(24);
 
     recorder.reset();
     useRpc({});
+    recorder.results.products = () => ({ data: [{ id: 'p1', base_currency_id: 'usd' }], error: null });
+    recorder.results.currencies = () => ({ data: [{ id: 'usd' }], error: null });
     await expect(
       createCombo({ name: 'C', productsWithQuantities: [{ productId: 'p1', quantity: 3 }] })
     ).rejects.toMatchObject({ code: ADMIN_COST_RPC_UNAVAILABLE });
     expect(recorder.queries.some((q) => q.table === 'combo_products')).toBe(false);
   });
 
-  it('updateCombo recomputes base_total_price from the RPC and never reads products directly', async () => {
+  it('updateCombo recomputes base_total_price from the RPC and never reads product costs directly', async () => {
+    recorder.results.products = () => ({ data: [{ id: 'p1', base_currency_id: 'usd' }], error: null });
+    recorder.results.currencies = () => ({ data: [{ id: 'usd' }], error: null }); // combo currency guard
     recorder.results.combo_products = () => ({ data: { id: 'k1' }, error: null });
     await updateCombo('k1', { name: 'C', profitMargin: 10, productsWithQuantities: [{ productId: 'p1', quantity: 2 }] });
-    expect(recorder.selects('products')).toEqual([]);
+    expect(recorder.selects('products')).toEqual(['id, base_currency_id']);
     const update = recorder.queries.find((q) => q.table === 'combo_products').calls.find((c) => c.method === 'update');
     expect(update.args[0].base_total_price).toBe(16);
   });

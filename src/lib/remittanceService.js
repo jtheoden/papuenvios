@@ -186,6 +186,12 @@ const logRemittancePaymentActivity = async ({ action, remittance, performedBy, d
       amountToDeliver: remittance?.amount_to_deliver,
       currencySent: remittance?.currency_sent,
       currencyDelivered: remittance?.currency_delivered,
+      // Partial remittance objects omit these fields instead of guessing a method, a zero amount or a currency.
+      ...(remittance?.payment_method ? { paymentMethod: remittance.payment_method } : {}),
+      ...(remittance?.amount_sent != null
+        ? { paymentAmount: Number(remittance.amount_sent) + Number(remittance.delivery_cost || 0) }
+        : {}),
+      ...(remittance?.currency_sent ? { paymentCurrency: remittance.currency_sent } : {}),
       paymentReference: remittance?.payment_reference || null,
       ...metadata
     };
@@ -213,50 +219,88 @@ export const DELIVERY_METHODS = {
 // recipient_bank_account_id column now exists in remittances table (added 2026-01-19)
 
 // ============================================================================
-// EXCHANGE RATE HELPERS - Get rate from exchange_rates table with fallback
+// EXCHANGE RATE HELPERS
 // ============================================================================
 
 /**
- * Get exchange rate for remittance from exchange_rates table
- * Uses the rate configured in financial settings (exchange_rates table)
- * Falls back to remittance_type.exchange_rate if no configured rate exists
+ * Get the exchange rate for a remittance.
+ * The type's own rate wins; exchange_rates is used only when the type has none.
  *
  * @param {string} fromCurrencyCode - Source currency code (e.g., 'USD')
  * @param {string} toCurrencyCode - Target currency code (e.g., 'CUP')
- * @param {number} fallbackRate - Fallback rate from remittance_type if not found
- * @returns {Promise<{rate: number, source: 'configured'|'fallback'}>} Exchange rate and its source
+ * @param {number|string|null|undefined} typeRate - Rate configured on the remittance type
+ * @returns {Promise<{rate: number, source: 'type'|'configured'}>} Exchange rate and its source
+ * @throws {AppError} If no valid rate is available for the currency pair
  */
 export const getRemittanceExchangeRate = async (fromCurrencyCode, toCurrencyCode, typeRate) => {
+  const unavailableError = () => new AppError(
+    'The exchange rate for this currency pair is not available.',
+    ERROR_CODES.EXCHANGE_RATE_UNAVAILABLE,
+    503,
+    { from: fromCurrencyCode, to: toCurrencyCode }
+  );
+
   try {
-    // Same currency = 1:1 rate
+    const numericTypeRate = Number(typeRate);
+
+    // Same currency = 1:1 rate, without querying any external configuration.
+    // The type's own rate is not applied there: admins use it as the reference that derives the commission
+    // (market 1.03 / delivery 1.00 -> 2.91%), which is stored in commission_percentage.
     if (fromCurrencyCode === toCurrencyCode) {
       return { rate: 1, source: 'configured' };
     }
 
-    // The type's exchange_rate is authoritative when set (admin configured it explicitly)
-    if (typeRate && typeRate > 0) {
-      return { rate: typeRate, source: 'type' };
+    if (Number.isFinite(numericTypeRate) && numericTypeRate > 0) {
+      return { rate: numericTypeRate, source: 'type' };
     }
 
-    // Fallback to exchange_rates table when the type doesn't have its own rate
-    const configuredRate = await getCurrencyExchangeRate(fromCurrencyCode, toCurrencyCode);
-
-    if (configuredRate && configuredRate > 0) {
+    const configuredRate = Number(await getCurrencyExchangeRate(fromCurrencyCode, toCurrencyCode));
+    if (Number.isFinite(configuredRate) && configuredRate > 0) {
       return { rate: configuredRate, source: 'configured' };
     }
 
-    console.warn(`[getRemittanceExchangeRate] No rate found for ${fromCurrencyCode}→${toCurrencyCode}, using 1`);
-    return { rate: 1, source: 'fallback' };
+    throw unavailableError();
   } catch (error) {
-    // If any error, use type rate or 1
-    console.warn(`[getRemittanceExchangeRate] Error getting rate for ${fromCurrencyCode}→${toCurrencyCode}`, error);
-    return { rate: typeRate || 1, source: 'fallback' };
+    const appError = error?.code === ERROR_CODES.EXCHANGE_RATE_UNAVAILABLE
+      ? error
+      : unavailableError();
+    logError(appError, { operation: 'getRemittanceExchangeRate' });
+    throw appError;
   }
 };
 
 // ============================================================================
 // GESTIÓN DE TIPOS DE REMESAS (ADMIN)
 // ============================================================================
+
+/**
+ * Card / transfer / moneypocket deliveries are paid into the recipient's account: it must be linked to the selected
+ * recipient, active (link and bank account, not deleted) and in the delivery currency.
+ * @throws {AppError} VALIDATION_FAILED when the account is missing or unusable
+ */
+const assertRecipientBankAccount = async ({ recipientId, recipientBankAccountId, deliveryCurrency }) => {
+  const invalid = (message) => createValidationError({ recipient_bank_account_id: message }, 'Bank account required for this delivery method');
+
+  if (!recipientId || !recipientBankAccountId) {
+    throw invalid('Select the recipient and one of their bank accounts or cards');
+  }
+
+  const { data: link, error } = await supabase
+    .from('recipient_bank_accounts')
+    .select('id, recipient_id, is_active, bank_account:bank_accounts!bank_account_id(is_active, deleted_at, currency:currencies!currency_id(code))')
+    .eq('id', recipientBankAccountId)
+    .eq('recipient_id', recipientId)
+    .eq('is_active', true)
+    .single();
+
+  // PGRST116 = no row: the account is not linked to this recipient or is inactive. Anything else is a real failure.
+  if (error && error.code !== 'PGRST116') throw parseSupabaseError(error);
+
+  const account = link?.bank_account;
+  if (!account || account.is_active === false || account.deleted_at || account.currency?.code !== deliveryCurrency) {
+    throw invalid(`The selected account is not an active ${deliveryCurrency} account of this recipient`);
+  }
+};
 
 /**
  * Get all remittance types (Admin)
@@ -686,8 +730,8 @@ export const getCommissionOverride = async (remittanceId) => {
 
 /**
  * Calculate remittance details including exchange rate, commissions, and delivery amount
- * Uses exchange rate from exchange_rates table (financial settings) when available,
- * falls back to remittance_type.exchange_rate if not configured
+ * The type's own rate wins; exchange_rates is used only when the type has none.
+ * If neither provides a valid rate, the calculation throws.
  *
  * @param {string} typeId - Remittance type ID
  * @param {number} amount - Amount to send
@@ -742,7 +786,7 @@ export const calculateRemittance = async (typeId, amount, offer = null) => {
       );
     }
 
-    // Get exchange rate from configured rates (exchange_rates table) or fallback to type rate
+    // The type's own rate wins; exchange_rates is used only when the type has none.
     const { rate: exchangeRate, source: rateSource } = await getRemittanceExchangeRate(
       type.currency_code,
       type.delivery_currency,
@@ -782,8 +826,8 @@ export const calculateRemittance = async (typeId, amount, offer = null) => {
 /**
  * Calculate remittance in REVERSE mode (from desired receive amount)
  * Given how much recipient should receive, calculate how much sender needs to send
- * Uses exchange rate from exchange_rates table (financial settings) when available,
- * falls back to remittance_type.exchange_rate if not configured
+ * The type's own rate wins; exchange_rates is used only when the type has none.
+ * If neither provides a valid rate, the calculation throws.
  *
  * @param {string} typeId - Remittance type UUID
  * @param {number} desiredReceiveAmount - Amount recipient should receive (in delivery currency)
@@ -822,11 +866,11 @@ export const calculateReverseRemittance = async (typeId, desiredReceiveAmount) =
       throw createNotFoundError('Remittance type', typeId);
     }
 
-    // Get exchange rate from configured rates (exchange_rates table) or fallback to type rate
+    // The type's own rate wins; exchange_rates is used only when the type has none.
     const { rate: exchangeRate, source: rateSource } = await getRemittanceExchangeRate(
       type.currency_code,
       type.delivery_currency,
-      type.exchange_rate || 1
+      type.exchange_rate
     );
 
     const commissionPercentage = type.commission_percentage || 0;
@@ -912,8 +956,14 @@ export const createRemittance = async (remittanceData) => {
       recipient_address_id,
       recipient_bank_account_id,
       offer_id,
-      discount_amount: passedDiscountAmount
+      discount_amount: passedDiscountAmount,
+      expectedQuote
     } = remittanceData;
+
+    // The customer pays and the recipient gets exactly what the form showed: the quote shown is mandatory
+    if (!expectedQuote) {
+      throw createValidationError({ expectedQuote: 'The quote shown to the customer is required' }, 'Missing displayed quote');
+    }
 
     // Validate required fields
     if (!remittance_type_id || !amount || !recipient_name || !recipient_phone) {
@@ -956,6 +1006,23 @@ export const createRemittance = async (remittanceData) => {
       deliveryCurrency,
       deliveryMethod
     } = calculation;
+
+    // Live numbers must equal the displayed ones to the cent (rate at its stored 4 decimals); otherwise nothing is stored
+    const actualQuote = { amountSent, amountToDeliver, exchangeRate, commissionTotal: totalCommission };
+    const sameQuote = Object.keys(actualQuote).every((key) => Number(expectedQuote[key]) === actualQuote[key]);
+    if (!sameQuote) {
+      throw new AppError(
+        'The amounts changed since the quote was shown.',
+        ERROR_CODES.REMITTANCE_QUOTE_CHANGED,
+        409,
+        // the discount is not compared (it follows the commission) but the review step must show the live one
+        { expected: expectedQuote, actual: { ...actualQuote, discountAmount: calcDiscountAmount } }
+      );
+    }
+
+    if (deliveryMethod !== DELIVERY_METHODS.CASH) {
+      await assertRecipientBankAccount({ recipientId: recipient_id, recipientBankAccountId: recipient_bank_account_id, deliveryCurrency });
+    }
 
     // Cash deliveries add the destination's shipping cost to what the sender pays (D2).
     // The cost is never deducted from amountToDeliver. shippingService is the only source.
@@ -1042,6 +1109,9 @@ export const createRemittance = async (remittanceData) => {
       recipient_id_number,
       delivery_notes: notes,
       status: REMITTANCE_STATUS.PAYMENT_PENDING,
+      // Remittances currently collect through Zelle only. Persist the origin explicitly
+      // so history/audit feeds do not have to infer it from the linked account.
+      payment_method: 'zelle',
       zelle_account_id: selectedZelleAccountId
     };
 
@@ -1451,6 +1521,46 @@ export const cancelRemittance = async (remittanceId, reason = '') => {
   } catch (error) {
     if (error.code) throw error;
     const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'cancelRemittance', remittanceId });
+    throw appError;
+  }
+};
+
+/**
+ * Cancel a remittance (Admin / Super Admin)
+ * Only payment_pending (no payment proof yet); the server re-checks role, state and reason.
+ * @param {string} remittanceId - Remittance ID to cancel
+ * @param {string} reason - Cancellation reason (required, 1..500 chars)
+ * @returns {Promise<Object>} Updated cancelled remittance
+ */
+export const adminCancelRemittance = async (remittanceId, reason) => {
+  try {
+    const trimmed = (reason || '').trim();
+    if (!remittanceId || !trimmed) {
+      throw createValidationError({
+        remittanceId: !remittanceId ? 'Remittance ID is required' : undefined,
+        reason: !trimmed ? 'Cancellation reason is required' : undefined
+      }, 'Missing required fields for remittance cancellation');
+    }
+
+    const user = await requireAuthUser('adminCancelRemittance');
+
+    const updatedRemittance = await runRemittanceTransition('remittance_admin_cancel', {
+      p_remittance_id: remittanceId,
+      p_reason: trimmed
+    }, remittanceId);
+
+    await logRemittancePaymentActivity({
+      action: 'remittance_cancelled',
+      remittance: updatedRemittance,
+      performedBy: user?.email || user?.id,
+      description: `Remesa cancelada por admin - ${updatedRemittance?.remittance_number || remittanceId}`,
+      metadata: { remittanceId, cancellationReason: trimmed, cancelledBy: user?.id }
+    });
+
+    return updatedRemittance;
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'adminCancelRemittance', remittanceId });
     throw appError;
   }
 };

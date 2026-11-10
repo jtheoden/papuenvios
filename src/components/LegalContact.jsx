@@ -17,7 +17,7 @@ const LegalContact = ({ es }) => {
 
   if (email) {
     return (
-      <a href={`mailto:${email}`} className="text-blue-600 underline">
+      <a href={`mailto:${email}`} className="text-theme-link underline">
         {email}
       </a>
     );
@@ -28,7 +28,7 @@ const LegalContact = ({ es }) => {
 
   if (whatsappUrl) {
     return (
-      <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+      <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="text-theme-link underline">
         {es ? 'WhatsApp de soporte' : 'support WhatsApp'}
       </a>
     );

@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { DollarSign, Bell, Save, Palette, Truck, CreditCard, ShieldAlert, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/use-toast';
@@ -21,6 +22,7 @@ import SettingsCouriersTab from '@/components/settings/couriers/SettingsCouriers
 
 const SettingsPage = () => {
   const { t, language } = useLanguage();
+  const confirm = useConfirm();
   const {
     financialSettings,
     notificationSettings, setNotificationSettings,
@@ -172,7 +174,12 @@ const SettingsPage = () => {
       ? '¿Está seguro de que desea eliminar esta moneda? Esto también eliminará sus tasas de cambio.'
       : 'Are you sure you want to delete this currency? This will also remove its exchange rates.';
 
-    if (!confirm(confirmMessage)) {
+    if (!(await confirm({
+      title: t('common.confirmDialog.deleteTitle'),
+      description: confirmMessage,
+      confirmLabel: t('common.confirmDialog.delete'),
+      variant: 'destructive'
+    }))) {
       return;
     }
 
@@ -309,7 +316,12 @@ const SettingsPage = () => {
 
   const handleDeleteRate = async (rateId) => {
 
-    if (!confirm(language === 'es' ? '¿Eliminar esta tasa?' : 'Delete this rate?')) {
+    if (!(await confirm({
+      title: t('common.confirmDialog.deleteTitle'),
+      description: language === 'es' ? '¿Eliminar esta tasa?' : 'Delete this rate?',
+      confirmLabel: t('common.confirmDialog.delete'),
+      variant: 'destructive'
+    }))) {
       return;
     }
 
@@ -413,6 +425,7 @@ const SettingsPage = () => {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
+                  aria-label={tab.label}
                   className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-6 py-2 sm:py-3 rounded-t-lg font-medium transition-all text-sm sm:text-base whitespace-nowrap ${
                     isActive ? 'shadow-md border-b-2' : ''
                   }`}
@@ -447,7 +460,7 @@ const SettingsPage = () => {
                   }}
                 >
                   <tab.icon className="h-4 w-4 sm:h-5 sm:w-5" />
-                  <span className="hidden xs:inline sm:inline">{tab.label}</span>
+                  <span className="hidden sm:inline">{tab.label}</span>
                 </button>
               );
             })}
@@ -470,6 +483,7 @@ const SettingsPage = () => {
               setLocalVisual={setLocalVisual}
               visualSettings={visualSettings}
               setVisualSettings={setVisualSettings}
+              canChangeTheme={isSuperAdmin}
             />
           )}
 

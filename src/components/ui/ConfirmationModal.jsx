@@ -21,7 +21,7 @@ const ConfirmationModal = ({
   currency = 'USD',
   recipientName,
   itemCount,
-  estimatedDelivery = '24-72 horas',
+  estimatedDelivery = 'Entrega estimada, no garantizada; el plazo depende de la zona.',
   whatsappUrl = '',
   whatsappNumber = '',
   whatsappLoading = false,
@@ -46,12 +46,14 @@ const ConfirmationModal = ({
       itemsLabel: isRemittance ? 'Tipo de envío' : 'Productos',
       itemsValue: isRemittance ? 'Transferencia' : `${itemCount} artículo${itemCount !== 1 ? 's' : ''}`,
       nextStepsTitle: '¿Qué sigue?',
-      stepWhatsapp: 'Opcional: envíanos el comprobante por WhatsApp con el botón de abajo para acelerar la verificación',
-      step1: 'Verificaremos tu comprobante de pago',
+      stepWhatsapp: 'Opcional: envíenos el comprobante por WhatsApp con el botón de abajo para acelerar la verificación',
+      step1: 'Verificaremos su comprobante de pago',
       step2: isRemittance
-        ? 'Procesaremos tu remesa en las próximas horas'
-        : 'Prepararemos tu pedido para envío',
-      step3: 'Te notificaremos cuando esté en camino',
+        ? 'Procesaremos su remesa una vez validado el pago.'
+        : 'Prepararemos su pedido para el envío',
+      step3: isRemittance
+        ? 'Puede seguir el estado y ver el comprobante de entrega en Mis remesas.'
+        : 'Puede seguir el estado de su pedido en Mis pedidos.',
       estimatedLabel: 'Tiempo estimado de entrega',
       viewOrdersBtn: isRemittance ? 'Ver Mis Remesas' : 'Ver Mis Pedidos',
       closeBtn: 'Cerrar',
@@ -78,9 +80,11 @@ const ConfirmationModal = ({
       stepWhatsapp: 'Optional: send us the payment proof via WhatsApp using the button below to speed up verification',
       step1: 'We will verify your payment proof',
       step2: isRemittance
-        ? 'We will process your remittance in the next hours'
+        ? 'We will process your remittance once the payment is validated.'
         : 'We will prepare your order for shipping',
-      step3: 'We will notify you when it\'s on the way',
+      step3: isRemittance
+        ? 'You can follow the status and see the delivery receipt in My remittances.'
+        : 'You can follow the status of your order in My orders.',
       estimatedLabel: 'Estimated delivery time',
       viewOrdersBtn: isRemittance ? 'View My Remittances' : 'View My Orders',
       closeBtn: 'Close',
@@ -100,9 +104,9 @@ const ConfirmationModal = ({
     es: {
       title: '¡Remesa Registrada!',
       subtitle: 'Falta subir tu comprobante de pago',
-      stepWhatsapp: 'Opcional: avísanos por WhatsApp que registraste la remesa con el botón de abajo para acelerar la verificación',
-      step1: 'Sube tu comprobante de pago desde Mis Remesas',
-      step2: 'Procesaremos tu remesa cuando validemos el pago',
+      stepWhatsapp: 'Opcional: avísenos por WhatsApp que registró la remesa con el botón de abajo para acelerar la verificación',
+      step1: 'Suba su comprobante de pago desde Mis Remesas',
+      step2: 'Procesaremos su remesa cuando validemos el pago',
       whatsappSendBtn: 'Avisar al administrador por WhatsApp'
     },
     en: {

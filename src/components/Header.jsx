@@ -1,34 +1,71 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, ShoppingBag, Globe, DollarSign, BarChart3, Settings, ShoppingCart, User as UserIcon, LogIn, LogOut, ShieldCheck, Users, LayoutDashboard, ChevronDown, Crown, Zap, Star, Home, Package, Banknote, BookOpen } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { Button } from '@/components/ui/button';
+import HelpCenter from '@/components/help/HelpCenter';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useBusiness } from '@/contexts/BusinessContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/use-toast';
-import { getPendingOrdersCount } from '@/lib/orderService';
-import { getPendingRemittancesCount } from '@/lib/remittanceService';
-import { getRefundCounts, REFUNDS_CHANGED_EVENT } from '@/lib/refundService';
+import { REFUNDS_CHANGED_EVENT } from '@/lib/refundService';
+import { ADMIN_PENDING_KEY, affectsAdminPending, loadAdminPendingCounts } from '@/lib/adminPendingCounts';
+import { useVisiblePolling, POLL_REALTIME_FALLBACK_MS } from '@/lib/visiblePolling';
 import { useRealtimeOrders, useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
 import { semanticColors } from '@/lib/colorTokens';
 import RoleUnresolvedBanner from '@/components/RoleUnresolvedBanner';
-import { isRefreshBlocked } from '@/lib/refreshGuard';
 import { buildHeaderTheme } from '@/lib/headerTheme';
+import HeaderBrand, { NAV_IDLE, ACTIVE_CUE, NAV_ACTIVE } from '@/components/HeaderBrand';
 
 // Colours come from CSS variables set on the header root (see buildHeaderTheme). Hover and focus
 // are classes, so no inline style can override them.
 const ICON_FOCUS = 'focus-visible:ring-brand-focus';
 const NAV_BASE = `flex items-center space-x-2 motion-reduce:transition-none motion-reduce:active:scale-100 ${ICON_FOCUS}`;
-// shortcut: legacy wordmark gradient (see buildHeaderTheme), until S5 brings the official logo.
-const MARK_GRADIENT = 'bg-[linear-gradient(to_right,var(--hdr-mark-from),var(--hdr-mark-to))]';
-const NAV_IDLE = 'text-[color:var(--hdr-text)] hover:bg-[color:var(--hdr-hover-bg)] hover:text-[color:var(--hdr-hover-text)]';
-// The active state does not rely on colour alone: bold + underline (WCAG 1.4.1).
-const ACTIVE_CUE = 'font-semibold underline decoration-2 underline-offset-4';
-const NAV_ACTIVE = `${ACTIVE_CUE} [background:var(--hdr-active-background)] text-[color:var(--hdr-active-text)] hover:bg-[color:var(--hdr-active-bg)] hover:text-[color:var(--hdr-active-text)]`;
 const PILL_IDLE = 'bg-[color:var(--hdr-pill-bg)] border-[color:var(--hdr-pill-border)] text-[color:var(--hdr-pill-text)] hover:bg-[color:var(--hdr-hover-bg)] hover:text-[color:var(--hdr-hover-text)]';
 const MENU_IDLE = 'text-[color:var(--hdr-menu-text)] hover:bg-[color:var(--hdr-hover-bg)] hover:text-[color:var(--hdr-hover-text)]';
 const MENU_ACTIVE = `${ACTIVE_CUE} bg-[color:var(--hdr-menu-active-bg)] text-[color:var(--hdr-menu-active-text)] hover:bg-[color:var(--hdr-menu-active-bg)] hover:text-[color:var(--hdr-menu-active-text)]`;
+
+/**
+ * Behaviour shared by the header dropdowns: the first item (or the current page's) takes focus on open;
+ * Escape closes and returns focus to the trigger; arrows/Home/End move between items; a press outside or
+ * Tab out closes. Spread `handlers` on the wrapper that holds both the trigger ([aria-haspopup]) and the menu.
+ */
+const useDropdownMenu = (open, setOpen) => {
+  const ref = useRef(null);
+  const items = () => [...ref.current.querySelectorAll('[role="menuitem"]')];
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const list = items();
+    (list.find((el) => el.hasAttribute('aria-current')) || list[0])?.focus();
+    const onPress = (e) => {
+      if (!ref.current?.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onPress);
+    return () => document.removeEventListener('mousedown', onPress);
+  }, [open, setOpen]);
+
+  const onKeyDown = (e) => {
+    if (!open) return;
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      setOpen(false);
+      ref.current.querySelector('[aria-haspopup]')?.focus();
+      return;
+    }
+    const list = items();
+    const at = list.indexOf(document.activeElement);
+    const next = { ArrowDown: (at + 1) % list.length, ArrowUp: (at - 1 + list.length) % list.length, Home: 0, End: list.length - 1 }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    list[next]?.focus();
+  };
+  const onBlur = (e) => {
+    if (open && e.relatedTarget && !ref.current.contains(e.relatedTarget)) setOpen(false);
+  };
+
+  return { ref, handlers: { onKeyDown, onBlur } };
+};
 
 const NavButton = ({ active, current = active, menu = false, icon: Icon, label, className = '', children, ...props }) => {
   const tone = menu ? (active ? MENU_ACTIVE : MENU_IDLE) : (active ? NAV_ACTIVE : NAV_IDLE);
@@ -54,6 +91,11 @@ const Header = ({ currentPage, onNavigate }) => {
   const [pendingCount, setPendingCount] = useState(0);
   const [overdueRefunds, setOverdueRefunds] = useState(0);
   const [isMobileUser, setIsMobileUser] = useState(false);
+  const headerRef = useRef(null);
+  const adminMenuId = useId();
+  const userMenuId = useId();
+  const adminMenu = useDropdownMenu(isAdminMenuOpen, setIsAdminMenuOpen);
+  const userMenu = useDropdownMenu(isUserMenuOpen, setIsUserMenuOpen);
   const { language, setLanguage, t } = useLanguage();
   const { cart, visualSettings } = useBusiness();
   const { user, isAdmin, userRole, userCategory } = useAuth();
@@ -68,6 +110,22 @@ const Header = ({ currentPage, onNavigate }) => {
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Publish the real header height (it grows with the quick-nav row, the open mobile menu and the role
+  // banner) so fixed elements under it, like ZelleAccountAlert, can sit right below instead of guessing.
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return undefined;
+    const root = document.documentElement;
+    const publish = () => root.style.setProperty('--header-h', `${el.offsetHeight}px`);
+    publish();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(publish);
+    observer?.observe(el);
+    return () => {
+      observer?.disconnect();
+      root.style.removeProperty('--header-h');
+    };
   }, []);
 
   // Quick nav items for mobile users (non-admin)
@@ -117,41 +175,30 @@ const Header = ({ currentPage, onNavigate }) => {
 
   const isAdminRole = userRole === 'admin' || userRole === 'super_admin';
 
-  // Pending work for admins: orders + remittances + refunds that can be paid today (past the 48 h hold).
-  // A failing source counts as 0 without hiding the others.
-  // While the token refresh is blocked the requests would go out anonymous and read as 0: keep the last badge.
-  const loadPendingCount = useCallback(async () => {
-    if (isRefreshBlocked()) return;
-    const [orders, remittances, refunds] = await Promise.all([
-      getPendingOrdersCount().catch((error) => {
-        console.error('Error loading pending orders:', error);
-        return 0;
-      }),
-      getPendingRemittancesCount(),
-      getRefundCounts().catch(() => ({ actionable: 0, overdue: 0 }))
-    ]);
-    setPendingCount((orders || 0) + (remittances || 0) + (refunds?.actionable || 0));
-    setOverdueRefunds(refunds?.overdue || 0);
-  }, []);
+  // Pending work for admins: orders + remittances + refunds that can be paid today (past the 48 h hold), one shared
+  // resource (see adminPendingCounts). Realtime and own writes refresh it at once; the poll is only a safety net and
+  // stops while the tab is hidden. While the token refresh is blocked the poller keeps the last badge (anonymous
+  // requests would read as 0).
+  const refreshPendingCount = useVisiblePolling(ADMIN_PENDING_KEY, loadAdminPendingCounts, {
+    enabled: isAdminRole,
+    intervalMs: POLL_REALTIME_FALLBACK_MS,
+    refreshOnWrite: affectsAdminPending,
+    onData: ({ orders, remittances, refunds }) => {
+      setPendingCount(orders + remittances + (refunds?.actionable || 0));
+      setOverdueRefunds(refunds?.overdue || 0);
+    }
+  });
 
-  // Initial load + 30s polling as a safety net in case a realtime event is missed
+  // The refunds screen announces a resolution so the badge drops without waiting for the poll
   useEffect(() => {
     if (!isAdminRole) return undefined;
-    loadPendingCount();
-    const interval = setInterval(loadPendingCount, 30000);
-    return () => clearInterval(interval);
-  }, [isAdminRole, loadPendingCount]);
-
-  // The refunds screen announces a resolution so the badge drops without waiting for the 30 s poll
-  useEffect(() => {
-    if (!isAdminRole) return undefined;
-    window.addEventListener(REFUNDS_CHANGED_EVENT, loadPendingCount);
-    return () => window.removeEventListener(REFUNDS_CHANGED_EVENT, loadPendingCount);
-  }, [isAdminRole, loadPendingCount]);
+    window.addEventListener(REFUNDS_CHANGED_EVENT, refreshPendingCount);
+    return () => window.removeEventListener(REFUNDS_CHANGED_EVENT, refreshPendingCount);
+  }, [isAdminRole, refreshPendingCount]);
 
   // Real time: any change in orders/remittances (e.g. a new remittance registered) refreshes the badge
-  useRealtimeOrders({ onUpdate: loadPendingCount, enabled: isAdminRole });
-  useRealtimeRemittances({ onUpdate: loadPendingCount, enabled: isAdminRole });
+  useRealtimeOrders({ onUpdate: refreshPendingCount, enabled: isAdminRole });
+  useRealtimeRemittances({ onUpdate: refreshPendingCount, enabled: isAdminRole });
 
   const getCategoryIndicatorConfig = (categoryName) => {
     const normalized = categoryName || 'regular';
@@ -188,6 +235,7 @@ const Header = ({ currentPage, onNavigate }) => {
 
   return (
     <motion.header
+      ref={headerRef}
       initial={{ y: -100 }}
       animate={{ y: 0 }}
       className="fixed top-0 left-0 right-0 z-40 backdrop-blur-md shadow-sm"
@@ -200,28 +248,7 @@ const Header = ({ currentPage, onNavigate }) => {
             className="flex items-center gap-1 sm:gap-2 cursor-pointer min-w-0 flex-shrink-0"
             onClick={() => handleNavClick('home')}
           >
-            {visualSettings.logo ? (
-              <img
-                src={visualSettings.logo}
-                alt={visualSettings.companyName || 'Logo'}
-                className="object-contain flex-shrink-0"
-                style={{
-                  maxHeight: `${visualSettings.logoMaxHeight || 40}px`,
-                  width: 'auto'
-                }}
-              />
-            ) : legacyMark && (
-              <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${MARK_GRADIENT}`}>
-                <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-              </div>
-            )}
-            {(visualSettings.showCompanyName !== false) && (
-              <span
-                className={`text-sm sm:text-xl font-bold truncate max-w-[100px] sm:max-w-none ${legacyMark ? `${MARK_GRADIENT} bg-clip-text text-transparent` : ''}`}
-              >
-                {visualSettings?.companyName || 'PapuEnvíos'}
-              </span>
-            )}
+            <HeaderBrand settings={visualSettings} legacyMark={legacyMark} />
           </motion.div>
 
           {/* Desktop Navigation */}
@@ -239,12 +266,14 @@ const Header = ({ currentPage, onNavigate }) => {
 
             {/* Admin dropdown */}
             {isAdmin && (
-              <div className="relative">
+              <div className="relative" ref={adminMenu.ref} {...adminMenu.handlers}>
                 <NavButton
                   active={adminIsActive}
                   current={false}
                   icon={ShieldCheck}
                   label="Admin"
+                  aria-haspopup="true"
+                  aria-controls={adminMenuId}
                   aria-expanded={isAdminMenuOpen}
                   onClick={() => setIsAdminMenuOpen(!isAdminMenuOpen)}
                 >
@@ -254,6 +283,8 @@ const Header = ({ currentPage, onNavigate }) => {
                 <AnimatePresence>
                   {isAdminMenuOpen && (
                     <motion.div
+                      id={adminMenuId}
+                      role="menu"
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
@@ -263,6 +294,7 @@ const Header = ({ currentPage, onNavigate }) => {
                         <NavButton
                           key={item.id}
                           menu
+                          role="menuitem"
                           active={currentPage === item.id}
                           icon={item.icon}
                           label={item.label}
@@ -278,6 +310,13 @@ const Header = ({ currentPage, onNavigate }) => {
           </nav>
 
           <div className="flex items-center gap-0.5 sm:gap-2 flex-shrink-0">
+            {isAdmin && (
+              <HelpCenter
+                userRole={userRole}
+                language={language}
+                t={t}
+              />
+            )}
             {/* Desktop language selector */}
             <Button
               variant="brand-outline"
@@ -318,10 +357,13 @@ const Header = ({ currentPage, onNavigate }) => {
 
             {user ? (
               /* Authenticated: Avatar with dropdown menu */
-              <div className="relative">
+              <div className="relative" ref={userMenu.ref} {...userMenu.handlers}>
                 <Button
                   variant="ghost"
                   size="icon"
+                  aria-haspopup="true"
+                  aria-controls={userMenuId}
+                  aria-expanded={isUserMenuOpen}
                   onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                   className={`relative h-8 w-8 sm:h-9 sm:w-9 ${ICON_FOCUS}`}
                 >
@@ -364,33 +406,39 @@ const Header = ({ currentPage, onNavigate }) => {
                         onClick={() => setIsUserMenuOpen(false)}
                       />
                       <motion.div
+                        id={userMenuId}
+                        role="menu"
                         initial={{ opacity: 0, y: -10, scale: 0.95 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -10, scale: 0.95 }}
                         transition={{ duration: 0.15 }}
-                        className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-200 py-2 z-50"
+                        className="absolute right-0 top-full mt-2 w-48 bg-[color:var(--hdr-menu-bg)] text-[color:var(--hdr-menu-text)] rounded-xl shadow-xl border border-[color:var(--brand-border)] py-2 z-50"
                       >
                         {/* User Panel */}
                         <button
+                          type="button"
+                          role="menuitem"
                           onClick={() => {
                             onNavigate('user-panel');
                             setIsUserMenuOpen(false);
                           }}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                          className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${MENU_IDLE} ${ICON_FOCUS} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset`}
                         >
                           <UserIcon className="w-4 h-4" />
                           {language === 'es' ? 'Panel de Usuario' : 'User Panel'}
                         </button>
 
-                        <div className="border-t border-gray-100 my-1" />
+                        <div className="border-t border-[color:var(--brand-border)] my-1" />
 
                         {/* Logout */}
                         <button
+                          type="button"
+                          role="menuitem"
                           onClick={() => {
                             handleLogout();
                             setIsUserMenuOpen(false);
                           }}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                          className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors ${ICON_FOCUS} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset`}
                         >
                           <LogOut className="w-4 h-4" />
                           {language === 'es' ? 'Salir' : 'Logout'}
@@ -423,6 +471,7 @@ const Header = ({ currentPage, onNavigate }) => {
         {/* Mobile Quick Navigation Pills for Regular Users - UX optimized for elderly users */}
         {showQuickNav && (
           <motion.div
+            data-testid="quick-nav"
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             className="border-t border-[color:var(--hdr-pills-divider)] py-2 px-1"
@@ -436,13 +485,14 @@ const Header = ({ currentPage, onNavigate }) => {
                     whileTap={{ scale: 0.95 }}
                     onClick={() => handleNavClick(item.id)}
                     aria-current={isActive ? 'page' : undefined}
-                    className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-colors duration-200 min-w-[85px] justify-center shadow-sm border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus motion-reduce:transition-none ${
+                    className={`flex flex-1 min-w-0 min-[360px]:flex-none min-[360px]:min-w-[85px] items-center justify-center gap-1 min-[360px]:gap-1.5 px-2 min-[360px]:px-3 py-2 rounded-full text-xs min-[360px]:text-sm font-medium transition-colors duration-200 shadow-sm border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-focus motion-reduce:transition-none ${
                       isActive
                         ? `border-transparent ${NAV_ACTIVE}`
                         : `border-[1.5px] ${PILL_IDLE}`
                     }`}
                   >
-                    <item.icon className="w-4 h-4" />
+                    {/* below 360 px the icon yields its width to the label ("Remittances" does not fit next to it at 320) */}
+                    <item.icon className="w-4 h-4 max-[359px]:hidden" />
                     <span className="truncate">{item.label}</span>
                   </motion.button>
                 );

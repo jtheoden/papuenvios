@@ -13,7 +13,7 @@ import { processImage } from '@/lib/imageUtils';
 import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingService';
 import { getSelectableProvinces, getShippingState, isShippingBlocked, resolveShippingZone } from '@/lib/shippingZoneRules';
 import { getMunicipalitiesByProvince } from '@/lib/cubanLocations';
-import { convertCurrency } from '@/lib/currencyService';
+import { convertCurrency, getLiveConversionRate, invalidateRateCaches } from '@/lib/currencyService';
 import { generateWhatsAppURL, buildAdminNewPaymentWhatsAppUrl, openWhatsAppChat } from '@/lib/whatsappService';
 import { getActiveWhatsappRecipient, getGuidedWhatsappPhone, getFreshNotificationSettings } from '@/lib/notificationSettingsService';
 import { createOrder, uploadPaymentProof } from '@/lib/orderService';
@@ -25,7 +25,7 @@ import { pickAvailableZelleAccount, registerZelleTransaction, ZELLE_TRANSACTION_
 import { FILE_SIZE_LIMITS, ALLOWED_IMAGE_TYPES } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
 import { calculateOrderTotal } from '@/lib/priceCalculationService';
-import { getCartItemUnitPrice, buildCartLines, withStoredComboPrice } from '@/lib/cartPricing';
+import { getCartItemUnitPrice, buildCartLines, buildCartLinesLive, withStoredComboPrice } from '@/lib/cartPricing';
 import { roundMoney } from '@/lib/moneyPure';
 import { validateAndGetOffer, recordOfferUsage } from '@/lib/orderDiscountService';
 import { buildDiscountBreakdown } from '@/lib/discountDisplayService';
@@ -43,6 +43,7 @@ import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { isPaymentMethodEnabled, isPaymentMethodDisabledError, PAYMENT_FLOWS } from '@/lib/paymentMethodsService';
 import { useModal } from '@/contexts/ModalContext';
 import RegulatoryNotice from '@/components/RegulatoryNotice';
+import BeforePayingNotice from '@/components/BeforePayingNotice';
 import LegalConsentLine from '@/components/LegalConsentLine';
 
 const STOCK_REFUSAL_MESSAGE_KEYS = {
@@ -785,6 +786,37 @@ const CartPage = ({ onNavigate }) => {
         return;
       }
 
+      // The cart shows prices converted with the (briefly cached) display rates; the order stores them, so they are
+      // re-priced with rates read live. Both paths resolve a pair the same way (direct rate first, else the inverse),
+      // so they only differ when a rate really moved. Then nothing is created: invalidateRateCaches reloads the display
+      // rates (the confirm button stays disabled while any line is unpriced), the cart shows the live amounts and the
+      // next confirmation converges.
+      const liveLines = await buildCartLinesLive(
+        cart,
+        (item, convert) => getCartItemUnitPrice(withStoredComboPrice(item, combos), { baseCurrencyId, convertAmount: convert }),
+        (from, to) => getLiveConversionRate(from, to)
+      );
+      if (liveLines.rateReadFailed) {
+        toast({
+          title: t('common.error'),
+          description: t('cart.rateCheckFailed'),
+          variant: 'destructive'
+        });
+        return;
+      }
+      const pricesMoved = liveLines.hasInvalidLines
+        || liveLines.subtotal !== cartLines.subtotal
+        || liveLines.lines.some((line, index) => line.unitPrice !== cartLines.lines[index]?.unitPrice);
+      if (pricesMoved) {
+        invalidateRateCaches();
+        toast({
+          title: t('common.error'),
+          description: t('cart.pricesUpdated'),
+          variant: 'destructive'
+        });
+        return;
+      }
+
       // The order is always saved in the base currency: cart amounts are USD (selectedCurrency
       // only drives the display conversion).
       const currency = currencies.find(c => c.id === baseCurrencyId);
@@ -1433,6 +1465,14 @@ const CartPage = ({ onNavigate }) => {
 
           <RegulatoryNotice onNavigate={onNavigate} className="mb-4" />
 
+          {/* Orders are USD-only goods: no exchange rate, fee or recipient amount to show */}
+          <BeforePayingNotice
+            onNavigate={onNavigate}
+            deliveryCost={`${BASE_CURRENCY_SYMBOL}${shippingCost.toFixed(2)} ${BASE_CURRENCY_CODE}`}
+            total={`${BASE_CURRENCY_SYMBOL}${totalDisplay} ${BASE_CURRENCY_CODE}`}
+            className="mb-4"
+          />
+
           <div className="space-y-3">
             <LegalConsentLine variant="confirm" onNavigate={onNavigate} />
             <div className="flex gap-3">
@@ -1449,7 +1489,7 @@ const CartPage = ({ onNavigate }) => {
                 className="flex-1"
                 size="lg"
                 style={getPrimaryButtonStyle(visualSettings)}
-                disabled={paymentBlocker !== null || uploadingProof || processingPayment || zelleOrdersBlocked}
+                disabled={paymentBlocker !== null || uploadingProof || processingPayment || zelleOrdersBlocked || cartLines.hasInvalidLines}
               >
                 {processingPayment ? t('cart.payment.processing') : t('cart.payment.confirm')}
               </Button>
@@ -1528,8 +1568,8 @@ const CartPage = ({ onNavigate }) => {
             <Button onClick={() => onNavigate('products')} style={getPrimaryButtonStyle(visualSettings)}>{t('cart.browse')}</Button>
           </motion.div>
         ) : (
-          <div className="grid lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 min-w-0 space-y-4">
               {cart.map((item, index) => {
                 const itemPrice = cartLines.lines[index].unitPrice;
                 const itemTotal = cartLines.lines[index].totalPrice;
@@ -1546,72 +1586,79 @@ const CartPage = ({ onNavigate }) => {
 
                 return (
                   <motion.div key={item.id} layout className="glass-effect p-4 rounded-2xl">
-                    <div className="flex items-start gap-4">
-                      {/* Product Image */}
-                      <div className="w-24 h-24 rounded-lg flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden">
-                        {displayImage ? (
-                          <img
-                            className="w-full h-full object-cover"
-                            alt={displayName}
-                            src={displayImage}
-                            onError={(e) => {
-                              e.target.style.display = 'none';
-                              e.target.nextElementSibling?.classList.remove('hidden');
-                            }}
-                          />
-                        ) : null}
-                        <div className={`w-full h-full flex items-center justify-center ${displayImage ? 'hidden' : ''}`}>
-                          <Package className="w-10 h-10 text-gray-300" />
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+                      <div className="flex min-w-0 items-start gap-4 sm:flex-grow">
+                        {/* Product Image */}
+                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden">
+                          {displayImage ? (
+                            <img
+                              className="w-full h-full object-cover"
+                              alt={displayName}
+                              src={displayImage}
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.nextElementSibling?.classList.remove('hidden');
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-full h-full flex items-center justify-center ${displayImage ? 'hidden' : ''}`}>
+                            <Package className="w-10 h-10 text-gray-300" />
+                          </div>
+                        </div>
+
+                        {/* Product Info */}
+                        <div className="flex-grow min-w-0">
+                          <h3 className="font-semibold text-gray-800 mb-1 break-words">
+                            {displayName}
+                            {isCombo && <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">COMBO</span>}
+                          </h3>
+                          <p className="text-sm text-gray-500 mb-2">
+                            {language === 'es' ? 'Precio unitario: ' : 'Unit price: '}
+                            <span className="font-semibold" style={{ color: visualSettings.accentColor || '#9333ea' }}>
+                              {displayCurrencySymbol}{convertedItemPrice.toFixed(2)} {displayCurrencyCode}
+                            </span>
+                          </p>
+                          <p className="text-base font-bold text-gray-900">
+                            {language === 'es' ? 'Subtotal: ' : 'Subtotal: '}{displayCurrencySymbol}{convertedItemTotal.toFixed(2)} {displayCurrencyCode}
+                          </p>
                         </div>
                       </div>
 
-                      {/* Product Info */}
-                      <div className="flex-grow min-w-0">
-                        <h3 className="font-semibold text-gray-800 mb-1">
-                          {displayName}
-                          {isCombo && <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">COMBO</span>}
-                        </h3>
-                        <p className="text-sm text-gray-500 mb-2">
-                          {language === 'es' ? 'Precio unitario: ' : 'Unit price: '}
-                          <span className="font-semibold" style={{ color: visualSettings.accentColor || '#9333ea' }}>
-                            {displayCurrencySymbol}{convertedItemPrice.toFixed(2)} {displayCurrencyCode}
-                          </span>
-                        </p>
-                        <p className="text-base font-bold text-gray-900">
-                          {language === 'es' ? 'Subtotal: ' : 'Subtotal: '}{displayCurrencySymbol}{convertedItemTotal.toFixed(2)} {displayCurrencyCode}
-                        </p>
-                      </div>
+                      {/* Quantity Controls + Remove: below the text under sm, inline from sm */}
+                      <div className="flex items-center justify-between gap-4 sm:items-start sm:justify-start">
+                        <div className="flex items-center space-x-2 flex-shrink-0">
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => updateCartQuantity(item.id, item.quantity - 1)}
+                            aria-label={t('cart.item.decrease', { name: displayName })}
+                            className="h-11 w-11 sm:h-8 sm:w-8"
+                          >
+                            <Minus className="h-4 w-4" />
+                          </Button>
+                          <span className="w-8 text-center font-semibold">{item.quantity}</span>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => updateCartQuantity(item.id, item.quantity + 1)}
+                            aria-label={t('cart.item.increase', { name: displayName })}
+                            className="h-11 w-11 sm:h-8 sm:w-8"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
 
-                      {/* Quantity Controls */}
-                      <div className="flex items-center space-x-2 flex-shrink-0">
+                        {/* Remove Button */}
                         <Button
                           size="icon"
-                          variant="outline"
-                          onClick={() => updateCartQuantity(item.id, item.quantity - 1)}
-                          className="h-8 w-8"
+                          variant="ghost"
+                          onClick={() => removeFromCart(item.id)}
+                          aria-label={t('cart.item.remove', { name: displayName })}
+                          className="h-11 w-11 flex-shrink-0 sm:h-10 sm:w-10"
                         >
-                          <Minus className="h-4 w-4" />
-                        </Button>
-                        <span className="w-8 text-center font-semibold">{item.quantity}</span>
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          onClick={() => updateCartQuantity(item.id, item.quantity + 1)}
-                          className="h-8 w-8"
-                        >
-                          <Plus className="h-4 w-4" />
+                          <X className="h-5 w-5 text-red-500" />
                         </Button>
                       </div>
-
-                      {/* Remove Button */}
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => removeFromCart(item.id)}
-                        className="flex-shrink-0"
-                      >
-                        <X className="h-5 w-5 text-red-500" />
-                      </Button>
                     </div>
                   </motion.div>
                 );
@@ -1747,7 +1794,7 @@ const CartPage = ({ onNavigate }) => {
         currency={confirmedOrderInfo?.currency}
         recipientName={confirmedOrderInfo?.recipientName}
         itemCount={confirmedOrderInfo?.itemCount}
-        estimatedDelivery={language === 'es' ? '24-72 horas' : '24-72 hours'}
+        estimatedDelivery={t('cart.payment.estimatedDelivery')}
         whatsappUrl={confirmedOrderInfo?.whatsappUrl}
         whatsappNumber={confirmedOrderInfo?.whatsappNumber}
         whatsappLoading={confirmedOrderInfo?.whatsappLoading}

@@ -13,3 +13,9 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
     disconnect() {}
   };
 }
+
+// LoadingState keeps a shown skeleton for MIN_VISIBLE_MS. On a loaded machine a render passes the 300 ms show delay,
+// and the held skeleton (role="status") then coexists with the page's own status notices: tests flaked. In tests the
+// skeleton goes away as soon as loading ends; LoadingState.test.jsx restores the real timing.
+import { loadingTiming } from '@/components/ui/loadingTiming';
+loadingTiming.minVisibleMs = 0;

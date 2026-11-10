@@ -40,7 +40,7 @@ const TabsResponsive = ({ tabs, activeTab, onTabChange, visualSettings: propVisu
     <div className="w-full">
       {/* Desktop View (md+) */}
       <div
-        className="hidden md:flex border-b"
+        className="hidden md:flex md:flex-wrap border-b"
         style={{ borderBottomColor: semanticColors.neutral[200] }}
       >
         {tabs.map(tab => (
@@ -78,7 +78,7 @@ const TabsResponsive = ({ tabs, activeTab, onTabChange, visualSettings: propVisu
                 e.currentTarget.style.backgroundColor = tabInactiveBgColor;
               }
             }}
-            className="px-6 py-3 font-medium text-sm transition-colors rounded-t-lg"
+            className="px-6 py-3 font-medium text-sm transition-colors rounded-t-lg whitespace-nowrap"
           >
             {t(tab.label)}
           </button>

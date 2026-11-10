@@ -67,12 +67,13 @@ describe('BRAND_PRESET', () => {
     expect(BRAND_PRESET.useHeaderGradient).toBe(false);
   });
 
-  it('keeps every colour value a valid HEX and leaves primary/secondary untouched', () => {
+  it('defines coherent identity colours and a palette-derived header gradient endpoint', () => {
     for (const [key, value] of Object.entries(BRAND_PRESET)) {
       if (typeof value === 'string') expect(isHexColor(value), key).toBe(true);
     }
-    expect(BRAND_PRESET).not.toHaveProperty('primaryColor');
-    expect(BRAND_PRESET).not.toHaveProperty('secondaryColor');
+    expect(BRAND_PRESET.primaryColor).toBe(BRAND_PALETTE.charcoal);
+    expect(BRAND_PRESET.secondaryColor).toBe(BRAND_PALETTE.warmGray);
+    expect(BRAND_PRESET.headerGradientColor).toBe(BRAND_PRESET.secondaryColor);
   });
 
   it('passes the AA contrast check on every pair it defines', () => {
@@ -141,5 +142,51 @@ describe('BRAND_CSS_VARS', () => {
     for (const key of Object.keys(BRAND_CSS_VARS)) {
       expect(DEFAULT_VISUAL_SETTINGS, key).toHaveProperty(key);
     }
+  });
+});
+
+describe('getContrastIssues: footer pairs (S4)', () => {
+  const base = { ...DEFAULT_VISUAL_SETTINGS };
+
+  it('flags footer text and footer link colours that do not reach 4.5:1 on the footer background', () => {
+    const issues = getContrastIssues({
+      ...base,
+      footerBgColor: '#ffffff',
+      footerTextColor: '#cccccc',
+      footerLinkColor: '#dddddd',
+    });
+    expect(issues.map((i) => i.id).sort()).toEqual(['footerLink', 'footerText']);
+  });
+
+  it('accepts the preset footer (warm grey text and charcoal links on white)', () => {
+    expect(getContrastIssues({ ...base, ...BRAND_PRESET }).map((i) => i.id)).not.toContain('footerText');
+    expect(getContrastIssues({ ...base, ...BRAND_PRESET }).map((i) => i.id)).not.toContain('footerLink');
+  });
+});
+
+describe('getContrastIssues: footer hover, company name and legacy opacity (S4 review)', () => {
+  const base = { ...DEFAULT_VISUAL_SETTINGS };
+
+  it('checks the link hover colour on the footer background', () => {
+    const issues = getContrastIssues({ ...base, footerLinkHoverColor: '#dddddd' });
+    expect(issues.map((i) => i.id)).toContain('footerLinkHover');
+  });
+
+  it('checks the company name: primaryColor while useGradient is on, headingColor once it is off', () => {
+    expect(getContrastIssues({ ...base, useGradient: true, primaryColor: '#3499dc' }).map((i) => i.id)).toContain('footerBrand');
+    expect(getContrastIssues({ ...base, useGradient: false, primaryColor: '#3499dc', headingColor: '#171717' }).map((i) => i.id)).not.toContain('footerBrand');
+    expect(getContrastIssues({ ...base, useGradient: false, headingColor: '#cccccc' }).map((i) => i.id)).toContain('footerBrand');
+  });
+
+  it('measures the footer text at the 80% opacity the legacy look paints it with', () => {
+    // #6b7280 on white is 4.83:1 at full opacity but ~3.4:1 at 80%
+    const grey = { ...base, footerBgColor: '#ffffff', footerTextColor: '#6b7280' };
+    expect(getContrastIssues({ ...grey, useGradient: true }).map((i) => i.id)).toContain('footerText');
+    expect(getContrastIssues({ ...grey, useGradient: false }).map((i) => i.id)).not.toContain('footerText');
+  });
+
+  it('stays silent for the shipped defaults and the preset', () => {
+    expect(getContrastIssues(base)).toEqual([]);
+    expect(getContrastIssues({ ...base, ...BRAND_PRESET })).toEqual([]);
   });
 });

@@ -30,11 +30,11 @@ Requisitos antes de CADA paso: backup/PITR reciente confirmado en el panel de Su
 | Paso | Archivo | `name` en `apply_migration` | Qué hace | Previo | Rollback |
 |---|---|---|---|---|---|
 | — | `20261103124844_exchange_rates_super_admin_write.sql` | — | Policy `exchange_rates_manage` solo super_admin | **YA aplicada en prod** (misma versión). NO aplicar | `..._down.sql` |
-| 1 | `20261104160200_exchange_rates_validate_distinct_currencies.sql` | `exchange_rates_validate_distinct_currencies` | `VALIDATE CONSTRAINT` | Justo antes: `SELECT count(*) FROM exchange_rates WHERE from_currency_id = to_currency_id;` = 0 | `..._down.sql` (NOT VALID otra vez) |
-| 2 | `20261104160300_revoke_rate_readers_from_anon.sql` | `revoke_rate_readers_from_anon` | Quita EXECUTE a PUBLIC/anon en `get_order_exchange_rate` / `get_market_exchange_rate` | — | `..._down.sql` (ACL exacta previa) |
-| 3 | `20261104160400_get_my_role_is_enabled.sql` | `get_my_role_is_enabled` | `get_my_role()` = 'user' si la cuenta no está habilitada | — | `..._down.sql` (cuerpo exacto previo) |
-| 4 | `20261104160100_exchange_rate_history.sql` | `exchange_rate_history` | Tabla append-only + 6 triggers AFTER (INSERT/UPDATE/DELETE en `exchange_rates` y `remittance_types`) | — | `..._down.sql` (quita triggers, **conserva** tabla y filas) |
-| 5 | `20261104160000_remittance_types_pricing_super_admin_only.sql` | `remittance_types_pricing_super_admin_only` | Solo super_admin crea tipos o cambia tasa, comisiones o par de monedas; trigger `updated_at` | **Solo después de desplegar el front F2** (rama `fix/financial-client-hardening`, commit 64ad7da9: oculta "Nuevo tipo" y los campos de tasa y comisión a quien no es super_admin, cuyo guardado no envía esas columnas) | `..._down.sql` |
+| 1 | `20261111120200_exchange_rates_validate_distinct_currencies.sql` | `exchange_rates_validate_distinct_currencies` | `VALIDATE CONSTRAINT` | Justo antes: `SELECT count(*) FROM exchange_rates WHERE from_currency_id = to_currency_id;` = 0 | `..._down.sql` (NOT VALID otra vez) |
+| 2 | `20261111120300_revoke_rate_readers_from_anon.sql` | `revoke_rate_readers_from_anon` | Quita EXECUTE a PUBLIC/anon en `get_order_exchange_rate` / `get_market_exchange_rate` | — | `..._down.sql` (ACL exacta previa) |
+| 3 | `20261111120400_get_my_role_is_enabled.sql` | `get_my_role_is_enabled` | `get_my_role()` = 'user' si la cuenta no está habilitada | — | `..._down.sql` (cuerpo exacto previo) |
+| 4 | `20261111120100_exchange_rate_history.sql` | `exchange_rate_history` | Tabla append-only + 6 triggers AFTER (INSERT/UPDATE/DELETE en `exchange_rates` y `remittance_types`) | — | `..._down.sql` (quita triggers, **conserva** tabla y filas) |
+| 5 | `20261111120000_remittance_types_pricing_super_admin_only.sql` | `remittance_types_pricing_super_admin_only` | Solo super_admin crea tipos o cambia tasa, comisiones o par de monedas; trigger `updated_at` | **Solo después de desplegar el front F2** (rama `fix/financial-client-hardening`, commit 64ad7da9: oculta "Nuevo tipo" y los campos de tasa y comisión a quien no es super_admin, cuyo guardado no envía esas columnas) | `..._down.sql` |
 
 ### Tras CADA `apply_migration`: alinear el repo con la versión que asigna prod (no ampliar la deriva)
 1. Ver la versión asignada: `list_migrations` (MCP) o
@@ -43,7 +43,7 @@ Requisitos antes de CADA paso: backup/PITR reciente confirmado en el panel de Su
 2. En una rama del repo, renombrar migración y rollback a esa versión:
    `git mv supabase/migrations/<TS>_<name>.sql supabase/migrations/<V>_<name>.sql` y
    `git mv supabase/rollbacks/<TS>_<name>_down.sql supabase/rollbacks/<V>_<name>_down.sql`. Actualizar las referencias:
-   el mapa `M` de `src/tests/concurrency/financialDbHardeningF3.test.js`, la expresión `^20261104160[0-3]00_` de la allowlist
+   el mapa `M` de `src/tests/concurrency/financialDbHardeningF3.test.js`, la expresión `^20261111120[0-3]00_` de la allowlist
    de `rateFunctionsAndConstraints.test.js`, las líneas "ROLLBACK:" de las cabeceras y este runbook. Cambiar también la
    cabecera a "APPLIED IN PROD as <V>".
 3. Repetir la consulta del paso 1: `ls supabase/migrations | grep <V>` debe coincidir con la fila de prod. Hay una
@@ -100,7 +100,7 @@ Requisitos antes de CADA paso: backup/PITR reciente confirmado en el panel de Su
 3. Rojo real: `F3_SKIP_MIGRATION=1` solo evita volver a aplicar las migraciones en `beforeAll`. Sobre una scratch ya
    bootstrapeada NO da rojo. Para reproducirlo:
    - Deshacer F3 en esa scratch:
-     `psql "$STOCK_TEST_DB_URL" -v ON_ERROR_STOP=1 -f supabase/rollbacks/20261104160000_remittance_types_pricing_super_admin_only_down.sql -f supabase/rollbacks/20261104160100_exchange_rate_history_down.sql -f supabase/rollbacks/20261104160200_exchange_rates_validate_distinct_currencies_down.sql -f supabase/rollbacks/20261104160300_revoke_rate_readers_from_anon_down.sql -f supabase/rollbacks/20261104160400_get_my_role_is_enabled_down.sql -c 'DROP TABLE IF EXISTS public.exchange_rate_history; DROP FUNCTION IF EXISTS public.exchange_rate_history_block_mutation()'`
+     `psql "$STOCK_TEST_DB_URL" -v ON_ERROR_STOP=1 -f supabase/rollbacks/20261111120000_remittance_types_pricing_super_admin_only_down.sql -f supabase/rollbacks/20261111120100_exchange_rate_history_down.sql -f supabase/rollbacks/20261111120200_exchange_rates_validate_distinct_currencies_down.sql -f supabase/rollbacks/20261111120300_revoke_rate_readers_from_anon_down.sql -f supabase/rollbacks/20261111120400_get_my_role_is_enabled_down.sql -c 'DROP TABLE IF EXISTS public.exchange_rate_history; DROP FUNCTION IF EXISTS public.exchange_rate_history_block_mutation()'`
    - Ejecutar `F3_SKIP_MIGRATION=1 npx vitest run --config src/tests/concurrency/vitest.config.js src/tests/concurrency/financialDbHardeningF3.test.js`
      (dio 24 fallos el 2026-11-05).
    - Para `exchangeRatesSuperAdminWrite.test.js`, ejecutar antes su `_down.sql`.

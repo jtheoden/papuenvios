@@ -1,5 +1,26 @@
 {
+  "helpCenter": {
+    "trigger": "Ayuda para administración",
+    "shortLabel": "Ayuda",
+    "title": "Ayuda de administración",
+    "description": "Respuestas rápidas sobre tareas y precauciones",
+    "topics": "Temas de ayuda",
+    "close": "Cerrar ayuda",
+    "searchLabel": "Buscar en esta sección",
+    "searchPlaceholder": "Buscar una respuesta…",
+    "noResults": "No encontramos respuestas para esa búsqueda.",
+    "disclaimer": "Ayuda informativa estática; no ejecuta acciones ni reemplaza los procedimientos oficiales."
+  },
   "common": {
+    "confirmDialog": {
+      "title": "Confirmar",
+      "deleteTitle": "Confirmar eliminación",
+      "deactivateTitle": "Confirmar desactivación",
+      "cancel": "Cancelar",
+      "confirm": "Confirmar",
+      "delete": "Eliminar",
+      "deactivate": "Desactivar"
+    },
     "success": "Éxito",
     "error": "Error",
     "statusSelfDealing": "Esta operación es suya. Otro administrador debe realizar esta acción.",
@@ -71,7 +92,31 @@
       "subtitle": "Envía productos y dinero a Cuba de forma rápida, segura y confiable",
       "cta": {
         "products": "Ver Productos"
+      },
+      "cards": {
+        "combos": {
+          "title": "Combos de comida",
+          "description": "Arme un combo de alimentos y envíelo a su familia en Cuba.",
+          "cta": "Ver combos"
+        },
+        "remittances": {
+          "title": "Remesas a Cuba",
+          "description": "Envíe dinero a Cuba desde Estados Unidos.",
+          "cta": "Enviar remesa"
+        }
       }
+    },
+    "carousel": {
+      "label": "Carrusel de anuncios",
+      "roleDescription": "carrusel",
+      "slide": "diapositiva",
+      "slideOf": "{count} de {total}",
+      "slideStatus": "Anuncio {count} de {total}",
+      "previous": "Anuncio anterior",
+      "next": "Anuncio siguiente",
+      "pause": "Pausar carrusel",
+      "play": "Reanudar carrusel",
+      "goTo": "Ir al anuncio {count}"
     },
     "features": {
       "title": "Funcionalidades Principales",
@@ -82,7 +127,7 @@
       },
       "remittances": {
         "title": "Remesas a Cuba",
-        "description": "Envía dinero a Cuba desde USA y España de forma rápida y segura"
+        "description": "Envía dinero a Cuba desde Estados Unidos de forma rápida y segura"
       },
       "analytics": {
         "title": "Panel de Ganancias",
@@ -125,13 +170,16 @@
   },
   "footer": {
     "date": "Hoy es {date}",
-    "developedBy": "Desarrollado por {name} ({email})",
+    "developedBy": "Desarrollado por {name}",
+    "identity": {
+      "label": "Contacto del negocio"
+    },
     "to": "Para",
     "copyright": "Todos los derechos reservados"
   },
   "products": {
     "title": "Catálogo de Productos",
-    "subtitle": "Descubre productos y combos para enviar a Cuba con precios competitivos",
+    "subtitle": "Productos y combos para enviar a Cuba.",
     "preview": "Vista previa",
     "searchPlaceholder": "Buscar productos...",
     "specialCombos": "Combos Especiales",
@@ -193,7 +241,7 @@
   },
   "remittances": {
     "title": "Remesas a Cuba",
-    "subtitle": "Envía dinero a Cuba desde USA y España de forma rápida y segura",
+    "subtitle": "Envíe dinero a Cuba desde Estados Unidos. Puede seguir el estado y ver el comprobante de entrega en Mis remesas.",
     "calculator": "Calculadora de Remesas",
     "amount": "Cantidad a Enviar (USD)",
     "country": "País de Destino",
@@ -208,6 +256,20 @@
     "sendNew": "Nueva Remesa",
     "myRemittances": "Mis Remesas",
     "howItWorks": "¿Cómo Funciona?",
+    "features": {
+      "rates": {
+        "title": "Tasa visible antes de pagar",
+        "description": "Le mostramos la tasa, la comisión y el total antes de que pague."
+      },
+      "delivery": {
+        "title": "Plazo según la zona",
+        "description": "Entrega estimada, no garantizada; el plazo depende de la zona."
+      },
+      "tracking": {
+        "title": "Seguimiento en Mis remesas",
+        "description": "Puede seguir el estado y ver el comprobante de entrega en Mis remesas."
+      }
+    },
     "step1": {
       "title": "Selecciona el País",
       "description": "Elige el país de destino y la cantidad a enviar"
@@ -288,6 +350,8 @@
       "typeCreated": "Tipo de remesa creado",
       "typeUpdated": "Tipo de remesa actualizado",
       "typeDeleted": "Tipo de remesa eliminado",
+      "currencyChangeWarning": "Cambio de Moneda Detectado",
+      "currencyChangeMessage": "Este tipo pasa de {from} a {to}. Todas las cotizaciones nuevas usarán las monedas nuevas. Confirma solo si es intencional.",
       "rateChangeWarning": "Cambio de Tasa Detectado",
       "rateChangeAffected": "Hay {count} remesa(s) pendiente(s) creada(s) con la tasa anterior. Los usuarios serán notificados del cambio en su sección 'Mis Remesas'.",
       "typeActivated": "Tipo activado",
@@ -305,6 +369,14 @@
       "viewDetails": "Ver Detalles",
       "rejectReason": "Razón del rechazo",
       "rejectReasonPlaceholder": "Ej: Comprobante ilegible, datos incorrectos...",
+      "cancelRemittance": "Cancelar remesa",
+      "confirmCancelMessage": "¿Cancelar la remesa {number}? El cliente aún no ha subido el comprobante de pago, pero eso no significa que no haya pagado. Verifica en la cuenta Zelle que no se haya recibido el pago antes de cancelar: no se creará ninguna solicitud de reembolso. Esta acción no se puede deshacer.",
+      "cancelReason": "Motivo de la cancelación",
+      "cancelReasonPlaceholder": "Ej: el cliente no realizó el pago, solicitud duplicada...",
+      "remittanceCancelled": "Remesa cancelada",
+      "cancelFailed": "No se pudo cancelar la remesa",
+      "cancelReasonInvalid": "El motivo es obligatorio y debe tener como máximo 500 caracteres.",
+      "cancelUnavailable": "La cancelación por administrador aún no está disponible en el servidor. Inténtalo más tarde.",
       "validationNotes": "Notas de validación",
       "validationNotesPlaceholder": "Añadir notas sobre la validación...",
       "deliveryNotes": "Notas de entrega",
@@ -411,7 +483,9 @@
       "deliveryRateHint": "Lo que el destinatario recibe por cada unidad enviada",
       "marketRate": "Tasa de Mercado",
       "marketRateHint": "Tasa de cambio real del mercado",
+      "rateFieldsSuperAdminOnly": "Solo un super administrador puede crear tipos de remesa o modificar su tasa y su comisión. Usted puede editar el resto de los campos.",
       "calculatedCommission": "Comisión calculada",
+      "effectiveDeliveryRate": "Tasa de entrega efectiva",
       "marginPerUnit": "Margen por unidad",
       "deliveryRateTooHigh": "La tasa de entrega no puede ser mayor a la tasa de mercado",
       "advancedCommission": "Comisión fija adicional (Avanzado)",
@@ -449,7 +523,7 @@
       "trackYourRemittances": "Consulte el estado de sus envíos de dinero",
       "trackRemittances": "Consulte el estado de sus envíos de dinero",
       "noRemittances": "No tiene remesas registradas",
-      "noRemittancesDesc": "Envíe su primera remesa de forma rápida y segura",
+      "noRemittancesDesc": "Envíe su primera remesa. Puede seguir el estado y ver el comprobante de entrega en Mis remesas.",
       "remittanceNumber": "Número de Remesa",
       "amountSent": "Enviado",
       "toDeliver": "A Entregar",
@@ -528,8 +602,6 @@
       "rateChangedBannerPendingHint": "Las remesas pendientes pueden ser actualizadas a la nueva tasa.",
       "rateChangedBannerLockedHint": "Las remesas en proceso están bloqueadas a la tasa original.",
       "rateChangedFrom": "Tasa cambió",
-      "newAmountWouldBe": "Nuevo monto a entregar",
-      "was": "era",
       "updateToNewRate": "Actualizar a nueva tasa",
       "keepCurrentRate": "Mantener tasa actual",
       "rateLockedNote": "Tu remesa está bloqueada a la tasa al momento de su creación",
@@ -575,9 +647,11 @@
       "importantNote": "Importante",
       "proofNote": "Su remesa será procesada una vez validemos el comprobante de pago. Recibirá una notificación cuando esto ocurra.",
       "pageTitle": "Enviar Remesa",
-      "pageSubtitle": "Envía dinero de forma rápida y segura",
+      "pageSubtitle": "Pague con Zelle. Puede seguir el estado y ver el comprobante de entrega en Mis remesas.",
       "selectTypeRequired": "Seleccione el tipo de remesa *",
       "rate": "Tasa",
+      "rateUnavailable": "La tasa de cambio para este tipo de remesa no está disponible en este momento. Por favor, inténtelo más tarde o contacte con soporte.",
+      "quoteChanged": "Los montos cambiaron desde que se mostró la cotización. No se creó la remesa: revisa los nuevos montos y confirma de nuevo.",
       "calculating": "Calculando...",
       "continue": "Continuar",
       "back": "Atrás",
@@ -631,7 +705,7 @@
       "paymentInstructions": "Ahora realiza el pago y sube el comprobante para completar el proceso.",
       "proofSubmittedSuccess": "¡Comprobante enviado exitosamente!",
       "submitProofAndComplete": "Enviar Comprobante y Completar",
-      "estimatedDeliveryTime": "24-72 horas",
+      "estimatedDeliveryTime": "Entrega estimada, no garantizada; el plazo depende de la zona.",
       "couponLabel": "Cupón de descuento (opcional)",
       "couponPlaceholder": "Ingresa tu código",
       "applyCoupon": "Aplicar",
@@ -745,6 +819,8 @@
       "viewPricesIn": "Ver precios de la lista en:",
       "listPricesCue": "Precios de la lista en {code}",
       "priceCurrencyLabel": "Moneda del precio ingresado",
+      "costCupLabel": "Costo en CUP",
+      "costTooLow": "El costo es demasiado bajo: el precio resultante en USD sería menor que 0.01. Ingresa un costo mayor.",
       "priceCurrencyHelp": "El precio base se guarda en {base}. Si elige otra moneda, la cifra se interpretará en esa moneda y se convertirá a {base} al guardar.",
       "priceConvertedNote": "El precio se convirtió a {code}; verifique la cifra.",
       "priceRateMissing": "No hay tasa de cambio para {code}; revise el precio",
@@ -829,8 +905,21 @@
       "sellPriceTooLow": "Precio de venta inválido",
       "sellPriceTooLowDesc": "El precio de venta no puede ser menor que el costo de productos",
       "addProductsFirst": "Agregue productos al combo primero",
+      "componentCurrencyMismatch": "Todos los productos de un combo deben tener su precio en la moneda base. Quite o reemplace los productos en otra moneda.",
       "userSavings": "Ahorro del cliente",
-      "individualTotal": "Compra individual"
+      "individualTotal": "Compra individual",
+      "priceWarningTitle": "El combo cuesta más que sus productos por separado",
+      "priceWarningComboPrice": "Precio del combo",
+      "priceWarningIndividualTotal": "Productos por separado",
+      "priceWarningDifference": "El combo es más caro por",
+      "priceWarningMaxMargin": "Use un margen de hasta {value}% para evitarlo.",
+      "priceWarningApply": "Aplicar {value}%",
+      "priceWarningUnavailable": "No se pudo comparar con los productos por separado: falta una tasa de cambio.",
+      "priceWarningNote": "Es solo una advertencia: puede guardar el combo igualmente.",
+      "confirmMoreExpensive": "Este combo es más caro que la suma de sus productos por separado. El cliente pagaría {amount} más comprando el combo. ¿Guardar de todos modos?",
+      "saveAnyway": "Guardar de todos modos",
+      "moreExpensiveBadge": "Más caro que por separado",
+      "moreExpensiveBadgeDetail": "{amount} sobre el precio por separado"
     },
     "management": {
       "title": "Gestión General",
@@ -882,7 +971,7 @@
       "sales": "Ventas (bruto de pedidos)",
       "salesDef": "Total bruto de los pedidos con pago validado y estado activo, incluido el envío cobrado y el costo de la mercadería. No incluye remesas. Fecha: validación del pago.",
       "netIncome": "Ingreso neto",
-      "netIncomeDef": "Lo que se queda el negocio: ganancia estimada de pedidos (margen por producto menos descuentos, sin envío) más la comisión neta de remesas. Fecha: validación del pago.",
+      "netIncomeDef": "Ganancia estimada de productos + diferencia de envíos de pedidos con costo conocido + comisiones y cargos de entrega de remesas − costo de mensajería de remesas. Los costos desconocidos de pedidos se excluyen de la diferencia; asignaciones retroactivas cambian meses anteriores.",
       "collected": "Cobrado (flujo de caja)",
       "collectedDef": "Dinero que entró: total de pedidos con pago validado más el monto enviado de las remesas con pago validado. No es ingreso: incluye lo que luego se paga a destinatarios y al courier."
     },
@@ -891,7 +980,7 @@
     "retry": "Reintentar",
     "remittancePendingDelivery": "Pendiente de entregar",
     "remittancePendingDeliveryDef": "Remesas con pago validado que todavía no se entregaron al destinatario (validadas y en proceso): monto enviado menos comisión. Es dinero cobrado que se debe entregar.",
-    "paymentMethodsPeriod": "histórico, todos los pedidos activos",
+    "paymentMethodsPeriod": "histórico, pedidos activos y remesas validadas",
     "shippingRow": "Envío cobrado (pasa al courier)",
     "stats": {
       "dailyRevenue": "Ingresos Diarios",
@@ -967,6 +1056,7 @@
     "yearlyProfit": "Ganancia Estimada Anual",
     "shippingCollected": "Envío cobrado a clientes",
     "courier": {
+      "unknownCostCount": "Pedidos con costo de mensajería desconocido (excluidos del neto de envíos)",
       "title": "Costo de mensajería",
       "collected": "Envío cobrado (todos)",
       "collectedCompared": "Cobrado con tarifa",
@@ -1017,6 +1107,7 @@
     }
   },
   "activityLog": {
+    "paymentSource": "Origen del pago",
     "title": "Registro de actividad",
     "subtitle": "Auditoría completa de eventos del sistema y seguridad",
     "timestamp": "Fecha y hora",
@@ -1047,7 +1138,48 @@
       "inventory": "Inventario",
       "offer": "Oferta",
       "coupon": "Cupón",
-      "payment": "Pago"
+      "payment": "Pago",
+      "user_management": "Gestión de usuarios",
+      "cart": "Carrito",
+      "category": "Categoría",
+      "system_config": "Configuración del sistema",
+      "refund_request": "Solicitud de reembolso",
+      "bizum_settings": "Ajustes de Bizum",
+      "payment_fx_rate": "Tasa de cambio de pagos",
+      "payment_method": "Método de pago",
+      "user_profile": "Perfil de usuario",
+      "orders": "Pedidos",
+      "remittances": "Remesas"
+    },
+    "userManagementAction": "Gestión de usuarios: {detail}",
+    "userManagementActions": {
+      "delete_user_blocked_super_admin": "eliminación bloqueada (super admin)",
+      "delete_user_cancelled": "eliminación de usuario cancelada",
+      "delete_user_error": "error al eliminar usuario",
+      "delete_user_start": "inicio de eliminación de usuario",
+      "delete_user_success": "usuario eliminado",
+      "edit_discount_cancelled": "edición de descuento cancelada",
+      "edit_discount_start": "inicio de edición de descuento",
+      "fetch_categories_error": "error al cargar categorías",
+      "fetch_categories_success": "categorías cargadas",
+      "fetch_users_error": "error al cargar usuarios",
+      "fetch_users_start": "inicio de carga de usuarios",
+      "fetch_users_success": "usuarios cargados",
+      "open_user_modal": "detalle de usuario abierto",
+      "recalculate_all_cancelled": "recálculo de categorías cancelado",
+      "recalculate_all_error": "error al recalcular categorías",
+      "recalculate_all_start": "inicio de recálculo de categorías",
+      "recalculate_all_success": "categorías recalculadas",
+      "save_discount_error": "error al guardar descuento",
+      "save_discount_start": "inicio de guardado de descuento",
+      "save_discount_success": "descuento guardado",
+      "tab_change": "cambio de pestaña",
+      "update_category_error": "error al actualizar categoría",
+      "update_category_start": "inicio de actualización de categoría",
+      "update_category_success": "categoría actualizada",
+      "update_role_error": "error al actualizar rol",
+      "update_role_start": "inicio de actualización de rol",
+      "update_role_success": "rol actualizado"
     },
     "actions": {
       "create": "Crear",
@@ -1056,7 +1188,51 @@
       "login": "Inicio de sesión",
       "status_change": "Cambio de estado",
       "validate": "Validar",
-      "reject": "Rechazar"
+      "reject": "Rechazar",
+      "order_created": "Pedido creado",
+      "order_submitted": "Pedido enviado",
+      "order_dispatched": "Pedido despachado",
+      "order_delivered": "Pedido entregado",
+      "order_completed": "Pedido completado",
+      "order_cancelled": "Pedido cancelado",
+      "order_reopened": "Pedido reabierto",
+      "checkout_initiated": "Compra iniciada",
+      "payment_proof_uploaded": "Comprobante de pago subido",
+      "payment_proof_upload_failed": "Falló la subida del comprobante de pago",
+      "payment_validated": "Pago validado",
+      "payment_rejected": "Pago rechazado",
+      "coupon_applied": "Cupón aplicado",
+      "coupon_removed": "Cupón quitado",
+      "coupon_validation_blocked": "Validación de cupón bloqueada",
+      "coupon_validation_failed": "Validación de cupón fallida",
+      "offer_usage_recorded": "Uso de oferta registrado",
+      "category_created": "Categoría creada",
+      "category_updated": "Categoría actualizada",
+      "category_deleted": "Categoría eliminada",
+      "combo_created": "Combo creado",
+      "combo_updated": "Combo actualizado",
+      "combo_activated": "Combo activado",
+      "combo_deactivated": "Combo desactivado",
+      "combo_deleted": "Combo eliminado",
+      "product_created": "Producto creado",
+      "product_updated": "Producto actualizado",
+      "product_activated": "Producto activado",
+      "product_deactivated": "Producto desactivado",
+      "product_deleted": "Producto eliminado",
+      "remittance_pricing_guard_mode_changed": "Modo de control de precios de remesas modificado",
+      "order_items_pricing_guard_mode_changed": "Modo de control de precios de pedidos modificado",
+      "offer_id_guard_mode_changed": "Modo de control de ofertas modificado",
+      "stock_policy_updated": "Política de reserva de stock actualizada",
+      "stock_policy_reset": "Política de reserva de stock restablecida",
+      "bizum_settings_updated": "Ajustes de Bizum actualizados",
+      "payment_fx_rate_set": "Tasa de cambio de pagos definida",
+      "payment_method_toggled": "Método de pago activado o desactivado",
+      "user_enabled": "Usuario habilitado",
+      "user_disabled": "Usuario deshabilitado",
+      "refund_resolved": "Reembolso resuelto",
+      "refund_event_failed": "Falló el registro de un evento de reembolso",
+      "refund_capture_failed": "Falló la creación automática del reembolso",
+      "refund_close_failed": "Falló el cierre automático del reembolso"
     }
   },
   "settings": {
@@ -1106,7 +1282,18 @@
       "newCurrency": "Nueva Moneda",
       "baseCurrency": "Moneda Base",
       "base": "Base",
+      "showInSelector": "Mostrar en el selector",
       "exchangeRates": "Tasas de Cambio",
+      "ratesSuperAdminOnly": "Solo un super administrador puede crear, editar o eliminar tasas de cambio. Puede consultarlas, pero no modificarlas.",
+      "currencyDeleteSuperAdminOnly": "Eliminar una moneda también desactiva sus tasas de cambio, y eso solo lo puede hacer un super administrador.",
+      "deactivatePair": "Desactivar",
+      "deactivatePairTitle": "Desactivar par de tasas",
+      "deactivatePairConfirm": "¿Desactivar el par de tasas {pair}? Se desactivarán ambas direcciones (directa e inversa) y no se podrán cotizar operaciones con esta tasa hasta crear o reactivar una nueva.",
+      "pairDeactivated": "Par de tasas desactivado",
+      "pairDeactivatedDesc": "Se desactivaron {count} tasas de cambio",
+      "ratePairPartial": "El par de tasas se guardó solo en parte y puede quedar inconsistente. Se recargó la lista: revise ambas tasas e inténtelo de nuevo.",
+      "ratePairIncomplete": "La tasa inversa falta o está inactiva, por lo que el par no se modificó (se restauró la tasa directa). Desactive el par y créelo de nuevo.",
+      "rateNotFound": "Esta tasa de cambio ya no existe o ya fue modificada. Se recargó la lista.",
       "newRate": "Nueva Tasa",
       "addNewExchangeRate": "Agregar Nueva Tasa de Cambio",
       "fromCurrency": "De Moneda",
@@ -1134,10 +1321,40 @@
       "deactivate": "Desactivar",
       "rateOutOfBand": "La tasa USD a EUR debe estar entre {min} y {max}.",
       "rateUpdatedAt": "Última actualización: {date}",
+      "marketRate": "Tasa de mercado (referencia)",
+      "marketRateHint": "Referencia interna para medir el margen; no se usa para cotizar.",
+      "marketAboveRate": "La tasa de mercado (referencia) no puede ser mayor que la tasa que ven los usuarios. Sube la tasa o baja la de mercado.",
+      "marketRateInfo": "Tasa de mercado (referencia): {market} · la tasa operativa está {diff} frente al mercado (informativo)",
       "rateChangeConfirmTitle": "Confirmar cambio grande de tasa",
       "rateChangeConfirmMessage": "La tasa USD a EUR cambia de {previous} a {next} ({percent}%). Las cotizaciones de Bizum usan esta tasa; verifique que el nuevo valor sea correcto.",
+      "rateChangeConfirmMessageGeneric": "La tasa {from} a {to} cambia de {previous} a {next} ({percent}%). Verifique que el nuevo valor sea correcto.",
       "rateChangeConfirmAction": "Guardar de todos modos",
-      "pairNotAllowed": "Solo se pueden usar monedas activas en una tasa, salvo un EUR inactivo como destino de una tasa desde USD."
+      "pairNotAllowed": "Solo se pueden usar monedas activas en una tasa, salvo un EUR inactivo como destino de una tasa desde USD.",
+      "repricing": {
+        "confirmTitle": "¿Actualizar los precios del catálogo?",
+        "summary": "Se recalcularán {products} productos y {combos} combos con la nueva tasa. Variación media {avg} %, mayor {max} %.",
+        "confirmAction": "Guardar tasa y actualizar precios",
+        "largeWarning": "Cambio grande: supera el 10 % de la última tasa aplicada (o es la primera vez que se aplican precios). Los precios se moverán de forma notable.",
+        "secondTitle": "Confirmar cambio grande de precios",
+        "secondMessage": "Va a aplicar un cambio grande de precios a {products} productos y {combos} combos. Los pedidos existentes conservan sus importes.",
+        "secondAction": "Sí, aplicar cambio grande",
+        "applied": "Precios actualizados",
+        "appliedDesc": "Se recalcularon {products} productos y {combos} combos.",
+        "applyFailed": "Tasa guardada, pero los precios no se actualizaron",
+        "applyFailedDesc": "La nueva tasa está guardada. Use Reintentar en el aviso para actualizar los precios.",
+        "previewFailed": "No se pudo calcular el cambio de precios. Inténtelo de nuevo.",
+        "rates": "Tasa: {previous} → {next} ({pct} %).",
+        "ratesNew": "Tasa nueva: {next}.",
+        "skippedProducts": "{count} productos omitidos (el precio quedaría en 0.00).",
+        "rateChanged": "La tasa cambió antes de aplicar los precios",
+        "rateChangedDesc": "Los precios no se actualizaron. Revise la tasa vigente y use Reintentar en el aviso.",
+        "previewErrorTitle": "Efecto en precios desconocido",
+        "previewErrorMessage": "No se pudo calcular el efecto en precios. ¿Guardar la tasa sin actualizar precios?",
+        "previewErrorAction": "Guardar solo la tasa",
+        "staleTitle": "Precios desactualizados",
+        "staleMessage": "La tasa USD a CUP cambió y los precios del catálogo aún no coinciden con ella.",
+        "retry": "Reintentar"
+      }
     },
     "zelle": {
       "title": "Cuentas Zelle",
@@ -1151,10 +1368,33 @@
     },
     "visual": {
       "brand": {
-        "applyPreset": "Aplicar paleta PapuEnvíos",
-        "applyPresetHint": "Rellena el formulario con los colores de la marca. No se guarda nada hasta que presione \"Guardar Personalización\", siempre que la vista previa en vivo siga apagada.",
-        "applied": "Paleta PapuEnvíos aplicada al formulario. La vista previa en vivo se desactivó y nada se ha guardado todavía; presione \"Guardar Personalización\" para confirmar.",
-        "undoPreset": "Restaurar valores anteriores",
+        "theme": {
+          "title": "Tema por defecto del sitio",
+          "hint": "Elija el aspecto con el que se muestra el sitio a todos los usuarios. El cambio se previsualiza en el formulario y no se aplica hasta que presione \"Guardar Personalización\".",
+          "classic": {
+            "name": "Clásico (azul y morado)",
+            "description": "El aspecto original: botones azules, acentos morados, degradados y fondo gris claro."
+          },
+          "papuenvios": {
+            "name": "PapuEnvíos (dorado y marfil)",
+            "description": "La paleta de la marca: botones dorados, texto carbón, fondo marfil y bordes beige, sin degradados."
+          },
+          "inUse": "En uso",
+          "changes": "Al cambiar de tema se reemplazan sus colores y estilos, incluidos los colores primario, secundario y del degradado de cabecera. Se recuerdan los valores del tema Clásico para poder volver a ellos. El logo, los textos y el carrusel no cambian.",
+          "restricted": "Solo un super administrador puede cambiar el tema por defecto.",
+          "customized": "Algunos colores del formulario difieren del tema elegido porque se editaron a mano. Si cambia de tema, esas ediciones se reemplazarán.",
+          "pending": "Tema aplicado al formulario. La vista previa en vivo se desactivó y nada se ha guardado todavía; presione \"Guardar Personalización\" para confirmar."
+        },
+        "reset": {
+          "title": "¿Restablecer el tema de fábrica?",
+          "description": "Los colores, degradados y sombras del formulario volverán a los valores de fábrica (tema Clásico). No se guarda nada hasta pulsar Guardar Personalización. El logo, favicon, textos, tarjetas de inicio y carrusel no cambian.",
+          "confirm": "Restaurar en el formulario",
+          "cancel": "Cancelar",
+          "error": "No se pudo restablecer el tema"
+        },
+        "applyPalette": "Aplicar paleta del tema",
+        "paletteDraft": "Paleta propuesta en el formulario. No se guarda nada hasta pulsar Guardar Personalización.",
+        "undoPreset": "Deshacer elección de tema",
         "sectionTitle": "Marca y acentos",
         "sectionHint": "Colores de la insignia del carrito, el punto activo del carrusel, bordes, texto secundario, acento suave y anillo de foco.",
         "cartBadgeBg": "Fondo de la insignia del carrito",
@@ -1171,13 +1411,34 @@
           "menuActive": "Elemento activo del menú desplegable",
           "tab": "Pestaña activa",
           "button": "Texto y fondo del botón principal",
-          "cartBadge": "Insignia del carrito"
+          "cartBadge": "Insignia del carrito",
+          "footerText": "Texto del pie de página",
+          "footerLink": "Enlaces del pie de página",
+          "footerLinkHover": "Enlace del pie de página al pasar el cursor",
+          "footerBrand": "Nombre de la empresa en el pie de página"
         }
       },
       "title": "Ajustes Visuales",
       "logo": "Logo del Sitio",
       "favicon": "Favicon",
       "slides": "Diapositivas de Portada",
+      "heroLayout": {
+        "title": "Composición del Hero",
+        "hint": "Elija cómo se presenta el carrusel de la portada. La elección solo se guarda al pulsar «Guardar Personalización».",
+        "cover": {
+          "name": "Portada a ancho completo",
+          "description": "La imagen ocupa todo el ancho, con el texto y la acción superpuestos."
+        },
+        "spaced": {
+          "name": "Carrusel enmarcado",
+          "description": "El título y las tarjetas quedan separados; el carrusel aparece más estrecho y enmarcado."
+        },
+        "inUse": "En uso",
+        "restricted": "Solo un super administrador puede cambiar la composición del Hero.",
+        "pending": "Composición seleccionada en el formulario. Aún no se guarda; pulse «Guardar Personalización» para aplicarla.",
+        "previewTitle": "Envíos, remesas y más",
+        "previewAction": "Ver productos"
+      },
       "addSlide": "Agregar Diapositiva",
       "image": "Imagen (URL o Archivo)",
       "imageType": "Tipo de Imagen",
@@ -1273,8 +1534,29 @@
       "changesSaved": "Los cambios visuales se han guardado y sincronizado",
       "changesDiscarded": "Tema restaurado",
       "settingsRestored": "Se restauró la configuración visual a valores de fábrica",
-      "restoreTheme": "Restaurar Tema",
+      "restoreTheme": "Restablecer tema de fábrica",
       "showCompanyName": "Mostrar nombre de empresa en header",
+      "showCompanyNameWithLogo": "Mostrar el nombre junto al logo",
+      "showCompanyNameWithLogoHint": "Desmarcalo si tu logo ya incluye el nombre de la empresa. Sin logo, el nombre se muestra siempre.",
+      "loader": {
+        "title": "Pantalla de carga inicial",
+        "description": "Lo que se ve mientras la app arranca. Si no configurás nada, se usan los colores del tema y el logo del sitio.",
+        "image": "Imagen de la pantalla de carga",
+        "uploadImage": "Subir imagen",
+        "removeImage": "Quitar imagen",
+        "imageUploaded": "Imagen de carga cargada",
+        "imageHint": "PNG, SVG o WebP. Máx 2MB. Sin imagen propia se usa el logo del sitio y, sin logo, el nombre.",
+        "usingLogo": "Sin imagen propia: se usa el logo del sitio.",
+        "usingWordmark": "Sin imagen ni logo: se usa el nombre de la empresa.",
+        "bgColor": "Color de fondo",
+        "bgColorHint": "Opcional. Sin color se usa el fondo del tema.",
+        "bgColorPicker": "Selector de color de fondo",
+        "bgColorInvalid": "Ingresá un color hexadecimal válido (por ejemplo #FAF7F0).",
+        "usingThemeBg": "Fondo del tema",
+        "preview": "Vista previa de la pantalla de carga",
+        "reset": "Restablecer al tema",
+        "resetDone": "Pantalla de carga restablecida (guardá para aplicar)"
+      },
       "logoMaxHeight": "Tamaño del logo en header",
       "headerPreview": "Vista previa del Header",
       "removeLogo": "Quitar Logo",
@@ -1633,16 +1915,37 @@
       "tabs": {
         "label": "Métodos de pago",
         "zelle": "Zelle",
-        "bizum": "Bizum"
+        "bizum": "Bizum",
+        "iban": "IBAN"
+      },
+      "ibanStatus": {
+        "title": "Transferencia IBAN (SEPA)",
+        "description": "Estado de preparación del cobro en euros para pedidos y remesas.",
+        "unavailable": "No disponible",
+        "blocker": "Para habilitarlo deben existir tasas activas EUR→USD y EUR→CUP, y completarse la configuración segura de cuentas IBAN, la recepción y la conciliación. El método permanece desactivado para pedidos y remesas."
+      },
+      "ibanAccounts": {
+        "title": "Cuentas receptoras IBAN y límites",
+        "description": "Aquí se administrarán las cuentas de cobro de PapuEnvios (no las cuentas de los beneficiarios en Cuba).",
+        "limits": "Límites mínimo y máximo por transferencia, configurables por cuenta.",
+        "routing": "Prioridad de recepción y uso independiente para pedidos y remesas.",
+        "unavailable": "La configuración aún no está disponible: falta el almacenamiento seguro y la conciliación de transferencias. No introduzca datos bancarios aquí."
       }
     }
   },
   "cart": {
+    "pricesUpdated": "Las tasas de cambio se actualizaron y algún precio del carrito cambió. Revise el total y vuelva a confirmar.",
+    "rateCheckFailed": "No se pudo verificar la tasa de cambio. Inténtelo de nuevo en unos segundos.",
     "clearAll": {
       "button": "Vaciar carrito",
       "title": "¿Vaciar el carrito?",
       "message": "Se quitarán todos los productos del carrito. Esta acción no se puede deshacer.",
       "confirm": "Sí, vaciar"
+    },
+    "item": {
+      "decrease": "Disminuir la cantidad de {name}",
+      "increase": "Aumentar la cantidad de {name}",
+      "remove": "Quitar {name} del carrito"
     },
     "title": "Tu Carrito de Compras",
     "empty": "Tu carrito está vacío.",
@@ -1726,7 +2029,7 @@
       "contactWhatsapp": "Contactar por WhatsApp",
       "back": "Atrás",
       "processing": "Procesando...",
-      "estimatedDelivery": "24-72 horas"
+      "estimatedDelivery": "Entrega estimada, no garantizada; el plazo depende de la zona."
     },
     "restored": {
       "title": "¡Bienvenido de vuelta!",
@@ -2250,6 +2553,13 @@
     "updateButton": "Actualizar Destinatario"
   },
   "zelle": {
+    "identifiedBy": "Cuenta identificada por",
+    "phoneIdentifier": "Teléfono",
+    "optionalContact": "(opcional)",
+    "phoneRequired": "El número de teléfono es obligatorio para esta cuenta.",
+    "emailRequired": "El correo electrónico es obligatorio para esta cuenta.",
+    "invalidPhone": "Introduce un número de teléfono de 7 a 30 caracteres con dígitos, espacios, +, (, ) o -.",
+    "invalidEmail": "Introduce una dirección de correo electrónico válida.",
     "showEmail": "Mostrar email a los clientes",
     "showPhone": "Mostrar teléfono a los clientes",
     "atLeastOneVisible": "Al menos uno de email o teléfono debe estar visible para los clientes",
@@ -2335,7 +2645,8 @@
     "flowLabel": "Flujo",
     "methods": {
       "zelle": "Zelle",
-      "bizum": "Bizum"
+      "bizum": "Bizum",
+      "iban": "IBAN"
     },
     "flows": {
       "orders": "Pedidos",
@@ -2694,6 +3005,7 @@
     "noProof": "Sin comprobante",
     "validate": "Validar",
     "reject": "Rechazar",
+    "cancelRemittance": "Cancelar",
     "startProcessing": "Procesar",
     "confirmDelivery": "Confirmar entrega",
     "loading": "Cargando remesas",
@@ -2802,15 +3114,31 @@
       "seeTerms": "Ver Términos de Servicio"
     }
   },
+  "beforePaying": {
+    "title": "Antes de pagar",
+    "irreversible": "Los pagos por Zelle no se pueden revertir. Revise los datos del destinatario y el total antes de enviar.",
+    "rate": "Tasa consultada",
+    "rateCheckedAt": "a las {time}",
+    "rateNote": "El monto final se calcula con la tasa vigente al confirmar.",
+    "easternTime": "hora del Este de EE. UU.",
+    "fee": "Comisión (descontada del monto enviado)",
+    "deliveryCost": "Costo de entrega",
+    "total": "Total a pagar",
+    "recipientReceives": "Recibe el destinatario",
+    "estimate": "Entrega estimada, no garantizada; el plazo depende de la zona.",
+    "seeAlso": "Consulte:"
+  },
   "cookieConsent": {
     "title": "Privacidad y analítica",
-    "description": "Usamos almacenamiento local estrictamente necesario para que el sitio funcione (por ejemplo, tu sesión). Solo si lo aceptas, registraremos las páginas que visitas con fines estadísticos: página, origen, navegador, un identificador de sesión y, si iniciaste sesión, tu identificador de usuario.",
-    "accept": "Aceptar analítica",
+    "short": "Medimos visitas solo si usted acepta.",
+    "moreInfo": "Más información",
+    "description": "Usamos almacenamiento local estrictamente necesario para que el sitio funcione (por ejemplo, su sesión). Solo si usted lo acepta, registraremos las páginas que visita con fines estadísticos: página, origen, navegador, un identificador de sesión y, si inició sesión, su identificador de usuario.",
+    "accept": "Aceptar",
     "reject": "Rechazar",
     "privacyLink": "Política de Privacidad",
     "statusOn": "Estado actual: analítica activada.",
     "statusOff": "Estado actual: analítica desactivada.",
-    "gpcNote": "Detectamos la señal Global Privacy Control de tu navegador y la respetamos: la analítica permanece desactivada. Puedes activarla aquí de forma expresa.",
+    "gpcNote": "Detectamos la señal Global Privacy Control de su navegador y la respetamos: la analítica permanece desactivada. Puede activarla aquí de forma expresa.",
     "preferencesLink": "Preferencias de cookies"
   },
   "couriers": {
@@ -2854,7 +3182,28 @@
       "empty": "Todavía no hay mensajeros registrados.",
       "saved": "Mensajero guardado."
     },
+    "subscriptions": {
+      "title": "Tipos de pago suscritos",
+      "intro": "Un tipo de pago suscrito se aplica a este mensajero con prioridad de regla propia. A los demás mensajeros les sigue aplicando como tipo general. Solo afecta a entregas futuras: las ya entregadas conservan su costo.",
+      "empty": "Este mensajero no tiene tipos de pago suscritos.",
+      "type": "Tipo de pago",
+      "noneAvailable": "No hay tipos de pago vigentes disponibles para suscribir.",
+      "add": "Suscribir",
+      "remove": "Quitar",
+      "added": "Tipo de pago suscrito.",
+      "removed": "Suscripción quitada. Las entregas ya realizadas no cambian.",
+      "gapWarning": "Con esta suscripción, los rangos de este mensajero dejan valores sin regla (costo desconocido):",
+      "acceptGaps": "Entiendo que esos valores quedarán sin regla y deseo suscribir igualmente.",
+      "inert": "Sin versión vigente (no se aplica)",
+      "confirmRemove": "¿Quitar la suscripción a «{name}»? Solo afecta a entregas futuras: las ya entregadas conservan su costo.",
+      "confirmRemoveYes": "Sí, quitar"
+    },
     "errors": {
+      "invalidReason": "Ingrese un motivo de asignación de 10 a 500 caracteres.",
+      "noAmount": "No se pudo calcular el costo. Revise el motivo de la vista previa y corrija la regla, la tasa de cambio o los datos de cálculo antes de reintentar. No se asignó el mensajero.",
+      "previewChanged": "La tarifa o los datos cambiaron. Obtén y revisa una nueva vista previa antes de confirmar.",
+      "previewRequired": "Revisa la vista previa del servidor antes de confirmar.",
+      "alreadyAssigned": "Esta entrega ya tiene mensajero; no se modificó su costo.",
       "generic": "No se pudo completar la operación. Inténtelo de nuevo.",
       "unavailable": "El módulo de mensajería aún no está disponible.",
       "overlap": "Ya existe una regla vigente que se solapa con esta (mismo alcance y período). Ajuste la vigencia o el alcance.",
@@ -2866,7 +3215,17 @@
       "notRecalculable": "Este concepto no se puede recalcular.",
       "alreadyDelivered": "Esta operación ya fue entregada: no se puede cambiar el mensajero desde aquí.",
       "invalid": "Alguno de los datos no es válido. Revíselos e inténtelo de nuevo.",
-      "required": "Complete los campos obligatorios."
+      "required": "Complete los campos obligatorios.",
+      "coverageGap": "Los rangos de este alcance dejan valores sin regla. Revise los huecos y confirme si desea guardar igualmente.",
+      "mixedCurrency": "Los rangos de este alcance ya usan otra moneda. Use la misma moneda o defina otro alcance.",
+      "decimals": "Los montos admiten como máximo 2 decimales; el porcentaje, 3; los CUP por USD, 4.",
+      "amountMax": "Los montos no pueden superar 9999999999.99.",
+      "ownedByOther": "Ese tipo de pago pertenece a otro mensajero.",
+      "noActiveVersion": "Ese tipo de pago no existe o no tiene una versión vigente.",
+      "subscribedElsewhere": "Ese tipo de pago está suscrito por otro mensajero. Quite esa suscripción antes de asignarlo a un mensajero concreto.",
+      "courierInactive": "El mensajero no existe o está inactivo.",
+      "staleSubscriptions": "Este código desactivado aún tiene suscripciones activas. Quítelas antes de volver a crearlo.",
+      "staleSubscribers": "Este código expiró y hay mensajeros suscritos que volverán a cobrar con esta versión."
     },
     "validation": {
       "required": "Este campo es obligatorio.",
@@ -2875,7 +3234,9 @@
       "nonNegative": "Debe ser un número mayor o igual a cero.",
       "percentRange": "El porcentaje debe estar entre 0 y 100.",
       "tierOrder": "El monto máximo debe ser mayor que el mínimo.",
-      "windowOrder": "La vigencia final debe ser posterior a la inicial."
+      "windowOrder": "La vigencia final debe ser posterior a la inicial.",
+      "money": "Indique un monto mayor o igual a cero con hasta 2 decimales (por ejemplo 100.50).",
+      "moneyMax": "El monto no puede superar 9999999999.99."
     },
     "margin": {
       "ok": "Margen correcto",
@@ -2896,18 +3257,23 @@
     "simulator": {
       "title": "Simulador",
       "intro": "Ingrese un caso para ver el costo y el margen que resultaría con esta regla. No se guarda nada.",
-      "sent": "Monto enviado (USD)",
+      "sent": "Valor de la operación (USD enviados o subtotal del pedido)",
       "commission": "Comisión cobrada (USD)",
       "deliveryCharge": "Entrega cobrada al cliente (USD)",
       "rate": "Tasa (CUP por USD)",
       "toDeliver": "Equivalente entregado (CUP)",
       "completeForm": "Complete el formulario para simular.",
       "cost": "Costo del mensajero",
-      "unknownBasis": "Faltan datos de la base de cálculo: el costo queda desconocido, no cero.",
       "margin": "Margen",
       "belowWarning": "queda bajo el umbral de alerta",
       "belowCritical": "queda bajo el umbral crítico",
-      "noThresholds": "No hay umbrales configurados: no se evalúan alertas."
+      "noThresholds": "No hay umbrales configurados: no se evalúan alertas.",
+      "reasons": {
+        "no_rule": "Sin regla: el costo queda desconocido, no cero.",
+        "no_amount_basis": "Faltan datos de la base de cálculo: el costo queda desconocido, no cero.",
+        "no_fx": "Falta la tasa de cambio para convertir: el costo queda desconocido, no cero.",
+        "no_tier_match": "El valor no entra en el rango de esta regla: el costo queda desconocido, no cero."
+      }
     },
     "types": {
       "title": "Tipos de pago",
@@ -2930,7 +3296,8 @@
       "methods": {
         "fixed_cup": "Monto fijo en CUP",
         "per_usd_delivered": "CUP por cada USD entregado",
-        "percent_of_base": "Porcentaje de una base"
+        "percent_of_base": "Porcentaje de una base",
+        "fixed_amount": "Monto fijo (en la moneda elegida)"
       },
       "fixedCup": "Monto (CUP)",
       "cupPerUsd": "CUP por USD",
@@ -2938,18 +3305,19 @@
       "base": "Base de cálculo",
       "bases": {
         "per_usd_delivered": {
-          "nominal_usd": "USD nominales enviados",
+          "nominal_usd": "USD nominales (enviados o subtotal del pedido)",
           "delivered_cup": "Equivalente entregado en CUP"
         },
         "percent_of_base": {
-          "nominal_usd": "USD nominales enviados",
+          "nominal_usd": "USD nominales (enviados o subtotal del pedido)",
           "delivered_cup": "Equivalente entregado en CUP"
         }
       },
       "summary": {
         "fixed_cup": "{value} CUP fijos por entrega",
         "per_usd_delivered": "{value} CUP por USD ({base})",
-        "percent_of_base": "{value}% de {base}"
+        "percent_of_base": "{value}% de {base}",
+        "fixed_amount": "{value} {currency} fijos por entrega"
       },
       "scope": "Alcance (opcional)",
       "courier": "Mensajero",
@@ -2958,9 +3326,6 @@
       "anyZone": "Cualquier zona",
       "remittanceType": "Tipo de remesa",
       "anyType": "Cualquier tipo",
-      "amountFrom": "Monto desde (USD, excluido)",
-      "amountTo": "Monto hasta (USD, incluido)",
-      "tierHint": "Tramo (desde, hasta]. Déjelo vacío para cualquier monto.",
       "validFrom": "Vigente desde",
       "validFromHint": "Vacío significa desde ahora. No puede quedar en el pasado.",
       "validTo": "Vigente hasta",
@@ -2971,9 +3336,66 @@
       "empty": "No hay tipos de pago vigentes.",
       "closed": "Cerrado",
       "newVersion": "Nueva versión",
-      "versionNote": "Las versiones anteriores se conservan para auditoría y no se pueden borrar."
+      "versionNote": "Las versiones anteriores se conservan para auditoría y no se pueden borrar.",
+      "fixedAmount": "Monto fijo",
+      "currency": "Moneda",
+      "currencyHint": "Moneda del monto fijo y de la comparación de rangos. Si la operación está en otra moneda se convierte con la tasa vigente; sin tasa, el costo queda desconocido.",
+      "rangeOp": "Valor de la operación",
+      "rangeOps": {
+        "none": "Cualquier valor",
+        "gt": "Más de X",
+        "lte": "Hasta Y (incluido)",
+        "between": "Más de X y hasta Y"
+      },
+      "rangeX": "X (no incluido)",
+      "rangeY": "Y (incluido)",
+      "rangeHelp": "Los rangos se comparan en {currency} con 2 decimales. \"Más de X\" no incluye X; \"Hasta Y\" sí incluye Y. Para encadenar rangos sin huecos ni solapes, empiece cada rango donde terminó el anterior: hasta 100 → más de 100 y hasta 200 → más de 200.",
+      "range": {
+        "any": "cualquier valor",
+        "gt": "más de {x} {currency}",
+        "lte": "hasta {y} {currency} (incluido)",
+        "between": "más de {x} y hasta {y} {currency}"
+      },
+      "gapWarning": "Con este rango, estos valores quedan sin regla de este alcance. Una entrega en un hueco no se bloquea: su costo queda desconocido.",
+      "acceptGaps": "Entiendo que quedan huecos y quiero guardar igualmente",
+      "acceptGapsRequired": "Confirme que acepta los huecos antes de guardar.",
+      "staleSubscribers": "{count} mensajero(s) suscrito(s) a este código expirado volverán a cobrar con esta versión, con prioridad de mensajero. Confirme para guardar."
     },
     "payable": {
+      "filter": "Filtrar entregas",
+      "allPending": "Todos los pendientes",
+      "deliveredUnassigned": "Entregadas sin mensajero",
+      "assignAfterDelivery": "Asignar mensajero",
+      "courier": "Mensajero",
+      "preview": "Obtener vista previa",
+      "confirmAssignment": "Confirmar asignación retroactiva",
+      "assignedOk": "Mensajero asignado y costo registrado.",
+      "retroactive": "Retroactivo",
+      "pastMonthsWarning": "Asignar un mensajero a una entrega pasada usa las reglas vigentes hoy y cambia las cifras de meses anteriores: el costo se atribuye a la fecha de la operación. No hay cierres congelados.",
+      "previewAmount": "Costo calculado",
+      "previewRule": "Regla vigente hoy",
+      "precedence": "Precedencia de la regla",
+      "previewRate": "Tasa USD → CUP y origen",
+      "fxOrigin": {
+        "remittance": "Tasa congelada de la remesa",
+        "exchange_rates": "Tasa actual",
+        "none": "Sin tasa disponible"
+      },
+      "precedenceValue": {
+        "courier": "Mensajero (propia o suscrita)",
+        "zone": "Zona",
+        "type": "Tipo de remesa",
+        "tier": "Rango",
+        "general": "General",
+        "none": "Sin regla"
+      },
+      "pricingWarning": {
+        "no_rule": "No hay una regla de pago activa aplicable hoy; cree o habilite una regla primero.",
+        "no_tier_match": "Ningún rango coincide: el costo sigue desconocido.",
+        "no_fx": "Falta la tasa de conversión: el costo o su equivalente USD sigue desconocido.",
+        "amount_out_of_range": "Costo fuera de rango: sigue desconocido.",
+        "no_amount_basis": "Falta una base para calcular el costo."
+      },
       "title": "Por pagar",
       "empty": "No hay pagos pendientes a mensajeros.",
       "adjustment": "ajuste",
@@ -3177,5 +3599,11 @@
     "cancelledOn": "Cancelado el {date}",
     "eligibleFrom": "Desde: {date}",
     "dueBy": "Hasta: {date}"
+  },
+  "errorBoundary": {
+    "title": "Algo salió mal",
+    "staleVersion": "Hay una versión nueva del sitio. Recargue la página para continuar.",
+    "generic": "Ocurrió un error inesperado. Recargue la página para continuar.",
+    "reload": "Recargar página"
   }
 }

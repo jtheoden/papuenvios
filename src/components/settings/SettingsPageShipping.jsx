@@ -695,7 +695,7 @@ const SettingsPageShipping = () => {
                     {/* Advanced options toggle */}
                     <button
                       onClick={() => toggleAdvanced(zone.id)}
-                      className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                      className="text-xs text-theme-link hover:text-theme-link-strong flex items-center gap-1"
                     >
                       {showAdvanced[zone.id] ? (
                         <>

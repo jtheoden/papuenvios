@@ -1,9 +1,10 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { Helmet, HelmetProvider } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster } from '@/components/ui/toaster';
-import LoadingScreen from '@/components/LoadingScreen';
+import StartupGate from '@/components/StartupGate';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { lazyWithRetry } from '@/lib/lazyWithRetry';
 import { diagnostics } from '@/lib/diagnostics';
 import Header from '@/components/Header';
 import HomePage from '@/components/HomePage';
@@ -25,15 +26,16 @@ import ConsentBanner from '@/components/ConsentBanner';
 
 // PERF-01: admin-only areas are code-split out of the main bundle — they're never
 // touched by the public/customer golden path (home, products, cart, remittances).
-const DashboardPage = lazy(() => import('@/components/DashboardPage'));
-const AdminPage = lazy(() => import('@/components/AdminPage'));
-const SettingsPage = lazy(() => import('@/components/SettingsPage'));
-const UserManagement = lazy(() => import('@/components/UserManagement'));
+const DashboardPage = lazyWithRetry(() => import('@/components/DashboardPage'));
+const AdminPage = lazyWithRetry(() => import('@/components/AdminPage'));
+const SettingsPage = lazyWithRetry(() => import('@/components/SettingsPage'));
+const UserManagement = lazyWithRetry(() => import('@/components/UserManagement'));
 import { withProtectedRoute } from '@/components/withProtectedRoute';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { BusinessProvider, useBusiness } from '@/contexts/BusinessContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ModalProvider } from '@/contexts/ModalContext';
+import { ConfirmProvider } from '@/components/ui/ConfirmDialog';
 import { LegalAcceptanceProvider } from '@/contexts/LegalAcceptanceContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -57,10 +59,8 @@ function DynamicVisualSettings() {
     // Update document title
     document.title = visualSettings.siteTitle || visualSettings.companyName || 'PapuEnvíos';
 
-    // Apply page background color to body
-    if (visualSettings.pageBgColor) {
-      document.body.style.backgroundColor = visualSettings.pageBgColor;
-    }
+    // The body background is NOT set here: applyVisualSettingsToDOM does it (with its fallback) once the settings
+    // load. Doing it from the default state painted #f9fafb over the brand ivory before they arrived.
 
     // Apply favicon
     if (visualSettings.favicon) {
@@ -108,7 +108,6 @@ const PageAnalyticsTracker = ({ currentPage }) => {
 };
 
 function App() {
-  const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState('home');
   const [detailParams, setDetailParams] = useState({ itemId: null, itemType: null });
 
@@ -149,10 +148,6 @@ function App() {
       setDetailParams(params);
     }
 
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 2500);
-
     const handlePopState = (event) => {
       const newPath = event?.state?.path || window.location.pathname;
       const { page, params } = resolvePageFromPath(newPath);
@@ -166,7 +161,6 @@ function App() {
     window.addEventListener('popstate', handlePopState);
 
     return () => {
-      clearTimeout(timer);
       window.removeEventListener('popstate', handlePopState);
     };
   }, []);
@@ -250,15 +244,13 @@ function App() {
             <BusinessProvider>
               <CurrencyProvider>
                 <ModalProvider>
+                <ConfirmProvider>
                 <LegalAcceptanceProvider>
                 <div className="min-h-screen">
                   <DynamicVisualSettings />
                   <PageAnalyticsTracker currentPage={currentPage} />
 
-                <AnimatePresence mode="wait">
-                  {isLoading ? (
-                    <LoadingScreen key="loading" />
-                  ) : (
+                <StartupGate>
                     <motion.div
                       key="main"
                       initial={{ opacity: 0 }}
@@ -286,13 +278,13 @@ function App() {
                       </main>
                       {currentPage !== 'auth/callback' && <Footer onNavigate={handleNavigate} showNotice={shouldShowFooterNotice(currentPage)} />}
                     </motion.div>
-                  )}
-                </AnimatePresence>
+                </StartupGate>
 
                 <ConsentBanner suppressed={!shouldShowFooterNotice(currentPage)} onNavigate={handleNavigate} />
                 <Toaster />
               </div>
                 </LegalAcceptanceProvider>
+                </ConfirmProvider>
               </ModalProvider>
               </CurrencyProvider>
             </BusinessProvider>

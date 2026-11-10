@@ -19,7 +19,7 @@ import { formatDateTime, formatDateTimeUtc, formatNumber } from '@/lib/numberFor
 
 const ERROR_CODES = ['network', 'timeout', 'invalid_payload', 'out_of_band'];
 
-const FxReferenceCard = ({ onUse, disabledReason = null, autoLoad = true }) => {
+const FxReferenceCard = ({ onUse, disabledReason = null, lockedBy = null, autoLoad = true }) => {
   const { t, language } = useLanguage();
   const headingId = useId();
   const { reference, loading, errorCode, check } = useFxReference({ autoLoad });
@@ -30,7 +30,7 @@ const FxReferenceCard = ({ onUse, disabledReason = null, autoLoad = true }) => {
   const stale = freshness === 'stale';
   const ageHours = reference ? referenceAgeHours(reference, now) : null;
   const providerMoment = reference ? referenceProviderMoment(reference) : null;
-  const canUse = Boolean(reference) && !stale && !errorCode && !loading && !disabledReason;
+  const canUse = Boolean(reference) && !stale && !errorCode && !loading && !disabledReason && !lockedBy;
 
   const renderProviderLine = () => {
     if (reference.providerUpdatedAt) {
@@ -125,15 +125,19 @@ const FxReferenceCard = ({ onUse, disabledReason = null, autoLoad = true }) => {
             <Button
               type="button"
               size="sm"
-              className="min-h-[44px] px-3"
-              disabled={!canUse}
-              onClick={() => onUse({ rate: reference.rate })}
+              className="min-h-[44px] px-3 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+              // locked by role: aria-disabled keeps it focusable so the note it points at is announced
+              disabled={!canUse && !lockedBy}
+              {...(lockedBy ? { 'aria-disabled': true, 'aria-describedby': lockedBy } : {})}
+              onClick={() => canUse && onUse({ rate: reference.rate })}
             >
               {t('settings.fxReference.use')}
             </Button>
-            <span className="text-xs text-gray-700">
-              {disabledReason || t('settings.fxReference.useHint')}
-            </span>
+            {!lockedBy && (
+              <span className="text-xs text-gray-700">
+                {disabledReason || t('settings.fxReference.useHint')}
+              </span>
+            )}
           </div>
         </div>
       )}

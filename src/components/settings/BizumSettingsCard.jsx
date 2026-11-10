@@ -152,7 +152,7 @@ const BizumSettingsCard = ({ settings, error, onSaved, onRetry }) => {
                     type="button"
                     aria-label={`${t('settings.bizum.restore')} ${label}`}
                     onClick={() => setValue(field.key, String(field.default))}
-                    className="min-h-11 text-sm font-medium text-blue-800 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+                    className="min-h-11 text-sm font-medium text-theme-link-strong underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-focus"
                   >
                     {t('settings.bizum.restore')}
                   </button>

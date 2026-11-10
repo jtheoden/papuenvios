@@ -89,8 +89,8 @@ describe('RegulatoryNotice strip contrast (WCAG 1.4.3)', () => {
   const SLATE_50 = '#f8fafc';
   it.each([
     ['text slate-700', '#334155'],
-    ['link blue-700', '#1d4ed8'],
-    ['link hover blue-800', '#1e40af'],
+    ['link-strong in the classic look (blue-700)', '#1d4ed8'],
+    ['link-strong in the brand look (charcoal)', '#171717'],
   ])('%s on slate-50 is at least 4.5:1', (_label, fg) => {
     expect(contrastRatio(fg, SLATE_50)).toBeGreaterThanOrEqual(4.5);
   });
@@ -100,7 +100,7 @@ describe('RegulatoryNotice strip contrast (WCAG 1.4.3)', () => {
     const note = screen.getByRole('note');
     expect(note.querySelector('p').className).toMatch(/text-slate-700/);
     const link = within(note).getByRole('link');
-    expect(link.className).toMatch(/text-blue-700/);
-    expect(link.className).toMatch(/hover:text-blue-800/);
+    expect(link.className).toMatch(/\btext-theme-link-strong\b/);
+    expect(link.className).not.toMatch(/text-blue-/);
   });
 });

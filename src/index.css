@@ -37,8 +37,6 @@
 
 
 :root {
-  --primary: 220 90% 56%;
-  --primary-foreground: 0 0% 100%;
   --secondary: 220 14.3% 95.9%;
   --secondary-foreground: 220 8.9% 46.1%;
   --muted: 220 14.3% 95.9%;
@@ -49,7 +47,6 @@
   --destructive-foreground: 0 0% 98%;
   --border: 220 13% 91%;
   --input: 220 13% 91%;
-  --ring: 220 90% 56%;
   --background: 0 0% 100%;
   --foreground: 220 8.9% 46.1%;
   --card: 0 0% 100%;
@@ -58,9 +55,197 @@
   --popover-foreground: 220 8.9% 46.1%;
 }
 
+/*
+ * Theme tokens, RGB channels so Tailwind can add an alpha (`bg-theme-accent/30`). Consumers use the `theme-*`
+ * utilities (tailwind.config.js); scripts/theme-codemod.mjs moves old blue/purple classes onto them.
+ * The brand look is the default so the first paint is already on brand. `data-theme` on <html> is set before the
+ * first paint by the inline script in index.html and kept in sync by applyVisualSettingsToDOM (resolveLookId).
+ * Values: BRAND_PALETTE (brandPalette.js) / the Tailwind tones named on each line. themeCompliance.test.js checks both.
+ */
+:root {
+  --radius: 0.5rem;
+  --t-accent: 255 165 0; /* gold */
+  --t-accent-hover: 229 148 0; /* goldDeep */
+  --t-on-accent: 23 23 23; /* charcoal */
+  --t-accent-soft: 255 241 204; /* goldSoft */
+  --t-accent-soft-2: 255 241 204; /* goldSoft */
+  --t-accent-line: 232 224 210; /* beige */
+  --t-link: 23 23 23; /* charcoal, underlined (see below) */
+  --t-link-strong: 23 23 23; /* charcoal */
+  --t-focus: 23 23 23; /* charcoal */
+  --t-accent-2: 255 165 0; /* gold */
+  --t-accent-2-soft: 255 241 204; /* goldSoft */
+  --t-accent-2-soft-2: 255 241 204; /* goldSoft */
+  --t-grad-from: 255 165 0; /* gold */
+  --t-grad-to: 255 165 0; /* gold */
+  --t-page-from: 250 247 240; /* ivory */
+  --t-page-via: 250 247 240; /* ivory */
+  --t-page-to: 250 247 240; /* ivory */
+  /* shadcn tokens (RGB channels, see tailwind.config.js) follow the look: Button default, focus rings. */
+  --primary: var(--t-accent);
+  --primary-foreground: var(--t-on-accent);
+  --ring: var(--t-focus);
+}
+
+/* Classic look (useGradient on): exactly the Tailwind tones the screens used before the tokens. */
+:root[data-theme="classic"] {
+  --t-accent: 37 99 235; /* blue-600 */
+  --t-accent-hover: 29 78 216; /* blue-700 */
+  --t-on-accent: 255 255 255; /* white */
+  --t-accent-soft: 239 246 255; /* blue-50 */
+  --t-accent-soft-2: 219 234 254; /* blue-100 */
+  --t-accent-line: 191 219 254; /* blue-200 */
+  --t-link: 37 99 235; /* blue-600 */
+  --t-link-strong: 29 78 216; /* blue-700 */
+  --t-focus: 59 130 246; /* blue-500 */
+  --t-accent-2: 147 51 234; /* purple-600 */
+  --t-accent-2-soft: 250 245 255; /* purple-50 */
+  --t-accent-2-soft-2: 243 232 255; /* purple-100 */
+  --t-grad-from: 59 130 246; /* blue-500 */
+  --t-grad-to: 147 51 234; /* purple-600 */
+  --t-page-from: 248 250 252; /* slate-50 */
+  --t-page-via: 239 246 255; /* blue-50 */
+  --t-page-to: 224 231 255; /* indigo-100 */
+  /* The exact colour the shadcn tokens had here (hsl(220 90% 56%)), so classic does not move. */
+  --primary: 42 109 244;
+  --primary-foreground: 255 255 255;
+  --ring: 42 109 244;
+}
+
 body {
   font-family: 'Inter', sans-serif;
-  @apply bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 text-gray-900;
+  @apply text-gray-900;
+  /* Only painted until the settings load (the inline pageBgColor wins afterwards); under the gradient in classic. */
+  background-color: rgb(var(--t-page-via));
+  background-image: linear-gradient(to bottom right, rgb(var(--t-page-from)), rgb(var(--t-page-via)), rgb(var(--t-page-to)));
+}
+
+/* Brand look: a flat page that follows the Visual settings' pageBgColor. An opaque ivory gradient would hide a
+   customised pageBgColor, and a body gradient showing between the Home and the footer was the lavender strip. */
+:root:not([data-theme="classic"]) body {
+  background-image: none;
+}
+
+/* Brand links are charcoal, so they are underlined to stay recognisable (never orange text). Classic keeps blue. */
+:root:not([data-theme="classic"]) :is(.text-theme-link, .text-theme-link-strong):not(.no-underline) {
+  text-decoration-line: underline;
+}
+
+/* Recipient/order/remittance chrome keeps its original Classic utility colours as the baseline. These scoped
+   overrides apply only to the PapuEnvios look, so switching themes remains pixel-identical to the pre-token UI. */
+:root:not([data-theme="classic"]) .recipient-theme-card,
+:root:not([data-theme="classic"]) .recipient-theme-address {
+  border-color: rgb(var(--t-accent-line));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-card:hover:not(.recipient-theme-card-selected),
+:root:not([data-theme="classic"]) .recipient-theme-address:hover:not(.recipient-theme-address-selected) {
+  border-color: rgb(var(--t-accent) / 0.6);
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-card-selected {
+  border-color: rgb(var(--t-accent));
+  background-color: rgb(var(--t-accent-soft));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-address-selected {
+  border-color: rgb(var(--t-accent));
+  background-color: rgb(var(--t-accent-soft));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-card:focus-visible,
+:root:not([data-theme="classic"]) .recipient-theme-address:focus-visible,
+:root:not([data-theme="classic"]) .recipient-theme-add:focus-visible,
+:root:not([data-theme="classic"]) .recipient-theme-primary:focus-visible,
+:root:not([data-theme="classic"]) .recipient-theme-secondary:focus-visible {
+  outline: 2px solid rgb(var(--t-focus));
+  outline-offset: 2px;
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-control,
+:root:not([data-theme="classic"]) .recipient-theme-search,
+:root:not([data-theme="classic"]) .recipient-theme-select {
+  border-color: rgb(var(--t-accent-line));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-control:focus,
+:root:not([data-theme="classic"]) .recipient-theme-search:focus,
+:root:not([data-theme="classic"]) .recipient-theme-select:focus {
+  border-color: rgb(var(--t-focus));
+  --tw-ring-color: rgb(var(--t-focus));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-control:focus-visible {
+  outline: 2px solid rgb(var(--t-focus));
+  outline-offset: 2px;
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-detail,
+:root:not([data-theme="classic"]) .recipient-theme-create-panel {
+  border-color: rgb(var(--t-accent-line));
+  background-color: rgb(var(--t-accent-soft) / 0.5);
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-add {
+  border-color: rgb(var(--t-accent));
+  color: rgb(var(--t-link));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-add:hover {
+  background-color: rgb(var(--t-accent-soft));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-primary {
+  background-color: rgb(var(--t-accent));
+  color: rgb(var(--t-on-accent));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-primary:hover {
+  background-color: rgb(var(--t-accent-hover));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-secondary {
+  border: 1px solid rgb(var(--t-accent-line));
+  background-color: rgb(var(--t-accent-soft));
+  color: rgb(var(--t-link-strong));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-secondary:hover {
+  background-color: rgb(var(--t-accent-soft-2));
+}
+
+:root:not([data-theme="classic"]) .orders-recipient-theme-shell,
+:root:not([data-theme="classic"]) .remittance-recipient-theme-shell {
+  border: 2px solid rgb(var(--t-accent-line));
+  background-color: rgb(var(--t-accent-soft) / 0.2);
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-icon {
+  color: rgb(var(--t-link));
+}
+
+:root:not([data-theme="classic"]) .recipient-theme-loading {
+  background-color: rgb(var(--t-accent-soft) / 0.4);
+}
+
+/* Native checkbox / radio / range follow the look (charcoal in the brand look, blue-500 in classic). :where keeps the
+   specificity at zero so an explicit accent-* utility still wins. */
+:where(input[type="checkbox"], input[type="radio"], input[type="range"]) {
+  accent-color: rgb(var(--t-focus));
+}
+
+/* The default Button hovers with bg-primary/90, which would lighten the gold brand primary: use the darker gold step
+   instead, for the brand look only (classic keeps its blue and the class string stays byte-identical). */
+:root:not([data-theme="classic"]) .hover\:bg-primary\/90:hover:not(:disabled) {
+  background-color: rgb(var(--t-accent-hover));
+}
+
+/* Remittance blue-400 accents stay as the Classic utilities; the brand look swaps them for the accent token. */
+:root:not([data-theme="classic"]) .theme-cta-ring {
+  --tw-ring-color: rgb(var(--t-accent) / 0.5);
+}
+:root:not([data-theme="classic"]) .theme-accent-disabled:disabled {
+  background-color: rgb(var(--t-accent) / 0.6);
 }
 
 .loading-spinner {
@@ -96,11 +281,29 @@ body {
 }
 
 .hover-lift {
-  transition: transform 0.2s ease-in-out;
+  transition: transform var(--motion-duration) var(--motion-ease);
 }
 
-.hover-lift:hover {
+.hover-lift:hover,
+.hover-lift:focus-visible {
   transform: translateY(-2px);
+}
+
+.hover-lift:active {
+  transform: scale(0.98);
+}
+
+/* Motion tokens for the micro-animations (tailwind.config.js: animate-fade-in, animate-enter, duration-motion). */
+:root {
+  --motion-duration: 200ms;
+  --motion-duration-slow: 300ms;
+  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
+  --motion-stagger: 40ms;
+}
+
+/* LoadingState pauses its skeleton pulse while the tab is hidden or the skeleton is off screen. */
+[data-paused] * {
+  animation-play-state: paused;
 }
 
 .shimmer {
@@ -112,4 +315,20 @@ body {
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner,
+  .shimmer {
+    animation: none;
+  }
+
+  .hover-lift {
+    transition: none;
+  }
+
+  .hover-lift:hover,
+  .hover-lift:focus-visible,
+  .hover-lift:active {
+    transform: none;
+  }
 }

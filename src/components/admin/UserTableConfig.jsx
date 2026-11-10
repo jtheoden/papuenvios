@@ -149,7 +149,7 @@ export const getUserTableColumns = (t, isSuperAdmin, currentUserEmail) => {
         return (
           <div className="flex items-center justify-end gap-2">
             <button
-              className="text-blue-600 hover:text-blue-900 inline-flex items-center gap-1"
+              className="text-theme-link hover:text-theme-link-strong inline-flex items-center gap-1"
               title={t('users.table.actions')}
             >
               {/* Actions will be handled by parent component */}

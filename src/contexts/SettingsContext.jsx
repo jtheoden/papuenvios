@@ -159,22 +159,39 @@ export const SettingsProvider = ({ children }) => {
   const [visualSettings, setVisualSettingsState] = useState(DEFAULT_VISUAL_SETTINGS);
   const [visualSettingsLoaded, setVisualSettingsLoaded] = useState(false);
   const visualSettingsSaveTimeout = useRef(null);
+  const visualSettingsGeneration = useRef(0);
+
+  const loadAndApplyVisualSettings = useCallback(async () => {
+    const generation = ++visualSettingsGeneration.current;
+    const isCurrent = () => generation === visualSettingsGeneration.current;
+    const apply = (settings) => {
+      if (!isCurrent()) return;
+      setVisualSettingsState(settings);
+      applyVisualSettingsToDOM(settings);
+    };
+    const settings = await loadVisualSettings({ onLateSettings: apply, isCurrent });
+    apply(settings);
+    return settings;
+  }, []);
 
   // Load visual settings from database on mount
   useEffect(() => {
+    let cancelled = false;
     const loadSettings = async () => {
       try {
-        const settings = await loadVisualSettings();
-        setVisualSettingsState(settings);
-        applyVisualSettingsToDOM(settings);
-        setVisualSettingsLoaded(true);
+        await loadAndApplyVisualSettings();
       } catch (err) {
         console.error('[SettingsContext] Failed to load visual settings:', err);
-        setVisualSettingsLoaded(true);
+      } finally {
+        if (!cancelled) setVisualSettingsLoaded(true);
       }
     };
     loadSettings();
-  }, []);
+    return () => {
+      cancelled = true;
+      visualSettingsGeneration.current++;
+    };
+  }, [loadAndApplyVisualSettings]);
 
   // Save visual settings to database with debounce
   const setVisualSettings = useCallback(async (newSettings) => {
@@ -183,6 +200,7 @@ export const SettingsProvider = ({ children }) => {
       : newSettings;
 
     // Update state immediately for responsive UI
+    visualSettingsGeneration.current++;
     setVisualSettingsState(settingsToSave);
     applyVisualSettingsToDOM(settingsToSave);
 
@@ -202,15 +220,12 @@ export const SettingsProvider = ({ children }) => {
   const refreshVisualSettings = useCallback(async () => {
     try {
       clearVisualSettingsCache();
-      const settings = await loadVisualSettings();
-      setVisualSettingsState(settings);
-      applyVisualSettingsToDOM(settings);
-      return settings;
+      return await loadAndApplyVisualSettings();
     } catch (err) {
       console.error('[SettingsContext] Failed to refresh visual settings:', err);
       return visualSettings;
     }
-  }, [visualSettings]);
+  }, [visualSettings, loadAndApplyVisualSettings]);
 
   // Helper: get exchange rate for USD
   const getExchangeRate = (currencyCode = 'USD') => {

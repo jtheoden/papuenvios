@@ -30,7 +30,7 @@ const RegulatoryNotice = ({ onNavigate, className = '', variant = 'card' }) => {
             <LegalLink
               page="terms"
               onNavigate={onNavigate}
-              className="inline-block py-2 font-medium text-blue-700 underline underline-offset-2 hover:text-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 focus-visible:ring-offset-2"
+              className="inline-block py-2 font-medium text-theme-link-strong underline underline-offset-2 hover:decoration-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-focus focus-visible:ring-offset-2"
             >
               {t('legal.notice.seeTerms')}
             </LegalLink>
@@ -59,7 +59,7 @@ const RegulatoryNotice = ({ onNavigate, className = '', variant = 'card' }) => {
         <LegalLink
           page="terms"
           onNavigate={onNavigate}
-          className="underline text-blue-700 hover:text-blue-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-sm"
+          className="underline text-theme-link-strong hover:decoration-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-theme-focus rounded-sm"
         >
           {t('legal.notice.seeTerms')}
         </LegalLink>

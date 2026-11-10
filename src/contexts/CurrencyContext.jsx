@@ -1,8 +1,14 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getCurrenciesWithRates, getConversionRate, subscribeRatesChanged } from '@/lib/currencyService';
+import { logError } from '@/lib/errorHandler';
+import { useVisiblePolling, refreshPoll } from '@/lib/visiblePolling';
+import { UNAVAILABLE } from '@/lib/numberFormat';
 
 // Cached rates expire so a stale rate is never shown indefinitely; they are refreshed in the background.
 const RATE_TTL_MS = 10 * 60 * 1000;
+/** Background refresh (visible tab). requestBudget caches the rates read for at most half of it. */
+export const RATE_REFRESH_MS = RATE_TTL_MS / 2;
+const RATE_REFRESH_TIMEOUT_MS = 30_000;
 
 const CurrencyContext = createContext();
 
@@ -33,8 +39,6 @@ export const CurrencyProvider = ({ children }) => {
   const [conversionLoading, setConversionLoading] = useState(false);
   // True when the last attempt to load a rate failed (rates cannot be trusted for display)
   const [ratesUnavailable, setRatesUnavailable] = useState(false);
-  // Bumped when rates are saved elsewhere so the preload runs again
-  const [ratesEpoch, setRatesEpoch] = useState(0);
 
   // Load currencies on mount (only active currencies with exchange rates)
   useEffect(() => {
@@ -53,7 +57,7 @@ export const CurrencyProvider = ({ children }) => {
           }
         }
       } catch (error) {
-        console.error('Error loading currencies:', error);
+        logError(error, { operation: 'CurrencyContext.loadCurrencies' });
       } finally {
         setLoading(false);
       }
@@ -62,9 +66,15 @@ export const CurrencyProvider = ({ children }) => {
     loadCurrencies();
   }, []);
 
+  // True while the background refresh runs: an expired rate (tab hidden longer than the TTL) stays on screen until the
+  // refresh answers, exactly as when the old timer kept running in background tabs. A failed refresh drops it.
+  const refreshingRef = useRef(false);
   const readCachedRate = (cacheKey) => {
     const entry = exchangeRatesCacheRef.current.get(cacheKey);
-    return entry && entry.expiresAt > Date.now() ? entry.rate : null;
+    if (!entry) return null;
+    const now = Date.now();
+    // Grace bounded to one extra TTL: a refresh that never answers cannot keep an old rate on screen forever.
+    return entry.expiresAt > now || (refreshingRef.current && entry.expiresAt + RATE_TTL_MS > now) ? entry.rate : null;
   };
 
   /**
@@ -101,7 +111,7 @@ export const CurrencyProvider = ({ children }) => {
       setRatesUnavailable(true);
       return null;
     } catch (error) {
-      console.error('Error getting conversion rate:', error);
+      logError(error, { operation: 'CurrencyContext.getConversionRate' });
       setRatesUnavailable(true);
       return null;
     } finally {
@@ -111,8 +121,9 @@ export const CurrencyProvider = ({ children }) => {
 
   /**
    * Convert amount from one currency to another
-   * SYNCHRONOUS VERSION - Uses cached rates only. Returns NaN when there is no valid rate,
-   * so callers show "unavailable" instead of an unconverted amount presented as converted.
+   * SYNCHRONOUS VERSION - Uses cached rates only. NaN and missing currency IDs return NaN;
+   * null, undefined, empty, and zero amounts return 0. Missing rates also return NaN so callers
+   * show "unavailable" instead of an unconverted amount presented as converted.
    * For render-phase calls. Use convertAmountAsync in effects/handlers.
    * @param {number} amount - Amount to convert
    * @param {string} fromCurrencyId - Source currency UUID
@@ -120,8 +131,9 @@ export const CurrencyProvider = ({ children }) => {
    * @returns {number} Converted amount, or NaN when no valid rate is cached
    */
   const convertAmount = useCallback((amount, fromCurrencyId, toCurrencyId) => {
+    if (Number.isNaN(amount)) return NaN;
     if (!amount || amount === 0) return 0;
-    if (!fromCurrencyId || !toCurrencyId) return amount;
+    if (!fromCurrencyId || !toCurrencyId) return NaN;
     if (fromCurrencyId === toCurrencyId) return amount;
 
     const rate = readCachedRate(`${fromCurrencyId}-${toCurrencyId}`);
@@ -224,6 +236,7 @@ export const CurrencyProvider = ({ children }) => {
    * @returns {string} Formatted value
    */
   const formatCurrency = useCallback((value, decimals = 2) => {
+    if (Number.isNaN(value)) return UNAVAILABLE;
     return (value || 0).toFixed(decimals);
   }, []);
 
@@ -234,34 +247,52 @@ export const CurrencyProvider = ({ children }) => {
    * @returns {string} Formatted display (e.g., "$123.45 USD")
    */
   const displayCurrency = useCallback((value, currencyId = selectedCurrency) => {
+    if (Number.isNaN(value)) return UNAVAILABLE;
     const symbol = getSymbol(currencyId);
     const code = getCode(currencyId);
     const formatted = formatCurrency(value);
     return `${symbol}${formatted} ${code}`;
   }, [selectedCurrency, getSymbol, getCode, formatCurrency]);
 
-  // Drop cached rates whenever rates are saved elsewhere (Settings → Financial)
+  // Precache conversion rates when the selected currency changes and refresh them before the TTL expires, only while the
+  // tab is visible (visiblePolling; coming back refreshes at once). Every pair reads the same cached request
+  // (currencyService + requestBudget), so a refresh costs at most one request. EVERY ordered pair is cached: rates are
+  // not reciprocal (USD->CUP 915, CUP->USD 1/900), so each direction must resolve direct-first like the live path
+  // (getLiveConversionRate), never as the inverse of the opposite cached pair.
+  // MUST be after getConversionRateWithCache is defined to avoid TDZ error
+  const ratesPollKey = `currency:rates:${selectedCurrency}`;
+  const preloadConversionRates = async () => {
+    refreshingRef.current = true;
+    let timer;
+    try {
+      await Promise.race([
+        Promise.all(
+          currencies.flatMap(from => currencies
+            .filter(to => to.id !== from.id)
+            .map(to => getConversionRateWithCache(from.id, to.id, { force: true })))
+        ),
+        // supabase-js has no request timeout: give up (and back off) instead of waiting forever
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Exchange-rate refresh timed out')), RATE_REFRESH_TIMEOUT_MS);
+        })
+      ]);
+    } finally {
+      clearTimeout(timer);
+      refreshingRef.current = false;
+      setConversionLoading(false); // a request that never answered must not leave the spinner on
+    }
+  };
+  useVisiblePolling(ratesPollKey, preloadConversionRates, {
+    enabled: Boolean(selectedCurrency) && currencies.length > 0,
+    intervalMs: RATE_REFRESH_MS
+  });
+
+  // Drop cached rates whenever rates are saved elsewhere (Settings → Financial) and load them again
   useEffect(() => subscribeRatesChanged(() => {
     exchangeRatesCacheRef.current.clear();
     setCacheVersion(prev => prev + 1);
-    setRatesEpoch(prev => prev + 1);
-  }), []);
-
-  // Precache conversion rates when selected currency changes and refresh them before the TTL expires.
-  // MUST be after getConversionRateWithCache is defined to avoid TDZ error
-  useEffect(() => {
-    if (!selectedCurrency || currencies.length === 0) return undefined;
-
-    const preloadConversionRates = (force) => Promise.all(
-      currencies
-        .filter(currency => currency.id !== selectedCurrency)
-        .map(currency => getConversionRateWithCache(currency.id, selectedCurrency, { force }))
-    );
-
-    preloadConversionRates(false);
-    const refreshTimer = setInterval(() => preloadConversionRates(true), RATE_TTL_MS / 2);
-    return () => clearInterval(refreshTimer);
-  }, [selectedCurrency, currencies, getConversionRateWithCache, ratesEpoch]);
+    refreshPoll(ratesPollKey);
+  }), [ratesPollKey]);
 
   // Create currency map for quick access
   const currencyMap = useMemo(() => {
@@ -273,11 +304,18 @@ export const CurrencyProvider = ({ children }) => {
     return map;
   }, [currencies]);
 
+  // Currencies the public selector offers; `currencies` keeps every one for conversion and pricing.
+  const selectorCurrencies = useMemo(
+    () => currencies.filter(c => c.show_in_selector !== false),
+    [currencies]
+  );
+
   // Memoize value object to ensure context subscribers re-render when it changes
   // CRITICAL: Include cacheVersion so when conversion rates load, subscribers are notified
   const value = useMemo(() => ({
     // State
     currencies,
+    selectorCurrencies,
     selectedCurrency,
     setSelectedCurrency,
     currentCurrency,
@@ -309,6 +347,7 @@ export const CurrencyProvider = ({ children }) => {
   }), [
     // State dependencies
     currencies,
+    selectorCurrencies,
     selectedCurrency,
     setSelectedCurrency,
     currentCurrency,

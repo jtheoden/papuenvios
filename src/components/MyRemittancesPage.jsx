@@ -25,12 +25,35 @@ import {
 } from '@/lib/remittanceService';
 import { toast } from '@/components/ui/use-toast';
 import { getHeadingStyle, getPrimaryButtonStyle } from '@/lib/styleUtils';
+import { resolveThemeId } from '@/lib/visualThemes';
 import { useModal } from '@/contexts/ModalContext';
 import CancelRefundMessage from '@/components/CancelRefundMessage';
 import FileUploadWithPreview from '@/components/FileUploadWithPreview';
 import TooltipButton from './TooltipButton';
 import { useRealtimeRemittances } from '@/hooks/useRealtimeSubscription';
-import SkeletonCard from '@/components/ui/SkeletonCard';
+import LoadingState, { SkeletonBox } from '@/components/ui/LoadingState';
+
+// Footprint of the remittance cards (header, two detail rows, footer action).
+const RemittancesSkeleton = () => (
+  <div className="space-y-4">
+    {Array.from({ length: 3 }, (_, i) => (
+      <div key={i} className="glass-effect space-y-3 rounded-xl p-4">
+        <div className="flex items-start justify-between">
+          <div className="space-y-2">
+            <SkeletonBox className="h-4 w-32" />
+            <SkeletonBox className="h-5 w-24" />
+          </div>
+          <SkeletonBox className="h-6 w-20 rounded-full" />
+        </div>
+        <SkeletonBox className="h-4 w-2/3" />
+        <SkeletonBox className="h-4 w-1/2" />
+        <div className="flex justify-end">
+          <SkeletonBox className="h-8 w-20 rounded-lg" />
+        </div>
+      </div>
+    ))}
+  </div>
+);
 import SearchFilterBar from '@/components/ui/SearchFilterBar';
 import RemittanceTimeline from '@/components/ui/RemittanceTimeline';
 import MyOperationRefund from '@/components/refunds/MyOperationRefund';
@@ -46,12 +69,16 @@ import {
   openAdminNotification
 } from '@/lib/whatsappService';
 import { getFreshGuidedWhatsappPhone } from '@/lib/notificationSettingsService';
+import { quoteRateChange } from '@/lib/remittanceRateChange';
+import { formatRate } from '@/lib/numberFormat';
 
 const MyRemittancesPage = ({ onNavigate }) => {
   const { t, language } = useLanguage();
   const { user, isAdmin, isSuperAdmin } = useAuth();
   const { showModal } = useModal();
-  const { notificationSettings } = useBusiness();
+  const { notificationSettings, visualSettings } = useBusiness();
+  // Stored heading/button colours are brand-look only; classic keeps its token classes.
+  const themed = resolveThemeId(visualSettings) !== 'classic';
 
   const [remittances, setRemittances] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -133,15 +160,8 @@ const MyRemittancesPage = ({ onNavigate }) => {
 
   // Rate change detection helpers
   const hasRateChanged = (remittance) => {
-    if (!remittance.remittance_types) return false;
-    const snapshotRate = remittance.exchange_rate;
-    const currentRate = remittance.remittance_types.exchange_rate;
-    if (!snapshotRate || !currentRate) return false;
-    return Math.abs(snapshotRate - currentRate) / snapshotRate > 0.0001;
-  };
-
-  const isRateIncrease = (remittance) => {
-    return remittance.remittance_types.exchange_rate > remittance.exchange_rate;
+    const change = quoteRateChange(remittance);
+    return Boolean(change) && Math.abs(change.snapshotRate - change.currentRate) / change.snapshotRate > 0.0001;
   };
 
   const canRecalculate = (status) => {
@@ -725,19 +745,11 @@ const MyRemittancesPage = ({ onNavigate }) => {
     return langLabels[method] || method;
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-6xl mx-auto py-8 px-4">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className={`${getHeadingStyle()} text-3xl mb-2`}>
+          <h1 style={themed ? getHeadingStyle(visualSettings) : undefined} className="font-bold text-3xl mb-2">
             {t('remittances.user.myRemittances')}
           </h1>
           <p className="text-gray-600">
@@ -746,7 +758,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
         </div>
         <button
           onClick={() => onNavigate && onNavigate('send-remittance')}
-          className={`${getPrimaryButtonStyle()} flex items-center gap-2`}
+          style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="bg-theme-accent text-theme-on-accent hover:bg-theme-accent-hover rounded-lg px-6 py-3 font-semibold flex items-center gap-2"
         >
           <DollarSign className="h-5 w-5" />
           {t('remittances.user.newRemittance')}
@@ -801,13 +813,9 @@ const MyRemittancesPage = ({ onNavigate }) => {
         </motion.div>
       )}
 
-      {loading ? (
-        <div className="space-y-4">
-          <SkeletonCard variant="remittance" />
-          <SkeletonCard variant="remittance" />
-          <SkeletonCard variant="remittance" />
-        </div>
-      ) : remittances.length === 0 ? (
+      {/* Skeleton only for the first load: realtime reloads keep the current list on screen */}
+      <LoadingState loading={loading && remittances.length === 0} skeleton={<RemittancesSkeleton />}>
+      {remittances.length === 0 ? (
         <div className="text-center py-12 glass-effect rounded-xl">
           <DollarSign className="h-16 w-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-xl font-bold text-gray-700 mb-2">
@@ -818,7 +826,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
           </p>
           <button
             onClick={() => onNavigate && onNavigate('send-remittance')}
-            className={`${getPrimaryButtonStyle()} inline-flex items-center gap-2`}
+            style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="bg-theme-accent text-theme-on-accent hover:bg-theme-accent-hover rounded-lg px-6 py-3 font-semibold inline-flex items-center gap-2"
           >
             <DollarSign className="h-5 w-5" />
             {t('remittances.user.newRemittance')}
@@ -868,7 +876,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                 <div className="grid md:grid-cols-3 gap-4 mb-4">
                   <div>
                     <p className="text-xs text-gray-500 mb-1">{t('remittances.user.amountSent')}</p>
-                    <p className="text-lg font-bold text-blue-600">
+                    <p className="text-lg font-bold text-[rgb(var(--t-link))]">
                       {remittance.amount_sent} {remittance.currency_sent}
                     </p>
                   </div>
@@ -888,28 +896,22 @@ const MyRemittancesPage = ({ onNavigate }) => {
 
                 {/* Rate Change Alert */}
                 {hasRateChanged(remittance) && !dismissedRateAlerts.has(remittance.id) && (canRecalculate(remittance.status) || isInFlight(remittance.status)) && (() => {
-                  const snapshotRate = remittance.exchange_rate;
-                  const currentRate = remittance.remittance_types.exchange_rate;
-                  const rateUp = isRateIncrease(remittance);
-                  const pctChange = ((currentRate - snapshotRate) / snapshotRate * 100).toFixed(2);
-                  const type = remittance.remittance_types;
-                  const newCommPct = type.commission_percentage || 0;
-                  const newCommFixed = type.commission_fixed || 0;
-                  const newCommTotal = (remittance.amount_sent * newCommPct / 100) + newCommFixed;
-                  const newAmountToDeliver = (remittance.amount_sent - newCommTotal) * currentRate;
+                  const rateChange = quoteRateChange(remittance);
+                  if (!rateChange) return null;
+                  const { snapshotRate, currentRate, rateUp, pctChange } = rateChange;
                   const canUpdate = canRecalculate(remittance.status);
 
                   return (
                     <div className={`mb-4 p-3 rounded-lg border ${
                       canUpdate
-                        ? (rateUp ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200')
+                        ? (rateUp ? 'bg-theme-accent-soft border-theme-accent-line' : 'bg-amber-50 border-amber-200')
                         : 'bg-gray-50 border-gray-200'
                     }`}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-start gap-2 flex-1 min-w-0">
                           {canUpdate ? (
                             rateUp
-                              ? <TrendingUp className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                              ? <TrendingUp className="h-4 w-4 text-[rgb(var(--t-link))] flex-shrink-0 mt-0.5" />
                               : <TrendingDown className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
                           ) : (
                             <Info className="h-4 w-4 text-gray-500 flex-shrink-0 mt-0.5" />
@@ -918,19 +920,16 @@ const MyRemittancesPage = ({ onNavigate }) => {
                             {canUpdate ? (
                               <>
                                 <p className={`text-sm font-medium ${rateUp ? 'text-blue-800' : 'text-amber-800'}`}>
-                                  {t('remittances.user.rateChangedFrom')}: {snapshotRate.toFixed(2)} → {currentRate.toFixed(2)} {remittance.currency_delivered}/{remittance.currency_sent} ({pctChange > 0 ? '+' : ''}{pctChange}%)
-                                </p>
-                                <p className={`text-xs mt-1 ${rateUp ? 'text-blue-700' : 'text-amber-700'}`}>
-                                  {t('remittances.user.newAmountWouldBe')}: {newAmountToDeliver.toFixed(2)} {remittance.currency_delivered} ({t('remittances.user.was')} {remittance.amount_to_deliver?.toFixed(2)})
+                                  {t('remittances.user.rateChangedFrom')}: {formatRate(snapshotRate, language)} → {formatRate(currentRate, language)} {remittance.currency_delivered}/{remittance.currency_sent} ({pctChange > 0 ? '+' : ''}{pctChange.toFixed(2)}%)
                                 </p>
                                 <div className="flex flex-wrap gap-2 mt-2">
                                   <button
                                     onClick={(e) => { e.stopPropagation(); handleRecalculateRate(remittance.id); }}
                                     disabled={recalculating === remittance.id}
-                                    className={`inline-flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-lg text-white transition-colors ${
+                                    className={`inline-flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
                                       rateUp
-                                        ? 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400'
-                                        : 'bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400'
+                                        ? 'bg-theme-accent text-theme-on-accent hover:bg-theme-accent-hover theme-accent-disabled disabled:bg-blue-400'
+                                        : 'bg-amber-600 text-white hover:bg-amber-700 disabled:bg-amber-400'
                                     }`}
                                   >
                                     <RefreshCw className={`h-3 w-3 ${recalculating === remittance.id ? 'animate-spin' : ''}`} />
@@ -949,7 +948,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                               </>
                             ) : (
                               <p className="text-sm text-gray-600">
-                                {t('remittances.user.currentRateIs')} {currentRate.toFixed(2)}. {t('remittances.user.rateLockedNote')} ({snapshotRate.toFixed(2)}).
+                                {t('remittances.user.currentRateIs')} {formatRate(currentRate, language)}. {t('remittances.user.rateLockedNote')} ({formatRate(snapshotRate, language)}).
                               </p>
                             )}
                           </div>
@@ -975,13 +974,13 @@ const MyRemittancesPage = ({ onNavigate }) => {
                     <div className={`p-3 rounded-lg ${
                       alert.level === 'error' ? 'bg-red-50 border border-red-200' :
                       alert.level === 'warning' ? 'bg-yellow-50 border border-yellow-200' :
-                      'bg-blue-50 border border-blue-200'
+                      'bg-theme-accent-soft border border-theme-accent-line'
                     }`}>
                       <div className="flex items-center gap-2">
                         <Clock className={`h-4 w-4 ${
                           alert.level === 'error' ? 'text-red-600' :
                           alert.level === 'warning' ? 'text-yellow-600' :
-                          'text-blue-600'
+                          'text-[rgb(var(--t-link))]'
                         }`} />
                         <span className={`text-sm font-medium ${
                           alert.level === 'error' ? 'text-red-800' :
@@ -1053,7 +1052,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                           tooltipText={t('remittances.user.uploadProof')}
                           onClick={() => handleUploadProof(remittance)}
                           disabled={Boolean(pendingProposals[remittance.id])}
-                          className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                          className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-theme-accent text-theme-on-accent rounded-lg hover:bg-theme-accent-hover transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                           title={pendingProposals[remittance.id] ? t('remittances.commissionChange.uploadBlocked') : t('remittances.user.uploadProof')}
                           aria-describedby={pendingProposals[remittance.id] ? `commission-notice-${pendingProposals[remittance.id].id}` : undefined}
                         >
@@ -1068,7 +1067,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                         tooltipText={t('remittances.user.reUploadProof')}
                         onClick={() => handleUploadProof(remittance)}
                         disabled={Boolean(pendingProposals[remittance.id])}
-                        className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                        className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-theme-accent text-theme-on-accent rounded-lg hover:bg-theme-accent-hover transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                         title={pendingProposals[remittance.id] ? t('remittances.commissionChange.uploadBlocked') : t('remittances.user.reUploadProof')}
                         aria-describedby={pendingProposals[remittance.id] ? `commission-notice-${pendingProposals[remittance.id].id}` : undefined}
                       >
@@ -1096,6 +1095,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
           })}
         </div>
       )}
+      </LoadingState>
 
       {/* Upload Proof Modal */}
       {showUploadModal && selectedRemittance && (
@@ -1141,7 +1141,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                   type="text"
                   value={uploadData.reference}
                   onChange={(e) => setUploadData({ ...uploadData, reference: e.target.value })}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-theme-focus focus:border-transparent text-sm"
                   placeholder={t('remittances.user.referenceExample')}
                   required
                 />
@@ -1159,7 +1159,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                   maxLength={PAYER_PHONE_MAX_LENGTH}
                   value={uploadData.payerPhone}
                   onChange={(e) => setUploadData({ ...uploadData, payerPhone: e.target.value })}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-theme-focus focus:border-transparent text-sm"
                   placeholder={t('remittances.user.payerPhonePlaceholder')}
                   required
                 />
@@ -1177,7 +1177,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                 <textarea
                   value={uploadData.notes}
                   onChange={(e) => setUploadData({ ...uploadData, notes: e.target.value })}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-theme-focus focus:border-transparent text-sm"
                   rows="3"
                   placeholder={t('remittances.user.additionalDetailsPlaceholder')}
                 />
@@ -1196,7 +1196,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                 </button>
                 <button
                   type="submit"
-                  className={`flex-1 ${getPrimaryButtonStyle()} text-sm`}
+                  style={themed ? getPrimaryButtonStyle(visualSettings) : undefined} className="bg-theme-accent text-theme-on-accent hover:bg-theme-accent-hover flex-1 rounded-lg px-4 py-2 font-semibold text-sm"
                 >
                   {t('remittances.user.send')}
                 </button>
@@ -1317,7 +1317,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                             href={proofSignedUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="mt-4 text-blue-600 hover:underline text-xs sm:text-sm"
+                            className="mt-4 text-theme-link hover:underline text-xs sm:text-sm"
                           >
                             {t('remittances.user.openInNewTab')}
                           </a>
@@ -1332,13 +1332,13 @@ const MyRemittancesPage = ({ onNavigate }) => {
                       </div>
                     )}
                     {selectedRemittance.payment_reference && (
-                      <div className="mt-3 bg-blue-50 p-3 rounded-lg">
+                      <div className="mt-3 bg-theme-accent-soft p-3 rounded-lg">
                         <p className="text-xs sm:text-sm text-gray-600">{t('remittances.admin.paymentReferenceLabel')}</p>
                         <p className="font-semibold text-blue-900 text-sm">{selectedRemittance.payment_reference}</p>
                       </div>
                     )}
                     {selectedRemittance.payer_phone && (
-                      <div className="mt-3 bg-blue-50 p-3 rounded-lg">
+                      <div className="mt-3 bg-theme-accent-soft p-3 rounded-lg">
                         <p className="text-xs sm:text-sm text-gray-600">{t('remittances.user.payerPhoneShortLabel')}</p>
                         <p className="font-semibold text-blue-900 text-sm">{selectedRemittance.payer_phone}</p>
                       </div>
@@ -1398,7 +1398,7 @@ const MyRemittancesPage = ({ onNavigate }) => {
                                 href={deliveryProofSignedUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="mt-4 text-blue-600 hover:underline text-xs sm:text-sm"
+                                className="mt-4 text-theme-link hover:underline text-xs sm:text-sm"
                               >
                                 {t('remittances.user.openInNewTab')}
                               </a>
