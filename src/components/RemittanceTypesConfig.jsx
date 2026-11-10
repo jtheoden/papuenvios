@@ -278,6 +278,23 @@ const RemittanceTypesConfig = () => {
 
     try {
       if (editingType) {
+        // Changing a live type's currency re-prices every future quote: make the admin confirm it
+        const currencyChanged = editingType.currency_code !== formData.currency_code ||
+                                editingType.delivery_currency !== formData.delivery_currency;
+        if (currencyChanged) {
+          const confirmed = await showModal({
+            type: 'warning',
+            title: t('remittances.admin.currencyChangeWarning'),
+            message: t('remittances.admin.currencyChangeMessage', {
+              from: `${editingType.currency_code} → ${editingType.delivery_currency}`,
+              to: `${formData.currency_code} → ${formData.delivery_currency}`
+            }),
+            confirmText: t('common.confirm'),
+            cancelText: t('common.cancel')
+          });
+          if (!confirmed) return;
+        }
+
         // Detect rate/commission changes and warn admin about affected pending remittances
         const oldRate = editingType.exchange_rate;
         const newRate = parseFloat(formData.exchange_rate);

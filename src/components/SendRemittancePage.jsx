@@ -531,7 +531,9 @@ const SendRemittancePage = ({ onNavigate }) => {
 
     // Validación para remesas off-cash (transfer, card, moneypocket)
     const deliveryMethod = selectedType?.delivery_method || 'cash';
-    if (deliveryMethod !== 'cash' && !selectedBankAccount) {
+    const accountCurrency = selectedBankAccountDetails?.currency?.code;
+    const wrongCurrency = Boolean(accountCurrency) && accountCurrency !== selectedType?.delivery_currency;
+    if (deliveryMethod !== 'cash' && (!selectedBankAccount || wrongCurrency)) {
       const deliveryCurrency = selectedType?.delivery_currency || '';
       toast({
         title: t('common.error'),
@@ -589,7 +591,14 @@ const SendRemittancePage = ({ onNavigate }) => {
         notes: recipientData.notes,
         zelle_account_id: selectedZelle?.id,
         recipient_id: selectedRecipientData?.recipientId,
-        recipient_address_id: selectedRecipientData?.addressId
+        recipient_address_id: selectedRecipientData?.addressId,
+        // The amounts on screen: the service stores exactly these or refuses
+        expectedQuote: calculation && {
+          amountSent: calculation.amount,
+          amountToDeliver: calculation.amountToDeliver,
+          exchangeRate: calculation.exchangeRate,
+          commissionTotal: calculation.totalCommission
+        }
       };
 
       // Si es remesa off-cash, incluir recipient_bank_account_id
@@ -619,13 +628,23 @@ const SendRemittancePage = ({ onNavigate }) => {
         // Server-side guard rejected it: refresh so the inline state catches up
         refreshPaymentMethods();
       }
+      const quoteChanged = error?.code === ERROR_CODES.REMITTANCE_QUOTE_CHANGED;
+      if (quoteChanged && error.context?.actual) {
+        // Nothing was stored: show the customer the new amounts and let them confirm again
+        const { amountSent, amountToDeliver, exchangeRate, commissionTotal } = error.context.actual;
+        setCalculation((previous) => ({ ...previous, amount: amountSent, amountToDeliver, exchangeRate, totalCommission: commissionTotal }));
+        setRateCheckedAt(new Date());
+        setStep(2);
+      }
       toast({
         title: t('common.error'),
-        description: isPaymentMethodDisabledError(error)
-          ? t('paymentMethods.checkout.rejected')
-          : error?.code === ERROR_CODES.EXCHANGE_RATE_UNAVAILABLE
-            ? t('remittances.wizard.rateUnavailable')
-            : (error?.message || t('remittances.wizard.errorCreatingRemittance')),
+        description: quoteChanged
+          ? t('remittances.wizard.quoteChanged')
+          : isPaymentMethodDisabledError(error)
+            ? t('paymentMethods.checkout.rejected')
+            : error?.code === ERROR_CODES.EXCHANGE_RATE_UNAVAILABLE
+              ? t('remittances.wizard.rateUnavailable')
+              : (error?.message || t('remittances.wizard.errorCreatingRemittance')),
         variant: 'destructive'
       });
     } finally {
@@ -1153,11 +1172,9 @@ const SendRemittancePage = ({ onNavigate }) => {
                 onSelect={(recipientData) => {
                   setSelectedRecipientData(recipientData);
 
-                  // Guardar recipient_bank_account_id y detalles si es una remesa off-cash
-                  if (recipientData.recipient_bank_account_id) {
-                    setSelectedBankAccount(recipientData.recipient_bank_account_id);
-                    setSelectedBankAccountDetails(recipientData.bank_account_details || null);
-                  }
+                  // Always mirror the selection: a recipient without account must clear the previous one's account
+                  setSelectedBankAccount(recipientData.recipient_bank_account_id || null);
+                  setSelectedBankAccountDetails(recipientData.bank_account_details || null);
 
                   if (recipientData.recipientData) {
                     // Existing recipient selected
