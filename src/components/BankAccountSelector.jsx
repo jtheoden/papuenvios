@@ -58,6 +58,9 @@ const BankAccountSelector = ({
     );
   }, [myAccounts, accounts, selectedRemittanceType?.delivery_currency]);
 
+  // The saved-accounts list is only rendered with the create button, so the notices must match it
+  const canReuse = showCreateButton && reusableAccounts.length > 0;
+
   useEffect(() => {
     if (recipientId) {
       loadBankAccounts();
@@ -195,9 +198,13 @@ const BankAccountSelector = ({
               {language === 'es' ? 'Sin Cuentas Compatibles' : 'No Compatible Accounts'}
             </p>
             <p className="text-sm text-amber-700 mt-1">
-              {language === 'es'
-                ? `Este destinatario tiene ${accounts.length} cuenta(s), pero ninguna es en ${selectedRemittanceType.delivery_currency}. Crea una nueva cuenta compatible.`
-                : `This recipient has ${accounts.length} account(s), but none are in ${selectedRemittanceType.delivery_currency}. Create a compatible account.`}
+              {canReuse
+                ? (language === 'es'
+                  ? `Este destinatario tiene ${accounts.length} cuenta(s), pero ninguna es en ${selectedRemittanceType.delivery_currency}. Elige una de tus cuentas guardadas en ${selectedRemittanceType.delivery_currency} o agrega una nueva.`
+                  : `This recipient has ${accounts.length} account(s), but none are in ${selectedRemittanceType.delivery_currency}. Choose one of your saved ${selectedRemittanceType.delivery_currency} accounts or add a new one.`)
+                : (language === 'es'
+                  ? `Este destinatario tiene ${accounts.length} cuenta(s), pero ninguna es en ${selectedRemittanceType.delivery_currency}. Crea una nueva cuenta compatible.`
+                  : `This recipient has ${accounts.length} account(s), but none are in ${selectedRemittanceType.delivery_currency}. Create a compatible account.`)}
             </p>
           </div>
         </div>
@@ -330,7 +337,8 @@ const BankAccountSelector = ({
             </div>
           )}
         </div>
-      ) : (
+      ) : accounts.length === 0 && (
+        // Only when the recipient has none at all; accounts in another currency have their own notice above
         <div className="p-4 bg-yellow-50 rounded-lg border-2 border-yellow-200 flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
           <div>
@@ -338,9 +346,13 @@ const BankAccountSelector = ({
               {language === 'es' ? 'Sin Cuentas Bancarias' : 'No Bank Accounts'}
             </p>
             <p className="text-sm text-yellow-700 mt-1">
-              {language === 'es'
-                ? 'Este destinatario no tiene cuentas bancarias vinculadas. Crea una nueva.'
-                : 'This recipient has no linked bank accounts. Create a new one.'}
+              {canReuse
+                ? (language === 'es'
+                  ? 'Este destinatario aún no tiene cuentas vinculadas. Elige una de tus cuentas guardadas o agrega una nueva.'
+                  : 'This recipient has no linked bank accounts yet. Choose one of your saved accounts or add a new one.')
+                : (language === 'es'
+                  ? 'Este destinatario no tiene cuentas bancarias vinculadas. Crea una nueva.'
+                  : 'This recipient has no linked bank accounts. Create a new one.')}
             </p>
           </div>
         </div>

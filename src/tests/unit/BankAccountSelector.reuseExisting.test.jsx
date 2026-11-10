@@ -76,6 +76,42 @@ describe('BankAccountSelector: use one of my saved accounts', () => {
     await waitFor(() => expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'link-new' })));
   });
 
+  describe('empty-state notice', () => {
+    it('does not tell the customer to create a new account when saved ones can be used', async () => {
+      render(<BankAccountSelector recipientId="rec-1" selectedRemittanceType={usd} onSelect={vi.fn()} />);
+
+      await screen.findByRole('button', { name: /Usar cuenta.*1111/ });
+      expect(screen.getByText(/Elige una de tus cuentas guardadas o agrega una nueva/)).toBeInTheDocument();
+      expect(screen.queryByText(/Crea una nueva/)).toBeNull();
+    });
+
+    it('still says to create one when there is nothing to reuse', async () => {
+      api.getBankAccountsByUser.mockResolvedValue([]);
+      render(<BankAccountSelector recipientId="rec-1" selectedRemittanceType={usd} onSelect={vi.fn()} />);
+
+      expect(await screen.findByText(/Crea una nueva\./)).toBeInTheDocument();
+      expect(screen.queryByText(/Elige una de tus cuentas guardadas/)).toBeNull();
+    });
+
+    it('with accounts in another currency shows only the currency notice, not "no linked accounts" too', async () => {
+      api.getBankAccountsForRecipient.mockResolvedValue([{ ...linked('link-1', 'acc-cup-linked', '3333'), bank_account: { ...mine('acc-cup-linked', '3333', 'CUP'), is_active: true } }]);
+      api.getBankAccountsByUser.mockResolvedValue([]);
+      render(<BankAccountSelector recipientId="rec-1" selectedRemittanceType={usd} onSelect={vi.fn()} />);
+
+      expect(await screen.findByText(/ninguna es en USD/)).toBeInTheDocument();
+      expect(screen.queryByText(/no tiene cuentas bancarias vinculadas/)).toBeNull();
+    });
+
+    it('with accounts in another currency and a saved USD one, points to the saved account instead of "create a compatible one"', async () => {
+      api.getBankAccountsForRecipient.mockResolvedValue([{ ...linked('link-1', 'acc-cup-linked', '3333'), bank_account: { ...mine('acc-cup-linked', '3333', 'CUP'), is_active: true } }]);
+      render(<BankAccountSelector recipientId="rec-1" selectedRemittanceType={usd} onSelect={vi.fn()} />);
+
+      await screen.findByRole('button', { name: /Usar cuenta.*1111/ });
+      expect(screen.getByText(/ninguna es en USD\. Elige una de tus cuentas guardadas en USD o agrega una nueva/)).toBeInTheDocument();
+      expect(screen.queryByText(/Crea una nueva cuenta compatible/)).toBeNull();
+    });
+  });
+
   it('shows no list when the customer has no other saved account', async () => {
     api.getBankAccountsByUser.mockResolvedValue([]);
     render(<BankAccountSelector recipientId="rec-1" selectedRemittanceType={usd} onSelect={vi.fn()} />);

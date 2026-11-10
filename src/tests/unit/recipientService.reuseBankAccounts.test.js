@@ -86,9 +86,22 @@ beforeEach(() => {
 
 describe('createBankAccount reuses an account the customer already saved', () => {
   it('returns the existing active account instead of failing as duplicate, without inserting', async () => {
-    state.existingAccount = { id: 'acc-1', is_active: true, deleted_at: null };
+    state.existingAccount = { id: 'acc-1', is_active: true, deleted_at: null, bank_id: 'bank-1', currency_id: 'cur-usd-uuid-0000' };
 
     await expect(createBankAccount('user-1', accountInput)).resolves.toMatchObject({ id: 'acc-1' });
+    expect(state.insert).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['another bank', { bank_id: 'bank-2', currency_id: 'cur-usd-uuid-0000' }],
+    ['another currency', { bank_id: 'bank-1', currency_id: 'cur-cup-uuid-0000' }]
+  ])('does not silently reuse the saved account when the same number is typed with %s', async (_label, differing) => {
+    state.existingAccount = { id: 'acc-1', is_active: true, deleted_at: null, ...differing };
+
+    await expect(createBankAccount('user-1', accountInput)).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      context: { fieldErrors: { accountNumber: expect.any(String) } }
+    });
     expect(state.insert).not.toHaveBeenCalled();
   });
 
