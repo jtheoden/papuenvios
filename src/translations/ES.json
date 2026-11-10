@@ -1295,6 +1295,7 @@
       "rateUpdatedAt": "Última actualización: {date}",
       "marketRate": "Tasa de mercado (referencia)",
       "marketRateHint": "Referencia interna para medir el margen; no se usa para cotizar.",
+      "marketAboveRate": "La tasa de mercado (referencia) no puede ser mayor que la tasa que ven los usuarios. Sube la tasa o baja la de mercado.",
       "marketRateInfo": "Tasa de mercado (referencia): {market} · la tasa operativa está {diff} frente al mercado (informativo)",
       "rateChangeConfirmTitle": "Confirmar cambio grande de tasa",
       "rateChangeConfirmMessage": "La tasa USD a EUR cambia de {previous} a {next} ({percent}%). Las cotizaciones de Bizum usan esta tasa; verifique que el nuevo valor sea correcto.",

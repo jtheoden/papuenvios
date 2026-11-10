@@ -1287,6 +1287,7 @@
       "rateUpdatedAt": "Last updated: {date}",
       "marketRate": "Market rate (reference)",
       "marketRateHint": "Internal reference to measure the margin; not used for quoting.",
+      "marketAboveRate": "The market rate (reference) cannot be higher than the rate users see. Raise the rate or lower the market rate.",
       "marketRateInfo": "Market rate (reference): {market} · operative rate is {diff} vs market (informational)",
       "rateChangeConfirmTitle": "Confirm large rate change",
       "rateChangeConfirmMessage": "The USD to EUR rate changes from {previous} to {next} ({percent}%). Bizum quotes use this rate; make sure the new value is correct.",
