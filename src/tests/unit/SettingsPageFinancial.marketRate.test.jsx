@@ -51,6 +51,8 @@ vi.mock('@/lib/fxReference', async (importOriginal) => ({
 vi.mock('@/lib/supabase', () => ({ supabase: { from: vi.fn(), auth: { refreshSession: vi.fn() } } }));
 
 import SettingsPageFinancial from '@/components/settings/SettingsPageFinancial';
+import { toast } from '@/components/ui/use-toast';
+import { createValidationError } from '@/lib/errorHandler';
 
 const USD = { id: 'usd', code: 'USD', name_es: 'Dólar', name_en: 'Dollar', symbol: '$', is_active: true, is_base: true };
 const CUP = { id: 'cup', code: 'CUP', name_es: 'Peso', name_en: 'Peso', symbol: '$', is_active: true };
@@ -67,6 +69,7 @@ const renderPage = async () => {
 
 beforeEach(() => {
   Object.values(svc).forEach((fn) => fn.mockReset());
+  toast.mockClear();
   auth.isSuperAdmin = true;
   svc.getAllCurrencies.mockResolvedValue([USD, CUP]);
   svc.getAllExchangeRates.mockResolvedValue([rateRow('r1', USD, CUP, 915, 900), rateRow('r2', CUP, USD, 1 / 915, 1 / 900)]);
@@ -119,6 +122,29 @@ describe('super_admin', () => {
     fireEvent.click(screen.getByRole('button', { name: /Save Changes/ }));
     await waitFor(() => expect(svc.updateExchangeRatePair).toHaveBeenCalled());
     expect(svc.updateExchangeRatePair.mock.calls[0]).toHaveLength(4);
+  });
+
+  // The DB rejects rate < market_rate on any row (rate_higher_than_market): the admin gets a sentence, not SQL
+  it.each([
+    ['the service refuses a market rate above the rate', () => createValidationError({ marketRate: 'above' }, 'Market rate above the rate')],
+    ['the DB constraint rejects it (market field left untouched)', () =>
+      new Error('new row for relation "exchange_rates" violates check constraint "rate_higher_than_market"')]
+  ])('shows the translated reason when %s', async (_name, makeError) => {
+    svc.updateExchangeRatePair.mockRejectedValue(makeError());
+    await renderPage();
+    fireEvent.click(screen.getByTitle('Edit rate pair'));
+    await screen.findByLabelText(MARKET_LABEL);
+    // small change: a big one opens the extra confirmation modal before saving
+    fireEvent.change(screen.getByDisplayValue('915'), { target: { value: '910' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save Changes/ }));
+
+    await waitFor(() => expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ description: EN.settings.financial.marketAboveRate, variant: 'destructive' })
+    ));
+  });
+
+  it.each([['EN', EN], ['ES', ES]])('%s has the market-above-rate message', (_n, dict) => {
+    expect(dict.settings.financial.marketAboveRate).toEqual(expect.any(String));
   });
 
   it('offers the optional field in the create form and sends marketRate when typed', async () => {

@@ -115,28 +115,63 @@ const sumRecognizedSince = (orders, since, pick) =>
   sumSince(orders.filter(isRecognizedOrder), orderDate, since, pick);
 
 /**
- * Revenue, shipping, discounts (per business window) and payment-method breakdown
- * for validated, active orders.
+ * Revenue, shipping and discounts (per business window) for validated, active orders.
  */
 export const computeOrderTotals = (orders, now = new Date()) => {
   const w = getBusinessWindows(now);
   const recognized = orders.filter(isRecognizedOrder);
   const total = (o) => toNumber(o.total_amount);
 
-  const paymentMethodBreakdown = {};
-  orders.filter(isActive).forEach((o) => {
-    const method = o.payment_method || 'unknown';
-    if (!paymentMethodBreakdown[method]) paymentMethodBreakdown[method] = { count: 0, total: 0 };
-    paymentMethodBreakdown[method].count += 1;
-    paymentMethodBreakdown[method].total = roundMoney(paymentMethodBreakdown[method].total + total(o));
-  });
-
   return {
     ...sumByWindow(w, 'Revenue', recognized, orderDate, total),
     ...sumByWindow(w, 'ShippingCost', recognized, orderDate, (o) => toNumber(o.shipping_cost)),
-    ...sumByWindow(w, 'Discounts', recognized, orderDate, (o) => toNumber(o.discount_amount)),
-    paymentMethodBreakdown
+    ...sumByWindow(w, 'Discounts', recognized, orderDate, (o) => toNumber(o.discount_amount))
   };
+};
+
+/**
+ * Summarize received payment sources without combining unlike currencies.
+ * Orders count once while active; remittances count once after payment validation.
+ * Only sealed native order amounts are used for non-Zelle methods.
+ */
+export const computePaymentSourceBreakdown = (orders = [], remittances = []) => {
+  const breakdown = {};
+  const add = (methodValue, amountValue, currencyValue) => {
+    const method = String(methodValue || 'unknown').toLowerCase();
+    if (!breakdown[method]) breakdown[method] = { count: 0, nativeAmounts: {} };
+    const item = breakdown[method];
+    item.count += 1;
+
+    const amount = amountValue === null || amountValue === undefined || amountValue === ''
+      ? null
+      : Number(amountValue);
+    const currency = typeof currencyValue === 'string' ? currencyValue.trim().toUpperCase() : '';
+    if (!Number.isFinite(amount) || !currency) return;
+
+    item.nativeAmounts[currency] = roundMoney((item.nativeAmounts[currency] || 0) + amount);
+  };
+
+  orders.filter(isActive).forEach((order) => {
+    const method = order.payment_method || 'unknown';
+    const hasSealedAmount = order.payment_currency && order.payment_amount != null;
+    add(
+      method,
+      hasSealedAmount ? order.payment_amount : method === 'zelle' ? order.total_amount : null,
+      hasSealedAmount ? order.payment_currency : method === 'zelle' ? 'USD' : null
+    );
+  });
+
+  remittances.filter((remittance) => REMITTANCE_REVENUE_STATUSES.includes(remittance.status)).forEach((remittance) => {
+    const method = remittance.payment_method || 'zelle';
+    const hasReceivedAmount = remittance.amount_sent != null;
+    const amount = hasReceivedAmount
+      ? toNumber(remittance.amount_sent) + toNumber(remittance.delivery_cost)
+      : null;
+    const currency = remittance.currency_sent || (method === 'zelle' ? 'USD' : null);
+    add(method, amount, currency);
+  });
+
+  return breakdown;
 };
 
 /**

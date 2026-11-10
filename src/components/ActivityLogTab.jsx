@@ -8,6 +8,7 @@ import { fetchActivityLogs } from '@/lib/activityLogger';
 import { useRealtimeActivityLogs } from '@/hooks/useRealtimeSubscription';
 import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import { getActivityActionLabel, getActivityEntityLabel } from '@/lib/activityLogLabels';
+import { getActivityPaymentDetails } from '@/lib/activityLogPaymentDetails';
 
 const ACTION_OPTIONS = [
   'all',
@@ -174,6 +175,17 @@ const ActivityLogTab = () => {
       render: (value, row) => (
         <div className="space-y-1 text-sm">
           <p className="text-gray-800">{value || t('activityLog.noDescription') || 'Sin descripción'}</p>
+          {(() => {
+            const payment = getActivityPaymentDetails(row, language);
+            if (!payment) return null;
+            return (
+              <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="activity-payment-details">
+                <span className="rounded-full bg-amber-100 px-2 py-1 font-semibold text-stone-800">{payment.method}</span>
+                {payment.amount && <span className="font-medium text-gray-700">{payment.amount}</span>}
+                {payment.reference && <span className="text-gray-500">{payment.reference}</span>}
+              </div>
+            );
+          })()}
           {row.metadata?.target && (
             <p className="text-xs text-gray-500">{t('activityLog.target') || 'Objetivo'}: {row.metadata.target}</p>
           )}
@@ -414,6 +426,20 @@ const ActivityLogTab = () => {
                   <p className="text-sm text-gray-800">{selectedLog.description || t('activityLog.noDescription') || 'Sin descripción'}</p>
                 </div>
               </div>
+
+              {(() => {
+                const payment = getActivityPaymentDetails(selectedLog, language);
+                if (!payment) return null;
+                return (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3" data-testid="activity-payment-summary">
+                    <p className="text-xs font-semibold text-gray-600">{t('activityLog.paymentSource') || 'Payment source'}</p>
+                    <p className="mt-1 text-sm font-semibold text-gray-900">
+                      {payment.method}{payment.amount ? ` · ${payment.amount}` : ''}
+                    </p>
+                    {payment.reference && <p className="mt-1 text-xs text-gray-600">{payment.reference}</p>}
+                  </div>
+                );
+              })()}
 
               {/* Metadata */}
               {selectedLog.metadata && Object.keys(selectedLog.metadata).length > 0 && (

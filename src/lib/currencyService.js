@@ -769,6 +769,21 @@ const parseMarketRate = (value) => {
   return numeric;
 };
 
+/**
+ * The DB enforces rate >= market_rate (constraint rate_higher_than_market): the operative reference can never exceed
+ * the rate users see. Refuse it here, before any write, with a message instead of a raw constraint error.
+ * Compared at the column scale (numeric(14,6)).
+ */
+const assertMarketNotAboveRate = (rate, market) => {
+  const atColumnScale = (value) => Math.round(value * 1e6) / 1e6;
+  if (market !== undefined && atColumnScale(rate) < atColumnScale(market)) {
+    throw createValidationError(
+      { marketRate: 'The operative (market) rate cannot be higher than the rate shown to users' },
+      'Market rate above the rate'
+    );
+  }
+};
+
 export const saveExchangeRate = async (rateData) => {
   try {
     // Input validation
@@ -834,6 +849,7 @@ export const saveExchangeRatePair = async ({ fromCurrencyId, toCurrencyId, rate,
     throw createValidationError({ rate: 'Rate must be a positive finite number' }, 'Invalid rate');
   }
   const market = parseMarketRate(marketRate);
+  assertMarketNotAboveRate(numericRate, market);
   const effDate = effectiveDate || new Date().toISOString().split('T')[0];
 
   // The upsert overwrites a same-day row (active or not): remember it to be able to put it back.
@@ -853,7 +869,8 @@ export const saveExchangeRatePair = async ({ fromCurrencyId, toCurrencyId, rate,
       toCurrencyId: fromCurrencyId,
       rate: 1 / numericRate,
       effectiveDate: effDate,
-      marketRate: market === undefined ? undefined : 1 / market
+      // The inverse leg keeps its own rate as reference: 1/market would exceed 1/rate whenever rate > market
+      marketRate: market === undefined ? undefined : 1 / numericRate
     });
     return { direct, inverse };
   } catch (inverseError) {
@@ -987,6 +1004,7 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
     const rate = parseFloat(newRate);
     const inverseRate = 1 / rate;
     const market = parseMarketRate(options?.marketRate);
+    assertMarketNotAboveRate(rate, market);
     const effDate = effectiveDate || new Date().toISOString().split('T')[0];
 
     const { data: previousDirectRows, error: previousDirectError } = await supabase
@@ -1017,7 +1035,7 @@ export const updateExchangeRatePair = async (fromCurrencyId, toCurrencyId, newRa
     // Update inverse rate (to→from)
     const { data: inverseRows, error: inverseError } = await updateActiveRateRow(
       toCurrencyId, fromCurrencyId,
-      { rate: inverseRate, effective_date: effDate, ...(market !== undefined && { market_rate: 1 / market }) }
+      { rate: inverseRate, effective_date: effDate, ...(market !== undefined && { market_rate: inverseRate }) }
     );
 
     // An inverse that errors or matches no active row leaves the pair inconsistent: put the direct rate back.

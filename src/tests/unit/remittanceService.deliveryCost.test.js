@@ -25,6 +25,12 @@ const makeQuery = (table) => {
     },
     single: async () => {
       if (table === 'remittance_types') return { data: state.type, error: null };
+      if (table === 'recipient_bank_accounts') {
+        return {
+          data: { id: 'link-1', recipient_id: 'rec-1', is_active: true, bank_account: { is_active: true, deleted_at: null, currency: { code: state.type.delivery_currency } } },
+          error: null
+        };
+      }
       if (table === 'remittances') {
         return { data: { id: 'rem-1', remittance_number: 'REM-1', ...state.insertPayload }, error: null };
       }
@@ -78,7 +84,12 @@ const BASE_INPUT = {
   recipient_name: 'Ana',
   recipient_phone: '+5355555555',
   recipient_province: 'La Habana',
-  recipient_municipality: null
+  recipient_municipality: null,
+  // card / transfer types pay into the recipient's account; cash ignores it
+  recipient_id: 'rec-1',
+  recipient_bank_account_id: 'link-1',
+  // what the form displayed for 100 USD at 400 with no commission
+  expectedQuote: { amountSent: 100, amountToDeliver: 40000, exchangeRate: 400, commissionTotal: 0 }
 };
 
 describe('createRemittance delivery cost', () => {

@@ -803,3 +803,9 @@ Follow-up committed on `feat/theme-controls-links-logo` in five new commits (no 
 - UI: IBAN tab always present in Settings > Payments; shared `PaymentMethodOverview` header (Zelle + Bizum) with EUR→USD / EUR→CUP rate badges; Bizum drops its single header FX badge and lists accounts before parameters; `PaymentMethodsStatusCard` shows a disabled IBAN placeholder row when an older catalog lacks it.
 - `PaymentFxBadge` is now unused by app code (only its own and two FxRateCard tests reference it); left in place.
 - Red-first: slice tests failed before implementation (8 files), then passed. Apply the migration only with explicit owner approval.
+
+## S4 — Payment origin in audit + Dashboard payment sources (2026-11-10)
+
+- Activity-log entries for orders and remittances now carry `paymentMethod`, `paymentAmount`, `paymentCurrency` (Zelle orders: total in USD; Bizum/other: sealed `payment_amount`/`payment_currency` or `null`, never inferred). `ActivityLogTab` shows them inline and in the detail dialog via `getActivityPaymentDetails`.
+- Dashboard "payment methods" card uses `computePaymentSourceBreakdown`: native-currency totals per method (orders + validated remittances), no cross-currency sum; non-Zelle rows without a sealed amount show "—". It no longer shows `data.total` in USD.
+- `createRemittance` writes `payment_method: 'zelle'` explicitly (INSERT only; `remittances_payment_method_check` allows it, the routing-columns guard is UPDATE-only). No DB migration.
