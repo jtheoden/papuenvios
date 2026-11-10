@@ -290,6 +290,16 @@ describe('AuthProvider — refresh rate limit (429) and session recovery', () =>
     expect(probe()).toBe('null|resolved|anon');
   });
 
+  // Global scope revokes every session of the user: a logout on a dev server sharing the project would kick out production
+  it('logout only ends this browser session (scope local), never the other devices', async () => {
+    singleMock.mockResolvedValue(profile('admin'));
+    await mountApp();
+
+    await act(async () => { fireEvent.click(screen.getByText('logout')); });
+
+    expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
+
   it('a local sign-out tells the person it only closed this device', async () => {
     singleMock.mockResolvedValue(profile('admin'));
     await mountApp();

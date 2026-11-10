@@ -47,14 +47,15 @@ const clearStoredSession = () => {
 
 // While the refresh is blocked AND the stored token has expired, auth-js cannot load the session:
 // signOut() would stall for the whole retry loop and then fail WITHOUT removing it. Only then sign
-// out locally. Otherwise the normal signOut() runs (it revokes the session on the server).
-// LIMIT: a local sign-out clears this browser only. The refresh token is NOT revoked server-side, so
-// that session stays valid on the server until it is signed out from somewhere else.
+// out locally. Otherwise signOut({ scope: 'local' }) runs (it revokes only THIS session on the server).
+// LIMIT: the blocked-and-expired path clears this browser only. Its refresh token is NOT revoked
+// server-side, so that session stays valid on the server until it is signed out from somewhere else.
 // Returns { error, local }.
 const signOutSafely = async () => {
   const blockedAndExpired = isRefreshBlocked() && !hasLifeLeft(readStoredSession());
   if (!blockedAndExpired) {
-    const { error } = await supabase.auth.signOut();
+    // scope local: the default (global) would revoke the user's sessions on every device and dev server
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
     if (!error) return { error: null, local: false };
     if (!isRetryableAuthError(error)) return { error, local: false };
   }
@@ -271,7 +272,7 @@ export const AuthProvider = ({ children }) => {
       setProfileFailed(false);
       setRoleRetryExhausted(false);
       try {
-        await supabase.auth.signOut();
+        await supabase.auth.signOut({ scope: 'local' });
         toast({
           title: 'Cuenta deshabilitada',
           description: 'Tu cuenta ha sido deshabilitada. Contacta al soporte.',
