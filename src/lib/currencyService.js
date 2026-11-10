@@ -278,6 +278,43 @@ export const updateCurrency = async (currencyId, currencyData) => {
 };
 
 /**
+ * Show or hide a currency in the public currency selector (ADMIN ONLY). The currency stays active: it keeps
+ * converting and pricing, it just is not offered to shoppers. The database refuses to hide the base currency.
+ * @param {string} currencyId - Currency UUID
+ * @param {boolean} show - Whether the selector offers it
+ * @returns {Promise<Object>} Updated currency object
+ * @throws {AppError} VALIDATION_FAILED on bad input, NOT_FOUND if missing, DB_ERROR on failure
+ */
+export const setCurrencyShowInSelector = async (currencyId, show) => {
+  try {
+    if (!currencyId || typeof show !== 'boolean') {
+      throw createValidationError({ currencyId: 'Currency ID and a boolean value are required' }, 'Invalid selector visibility');
+    }
+
+    const { data, error } = await supabase
+      .from('currencies')
+      .update({ show_in_selector: show, updated_at: new Date().toISOString() })
+      .eq('id', currencyId)
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw createNotFoundError('Currency', currencyId);
+      }
+      throw parseSupabaseError(error);
+    }
+
+    return data;
+  } catch (error) {
+    if (error.code) throw error;
+    const appError = handleError(error, ERROR_CODES.DB_ERROR, { operation: 'setCurrencyShowInSelector', currencyId });
+    logError(appError, { operation: 'setCurrencyShowInSelector', currencyId });
+    throw appError;
+  }
+};
+
+/**
  * Soft delete a currency (set is_active = false) - ADMIN ONLY
  * @param {string} currencyId - Currency UUID
  * @returns {Promise<boolean>} True if successful

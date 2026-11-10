@@ -304,11 +304,18 @@ export const CurrencyProvider = ({ children }) => {
     return map;
   }, [currencies]);
 
+  // Currencies the public selector offers; `currencies` keeps every one for conversion and pricing.
+  const selectorCurrencies = useMemo(
+    () => currencies.filter(c => c.show_in_selector !== false),
+    [currencies]
+  );
+
   // Memoize value object to ensure context subscribers re-render when it changes
   // CRITICAL: Include cacheVersion so when conversion rates load, subscribers are notified
   const value = useMemo(() => ({
     // State
     currencies,
+    selectorCurrencies,
     selectedCurrency,
     setSelectedCurrency,
     currentCurrency,
@@ -340,6 +347,7 @@ export const CurrencyProvider = ({ children }) => {
   }), [
     // State dependencies
     currencies,
+    selectorCurrencies,
     selectedCurrency,
     setSelectedCurrency,
     currentCurrency,

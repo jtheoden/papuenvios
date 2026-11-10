@@ -1254,6 +1254,7 @@
       "newCurrency": "Nueva Moneda",
       "baseCurrency": "Moneda Base",
       "base": "Base",
+      "showInSelector": "Mostrar en el selector",
       "exchangeRates": "Tasas de Cambio",
       "ratesSuperAdminOnly": "Solo un super administrador puede crear, editar o eliminar tasas de cambio. Puede consultarlas, pero no modificarlas.",
       "currencyDeleteSuperAdminOnly": "Eliminar una moneda también desactiva sus tasas de cambio, y eso solo lo puede hacer un super administrador.",

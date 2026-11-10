@@ -1246,6 +1246,7 @@
       "newCurrency": "New Currency",
       "baseCurrency": "Base Currency",
       "base": "Base",
+      "showInSelector": "Show in selector",
       "exchangeRates": "Exchange Rates",
       "ratesSuperAdminOnly": "Only a super admin can create, edit or delete exchange rates. You can view them but not change them.",
       "currencyDeleteSuperAdminOnly": "Deleting a currency also deactivates its exchange rates, and only a super admin can do that.",

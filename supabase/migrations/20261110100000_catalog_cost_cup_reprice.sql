@@ -1,4 +1,4 @@
--- PREPARED, NOT APPLIED
+-- APPLIED to production on 2026-11-10 (apply_migration name: catalog_cost_cup_reprice)
 -- Why: the owner buys in CUP and sells in USD. products.base_price (USD) is frozen at the rate of the day the
 --   cost was typed, so when the informal USD->CUP rate moves, the margin erodes. The CUP cost is not stored anywhere.
 -- Requires: 20261016160000_phase0b_admin_cost_read_rpcs.sql (admin_list_product_costs) and
