@@ -1,19 +1,65 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X } from 'lucide-react';
+import { AlertTriangle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { getHelpSectionsForRole } from '@/lib/helpContent';
+import { getHelpSectionForPage, getHelpSectionsForRole } from '@/lib/helpContent';
+import { FINANCIAL_RISK_WARNING_EVENT } from '@/lib/financialRiskWarnings';
 
 const AVATAR_URL = '/images/superadmin-chatbot-avatar.png';
 
-export default function HelpCenter({ userRole, language = 'es', t }) {
+export default function HelpCenter({ userRole, language = 'es', t, currentPage }) {
   const [open, setOpen] = useState(false);
   const [activeSectionId, setActiveSectionId] = useState(null);
   const [search, setSearch] = useState('');
+  const [routeTab, setRouteTab] = useState(() => new URLSearchParams(window.location.search).get('tab'));
+  const [detailTab, setDetailTab] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('courierTab') || params.get('paymentsTab');
+  });
+  const [financialWarning, setFinancialWarning] = useState(null);
   const sections = useMemo(() => getHelpSectionsForRole(userRole), [userRole]);
   const isSpanish = language !== 'en';
-  const activeSection = sections.find(section => section.id === activeSectionId) || sections[0];
+  // Follow the active admin area by default; category navigation remains available.
+  const pageSection = getHelpSectionForPage(currentPage, routeTab, detailTab);
+  const defaultPageSection = getHelpSectionForPage(currentPage);
+  const activeSection = sections.find(section => section.id === activeSectionId)
+    || sections.find(section => section.id === pageSection)
+    || sections.find(section => section.id === defaultPageSection)
+    || sections[0];
+
+  useEffect(() => {
+    setActiveSectionId(null);
+    setSearch('');
+    setRouteTab(new URLSearchParams(window.location.search).get('tab'));
+    const params = new URLSearchParams(window.location.search);
+    setDetailTab(params.get('courierTab') || params.get('paymentsTab'));
+  }, [currentPage]);
+
+  useEffect(() => {
+    const syncTabs = () => {
+      const params = new URLSearchParams(window.location.search);
+      setRouteTab(params.get('tab'));
+      setDetailTab(params.get('courierTab') || params.get('paymentsTab'));
+    };
+    window.addEventListener('admin-tab-change', syncTabs);
+    window.addEventListener('popstate', syncTabs);
+    return () => {
+      window.removeEventListener('admin-tab-change', syncTabs);
+      window.removeEventListener('popstate', syncTabs);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onFinancialRisk = event => {
+      const warning = event?.detail;
+      if (!warning?.title || !warning?.message) return;
+      setFinancialWarning(warning);
+      setOpen(true);
+    };
+    window.addEventListener(FINANCIAL_RISK_WARNING_EVENT, onFinancialRisk);
+    return () => window.removeEventListener(FINANCIAL_RISK_WARNING_EVENT, onFinancialRisk);
+  }, []);
   const entries = useMemo(() => {
     const query = search.trim().toLocaleLowerCase(isSpanish ? 'es' : 'en');
     if (!query) return activeSection?.entries || [];
@@ -54,6 +100,16 @@ export default function HelpCenter({ userRole, language = 'es', t }) {
             style={{ borderColor: 'var(--brand-button-bg, #2563eb)', backgroundColor: 'var(--brand-button-bg, #2563eb)' }}
           >
             <img src={AVATAR_URL} alt="" className="h-full w-full rounded-full object-cover" />
+            {financialWarning && (
+              <span
+                data-testid="financial-risk-indicator"
+                aria-label={isSpanish ? 'Advertencia financiera pendiente' : 'Pending financial warning'}
+                className="absolute -right-0.5 -top-0.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white"
+                style={{ backgroundColor: 'hsl(var(--destructive, 0 72% 51%))', color: 'hsl(var(--destructive-foreground, 0 0% 100%))' }}
+              >
+                <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+              </span>
+            )}
             <span className="sr-only">{label}</span>
           </Button>
         </Dialog.Trigger>,
@@ -101,6 +157,32 @@ export default function HelpCenter({ userRole, language = 'es', t }) {
             </nav>
 
             <section className="min-h-0 overflow-y-auto p-4 sm:p-5" aria-label={activeSection?.title[isSpanish ? 'es' : 'en']}>
+              {financialWarning && (
+                <div
+                  role="alert"
+                  data-testid="financial-risk-warning"
+                  className="mb-4 rounded-xl border-2 p-4 shadow-sm"
+                  style={{
+                    borderColor: 'hsl(var(--destructive, 0 72% 51%))',
+                    backgroundColor: 'hsl(var(--destructive, 0 72% 51%) / 0.08)',
+                    color: 'hsl(var(--destructive, 0 72% 36%))'
+                  }}
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'hsl(var(--destructive, 0 72% 51%))', color: 'hsl(var(--destructive-foreground, 0 0% 100%))' }}>
+                      <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <h2 className="font-bold">{financialWarning.title}</h2>
+                      <p className="mt-1 text-sm leading-6">{financialWarning.message}</p>
+                      {financialWarning.impact && <p className="mt-2 text-sm font-semibold">{financialWarning.impact}</p>}
+                    </div>
+                    <button type="button" onClick={() => setFinancialWarning(null)} className="rounded p-1" aria-label={isSpanish ? 'Cerrar advertencia' : 'Dismiss warning'}>
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+              )}
               <label className="sr-only" htmlFor="help-search">{t('helpCenter.searchLabel')}</label>
               <input
                 id="help-search"
@@ -117,6 +199,16 @@ export default function HelpCenter({ userRole, language = 'es', t }) {
                     <article key={entry.id} className="rounded-xl border border-gray-200 p-4">
                       <h3 className="font-semibold text-gray-900">{entry.question[isSpanish ? 'es' : 'en']}</h3>
                       <p className="mt-2 text-sm leading-6 text-gray-700">{entry.answer[isSpanish ? 'es' : 'en']}</p>
+                      {entry.visualExamples?.map(example => (
+                        <figure key={example.src} className="mt-4 overflow-hidden rounded-lg border border-gray-200">
+                          <img
+                            src={example.src}
+                            alt={example.alt?.[isSpanish ? 'es' : 'en'] || ''}
+                            loading="lazy"
+                            className="h-auto w-full object-contain"
+                          />
+                        </figure>
+                      ))}
                     </article>
                   ))}
                 </div>

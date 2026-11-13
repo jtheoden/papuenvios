@@ -26,6 +26,7 @@ const writeTabToUrl = (tab) => {
     const url = new URL(window.location.href);
     url.searchParams.set('tab', tab);
     window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    window.dispatchEvent(new CustomEvent('admin-tab-change', { detail: { param: 'tab', tab } }));
   } catch {
     // URL state is a convenience; the tabs keep working without it.
   }

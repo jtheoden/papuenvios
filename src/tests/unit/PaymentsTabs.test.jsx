@@ -195,3 +195,15 @@ describe('PaymentsTabs mounting', () => {
     expect(tab('Zelle')).toHaveAttribute('aria-selected', 'true');
   });
 });
+
+describe('PaymentsTabs help sync', () => {
+  it('announces the selected tab so the help assistant follows the active sub-tab', () => {
+    const listener = vi.fn();
+    window.addEventListener('admin-tab-change', listener);
+    renderTabs();
+    fireEvent.click(screen.getByRole('tab', { name: 'Bizum' }));
+    window.removeEventListener('admin-tab-change', listener);
+    expect(listener).toHaveBeenCalled();
+    expect(listener.mock.calls.at(-1)[0].detail).toEqual({ param: PAYMENTS_TAB_PARAM, tab: 'bizum' });
+  });
+});

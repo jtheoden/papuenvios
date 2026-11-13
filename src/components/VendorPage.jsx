@@ -15,6 +15,7 @@ import VendorManagementTab from './vendor/VendorManagementTab';
 import VendorInventoryTab from './vendor/VendorInventoryTab';
 import { loadAdminCatalog } from '@/lib/adminCatalogLoader';
 import CatalogLoadError from './CatalogLoadError';
+import { useUrlTab } from '@/hooks/useUrlTab';
 
 const VendorPage = () => {
   const { t, language } = useLanguage();
@@ -85,7 +86,7 @@ const VendorPage = () => {
     fetchAdminData();
   }, []);
   
-  const [view, setView] = useState('inventory');
+  const [view, setView] = useUrlTab(['inventory', 'categories', 'combos', 'management'], 'inventory');
 
   return (
     <div className="container mx-auto py-8 px-4">

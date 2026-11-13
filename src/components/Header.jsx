@@ -315,6 +315,7 @@ const Header = ({ currentPage, onNavigate }) => {
                 userRole={userRole}
                 language={language}
                 t={t}
+                currentPage={currentPage}
               />
             )}
             {/* Desktop language selector */}

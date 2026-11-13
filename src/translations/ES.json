@@ -859,7 +859,7 @@
       "toggleBlockedCombos": "El producto también está presente en combos que tienen órdenes en proceso.",
       "deleteProduct": "Eliminar producto",
       "deleteConfirmTitle": "Confirmar eliminación",
-      "deleteConfirmMessage": "¿Seguro que deseas eliminar el producto \"{name}\"? Esta acción lo desactivará para los usuarios.",
+      "deleteConfirmMessage": "¿Seguro que deseas eliminar el producto \"{name}\"? El producto se eliminará permanentemente y no se puede deshacer. Los combos que lo contienen se desactivan. El borrado se bloquea con pedidos en curso que lo incluyan directamente o en un combo, o con reservas de stock activas.",
       "productDeleted": "Producto eliminado",
       "productAlreadyDeleted": "El producto ya no existe (probablemente lo eliminó otro usuario). Lista actualizada.",
       "refreshFailed": "No se pudo actualizar la lista. Recarga la página.",
