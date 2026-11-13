@@ -2133,6 +2133,24 @@
     "reopenOrderButton": "Reabrir Orden",
     "reopenInsufficientStock": "No se puede reabrir la orden: ya no hay stock suficiente de uno o más productos."
   },
+  "financialEntries": {
+    "title": "Movimientos financieros manuales",
+    "intro": "Ingresos y gastos en USD que suman o restan a la ganancia neta del panel. Un movimiento equivocado no se edita: se anula con un contraasiento.",
+    "kind": "Tipo",
+    "kinds": { "income": "Ingreso", "expense": "Gasto" },
+    "amount": "Monto (USD)",
+    "date": "Fecha",
+    "category": "Categoría",
+    "reason": "Motivo (mínimo 10 caracteres)",
+    "add": "Registrar movimiento",
+    "saved": "Movimiento registrado.",
+    "saveError": "No se pudo registrar el movimiento.",
+    "loadError": "No se pudieron leer los movimientos manuales: la ganancia neta puede estar incompleta.",
+    "void": "Anular",
+    "voidReason": "Motivo de la anulación (mínimo 10 caracteres)",
+    "voidConfirm": "Confirmar anulación",
+    "voided": "Movimiento anulado con un contraasiento."
+  },
   "adminOrders": {
     "title": "Historial de Órdenes",
     "subtitle": "Gestión completa de todas las órdenes del sistema",

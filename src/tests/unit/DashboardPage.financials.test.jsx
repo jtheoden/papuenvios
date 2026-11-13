@@ -335,4 +335,31 @@ describe('DashboardPage financials (H5, H6, H9, H10)', () => {
     await waitFor(() => expect(headline('daily', 'netIncome')).toHaveTextContent(/68\.38/));
     expect(screen.queryByText(/38\.38/)).toBeNull();
   });
+
+  describe('manual financial entries', () => {
+    const withCommission = () => ({
+      ...baseTables(),
+      remittances: [remittance('r1', 'completed', daysAgo(3), { commission_total: '23.14', amount_sent: '100', completed_at: daysAgo(3), delivered_at: daysAgo(3) })]
+    });
+
+    it('adds this month\'s manual entries to the monthly net income and leaves previous months out', async () => {
+      tables.data = {
+        ...withCommission(),
+        financial_entries: [
+          { id: 'e1', kind: 'expense', amount: '3.14', entry_date: '2026-10-14', category: 'hosting', reason: 'Servidor de octubre', voids_entry_id: null },
+          { id: 'e2', kind: 'expense', amount: '100.00', entry_date: '2026-09-30', category: 'hosting', reason: 'Servidor de septiembre', voids_entry_id: null }
+        ]
+      };
+      render(<DashboardPage onNavigate={() => {}} />);
+      // 23.14 commission - 3.14 October expense; the September expense is outside the calendar month
+      await waitFor(() => expect(headline('monthly', 'netIncome')).toHaveTextContent(/20\.00/));
+    });
+
+    it('says the net income may be incomplete when the manual entries cannot be read', async () => {
+      tables.data = withCommission();
+      tables.errors = { financial_entries: { code: '42501', message: 'denied' } };
+      render(<DashboardPage onNavigate={() => {}} />);
+      expect(await screen.findByText('financialEntries.loadError')).toBeInTheDocument();
+    });
+  });
 });

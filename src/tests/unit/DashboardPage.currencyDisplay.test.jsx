@@ -83,6 +83,7 @@ describe('DashboardPage currency display (no currencies.exchange_rate column)', 
       expect(s.columns).not.toMatch(/exchange_rate/);
     });
     expect(screen.queryByRole('option', { name: /CUP/ })).toBeNull();
-    expect(screen.queryByRole('combobox')).toBeNull();
+    // the super admin's manual-entries form has its own kind selector; no currency selector may exist
+    expect(screen.queryAllByRole('combobox').filter((el) => el.id !== 'fe-kind')).toHaveLength(0);
   });
 });
