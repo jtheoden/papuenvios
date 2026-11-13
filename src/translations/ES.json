@@ -2136,6 +2136,41 @@
   "adminOrders": {
     "title": "Historial de Órdenes",
     "subtitle": "Gestión completa de todas las órdenes del sistema",
+    "readjust": {
+      "button": "Reajustar",
+      "modalTitle": "Reajustar pedido",
+      "modalIntro": "Corrige los precios de las líneas, el descuento, el envío o el estado de un pedido ya realizado. Queda registrado quién lo hizo y por qué.",
+      "limits": "La diferencia entre lo que pagó el cliente y el nuevo total no se reembolsa ni se abona sola. Las fechas se conservan y un devengo del courier ya creado no se recalcula. Si el pedido queda activo y pagado, sus unidades se descuentan del inventario.",
+      "reopenNote": "Al sacar el pedido de Cancelado se cierra su devolución pendiente y se vuelven a descontar sus unidades del inventario. Si no hay stock suficiente, no se guarda nada.",
+      "status": "Estado del pedido",
+      "paymentStatus": "Estado del pago",
+      "linePrice": "Precio unitario de {name}",
+      "lineQuantity": "Cantidad: {quantity}",
+      "discountAmount": "Descuento",
+      "shippingCost": "Envío",
+      "preview": "Nuevo total: {total} (diferencia con el total actual: {difference})",
+      "previewInvalid": "Revisa los valores: el total debe ser mayor que 0",
+      "reason": "Motivo del reajuste (10 a 500 caracteres)",
+      "confirm": "Confirmar reajuste",
+      "saved": "Pedido reajustado y registrado en la auditoría.",
+      "saveError": "No se pudo reajustar el pedido.",
+      "errorOwnOperation": "Otro administrador debe reajustar tu propio pedido.",
+      "errorStock": "No hay stock suficiente para descontar este pedido. No se guardó ningún cambio.",
+      "statuses": {
+        "pending": "Pendiente",
+        "processing": "En proceso",
+        "dispatched": "Despachado",
+        "delivered": "Entregado",
+        "completed": "Completado",
+        "cancelled": "Cancelado"
+      },
+      "paymentStatuses": {
+        "pending": "Pendiente",
+        "proof_uploaded": "Comprobante subido",
+        "validated": "Validado",
+        "rejected": "Rechazado"
+      }
+    },
     "totalWarning": {
       "items_missing": "El pedido no tiene artículos registrados; verifique antes de validar el pago.",
       "subtotal_mismatch": "El subtotal del pedido no coincide con la suma de sus artículos; verifique antes de validar el pago.",

@@ -21,6 +21,7 @@ import { getUserCategoryWithDiscount } from './orderDiscountService';
 import { ZELLE_STATUS, ZELLE_TRANSACTION_TYPES, upsertZelleTransactionStatus } from './zelleService';
 import { isInsufficientStockError, stockRefusalToError } from './stockErrors';
 import { roundMoney } from './moneyPure';
+import { validateOrderReadjust } from './orderReadjustRules';
 import { PAYMENT_PROOF_MIME_EXT, validatePaymentProofFile } from './paymentProofService';
 
 export { isInsufficientStockError };
@@ -345,6 +346,47 @@ export const restockOrder = async (orderId, reason) => {
   const result = await callStockRpc('restock_order_inventory', orderId, { p_reason: String(reason).trim() });
   if (!result.ok) throw stockRefusalToError(result, orderId);
   return result;
+};
+
+/**
+ * Super admin: readjust an order already made (line prices, discount, shipping, status, payment status).
+ * Server-side RPC (SECURITY DEFINER, super admin only, audited with the reason). Reopening a cancelled order closes its
+ * pending refund and discounts the stock again; the server refuses the whole call if the stock cannot be consumed.
+ * @param {string} orderId
+ * @param {{items?: Array<{id: string, unitPrice: number}>, discountAmount?: number, shippingCost?: number, status?: string, paymentStatus?: string}} values
+ * @param {string} reason - internal reason, 10..500 characters
+ * @throws {AppError} If the input is invalid or the server refuses
+ * @returns {Promise<Object>} The updated order row (without joins)
+ */
+export const readjustOrder = async (orderId, values, reason) => {
+  try {
+    const errors = validateOrderReadjust({ reason, ...values });
+    if (!orderId || Object.keys(errors).length > 0) {
+      throw createValidationError(
+        { orderId: orderId ? undefined : 'Order ID is required', ...errors },
+        'Invalid order readjustment'
+      );
+    }
+
+    const params = { p_order_id: orderId, p_reason: String(reason).trim() };
+    const given = (value) => value !== undefined && value !== null && value !== '';
+    if (Array.isArray(values.items) && values.items.length > 0) {
+      params.p_items = values.items.map((item) => ({ id: item.id, unit_price: Number(item.unitPrice) }));
+    }
+    if (given(values.discountAmount)) params.p_discount_amount = Number(values.discountAmount);
+    if (given(values.shippingCost)) params.p_shipping_cost = Number(values.shippingCost);
+    if (given(values.status)) params.p_status = values.status;
+    if (given(values.paymentStatus)) params.p_payment_status = values.paymentStatus;
+
+    const { data, error } = await supabase.rpc('superadmin_readjust_order', params);
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+    return data;
+  } catch (error) {
+    if (error.code) throw error;
+    throw handleError(error, ERROR_CODES.DB_ERROR, { operation: 'readjustOrder', orderId });
+  }
 };
 
 /**
