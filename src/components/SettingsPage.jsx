@@ -19,6 +19,7 @@ import SettingsPageContent from '@/components/settings/SettingsPageContent';
 import SettingsPaymentsTab from '@/components/settings/SettingsPaymentsTab';
 import SettingsSystemTab from '@/components/settings/SettingsSystemTab';
 import SettingsCouriersTab from '@/components/settings/couriers/SettingsCouriersTab';
+import { useUrlTab } from '@/hooks/useUrlTab';
 
 const SettingsPage = () => {
   const { t, language } = useLanguage();
@@ -33,7 +34,12 @@ const SettingsPage = () => {
   const { user, isAdmin, isSuperAdmin } = useAuth();
 
   // Tab management
-  const [activeTab, setActiveTab] = useState('financiero');
+  const [activeTab, setActiveTab] = useUrlTab(
+    isSuperAdmin
+      ? ['financiero', 'envios', 'visual', 'zelle', 'mensajeria', 'contenido', 'sistema']
+      : ['financiero', 'envios', 'visual', 'zelle', 'mensajeria', 'contenido'],
+    'financiero'
+  );
 
   const [localFinancial, setLocalFinancial] = useState(financialSettings);
   const [localNotifications, setLocalNotifications] = useState(notificationSettings);

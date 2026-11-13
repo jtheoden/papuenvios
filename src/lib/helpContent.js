@@ -205,6 +205,8 @@ export function getHelpSectionForPage(page, tab, detailTab) {
   }
   if (page === 'settings' && ['payments', 'pagos'].includes(tab)) return 'admin-settings';
   const pageKey = { settings: 'settings', dashboard: 'dashboard', admin: 'admin', 'user-management': 'user-management', 'user-panel': 'user-panel' }[page];
-  const contextual = tab ? `context-${pageKey}-${tab}` : null;
-  return contextual || ({ settings: 'admin-settings', dashboard: 'admin-dashboard', admin: 'admin-dashboard', 'user-management': 'admin-users', 'user-panel': 'admin-user-panel' }[page] || null);
+  // The user-panel work queue names its returns tab `refunds`; the guide id keeps the older `returns` wording.
+  const guideTab = page === 'user-panel' && tab === 'refunds' ? 'returns' : tab;
+  const contextual = guideTab ? `context-${pageKey}-${guideTab}` : null;
+  return contextual || ({ settings: 'admin-settings', dashboard: 'admin-dashboard', admin: 'catalog', 'user-management': 'admin-users', 'user-panel': 'admin-user-panel' }[page] || null);
 }

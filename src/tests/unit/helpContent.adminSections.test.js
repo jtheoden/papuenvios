@@ -5,7 +5,7 @@ describe('super-admin contextual help', () => {
   it.each([
     ['settings', 'admin-settings'],
     ['dashboard', 'admin-dashboard'],
-    ['admin', 'admin-dashboard'],
+    ['admin', 'catalog'],
     ['user-management', 'admin-users'],
     ['user-panel', 'admin-user-panel']
   ])('maps %s to its guide', (page, section) => {
