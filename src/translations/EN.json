@@ -851,7 +851,7 @@
       "toggleBlockedCombos": "The product is also part of combos with in-progress orders.",
       "deleteProduct": "Delete product",
       "deleteConfirmTitle": "Confirm deletion",
-      "deleteConfirmMessage": "Are you sure you want to delete the product \"{name}\"? This will deactivate it for users.",
+      "deleteConfirmMessage": "Are you sure you want to delete the product \"{name}\"? The product will be permanently deleted and this cannot be undone. Combos containing it are disabled. Deletion is blocked by in-progress orders containing it directly or in a combo, or by reserved stock allocations.",
       "productDeleted": "Product deleted",
       "productAlreadyDeleted": "The product no longer exists (probably deleted by another user). List refreshed.",
       "refreshFailed": "Could not refresh the list. Reload the page.",

@@ -4,6 +4,39 @@ import { getHelpSectionForPage, getHelpSectionsForRole } from '@/lib/helpContent
 const ids = getHelpSectionsForRole('super_admin').map((section) => section.id);
 
 describe('help section routing', () => {
+  it('accounts for every contextual guide using real page/tab/detail routes', () => {
+    // Real tabs: SettingsPage, DashboardPage, AdminPage/UserManagement,
+    // AdminWorkTabs; detail tabs: CourierTabs and SettingsPaymentsTab.
+    const routes = [
+      ...['financiero', 'envios', 'visual', 'zelle', 'mensajeria', 'contenido', 'sistema'].map(tab => ['settings', tab]),
+      ...['zelle', 'bizum', 'iban'].map(detail => ['settings', 'zelle', detail]),
+      ...['couriers', 'types', 'payable', 'reports'].map(detail => ['settings', 'mensajeria', detail]),
+      ...['overview', 'orders', 'remittances', 'remittance-types', 'offers', 'activity-log', 'zelle-history'].map(tab => ['dashboard', tab]),
+      ...['inventory', 'categories', 'combos', 'management'].map(tab => ['admin', tab]),
+      ...['users', 'categories'].map(tab => ['user-management', tab]),
+      ...['orders', 'remittances', 'refunds'].map(tab => ['user-panel', tab])
+    ];
+    // Category-only help: Notifications lives inside Content, Stock policy inside
+    // System (neither has a sub-tab). settings-payments is an entry in the
+    // admin-settings category, not a context guide or a real `payments` tab.
+    const categoryOnly = new Set([
+      'context-settings-notifications',
+      'context-settings-stock-policy',
+      'settings-payments'
+    ]);
+    const reachable = new Set(routes.map(route => getHelpSectionForPage(...route)));
+    for (const id of ids.filter(id => id.startsWith('context-'))) {
+      expect(reachable.has(id) || categoryOnly.has(id), `unreachable guide ${id}`).toBe(true);
+    }
+  });
+
+  it('does not special-case unused payments/pagos tab ids', () => {
+    // Source/test search found no page using either id; real Payments is `zelle`.
+    for (const tab of ['payments', 'pagos']) {
+      expect(getHelpSectionForPage('settings', tab)).toBe(`context-settings-${tab}`);
+    }
+  });
+
   it('opens the guide that matches each real Dashboard tab id', () => {
     ['overview', 'orders', 'remittances', 'remittance-types', 'offers', 'activity-log', 'zelle-history'].forEach((tab) => {
       expect(ids, `dashboard tab ${tab}`).toContain(getHelpSectionForPage('dashboard', tab));

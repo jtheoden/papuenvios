@@ -31,3 +31,20 @@ describe('super-admin contextual help', () => {
     expect(getHelpSectionForPage('dashboard', 'remittance-types')).toBe('context-dashboard-remittance-types');
   });
 });
+
+describe('focused contextual guide compatibility', () => {
+  it('preserves existing visual metadata when splitting a guide into focused entries', () => {
+    const section = getHelpSectionsForRole('super_admin').find(({ id }) => id === 'context-dashboard-orders');
+    expect(section.entries[0].visualExamples).toEqual(expect.arrayContaining([
+      expect.objectContaining({ src: '/help-examples/order-history-redacted.png' })
+    ]));
+  });
+
+  it('localizes contextual titles and fallback questions in English', () => {
+    const sections = getHelpSectionsForRole('super_admin');
+    expect(sections.find(({ id }) => id === 'context-settings-mensajeria').title.en).toBe('Messaging');
+    const couriers = sections.find(({ id }) => id === 'context-settings-mensajeria-couriers');
+    expect(couriers.title.en).toBe('Messaging · Couriers');
+    expect(couriers.entries[0].question.en).toContain('Messaging · Couriers');
+  });
+});
