@@ -43,6 +43,9 @@ import FinancialEntriesPanel from './admin/FinancialEntriesPanel';
 import { listFinancialEntries } from '@/lib/financialEntriesService';
 import { manualEntriesNetByWindow } from '@/lib/financialEntryRules';
 import { fetchAllRows } from '@/lib/fetchAllRows';
+import { useUrlTab } from '@/hooks/useUrlTab';
+
+const DASHBOARD_TABS = ['overview', 'orders', 'remittances', 'remittance-types', 'offers', 'activity-log', 'zelle-history'];
 import { useVisiblePolling, POLL_STATS_MS } from '@/lib/visiblePolling';
 import { affectsAdminPending } from '@/lib/adminPollKeys';
 
@@ -68,19 +71,8 @@ const DashboardPage = ({ onNavigate }) => {
   const reconnecting = sessionStatus === 'reconnecting';
 
   // Tab state
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' or 'orders'
-
-  // Handle URL parameters for tab navigation (deep linking from WhatsApp notifications)
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const tabParam = urlParams.get('tab');
-
-    const validTabs = ['overview', 'orders', 'remittances', 'remittance-types', 'offers', 'activity-log', 'zelle-history'];
-
-    if (tabParam && validTabs.includes(tabParam)) {
-      setActiveTab(tabParam);
-    }
-  }, []);
+  // The selected tab lives in `?tab=` (deep links from WhatsApp notifications, refresh, and the help assistant).
+  const [activeTab, setActiveTab] = useUrlTab(DASHBOARD_TABS, 'overview');
 
   // Money figures stay undefined until the first successful load (`ready`): the cards show "—", never a fake $0.00.
   const [stats, setStats] = useState({
