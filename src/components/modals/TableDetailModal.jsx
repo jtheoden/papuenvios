@@ -14,8 +14,9 @@ import { useLanguage } from '@/contexts/LanguageContext';
  * @prop {object} data - Data object to display
  * @prop {array} columns - Array of column configs: {key, label, render}
  * @prop {string} maxHeight - CSS max-height value (default: '90vh')
+ * @prop {Array<{label: string, onClick: function}>} actions - Optional extra buttons shown in the footer next to Close
  */
-const TableDetailModal = ({ isOpen, onClose, title, data, columns = [], maxHeight = '90vh' }) => {
+const TableDetailModal = ({ isOpen, onClose, title, data, columns = [], maxHeight = '90vh', actions = [] }) => {
   const { t } = useLanguage();
   const modalRef = useRef(null);
   const titleId = `table-detail-modal-title`;
@@ -96,10 +97,20 @@ const TableDetailModal = ({ isOpen, onClose, title, data, columns = [], maxHeigh
         </div>
 
         {/* Footer Action Button */}
-        <div className="mt-8 flex justify-end">
+        <div className="mt-8 flex flex-wrap justify-end gap-2">
+          {actions.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              onClick={action.onClick}
+              className="min-h-[44px] px-4 py-2 border border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-lg transition-colors text-sm font-medium"
+            >
+              {action.label}
+            </button>
+          ))}
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 text-white rounded-lg transition-colors text-sm font-medium"
+            className="min-h-[44px] px-6 py-2 bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 text-white rounded-lg transition-colors text-sm font-medium"
             aria-label="Cerrar"
           >
             {t('common.close')}

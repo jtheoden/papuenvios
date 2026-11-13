@@ -4,7 +4,7 @@
  * Provides full CRUD functionality, transaction viewing, and counter management
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, Trash2, Edit, Eye, RotateCcw, Loader, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -106,6 +106,12 @@ const SettingsZelleTab = () => {
 
   const formatCurrency = (amount) => formatMoney(amount, { currency: 'USD', language });
 
+  // Move focus into the form dialog when it opens so keyboard and screen reader users land inside it
+  const formDialogRef = useRef(null);
+  useEffect(() => {
+    if (showFormModal) formDialogRef.current?.focus();
+  }, [showFormModal]);
+
   // Get table columns with integrated actions
   const tableColumns = useMemo(() => {
     const baseColumns = getZelleTableColumns(t, formatCurrency);
@@ -114,35 +120,39 @@ const SettingsZelleTab = () => {
       {
         key: 'actions',
         label: t('common.actions'),
-        width: 'w-32',
+        width: 'w-40',
         render: (_, account) => (
+          // 44 px targets (WCAG 2.5.8 / platform guidance); the accessible name must not depend on the title attribute
           <div className="flex gap-1">
             <Button
               variant="outline"
               size="icon"
               onClick={() => handleViewDetails(account)}
-              className="h-8 w-8"
+              className="h-8 w-8 min-h-[44px] min-w-[44px]"
               title={language === 'es' ? 'Ver detalles' : 'View details'}
+              aria-label={language === 'es' ? 'Ver detalles' : 'View details'}
             >
-              <Eye className="h-4 w-4" />
+              <Eye className="h-4 w-4" aria-hidden="true" />
             </Button>
             <Button
               variant="outline"
               size="icon"
               onClick={() => handleEditAccount(account)}
-              className="h-8 w-8"
-              title={language === 'es' ? 'Editar' : 'Edit'}
+              className="h-8 w-8 min-h-[44px] min-w-[44px]"
+              title={t('common.edit')}
+              aria-label={t('common.edit')}
             >
-              <Edit className="h-4 w-4" />
+              <Edit className="h-4 w-4" aria-hidden="true" />
             </Button>
             <Button
               variant="destructive"
               size="icon"
               onClick={() => handleDeleteClick(account)}
-              className="h-8 w-8"
-              title={language === 'es' ? 'Eliminar' : 'Delete'}
+              className="h-8 w-8 min-h-[44px] min-w-[44px]"
+              title={t('common.delete')}
+              aria-label={t('common.delete')}
             >
-              <Trash2 className="h-4 w-4" />
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
         )
@@ -416,6 +426,8 @@ const SettingsZelleTab = () => {
           data={accounts}
           keyField="id"
           emptyMessage={t('zelle.noAccounts') || 'No accounts'}
+          // On a phone the card has no actions column: tapping it opens this tab's own detail, which offers Edit/Delete
+          onRowClick={handleViewDetails}
         />
       ) : (
         <motion.div
@@ -442,6 +454,20 @@ const SettingsZelleTab = () => {
           data={selectedAccount}
           actions={[
             {
+              label: t('common.edit'),
+              onClick: () => {
+                setShowDetailModal(false);
+                handleEditAccount(selectedAccount);
+              }
+            },
+            {
+              label: t('common.delete'),
+              onClick: () => {
+                setShowDetailModal(false);
+                handleDeleteClick(selectedAccount);
+              }
+            },
+            {
               label: language === 'es' ? 'Ver Transacciones' : 'View Transactions',
               onClick: () => {
                 setShowDetailModal(false);
@@ -466,16 +492,26 @@ const SettingsZelleTab = () => {
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             className="bg-white rounded-lg max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="zelle-form-title"
+            tabIndex={-1}
+            ref={formDialogRef}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setShowFormModal(false);
+            }}
           >
             <div className="sticky top-0 bg-white border-b p-4 sm:p-6 flex items-center justify-between">
-              <h2 className="text-lg sm:text-xl font-semibold truncate pr-4">
+              <h2 id="zelle-form-title" className="text-lg sm:text-xl font-semibold truncate pr-4">
                 {selectedAccount ? t('zelle.editAccount') : t('zelle.createAccount')}
               </h2>
               <button
+                type="button"
                 onClick={() => setShowFormModal(false)}
-                className="text-gray-500 hover:text-gray-700 shrink-0 p-1"
+                aria-label={t('common.close')}
+                className="text-gray-500 hover:text-gray-700 shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center"
               >
-                ✕
+                <span aria-hidden="true">✕</span>
               </button>
             </div>
 
@@ -641,18 +677,20 @@ const SettingsZelleTab = () => {
             </div>
 
             <div className="border-t p-4 sm:p-6 flex gap-2 sm:gap-3 justify-end">
-              <Button variant="outline" onClick={() => setShowFormModal(false)} className="h-9 px-3">
+              {/* aria-label keeps the names on a phone, where the visible text is a glyph and the words are display:none */}
+              <Button variant="outline" onClick={() => setShowFormModal(false)} className="h-9 px-3 min-h-[44px] min-w-[44px]" aria-label={t('common.cancel')}>
                 <span className="hidden sm:inline">{t('common.cancel')}</span>
-                <span className="sm:hidden">✕</span>
+                <span className="sm:hidden" aria-hidden="true">✕</span>
               </Button>
               <Button
                 onClick={handleSubmitForm}
                 disabled={actionLoading === 'form'}
-                className="h-9 px-3"
+                className="h-9 px-3 min-h-[44px] min-w-[44px]"
+                aria-label={t('common.save')}
               >
-                {actionLoading === 'form' && <Loader className="h-4 w-4 sm:mr-2 animate-spin" />}
+                {actionLoading === 'form' && <Loader className="h-4 w-4 sm:mr-2 animate-spin" aria-hidden="true" />}
                 <span className="hidden sm:inline">{t('common.save')}</span>
-                <span className="sm:hidden">{actionLoading !== 'form' && '✓'}</span>
+                <span className="sm:hidden" aria-hidden="true">{actionLoading !== 'form' && '✓'}</span>
               </Button>
             </div>
           </motion.div>
@@ -666,12 +704,18 @@ const SettingsZelleTab = () => {
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6 max-h-[95vh] overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="zelle-delete-title"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setShowDeleteModal(false);
+            }}
           >
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 bg-red-100 rounded-full shrink-0">
-                <AlertCircle className="h-5 w-5 sm:h-6 sm:w-6 text-red-600" />
+                <AlertCircle className="h-5 w-5 sm:h-6 sm:w-6 text-red-600" aria-hidden="true" />
               </div>
-              <h2 className="text-base sm:text-lg font-semibold">{t('zelle.confirmDelete')}</h2>
+              <h2 id="zelle-delete-title" className="text-base sm:text-lg font-semibold">{t('zelle.confirmDelete')}</h2>
             </div>
 
             <div className="space-y-3 sm:space-y-4 mb-4 sm:mb-6">
@@ -728,8 +772,14 @@ const SettingsZelleTab = () => {
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="zelle-reset-title"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setShowResetModal(false);
+            }}
           >
-            <h2 className="text-base sm:text-lg font-semibold mb-4">{t('zelle.resetCounters')}</h2>
+            <h2 id="zelle-reset-title" className="text-base sm:text-lg font-semibold mb-4">{t('zelle.resetCounters')}</h2>
             <div className="space-y-3 sm:space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">{t('zelle.counterType')}</label>
