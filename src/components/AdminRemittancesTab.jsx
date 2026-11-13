@@ -16,6 +16,7 @@ import { getPrimaryButtonStyle } from '@/lib/styleUtils';
 import { calcTotalToPay } from '@/lib/remittanceCalculations';
 import { canAdjustCommission, isCommissionFrozen, remittanceStatusLabelKey } from '@/lib/commissionOverrideRules';
 import CommissionOverrideModal from '@/components/admin/CommissionOverrideModal';
+import RemittanceReadjustModal from '@/components/admin/RemittanceReadjustModal';
 import CommissionProposalBadge from '@/components/admin/CommissionProposalBadge';
 import useCommissionProposals from '@/hooks/useCommissionProposals';
 import { isInformedCurrent } from '@/lib/commissionProposalRules';
@@ -101,6 +102,8 @@ const AdminRemittancesTab = () => {
   const [showPaymentProofModal, setShowPaymentProofModal] = useState(false);
   const [selectedProofUrl, setSelectedProofUrl] = useState(null);
   const [showCommissionModal, setShowCommissionModal] = useState(false);
+  // Remittance being readjusted by a super admin (any status, never an own one)
+  const [readjustTarget, setReadjustTarget] = useState(null);
   const [deliveryTarget, setDeliveryTarget] = useState(null);
   // Latest row of remittance_commission_overrides (admin-only RLS): reason and standard commission never travel in the remittance row
   const [commissionOverride, setCommissionOverride] = useState(null);
@@ -137,6 +140,13 @@ const AdminRemittancesTab = () => {
     setSelectedRemittance((prev) => ({ ...prev, ...updated }));
     setShowCommissionModal(false);
     loadCommissionOverride(updated.id);
+  };
+
+  const handleReadjustSaved = (updated) => {
+    // The RPC returns the bare row (no joins): merge it so the joined type and proofs stay on screen
+    setRemittances((list) => list.map((r) => (r.id === updated.id ? { ...r, ...updated } : r)));
+    setSelectedRemittance((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
+    setReadjustTarget(null);
   };
 
   // Helper to format account number with spaces every 4 digits
@@ -728,6 +738,17 @@ const AdminRemittancesTab = () => {
       </button>
     );
 
+  const renderReadjustButton = (remittance) =>
+    isSuperAdmin && !isOwn(remittance) && (
+      <button
+        type="button"
+        onClick={() => setReadjustTarget(remittance)}
+        className="inline-flex min-h-[44px] min-w-0 items-center justify-center px-3 border border-amber-300 text-amber-900 rounded-lg text-sm hover:bg-amber-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-600"
+      >
+        {t('remittances.admin.readjust.button')}
+      </button>
+    );
+
   const renderActionButtons = (remittance) => {
     const adminOnlyStatuses = [
       REMITTANCE_STATUS.PAYMENT_PROOF_UPLOADED,
@@ -1138,6 +1159,7 @@ const AdminRemittancesTab = () => {
                   </TooltipButton>
                   {renderActionButtons(remittance)}
                   {renderAdjustCommissionButton(remittance)}
+                  {renderReadjustButton(remittance)}
                 </div>
               </div>
             </motion.div>
@@ -1641,6 +1663,14 @@ const AdminRemittancesTab = () => {
           loading={overrideLoadedFor !== selectedRemittance.id}
           onClose={closeCommissionModal}
           onSaved={handleCommissionSaved}
+        />
+      )}
+
+      {readjustTarget && (
+        <RemittanceReadjustModal
+          remittance={readjustTarget}
+          onClose={() => setReadjustTarget(null)}
+          onSaved={handleReadjustSaved}
         />
       )}
     </div>

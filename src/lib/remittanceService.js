@@ -36,6 +36,7 @@ import { getExchangeRate as getCurrencyExchangeRate } from '@/lib/currencyServic
 import { calcForward, calcReverse, calcTotalToPay } from '@/lib/remittanceCalculations';
 import { roundMoney } from '@/lib/moneyPure';
 import { validateCommissionOverride } from '@/lib/commissionOverrideRules';
+import { validateReadjust } from '@/lib/remittanceReadjustRules';
 import { getActiveShippingZones, calculateShippingCost } from '@/lib/shippingService';
 import { getShippingState } from '@/lib/shippingZoneRules';
 
@@ -658,6 +659,51 @@ export const recalculateRemittanceAtCurrentRate = async (remittanceId) => {
       remittanceId
     });
     throw appError;
+  }
+};
+
+/**
+ * Super admin: readjust a remittance already made (status, amount sent, rate, commission, amount to deliver).
+ * Server-side RPC (SECURITY DEFINER, super admin only, audited with the reason). Only the given values are sent.
+ * @param {string} remittanceId
+ * @param {{status?: string, exchangeRate?: number, commissionTotal?: number, amountToDeliver?: number, amountSent?: number}} values
+ * @param {string} reason - internal reason, 10..500 characters
+ * @throws {AppError} If the input is invalid or the server refuses
+ * @returns {Promise<Object>} The updated remittance row (without joins)
+ */
+export const readjustRemittance = async (remittanceId, values, reason) => {
+  try {
+    const errors = validateReadjust({
+      reason,
+      status: values?.status,
+      exchangeRate: values?.exchangeRate,
+      commission: values?.commissionTotal,
+      amountToDeliver: values?.amountToDeliver,
+      amountSent: values?.amountSent
+    });
+    if (!remittanceId || Object.keys(errors).length > 0) {
+      throw createValidationError(
+        { remittanceId: remittanceId ? undefined : 'Remittance ID is required', ...errors },
+        'Invalid remittance readjustment'
+      );
+    }
+
+    const params = { p_remittance_id: remittanceId, p_reason: String(reason).trim() };
+    const given = (value) => value !== undefined && value !== null && value !== '';
+    if (given(values.exchangeRate)) params.p_exchange_rate = Number(values.exchangeRate);
+    if (given(values.commissionTotal)) params.p_commission_total = Number(values.commissionTotal);
+    if (given(values.amountToDeliver)) params.p_amount_to_deliver = Number(values.amountToDeliver);
+    if (given(values.amountSent)) params.p_amount_sent = Number(values.amountSent);
+    if (given(values.status)) params.p_status = values.status;
+
+    const { data, error } = await supabase.rpc('superadmin_readjust_remittance', params);
+    if (error) {
+      throw parseSupabaseError(error);
+    }
+    return data;
+  } catch (error) {
+    if (error.code) throw error;
+    throw handleError(error, ERROR_CODES.DB_ERROR, { operation: 'readjustRemittance', remittanceId });
   }
 };
 

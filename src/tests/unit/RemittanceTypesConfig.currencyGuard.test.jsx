@@ -88,11 +88,26 @@ describe('changing the origin currency by mistake (the 2026-11-10 incident)', ()
         expect.objectContaining({
           type: 'warning',
           title: 'remittances.admin.currencyChangeWarning',
-          message: 'remittances.admin.currencyChangeMessage'
+          message: 'remittances.admin.currencyChangeSameCurrencyMessage'
         })
       )
     );
     expect(svc.update).not.toHaveBeenCalled();
+  });
+
+  it('uses the generic message when the new pair still has two different currencies', async () => {
+    svc.types = [typeFor({ delivery_currency: 'USD', exchange_rate: 1.03, commission_percentage: 2.9126213592 })];
+    render(<RemittanceTypesConfig />);
+    fireEvent.click(await screen.findByTitle('common.edit'));
+    await screen.findByDisplayValue('Dollars to CUP');
+    fireEvent.change(screen.getAllByDisplayValue('USD - Dollar')[0], { target: { value: 'CUP' } });
+    clickSave();
+
+    await waitFor(() =>
+      expect(ui.showModal).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'remittances.admin.currencyChangeMessage' })
+      )
+    );
   });
 });
 
@@ -161,5 +176,35 @@ describe('changing the currency of an existing type', () => {
     expect(ui.showModal).not.toHaveBeenCalledWith(
       expect.objectContaining({ title: 'remittances.admin.currencyChangeWarning' })
     );
+  });
+});
+
+describe('visible warning when origin and delivery currency are the same (2026-11-12 incident)', () => {
+  const sameCurrencyType = () =>
+    typeFor({ currency_code: 'CUP', delivery_currency: 'CUP', exchange_rate: 890, commission_percentage: 2.2471910112 });
+
+  const editType = async (type) => {
+    svc.types = [type];
+    render(<RemittanceTypesConfig />);
+    fireEvent.click(await screen.findByTitle('common.edit'));
+    await screen.findByDisplayValue('Dollars to CUP');
+  };
+
+  it('shows an alert as soon as the form opens on a CUP -> CUP type, with no currency change needed', async () => {
+    await editType(sameCurrencyType());
+    expect(screen.getByRole('alert').textContent).toContain('remittances.admin.sameCurrencyWarning');
+  });
+
+  it('shows no alert for a USD -> CUP type, and the alert appears when the admin picks the same currency', async () => {
+    await editType(typeFor());
+    expect(screen.queryByRole('alert')).toBeNull();
+    fireEvent.change(screen.getByDisplayValue('USD - Dollar'), { target: { value: 'CUP' } });
+    expect(screen.getByRole('alert').textContent).toContain('remittances.admin.sameCurrencyWarning');
+  });
+
+  it('simulates same-currency types 1:1 like the real quote: 100 CUP at 2.25% delivers 97.75, not 86997.50', async () => {
+    await editType(sameCurrencyType());
+    expect(screen.queryByText(/86997\.50/)).toBeNull();
+    expect(screen.getAllByText(/97\.75/).length).toBeGreaterThan(0);
   });
 });

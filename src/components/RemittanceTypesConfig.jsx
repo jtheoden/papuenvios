@@ -87,9 +87,12 @@ const RemittanceTypesConfig = () => {
     }
   }, [editingType]);
 
+  // Same currency on both sides is quoted 1:1 by the real quote (the market rate only derives the commission)
+  const sameCurrency = Boolean(formData.currency_code) && formData.currency_code === formData.delivery_currency;
+
   // Simulator computation
   const simulation = useMemo(() => {
-    const exchangeRate = parseFloat(formData.exchange_rate);
+    const exchangeRate = sameCurrency ? 1 : parseFloat(formData.exchange_rate);
     const commissionPercentage = parseFloat(formData.commission_percentage) || 0;
     const commissionFixed = parseFloat(formData.commission_fixed) || 0;
     const amount = parseFloat(simAmount);
@@ -103,7 +106,7 @@ const RemittanceTypesConfig = () => {
     } catch {
       return { result: null, failed: true };
     }
-  },[formData.exchange_rate, formData.commission_percentage, formData.commission_fixed, simAmount, simMode]);
+  },[sameCurrency, formData.exchange_rate, formData.commission_percentage, formData.commission_fixed, simAmount, simMode]);
   const simResult = simulation.result;
 
   const loadCurrencies = async () => {
@@ -285,7 +288,10 @@ const RemittanceTypesConfig = () => {
           const confirmed = await showModal({
             type: 'warning',
             title: t('remittances.admin.currencyChangeWarning'),
-            message: t('remittances.admin.currencyChangeMessage', {
+            // Same currency on both sides is quoted 1:1 and ignores the market rate (incident 2026-11-10 / 2026-11-12)
+            message: t(formData.currency_code === formData.delivery_currency
+              ? 'remittances.admin.currencyChangeSameCurrencyMessage'
+              : 'remittances.admin.currencyChangeMessage', {
               from: `${editingType.currency_code} → ${editingType.delivery_currency}`,
               to: `${formData.currency_code} → ${formData.delivery_currency}`
             }),
@@ -513,6 +519,13 @@ const RemittanceTypesConfig = () => {
                 ))}
               </select>
             </div>
+
+            {sameCurrency && (
+              <div role="alert" className="md:col-span-2 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                <p>{t('remittances.admin.sameCurrencyWarning', { currency: formData.currency_code })}</p>
+              </div>
+            )}
 
             {/* Market Rate (Exchange Rate) */}
             <div>
