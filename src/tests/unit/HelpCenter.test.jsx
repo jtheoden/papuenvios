@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import HelpCenter from '@/components/help/HelpCenter';
 import { getHelpSectionsForRole } from '@/lib/helpContent';
+import { FINANCIAL_RISK_WARNING_EVENT } from '@/lib/financialRiskWarnings';
 import ES from '@/translations/ES.json';
 import EN from '@/translations/EN.json';
 
@@ -60,5 +61,26 @@ describe('role-based admin help center', () => {
     expect(screen.getByText('What do order statuses mean?')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Orders' }).getAttribute('style'))
       .toContain('var(--brand-button-bg, #2563eb)');
+  });
+
+  it('opens the floating help dialog for financial risks and keeps a themed alert visible', () => {
+    render(<HelpCenter userRole="super_admin" t={esT} />);
+    fireEvent(window, new CustomEvent(FINANCIAL_RISK_WARNING_EVENT, {
+      detail: {
+        code: 'negative-margin-product',
+        title: 'Margen negativo',
+        message: 'El precio puede quedar por debajo del costo.',
+        impact: 'Pérdida financiera directa'
+      }
+    }));
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Margen negativo');
+    expect(screen.getByRole('alert')).toHaveTextContent('Pérdida financiera directa');
+    expect(screen.getByTestId('financial-risk-indicator')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar advertencia' }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('financial-risk-indicator')).not.toBeInTheDocument();
   });
 });
