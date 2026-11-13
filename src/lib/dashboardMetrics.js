@@ -94,6 +94,22 @@ export const getBusinessWindows = (now = new Date(), timeZone = BUSINESS_TIME_ZO
   };
 };
 
+const isoDate = (year, month, day) =>
+  `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+/**
+ * Calendar dates (YYYY-MM-DD) where the current business day, month and year start. For date-only values such as
+ * manual financial entries, so they fall in the same windows as getBusinessWindows.
+ */
+export const getBusinessWindowDates = (now = new Date(), timeZone = BUSINESS_TIME_ZONE) => {
+  const today = wallClock(businessTimeFormatter(timeZone), now.getTime());
+  return {
+    daily: isoDate(today.year, today.month, today.day),
+    monthly: isoDate(today.year, today.month, 1),
+    yearly: isoDate(today.year, 1, 1)
+  };
+};
+
 /** Sum of `pick(row)` over rows whose `dateOf(row)` is on/after `since`. Rows without a date never count. */
 const sumSince = (rows, dateOf, since, pick) =>
   rows.reduce((sum, row) => {
@@ -300,10 +316,10 @@ export const computeZelleTotals = (transactions, now = new Date()) => {
  * owner) - remittance courier cost (transport, only where a snapshot exists); collected = cash in (orders total +
  * remittance amount_sent + delivery charge, which the customer pays on top of amount_sent).
  */
-export const computeHeadline = ({ orderRevenue, orderProfit, remittanceCommission, remittanceVolume, remittanceDeliveryCharge, remittanceCourierCost, orderCourierDifference } = {}) => ({
+export const computeHeadline = ({ orderRevenue, orderProfit, remittanceCommission, remittanceVolume, remittanceDeliveryCharge, remittanceCourierCost, orderCourierDifference, manualEntriesNet } = {}) => ({
   sales: roundMoney(toNumber(orderRevenue)),
   netIncome: roundMoney(
-    toNumber(orderProfit) + toNumber(orderCourierDifference) + toNumber(remittanceCommission) + toNumber(remittanceDeliveryCharge) - toNumber(remittanceCourierCost)
+    toNumber(orderProfit) + toNumber(orderCourierDifference) + toNumber(remittanceCommission) + toNumber(remittanceDeliveryCharge) - toNumber(remittanceCourierCost) + toNumber(manualEntriesNet)
   ),
   collected: roundMoney(toNumber(orderRevenue) + toNumber(remittanceVolume) + toNumber(remittanceDeliveryCharge)),
   deliveryCharge: roundMoney(toNumber(remittanceDeliveryCharge))

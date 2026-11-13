@@ -10,6 +10,7 @@ import {
   computePaymentSourceBreakdown,
   computeOrderProfitTotals,
   computeHeadline,
+  getBusinessWindowDates,
   computeOrderCosts,
   computeRemittanceTotals,
   computeZelleTotals,
@@ -152,6 +153,35 @@ describe('getBusinessWindows (D6, America/New_York)', () => {
     const t = computeOrderTotals([order], new Date('2026-10-15T04:00:01Z'));
     expect(t.dailyRevenue).toBe(0);
     expect(t.monthlyRevenue).toBe(10);
+  });
+});
+
+describe('getBusinessWindowDates (calendar dates of the windows, America/New_York)', () => {
+  it('returns ISO dates for the start of the business day, month and year', () => {
+    expect(getBusinessWindowDates(new Date('2026-11-13T15:00:00Z'))).toEqual({ daily: '2026-11-13', monthly: '2026-11-01', yearly: '2026-01-01' });
+  });
+
+  it('uses the New York calendar, not UTC: 21:00 ET on Nov 12 is still Nov 12', () => {
+    expect(getBusinessWindowDates(new Date('2026-11-13T02:00:00Z'))).toEqual({ daily: '2026-11-12', monthly: '2026-11-01', yearly: '2026-01-01' });
+  });
+
+  it('crosses a month and a year boundary in the business zone, not in UTC', () => {
+    expect(getBusinessWindowDates(new Date('2026-01-01T03:00:00Z'))).toEqual({ daily: '2025-12-31', monthly: '2025-12-01', yearly: '2025-01-01' });
+    expect(getBusinessWindowDates(new Date('2026-03-01T02:00:00Z'))).toEqual({ daily: '2026-02-28', monthly: '2026-02-01', yearly: '2026-01-01' });
+  });
+});
+
+describe('computeHeadline manual entries (slice 3)', () => {
+  it('adds the net of the manual entries to the net income only', () => {
+    const base = { orderRevenue: 100, orderProfit: 10, remittanceCommission: 2.5, remittanceVolume: 100 };
+    const h = computeHeadline({ ...base, manualEntriesNet: -4.5 });
+    expect(h.netIncome).toBe(8);
+    expect(h.sales).toBe(100);
+    expect(h.collected).toBe(200);
+  });
+
+  it('is unchanged without manual entries', () => {
+    expect(computeHeadline({ orderProfit: 10 }).netIncome).toBe(10);
   });
 });
 

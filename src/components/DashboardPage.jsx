@@ -39,6 +39,9 @@ import AdminOffersTab from './AdminOffersTab';
 import RemittanceTypesConfig from './RemittanceTypesConfig';
 import ZellePaymentHistoryTab from './admin/ZellePaymentHistoryTab';
 import ActivityLogTab from './ActivityLogTab';
+import FinancialEntriesPanel from './admin/FinancialEntriesPanel';
+import { listFinancialEntries } from '@/lib/financialEntriesService';
+import { manualEntriesNetByWindow } from '@/lib/financialEntryRules';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { useVisiblePolling, POLL_STATS_MS } from '@/lib/visiblePolling';
 import { affectsAdminPending } from '@/lib/adminPollKeys';
@@ -99,6 +102,8 @@ const DashboardPage = ({ onNavigate }) => {
   });
 
   // Inputs for the estimated order profit (orders + order lines + per-item margins)
+  const [manualEntries, setManualEntries] = useState([]);
+  const [manualEntriesError, setManualEntriesError] = useState(false);
   const [profitSource, setProfitSource] = useState(null);
   // Item margins come from the admin cost RPCs; a failure is shown, never swallowed into default margins
   const [marginsError, setMarginsError] = useState(null);
@@ -360,11 +365,30 @@ const DashboardPage = ({ onNavigate }) => {
 
   const remittanceCourierCost = (k) => remittanceCourier.totals?.[`${k}RemittanceCourierCost`] ?? 0;
 
+  // Manual incomes/expenses (super admin only, RLS) add to the net income of each window.
+  // A failed read is shown, never swallowed: without the entries the net income would be silently overstated.
+  const manualRequest = useRef(0);
+  const loadManualEntries = useCallback(() => {
+    if (!isSuperAdmin) return;
+    const request = ++manualRequest.current;
+    listFinancialEntries()
+      .then((rows) => {
+        if (request !== manualRequest.current) return;
+        setManualEntries(rows);
+        setManualEntriesError(false);
+      })
+      .catch(() => {
+        if (request === manualRequest.current) setManualEntriesError(true);
+      });
+  }, [isSuperAdmin]);
+  useEffect(() => { loadManualEntries(); }, [loadManualEntries]);
+  const manualNet = manualEntriesNetByWindow(manualEntries);
+
   // Headlines per window (D1): sales, net income and cash collected are never added together.
   const headlines = {
-    daily: computeHeadline({ orderRevenue: stats.dailyRevenue, orderProfit: dailyProfit, remittanceCommission: stats.dailyRemittanceIncome, remittanceVolume: stats.dailyRemittanceVolume, remittanceDeliveryCharge: stats.dailyRemittanceDeliveryCharge, remittanceCourierCost: remittanceCourierCost('daily'), orderCourierDifference: courier.totals?.dailyCourierDifference }),
-    monthly: computeHeadline({ orderRevenue: stats.monthlyRevenue, orderProfit: monthlyProfit, remittanceCommission: stats.monthlyRemittanceIncome, remittanceVolume: stats.monthlyRemittanceVolume, remittanceDeliveryCharge: stats.monthlyRemittanceDeliveryCharge, remittanceCourierCost: remittanceCourierCost('monthly'), orderCourierDifference: courier.totals?.monthlyCourierDifference }),
-    yearly: computeHeadline({ orderRevenue: stats.yearlyRevenue, orderProfit: yearlyProfit, remittanceCommission: stats.yearlyRemittanceIncome, remittanceVolume: stats.yearlyRemittanceVolume, remittanceDeliveryCharge: stats.yearlyRemittanceDeliveryCharge, remittanceCourierCost: remittanceCourierCost('yearly'), orderCourierDifference: courier.totals?.yearlyCourierDifference })
+    daily: computeHeadline({ orderRevenue: stats.dailyRevenue, orderProfit: dailyProfit, remittanceCommission: stats.dailyRemittanceIncome, remittanceVolume: stats.dailyRemittanceVolume, remittanceDeliveryCharge: stats.dailyRemittanceDeliveryCharge, remittanceCourierCost: remittanceCourierCost('daily'), orderCourierDifference: courier.totals?.dailyCourierDifference, manualEntriesNet: manualNet.daily }),
+    monthly: computeHeadline({ orderRevenue: stats.monthlyRevenue, orderProfit: monthlyProfit, remittanceCommission: stats.monthlyRemittanceIncome, remittanceVolume: stats.monthlyRemittanceVolume, remittanceDeliveryCharge: stats.monthlyRemittanceDeliveryCharge, remittanceCourierCost: remittanceCourierCost('monthly'), orderCourierDifference: courier.totals?.monthlyCourierDifference, manualEntriesNet: manualNet.monthly }),
+    yearly: computeHeadline({ orderRevenue: stats.yearlyRevenue, orderProfit: yearlyProfit, remittanceCommission: stats.yearlyRemittanceIncome, remittanceVolume: stats.yearlyRemittanceVolume, remittanceDeliveryCharge: stats.yearlyRemittanceDeliveryCharge, remittanceCourierCost: remittanceCourierCost('yearly'), orderCourierDifference: courier.totals?.yearlyCourierDifference, manualEntriesNet: manualNet.yearly })
   };
   const orderCosts = {
     daily: computeOrderCosts(stats.dailyRevenue, stats.dailyShippingCost, dailyProfit),
@@ -477,6 +501,14 @@ const DashboardPage = ({ onNavigate }) => {
                     </div>
                   )}
                   <CatalogLoadError error={marginsError} />
+                  {isSuperAdmin && manualEntriesError && (
+                    <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
+                      <p className="text-sm">{t('financialEntries.loadError')}</p>
+                      <button type="button" onClick={loadManualEntries} className="px-3 py-1.5 bg-white border border-amber-300 rounded-lg text-sm font-medium hover:bg-amber-100">
+                        {t('dashboard.retry')}
+                      </button>
+                    </div>
+                  )}
                   {/* Pending refunds: what needs action goes before what is read */}
                   <RefundsAlertCard enabled={Boolean(isAdmin) && !reconnecting} onNavigate={onNavigate} />
                   <RefundKpiCards enabled={Boolean(isAdmin) && !reconnecting} />
@@ -732,6 +764,8 @@ const DashboardPage = ({ onNavigate }) => {
                       transition={{ delay: 0.4 }}
                       className="mb-8"
                     >
+                      <FinancialEntriesPanel entries={manualEntries} onChanged={loadManualEntries} />
+
                       {/* Consolidated P&L: Orders + Remittances + Combined */}
                       <div className="glass-effect rounded-2xl p-6 mb-6">
                         <div className="flex items-center gap-2 mb-5">

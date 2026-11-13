@@ -827,3 +827,10 @@ Follow-up committed on `feat/theme-controls-links-logo` in five new commits (no 
 - Activity-log entries for orders and remittances now carry `paymentMethod`, `paymentAmount`, `paymentCurrency` (Zelle orders: total in USD; Bizum/other: sealed `payment_amount`/`payment_currency` or `null`, never inferred). `ActivityLogTab` shows them inline and in the detail dialog via `getActivityPaymentDetails`.
 - Dashboard "payment methods" card uses `computePaymentSourceBreakdown`: native-currency totals per method (orders + validated remittances), no cross-currency sum; non-Zelle rows without a sealed amount show "—". It no longer shows `data.total` in USD.
 - `createRemittance` writes `payment_method: 'zelle'` explicitly (INSERT only; `remittances_payment_method_check` allows it, the routing-columns guard is UPDATE-only). No DB migration.
+
+## Manual financial entries (super admin) — 2026-11-13
+
+- Append-only ledger `financial_entries` (migration `20261113130000_financial_entries.sql` + rollback, PREPARED, NOT APPLIED): super admin records USD incomes/expenses; wrong ones are voided with an opposite counter-entry dated on the business day. RLS SELECT super_admin only, writes only via SECURITY DEFINER RPCs, UPDATE/DELETE/TRUNCATE blocked for every role by trigger, date >= 2020-01-01 and amount <= 9999999999.99 validated with clear errors, rollback refuses to drop a non-empty ledger.
+- Dashboard net income (daily/monthly/yearly) adds the entries of the same calendar window in America/New_York (`getBusinessWindowDates`, `manualEntriesNetByWindow`); the SQL uses the same zone for "today". A failed read shows a retry banner instead of a silently overstated net; the list is paginated (`fetchAllRows`).
+- Review findings closed: swallowed load error, 1000-row truncation, UTC `todayIso` in the service, double-click on void, missing append-only guard, unbounded date/amount.
+- Tests: unit (rules, service, panel, migration text, Dashboard) + 30 real PG17 tests (`financialEntries.standalone.test.js`). Known: voiding dates the counter-entry today, so a past period keeps the original figure (by design). Apply the migration only with explicit owner approval.

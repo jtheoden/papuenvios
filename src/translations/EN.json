@@ -2125,6 +2125,24 @@
     "reopenOrderButton": "Reopen Order",
     "reopenInsufficientStock": "This order cannot be reopened: one or more products no longer have enough stock."
   },
+  "financialEntries": {
+    "title": "Manual financial entries",
+    "intro": "Incomes and expenses in USD that add to or subtract from the dashboard net profit. A wrong entry is not edited: it is voided with a counter-entry.",
+    "kind": "Type",
+    "kinds": { "income": "Income", "expense": "Expense" },
+    "amount": "Amount (USD)",
+    "date": "Date",
+    "category": "Category",
+    "reason": "Reason (at least 10 characters)",
+    "add": "Record entry",
+    "saved": "Entry recorded.",
+    "saveError": "Could not record the entry.",
+    "loadError": "Manual entries could not be loaded: the net income may be incomplete.",
+    "void": "Void",
+    "voidReason": "Reason for voiding (at least 10 characters)",
+    "voidConfirm": "Confirm void",
+    "voided": "Entry voided with a counter-entry."
+  },
   "adminOrders": {
     "title": "Orders History",
     "subtitle": "Complete management of all system orders",
