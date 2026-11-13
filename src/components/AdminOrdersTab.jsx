@@ -57,6 +57,7 @@ import ResponsiveTableWrapper from '@/components/tables/ResponsiveTableWrapper';
 import ReconnectingNotice from '@/components/ReconnectingNotice';
 import { isRefreshBlocked } from '@/lib/refreshGuard';
 import OrderActionButtons from '@/components/admin/OrderActionButtons';
+import OrderReadjustModal from '@/components/admin/OrderReadjustModal';
 import { isOwnOperation } from '@/lib/selfDealing';
 import { getOrderTotalWarning } from '@/lib/orderTotalCoherence';
 import { getTableColumns, getModalColumns } from '@/components/admin/OrderTableConfig';
@@ -108,7 +109,7 @@ const ORDERS_RELOAD_DEBOUNCE_MS = 500;
 
 const AdminOrdersTab = () => {
   const { t, language } = useLanguage();
-  const { user, sessionStatus } = useAuth();
+  const { user, sessionStatus, isSuperAdmin } = useAuth();
   const reconnecting = sessionStatus === 'reconnecting';
   const { visualSettings, refreshStock } = useBusiness();
 
@@ -132,6 +133,8 @@ const AdminOrdersTab = () => {
 
   const [showFilters, setShowFilters] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  // Order being readjusted by a super admin (any status, never an own one)
+  const [readjustTarget, setReadjustTarget] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
 
   // Delivery proof modal state
@@ -679,26 +682,38 @@ const AdminOrdersTab = () => {
         label: t('common.actions'),
         width: '120px',
         render: (value, order) => (
-          <OrderActionButtons
-            order={order}
-            onView={() => viewOrderDetails(order)}
-            onValidatePayment={() => handleValidatePayment(order)}
-            onRejectPayment={() => handleRejectPayment(order)}
-            onStartProcessing={() => handleStartProcessing(order)}
-            onMarkAsDispatched={() => handleMarkAsDispatched(order)}
-            onUploadDeliveryProof={() => handleUploadDeliveryProof(order)}
-            onCompleteOrder={() => handleCompleteOrder(order)}
-            onCancelOrder={() => handleCancelOrder(order)}
-            onRestockOrder={() => handleRestockClick(order)}
-            actionLoading={actionLoading === order.id}
-            ownOperation={isOwnOperation(order, user?.id)}
-          />
+          <div className="flex flex-col items-start gap-2">
+            <OrderActionButtons
+              order={order}
+              onView={() => viewOrderDetails(order)}
+              onValidatePayment={() => handleValidatePayment(order)}
+              onRejectPayment={() => handleRejectPayment(order)}
+              onStartProcessing={() => handleStartProcessing(order)}
+              onMarkAsDispatched={() => handleMarkAsDispatched(order)}
+              onUploadDeliveryProof={() => handleUploadDeliveryProof(order)}
+              onCompleteOrder={() => handleCompleteOrder(order)}
+              onCancelOrder={() => handleCancelOrder(order)}
+              onRestockOrder={() => handleRestockClick(order)}
+              actionLoading={actionLoading === order.id}
+              ownOperation={isOwnOperation(order, user?.id)}
+            />
+            {isSuperAdmin && !isOwnOperation(order, user?.id) && (
+              <button
+                type="button"
+                onClick={() => setReadjustTarget(order)}
+                className="inline-flex min-h-[44px] items-center justify-center px-3 border border-amber-300 text-amber-900 rounded-lg text-sm hover:bg-amber-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-600"
+              >
+                {t('adminOrders.readjust.button')}
+              </button>
+            )}
+          </div>
         )
       }
     ];
   }, [
     t,
     user?.id,
+    isSuperAdmin,
     actionLoading,
     viewOrderDetails,
     handleValidatePayment,
@@ -936,6 +951,18 @@ const AdminOrdersTab = () => {
           }}
           formatDate={formatDate}
           formatCurrency={formatCurrency}
+        />
+      )}
+
+      {/* Super admin readjustment */}
+      {readjustTarget && (
+        <OrderReadjustModal
+          order={readjustTarget}
+          onClose={() => setReadjustTarget(null)}
+          onSaved={() => {
+            setReadjustTarget(null);
+            loadOrders();
+          }}
         />
       )}
 

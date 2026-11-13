@@ -2108,6 +2108,41 @@
   "adminOrders": {
     "title": "Orders History",
     "subtitle": "Complete management of all system orders",
+    "readjust": {
+      "button": "Readjust",
+      "modalTitle": "Readjust order",
+      "modalIntro": "Correct the line prices, discount, shipping or status of an order already made. Who did it and why is recorded.",
+      "limits": "The difference between what the customer paid and the new total is not refunded or credited automatically. Dates are kept and a courier accrual already created is not recalculated. If the order ends up active and paid, its units are discounted from the inventory.",
+      "reopenNote": "Moving the order out of Cancelled closes its pending refund and discounts its units from the inventory again. If there is not enough stock, nothing is saved.",
+      "status": "Order status",
+      "paymentStatus": "Payment status",
+      "linePrice": "Unit price of {name}",
+      "lineQuantity": "Quantity: {quantity}",
+      "discountAmount": "Discount",
+      "shippingCost": "Shipping",
+      "preview": "New total: {total} (difference with the current total: {difference})",
+      "previewInvalid": "Check the values: the total must be greater than 0",
+      "reason": "Reason for the readjustment (10 to 500 characters)",
+      "confirm": "Confirm readjustment",
+      "saved": "Order readjusted and recorded in the audit log.",
+      "saveError": "The order could not be readjusted.",
+      "errorOwnOperation": "Another administrator must readjust your own order.",
+      "errorStock": "There is not enough stock to discount this order. Nothing was saved.",
+      "statuses": {
+        "pending": "Pending",
+        "processing": "Processing",
+        "dispatched": "Dispatched",
+        "delivered": "Delivered",
+        "completed": "Completed",
+        "cancelled": "Cancelled"
+      },
+      "paymentStatuses": {
+        "pending": "Pending",
+        "proof_uploaded": "Proof uploaded",
+        "validated": "Validated",
+        "rejected": "Rejected"
+      }
+    },
     "totalWarning": {
       "items_missing": "The order has no recorded items; verify before validating the payment.",
       "subtotal_mismatch": "The order subtotal does not match the sum of its items; verify before validating the payment.",
