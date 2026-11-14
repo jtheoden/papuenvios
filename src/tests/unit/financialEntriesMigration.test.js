@@ -2,15 +2,17 @@ import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const UP = resolve(process.cwd(), 'supabase/migrations/20261113130000_financial_entries.sql');
-const DOWN = resolve(process.cwd(), 'supabase/rollbacks/20261113130000_financial_entries_down.sql');
+const UP = resolve(process.cwd(), 'supabase/migrations/20261113214007_financial_entries.sql');
+const DOWN = resolve(process.cwd(), 'supabase/rollbacks/20261113214007_financial_entries_down.sql');
 const read = (path) => readFileSync(path, 'utf8');
 
 describe('manual financial entries migration (slice 3)', () => {
-  it('ships the migration and its rollback, marked as not applied', () => {
+  it('ships the migration and its rollback, marked as applied to production with the registered version', () => {
     expect(existsSync(UP)).toBe(true);
     expect(existsSync(DOWN)).toBe(true);
-    expect(read(UP)).toMatch(/PREPARED, NOT APPLIED/);
+    expect(read(UP)).toMatch(/APPLIED to production on 2026-11-13 \(apply_migration name: financial_entries, version 20261113214007\)/);
+    expect(read(UP)).not.toMatch(/PREPARED, NOT APPLIED/);
+    expect(read(DOWN)).toMatch(/version 20261113214007/);
   });
 
   describe('table financial_entries', () => {

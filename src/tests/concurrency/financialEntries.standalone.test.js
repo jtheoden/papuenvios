@@ -18,8 +18,8 @@ if (!available) {
   if (process.env.DB_TESTS_REQUIRED === '1') throw new Error(reason);
   process.stderr.write(`[db tests] SKIPPED: ${reason}\n`);
 }
-const up = readSql('supabase/migrations/20261113130000_financial_entries.sql');
-const down = readSql('supabase/rollbacks/20261113130000_financial_entries_down.sql');
+const up = readSql('supabase/migrations/20261113214007_financial_entries.sql');
+const down = readSql('supabase/rollbacks/20261113214007_financial_entries_down.sql');
 const database = 'papuenvios_test_financial_entries';
 const table = 'public.financial_entries';
 const addSignature = 'public.superadmin_add_financial_entry(text,numeric,date,text,text)';

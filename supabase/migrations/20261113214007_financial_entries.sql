@@ -1,4 +1,4 @@
--- PREPARED, NOT APPLIED
+-- APPLIED to production on 2026-11-13 (apply_migration name: financial_entries, version 20261113214007).
 -- Manual financial entries (super admin): incomes and expenses, in USD, that add to or subtract from the
 -- dashboard net profit. Append-only: a wrong entry is voided with an opposite counter-entry, never edited or deleted.
 
