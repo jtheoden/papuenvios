@@ -1,4 +1,4 @@
--- Rollback of 20261113130000_financial_entries. PREPARED, NOT APPLIED
+-- Rollback of financial_entries (applied to production as version 20261113214007). PREPARED, NOT APPLIED
 -- The table is an append-only ledger: it is NOT dropped while it holds entries. Export them first
 -- (SELECT * FROM public.financial_entries) and only then remove the rows by hand if the ledger must go.
 -- Disable the Dashboard panel first; it reads the table through RLS.
